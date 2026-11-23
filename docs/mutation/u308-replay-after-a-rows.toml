@@ -1,0 +1,1953 @@
+name = "u308-replay-after-a"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1114.M10_message_reworded_many"
+source = { table = "r1114.json", id = "M10_message_reworded_many" }
+description = "_unlisted_cause: reword the many label message so it no longer says none could be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        else f"none of the {len(entries)} labels asked about could be read ({names}), "'
+new = '        else f"the {len(entries)} labels asked about were skipped ({names}), "'
+
+[[rows]]
+id = "r1114.M11_message_reworded_one"
+source = { table = "r1114.json", id = "M11_message_reworded_one" }
+description = "_unlisted_cause: reword the single label message so it no longer says the label could not be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        f"the label asked about could not be read ({names}), so whether it has"'
+new = '        f"the label asked about was skipped ({names}), so whether it has"'
+
+[[rows]]
+id = "r1114.M12_match_step_dropped"
+source = { table = "r1114.json", id = "M12_match_step_dropped" }
+description = "_UNLISTED_STEPS: drop the step naming the registry's --match needle, the remedy for a listing that confirmed nothing, from the cause and the line"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    "a listing that confirmed nothing: check the label's --match needle "
+    "with: crate label registry",
+'''
+new = ''
+
+[[rows]]
+id = "r1114.M13_detail_labels_empty"
+source = { table = "r1114.json", id = "M13_detail_labels_empty" }
+description = "_unlisted_cause: carry no label identifiers in the detail, so a script cannot tell which labels failed"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        detail={"labels": [entry.label_id for entry in entries]},'
+new = '        detail={"labels": []},'
+
+[[rows]]
+id = "r1114.M14_withheld_reads_no_op"
+source = { table = "r1114.json", id = "M14_withheld_reads_no_op" }
+description = "_next, existing guard sampled: a run whose gate withheld an item ends no_op though it wrote"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        # back has left review even when no question was left to ask.
+        outcome=Outcome.OK if withheld else Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+new = '''
+        # back has left review even when no question was left to ask.
+        outcome=Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+
+[[rows]]
+id = "r1114.M16_remedy_line_dropped"
+source = { table = "r1114.json", id = "M16_remedy_line_dropped" }
+description = "_next: refuse without the info line naming what to do, so the human rendering shows no remedy, the review's round one finding"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        checks.append(_check("next", "info", _UNLISTED_REMEDY))'
+new = '        pass'
+
+[[rows]]
+id = "r1114.M17_remedy_line_only_doctor"
+source = { table = "r1114.json", id = "M17_remedy_line_only_doctor" }
+description = "_UNLISTED_REMEDY: the line carries only the first step, so a listing that confirmed nothing is told to run doctor"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '_UNLISTED_REMEDY = "; ".join(_UNLISTED_STEPS)'
+new = '_UNLISTED_REMEDY = _UNLISTED_STEPS[0]'
+
+[[rows]]
+id = "r1114.M1_every_skipped_not_refused"
+source = { table = "r1114.json", id = "M1_every_skipped_not_refused" }
+description = "_next: drop the refusal of a run whose every label was skipped, so it ends no_op with exit 0 again, the defect R-1114 names"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if False:'
+
+[[rows]]
+id = "r1114.M2_single_label_not_refused"
+source = { table = "r1114.json", id = "M2_single_label_not_refused" }
+description = "_next: refuse only the walk over every label, so --next --label on a label whose listing failed ends no_op with exit 0"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if not nothing and only is None:'
+
+[[rows]]
+id = "r1114.M3_mixed_run_refused"
+source = { table = "r1114.json", id = "M3_mixed_run_refused" }
+description = "_next: refuse whenever any label was skipped, so a run with one label listed and nothing new also fails"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if len(nothing) < len(entries):'
+
+[[rows]]
+id = "r1114.M4_closing_line_ignores_skips"
+source = { table = "r1114.json", id = "M4_closing_line_ignores_skips" }
+description = "_next: say no label has anything new whatever was skipped, the false closing line on a mixed run"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '            if len(nothing) == len(entries)'
+new = '            if True'
+
+[[rows]]
+id = "r1114.M5_closing_line_names_every_label"
+source = { table = "r1114.json", id = "M5_closing_line_names_every_label" }
+description = "_next: name every label in the mixed closing line, the skipped ones included, as having nothing new"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''{', '.join(nothing)}"'''
+new = '''{', '.join(one.name for one in entries)}"'''
+
+[[rows]]
+id = "r1114.M7_refusal_drops_the_lines"
+source = { table = "r1114.json", id = "M7_refusal_drops_the_lines" }
+description = "_next: refuse without the run's checks as data, so the per label fail lines vanish from the refusal"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+            cause=_unlisted_cause(entries),
+            data=data,'''
+new = '''
+            cause=_unlisted_cause(entries),
+            data=None,'''
+
+[[rows]]
+id = "r515-operator.S8_short_of_keeps_zero"
+source = { table = "r515-operator.json", id = "S8_short_of_keeps_zero" }
+description = "Read a saved shortfall block back even when it withheld nothing"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '    if any(value is None for value in block.values()) or not block["withheld"]:'
+new = '    if any(value is None for value in block.values()):'
+
+[[rows]]
+id = "u107-a.S03_marker_moves"
+source = { table = "u107-a.json", id = "S03_marker_moves" }
+description = "sync_cli.record_answer: keep the asked set as it was, so an answer does not move the marker and the same releases are asked again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '        asked = set(asked_releases(document, entry.label_id)) | set(question.identities())'
+new = '        asked = set(asked_releases(document, entry.label_id))'
+
+[[rows]]
+id = "u107-a.S08_catch_up_withhold"
+source = { table = "u107-a.json", id = "S08_catch_up_withhold" }
+description = "sync_cli._question_for: never take back an open item the gate would now hold, so it is offered in the catch up"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '            elif judged.held:'
+new = '            elif False:'
+
+[[rows]]
+id = "u107-b.S13_take_accepts"
+source = { table = "u107-b.json", id = "S13_take_accepts" }
+description = "sync_cli._take: file a taken release and never record it accepted"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '    review.resolve(store, item.item_id, Verdict.ACCEPTED, actor=ACTOR)'
+new = '    pass'
+
+[[rows]]
+id = "u107-b.S15_no_default_answer"
+source = { table = "u107-b.json", id = "S15_no_default_answer" }
+description = "sync_cli._ask: give the prompt a default of not-now, so an empty line moves the marker"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''        answer = prompter.ask(f"Answer ({', '.join(words)})").lower()'''
+new = '''        answer = prompter.ask(f"Answer ({', '.join(words)})", default=NOT_NOW).lower()'''
+
+[[rows]]
+id = "u107-b.S16_save_before_ask"
+source = { table = "u107-b.json", id = "S16_save_before_ask" }
+description = "sync_cli._walk: ask without saving the question first, so the answer has no question to apply to"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '            _save_pending(cfg, listed.question)'
+new = '            pass'
+
+[[rows]]
+id = "u107-b.S17_dead_verifier_skip"
+source = { table = "u107-b.json", id = "S17_dead_verifier_skip" }
+description = "sync_cli._question_for: read a catalogue that confirmed nothing as a label with nothing new"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '    if not candidates and source.dropped and unconfirmed == source.read:'
+new = '    if False:'
+
+[[rows]]
+id = "u107-c.S20_pick_isdecimal"
+source = { table = "u107-c.json", id = "S20_pick_isdecimal" }
+description = "sync_cli._pick: decide a release number with isdigit again, so a superscript digit crashes the walk (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '            if word.isdecimal() and 1 <= int(word) <= count:'
+new = '            if word.isdigit() and 1 <= int(word) <= count:'
+
+[[rows]]
+id = "u107-c.S21_filing_run"
+source = { table = "u107-c.json", id = "S21_filing_run" }
+description = "sync_cli.record_answer: file taken releases under the answering run, not the run that asked (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_sync.py"]
+old = '        filing_run = question.run or run_id'
+new = '        filing_run = run_id'
+
+[[rows]]
+id = "u107-c.S23_stop_remedy"
+source = { table = "u107-c.json", id = "S23_stop_remedy" }
+description = "sync_cli.record_answer: stop with nothing waiting sends a person to --next, which asks nothing (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '                    if answer == STOP'
+new = '                    if False'
+
+[[rows]]
+id = "u107-c.S24_size_coefficient"
+source = { table = "u107-c.json", id = "S24_size_coefficient" }
+description = "sync_cli: halve the bytes per second the size estimate uses"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = 'BYTES_PER_SECOND = 110_000'
+new = 'BYTES_PER_SECOND = 55_000'
+
+[[rows]]
+id = "u107-d.S02_record_version_again"
+source = { table = "u107-d.json", id = "S02_record_version_again" }
+description = "sync_cli.load_record: accept a record of any version as this build's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '    if version != RECORD_VERSION:'
+new = '    if False:'
+
+[[rows]]
+id = "u107-d.S14_take_respects_decided_again"
+source = { table = "u107-d.json", id = "S14_take_respects_decided_again" }
+description = "sync_cli._take: overwrite an item a person decided between the question and the answer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+    if item.stored_verdict is not None:
+        return False'''
+new = '''
+    if False:
+        return False'''
+
+[[rows]]
+id = "u107-d.S25_measured_passes_refusal_again"
+source = { table = "u107-d.json", id = "S25_measured_passes_refusal_again" }
+description = "sync_cli._measured: count a provider refusal while reading a release's tracks as tracks unread, so the walk goes on instead of parking"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+    except CratekitError:
+        raise
+    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'''
+new = '    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'
+
+[[rows]]
+id = "u108-a.G01_unsettled_skips_settled"
+source = { table = "u108-a.json", id = "G01_unsettled_skips_settled" }
+description = "sync_cli.unsettled: read every saved answer as unsettled, so a go summarises answers an earlier go already took"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if isinstance(entry, Mapping) and not entry.get(SETTLED)
+    ]'''
+new = '''
+        if isinstance(entry, Mapping)
+    ]'''
+
+[[rows]]
+id = "u108-c.G19_settle_keeps"
+source = { table = "u108-c.json", id = "G19_settle_keeps" }
+description = "sync_cli.settle_in: an answer holding a release named in keep is settled anyway"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if isinstance(taken, list) and any(one in keep for one in taken):
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u108-c.G24_walk_ends_at_gate"
+source = { table = "u108-c.json", id = "G24_walk_ends_at_gate" }
+description = "sync_cli._walk: a walk that answered every label ends without asking the gate"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    if stopped_at is None:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+new = '''
+    if False:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+
+[[rows]]
+id = "u108-d.G18_settle_matches_identity_again"
+source = { table = "u108-d.json", id = "G18_settle_matches_identity_again" }
+description = "sync_cli.settle_in: an answer is settled by its place alone, without checking it is the answer the summary covered"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u108-d.G20_settle_skips_settled_again"
+source = { table = "u108-d.json", id = "G20_settle_skips_settled_again" }
+description = "sync_cli.settle_in: an answer already settled is settled again, its first marker overwritten"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if ('''
+new = '''
+        if not isinstance(entry, Mapping):
+            continue
+        if ('''
+
+[[rows]]
+id = "u189.M11_answer_remedy_plain_next"
+source = { table = "u189.json", id = "M11_answer_remedy_plain_next" }
+description = "record_answer: the remedy of an answer with nothing waiting names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                    else f"ask it first with: crate label sync --next --label {entry.label_id}"'
+new = '                    else "ask it first with: crate label sync --next"'
+
+[[rows]]
+id = "u189.M14_pick_no_release_remedy_plain_next"
+source = { table = "u189.json", id = "M14_pick_no_release_remedy_plain_next" }
+description = "label_sync: the remedy of --answer pick with no --release names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                f"--next --label {args.label!r}",'
+new = '                f"--next",'
+
+[[rows]]
+id = "u189.M15_pick_remedy_unquoted"
+source = { table = "u189.json", id = "M15_pick_remedy_unquoted" }
+description = "label_sync: the pick remedy names the label unquoted, so a name with a space pastes as two words"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                f"--next --label {args.label!r}",'
+new = '                f"--next --label {args.label}",'
+
+[[rows]]
+id = "u189.M16_empty_label_alone_walks"
+source = { table = "u189.json", id = "M16_empty_label_alone_walks" }
+description = "label_sync: test --label for truth again, so an empty --label alone runs the whole walk"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif not args.next_question and (args.label or args.releases):'
+
+[[rows]]
+id = "u189.M1_next_label_refused_again"
+source = { table = "u189.json", id = "M1_next_label_refused_again" }
+description = "label_sync: restore the old refusal of --label without --answer, so --next --label is refused and no single label can be asked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif args.label is not None or args.releases:'
+
+[[rows]]
+id = "u189.M2_label_alone_not_refused"
+source = { table = "u189.json", id = "M2_label_alone_not_refused" }
+description = "label_sync: drop the refusal of --label or --release alone, so they fall through to the interactive walk and name nothing"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M3_next_release_not_refused"
+source = { table = "u189.json", id = "M3_next_release_not_refused" }
+description = "label_sync: drop the refusal of --next with --release, so the named releases are silently ignored"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif args.next_question and args.releases:'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M4_empty_name_not_refused"
+source = { table = "u189.json", id = "M4_empty_name_not_refused" }
+description = "label_sync: drop the refusal of --next with an empty --label, so a blank name reaches the registry as an unfollowed label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif args.next_question and args.label is not None and not args.label.strip():'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M5_alone_hint_drops_the_label"
+source = { table = "u189.json", id = "M5_alone_hint_drops_the_label" }
+description = "label_sync: reword the --label alone hint to the plain --next, which walks from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '            "to ask about one label: crate label sync --next --label NAME",'
+new = '            "to ask about one label: crate label sync --next",'
+
+[[rows]]
+id = "u189.M6_label_not_passed"
+source = { table = "u189.json", id = "M6_label_not_passed" }
+description = "label_sync: call _next without the named label, so --next --label walks every label from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        return _next(ctx, cfg, args.label)'
+new = '        return _next(ctx, cfg)'
+
+[[rows]]
+id = "u189.M7_unknown_name_not_refused"
+source = { table = "u189.json", id = "M7_unknown_name_not_refused" }
+description = "_next: resolve the name without refusing, so an unfollowed name walks every label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    only = _entry_or_refuse(followed, name) if name is not None else None'
+new = '    only = followed.resolve(name) if name is not None else None'
+
+[[rows]]
+id = "u189.M8_entries_ignore_the_one"
+source = { table = "u189.json", id = "M8_entries_ignore_the_one" }
+description = "_next: walk every followed label even when one is named"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    entries = [only] if only is not None else list(followed.labels.values())'
+new = '    entries = list(followed.labels.values())'
+
+[[rows]]
+id = "u189.S2_question_not_saved"
+source = { table = "u189.json", id = "S2_question_not_saved" }
+description = "_next, sample of the unit's existing guards: print a new question without saving it, so no answer can apply to it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                question = listed.question
+                _save_pending(cfg, question)'''
+new = '                question = listed.question'
+
+[[rows]]
+id = "u238.M7_old_question_read_as_count"
+source = { table = "u238.json", id = "M7_old_question_read_as_count" }
+description = "Question.from_json: a question saved before the split reads none as unchecked, so 414 is said as the label's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '            beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),'
+new = '            beyond_unchecked=0 if unchecked is None else min(beyond, unchecked),'
+
+[[rows]]
+id = "u238.M8_bound_said_as_the_labels"
+source = { table = "u238.json", id = "M8_bound_said_as_the_labels" }
+description = "sync_cli._past_window: say the unchecked alone as the label's releases rather than as a bound"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''        said = f"up to {unchecked} more past this run's window, not yet checked"'''
+new = '''        said = f"{unchecked} more of the label's release(s) past this run's window"'''
+
+[[rows]]
+id = "u238.M9_nothing_line_loses_the_split"
+source = { table = "u238.json", id = "M9_nothing_line_loses_the_split" }
+description = "sync_cli._nothing_check: pass no unchecked count, so the nothing new line says every release as the label's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '        past = _past_window(listed.listing.beyond, listed.listing.beyond_unchecked)'
+new = '        past = _past_window(listed.listing.beyond, 0)'
+
+[[rows]]
+id = "u277.M10_next_says_no_canary"
+source = { table = "u277.json", id = "M10_next_says_no_canary" }
+description = "_listing_checks: never say the reverified line, so --next is silent about which release it re-verified"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py"]
+old = '    if listing.canary is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u278.M25_sweep_never_refuses"
+source = { table = "u278.json", id = "M25_sweep_never_refuses" }
+description = "label sync: the estimate never refuses"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if calls > left:'
+new = '    if False:'
+
+[[rows]]
+id = "r798-c.H6_a_returned_release_passes_at_approval"
+source = { table = "r798-c.json", id = "H6_a_returned_release_passes_at_approval" }
+description = "label approved: judge a release a person returned, so it is held a second time when it is accepted"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''
+        if release.returned:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u101.G10_ungated_not_reported_in_judged_label"
+source = { table = "u101.json", id = "G10_ungated_not_reported_in_judged_label" }
+description = "Drop the ungated branch in a judged label, so a release with no genre is listed silently"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '            if outcome.ungated is not None:'
+new = '            if False:'
+
+[[rows]]
+id = "u101.G11_keep_read_as_drop"
+source = { table = "u101.json", id = "G11_keep_read_as_drop" }
+description = "Hold on the KEEP verdict instead of DROP"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '            elif verdict is routing.GateVerdict.DROP and family and outcome.genre:'
+new = '            elif verdict is routing.GateVerdict.KEEP and family and outcome.genre:'
+
+[[rows]]
+id = "u101.G12_reported_share_not_the_taxonomys"
+source = { table = "u101.json", id = "G12_reported_share_not_the_taxonomys" }
+description = "Report a share the taxonomy did not declare"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '    share = declared.label_gate.out_of_place_share'
+new = '    share = 0.2'
+
+[[rows]]
+id = "u101.G13_family_count_off_by_one"
+source = { table = "u101.json", id = "G13_family_count_off_by_one" }
+description = "Report one more release of the family than there were"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = 'families.count(family), classified, share'
+new = 'families.count(family) + 1, classified, share'
+
+[[rows]]
+id = "u101.G14_classified_counts_unjudged"
+source = { table = "u101.json", id = "G14_classified_counts_unjudged" }
+description = "Count every release in the label as classified, including those with no genre"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '        classified = sum(1 for genre in genres if genre)'
+new = '        classified = len(genres)'
+
+[[rows]]
+id = "u101.G17_refusal_silent_on_held"
+source = { table = "u101.json", id = "G17_refusal_silent_on_held" }
+description = "Drop the held clause from the nothing missing refusal"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '            + (f" and passed the genre gate ({len(held)} more held by it)" if held else "")'
+new = '            + ""'
+
+[[rows]]
+id = "u101.G18_no_op_claims_held"
+source = { table = "u101.json", id = "G18_no_op_claims_held" }
+description = "The no op wording ignores held releases and says the library holds everything read"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''
+            f"held by it"
+            if held
+            else'''
+new = '''
+            f"held by it"
+            if False
+            else'''
+
+[[rows]]
+id = "u101.G1_held_is_listed"
+source = { table = "u101.json", id = "G1_held_is_listed" }
+description = "Drop the skip, so a release the gate held is resolved, offered and listed anyway"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''
+        if release.item_id in held:
+            continue
+'''
+new = '''
+
+'''
+
+[[rows]]
+id = "u101.G20_summary_held_empty"
+source = { table = "u101.json", id = "G20_summary_held_empty" }
+description = "The summary carries no held releases"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '        held=[one.to_json() for one in held.values()],'
+new = '        held=[],'
+
+[[rows]]
+id = "u101.G2_judged_per_release"
+source = { table = "u101.json", id = "G2_judged_per_release" }
+description = "Group every release under itself, so each is judged alone and nothing is ever held"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '    return release.label_id or release.label_name or f"release:{release.release_id}"'
+new = '    return f"release:{release.release_id}"'
+
+[[rows]]
+id = "u101.G3_all_labels_one_group"
+source = { table = "u101.json", id = "G3_all_labels_one_group" }
+description = "Group every release under one key, so labels are judged against each other"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '    return release.label_id or release.label_name or f"release:{release.release_id}"'
+new = '    return "all"'
+
+[[rows]]
+id = "u101.G4_unlabelled_grouped_together"
+source = { table = "u101.json", id = "G4_unlabelled_grouped_together" }
+description = "Group every release naming no label under one key instead of judging each alone"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '    return release.label_id or release.label_name or f"release:{release.release_id}"'
+new = '    return release.label_id or release.label_name or "release:"'
+
+[[rows]]
+id = "u101.G5_unread_label_judged"
+source = { table = "u101.json", id = "G5_unread_label_judged" }
+description = "Judge a label even when one of its releases was unread this run"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '        if label in unread:'
+new = '        if label in unread and False:'
+
+[[rows]]
+id = "u101.G6_unread_from_every_label"
+source = { table = "u101.json", id = "G6_unread_from_every_label" }
+description = "Treat every label as having an unread release whenever any release failed"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '        if label in unread:'
+new = '        if unread:'
+
+[[rows]]
+id = "u101.G7_mixed_is_a_genre"
+source = { table = "u101.json", id = "G7_mixed_is_a_genre" }
+description = "Rows that disagree yield their first genre instead of none"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '    if len(said) > 1:'
+new = '    if len(said) > 99:'
+
+[[rows]]
+id = "u101.G8_case_is_a_difference"
+source = { table = "u101.json", id = "G8_case_is_a_difference" }
+description = "Compare genres by exact text, so one genre in two cases reads as mixed"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '            said.setdefault(text.casefold(), text)'
+new = '            said.setdefault(text, text)'
+
+[[rows]]
+id = "u101.G9_mapping_row_unread"
+source = { table = "u101.json", id = "G9_mapping_row_unread" }
+description = "Read the genre by attribute only, so a mapping shaped row reports none"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '        value = row.get("genre") if isinstance(row, Mapping) else getattr(row, "genre", None)'
+new = '        value = getattr(row, "genre", None)'
+
+[[rows]]
+id = "u107-c.S19_approved_superseded"
+source = { table = "u107-c.json", id = "S19_approved_superseded" }
+description = "approved_cli._queued: count a superseded item as not yet answered"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '        elif item.verdict is not review.Verdict.SUPERSEDED:'
+new = '        else:'
+
+[[rows]]
+id = "u108-c.G21_listing_skips_already"
+source = { table = "u108-c.json", id = "G21_listing_skips_already" }
+description = "approved_cli.list_releases: a track another job already holds is listed again"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_sync_go.py", "tests/test_label_tidal_catalogue.py", "tests/test_landing_labels.py"]
+old = '            elif str(settled.wanted.ref or "").strip() in already:'
+new = '            elif False:'
+
+[[rows]]
+id = "u108-c.G22_listing_excuse_applies"
+source = { table = "u108-c.json", id = "G22_listing_excuse_applies" }
+description = "approved_cli.list_releases: an excused failure kind still refuses an empty listing"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_sync_go.py", "tests/test_label_tidal_catalogue.py", "tests/test_landing_labels.py"]
+old = '    unexcused = [one for one in failures if one.kind not in excuse]'
+new = '    unexcused = list(failures)'
+
+[[rows]]
+id = "u75-a.A3_nothing_accepted_before_the_catalogue"
+source = { table = "u75-a.json", id = "A3_nothing_accepted_before_the_catalogue" }
+description = "Remove the early return, so a queue with nothing accepted resolves the catalogue and spends a login"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    if not accepted:
+        # ASKED BEFORE THE CATALOGUE IS RESOLVED'''
+new = '''
+    if False:
+        # ASKED BEFORE THE CATALOGUE IS RESOLVED'''
+
+[[rows]]
+id = "u75-a.A5_only_the_seams_exception_is_gone"
+source = { table = "u75-a.json", id = "A5_only_the_seams_exception_is_gone" }
+description = "Catch LookupError again instead of the seam's own class, the review's first finding"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    except catalogue.ReleaseUnresolvable as exc:
+        return _Failed(release, GONE, str(exc))'''
+new = '''
+    except LookupError as exc:
+        return _Failed(release, GONE, str(exc))'''
+
+[[rows]]
+id = "u75-a.A6_no_identifier_is_not_asked_of_the_provider"
+source = { table = "u75-a.json", id = "A6_no_identifier_is_not_asked_of_the_provider" }
+description = "Remove the empty identifier guard, so the provider is asked for a release with no name"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    if not release.release_id:
+        return _Failed(release, NO_IDENTIFIER, "the review item names no release identifier")
+'''
+new = ''
+
+[[rows]]
+id = "u75-a.A7_each_row_read_alone"
+source = { table = "u75-a.json", id = "A7_each_row_read_alone" }
+description = "Let one unreadable row escape, which costs the run instead of one line"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        except match.UnreadableList as exc:
+            unreadable.append(str(exc))'''
+new = '''
+        except ZeroDivisionError as exc:
+            unreadable.append(str(exc))'''
+
+[[rows]]
+id = "u75-b.B11_write_failure_is_the_verbs_refusal"
+source = { table = "u75-b.json", id = "B11_write_failure_is_the_verbs_refusal" }
+description = "Remove the OSError conversion, so a full disk reaches a person as an internal error"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        except OSError as exc:
+            # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL.'''
+new = '''
+        except ZeroDivisionError as exc:
+            # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL.'''
+
+[[rows]]
+id = "u75-b.B1_outage_threshold"
+source = { table = "u75-b.json", id = "B1_outage_threshold" }
+description = "Raise the outage threshold from three to thirty, a realistic slip, so a dead provider is asked about every release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = 'OUTAGE_AFTER = 3'
+new = 'OUTAGE_AFTER = 30'
+
+[[rows]]
+id = "u75-b.B3_only_a_provider_failure_counts"
+source = { table = "u75-b.json", id = "B3_only_a_provider_failure_counts" }
+description = "Count a gone release towards an outage"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '            in_a_row = in_a_row + 1 if outcome.kind == PROVIDER else 0'
+new = '            in_a_row = in_a_row + 1'
+
+[[rows]]
+id = "u75-b.B7_same_recording_listed_once"
+source = { table = "u75-b.json", id = "B7_same_recording_listed_once" }
+description = "Remove the match id dedupe, so a single and its album list one recording twice"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+            elif settled.match_id in seen:
+                counts["duplicate"] += 1
+'''
+new = ''
+
+[[rows]]
+id = "u75-b.B9_name_digests_the_provenance"
+source = { table = "u75-b.json", id = "B9_name_digests_the_provenance" }
+description = "Digest the tracks alone, the review's fourth finding, so a corrected year meets the emitter's refusal"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        "provenance": [
+            dataclasses.asdict(provenance[track["id"]]) for track in body["tracks"]
+        ],'''
+new = '        "provenance": [],'
+
+[[rows]]
+id = "u75-zeros.B6_missing_and_nothing_listable_refuses"
+source = { table = "u75-zeros.json", id = "B6_missing_and_nothing_listable_refuses" }
+description = "Remove the refusal for missing tracks none of which carries a provider identifier"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '    if missing and not listed:'
+new = '    if False:'
+
+[[rows]]
+id = "r840-a.A1_address_is_the_whole_field"
+source = { table = "r840-a.json", id = "A1_address_is_the_whole_field" }
+description = "is_address: search for the address shape anywhere in the field, so a name that merely contains one is asked about and overwritten"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = 'ADDRESS.fullmatch(value.strip()) is not None'
+new = 'ADDRESS.search(value.strip()) is not None'
+
+[[rows]]
+id = "r840-a.A2_a_name_is_not_asked_about"
+source = { table = "r840-a.json", id = "A2_a_name_is_not_asked_about" }
+description = "_listed: drop the address check, so every open label release is read from the provider and rewritten"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if not is_address(item.payload.get("artist")):
+            done.counts[ALREADY_FINE] += 1
+            continue
+        if item.stored_verdict'''
+new = '        if item.stored_verdict'
+
+[[rows]]
+id = "r840-a.A3_unreadable_verdict_is_decided"
+source = { table = "r840-a.json", id = "A3_unreadable_verdict_is_decided" }
+description = "_listed: drop the stored verdict check, so an item carrying a verdict this build cannot read is asked about"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if item.stored_verdict is not None:
+            done.counts[DECIDED] += 1
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "r840-a.A4_only_label_releases"
+source = { table = "r840-a.json", id = "A4_only_label_releases" }
+description = "_listed: drop the kind from the selection, so another producer's item in the same queue is read as a release"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = 'review.Predicate(queue=str(Queue.LABEL_RELEASE), kind=genre_gate.RELEASE_KIND)'
+new = 'review.Predicate(queue=str(Queue.LABEL_RELEASE))'
+
+[[rows]]
+id = "r840-a.A5_no_identifier_is_not_read"
+source = { table = "r840-a.json", id = "A5_no_identifier_is_not_read" }
+description = "_walk: drop the empty identifier half of the unaddressed check, so an item filed under an empty identifier is asked for and reported as no longer served"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if (
+            not subject.release_id
+            or genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
+new = '''
+        if (
+            genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
+
+[[rows]]
+id = "r840-a.A6_another_items_release_is_not_read"
+source = { table = "r840-a.json", id = "A6_another_items_release_is_not_read" }
+description = "_walk: drop the addressing half of the unaddressed check, so an item naming another item's release is given that release's artist"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if (
+            not subject.release_id
+            or genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
+new = '''
+        if (
+            not subject.release_id
+        ):'''
+
+[[rows]]
+id = "r840-a.A7_catalogue_opened_on_demand"
+source = { table = "r840-a.json", id = "A7_catalogue_opened_on_demand" }
+description = "_walk: open the catalogue before the walk, so a queue with no address in it logs in and can refuse on the credential"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+    found: catalogue.Catalogue | None = None
+    failed_in_a_row = 0'''
+new = '''
+    found: catalogue.Catalogue | None = catalogue.resolve(cfg)
+    failed_in_a_row = 0'''
+
+[[rows]]
+id = "r840-a.A8_outage_bound"
+source = { table = "r840-a.json", id = "A8_outage_bound" }
+description = "_walk: stop after four reads failing in a row and not three"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:
+            # THE RUN STOPS'''
+new = '''
+        if failed_in_a_row > catalogue.READS_FAILED_IN_A_ROW:
+            # THE RUN STOPS'''
+
+[[rows]]
+id = "r840-b.B11_left_counts_what_was_not_reached"
+source = { table = "r840-b.json", id = "B11_left_counts_what_was_not_reached" }
+description = "_with_counts: count left against every address and not against the items the run set out to read"
+file = "src/cratekit/label/artists_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_artists.py"]
+old = '    left = listed - len(done.releases)'
+new = '    left = done.addresses - done.counts[REPAIRED]'
+
+[[rows]]
+id = "r840-b.B1_only_the_seams_exception_is_not_served"
+source = { table = "r840-b.json", id = "B1_only_the_seams_exception_is_not_served" }
+description = "_repair_one: catch LookupError where the seam's own exception is caught, so a client that could not parse a payload is reported as a release that is gone"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '    except catalogue.ReleaseUnresolvable as exc:'
+new = '    except LookupError as exc:'
+
+[[rows]]
+id = "r840-b.B2_a_refusal_stops_the_run"
+source = { table = "r840-b.json", id = "B2_a_refusal_stops_the_run" }
+description = "_repair_one: drop the CratekitError passthrough, so an expired session is recorded as one unread release and the walk goes on asking"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        name = found.release_artist(subject.release_id)
+    except CratekitError:
+        raise
+    except catalogue'''
+new = '''
+        name = found.release_artist(subject.release_id)
+    except catalogue'''
+
+[[rows]]
+id = "r840-b.B3_no_name_never_blanks"
+source = { table = "r840-b.json", id = "B3_no_name_never_blanks" }
+description = "_repair_one: write whatever the provider answered unless it is None, so a release it names no artist for has its address replaced by nothing"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+    name = _text(name)
+    if not name:'''
+new = '''
+    name = _text(name)
+    if name is None:'''
+
+[[rows]]
+id = "r840-b.B4_an_unread_release_refuses"
+source = { table = "r840-b.json", id = "B4_an_unread_release_refuses" }
+description = "_walk: refuse only when the outage bound was reached, so a run that left one or two releases unread exits clean"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+    if done.counts[UNREAD]:
+        # AFTER THE WALK'''
+new = '''
+    if done.counts[UNREAD] >= catalogue.READS_FAILED_IN_A_ROW:
+        # AFTER THE WALK'''
+
+[[rows]]
+id = "r840-b.B5_decided_meanwhile_is_not_fine"
+source = { table = "r840-b.json", id = "B5_decided_meanwhile_is_not_fine" }
+description = "_write: answer already fine whenever nothing was written, so an item decided during the read is said to have stopped reading an address"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '    return ALREADY_FINE if seen else DECIDED'
+new = '    return ALREADY_FINE'
+
+[[rows]]
+id = "r840-b.B6_put_right_meanwhile_is_kept"
+source = { table = "r840-b.json", id = "B6_put_right_meanwhile_is_kept" }
+description = "_write: drop the address check on the payload as it stands, so an artist somebody typed during the read is overwritten by the provider's"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        if not is_address(current.get("artist")):
+            return None
+        return {**current, "artist": name}'''
+new = '        return {**current, "artist": name}'
+
+[[rows]]
+id = "r840-b.B7_addresses_are_what_still_read_one"
+source = { table = "r840-b.json", id = "B7_addresses_are_what_still_read_one" }
+description = "_Run.addresses: count every outcome, so an item that stopped reading an address, and every item that never did, is counted as one"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '        return sum(n for outcome, n in self.counts.items() if outcome != ALREADY_FINE)'
+new = '        return sum(self.counts.values())'
+
+[[rows]]
+id = "r840-b.B8_only_the_artist_is_rewritten"
+source = { table = "r840-b.json", id = "B8_only_the_artist_is_rewritten" }
+description = "_write: write a payload holding the artist alone, so every other field of the item is lost"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '        return {**current, "artist": name}'
+new = '        return {"artist": name}'
+
+[[rows]]
+id = "u123.H10_year_filter"
+source = { table = "u123.json", id = "H10_year_filter" }
+description = "Read a release of any year as the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '            if taken_on == day and (catalogue.by_release.get(identity) or ("",))[0] == year'
+new = '            if taken_on == day and identity in catalogue.by_release'
+
+[[rows]]
+id = "u123.H11_day_filter"
+source = { table = "u123.json", id = "H11_day_filter" }
+description = "Read a release taken on any day as the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '            if taken_on == day and (catalogue.by_release.get(identity) or ("",))[0] == year'
+new = '            if (catalogue.by_release.get(identity) or ("",))[0] == year'
+
+[[rows]]
+id = "u123.H12_newly_excludes_heard"
+source = { table = "u123.json", id = "H12_newly_excludes_heard" }
+description = "Count a release already heard as newly heard, so a second run writes"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '    newly = tuple(one for one in target if one not in heard)'
+new = '    newly = tuple(target)'
+
+[[rows]]
+id = "u123.H13_year_shape"
+source = { table = "u123.json", id = "H13_year_shape" }
+description = "Accept a two digit year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '_YEAR = re.compile(r"^\d{4}$")'
+new = '_YEAR = re.compile(r"^\d{2,4}$")'
+
+[[rows]]
+id = "u123.H14_ambiguous_bound"
+source = { table = "u123.json", id = "H14_ambiguous_bound" }
+description = "Let two playlists with one name through as one, mutate the bound"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '    if len(matching) > 1:'
+new = '    if len(matching) > 2:'
+
+[[rows]]
+id = "u123.H15_no_year_refusal"
+source = { table = "u123.json", id = "H15_no_year_refusal" }
+description = "Drop the refusal when there are tracks to add and no year playlist"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''
+    if not year_id:
+        raise _refused('''
+new = '''
+    if False:
+        raise _refused('''
+
+[[rows]]
+id = "u123.H1_outside_refusal"
+source = { table = "u123.json", id = "H1_outside_refusal" }
+description = "Drop the refusal of a --release that is not one of the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''
+    if outside:
+        raise _refused('''
+new = '''
+    if False:
+        raise _refused('''
+
+[[rows]]
+id = "u123.H2_no_releases_refusal"
+source = { table = "u123.json", id = "H2_no_releases_refusal" }
+description = "Drop the refusal when no go took a release that year on that day"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''
+    releases = releases_of(document, catalogue, year, day)
+    if not releases:'''
+new = '''
+    releases = releases_of(document, catalogue, year, day)
+    if False:'''
+
+[[rows]]
+id = "u123.H3_vouched_before_a_write"
+source = { table = "u123.json", id = "H3_vouched_before_a_write" }
+description = "Drop the ledger's vouching before a removal or a take off"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '    if action in (REMOVE, TAKE_OFF) and not ledger.product_made(cfg, dated_id):'
+new = '    if False:'
+
+[[rows]]
+id = "u123.H4_unheard_tracks_stay"
+source = { table = "u123.json", id = "H4_unheard_tracks_stay" }
+description = "Take off every track of the named releases, a shared one with an unheard release too"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '        leaving = tracks_of(target) - tracks_of(unheard)'
+new = '        leaving = tracks_of(target)'
+
+[[rows]]
+id = "u123.H5_missing_holds_the_removal"
+source = { table = "u123.json", id = "H5_missing_holds_the_removal" }
+description = "Remove the dated playlist even when a track did not reach the year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''
+            if done.missing:
+                done.kept = True'''
+new = '''
+            if False:
+                done.kept = True'''
+
+[[rows]]
+id = "u123.H6_heard_recorded"
+source = { table = "u123.json", id = "H6_heard_recorded" }
+description = "Never write the heard list"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '        done.recorded = record_heard(cfg, planned.label_id, planned.newly)'
+new = '        done.recorded = 0'
+
+[[rows]]
+id = "u123.H7_year_adds_recorded"
+source = { table = "u123.json", id = "H7_year_adds_recorded" }
+description = "Do not record the merge's adds on the recorded year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''
+            if planned.year_recorded:
+                ledger.record_label_tracks('''
+new = '''
+            if False:
+                ledger.record_label_tracks('''
+
+[[rows]]
+id = "u123.H8_prefixed_year"
+source = { table = "u123.json", id = "H8_prefixed_year" }
+description = "Drop the mark's prefixed name from the year fallback"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '    year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)'
+new = '    year_id = year_id or _one_named(inside, year_name)'
+
+[[rows]]
+id = "u123.H9_stray_said"
+source = { table = "u123.json", id = "H9_stray_said" }
+description = "Never name a dated playlist the ledger records outside the folder"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '        return replace(base, stray_id=shape.dated.get(name, ""))'
+new = '        return replace(base, stray_id="")'
+
+[[rows]]
+id = "u243.L11_heard_adds_a_tombstoned_track"
+source = { table = "u243.json", id = "L11_heard_adds_a_tombstoned_track" }
+description = "heard.plan: a tombstoned track on the dated playlist is added to the year, round one's blocker"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_label_heard.py"]
+old = '        add=tuple(one for one in merging if one not in have and one not in taken_away),'
+new = '        add=tuple(one for one in merging if one not in have),'
+
+[[rows]]
+id = "r1056.N10_pass_not_required"
+source = { table = "r1056.json", id = "N10_pass_not_required" }
+description = "build_mark: neither --xml nor --pass required, so a bare mark reaches the handler"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '    proof = parser.add_mutually_exclusive_group(required=True)'
+new = '    proof = parser.add_mutually_exclusive_group(required=False)'
+
+[[rows]]
+id = "r1056.N1_no_refusal_of_an_unreadable_record"
+source = { table = "r1056.json", id = "N1_no_refusal_of_an_unreadable_record" }
+description = "native_years: read a record this build cannot read as one that filed nothing"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''
+        if filed is None:
+            raise _blocked('''
+new = '''
+        if filed is None:
+            filed = frozenset()
+        if False:
+            raise _blocked('''
+
+[[rows]]
+id = "r1056.N2_first_landing_only"
+source = { table = "r1056.json", id = "N2_first_landing_only" }
+description = "native_years: read only the first landing the proof names, so a pass landed twice loses the second's years"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '    for session_id in proof.landings:'
+new = '    for session_id in proof.landings[:1]:'
+
+[[rows]]
+id = "r1056.N3_years_from_the_argument"
+source = { table = "r1056.json", id = "N3_years_from_the_argument" }
+description = "label_mark: read the native years under the name given on the command line, not the registry's name"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = 'native_years(cfg, native, label)'
+new = 'native_years(cfg, native, name)'
+
+[[rows]]
+id = "r1056.N4_no_landings_in_digest"
+source = { table = "r1056.json", id = "N4_no_landings_in_digest" }
+description = "_payload: leave the landings out of the native digest, so a landing after the answer is not stale"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '        identity["landings"] = list(native.landings)'
+new = '        pass'
+
+[[rows]]
+id = "r1056.N5_no_reread_before_rename"
+source = { table = "r1056.json", id = "N5_no_reread_before_rename" }
+description = "label_mark: drop the reread of the native proof before the first rename"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '    if native is not None and native_proof(cfg, pass_name, verb=_VERB, named=_NAMED) != native:'
+new = '    if False:'
+
+[[rows]]
+id = "r1056.N6_no_nothing_filed_warning"
+source = { table = "r1056.json", id = "N6_no_nothing_filed_warning" }
+description = "label_mark: never say a batch filed none of the built years"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_label_playlists.py"]
+old = '    if not filed & {year.year for year in built}:'
+new = '    if False:'
+
+[[rows]]
+id = "r1056.N7_nothing_filed_against_any_year"
+source = { table = "r1056.json", id = "N7_nothing_filed_against_any_year" }
+description = "label_mark: warn only when the batch filed no year at all, not none of the built ones"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_label_playlists.py"]
+old = '    if not filed & {year.year for year in built}:'
+new = '    if not filed:'
+
+[[rows]]
+id = "r1056.N8_shown_pass_bare"
+source = { table = "r1056.json", id = "N8_shown_pass_bare" }
+description = "_shown: name the native pass with no word that it landed on the database native tree"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '            else f"{pass_name}, landed on the database native {native.tree_id!r} tree"'
+new = '            else pass_name'
+
+[[rows]]
+id = "r1056.N9_verb_not_threaded"
+source = { table = "r1056.json", id = "N9_verb_not_threaded" }
+description = "label_mark: prove the pass with sync mark's own wording, so a refusal names sync mark and intake missing"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '        native = native_proof(cfg, str(ctx.args.pass_name), verb=_VERB, named=_NAMED)'
+new = '        native = native_proof(cfg, str(ctx.args.pass_name))'
+
+[[rows]]
+id = "r835-b.M5_deleted_folder_said"
+source = { table = "r835-b.json", id = "M5_deleted_folder_said" }
+description = "mark_cli.label_mark: a label folder deleted on the account is listed as if it were there, and the read fails every run"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists.py"]
+old = '            if shape.folder_id in remote.folders()'
+new = '            if True'
+
+[[rows]]
+id = "r835-c.M4_recheck_before_rename_again"
+source = { table = "r835-c.json", id = "M4_recheck_before_rename_again" }
+description = "mark_cli.label_mark: a title changed between the plan and the write is renamed anyway"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists.py"]
+old = '            if now.get(identity) != item["built_as"]:'
+new = '            if False:'
+
+[[rows]]
+id = "u180.M14_root_refused"
+source = { table = "u180.json", id = "M14_root_refused" }
+description = "plan: an All Favorites at the playlist root is not refused, so the verb answers over no folder"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''
+    if not home.folder_id:
+        raise refuse('''
+new = '''
+    if False:
+        raise refuse('''
+
+[[rows]]
+id = "u180.M15_digest_is_the_target_order"
+source = { table = "u180.json", id = "M15_digest_is_the_target_order" }
+description = "identity: the digest covers the set of rows and not their order, so a target that moved keeps its digest"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '            "order": [one.row for one in self.children],'
+new = '            "order": sorted(one.row for one in self.children),'
+
+[[rows]]
+id = "u180.M19_confined_memberships"
+source = { table = "u180.json", id = "M19_confined_memberships" }
+description = "order_violations: a membership that changed is not a violation"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '        if before.memberships[key] != after.memberships[key]:'
+new = '        if False:'
+
+[[rows]]
+id = "u180.M22_read_back_compares"
+source = { table = "u180.json", id = "M22_read_back_compares" }
+description = "_read_back: the folder read back is never compared with the plan, so a clean answer is given over any order"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''
+    if found == wanted:
+        return ()'''
+new = '''
+    if True:
+        return ()'''
+
+[[rows]]
+id = "r381-b.M14_follow_all_renames"
+source = { table = "r381-b.json", id = "M14_follow_all_renames" }
+description = "marks follows every recorded move, including one whose old identifier is held again"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_slug.py"]
+old = '        renamed = registry.RegistryStore().load().live_renames()'
+new = '        renamed = registry.RegistryStore().load().renamed'
+
+[[rows]]
+id = "r381.M13_follow_overwrites"
+source = { table = "r381.json", id = "M13_follow_overwrites" }
+description = "marks follow overwrites a year already held under the new identifier"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_slug.py"]
+old = '        if old in records and new not in records:'
+new = '        if old in records:'
+
+[[rows]]
+id = "r381.M15_read_does_not_persist"
+source = { table = "r381.json", id = "M15_read_does_not_persist" }
+description = "read answers the followed year and never writes the move"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_slug.py"]
+old = '''
+                if _follow(held):
+                    _write(cfg, held)'''
+new = '''
+                if _follow(held):
+                    pass'''
+
+[[rows]]
+id = "r381.M16_advance_does_not_follow"
+source = { table = "r381.json", id = "M16_advance_does_not_follow" }
+description = "advance writes without following, so another label's advance leaves the old key"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_slug.py"]
+old = '''
+        _follow(records)
+        records[label_id] = recorded'''
+new = '        records[label_id] = recorded'
+
+[[rows]]
+id = "r381.M17_read_no_follow"
+source = { table = "r381.json", id = "M17_read_no_follow" }
+description = "read never follows, so a migrated label reads no year"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_slug.py"]
+old = '''
+    records = _load(cfg)
+    if _follow(records):'''
+new = '''
+    records = _load(cfg)
+    if False:'''
+
+[[rows]]
+id = "r798-b.G1_an_unread_answer_holds_nothing"
+source = { table = "r798-b.json", id = "G1_an_unread_answer_holds_nothing" }
+description = "published_words: read on past an answer that could not be read, so words read before a refusal still hold the release"
+file = "src/cratekit/label/gate.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''
+        if said.answer in published.UNREAD:
+            return Words((), said.answer, said.note)'''
+new = '''
+        if False:
+            return Words((), said.answer, said.note)'''
+
+[[rows]]
+id = "r798-b.G2_a_would_be_hold_is_asked_about_again"
+source = { table = "r798-b.json", id = "G2_a_would_be_hold_is_asked_about_again" }
+description = "published_words: stop at the first track that publishes a genre whatever the caller needs, so a hold rests on one track's album"
+file = "src/cratekit/label/gate.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '    settled = enough if enough is not None else bool'
+new = '    settled = bool'
+
+[[rows]]
+id = "r815-a.G1_the_asking_gives_up_at_the_bound"
+source = { table = "r815-a.json", id = "G1_the_asking_gives_up_at_the_bound" }
+description = "Asking.given_up: one release later than the bound"
+file = "src/cratekit/label/gate.py"
+surface = "user"
+tests = ["tests/test_label_judge.py", "tests/test_label_genre_gate.py"]
+old = '        return self._unread_in_a_row >= UNREAD_IN_A_ROW'
+new = '        return self._unread_in_a_row > UNREAD_IN_A_ROW'
+
+[[rows]]
+id = "u123.C1_declined_writes_nothing"
+source = { table = "u123.json", id = "C1_declined_writes_nothing" }
+description = "Write on any answer, not only apply"
+file = "src/cratekit/label/heard_cli.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '    if option != "apply" or not planned.writes:'
+new = '    if not planned.writes:'
+
+[[rows]]
+id = "r1114.M15_skipped_line_not_fail"
+source = { table = "r1114.json", id = "M15_skipped_line_not_fail" }
+description = "_skipped_check, existing guard sampled: a skipped label's line is a note rather than a fail"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        checks.append(_check(f"label.{entry.label_id}", "fail", said))'''
+new = '''
+        checks.append(_check(f"label.{entry.label_id}", "info", said))'''
+moved = "_skipped_check was used once and is inlined into _unasked; the fail status is the same word"
+
+[[rows]]
+id = "r1114.M6_nothing_new_not_counted"
+source = { table = "r1114.json", id = "M6_nothing_new_not_counted" }
+description = "_next: stop counting a label listed with nothing new, so every run with no question refuses as unlisted"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+            nothing.append(entry.name)
+'''
+new = '''
+            pass
+'''
+moved = "the nothing new branch _next and _walk shared moved into _unasked, which appends the name to the list _next hands it"
+
+[[rows]]
+id = "r1114.M8_refusal_not_retryable"
+source = { table = "r1114.json", id = "M8_refusal_not_retryable" }
+description = "_unlisted_cause: mark the refusal not retryable, though a provider answering later clears it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        retryable=True,
+'''
+new = '''
+        retryable=False,
+'''
+moved = "the origin keyword moved into the shared _refusal helper, so the retryable line no longer sits beside it"
+
+[[rows]]
+id = "r1634.M17_check_drops_how"
+source = { table = "r1634.json", id = "M17_check_drops_how" }
+description = "label sync --next: the reverified line no longer says how the release was asked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py"]
+old = '''
+            f"{listing.canary.how()}: {listing.canary.said()}",'''
+new = '''
+            f": {listing.canary.said()}",'''
+moved = "the reverified check call was compressed one level, so the same line stands four spaces shallower"
+
+[[rows]]
+id = "r515-operator.S9_question_no_short"
+source = { table = "r515-operator.json", id = "S9_question_no_short" }
+description = "The label sync question drops the release shortfall"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+        (question.provider_withheld, f"; {question.provider_withheld} track(s) withheld by "'''
+new = '''
+        (0, f"; {question.provider_withheld} track(s) withheld by "'''
+moved = "_counts says its clauses from a table of count and words; a zero count drops the shortfall as the false guard did"
+
+[[rows]]
+id = "u107-a.S04_marker_takes_window_place"
+source = { table = "u107-a.json", id = "S04_marker_takes_window_place" }
+description = "sync_cli._question_for: hand the label's source no asked set, so releases already answered are offered again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '        run_id=tools.run_id, offered=asked,'
+new = '        run_id=tools.run_id, offered=None,'
+moved = "the same keyword passed to the same listing call, joined onto the run_id line when the call's arguments were grouped"
+
+[[rows]]
+id = "u107-a.S07_gate_before_asking"
+source = { table = "u107-a.json", id = "S07_gate_before_asking" }
+description = "sync_cli._question_for: list the label with no genre gate, so a release the gate would hold reaches a question"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+        gate=genre_gate.SweepGate(
+            declared, tracks=reader.release_tracks, standing=genre_gate.StandingHolds(store),
+            asking=tools.asking,
+        ),'''
+new = '''
+        gate=None,'''
+moved = "the SweepGate keywords were joined onto fewer lines; dropping the gate is the same mutant"
+
+[[rows]]
+id = "u107-b.S10_pick_unknown"
+source = { table = "u107-b.json", id = "S10_pick_unknown" }
+description = "sync_cli.record_answer: accept a pick naming a release the question did not offer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+        if unknown or not wanted:'''
+new = '''
+        if not wanted:'''
+moved = "the pick validation moved out of record_answer into _chosen, so the same test stands one level shallower"
+
+[[rows]]
+id = "u107-b.S11_pick_takes_only_chosen"
+source = { table = "u107-b.json", id = "S11_pick_takes_only_chosen" }
+description = "sync_cli.record_answer: a pick takes every offered release, not only the chosen ones"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+        if answer == ALL or (answer == PICK and one.identity in wanted)'''
+new = '''
+        if answer in (ALL, PICK)'''
+moved = "the choice of taken releases moved into _chosen, which returns this same comprehension one level shallower"
+
+[[rows]]
+id = "u107-b.S12_stop_removes"
+source = { table = "u107-b.json", id = "S12_stop_removes" }
+description = "sync_cli.record_answer: stop reports the label removed and leaves it in the registry"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+        removed = labels.RegistryStore().remove(entry.label_id) if answer == STOP else False'''
+new = '''
+        removed = True if answer == STOP else False'''
+moved = "the stop removal is now one conditional expression; the registry remove is the same call"
+
+[[rows]]
+id = "u189.M12_pick_remedy_plain_next"
+source = { table = "u189.json", id = "M12_pick_remedy_plain_next" }
+description = "record_answer: the remedy of a pick outside the question names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                f"take the identifiers from: crate label sync --next --label {entry.label_id}",'''
+new = '''
+                "take the identifiers from: crate label sync --next",'''
+moved = "the pick refusal moved into _chosen and its remedy, the same words, is now one f-string on one line"
+
+[[rows]]
+id = "u189.M13_walk_remedy_plain_next"
+source = { table = "u189.json", id = "M13_walk_remedy_plain_next" }
+description = "_walk: the unanswerable refusal's remedy names the plain --next and a placeholder label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        f"sync --next --label {entry.label_id}, then crate label sync "
+        f"--answer ANSWER --label {entry.label_id}",'''
+new = '''
+        f"sync --next, then crate label sync "
+        f"--answer ANSWER --label NAME",'''
+moved = "the unanswerable refusal moved out of _walk into _unanswerable, so the same remedy lines stand shallower"
+
+[[rows]]
+id = "u189.S1_saved_question_relisted"
+source = { table = "u189.json", id = "S1_saved_question_relisted" }
+description = "_next, sample of the unit's existing guards: never reuse a saved question, so every --next lists the label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+            if pending is not None:
+                question = Question.from_json(pending)'''
+new = '''
+            if False:
+                question = Question.from_json(pending)'''
+moved = "_next reads the saved question through _pending, which holds the isinstance and releases test, so this is the same reuse guard"
+
+[[rows]]
+id = "u238.M10_question_drops_the_split"
+source = { table = "u238.json", id = "M10_question_drops_the_split" }
+description = "_question_for: build the question without the listing's unchecked count"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''
+        beyond_unchecked=listing.beyond_unchecked,
+'''
+new = ''
+moved = "the Question is built into a local before _Listed, so the same keyword stands four spaces shallower"
+
+[[rows]]
+id = "u238.M11_saved_question_drops_the_split"
+source = { table = "u238.json", id = "M11_saved_question_drops_the_split" }
+description = "Question.to_json: save no unchecked count, so a saved question reread says its own as a bound"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''
+    "beyond", "beyond_unchecked", "unread", "withheld", "unjudged",'''
+new = '''
+    "beyond", "unread", "withheld", "unjudged",'''
+moved = "Question.to_json writes its counts from the _QUESTION_COUNTS names in order; dropping the name drops the saved split as before"
+
+[[rows]]
+id = "u278.M24_label_sync_not_narrowed"
+source = { table = "u278.json", id = "M24_label_sync_not_narrowed" }
+description = "label sync: ask and walk spend the reserve"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
+'''
+new = '''
+    pass
+'''
+moved = "label_sync returns the go first, so the reading narrowing runs for every other path without its own if"
+
+[[rows]]
+id = "r798-d.H7_again_an_owned_release_is_not_asked_about"
+source = { table = "r798-d.json", id = "H7_again_an_owned_release_is_not_asked_about" }
+description = "label approved: ask the general catalogue about a release the library holds in full. H7 measured again, against the line as the second review left it, where ownership is read off the one resolution of each release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''
+        if judged is None and owned(release):'''
+new = '''
+        if judged is None and False:'''
+moved = "the recorded verdict is now the first value of judged, so the owned branch is the same test written as judged is None and owned"
+
+[[rows]]
+id = "u75-a.A1_kind_filter"
+source = { table = "u75-a.json", id = "A1_kind_filter" }
+description = "Drop the kind filter, so an accepted harvested label name, which shares the queue, is read as a release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        items, queue=str(Queue.LABEL_RELEASE), kinds=(sweep.KIND,), include_resolved=True,'''
+new = '''
+        items, queue=str(Queue.LABEL_RELEASE), include_resolved=True,'''
+moved = "the list_items keywords of _queued were joined onto one line, so the kind filter is the same keyword dropped from it"
+
+[[rows]]
+id = "r840-a.A9_an_answer_resets_the_count"
+source = { table = "r840-a.json", id = "A9_an_answer_resets_the_count" }
+description = "_walk: never reset the count of failed reads, so three scattered failures stop the run as an outage"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+failed_in_a_row = failed_in_a_row + 1 if _repair_one(store, found, subject, done) else 0'''
+new = '''
+failed_in_a_row = failed_in_a_row + (1 if _repair_one(store, found, subject, done) else 0)'''
+moved = "the once used failed local was inlined, so the reset is the same conditional over the call itself"
+
+[[rows]]
+id = "r840-b.B10_unaddressed_is_keyed_by_item"
+source = { table = "r840-b.json", id = "B10_unaddressed_is_keyed_by_item" }
+description = "_Run.record: key a line by its item only when it names no release, so an item naming another item's release shares that release's key"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+        key = f"item.{subject.item_id}" if outcome == UNADDRESSED else ('''
+new = '''
+        key = f"item.{subject.item_id}" if not subject.release_id else ('''
+moved = "the key conditional was folded onto one line; the item key still turns on outcome being unaddressed"
+
+[[rows]]
+id = "r840-b.B9_a_refusal_carries_why_each_read_failed"
+source = { table = "r840-b.json", id = "B9_a_refusal_carries_why_each_read_failed" }
+description = "_Run.record: leave the sentence off the release's row, so a refusal, which carries no check line, says a read failed and not why"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''
+            {**asdict(subject), "outcome": outcome, "artist": artist, "said": said}'''
+new = '''
+            {**asdict(subject), "outcome": outcome, "artist": artist}'''
+moved = "the release row literal was written on one line; dropping the said key leaves the sentence off the row as before"
+
+[[rows]]
+id = "u243.L13_heard_merges_a_pruned_track"
+source = { table = "u243.json", id = "L13_heard_merges_a_pruned_track" }
+description = "heard.plan: a track the ledger records as pruned from the year is merged back by hearing"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_label_heard.py"]
+old = '''        set(recorded.pruned) if recorded is not None else set()'''
+new = '''        set()'''
+moved = "The same pruned tracks of the recorded year joined to what the year must not hold; the year's ledger record was read twice under two names, so it is now read once as recorded and this line names it so."
+
+[[rows]]
+id = "r835-b.M1_only_the_batch_years_marked"
+source = { table = "r835-b.json", id = "M1_only_the_batch_years_marked" }
+description = "mark_cli._item: a year the landed batch did not file is marked anyway"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists.py"]
+old = '''    if year.year not in filed:
+        return skip(NOT_IN_BATCH,'''
+new = '''    if False:
+        return skip(NOT_IN_BATCH,'''
+moved = "The same guard on the batch's years; its skip item is now built by the local skip helper, so the line after the if returns skip(...) rather than a dict literal."
+
+[[rows]]
+id = "u180.M16_stale_digest_refused"
+source = { table = "u180.json", id = "M16_stale_digest_refused" }
+description = "apply: a digest that moved since the approval is not refused, so an order nobody approved is written"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '    if again.digest != approved.digest:'
+new = '    if False:'
+moved = "the order writer's digest check moved into spine.fresh, which order.apply calls through spine.prepared with its own wording; the same comparison of the plan taken again with the approved one"
+
+[[rows]]
+id = "u180.M17_confined_seated_position"
+source = { table = "u180.json", id = "M17_confined_seated_position" }
+description = "order_violations: a seated row is not asked whether it took its planned position"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''        or int(row[seq_at] or 0) != slot
+    ]'''
+new = '''    ]'''
+moved = "The seated row checks became a comprehension feeding spine.drift; the same position test as its last condition, dropped the same way."
+
+[[rows]]
+id = "u180.M18_confined_unplanned_rows"
+source = { table = "u180.json", id = "M18_confined_unplanned_rows" }
+description = "order_violations: any playlist row may change its position and bookkeeping, planned or not"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''        moves=lambda key: key in planned,'''
+new = '''        moves=lambda key: True,'''
+moved = "Which existing row may move its bookkeeping columns is now the predicate handed to spine.drift, which allows spine.BOOKKEEPING only where it holds; the same key in planned test, made true for every row."
+
+[[rows]]
+id = "u180.M20_confined_content"
+source = { table = "u180.json", id = "M20_confined_content" }
+description = "order_violations: a content row that changed is not a violation"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    if before.content != after.content:
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track"'''
+new = '''    if False:
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track"'''
+moved = "The content check of order_violations and addition_violations is now spine.drift's, with the writer named in the message; the same comparison, disabled the same way."
+
+[[rows]]
+id = "u180.M21_confinement_called"
+source = { table = "u180.json", id = "M21_confinement_called" }
+description = "apply: the commit is not confined from SQL, so a write beyond the positions lands"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''            spine.confined(
+                db,
+                lambda after: order_violations('''
+new = '''            (lambda *a, **k: None)(
+                db,
+                lambda after: order_violations('''
+moved = "The commit witness is now spine.witnessed, one indent shallower, and the one use of assert_order_confined was inlined as the spine.confined call it made over order_violations; the same confinement before the commit, replaced by a no-op the same way."
+

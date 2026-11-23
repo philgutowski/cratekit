@@ -1,21 +1,11 @@
 """``label.prune``: take dropped tracks off a label's year playlists (R-836).
 
-``label playlists`` builds a followed label's folder of year playlists and adds,
-never removes. This verb is the other half: it plans which tracks each year
-playlist this product CREATED should no longer hold, a release the genre gate
-now holds or the catalogue no longer confirms, or a track the library removed
-through ``crate delete review`` (U243), shows every one of them by
-artist and title at one explicit gate, and on ``apply`` takes them off. A year
-playlist adopted from the account is said and left alone. The planning and
-the apply are :mod:`cratekit.modules.outbound.prune`'s.
-
-THE CATALOGUE IS READ AS ``label playlists`` READS IT, through
-:func:`cratekit.label.playlists_cli.read_catalogue`, so a catalogue read in
-part is refused before the gate the same way, ``label-playlists-incomplete``.
-The holds are the review database's, which is local.
-
-A LABEL THAT IS NOT FOLLOWED IS A PLAN OF NOTHING, still gated, decided before
-a credential is asked for, on ``label playlists``' precedent.
+The other half of ``label playlists``: plans which tracks each year playlist
+this product CREATED should no longer hold (a release the genre gate holds or
+the catalogue no longer confirms, or a track the library removed, U243), shows
+them at one explicit gate, and on ``apply`` takes them off, by
+:mod:`cratekit.modules.outbound.prune`. The catalogue is read as ``label
+playlists`` reads it. A label nobody follows is a plan of nothing.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -25,35 +15,24 @@ from __future__ import annotations
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import active_taxonomy, review
-from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.review import Queue
 from cratekit.label import catalogue, playlists_cli
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
-from cratekit.modules.outbound import prune
 
 _ORIGIN = ("label.prune",)
 
 
 def build_prune(parser, entry) -> None:
     del entry
-    parser.add_argument(
-        "name",
-        metavar="LABEL",
-        help="a followed label, by its name or its registry identifier",
-    )
+    playlists_cli.label_argument(parser)
     parser.set_defaults(_handler=label_prune)
 
 
 def held_releases(cfg, entry: labels.LabelEntry) -> frozenset[str]:
-    """The releases of one label the genre gate holds in force, by identifier.
-
-    JUDGED AGAIN FROM THEIR OWN WORDS first, as the sweep does with a standing
-    hold: a hold the label's kind or the taxonomy's rules would now release is
-    not a reason to take a release's tracks off the account. A hold a person
-    took back out of review stays held, as the sweep keeps it. No request.
-    """
+    """The releases of one label the genre gate holds in force, by identifier,
+    JUDGED AGAIN FROM THEIR OWN WORDS as the sweep does; a withheld one stays."""
     judge = genre_gate.SweepGate(active_taxonomy.load(cfg), tracks=_no_tracks)
     with review.open_store(cfg) as store:
         held = review.holds(store, queue=Queue.LABEL_RELEASE, group=entry.label_id)
@@ -74,18 +53,8 @@ def _reader(entry: labels.LabelEntry, found: catalogue.Catalogue):
     tracks = catalogue.ReleaseTracks(found)
 
     def tracks_of(release_id: str) -> tuple[str, ...]:
-        try:
-            rows, _year, _short = tracks.release_tracks(release_id)
-        except catalogue.ReleaseUnresolvable:
-            return ()
-        except CratekitError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - refused, never swallowed
-            raise playlists_cli.incomplete(
-                entry,
-                f"the tracks of the release {release_id} could not be read "
-                f"({type(exc).__name__}: {exc})",
-            ) from exc
+        answered = playlists_cli.release_rows(entry, tracks, release_id)
+        rows = answered[0] if answered is not None else ()
         return tuple(
             one for one in dict.fromkeys(str(getattr(row, "id", "") or "") for row in rows) if one
         )
@@ -94,6 +63,8 @@ def _reader(entry: labels.LabelEntry, found: catalogue.Catalogue):
 
 
 def label_prune(ctx) -> Envelope:
+    from cratekit.modules.outbound import prune
+
     cfg = label_cli._load()
     name = str(ctx.args.name)
     entry = labels.RegistryStore().load().resolve(name)
@@ -120,25 +91,10 @@ def label_prune(ctx) -> Envelope:
     # AN EMPTY PLAN STILL ASKS, so a person always sees what the prune judged.
     option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
     if planned is None:
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                {
-                    "code": "label-playlists-not-followed",
-                    "message": f"{name}: {playlists_cli.NOT_FOLLOWED_SAID}",
-                }
-            ],
-        )
+        return playlists_cli.not_followed(ctx, payload, name)
+    again = "run crate label prune again; what was taken off is recorded and never asked twice"
     return prune.settle(
-        ctx,
-        cfg,
-        remote,
-        payload,
-        planned,
-        option=option,
-        origin=_ORIGIN,
-        again="run crate label prune again; what was taken off is recorded and never asked twice",
+        ctx, cfg, remote, payload, planned, option=option, origin=_ORIGIN, again=again
     )
 
 

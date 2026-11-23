@@ -1,14 +1,4 @@
-"""U62: the provider catalogue adapter behind the label seam, driven against fakes.
-
-Every scenario the unit's brief names is here, and none of them reaches the
-provider. The client is a fake injected at ``provider_session.CLIENT_FACTORY``,
-which is the one place a client is built, so the adapter under test is the
-shipped class over a stand in for the network and nothing else. The live listing
-and the live sweep belong to the next attended sitting and are recorded in
-``docs/cutover.md``, not claimed here.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
-"""
+"""U62: the provider catalogue adapter behind the label seam, driven against fakes."""
 
 from __future__ import annotations
 
@@ -28,30 +18,27 @@ from cratekit.core import config, jobs, review, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import cli as intake_cli
-from cratekit.label import catalogue, sweep, tidal_catalogue
+from cratekit.label import catalogue, crawl, sweep, tidal_catalogue
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeArtistLookup, FakeCatalogue, FakePagedPlaylist
-from tests.test_config import valid_data
+from tests.test_label_registry_verbs import install
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
 
 PLAYLIST = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
 ADAPTER_SOURCE = Path(tidal_catalogue.__file__)
 
-STORED = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
-    "expiry_time": 946684800.0,
-}
+STORED = {"token_type": "Bearer", "access_token": "FAKE-value-1",
+          "refresh_token": "FAKE-value-2", "expiry_time": 946684800.0}
+HARBOUR = "(P) 2026 Harbour Lights"
+ALBUM = (tidalapi.album.Album,)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fakes: a provider client and the objects it hands back
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Named:
@@ -61,8 +48,6 @@ class Named:
 
 
 class ProviderTrack:
-    """The fields the live search was confirmed to carry on 2026-09-16."""
-
     def __init__(self, track_id: str, artist: str, name: str, *, isrc: str = "") -> None:
         self.id = track_id
         self.artists = [Named(artist)]
@@ -87,14 +72,8 @@ class ProviderPlaylist:
 
 
 class Release:
-    def __init__(
-        self,
-        release_id: str,
-        *,
-        copyright: str = "",
-        year: str = "2026",
-        artists: list[Any] | tuple[Any, ...] = (),
-    ) -> None:
+    def __init__(self, release_id: str, *, copyright: str = "", year: str = "2026",
+                 artists: list[Any] | tuple[Any, ...] = ()) -> None:
         self.id = release_id
         self.copyright = copyright
         self.year = year
@@ -105,37 +84,28 @@ class Release:
 class ProviderArtist:
     """An artist page whose listings truncate to one page without arguments."""
 
-    def __init__(
-        self,
-        name: str,
-        albums: list[Release],
-        singles: list[Release] = (),
-        *,
-        artist_id: str | None = None,
-    ) -> None:
+    def __init__(self, name: str, albums: list[Release], singles: list[Release] = (), *,
+                 artist_id: str | None = None) -> None:
         self.name = name
         self.id = artist_id
         self._albums = list(albums)
         self._singles = list(singles)
         self.asked: list[tuple[str, int, int]] = []
 
-    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+    def _page(self, method: str, held: list, limit: int | None, offset: int) -> list[Release]:
         size = 100 if limit is None else limit
-        self.asked.append(("get_albums", size, offset))
-        return self._albums[offset : offset + size]
+        self.asked.append((method, size, offset))
+        return held[offset : offset + size]
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+        return self._page("get_albums", self._albums, limit, offset)
 
     def get_ep_singles(self, limit: int | None = None, offset: int = 0) -> list[Release]:
-        size = 100 if limit is None else limit
-        self.asked.append(("get_ep_singles", size, offset))
-        return self._singles[offset : offset + size]
+        return self._page("get_ep_singles", self._singles, limit, offset)
 
 
 class UnlistableAct:
-    """An artist whose listings reject pagination, so the wrapper refuses at bind.
-
-    ``listing.artist_releases`` raises ``ListingNotPaginated`` before the retry
-    ladder, which is the listing failure discovery must skip without sleeping.
-    """
+    """An artist whose listings reject pagination, so the wrapper refuses at bind."""
 
     def __init__(self, name: str, artist_id: str) -> None:
         self.name = name
@@ -155,14 +125,13 @@ class MissingObject(Exception):
 class FakeClient:
     """A provider client that answers from memory and records what it was asked."""
 
+    #: Called with each search after it is recorded; an exception it returns is raised.
+    fails = None
+
     def __init__(
-        self,
-        *,
-        accept: bool = True,
-        raises: Exception | None = None,
+        self, *, accept: bool = True, raises: Exception | None = None,
         playlists: dict[str, ProviderPlaylist] | None = None,
-        artists: list[ProviderArtist] | None = None,
-        albums: list[Release] | None = None,
+        artists: list[ProviderArtist] | None = None, albums: list[Release] | None = None,
         albums_by_query: dict[str, list[Release]] | None = None,
     ) -> None:
         self.accept = accept
@@ -176,23 +145,14 @@ class FakeClient:
         self.search_calls: list[tuple[str, tuple[Any, ...]]] = []
         self._artists_by_id = FakeArtistLookup()
         self.artist_lookups = self._artists_by_id.artist_lookups
-        self.token_type = None
-        self.access_token = None
-        self.refresh_token = None
-        self.expiry_time = None
+        self.token_type = self.access_token = self.refresh_token = self.expiry_time = None
 
     def load_oauth_session(
         self, token_type, access_token, refresh_token=None, expiry_time=None, is_pkce=False
     ) -> bool:
-        self.logins.append(
-            {
-                "token_type": token_type,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "expiry_time": expiry_time,
-                "is_pkce": is_pkce,
-            }
-        )
+        self.logins.append({"token_type": token_type, "access_token": access_token,
+                            "refresh_token": refresh_token, "expiry_time": expiry_time,
+                            "is_pkce": is_pkce})
         if self.raises is not None:
             raise self.raises
         self.token_type = token_type
@@ -212,6 +172,8 @@ class FakeClient:
         recorded = tuple(models or ())
         self.search_calls.append((query, recorded))
         self.searches.append(query)
+        if self.fails and (failure := self.fails(query, recorded)):
+            raise failure
         if self.albums_by_query is not None and tidalapi.album.Album in recorded:
             albums = list(self.albums_by_query.get(query, []))
         else:
@@ -247,31 +209,35 @@ def record_session(payload: dict | None = None) -> None:
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch) -> config.Config:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    built = config.from_dict(valid_data(root, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    return built
+    return install(tmp_path, monkeypatch)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+def harbour(**fields: Any) -> labels.LabelEntry:
+    return labels.LabelEntry(label_id="harbour", name="Harbour Lights", **fields)
+
+
+def harbour_roster(client: FakeClient, **fields: Any) -> tidal_catalogue.LabelRoster:
+    """The roster the shipped adapter over ``client`` builds for Harbour Lights."""
+    return tidal_catalogue.TidalCatalogue(client).artist_for(harbour(**fields))
+
+
+def unresolved(client: FakeClient, **fields: Any) -> str:
+    """The refusal's text when Harbour Lights cannot be resolved over ``client``."""
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        harbour_roster(client, **fields)
+    return str(excinfo.value)
+
+
 # The session factory and the seam
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_recorded_session_resolves_the_adapter_over_a_pkce_login(cfg, monkeypatch):
     client = use_client(monkeypatch, FakeClient())
     record_session()
-
     found = catalogue.resolve(cfg)
-
     assert catalogue.bound() is True
     assert isinstance(found, tidal_catalogue.TidalCatalogue)
-    assert len(client.logins) == 1
-    login = client.logins[0]
+    (login,) = client.logins
     assert login["access_token"] == STORED["access_token"]
     assert login["refresh_token"] == STORED["refresh_token"]
     assert login["is_pkce"] is True
@@ -281,34 +247,16 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
     cfg, monkeypatch
 ):
     client = use_client(monkeypatch, FakeClient())
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     assert excinfo.value.cause.reason == "credential-missing"
     assert client.logins == []
 
 
 def test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure(cfg, monkeypatch):
-    """U97, closing R-411, and deliberately narrow about what it proves.
-
-    It does NOT prove that two surfaces agree; doctor is never invoked here and
-    a test that claimed otherwise would be spending a name it had not earned.
-    What it holds is this path's half of the agreement: the refusal leaves
-    ``catalogue.resolve`` carrying ``AUTHENTICATE_PROVIDER`` and nothing else,
-    so the words it reaches a person with are the ones ``cli/render`` holds for
-    every surface. The words themselves are pinned once, in
-    ``tests/test_cli_contract.py``.
-
-    The token is asserted first and the rendering second, because a producer
-    that switched to another token would still render something sensible and
-    would still be the defect.
-    """
     use_client(monkeypatch, FakeClient())
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     cause = excinfo.value.cause
     assert cause.remediation.remedy is Remedy.AUTHENTICATE_PROVIDER
     line = render.remediation_line(cause)
@@ -346,14 +294,10 @@ def _wrapped(inner: Exception) -> Exception:
 
 @pytest.mark.parametrize(
     "client",
-    [
-        FakeClient(accept=False),
-        FakeClient(raises=HTTPFailure(401)),
-        FakeClient(raises=HTTPFailure(403)),
-        FakeClient(raises=HTTPFailure(400)),
-        FakeClient(raises=AuthenticationError("expired")),
-        FakeClient(raises=_wrapped(HTTPFailure(401))),
-    ],
+    [FakeClient(accept=False), FakeClient(raises=HTTPFailure(401)),
+     FakeClient(raises=HTTPFailure(403)), FakeClient(raises=HTTPFailure(400)),
+     FakeClient(raises=AuthenticationError("expired")),
+     FakeClient(raises=_wrapped(HTTPFailure(401)))],
     ids=["refused", "401", "403", "400", "client-auth-error", "chained-401"],
 )
 def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
@@ -362,10 +306,8 @@ def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
     """A person told only that a credential is missing records the one they have."""
     use_client(monkeypatch, client)
     record_session()
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     cause = excinfo.value.cause
     assert cause.reason == "credential-missing"
     assert cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
@@ -377,13 +319,10 @@ def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
     ids=["connection", "timeout", "server-error", "unparseable-page"],
 )
 def test_a_provider_that_cannot_be_reached_is_a_wait_not_a_new_login(cfg, monkeypatch, failure):
-    """Review finding: an outage told the person to log in again with a good session."""
     use_client(monkeypatch, FakeClient(raises=failure))
     record_session()
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     cause = excinfo.value.cause
     assert cause.reason == "unavailable-transient"
     assert cause.remediation.remedy == Remedy.RETRY_LATER
@@ -393,29 +332,23 @@ def test_a_provider_that_cannot_be_reached_is_a_wait_not_a_new_login(cfg, monkey
 def test_a_stored_blob_with_no_access_token_never_reaches_the_provider(cfg, monkeypatch):
     client = use_client(monkeypatch, FakeClient())
     record_session({"token": "recorded"})
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     assert excinfo.value.cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
     assert client.logins == []
 
 
 def test_a_refresh_during_login_is_written_back_to_the_keychain(monkeypatch):
     """One place a token is read and written back, and a datetime survives it."""
-
     class Refreshing(FakeClient):
         def load_oauth_session(self, *args, **kwargs):
             accepted = super().load_oauth_session(*args, **kwargs)
             self.access_token = "FAKE-value-3"
             self.expiry_time = datetime(2031, 1, 1)  # the client's naive UTC
             return accepted
-
     use_client(monkeypatch, Refreshing())
     record_session()
-
     provider_session.client_session()
-
     held = secrets.get_json(secrets.Credential.PROVIDER_SESSION)
     assert held["access_token"] == "FAKE-value-3"
     assert held["refresh_token"] == STORED["refresh_token"]
@@ -425,24 +358,18 @@ def test_a_refresh_during_login_is_written_back_to_the_keychain(monkeypatch):
 def test_a_rejected_login_leaves_the_stored_session_alone(monkeypatch):
     use_client(monkeypatch, FakeClient(accept=False))
     record_session()
-
     with pytest.raises(provider_session.AdapterAuthFailed):
         provider_session.client_session()
-
     assert secrets.get_json(secrets.Credential.PROVIDER_SESSION) == STORED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The playlist reference and the playlist read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
     "reference",
     [
-        PLAYLIST,
-        PLAYLIST.upper(),
-        f"  {PLAYLIST}\n",
+        PLAYLIST, PLAYLIST.upper(), f"  {PLAYLIST}\n",
         f"https://tidal.com/browse/playlist/{PLAYLIST}",
         f"https://tidal.com/playlist/{PLAYLIST}",
         f"https://listen.tidal.com/playlist/{PLAYLIST}",
@@ -450,17 +377,8 @@ def test_a_rejected_login_leaves_the_stored_session_alone(monkeypatch):
         f"https://tidal.com/browse/playlist/{PLAYLIST}?u",
         f"https://listen.tidal.com/playlist/{PLAYLIST}?utm_source=share",
     ],
-    ids=[
-        "bare",
-        "bare-upper",
-        "bare-padded",
-        "browse-url",
-        "short-path-url",
-        "listen-url",
-        "trailing-slash",
-        "share-link",
-        "share-link-query",
-    ],
+    ids=["bare", "bare-upper", "bare-padded", "browse-url", "short-path-url", "listen-url",
+         "trailing-slash", "share-link", "share-link-query"],
 )
 def test_a_url_a_share_link_and_a_bare_id_all_name_the_playlist(reference):
     assert tidal_catalogue.playlist_id(reference) == PLAYLIST
@@ -469,10 +387,7 @@ def test_a_url_a_share_link_and_a_bare_id_all_name_the_playlist(reference):
 @pytest.mark.parametrize(
     "reference",
     [
-        "",
-        "not a playlist",
-        PLAYLIST[:-1],
-        f"{PLAYLIST}0",
+        "", "not a playlist", PLAYLIST[:-1], f"{PLAYLIST}0",
         f"https://link.tidal.com/{PLAYLIST}",
         f"https://example.com/browse/playlist/{PLAYLIST}",
         f"https://tidal.com.example.com/playlist/{PLAYLIST}",
@@ -481,19 +396,8 @@ def test_a_url_a_share_link_and_a_bare_id_all_name_the_playlist(reference):
         f"https://tidal.com/browse/playlist/{PLAYLIST}/tracks",
         "https://tidal.com/browse/playlist/",
     ],
-    ids=[
-        "empty",
-        "words",
-        "short-id",
-        "long-id",
-        "short-link-host",
-        "foreign-host",
-        "lookalike-host",
-        "wrong-scheme",
-        "album-url",
-        "extra-segment",
-        "no-id",
-    ],
+    ids=["empty", "words", "short-id", "long-id", "short-link-host", "foreign-host",
+         "lookalike-host", "wrong-scheme", "album-url", "extra-segment", "no-id"],
 )
 def test_anything_else_is_refused_by_name(reference):
     with pytest.raises(tidal_catalogue.PlaylistReferenceInvalid) as excinfo:
@@ -517,15 +421,12 @@ def test_a_playlist_the_client_returns_nothing_for_raises_too():
     class Empty(FakeClient):
         def playlist(self, playlist_id):
             del playlist_id
-
     with pytest.raises(tidal_catalogue.PlaylistUnresolvable):
         tidal_catalogue.TidalCatalogue(Empty()).playlist_for(PLAYLIST)
 
 
 @pytest.mark.parametrize(
-    "reference",
-    [PLAYLIST, "https://link.tidal.com/AbCdEf"],
-    ids=["unresolvable", "unparseable"],
+    "reference", [PLAYLIST, "https://link.tidal.com/AbCdEf"], ids=["unresolvable", "unparseable"]
 )
 def test_both_failures_reach_a_person_as_an_unreadable_playlist(reference):
     adapter = tidal_catalogue.TidalCatalogue(FakeClient())
@@ -535,26 +436,19 @@ def test_both_failures_reach_a_person_as_an_unreadable_playlist(reference):
 
 
 def test_the_rows_read_through_the_provider_row_reader_with_every_field():
-    tracks = [
-        ProviderTrack(str(100 + n), f"Act {n}", f"Title {n}", isrc=f"XX{n:05d}")
-        for n in range(230)
-    ]
-    adapter = tidal_catalogue.TidalCatalogue(
-        FakeClient(playlists={PLAYLIST: ProviderPlaylist(tracks)})
-    )
-
+    tracks = [ProviderTrack(str(100 + n), f"Act {n}", f"Title {n}", isrc=f"XX{n:05d}")
+              for n in range(230)]
+    client = FakeClient(playlists={PLAYLIST: ProviderPlaylist(tracks)})
+    adapter = tidal_catalogue.TidalCatalogue(client)
     rows = label_cli.playlist_tracks_or_refuse(adapter, f"https://tidal.com/browse/playlist/{PLAYLIST}")
     wanted = match.read_tidal_tracks(rows)
-
     assert len(wanted) == 230, "the playlist was not paged to exhaustion"
     first = wanted[0]
     assert (first.ref, first.artist, first.title, first.isrc) == ("100", "Act 0", "Title 0", "XX00000")
     assert wanted[-1].ref == "329"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The label roster and the absence contract
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Creator:
@@ -589,11 +483,7 @@ class _EntryParser:
 
 
 class AccountUser:
-    """The logged in user as the account playlists walk reaches it (R-1016).
-
-    Its identifier, its request object serving the account playlist endpoint,
-    and its playlist parser, which is all the walk touches.
-    """
+    """The logged in user as the account playlists walk reaches it (R-1016)."""
 
     def __init__(self, user_id, entries) -> None:
         self.id = user_id
@@ -611,23 +501,19 @@ class _EntryRequest:
         size, offset = params["limit"], params["offset"]
         self._user.pages.append((size, offset))
         window = self._user._entries[offset : offset + size]
-        return _EntryAnswer(
-            {"items": [{"created": None, "playlist": {"entry": entry}} for entry in window]}
-        )
+        return _EntryAnswer({"items": [{"created": None, "playlist": {"entry": e}}
+                                       for e in window]})
 
 
 def test_the_account_listing_keeps_the_playlists_the_account_created():
     client = FakeClient()
-    client.user = AccountUser(
-        42,
-        [
-            AccountEntry("pl-own", "Warmup", 42, num_tracks=12),
-            AccountEntry("pl-followed", "Editorial", 7, num_tracks=40),
-            AccountEntry("pl-anon", "No Creator", None),
-            AccountEntry("pl-empty", "Empty", 42, num_tracks=0),
-            AccountEntry("pl-bool", "Odd Count", 42, num_tracks=True),
-        ],
-    )
+    client.user = AccountUser(42, [
+        AccountEntry("pl-own", "Warmup", 42, num_tracks=12),
+        AccountEntry("pl-followed", "Editorial", 7, num_tracks=40),
+        AccountEntry("pl-anon", "No Creator", None),
+        AccountEntry("pl-empty", "Empty", 42, num_tracks=0),
+        AccountEntry("pl-bool", "Odd Count", 42, num_tracks=True),
+    ])
     listed = tidal_catalogue.TidalCatalogue(client).account_playlists()
     assert listed == (
         AccountPlaylist("pl-own", "Warmup", 12),
@@ -638,11 +524,9 @@ def test_the_account_listing_keeps_the_playlists_the_account_created():
 
 
 def test_the_account_listing_pages_past_the_first_page():
-    entries = [AccountEntry(f"pl-{n}", f"List {n}", 42) for n in range(130)]
     client = FakeClient()
-    client.user = AccountUser(42, entries)
-    listed = tidal_catalogue.TidalCatalogue(client).account_playlists()
-    assert len(listed) == 130
+    client.user = AccountUser(42, [AccountEntry(f"pl-{n}", f"List {n}", 42) for n in range(130)])
+    assert len(tidal_catalogue.TidalCatalogue(client).account_playlists()) == 130
 
 
 def test_a_client_that_cannot_name_its_account_refuses_rather_than_owning_nothing():
@@ -652,23 +536,11 @@ def test_a_client_that_cannot_name_its_account_refuses_rather_than_owning_nothin
         tidal_catalogue.TidalCatalogue(client).account_playlists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U70: the account's hearts, the sixth read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class HeartsFavorites:
-    """The client's favourites object: pages its tracks and declares a count.
-
-    ``endless`` serves a full window at every offset, which is what a provider
-    whose offset parameter stopped advancing looks like, and is the shape that
-    spends the listing's whole request budget.
-
-    ``unservable`` names hearts the provider COUNTS and leaves out of every
-    window it serves, which is the shape R-383 measured live: the window is cut
-    from the counted sequence and then filtered, so a page comes back short
-    and the walk still ends where the count says (R-504).
-    """
+    """The client's favourites object: pages its tracks and declares a count."""
 
     def __init__(self, tracks, *, declared=None, endless=False, unservable=()) -> None:
         self._tracks = list(tracks)
@@ -722,9 +594,7 @@ def test_a_hearts_listing_that_never_ends_raises_and_never_returns_a_short_one()
     assert excinfo.value.cause.detail["playlist"] == "favorites"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-504: a hearts listing shorter than the account declares is reported
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: The live shape R-383 measured and R-504 drove: 197 counted, 12 withheld.
 DECLARED_HEARTS = 197
@@ -737,8 +607,7 @@ def withholding_favorites() -> HeartsFavorites:
 
 
 def test_a_listing_short_of_the_declared_count_raises_the_shortfall_with_its_rows():
-    """The walk ends where the count says and the rows still come up short.
-    Before R-504 this returned 185 rows as the account and raised nothing."""
+    """The walk ends where the count says and the rows still come up short."""
     assert len(WITHHELD_IDS) == 12
     favorites = withholding_favorites()
     adapter = tidal_catalogue.TidalCatalogue(hearts_client(favorites))
@@ -754,8 +623,7 @@ def test_a_listing_short_of_the_declared_count_raises_the_shortfall_with_its_row
 
 
 def test_the_verb_boundary_keeps_the_rows_and_hands_back_the_shortfall():
-    """Not refused as an unreadable listing: the rows are hearts the provider
-    served, so they are listed, and the count withheld rides beside them."""
+    """Not refused as unreadable: the served rows are listed and the count withheld rides beside."""
     adapter = tidal_catalogue.TidalCatalogue(hearts_client(withholding_favorites()))
     rows, short = label_cli.favourite_tracks_or_refuse(adapter, "favorites")
     assert len(rows) == 185
@@ -771,8 +639,7 @@ def test_a_complete_hearts_listing_reports_no_shortfall():
 
 
 def test_a_listing_longer_than_its_count_is_not_a_shortfall():
-    """A heart added while the read is in progress can leave more rows than
-    the count the walk began on. That is not hearts withheld."""
+    """A heart added during the read can leave more rows than the count: not hearts withheld."""
     hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(40)]
     adapter = tidal_catalogue.TidalCatalogue(hearts_client(HeartsFavorites(hearts, declared=38)))
     assert len(adapter.favourite_tracks()) == 40
@@ -780,14 +647,13 @@ def test_a_listing_longer_than_its_count_is_not_a_shortfall():
 
 @pytest.mark.parametrize("declared", [0, -1, None])
 def test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare(declared):
-    """A zero or sentinel count is not trusted as an end by the walk, and so is
-    not trusted as a total to fall short of either."""
+    """A zero or sentinel count is no end for the walk, so no total to fall short of either."""
     hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(30)]
     favorites = HeartsFavorites(hearts)
     favorites.declared = declared
     rows = tidal_catalogue.TidalCatalogue(hearts_client(favorites)).favourite_tracks()
     assert len(rows) == 30
-    # THE LISTING SAYS SO TOO, rather than handing back a sentinel as a count.
+    # The listing says so too, rather than handing back a sentinel as a count.
     assert listing.favorite_tracks_declared(hearts_client(favorites)) == (hearts, None)
 
 
@@ -797,9 +663,7 @@ def test_the_listing_hands_back_the_count_the_walk_ended_on():
     assert (len(rows), declared) == (185, 197)
 
 
-def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(
-    cfg, monkeypatch
-):
+def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(cfg, monkeypatch):
     """Driven through the real adapter and the real dispatcher."""
     use_client(monkeypatch, hearts_client(withholding_favorites()))
     record_session()
@@ -809,11 +673,8 @@ def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(
         items = jobs.items(store, envelope["data"]["job_id"])
     assert len(items) == 185
     assert not {item.item_id for item in items} & WITHHELD_IDS
-    assert envelope["data"]["progress"]["shortfall"] == {
-        "declared": 197,
-        "listed": 185,
-        "withheld": 12,
-    }
+    shortfall = {"declared": 197, "listed": 185, "withheld": 12}
+    assert envelope["data"]["progress"]["shortfall"] == shortfall
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "intake-hearts-withheld"]
     assert "197 declared, 185 listed, 12 withheld by the provider" in warning["message"]
 
@@ -828,12 +689,7 @@ def test_a_client_that_exposes_no_favourites_refuses_rather_than_holding_no_hear
 
 
 def test_the_reserved_reference_is_never_a_playlist_reference():
-    """``favorites`` cannot name a playlist, so reserving it shadows none.
-
-    A playlist a person TITLED favorites is referenced by its identifier or
-    its URL, which is what ``playlist_id`` accepts, so the reserved word and a
-    real playlist can never be the same input.
-    """
+    """``favorites`` cannot name a playlist, so reserving it shadows none."""
     for spelling in ("favorites", "Favorites", " FAVORITES "):
         with pytest.raises(tidal_catalogue.PlaylistReferenceInvalid):
             tidal_catalogue.playlist_id(spelling)
@@ -853,38 +709,25 @@ def test_an_unresolvable_label_raises_and_never_returns_none():
 
 def test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it():
     client = FakeClient(artists=[ProviderArtist("Harbour Lights", [Release("r1")])])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("Gone Act",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    assert "Gone Act" in str(excinfo.value)
+    assert "Gone Act" in unresolved(client, seed_artists=("Gone Act",))
 
 
 def test_two_artists_named_exactly_the_label_refuse_rather_than_guess():
-    """Review finding: the first exact hit could be an unrelated act of one name."""
-    twin = ProviderArtist("Harbour Lights", [Release("x1")])
-    twin.id = "2"
-    first = ProviderArtist("Harbour Lights", [Release("r1")])
-    first.id = "1"
-    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[first, twin]))
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-    assert "2 provider artists" in str(excinfo.value)
+    twin = ProviderArtist("Harbour Lights", [Release("x1")], artist_id="2")
+    first = ProviderArtist("Harbour Lights", [Release("r1")], artist_id="1")
+    assert "2 provider artists" in unresolved(FakeClient(artists=[first, twin]))
+
+
+def quiet_twins() -> tuple[ProviderArtist, ProviderArtist]:
+    """Two provider artists named Quiet Act, identifiers 99 and 100."""
+    return (ProviderArtist("Quiet Act", [Release("r1")], artist_id="99"),
+            ProviderArtist("Quiet Act", [Release("r2")], artist_id="100"))
 
 
 def test_an_id_seed_resolves_via_session_artist_and_does_not_search():
-    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
-    other = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
+    pinned, other = quiet_twins()
     client = FakeClient(artists=[pinned, other])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
-
-    roster = adapter.artist_for(entry)
-
+    roster = harbour_roster(client, seed_artists=("id:99",))
     assert roster.artists == [pinned]
     assert client.artist_lookups == ["99"]
     assert "id:99" not in client.searches
@@ -892,42 +735,20 @@ def test_an_id_seed_resolves_via_session_artist_and_does_not_search():
 
 
 def test_a_colliding_name_seed_still_refuses():
-    first = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
-    twin = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
-    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[first, twin]))
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("Quiet Act",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    assert "2 provider artists" in str(excinfo.value)
+    client = FakeClient(artists=list(quiet_twins()))
+    assert "2 provider artists" in unresolved(client, seed_artists=("Quiet Act",))
 
 
 def test_an_id_seed_succeeds_when_the_same_name_has_two_artists():
-    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
-    twin = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
+    pinned, twin = quiet_twins()
     client = FakeClient(artists=[pinned, twin])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
-
-    roster = adapter.artist_for(entry)
-
-    assert roster.artists == [pinned]
+    assert harbour_roster(client, seed_artists=("id:99",)).artists == [pinned]
     assert client.artist_lookups == ["99"]
 
 
 def test_an_unresolved_id_seed_refuses_the_label():
-    own = ProviderArtist("Harbour Lights", [Release("r1")], artist_id="1")
-    client = FakeClient(artists=[own])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    message = str(excinfo.value)
+    client = FakeClient(artists=[ProviderArtist("Harbour Lights", [Release("r1")], artist_id="1")])
+    message = unresolved(client, seed_artists=("id:99",))
     assert "id:99" in message
     assert "identifier" in message
     assert "named exactly" not in message
@@ -935,144 +756,83 @@ def test_an_unresolved_id_seed_refuses_the_label():
     assert "id:99" not in client.searches
 
 
-def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
-    class OutageClient(FakeClient):
-        def artist(self, artist_id: str | None = None) -> ProviderArtist:
+def looking_up(answer: Any) -> FakeClient:
+    """A client whose identifier lookup records the ask, then raises or returns ``answer``."""
+    class Looking(FakeClient):
+        def artist(self, artist_id: str | None = None) -> Any:
             self.artist_lookups.append(str(artist_id))
-            raise ConnectionError("refused")
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+    return Looking()
 
-    adapter = tidal_catalogue.TidalCatalogue(OutageClient())
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
+
+def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
     with pytest.raises(ConnectionError):
-        adapter.artist_for(entry)
+        harbour_roster(looking_up(ConnectionError("refused")), seed_artists=("id:99",))
 
 
 def test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed():
-    class BrokenClient(FakeClient):
-        def artist(self, artist_id: str | None = None) -> ProviderArtist:
-            self.artist_lookups.append(str(artist_id))
-            raise KeyError(artist_id)
-
-    adapter = tidal_catalogue.TidalCatalogue(BrokenClient())
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
     with pytest.raises(KeyError):
-        adapter.artist_for(entry)
+        harbour_roster(looking_up(KeyError("99")), seed_artists=("id:99",))
 
 
 def test_the_client_object_not_found_is_an_unresolved_id_seed():
-    class MissingClient(FakeClient):
-        def artist(self, artist_id: str | None = None) -> ProviderArtist:
-            self.artist_lookups.append(str(artist_id))
-            raise ObjectNotFound("gone")
-
-    adapter = tidal_catalogue.TidalCatalogue(MissingClient())
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    assert "id:99" in str(excinfo.value)
+    assert "id:99" in unresolved(looking_up(ObjectNotFound("gone")), seed_artists=("id:99",))
 
 
 def test_an_id_lookup_that_returns_none_is_an_unresolved_seed():
-    class EmptyClient(FakeClient):
-        def artist(self, artist_id: str | None = None) -> ProviderArtist | None:
-            self.artist_lookups.append(str(artist_id))
-            return None
-
-    adapter = tidal_catalogue.TidalCatalogue(EmptyClient())
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    assert "id:99" in str(excinfo.value)
+    assert "id:99" in unresolved(looking_up(None), seed_artists=("id:99",))
 
 
 def test_a_seed_that_is_not_digits_after_the_prefix_is_still_a_name():
     named = ProviderArtist("id:abc", [Release("r1")], artist_id="1")
     client = FakeClient(artists=[named])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("id:abc",)
-    )
-
-    roster = adapter.artist_for(entry)
-
-    assert roster.artists == [named]
+    assert harbour_roster(client, seed_artists=("id:abc",)).artists == [named]
     assert client.artist_lookups == []
     assert "id:abc" in client.searches
 
 
 def test_an_uppercase_id_prefix_is_still_a_name_seed():
-    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
-    client = FakeClient(artists=[pinned])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("ID:99",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable):
-        adapter.artist_for(entry)
+    client = FakeClient(artists=[ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")])
+    unresolved(client, seed_artists=("ID:99",))
     assert client.artist_lookups == []
 
 
 def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
-    """Review finding: a lazy listing ran a retry ladder inside the crawl's own."""
     artist = ProviderArtist("Harbour Lights", [Release("r1")], [Release("s1")])
-    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[artist]))
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    roster = harbour_roster(FakeClient(artists=[artist]))
     listed = list(artist.asked)
     assert {call[0] for call in listed} == {"get_albums", "get_ep_singles"}
-
     assert [release.id for release in listing.artist_releases(roster)] == ["r1", "s1"]
     assert artist.asked == listed, "the crawl reached the provider again"
 
 
 def _roster_of(artists: int, per_artist: int) -> tuple[tidal_catalogue.LabelRoster, int]:
     """A roster of ``artists`` members, each with ``per_artist`` albums, and its size."""
-    members = [
-        ProviderArtist(
-            f"Act {n}",
-            [Release(f"a{n}-{k}") for k in range(per_artist)],
-            artist_id=str(n),
-        )
-        for n in range(artists)
-    ]
+    members = [ProviderArtist(f"Act {n}", [Release(f"a{n}-{k}") for k in range(per_artist)],
+                              artist_id=str(n)) for n in range(artists)]
     return tidal_catalogue.LabelRoster(members), artists * per_artist
 
 
 def test_a_roster_larger_than_one_artists_budget_is_read_in_full_once_each():
     """R-888: 12,000 releases on one listing, past the 9,900 one artist's walk reaches."""
-    from cratekit.label import crawl
-
     roster, size = _roster_of(120, 100)
     reachable = (listing.PAGE_CAPS["artist_releases"] - 1) * listing.PAGE_SIZES["artist_releases"]
     assert size > reachable
-
     skipped: list[str] = []
-    found = crawl.releases(roster, skipped=skipped)
-
-    ids = [release.id for release in found]
+    ids = [release.id for release in crawl.releases(roster, skipped=skipped)]
     assert len(ids) == size
     assert set(ids) == {f"a{n}-{k}" for n in range(120) for k in range(100)}
     assert skipped == []
 
 
 def test_a_roster_release_credited_under_two_artists_is_returned_once():
-    from cratekit.label import crawl
-
     shared = Release("shared")
-    roster = tidal_catalogue.LabelRoster(
-        [
-            ProviderArtist("First", [shared, Release("one")], artist_id="1"),
-            ProviderArtist("Second", [Release("two")], [shared], artist_id="2"),
-        ]
-    )
-
+    roster = tidal_catalogue.LabelRoster([
+        ProviderArtist("First", [shared, Release("one")], artist_id="1"),
+        ProviderArtist("Second", [Release("two")], [shared], artist_id="2"),
+    ])
     assert [release.id for release in crawl.releases(roster)] == ["shared", "one", "two"]
 
 
@@ -1080,9 +840,7 @@ def test_a_listing_a_roster_does_not_hold_is_skipped_and_recorded():
     """The held path keeps the skip record a paged artist leaves (R-261)."""
     roster, _ = _roster_of(1, 2)
     skipped: list[str] = []
-
     found = listing.artist_releases(roster, methods=("get_albums", "get_tracks"), skipped=skipped)
-
     assert [release.id for release in found] == ["a0-0", "a0-1"]
     assert skipped == ["get_tracks"]
 
@@ -1094,8 +852,6 @@ class HoldsNothing(listing.HeldReleases):
 
 def test_the_crawl_probe_asks_a_held_object_what_it_holds():
     """The probe and the read ask one question, so they cannot disagree."""
-    from cratekit.label import crawl
-
     roster, _ = _roster_of(1, 1)
     assert not hasattr(roster, "get_albums"), "a roster offers nothing to page"
     assert crawl.can_list(roster)
@@ -1105,7 +861,6 @@ def test_the_crawl_probe_asks_a_held_object_what_it_holds():
 def test_a_held_object_that_forgets_its_lists_fails_when_built():
     class Forgetful(listing.HeldReleases):
         pass
-
     with pytest.raises(TypeError):
         Forgetful()
 
@@ -1124,241 +879,133 @@ class EndlessArtist:
 
 
 def test_a_provider_listing_that_never_ends_still_spends_its_budget_and_blames_the_offset():
-    """R-888 left the real listing's budget and its wording exactly as they were."""
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.artist_releases(EndlessArtist(), sleep=lambda _s: None)
-
     text = str(raised.value)
     assert "artist_releases spent its whole budget of 100 requests" in text
     assert "the offset parameter is the suspect" in text
 
 
 def test_a_near_name_is_not_the_label():
-    client = FakeClient(artists=[ProviderArtist("Harbour Lights Tribute", [Release("r1")])])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    with pytest.raises(tidal_catalogue.LabelUnresolvable):
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    unresolved(FakeClient(artists=[ProviderArtist("Harbour Lights Tribute", [Release("r1")])]))
+
+
+def source_of(entry: labels.LabelEntry, adapter: Any = None) -> sweep.LabelSource:
+    """The shipped labels source over ``entry`` alone and the resolved (or given) adapter."""
+    return sweep.LabelSource(
+        config.load(), registry=labels.Registry(labels={entry.label_id: entry}),
+        catalogue=adapter or catalogue.resolve(config.load()),
+    )
 
 
 def test_the_absence_contract_holds_through_the_sweep(cfg, monkeypatch):
     """R-135's shape closed: an unreadable label refuses the source, not a clean zero."""
-    del cfg
     use_client(monkeypatch, FakeClient())
     record_session()
-    entry = labels.LabelEntry(label_id="nowhere", name="Nowhere Records")
-    source = sweep.LabelSource(
-        config.load(),
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=catalogue.resolve(config.load()),
-    )
+    source = source_of(labels.LabelEntry(label_id="nowhere", name="Nowhere Records"))
     with pytest.raises(run.LookupFailure):
         source.list_recent(10)
 
 
 def test_the_roster_crawls_the_label_page_and_every_seed_through_the_listing(cfg, monkeypatch):
     """Paged to exhaustion across two artists and two listings, deduplicated once."""
-    del cfg
-    own_albums = [Release(f"a{n}", copyright="(P) 2026 Harbour Lights") for n in range(150)]
+    own_albums = [Release(f"a{n}", copyright=HARBOUR) for n in range(150)]
     shared = Release("shared", copyright="(P) 2025 Harbour Lights")
     label_page = ProviderArtist("Harbour Lights", own_albums, [shared])
     seed = ProviderArtist("Quiet Act", [], [shared, Release("s1", copyright="2024 Harbour Lights")])
     client = use_client(monkeypatch, FakeClient(artists=[label_page, seed]))
     record_session()
-    # THE OFFER IS RAISED WITH THE LIMIT. This test is about the crawl reading
-    # every page, and the default window of ten (R-790) would stop the walk
-    # long before the hundred and fifty releases it checks are reached.
-    entry = labels.LabelEntry(
-        label_id="harbour",
-        name="Harbour Lights",
-        seed_artists=("Quiet Act",),
-        track_limit=500,
-        offer=500,
-    )
-    source = sweep.LabelSource(
-        config.load(),
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=catalogue.resolve(config.load()),
-    )
-
-    found = source.list_recent(-1)
-
+    # The offer is raised with the limit: the default window of ten (R-790) would end the walk.
+    entry = harbour(seed_artists=("Quiet Act",), track_limit=500, offer=500)
+    found = source_of(entry).list_recent(-1)
     assert {item.identity for item in found} == {f"a{n}" for n in range(150)} | {"shared", "s1"}
     assert ("get_albums", 100, 100) in label_page.asked
     assert client.searches[:2] == ["Harbour Lights", "Quiet Act"]
 
 
 def album_queries_of(client: FakeClient) -> list[str]:
-    return [
-        query
-        for query, models in client.search_calls
-        if models == (tidalapi.album.Album,)
-    ]
+    return [query for query, models in client.search_calls if models == ALBUM]
 
 
-def _credited(name: str, artist_id: str, *, copyright: str = "(P) 2026 Harbour Lights") -> tuple[ProviderArtist, Release]:
+def compilation_of(*credits: tuple[str, str], copyright: str = HARBOUR) -> Release:
+    """A various artists release ``va1`` crediting each (name, identifier)."""
+    return Release("va1", copyright=copyright,
+                   artists=[Named(name, identity=artist_id) for name, artist_id in credits])
+
+
+def _credited(
+    name: str, artist_id: str, *, copyright: str = HARBOUR
+) -> tuple[ProviderArtist, Release]:
     artist = ProviderArtist(name, [Release("a1", copyright=copyright)], artist_id=artist_id)
-    compilation = Release(
-        "va1",
-        copyright=copyright,
-        artists=[Named(name, identity=artist_id)],
-    )
-    return artist, compilation
+    return artist, compilation_of((name, artist_id), copyright=copyright)
+
+
+def own_page() -> ProviderArtist:
+    return ProviderArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
 
 
 def test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist(
     cfg, monkeypatch
 ):
-    del cfg
     act, compilation = _credited("Act A", "10")
     use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
     record_session()
-    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
     adapter = catalogue.resolve(config.load())
-
-    roster = adapter.artist_for(entry)
-    source = sweep.LabelSource(
-        config.load(),
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=adapter,
-    )
-    found = source.list_recent(-1)
-
+    roster = adapter.artist_for(harbour())
+    found = source_of(harbour(), adapter).list_recent(-1)
     assert roster.artists == [act]
     assert {item.identity for item in found} == {"a1"}
     assert "va1" not in {item.identity for item in found}
 
 
 def test_discovery_that_finds_only_copyright_mismatches_still_refuses():
-    act = ProviderArtist("Act A", [Release("a1", copyright="(P) 2026 Other House")], artist_id="10")
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Other House",
-        artists=[Named("Act A", identity="10")],
-    )
-    client = FakeClient(artists=[act], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-    message = str(excinfo.value)
+    act, compilation = _credited("Act A", "10", copyright="(P) 2026 Other House")
+    message = unresolved(FakeClient(artists=[act], albums=[compilation]))
     assert "discovery found nothing" in message
     assert "named exactly 'Harbour Lights'" in message
 
 
 def test_numbered_compilation_queries_are_the_production_range():
     client = FakeClient()
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    with pytest.raises(tidal_catalogue.LabelUnresolvable):
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
+    unresolved(client)
     assert list(tidal_catalogue.COMPILATION_RANGE) == list(range(1, 80))
     assert album_queries_of(client) == [
-        "Harbour Lights",
-        *(f"Harbour Lights {number:03d}" for number in range(1, 80)),
+        "Harbour Lights", *(f"Harbour Lights {number:03d}" for number in range(1, 80))
     ]
 
 
 def test_a_compilation_returned_only_for_a_numbered_query_is_consumed():
-    act = ProviderArtist(
-        "Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10"
-    )
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Act A", identity="10")],
-    )
+    act, compilation = _credited("Act A", "10")
     compilation.name = "Harbour Lights 042"
-    client = FakeClient(
-        artists=[act],
-        albums_by_query={"Harbour Lights 042": [compilation]},
-    )
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
-    assert roster.artists == [act]
+    client = FakeClient(artists=[act], albums_by_query={"Harbour Lights 042": [compilation]})
+    assert harbour_roster(client).artists == [act]
 
 
 def test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page():
-    own = ProviderArtist(
-        "Harbour Lights",
-        [Release("own1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="1",
+    own = own_page()
+    client = FakeClient(artists=[own])
+    client.fails = lambda query, models: (
+        TooManyRequests("slow down") if models == ALBUM and query.endswith("042") else None
     )
-
-    class FlakySearch(FakeClient):
-        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
-            recorded = tuple(models or ())
-            self.search_calls.append((query, recorded))
-            self.searches.append(query)
-            if recorded == (tidalapi.album.Album,) and query.endswith("042"):
-                raise TooManyRequests("slow down")
-            return {
-                "artists": [
-                    artist
-                    for artist in self.artists
-                    if query.casefold() in artist.name.casefold()
-                ],
-                "albums": list(self.albums),
-            }
-
-    client = FlakySearch(artists=[own])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
-    assert roster.artists == [own]
+    assert harbour_roster(client).artists == [own]
     assert "Harbour Lights 042" in album_queries_of(client)
     assert "Harbour Lights 043" in album_queries_of(client)
 
 
 def test_an_authentication_error_on_album_search_still_refuses_the_label():
-    own = ProviderArtist(
-        "Harbour Lights",
-        [Release("own1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="1",
+    client = FakeClient(artists=[own_page()])
+    client.fails = lambda query, models: (
+        tidalapi.exceptions.AuthenticationError("expired") if models == ALBUM else None
     )
-
-    class DeadSearch(FakeClient):
-        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
-            recorded = tuple(models or ())
-            self.search_calls.append((query, recorded))
-            self.searches.append(query)
-            if recorded == (tidalapi.album.Album,):
-                raise tidalapi.exceptions.AuthenticationError("expired")
-            return {
-                "artists": [
-                    artist
-                    for artist in self.artists
-                    if query.casefold() in artist.name.casefold()
-                ],
-                "albums": list(self.albums),
-            }
-
-    adapter = tidal_catalogue.TidalCatalogue(DeadSearch(artists=[own]))
     with pytest.raises(tidalapi.exceptions.AuthenticationError):
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+        harbour_roster(client)
 
 
-def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(
-    cfg, monkeypatch
-):
-    del cfg
-    act = ProviderArtist("Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10")
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Act A", identity="10")],
-    )
+def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(cfg, monkeypatch):
+    act, compilation = _credited("Act A", "10")
     use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
     record_session()
-    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
-    source = sweep.LabelSource(
-        config.load(),
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=catalogue.resolve(config.load()),
-    )
-
-    found = source.list_recent(-1)
-
+    found = source_of(harbour()).list_recent(-1)
     assert {item.identity for item in found} == {"a1"}
     assert "va1" not in {item.identity for item in found}
 
@@ -1366,121 +1013,44 @@ def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(
 def test_an_unresolved_name_seed_refuses_even_when_discovery_would_find_albums():
     act, compilation = _credited("Act A", "10")
     client = FakeClient(artists=[act], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-    entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("Gone Act",)
-    )
-    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
-        adapter.artist_for(entry)
-    assert "Gone Act" in str(excinfo.value)
+    assert "Gone Act" in unresolved(client, seed_artists=("Gone Act",))
     assert album_queries_of(client) == []
 
 
 def test_discovery_enqueues_collaborators_from_listed_matching_releases():
-    lead = ProviderArtist(
-        "Lead Act",
-        [
-            Release(
-                "collab",
-                copyright="(P) 2026 Harbour Lights",
-                artists=[
-                    Named("Lead Act", identity="10"),
-                    Named("Guest", identity="11"),
-                ],
-            )
-        ],
-        artist_id="10",
-    )
-    guest = ProviderArtist(
-        "Guest",
-        [Release("g1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="11",
-    )
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Lead Act", identity="10")],
-    )
-    client = FakeClient(artists=[lead, guest], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
-    assert roster.artists == [lead, guest]
+    collab = Release("collab", copyright=HARBOUR,
+                     artists=[Named("Lead Act", identity="10"), Named("Guest", identity="11")])
+    lead = ProviderArtist("Lead Act", [collab], artist_id="10")
+    guest = ProviderArtist("Guest", [Release("g1", copyright=HARBOUR)], artist_id="11")
+    client = FakeClient(artists=[lead, guest], albums=[compilation_of(("Lead Act", "10"))])
+    assert harbour_roster(client).artists == [lead, guest]
 
 
 def test_a_discovered_artist_already_on_the_roster_is_not_added_twice():
-    own = ProviderArtist(
-        "Harbour Lights",
-        [Release("own1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="1",
-    )
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Harbour Lights", identity="1")],
-    )
-    client = FakeClient(artists=[own], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
-    assert roster.artists == [own]
+    own = own_page()
+    client = FakeClient(artists=[own], albums=[compilation_of(("Harbour Lights", "1"))])
+    assert harbour_roster(client).artists == [own]
 
 
 def test_discovery_runs_when_the_label_already_has_an_artist_page():
-    own = ProviderArtist(
-        "Harbour Lights",
-        [Release("own1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="1",
-    )
-    collab = ProviderArtist(
-        "Quiet Act",
-        [Release("q1", copyright="(P) 2026 Harbour Lights")],
-        artist_id="10",
-    )
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Quiet Act", identity="10")],
-    )
-    client = FakeClient(artists=[own, collab], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
-    assert roster.artists == [own, collab]
+    own = own_page()
+    collab = ProviderArtist("Quiet Act", [Release("q1", copyright=HARBOUR)], artist_id="10")
+    client = FakeClient(artists=[own, collab], albums=[compilation_of(("Quiet Act", "10"))])
+    assert harbour_roster(client).artists == [own, collab]
 
 
 def test_discovery_matches_copyright_against_the_entry_match_needle():
     act, compilation = _credited("Act A", "10", copyright="(P) 2026 HL")
-    client = FakeClient(artists=[act], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[act], albums=[compilation]))
     entry = labels.LabelEntry(label_id="harbour", name="Not The Label Name", match="HL")
-
-    roster = adapter.artist_for(entry)
-
-    assert roster.artists == [act]
+    assert adapter.artist_for(entry).artists == [act]
 
 
 def test_a_listing_failure_on_one_discovered_artist_skips_that_artist():
-    broken = UnlistableAct("Broken", "9")
-    act = ProviderArtist(
-        "Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10"
-    )
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[
-            Named("Broken", identity="9"),
-            Named("Act A", identity="10"),
-        ],
-    )
-    client = FakeClient(artists=[broken, act], albums=[compilation])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
-
+    act = ProviderArtist("Act A", [Release("a1", copyright=HARBOUR)], artist_id="10")
+    compilation = compilation_of(("Broken", "9"), ("Act A", "10"))
+    client = FakeClient(artists=[UnlistableAct("Broken", "9"), act], albums=[compilation])
+    roster = harbour_roster(client)
     assert roster.artists == [act]
     # R-393: the skip is recorded, and one that cannot page is not worth a resume.
     ((artist, listed, transient),) = [
@@ -1490,35 +1060,19 @@ def test_a_listing_failure_on_one_discovered_artist_skips_that_artist():
 
 
 def test_a_session_dead_during_discovery_refuses_the_label():
-    compilation = Release(
-        "va1",
-        copyright="(P) 2026 Harbour Lights",
-        artists=[Named("Act A", identity="10")],
-    )
-
-    class DeadLookup(FakeClient):
-        def artist(self, artist_id: str | None = None) -> ProviderArtist:
-            self.artist_lookups.append(str(artist_id))
-            raise refuse(
-                "credential-missing",
-                "the stored session is gone",
-                steps=("crate login",),
-                scope=Scope.RUN,
-                origin=("test",),
-            )
-
-    adapter = tidal_catalogue.TidalCatalogue(DeadLookup(albums=[compilation]))
+    dead = refuse("credential-missing", "the stored session is gone", steps=("crate login",),
+                  scope=Scope.RUN, origin=("test",))
+    client = looking_up(dead)
+    client.albums = [compilation_of(("Act A", "10"))]
     with pytest.raises(CratekitError) as excinfo:
-        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+        harbour_roster(client)
     assert excinfo.value.cause.reason == "credential-missing"
 
 
 def test_a_release_confirms_from_its_own_copyright_line_or_a_re_read():
-    listed = Release("r1")
-    client = FakeClient(albums=[Release("r1", copyright="(P) 2026 Harbour Lights")])
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    assert adapter.search_release("Harbour Lights", listed)["resolved_label"] == "Harbour Lights"
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(albums=[Release("r1", copyright=HARBOUR)]))
+    confirmed = adapter.search_release("Harbour Lights", Release("r1"))
+    assert confirmed["resolved_label"] == "Harbour Lights"
     assert (
         adapter.search_release("x", Release("r2", copyright="(C) 2020 Other House"))["resolved_label"]
         == "Other House"
@@ -1536,17 +1090,13 @@ def test_a_harvested_name_is_confirmed_only_by_a_matching_copyright_line():
 
 
 def test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers():
-    """U237: the Rawax needle confirmed three releases credited to RAWAXXX, another act."""
     client = FakeClient(albums=[Release("r1", copyright="(P) 2026 RAWAXXX")])
     adapter = tidal_catalogue.TidalCatalogue(client)
     assert adapter.check_label("Rawax")["verdict"] == "unconfirmed"
     client.albums.append(Release("r2", copyright="℗ 2026 Rawax Records"))
     assert adapter.check_label("Rawax") == {
-        "verdict": "confirmed",
-        "resolved_label": "Rawax Records",
-        "source": tidal_catalogue.SOURCE,
+        "verdict": "confirmed", "resolved_label": "Rawax Records", "source": tidal_catalogue.SOURCE
     }
-
     act, compilation = _credited("Act A", "10", copyright="(P) 2026 RAWAXXX")
     adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[act], albums=[compilation]))
     with pytest.raises(tidal_catalogue.LabelUnresolvable):
@@ -1556,22 +1106,15 @@ def test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers():
 def test_a_credit_starting_with_p_or_c_is_resolved_whole():
     """U237: a copyright line read for verification keeps the label's first letter."""
     adapter = tidal_catalogue.TidalCatalogue(FakeClient())
-    for line, label in (
-        ("(P) 2021 Cadenza", "Cadenza"),
-        ("2021 Pressure Traxx", "Pressure Traxx"),
-        ("© 2024 Cronos", "Cronos"),
-    ):
+    for line, label in (("(P) 2021 Cadenza", "Cadenza"), ("2021 Pressure Traxx", "Pressure Traxx"),
+                        ("© 2024 Cronos", "Cronos")):
         assert adapter.search_release(label, Release("r1", copyright=line))["resolved_label"] == label
     act, compilation = _credited("Act A", "10", copyright="(P) 2021 Cadenza")
     adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[act], albums=[compilation]))
     assert adapter.artist_for(labels.LabelEntry(label_id="cadenza", name="Cadenza")).artists == [act]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-261 and R-393: a crawl that did not read everything says so
-# ═══════════════════════════════════════════════════════════════════════════
-
-HARBOUR = "(P) 2026 Harbour Lights"
 
 
 class RateLimitedArtist(ProviderArtist):
@@ -1601,9 +1144,7 @@ def _sweep_through_the_worker(monkeypatch, client: FakeClient) -> tuple[int, dic
     monkeypatch.setattr(tidal_catalogue, "_pause", pauses.append)
     code, added = drive(["label", "registry", "add", "Harbour Lights"])
     assert code == int(ExitCode.OK), added
-    monkeypatch.setattr(
-        catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client)
-    )
+    monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
     job_id = queued_sweep()
     code, done = drive(["sync", "labels", "--job", job_id])
     return code, done, job_id
@@ -1623,24 +1164,15 @@ def _offered() -> set[str]:
 
 def _label_with_a_discovered_pair(first: ProviderArtist) -> FakeClient:
     """The label's own page, and a compilation crediting ``first`` and Act A."""
-    own = ProviderArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
     act = ProviderArtist("Act A", [Release("a1", copyright=HARBOUR)], artist_id="11")
-    compilation = Release(
-        "va1",
-        copyright=HARBOUR,
-        artists=[Named(first.name, identity=str(first.id)), Named("Act A", identity="11")],
-    )
-    return FakeClient(artists=[own, first, act], albums=[compilation])
+    compilation = compilation_of((first.name, str(first.id)), ("Act A", "11"))
+    return FakeClient(artists=[own_page(), first, act], albums=[compilation])
 
 
 def test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist(cfg, monkeypatch):
-    """R-393: a 429 on one discovered artist used to read as a complete roster."""
-    del cfg
     busy = RateLimitedArtist("Busy Act", [], artist_id="10")
     client = _label_with_a_discovered_pair(busy)
-
     code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)
-
     assert code != int(ExitCode.OK), failed
     cause = _the_item_cause(job_id)
     assert cause is not None and cause.reason == "label-sweep-incomplete"
@@ -1653,57 +1185,32 @@ def test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist(cfg,
     assert _offered() == {"own1", "a1"}
 
 
-def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(
-    cfg, monkeypatch
-):
+def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(cfg, monkeypatch):
     """R-393's closing condition: the 429 is retried, and the suite sleeps for none of it."""
-    del cfg
     busy = RateLimitedArtist("Busy Act", [], artist_id="10")
     client = _label_with_a_discovered_pair(busy)
     pauses: list[float] = []
-
     monkeypatch.setattr(tidal_catalogue, "_pause", pauses.append)
-    roster = tidal_catalogue.TidalCatalogue(client).artist_for(
-        labels.LabelEntry(label_id="harbour-lights", name="Harbour Lights")
-    )
-
+    roster = harbour_roster(client)
     assert len(busy.asked) == listing.DEFAULT_MAX_RETRIES + 1
     assert len(pauses) == listing.DEFAULT_MAX_RETRIES
-    assert [(one.artist, one.listing) for one in roster.unread] == [
-        ("Busy Act", "artist_releases")
-    ]
+    assert [(one.artist, one.listing) for one in roster.unread] == [("Busy Act", "artist_releases")]
 
 
-def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(
-    cfg, monkeypatch
-):
+def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(cfg, monkeypatch):
     """Review finding: the roster reads a held artist again, and that read is the one used."""
-    del cfg
-
     class LimitedForOneLadder(ProviderArtist):
         """429 on every attempt discovery's ladder makes, then answers the roster."""
-
         def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
             if len(self.asked) <= listing.DEFAULT_MAX_RETRIES:
                 self.asked.append(("get_albums", limit or 0, offset))
                 raise TooManyRequests("slow down")
             return super().get_albums(limit, offset)
-
-    own = LimitedForOneLadder(
-        "Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1"
-    )
-    compilation = Release(
-        "va1", copyright=HARBOUR, artists=[Named("Harbour Lights", identity="1")]
-    )
-    client = FakeClient(artists=[own], albums=[compilation])
+    own = LimitedForOneLadder("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
+    client = FakeClient(artists=[own], albums=[compilation_of(("Harbour Lights", "1"))])
     monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
-
-    roster = tidal_catalogue.TidalCatalogue(client).artist_for(
-        labels.LabelEntry(label_id="harbour-lights", name="Harbour Lights")
-    )
-
-    # Discovery spent a whole ladder on it, then the roster read a page and the
-    # empty page after it.
+    roster = harbour_roster(client)
+    # Discovery spent a whole ladder on it, then the roster read a page and the empty one after.
     albums_asked = [call for call in own.asked if call[0] == "get_albums"]
     assert len(albums_asked) == (listing.DEFAULT_MAX_RETRIES + 1) + 2
     assert roster.unread == ()
@@ -1711,13 +1218,9 @@ def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(
 
 
 def test_a_roster_member_missing_one_listing_fails_the_sweep_and_names_it(cfg, monkeypatch):
-    """R-261: a client exposing one of two listings used to report a complete crawl."""
-    del cfg
     own = AlbumsOnlyArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
     client = FakeClient(artists=[own])
-
     code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)
-
     assert code != int(ExitCode.OK), failed
     cause = _the_item_cause(job_id)
     assert cause is not None and cause.reason == "label-sweep-incomplete"
@@ -1731,12 +1234,9 @@ def test_a_roster_member_missing_one_listing_fails_the_sweep_and_names_it(cfg, m
 
 def test_a_crawl_that_read_everything_still_succeeds(cfg, monkeypatch):
     """The control for both: the same shape with nothing unread is a clean sweep."""
-    del cfg
     steady = ProviderArtist("Steady Act", [Release("b1", copyright=HARBOUR)], artist_id="10")
     client = _label_with_a_discovered_pair(steady)
-
     code, done, job_id = _sweep_through_the_worker(monkeypatch, client)
-
     assert code == int(ExitCode.OK), done
     assert _the_item_cause(job_id) is None
     assert _offered() == {"own1", "a1", "b1"}
@@ -1745,61 +1245,46 @@ def test_a_crawl_that_read_everything_still_succeeds(cfg, monkeypatch):
 def test_a_crawl_that_skipped_a_listing_moves_no_watermark(cfg, monkeypatch):
     """The labels source offers and never acquires, so no watermark moves, skip or not."""
     busy = RateLimitedArtist("Busy Act", [], artist_id="10")
-
     _sweep_through_the_worker(monkeypatch, _label_with_a_discovered_pair(busy))
-
     assert watermarks.WatermarkStore(cfg).all() == {}
 
 
 def test_a_plain_artist_object_missing_one_listing_is_recorded_by_the_source(cfg):
     """R-261 without the roster: an object handed straight to the source."""
-    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
+    entry = harbour()
     source = sweep.LabelSource(
-        cfg,
-        registry=labels.Registry(labels={entry.label_id: entry}),
+        cfg, registry=labels.Registry(labels={entry.label_id: entry}),
         artists={entry.label_id: AlbumsOnlyArtist("Harbour Lights", [Release("own1")])},
         verify=lambda claimed, release: {"resolved_label": claimed, "source": "test"},
     )
-
-    found = source.list_recent(-1)
-
-    assert [item.identity for item in found] == ["own1"]
-    assert [(one.artist, one.listing) for one in source.unread] == [
-        ("Harbour Lights", "get_ep_singles")
-    ]
+    assert [item.identity for item in source.list_recent(-1)] == ["own1"]
+    unread = [(one.artist, one.listing) for one in source.unread]
+    assert unread == [("Harbour Lights", "get_ep_singles")]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Structural guards over the adapter's own source
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _tree() -> ast.Module:
     return ast.parse(ADAPTER_SOURCE.read_text(encoding="utf-8"))
 
 
+def _paging_calls(tree: ast.Module, guarded: set[str]) -> list[tuple[int, str]]:
+    return [(node.lineno, node.func.attr) for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr in guarded]
+
+
 def test_the_adapter_pages_nothing_by_hand():
     """Every paged read goes through ``listing``; a direct call here is a fourth loop."""
-    guarded = set(listing.GUARDED_METHODS) | {"items"}
-    calls = [
-        (node.lineno, node.func.attr)
-        for node in ast.walk(_tree())
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in guarded
-    ]
+    calls = _paging_calls(_tree(), set(listing.GUARDED_METHODS) | {"items"})
     assert calls == [], f"the adapter calls a paging method directly: {calls}"
 
 
 def test_the_paging_scan_can_see_a_violation():
     """The guard above is only worth something if it fires on the shape it forbids."""
     planted = ast.parse("def f(artist):\n    return artist.get_albums(limit=1, offset=0)\n")
-    assert any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in listing.GUARDED_METHODS
-        for node in ast.walk(planted)
-    )
+    assert _paging_calls(planted, set(listing.GUARDED_METHODS))
 
 
 def test_the_adapter_imports_nothing_vendored():
@@ -1813,9 +1298,7 @@ def test_the_adapter_imports_nothing_vendored():
     assert not [name for name in imported if "_vendor" in name], imported
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # End to end: intake a playlist, then hand its document to the download verb
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_intake_playlist_queues_one_item_per_track_and_download_accepts_the_document(
@@ -1828,34 +1311,19 @@ def test_intake_playlist_queues_one_item_per_track_and_download_accepts_the_docu
     ]
     use_client(monkeypatch, FakeClient(playlists={PLAYLIST: ProviderPlaylist(tracks)}))
     record_session()
-
     code, envelope = drive(["intake", "playlist", f"https://tidal.com/browse/playlist/{PLAYLIST}"])
-
     assert code == int(ExitCode.OK), envelope
     with jobs.open_store() as store:
         job = jobs.get(store, envelope["data"]["job_id"])
         items = jobs.items(store, job.job_id)
     assert [item.item_id for item in items] == ["201", "202", "203"]
     frozen = job.payload[intake_cli.TRACKS]
-
     document = tmp_path / "playlist.json"
-    document.write_text(
-        json.dumps(
-            {
-                "list": 1,
-                "origin": "tidal",
-                "tracks": [
-                    {
-                        "id": track["ref"],
-                        "title": track["title"],
-                        "artists": [{"name": track["artist"]}],
-                        "isrc": track["isrc"],
-                    }
-                    for track in frozen.values()
-                ],
-            }
-        )
-    )
+    document.write_text(json.dumps({"list": 1, "origin": "tidal", "tracks": [
+        {"id": track["ref"], "title": track["title"], "artists": [{"name": track["artist"]}],
+         "isrc": track["isrc"]}
+        for track in frozen.values()
+    ]}))
     code, queued = drive(["acquire", "download", str(document)])
     assert code == int(ExitCode.OK), queued
     with jobs.open_store() as store:
@@ -1864,10 +1332,8 @@ def test_intake_playlist_queues_one_item_per_track_and_download_accepts_the_docu
 
 def test_the_review_queue_is_untouched_by_a_playlist_intake(cfg, monkeypatch):
     """Intake lists and queues; offering anything for review is not its act."""
-    use_client(
-        monkeypatch,
-        FakeClient(playlists={PLAYLIST: ProviderPlaylist([ProviderTrack("201", "A", "B")])}),
-    )
+    playlist = ProviderPlaylist([ProviderTrack("201", "A", "B")])
+    use_client(monkeypatch, FakeClient(playlists={PLAYLIST: playlist}))
     record_session()
     code, envelope = drive(["intake", "playlist", PLAYLIST])
     assert code == int(ExitCode.OK), envelope
@@ -1875,9 +1341,7 @@ def test_the_review_queue_is_untouched_by_a_playlist_intake(cfg, monkeypatch):
         assert list(review.list_items(queue)) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U75: one release read again by identifier
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class ProviderAlbum:
@@ -1897,20 +1361,30 @@ class ProviderAlbum:
         return self._tracks[offset : offset + size]
 
 
-class AlbumClient(FakeClient):
-    """Answers ``album`` from a script of albums and exceptions, in order."""
+class Scripted(FakeClient):
+    """A client answering one call from a script of answers and exceptions, the last kept."""
 
     def __init__(self, *answers: Any) -> None:
         super().__init__()
         self.answers = list(answers)
-        self.album_reads: list[str] = []
 
-    def album(self, album_id: str) -> Any:
-        self.album_reads.append(album_id)
+    def answer(self) -> Any:
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if isinstance(answer, Exception):
             raise answer
         return answer
+
+
+class AlbumClient(Scripted):
+    """Answers ``album`` from a script of albums and exceptions, in order."""
+
+    def __init__(self, *answers: Any) -> None:
+        super().__init__(*answers)
+        self.album_reads: list[str] = []
+
+    def album(self, album_id: str) -> Any:
+        self.album_reads.append(album_id)
+        return self.answer()
 
 
 @pytest.fixture
@@ -1927,10 +1401,7 @@ def album_tracks(count: int) -> list[ProviderTrack]:
 
 def test_a_release_is_paged_to_its_declared_count_and_carries_its_year(pauses):
     album = ProviderAlbum("r-1", album_tracks(230), year=2021)
-    adapter = tidal_catalogue.TidalCatalogue(AlbumClient(album))
-
-    tracks, year, _short = adapter.release_tracks("r-1")
-
+    tracks, year, _short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
     assert year == 2021
     assert len(tracks) == 230, "the release was not paged to exhaustion"
     assert [offset for _limit, offset in album.served] == [0, 100, 200]
@@ -1942,11 +1413,8 @@ def test_a_release_is_paged_to_its_declared_count_and_carries_its_year(pauses):
 
 def test_a_release_that_is_gone_raises_at_once_and_is_never_retried(pauses):
     client = AlbumClient(ObjectNotFound("album r-gone"))
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
-        adapter.release_tracks("r-gone")
-
+        tidal_catalogue.TidalCatalogue(client).release_tracks("r-gone")
     assert isinstance(excinfo.value, LookupError)
     assert "'r-gone'" in str(excinfo.value)
     assert client.album_reads == ["r-gone"]
@@ -1954,18 +1422,14 @@ def test_a_release_that_is_gone_raises_at_once_and_is_never_retried(pauses):
 
 
 def test_a_release_the_client_returns_nothing_for_raises_too(pauses):
-    adapter = tidal_catalogue.TidalCatalogue(AlbumClient(None))
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
-        adapter.release_tracks("r-1")
+        tidal_catalogue.TidalCatalogue(AlbumClient(None)).release_tracks("r-1")
 
 
 def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
     album = ProviderAlbum("r-1", album_tracks(3), year=2020)
     client = AlbumClient(RuntimeError("429 too many requests"), album)
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
-    tracks, year, _short = adapter.release_tracks("r-1")
-
+    tracks, year, _short = tidal_catalogue.TidalCatalogue(client).release_tracks("r-1")
     assert (len(tracks), year) == (3, 2020)
     assert client.album_reads == ["r-1", "r-1"]
     assert pauses == [1.0]
@@ -1973,11 +1437,8 @@ def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
 
 def test_an_outage_is_re_raised_as_the_provider_raised_it_once_the_ladder_is_spent(pauses):
     client = AlbumClient(ConnectionError("the provider timed out"))
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
     with pytest.raises(ConnectionError):
-        adapter.release_tracks("r-1")
-
+        tidal_catalogue.TidalCatalogue(client).release_tracks("r-1")
     assert len(client.album_reads) == 6
     assert pauses == [1.0, 2.0, 4.0, 8.0, 16.0]
 
@@ -1992,15 +1453,12 @@ def test_no_identifier_is_refused_before_the_provider_is_asked(blank, pauses):
 
 def test_a_short_window_in_the_middle_of_a_release_does_not_end_it(pauses):
     """The provider counts a track it will not serve and omits it from the window."""
-
     class Withholding(ProviderAlbum):
         def tracks(self, limit: int | None = None, offset: int = 0) -> list[ProviderTrack]:
             page = super().tracks(limit, offset)
             return page[:-1] if offset == 0 else page
-
     album = Withholding("r-1", album_tracks(150), year=2020)
     tracks, _year, _short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
-
     assert len(tracks) == 149
     assert tracks[-1].id == "849"
 
@@ -2013,21 +1471,15 @@ class Dated:
 @pytest.mark.parametrize(
     ("dated", "expected"),
     [
-        ({"year": 2021}, 2021),
-        ({"year": "2019"}, 2019),
+        ({"year": 2021}, 2021), ({"year": "2019"}, 2019),
         ({"year": None, "release_date": Dated(2018)}, 2018),
         ({"year": None, "release_date": "2017-03-04"}, 2017),
         ({"release_date": "2016-01-01T00:00:00"}, 2016),
         ({"year": 0, "release_date": "2015-06-01"}, 2015),
-        ({"year": True}, None),
-        ({"year": "soon"}, None),
-        ({"year": 99999}, None),
-        ({}, None),
+        ({"year": True}, None), ({"year": "soon"}, None), ({"year": 99999}, None), ({}, None),
     ],
-    ids=[
-        "int", "text", "date-object", "date-text", "no-year-field", "zero-falls-through",
-        "boolean", "words", "five-digits", "nothing",
-    ],
+    ids=["int", "text", "date-object", "date-text", "no-year-field", "zero-falls-through",
+         "boolean", "words", "five-digits", "nothing"],
 )
 def test_the_year_is_read_or_is_none_and_is_never_a_guess(dated, expected, pauses):
     album = ProviderAlbum("r-1", album_tracks(1), **dated)
@@ -2048,11 +1500,8 @@ class Rejected(Exception):
 def test_an_identifier_holding_the_digits_404_does_not_make_a_rejection_a_withdrawal(pauses):
     """The request URL carries the release identifier into the error's text."""
     client = AlbumClient(Rejected(401, "24040417"))
-    adapter = tidal_catalogue.TidalCatalogue(client)
-
     with pytest.raises(Rejected):
-        adapter.release_tracks("24040417")
-
+        tidal_catalogue.TidalCatalogue(client).release_tracks("24040417")
     assert len(client.album_reads) == 6, "a rejection was answered once, as gone"
 
 
@@ -2067,9 +1516,7 @@ def test_the_adapter_raises_the_seams_own_exception():
     assert tidal_catalogue.ReleaseUnresolvable is catalogue.ReleaseUnresolvable
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-840: one release's artist read again by identifier
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Addressed:
@@ -2083,9 +1530,7 @@ def test_a_releases_artist_is_its_name_and_never_the_objects_address(pauses):
     act = Addressed("Harbour Act")
     album = ProviderAlbum("r-1", album_tracks(3), year=2021, artist=act)
     client = AlbumClient(album)
-
     name = tidal_catalogue.TidalCatalogue(client).release_artist("r-1")
-
     assert name == "Harbour Act"
     assert " object at 0x" in str(act), "the stand-in stopped reading as an address"
     assert client.album_reads == ["r-1"]
@@ -2095,12 +1540,7 @@ def test_a_releases_artist_is_its_name_and_never_the_objects_address(pauses):
 
 @pytest.mark.parametrize(
     "held, name",
-    [
-        ("Harbour Act", "Harbour Act"),
-        (None, ""),
-        (Addressed(None), ""),
-        (Addressed(17), ""),
-    ],
+    [("Harbour Act", "Harbour Act"), (None, ""), (Addressed(None), ""), (Addressed(17), "")],
 )
 def test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is(held, name):
     album = ProviderAlbum("r-1", album_tracks(1), artist=held)
@@ -2118,9 +1558,7 @@ def test_the_sweep_files_the_name_the_artist_read_returns():
     album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
     album.title = "Harbour Lights EP"
     entry = labels.LabelEntry(label_id="tide-works", name="Tide Works")
-
     filed = sweep._candidate(entry, album)
-
     assert filed.payload["artist"] == "Harbour Act"
     assert tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_artist("r-1") == (
         filed.payload["artist"]
@@ -2129,10 +1567,8 @@ def test_the_sweep_files_the_name_the_artist_read_returns():
 
 def test_a_gone_release_has_no_artist_to_read_and_is_asked_about_once(pauses):
     client = AlbumClient(ObjectNotFound("album r-gone"))
-
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
         tidal_catalogue.TidalCatalogue(client).release_artist("r-gone")
-
     assert "'r-gone'" in str(excinfo.value)
     assert client.album_reads == ["r-gone"]
     assert pauses == []
@@ -2146,19 +1582,15 @@ def test_an_artist_read_the_client_returns_nothing_for_raises_too(pauses):
 def test_a_rate_limited_artist_read_waits_and_is_asked_again(pauses):
     album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
     client = AlbumClient(RuntimeError("429 too many requests"), album)
-
     assert tidal_catalogue.TidalCatalogue(client).release_artist("r-1") == "Harbour Act"
-
     assert client.album_reads == ["r-1", "r-1"]
     assert pauses == [1.0]
 
 
 def test_an_artist_read_through_an_outage_is_re_raised_once_the_ladder_is_spent(pauses):
     client = AlbumClient(ConnectionError("the provider timed out"))
-
     with pytest.raises(ConnectionError):
         tidal_catalogue.TidalCatalogue(client).release_artist("r-1")
-
     assert len(client.album_reads) == 6
 
 
@@ -2173,45 +1605,34 @@ def test_an_artist_read_with_no_identifier_never_asks_the_provider(blank, pauses
 def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pauses):
     """The seam's ``LookupError`` contract, driven from the live adapter's side."""
     from cratekit.label import approved_cli
-
     adapter = tidal_catalogue.TidalCatalogue(AlbumClient(ObjectNotFound("album r-gone")))
     release = approved_cli._Release(
         item_id="ri_1", release_id="r-gone", title="", label_id=None, label_name=None
     )
-
     outcome = approved_cli._tracks_or_failure(adapter, release)
-
     assert isinstance(outcome, approved_cli._Failed)
     assert outcome.kind == approved_cli.GONE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U78: the tracks one ISRC is filed under
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-class IsrcClient(FakeClient):
+class IsrcClient(Scripted):
     """Answers ``get_tracks_by_isrc`` from a script of answers and exceptions."""
 
     def __init__(self, *answers: Any) -> None:
-        super().__init__()
-        self.answers = list(answers)
+        super().__init__(*answers)
         self.isrc_reads: list[str] = []
 
     def get_tracks_by_isrc(self, isrc: str) -> Any:
         self.isrc_reads.append(isrc)
-        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
+        return self.answer()
 
 
 def test_an_isrc_answers_every_track_filed_under_it(pauses):
     tracks = [ProviderTrack("9001", "A", "B"), ProviderTrack("9002", "A", "B")]
     client = IsrcClient(tracks)
-
     found = tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
-
     assert [track.id for track in found] == ["9001", "9002"]
     assert client.isrc_reads == ["QZAAA2600001"]
     assert pauses == []
@@ -2219,7 +1640,6 @@ def test_an_isrc_answers_every_track_filed_under_it(pauses):
 
 def test_an_isrc_filed_under_nothing_is_an_empty_answer_asked_once(pauses):
     client = IsrcClient(ObjectNotFound("no track"))
-
     assert tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001") == ()
     assert client.isrc_reads == ["QZAAA2600001"]
     assert pauses == []
@@ -2227,21 +1647,16 @@ def test_an_isrc_filed_under_nothing_is_an_empty_answer_asked_once(pauses):
 
 def test_a_rate_limited_isrc_read_waits_and_is_asked_again(pauses):
     client = IsrcClient(TooManyRequests("slow down"), [ProviderTrack("9001", "A", "B")])
-
     found = tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
-
     assert [track.id for track in found] == ["9001"]
     assert pauses == [1.0]
 
 
 def test_invalid_isrc_is_not_read_as_no_track_since_the_client_hides_outages_behind_it(pauses):
-    """At 0.8.11 the client raises ``InvalidISRC`` for every HTTP error but 404
-    and 429, a server error and a rejected session among them."""
+    """At 0.8.11 the client raises ``InvalidISRC`` for every HTTP error but 404 and 429."""
     client = IsrcClient(tidalapi.exceptions.InvalidISRC())
-
     with pytest.raises(tidalapi.exceptions.InvalidISRC):
         tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
-
     assert len(client.isrc_reads) == 6
     assert pauses == [1.0, 2.0, 4.0, 8.0, 16.0]
 
@@ -2260,33 +1675,25 @@ def test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladde
     assert pauses == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U79: a text search for one artist and title
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-class TrackSearchClient(FakeClient):
+class TrackSearchClient(Scripted):
     """Answers ``search`` from a script of answers and exceptions."""
 
     def __init__(self, *answers: Any) -> None:
-        super().__init__()
-        self.answers = list(answers)
+        super().__init__(*answers)
         self.track_searches: list[tuple[str, tuple[Any, ...], int]] = []
 
     def search(self, query: str, models: Any = None, limit: int = 50, **_: Any) -> Any:
         self.track_searches.append((query, tuple(models or ()), limit))
-        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
+        return self.answer()
 
 
 def test_a_track_search_returns_every_hit_in_the_providers_order_and_picks_none(pauses):
     hits = [ProviderTrack("9002", "A", "B (Remix)"), ProviderTrack("9001", "A", "B")]
     client = TrackSearchClient({"tracks": hits, "top_hit": hits[0]})
-
     found = tidal_catalogue.TidalCatalogue(client).search_tracks(" A ", " B ")
-
     assert [track.id for track in found] == ["9002", "9001"]
     assert client.track_searches == [
         ("A B", (tidalapi.media.Track,), tidal_catalogue.SEARCH_LIMIT)
@@ -2297,12 +1704,10 @@ def test_a_track_search_returns_every_hit_in_the_providers_order_and_picks_none(
 def test_a_track_search_asks_for_the_page_its_offset_names(pauses):
     """R-879: the next page of the same search, read by the client's own offset."""
     offsets: list[int] = []
-
     class Paged(TrackSearchClient):
         def search(self, query: str, models: Any = None, limit: int = 50, offset: int = 0, **_: Any) -> Any:
             offsets.append(offset)
             return super().search(query, models, limit)
-
     client = Paged({"tracks": [ProviderTrack("9051", "A", "B")]})
     found = tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B", offset=50)
     assert [track.id for track in found] == ["9051"]
@@ -2313,38 +1718,29 @@ def test_a_track_search_asks_for_the_page_its_offset_names(pauses):
 
 def test_a_track_search_that_finds_nothing_is_an_empty_answer(pauses):
     client = TrackSearchClient({"tracks": []})
-
     assert tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B") == ()
     assert pauses == []
 
 
 def test_a_rate_limited_track_search_waits_and_is_asked_again(pauses):
     client = TrackSearchClient(TooManyRequests("slow down"), {"tracks": [ProviderTrack("9001", "A", "B")]})
-
     found = tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
-
     assert [track.id for track in found] == ["9001"]
     assert pauses == [1.0]
 
 
 def test_a_track_search_that_keeps_failing_is_raised_and_a_not_found_is_no_answer(pauses):
-    """A search endpoint answers nothing found with an empty list, so a raised
-    not found is the endpoint failing, and read as empty it would report a track
-    the provider carries as having no candidate."""
+    """A search answers nothing found with an empty list, so a raised not found is a failure."""
     client = TrackSearchClient(ObjectNotFound("search"))
-
     with pytest.raises(ObjectNotFound):
         tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
-
     assert len(client.track_searches) == 6
 
 
 def test_a_search_answer_with_no_track_listing_is_raised_at_once_and_is_not_empty(pauses):
     client = TrackSearchClient({"artists": []})
-
     with pytest.raises(LookupError):
         tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
-
     assert len(client.track_searches) == 1, "a shape was waited on"
     assert pauses == []
 
@@ -2357,9 +1753,7 @@ def test_a_search_for_nothing_is_refused_before_the_provider_is_asked(artist, ti
     assert client.track_searches == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-515: a release listed short of its declared count carries the shortfall
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows(pauses):
@@ -2367,10 +1761,8 @@ def test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows(
         def tracks(self, limit: int | None = None, offset: int = 0) -> list[ProviderTrack]:
             page = super().tracks(limit, offset)
             return page[:-2] if offset == 0 else page
-
     album = Withholding("r-1", album_tracks(10), year=2020)
     tracks, year, short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
-
     assert (len(tracks), year) == (8, 2020)
     assert short == catalogue.ListingShortfall(declared=10, listed=8)
     assert short.summary() == "10 declared, 8 listed, 2 withheld by the provider"
@@ -2383,11 +1775,7 @@ def test_a_full_release_carries_no_shortfall(pauses):
 
 
 def test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall():
-    """A release or playlist declaring 4 that serves 6 rows is not a shortfall.
-
-    Without this, ``listed >= declared`` could become ``listed == declared``
-    unseen and a long listing would mint a negative withheld (R-515 S5).
-    """
+    """A release or playlist declaring 4 that serves 6 rows is not a shortfall."""
     rows = [object() for _ in range(6)]
     fake = FakeCatalogue(playlists={"p": FakePagedPlaylist(rows, declared=4)})
     listed, short = label_cli.playlist_listing_or_refuse(fake, "p")

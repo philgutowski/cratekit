@@ -1882,3 +1882,108 @@ line open in acquire and one in intake.
 
 **Closes when:** the refusal lives in an interface module and acquire's
 allowance is pruned. Ledger only.
+
+---
+
+## R-1880. Seven favourites seam lines stay, four held by the registry declaring the favourites verbs with no toggle and three by outbound names favorites.cli keeps at module level
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/favorites.txt` keeps seven lines U308
+could not clear from its own files. Four read `dangling favorites
+cratekit.favorites.<verb>_cli`: `cli/registry.py` declares `favorites split`,
+`backfill`, `order` and `refresh` with no toggle, so with the `favorites` module
+off the registry still loads them, from a package the toggle owns. Three read
+`dangling export cratekit.modules.outbound.<hearts|shell|source>`:
+`favorites/cli.py`, which builds `sync favorites`, imports outbound's `hearts`,
+`shell` and `source` at module level, because `tests/test_outbound_workers.py`
+patches `favorites_cli.hearts` there, other files read the outbound constants
+it holds (`NO_MATCH`), and `build_sync` takes its default from `source`.
+
+**Measured cost.** None driven: every toggle is on in the shipped profiles. With
+`favorites` off the four verbs still show and run; with `export` off and
+`favorites` on, `sync favorites` cannot build.
+
+**Closes when:** the registry gates the four verbs on `favorites` (the cli card,
+#860, U303, whose file the registry is), and the outbound card (#866, U309)
+moves the patch in `tests/test_outbound_workers.py` to the outbound module so
+`favorites/cli.py` can import outbound under its functions; then
+`refactor_measure.py prune favorites` empties the file. Ledger only.
+
+---
+
+## R-1881. The recorded kill u108-a G05, the go's digest covering the jobs it would resume, survives on main
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** `docs/mutation/u108-a.json` records `G05_digest_covers_resume`
+(in `label/go.py`, `Summary.plan`: the digest leaves out the jobs a go would
+resume) as killed by
+`test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again`.
+Applied verbatim to `go.py` on `main` at `c919209`, all 110 tests of
+`tests/test_label_sync_go.py` pass, the named test included, run alone and in
+its file. So the kill was lost before U308, which keeps the row's state as it
+found it; U308's replay before measures it on the base.
+
+The replay before first measured it killed on `main`, by one death on the
+full suite: `tests/test_repair_rows.py`'s inode bound test, which fails on this
+container's disk whatever the code (#702). That batch subtracted the measured
+baseline alone; measured again subtracting the two inode bound tests as well,
+as the other batches did, the row is a zero on `main`, so no kill of it is owed.
+
+**Measured cost.** Not driven to a user: a go whose resumed jobs changed between
+its gate and its write would be approved on the old digest.
+
+**Closes when:** a test drives a second go whose open jobs change after the
+gate and asserts `decision-stale`, killing G05 again. Ledger only.
+
+---
+
+## R-1882. Two label and favourites inconsistencies a person can see, left as they are by the refactor that froze behaviour
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 changed no behaviour, so it left two differences its
+workers saw. `crate label registry remove <unknown>` exits OK reporting
+`removed: false`, where `set` and `rename` refuse an unknown label with
+`label-unknown`. And `crate favorites backfill` and `crate favorites refresh` open
+their approval gate even when the plan writes nothing, where `favorites split`
+and `favorites order` end NO_OP without asking; `favorites.spine.run` keeps the
+difference as its `gate_first` flag, and tests pin both orders.
+
+**Measured cost.** A person removing a misspelt label is told nothing was
+removed rather than that no such label exists; a person running backfill or
+refresh with nothing to do is asked to approve nothing.
+
+**Closes when:** Phillip decides each as a UX cleanup under #847's rule, posted
+on #847 first. Ledger only.
+
+---
+
+## R-1883. The label and favourites suites run faster on three shortcuts a later change could outgrow
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 took about half the summed test time out of its 34
+files with three shortcuts. An autouse `one_parser` fixture in
+`tests/test_label_workers.py`, imported by most of the label and favourites
+suites, keeps one verb parser per module membership in a module global and
+reuses it across drives and tests in a worker, where a real run builds one per
+process; it holds while no label builder reads state beyond membership and no
+test patches a handler after the build (the reviewer ran all fifteen files with a
+fresh parser per drive, 1,037 passed either way). The favourites suites'
+`_landed_hearts` seeds the rows a landing writes instead of driving the two act
+landing, except one test; the seeded rows differ from a landing's in folder,
+playlist membership, device and empty columns, and forcing a real landing in
+every call passed 93 of 93. And `no_disk_flush` in `tests/test_label_sync.py`
+turns SQLite durability and `os.fsync` off for the sync and go suites, none of
+whose tests asserts durability and no recorded kill names fsync.
+
+**Measured cost.** None today, each measured as above. A later builder that
+reads state at build time, a backfill rule that reads what only a landing
+writes, or a durability guard in the sync record would pass these suites
+unseen.
+
+**Closes when:** the suite card (#869, U312) moves the parser cache into the
+shared test support with its rule beside it, or a change that breaks one of the
+three conditions takes its shortcut out. Ledger only.
