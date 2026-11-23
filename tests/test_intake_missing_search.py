@@ -1,7 +1,6 @@
 """U79: a row nothing names exactly gets provider candidates, and never a pick.
 
-Everything but the catalogue is real: the list reader, the library index, the
-review store and ``crate review resolve``. D1 applies.
+Everything but the catalogue is real. D1 applies.
 """
 
 # ruff: noqa: F811 - the fixtures are imported from the ISRC suite by name

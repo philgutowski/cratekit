@@ -1,7 +1,6 @@
 """U212: ``intake missing`` never lists a track already staged in the downloads folder.
 
-A staged file is a real container carrying real tags, since the identity is read
-from the file. Every expected value is a literal from the fixture rows.
+A staged file is a real container, since the identity is read from its tags.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the missing list suite by name

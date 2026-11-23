@@ -71,10 +71,7 @@ class HTTPFailure(Exception):
 
 
 class Client:
-    """Answers ``get_tracks_by_isrc`` from ``answers``: tracks, or an exception to raise.
-
-    ``failures`` are raised first, one per call.
-    """
+    """Answers ``get_tracks_by_isrc`` from ``answers``, raising ``failures`` first."""
 
     def __init__(self, answers: dict | None = None, *, country: str | None = "GB") -> None:
         self.answers = dict(answers or {})

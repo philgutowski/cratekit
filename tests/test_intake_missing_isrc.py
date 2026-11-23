@@ -1,8 +1,6 @@
 """U78: a set's missing tracks are named by exact ISRC, and the rest handed on.
 
-The set jobs are real, recognised through the fakes ``tests/intake/test_workers.py``
-uses; only the catalogue is a fake. D1 applies, and every ISRC is in a registrant
-range nobody holds.
+Only the catalogue is a fake. D1 applies, every ISRC in a range nobody holds.
 """
 
 from __future__ import annotations

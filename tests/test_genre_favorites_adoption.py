@@ -1,8 +1,7 @@
 """U119: the end of an adoption that files a track runs the additive refresh.
 
-Driven through the real dispatcher on the cutover suite's library: two tracks
-of one genre, the routing tree cut over, one hearted into All Favorites. The
-favourite reaches its folder's Favorites in the same job. D1 applies.
+Two tracks of one genre, one hearted: the favourite reaches its folder's
+Favorites in the same job. D1 applies.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
 """The printed install command installs where ``crate`` actually runs (R-395).
 
-Under pipx, a bare pip runs against whichever Python the shell finds first, so
-the extra lands where ``crate`` never reads it. These pin the two environment
-shapes and the one source every surface reads.
+Under pipx, a bare pip installs the extra where ``crate`` never reads it.
 """
 
 from __future__ import annotations

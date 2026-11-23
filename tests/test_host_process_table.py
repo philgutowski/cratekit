@@ -1,10 +1,8 @@
 """U232: the suite reads the same whether or not rekordbox is running on the host.
 
-``tests/conftest.py`` answers both routes to the process table as a machine with
-no rekordbox and trips on psutil's enumeration beneath them. Proved here: the
-stubs read clear with rekordbox open on the fake host (``tests/_host_processes.py``,
-installed at psutil itself), an opted-in test reads the real host, and a test
-reaching the enumeration without the opt in fails even if its code swallowed it.
+The conftest stubs read clear with rekordbox open on the fake host
+(``tests/_host_processes.py``), an opted in test reads the real host, and a test
+reaching the enumeration without the opt in fails even if it swallowed the error.
 """
 
 from __future__ import annotations

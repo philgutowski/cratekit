@@ -1,10 +1,8 @@
 """Another app's folder at the top of rekordbox's tree is left exactly as it is (U185).
 
-DEADCA7 pushes its playlists into a folder named ``DEADCA7`` at the top of the
-playlist tree. The predicate that names that folder, the commit guard every
-write in the product passes through, and the taxonomy's refusal of a tree of
-that name are driven here against a disposable database carrying a push
-written the way the push writes it (``tests/deadca7_fixtures.py``).
+The predicate naming DEADCA7's top level folder, the commit guard every write
+passes, and the taxonomy's refusal of a tree of that name, over a disposable
+database carrying a push (``tests/deadca7_fixtures.py``).
 """
 
 from __future__ import annotations
