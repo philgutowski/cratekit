@@ -37,7 +37,9 @@ them.
 An ALLOWANCE is a file of lines, one per place a package may still hold
 something the rule forbids. Lines are only ever removed. A line whose finding
 is gone never fails anything, so removing a copy or a crossing cannot fail
-another card's package; ``prune`` removes such lines and can add none.
+another card's package; ``prune`` removes such lines and can add none. Every
+allowance has been empty since U329 and U331, and the rules' own tests now
+fail on any line in one.
 
 Standard library only, and it imports nothing of Cratekit: the verb registry
 and the rules' own lists are read from source text. Every reading is of what
@@ -62,6 +64,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
+from types import MappingProxyType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -464,6 +467,9 @@ class _FileReading:
     defined: frozenset[str] | None
     #: ``(local name, attributes, line)`` read off a name imported from a module.
     chains: tuple[tuple[str, tuple[str, ...], int], ...] = ()
+    #: What a top level import binds here: ``{name: (module, None)}`` for a
+    #: module, ``{name: (module, its name)}`` for a name taken from one.
+    handed: Mapping[str, tuple[str, str | None]] = MappingProxyType({})
 
 
 def _defined_names(tree: ast.Module) -> frozenset[str] | None:
@@ -512,8 +518,12 @@ class Tree:
 
     A name that is itself a module of the package is followed into it (U331):
     ``tags.art.read`` and ``from cratekit.core.tags import art`` are uses of
-    ``cratekit.core.art``, whichever module handed it over, so a module cannot
-    be reached under one counted name of another.
+    ``cratekit.core.art`` beside the use of ``tags`` they are written as, so a
+    module cannot be reached under one counted name of another. What hands a
+    module over is an import at the top level of the module asked, of the
+    module itself or of a name another module hands over the same way. A
+    module bound some other way, by an assignment, a star import, ``getattr``
+    or a function that returns it, is not followed.
     """
 
     def __init__(self, sources: Mapping[str, str], *, root_package: str = "cratekit") -> None:
@@ -561,10 +571,23 @@ class Tree:
         }
 
     def _handed(self, module: str, name: str | None) -> str | None:
-        """The module of the package that ``module`` binds ``name`` to, if it binds one."""
-        path = self.modules.get(module)
-        bound = self._read[path].aliases.get(name) if path is not None and name else None
-        return bound if bound in self.modules else None
+        """The module of the package that ``module`` binds ``name`` to at its top level, if any.
+
+        Through as many modules as pass the name on by import. An import inside
+        a function binds nothing on the module, so an accessor that imports its
+        module when called, ``session_call_time.session``, is the function it is.
+        """
+        seen: set[tuple[str, str]] = set()
+        if name is None:
+            return None
+        while name is not None and (module, name) not in seen:
+            seen.add((module, name))
+            path = self.modules.get(module)
+            bound = self._read[path].handed.get(name) if path is not None else None
+            if bound is None:
+                return None
+            module, name = bound
+        return module if name is None and module in self.modules else None
 
     def _reached(self, module: str, rest: Sequence[str]) -> tuple[str, str | None]:
         """Where ``module`` and what is read off it lead: a module, and a name in it or None."""
@@ -580,10 +603,12 @@ class Tree:
         """One file's uses, each name that is a module read as a use of that module."""
         out: list[Use] = []
         for use in read.uses:
+            # The use as written stands: the module it names was reached too.
+            out.append(use)
             module = self._handed(use.target, use.name)
             if module is None:
-                out.append(use)
-            elif use.kind == "import":
+                continue
+            if use.kind == "import":
                 out.append(replace(use, target=module, name=None))
                 for local, chain, line in read.chains:
                     if local == use.local:
@@ -636,6 +661,7 @@ class Tree:
         found: list[Use] = []
         aliases: dict[str, str] = {}
         named: set[str] = set()
+        handed: dict[str, tuple[str, str | None]] = {}
         for node in sorted(imports, key=lambda node: (node.lineno, node.col_offset)):
             lazy = inside(node.lineno, functions)
             typing_only = inside(node.lineno, typing_blocks)
@@ -648,6 +674,8 @@ class Tree:
                     )
                     top = alias.name.split(".")[0]
                     aliases[alias.asname or top] = alias.name if alias.asname else top
+                    if not lazy and not typing_only:
+                        handed[alias.asname or top] = (aliases[alias.asname or top], None)
                 continue
             base = node.module or ""
             if node.level:
@@ -659,12 +687,17 @@ class Tree:
                 continue
             for alias in node.names:
                 whole = f"{base}.{alias.name}"
+                at_top = not lazy and not typing_only
                 if whole in self.modules:
                     found.append(Use(path, whole, None, node.lineno, "import", lazy, typing_only))
                     aliases[alias.asname or alias.name] = whole
+                    if at_top:
+                        handed[alias.asname or alias.name] = (whole, None)
                 else:
                     local = alias.asname or alias.name
                     named.add(local)
+                    if at_top:
+                        handed[local] = (base, alias.name)
                     found.append(Use(
                         path, base, alias.name, node.lineno, "import", lazy, typing_only,
                         local=local,
@@ -695,7 +728,9 @@ class Tree:
             for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        return _FileReading(found, top_level, aliases, _defined_names(tree), tuple(chains))
+        return _FileReading(
+            found, top_level, aliases, _defined_names(tree), tuple(chains), MappingProxyType(handed)
+        )
 
     # The import graph at import time, for rule four.
 

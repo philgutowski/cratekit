@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from cratekit.core import jobs, pool, tags
+from cratekit.core import pool, tags
 
 #: What a light worker holds before it reads a sample. Measured at 284
 #: megabytes on Linux (U241) and 336 on the Mac (A121, U275); declared an
@@ -160,7 +160,7 @@ def plan(
     return pool.plan_pool(
         worker_bytes=costliest(paths) if cost is None else cost,
         items=len(paths),
-        ceiling=jobs.worker_ceiling(reserved=reserved_cores),
+        ceiling=pool.worker_ceiling(reserved=reserved_cores),
         reserve_bytes=reserve_bytes,
     )
 

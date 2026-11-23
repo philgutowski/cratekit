@@ -1010,7 +1010,7 @@ def test_read_row_handed_no_row_reads_it_and_answers_as_handed_one(native_librar
         keys = {str(key.ID): key.ScaleName for key in db.get_key()}
         dyn = rc.dyn_marked(db)
         members = analyzed.live_members(db, analyze)
-        held = rc.content_rows(db, members)
+        held = rc.rows_by_id(db, members)
         handed = [
             rc.read_row(cfg, db, one, keys=keys, dyn=dyn, template=template, content=held.get(one))
             for one in members

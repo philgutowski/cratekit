@@ -80,6 +80,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Generic, Iterable, Mapping, TypeVar
 
+# The ceiling a caller passes is read in ``core.cores`` and never here. It is
+# re-exported for the feature package that sizes a pool, which may import this
+# module and not that one (U331), so a spawned worker loads nothing more for
+# it; nothing in this module calls it.
+from cratekit.core.cores import worker_ceiling as worker_ceiling
+
 #: The hard ceiling on workers for a pool whose children each hold a model: two
 #: is the survival-tested count. A caller with a cheaper worker raises it.
 DEFAULT_WORKER_CEILING = 2
@@ -1086,4 +1092,5 @@ __all__ = [
     "resident_bytes",
     "shown_bytes",
     "stream_workers",
+    "worker_ceiling",
 ]

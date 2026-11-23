@@ -478,7 +478,7 @@ def plan_adopt(
     held = frozenset(str(content_id) for content_id in leave)
     keys = {str(key.ID): key.ScaleName for key in db.get_key()}
     rows = dict(scope.read)
-    rows.update(rc.content_rows(db, [c for c in scope.content_ids if c not in rows]))
+    rows.update(rc.rows_by_id(db, [c for c in scope.content_ids if c not in rows]))
     rules = locations.prefix_rules(cfg.resolved_prefix_map())
     items: list[Item] = []
     for content_id in scope.content_ids:

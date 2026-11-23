@@ -412,7 +412,6 @@ KEBAB_LITERALS = {
         'unconverged-tree',
         'utf-8',
     ],
-    # 2026-10-31, U162: the rehearsal area helper joined.
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'bare-metal-recovery',
@@ -745,7 +744,6 @@ LITERAL_HOLDERS = {
         'write-lock-held',
     ],
     'core/reconcile.py': ['restore-reconciliation-outstanding', 'restore-record-unusable'],
-    # 2026-10-31, U162: the rehearsal area helper joined.
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'internal-error',

@@ -375,7 +375,7 @@ def _unanalysed(db: Any) -> dict[str, Any]:
 _CHUNK = 500
 
 
-def content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
+def rows_by_id(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
     """The collection rows named, by content ID, read a chunk of IDs to a statement (U259).
 
     A row the collection lacks is absent, which the caller reads as ``None``.
@@ -674,7 +674,7 @@ def check_rows(
     held: dict[str, Any] | None = dict(scope.read)
     try:
         held.update(
-            content_rows(
+            rows_by_id(
                 db, [content_id for content_id in scope.content_ids if content_id not in held]
             )
         )

@@ -466,6 +466,27 @@ def test_a_profile_without_the_labels_module_names_no_guided_verb(slim, monkeypa
     assert "sync.labels" not in {c["key"] for c in passed["data"]["checks"]}
 
 
+def test_an_explicit_toggle_puts_back_the_source_its_profile_leaves_out(tmp_path, monkeypatch):
+    """The pass reads the membership the configuration resolves to, the profile's
+    preset and then the explicit toggles (``Config.membership()``, U331): slim
+    with the labels module switched on names the guided verb slim alone does not."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    data = valid_data(root)
+    data["profile"] = {"name": "slim"}
+    data["modules"] = {"labels": True}
+    config.save(config.from_dict(data))
+    config.reset_cache()
+    outbound_source.forget_libraries()
+    bind_hearts(monkeypatch, FakeCatalogue(**_A_NEW_PLAYLIST))
+    passed = exited(drive(["sync", "all"]))
+    assert passed["data"]["summary"]["guided"] == {"labels": "crate label sync"}
+    assert "sync.labels" in {c["key"] for c in passed["data"]["checks"]}
+    outbound_source.forget_libraries()
+
+
 # 3. The slim profile, and the playlists source it runs alone (U64)
 
 

@@ -479,8 +479,11 @@ def test_the_two_queued_verbs_share_one_walker(cfg):
         "the vocals module grew its own scan back; there is one walker and it is "
         "cratekit.core.discovery"
     )
-    # Both reach it through ``core.jobs``, its listed home (U331).
-    assert analysis_cli.jobs is jobs and vocals_cli.jobs is jobs
+    # Both reach it through ``core.jobs``, its listed home (U331), and neither
+    # holds the walker's module or a name of it under a name of its own.
+    for verb in (analysis_cli, vocals_cli):
+        assert not hasattr(verb, "discovery")
+        assert not {"scan_audio", "frozen_walk", "item_path"} & set(vars(verb))
     assert jobs.scan_audio is discovery.scan_audio
     assert jobs.frozen_walk is discovery.frozen_walk
     assert jobs.item_path is discovery.item_path
@@ -670,6 +673,20 @@ def test_the_probe_names_missing_model_files_as_files(monkeypatch, tmp_path):
     kind, said = vocals.requirement()
     assert kind == vocals.MISSING_FILES
     assert "label table" in said and "'vocals' extra" not in said
+
+
+def test_a_bound_loader_is_asked_for_before_the_models_module_is_imported(monkeypatch):
+    """The order main has: with a loader bound, the module that holds the default one is
+    never imported, so a machine where it cannot load still scores through the bound one."""
+    import sys
+
+    from cratekit.analysis import vocals as scoring
+    from cratekit.vocals import cli as vocals_cli
+
+    monkeypatch.setattr(scoring, "loader_bound", lambda: True)
+    # None in ``sys.modules`` makes the import raise, as a module that cannot load would.
+    monkeypatch.setitem(sys.modules, "cratekit.analysis.vocal", None)
+    vocals_cli._bind_defaults()
 
 
 def test_the_one_test_takes_a_bound_loader_as_able(monkeypatch):

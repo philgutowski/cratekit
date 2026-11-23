@@ -57,11 +57,12 @@ def _require_extra() -> None:
 
 
 def _bind_defaults() -> None:
-    from cratekit.analysis import vocal
     from cratekit.analysis import vocals as scoring
 
     if scoring.loader_bound():
         return
+    from cratekit.analysis import vocal
+
     scoring.bind_loader(vocal.default_loader)
 
 

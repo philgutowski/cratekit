@@ -19,6 +19,16 @@ from cratekit.core import config, taxonomy
 from cratekit.core.cause import access_remedy, refuse
 from cratekit.core.exit_codes import Remedy
 
+# A feature package tells another app's nodes from the tree this taxonomy lays
+# out (``core.foreign_tree``, which reads the root names the taxonomy declares
+# foreign) through this module, their one listed home (U331), each name
+# carrying the other module's. Here and not in ``tree_registry``, which would
+# load the taxonomy for every caller that had not.
+from cratekit.core.foreign_tree import LEFT_AS_IT_IS as FOREIGN_LEFT_AS_IT_IS
+from cratekit.core.foreign_tree import OWNER as FOREIGN_OWNER
+from cratekit.core.foreign_tree import outside as outside_foreign
+from cratekit.core.foreign_tree import roots_in as foreign_roots_in
+
 _ORIGIN = ("core", "active_taxonomy")
 
 
@@ -95,4 +105,7 @@ def _shipped(name: str) -> taxonomy.Taxonomy:
     return taxonomy.load_taxonomy(text)
 
 
-__all__ = ["load", "read_text"]
+__all__ = [
+    "FOREIGN_LEFT_AS_IT_IS", "FOREIGN_OWNER", "foreign_roots_in", "load", "outside_foreign",
+    "read_text",
+]

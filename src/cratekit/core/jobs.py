@@ -46,7 +46,6 @@ from cratekit.core.cause import (
     Scope,
     refuse,
 )
-from cratekit.core.cores import worker_ceiling
 from cratekit.core.discovery import (
     Scan,
     frozen_walk,
@@ -1278,13 +1277,12 @@ for _moved in (Batching, Declined, DriveResult, Interrupt, Parked, decline_item,
     _moved.__module__ = __name__
 del _moved
 
-# A feature package reaches a job's item list (``core.discovery``) and the
-# ceiling its workers take from the cores (``core.cores``) through this module,
-# their one listed home (U331). The pool that runs them is listed itself:
-# importing it here would load its machinery with every command's queue.
+# A feature package reaches a job's item list (``core.discovery``) through this
+# module, its one listed home (U331). The pool that runs the items is listed
+# itself: importing it here would load its machinery with every command's
+# queue, and this module with every worker the pool spawns.
 __all__ = [
     "Scan", "frozen_walk", "item_path", "scan_audio", "walk_warnings", "warnings_of",
-    "worker_ceiling",
     "ENTRY_MODULE", "GATE_RUN_KEY", "QUEUE_FILENAME", "SCHEMA_VERSION", "TERMINAL_STATES",
     "Artifacts", "BatchHandler", "Batching", "DriveResult", "assert_free", "DriverHeld", "Handler",
     "Interrupt", "Item", "ItemState", "Job", "Declined", "Parked", "JobState", "JobStore",

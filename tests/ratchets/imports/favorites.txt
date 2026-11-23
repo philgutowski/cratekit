@@ -1,7 +1,7 @@
-# Seam crossings favorites may still hold (U296), one line each:
+# Seam crossings favorites holds (U296): none, and none may be put back (U331).
+# tests/test_import_rules.py::test_every_import_allowance_is_empty fails on any line here.
+# A line would be one of:
 #   private NAME           a private name of another package
 #   off-interface MODULE   a core module off the named interface list
 #   top-level NAME         a toggleable package imported at module top level
 #   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
-# Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune favorites
-# A line whose crossing is gone fails nothing.
