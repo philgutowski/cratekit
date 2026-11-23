@@ -84,8 +84,7 @@ def test_a_lossless_m4a_decodes_to_the_pcm_it_was_made_from(tmp_path, channels):
 
 
 def test_a_path_with_a_colon_is_read_as_a_file(tmp_path, monkeypatch):
-    """ffmpeg reads ``name:rest`` as a protocol, so a relative name like this
-    one would be refused as an unknown protocol without the ``file:`` prefix."""
+    """ffmpeg reads ``name:rest`` as a protocol, so the name takes a ``file:`` prefix."""
     pcm = pcm16(0.5)
     encode_m4a(tmp_path, write_wav(tmp_path / "source.wav", pcm), "alac", name="Artist: Title.m4a")
     monkeypatch.chdir(tmp_path)
@@ -227,8 +226,7 @@ def test_no_ffmpeg_raises_the_missing_decoder_and_runs_nothing(tmp_path, monkeyp
 
 
 def test_the_decoder_is_found_where_every_other_binary_is(tmp_path, monkeypatch):
-    """The override variable a person sets for ffmpeg is the one this decode
-    obeys, so doctor's ``binary.ffmpeg`` row and the decode agree."""
+    """The decode obeys the person's ffmpeg override, as doctor's ``binary.ffmpeg`` does."""
     asked: list[str] = []
     monkeypatch.setattr(binaries, "find", lambda name: asked.append(name))
     with pytest.raises(decode.DecoderMissing):
@@ -306,16 +304,14 @@ def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
         (0.0, -0.0, "00000000", "00000000"),
         (-0.0, 0.0, "00000000", "00000000"),
         (0.5, -0.5, "00000000", "00000000"),
-        # A half sum of minus the smallest subnormal rounds to minus zero, which
-        # librosa 1.0's buffer of zeros turns to plus zero.
+        # A half sum of minus the smallest subnormal is minus zero; librosa 1.0's is plus.
         (-_TINY, 0.0, "80000000", "00000000"),
         (-0.0, -_TINY, "80000000", "00000000"),
         (_TINY, -0.0, "00000000", "00000000"),
         # Three halves of the smallest subnormal is a tie, to the even two.
         (3 * _TINY, 0.0, "00000002", "00000002"),
         (-3 * _TINY, -0.0, "80000002", "80000002"),
-        # A sum past float32's largest value overflows in librosa's float32
-        # reduction as in the one add, and the resampler then refuses it.
+        # An overflow past float32's largest, as librosa's reduction, refused after.
         (3e38, 3e38, "7f800000", "7f800000"),
         (-3e38, -3e38, "ff800000", "ff800000"),
     ],

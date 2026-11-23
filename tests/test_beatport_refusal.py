@@ -265,8 +265,7 @@ def test_three_refusals_then_the_fourth_file_is_not_sent_and_records_blocked():
         assert said.answer == "blocked"
         assert said.note.startswith(searchers.NOT_SENT)
         assert "refused this client on its last 3 lookups in this sweep" in said.note
-        # The refusal it is standing on is quoted, so the record still says what
-        # Beatport answered when it was last asked.
+        # The refusal it stands on is quoted, so the record says what Beatport answered.
         assert said.note.endswith(
             "Then, the catalogue refused this client, Cloudflare challenge, HTTP 403"
         )
@@ -339,8 +338,7 @@ def test_blocked_miss_blocked_blocked_does_not_stop_the_run():
 
 
 def test_an_outage_between_refusals_ends_the_run_of_them():
-    """Only refusals with nothing between them stop the run; an outage is an
-    answer of its own, so the count starts again after it."""
+    """Only refusals with nothing between them stop the run; an outage restarts the count."""
     _hits, seen = _sweep(
         [REFUSED, REFUSED, _Response(503), REFUSED, REFUSED], refusals=searchers.Refusals()
     )
@@ -376,8 +374,7 @@ def test_a_searcher_given_no_count_keeps_its_own_for_its_life():
 
 
 def test_a_stopped_catalogue_is_answered_without_a_wait():
-    """The point of stopping is the paced second and a half per file, so a
-    catalogue answered from the count is not waited for either."""
+    """A catalogue answered from the count is not waited for its paced second and a half."""
     refusals = searchers.Refusals()
     _sweep([REFUSED] * 3, refusals=refusals)
     naps: list[float] = []

@@ -109,8 +109,7 @@ def test_each_word_routes_to_the_folder_the_author_gave_it(word, folder):
     ],
 )
 def test_each_word_tags_as_the_folder_the_author_gave_it_and_the_tag_routes_there(word, folder):
-    """A tag the tagger writes is a folder's name, and routing resolves it to
-    that folder, so a tagged track lands where its word was meant to."""
+    """A tag the tagger writes is a folder's name, and routing resolves it there."""
     suggestion = routing.suggest_tag(DECLARED, word)
     assert (suggestion.tag, suggestion.sub_id) == (folder, None)
     assert DECLARED.bucket(suggestion.bucket_id).display == folder
@@ -272,8 +271,7 @@ def test_a_soul_track_in_r_and_b_med_moves_to_the_soul_band_its_reading_names(ge
 
 
 def test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted():
-    """Its genre sent it out of R&B, so no reading is needed to leave, and the
-    no reading sub says nothing false about it."""
+    """Its genre sent it out of R&B, so it leaves with no reading needed."""
     plan = _moves([_scanned("t", energy=None, genre="Soul")], _in_rnb("t", MED))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
@@ -339,8 +337,7 @@ def test_a_soul_track_in_a_renamed_r_and_b_band_is_left_since_the_writer_cannot_
 
 
 def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved():
-    """Listed so the split can be seen to be unfinished before its declaration
-    is deleted, under the renamed playlist where it sits in one."""
+    """Listed, under the renamed playlist, so the split is seen to be unfinished."""
     excluded = _scanned("t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED)
     held = _in_rnb("t", MED)
     plan = _moves([excluded], held)
@@ -361,8 +358,7 @@ def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved()
 
 
 def test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing():
-    """R&B's own tree path must not move it between R&B's bands, a folder its
-    genre does not name, though no entry claims Soul."""
+    """R&B's own tree path does not move it between R&B's bands its genre does not name."""
     refused = _refused_over([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", LOW, HIGH))
     plan = adopt_move.build_move_plan(refused, DECLARED)
     assert plan.moves == ()
@@ -384,8 +380,7 @@ def _in_old_soul_rnb(content_id: str) -> dict:
 
 
 def test_a_soul_track_in_the_old_soul_r_and_b_playlist_moves_to_soul_and_is_withheld_until():
-    """Found by the review: it was filed in Soul by adoption while it sat in
-    the old playlist, and nothing took it out."""
+    """Filed in Soul by adoption while in the old playlist, it is taken out of it."""
     tracks = [_scanned("t", energy=5, genre="Soul / R&B")]
     (entry,) = _adoption(tracks, _in_old_soul_rnb("t")).entries
     assert entry.held_elsewhere and not entry.applicable
@@ -500,8 +495,7 @@ def _seeded_place(place: str) -> tuple[str, str]:
 
 @pytest.fixture
 def split(machine, silence):  # noqa: F811
-    """A library whose Soul tracks sit in R&B's bands and whose Hip-Hop tracks
-    sit in the non electronic folder's Hip-Hop playlist, as on 2026-10-08."""
+    """Soul tracks in R&B's bands and Hip-Hop in the old Hip-Hop playlist, as on 2026-10-08."""
     tracks = [(content_id, genre, tag) for content_id, genre, tag, _held in _SEEDED]
     places = [
         (*_seeded_place(place), content_id)

@@ -286,8 +286,7 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     job = queued("run", folder)
 
     code, resumed = drive(resume_argv(job.job_id))
-    # A failed one item job is recorded as no-evidence with the item's cause
-    # inside it, the shape ``handlers.run_job`` documents.
+    # A failed one item job is no-evidence with the item's cause inside it.
     assert code != int(ExitCode.OK), resumed
     assert item_causes(job.job_id) == {"track.flac": "module-extras-missing"}
     inner = resumed["cause"]["inner"]
@@ -428,8 +427,7 @@ def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analy
     code, _ = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
     assert item_causes(job.job_id) == {"twin.flac": "source-missing"}
-    # The older headed file is an item of its own and is the resume marker;
-    # nothing was committed FOR the deleted one.
+    # The older headed file is an item of its own and the resume marker.
     assert [r["item"] for r in artifacts.committed(cfg, job.job_id)] == ["08A - 124 - twin.flac"]
 
 
@@ -890,8 +888,7 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
     assert scored["vocal_active"] is True
     assert scored["vocal_reason"] is None
     assert scored["voxlevel"] > 0
-    # The gender is the model's call: the fake scores male four times female, so
-    # the reduction must say M, not a constant U.
+    # The fake scores male four times female, so the reduction must say M.
     assert scored["voxgender"] == "M"
     assert scored["voxgenderconf"] == 60
 
@@ -1081,8 +1078,7 @@ def test_the_shipped_decoder_reads_at_the_models_rate_and_is_absent_without_the_
         import librosa  # noqa: F401
     except ImportError:
         assert vocal.decode("nowhere.flac") is None
-    # With the extra installed the absence cannot be driven, and an uncounted
-    # skip is worse, so the test says nothing.
+    # With the extra installed the absence cannot be driven, and a skip would go uncounted.
 
 
 def test_run_batch_threads_the_decoder_through_to_the_vocal_pass(tmp_path, monkeypatch):
@@ -1586,8 +1582,7 @@ def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
 def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
     cfg, folder, silence, monkeypatch
 ):
-    """The energy half is written before the vocal half reads the old cut, so
-    the vocal half fails in its check and the verb does not refuse over it."""
+    """The energy half lands first, so the vocal half fails its check and the verb runs."""
     names = [f"t{i:02d}" for i in range(12)]
     for index, name in enumerate(names):
         place(folder, silence, name, voxlevel=2 if index < 8 else 40)
@@ -1890,8 +1885,7 @@ def test_calibrate_declares_the_mount_check_its_state_writes_need():
 
 
 def test_an_unknown_tag_field_is_a_defect_and_not_a_container_refusal(folder, silence):
-    """The writer's plain ``ValueError`` is the beat grid enforcement point (R17),
-    not a container refusal."""
+    """The writer's plain ``ValueError`` is the beat grid enforcement point (R17)."""
     path = place(folder, silence, "a")
     with pytest.raises(ValueError, match="unknown tag fields"):
         analysis_cli._write_or_refuse(path, {"averagebpm": "124"}, untouched="untouched")

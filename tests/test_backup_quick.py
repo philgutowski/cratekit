@@ -154,8 +154,7 @@ def _held(folder: Path) -> dict[str, bytes]:
 
 
 def _library_as_mirrored(cfg) -> dict[str, bytes]:
-    """The library the mirror should hold: every file but the database set and
-    the fact file, which every run rewrites after its transfer."""
+    """What the mirror should hold: every file but the database set and the fact file."""
     root = cfg.library.root
     leave = {backup_facts.path_for(cfg).relative_to(root).as_posix()}
     leave |= {p.relative_to(root).as_posix() for p in backup.database_fileset(cfg)}
@@ -202,8 +201,7 @@ def test_nothing_changed_is_a_skip_that_sends_nothing_and_resets_both_ages(cfg, 
 
 
 def test_the_fact_file_alone_changed_is_still_a_skip(cfg, real_rclone, tmp_path):
-    """The one file a skip does not send, because every run rewrites it after
-    its transfer and the remote's copy is a run behind under every kind."""
+    """A skip does not send the fact file, which every run rewrites after its transfer."""
     _seed(cfg)
     _backup(cfg, at=MOMENT)
     fact = backup_facts.path_for(cfg).relative_to(cfg.library.root).as_posix()
@@ -265,8 +263,8 @@ def test_an_added_a_changed_and_a_removed_file_are_a_quick_run_of_only_those(
 def test_a_rewrite_that_kept_its_size_and_time_is_found_by_its_hash_and_sent(
     cfg, real_rclone, tmp_path
 ):
-    """The racily clean file: written inside the walk's window, so the record
-    hashed it, and rewritten keeping both its size and its time."""
+    """The racily clean file: hashed inside the walk's window, then rewritten keeping
+    size and time."""
     music = _seed(cfg)
     fresh = datetime.fromtimestamp(time.time(), tz=timezone.utc)
     _write(music / "fresh.flac", b"first take", at=fresh)
@@ -1021,8 +1019,7 @@ def test_the_kind_words_are_spelled_once_on_each_side_and_the_seconds_once():
 
 
 def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
-    """``ages`` feeds the age a destructive session reads, so a damaged
-    informational key is a reason for a full check and not a refusal."""
+    """A damaged informational key in ``ages`` asks a full check, never a refusal."""
     _seed(cfg)
     _backup(cfg, at=MOMENT)
     path = backup_facts.path_for(cfg)

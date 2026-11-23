@@ -81,8 +81,7 @@ def test_a_manual_or_derived_sub_never_competes():
 
 
 def test_every_sub_routing_can_name_is_one_of_its_buckets_competing_subs():
-    """The plan only withholds a sub in the set, so a sub routing can return
-    that the set misses would be a track filed twice with nothing said."""
+    """A sub routing can return that the set misses would be filed twice unsaid."""
     for bucket in DECLARED.buckets:
         _kind, subs = routing.competing_subs(DECLARED, bucket.id)
         for level in (None, *range(1, DECLARED.energy.scale_max + 1)):
@@ -146,8 +145,7 @@ def test_a_track_in_no_sub_of_the_bucket_is_added_as_before():
 
 @pytest.mark.parametrize("sub_class", [entry.id for entry in DECLARED.sub_classes])
 def test_a_track_sitting_only_in_a_sub_class_is_added_to_its_band(sub_class):
-    """Even when a caller hands the plan a held sub class, which the reader
-    never does. The plan asks the taxonomy for itself."""
+    """The plan asks the taxonomy itself, even when handed a held sub class."""
     bucket = _energy_bucket().id
     entry = _only(_plan([_scanned("t", bucket, energy=8)], _held(bucket, t=(sub_class,))))
     assert entry.disposition is adopt_scan.Disposition.ROUTE
@@ -188,8 +186,7 @@ def test_a_track_already_in_the_sub_the_plan_names_is_not_withheld():
 
 
 def test_a_track_in_two_bands_is_not_withheld_from_the_one_the_plan_names():
-    """The shape the live library already holds 37 of. The writer reports the
-    row already present, so there is nothing to withhold it from."""
+    """The live library holds 37 of these; the writer reports the row present."""
     bucket = _energy_bucket().id
     entry = _only(_plan([_scanned("t", bucket, energy=8)], _held(bucket, t=(HIGH, MED))))
     assert entry.disposition is adopt_scan.Disposition.ROUTE
@@ -465,8 +462,7 @@ def test_a_track_in_the_planned_sub_under_another_name_only_is_withheld():
 
 
 def test_an_unnamed_sub_the_track_does_not_hold_changes_nothing():
-    """``unnamed`` is a part of ``held``. A caller that hands over one without
-    the other has not shown that the track sits anywhere."""
+    """``unnamed`` is a part of ``held``, so one without the other shows nothing."""
     bucket = _energy_bucket().id
     odd = adopt_plan.Placements(read=True, unnamed={bucket: {"t": (HIGH,)}})
     entry = _only(_plan([_scanned("t", bucket, energy=8)], odd))
@@ -474,8 +470,7 @@ def test_an_unnamed_sub_the_track_does_not_hold_changes_nothing():
 
 
 def test_the_digest_covers_every_field_the_review_list_shows():
-    """One changed field at a time, and the list of fields is closed below so
-    a field added to the screen has to be added here."""
+    """One changed field at a time, over a closed list a new screen field must join."""
     bucket = _energy_bucket().id
     held = _held(bucket, t=(MED,))
     shown = _scanned("t", bucket, energy=8)

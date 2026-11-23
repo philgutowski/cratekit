@@ -22,8 +22,7 @@ from cratekit.tagging import catalogues, discogs, searchers, shops
 
 TAXONOMY = default_taxonomy()
 
-#: Every display name the template declares, buckets and subs alike, which no
-#: catalogue module may hold as a literal (R19).
+#: Every display name the template declares, which no catalogue module may hold (R19).
 DISPLAYS = frozenset(
     {bucket.display for bucket in TAXONOMY.buckets}
     | {sub.display for bucket in TAXONOMY.buckets for sub in bucket.subs}
@@ -250,8 +249,7 @@ def test_a_beatport_match_carries_the_tag_the_source_name_and_the_raw_genre():
 
 @pytest.mark.parametrize("beatport", [EMPTY_BEATPORT, UNREACHABLE], ids=["miss", "unreachable"])
 def test_a_beatport_miss_or_silence_falls_through_to_traxsource_which_names_itself(beatport):
-    """A silence from one catalogue must not decide the answer for the others.
-    Traxsource names no picture, which is parity."""
+    """A silence from one catalogue must not decide the answer for the others."""
     hit = _hit(beatport=beatport, traxsource=_traxsource_page([(ARTIST, TITLE, BUCKET_GENRE)]))
     assert hit is not None
     assert hit.source == searchers.TRAXSOURCE
@@ -291,8 +289,7 @@ def test_a_bandcamp_listing_with_no_genre_spends_a_second_fetch_on_the_track_pag
 
 
 def test_three_sources_that_all_answered_with_no_match_decline():
-    """Three catalogues that answered and did not carry the track is absence, a
-    decline the next run asks again, never a failure."""
+    """Three catalogues answering without the track is absence, a decline, not failure."""
     hit = _hit()
     assert _no_hit(hit)
     assert [said.answer for said in hit.answers] == ["miss"] * 3
@@ -354,8 +351,7 @@ def test_a_traxsource_page_with_no_rows_at_all_is_a_miss_rather_than_a_parse_bre
 
 
 def test_a_source_genre_that_aliases_to_a_sub_resolves_to_the_subs_display():
-    """The reason the module calls ``suggest_tag``: a bare alias lookup's caller
-    rendering the bucket writes the parent's name."""
+    """``suggest_tag``, since a bare alias lookup's caller writes the parent's name."""
     hit = _hit(beatport=_row(SUB_GENRE))
     assert hit is not None
     answer = routing.suggest_tag(TAXONOMY, SUB_GENRE)
@@ -391,8 +387,7 @@ def test_the_resolver_fixtures_still_reach_the_tiers_they_name():
     ids=["unknown word", "declared tag with no bucket", "padded genre"],
 )
 def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, written, flagged):
-    """R-650: the last tier's word reaches the file and says it was that word. A
-    padded string resolves as the trimmed one."""
+    """R-650: the last tier's word reaches the file and says so; padding is trimmed."""
     hit = _hit(beatport=_row(word))
     assert hit is not None
     assert hit.genre == written
@@ -538,8 +533,7 @@ def test_the_injected_seam_and_the_binders_never_reach_the_http_getter(monkeypat
 
 @pytest.mark.parametrize("module", [searchers, catalogues, discogs, shops])
 def test_the_module_names_no_declared_genre_display(module):
-    """R19 over the source: a vendor to folder map pasted here works for one
-    library and quietly does nothing in the next."""
+    """R19 over the source: no vendor to folder map that works for one library only."""
     source = Path(module.__file__).read_text(encoding="utf-8")
     literals = {
         node.value
@@ -706,8 +700,7 @@ def _said(hit) -> list[tuple[str, str]]:
 
 
 def test_a_bandcamp_client_challenge_page_is_blocked_rather_than_a_miss():
-    """A 200 with no rows is no empty result when its title is a bot check; read
-    as one, Bandcamp reported MISS on every file."""
+    """A 200 with no rows whose title is a bot check is no empty result."""
     hit = _wire(bandcamp=_Response(200, BANDCAMP_CLIENT_CHALLENGE))
     assert hit.genre is None and hit.source == ""
     assert _said(hit) == [
@@ -789,8 +782,7 @@ def test_beatport_answering_403_is_blocked_like_the_fallbacks():
 
 
 def test_three_refusals_raise_unreachable_and_say_the_fallbacks_were_blocked():
-    """With no MISS the file is refused, and the step says a network check will
-    not move a bot check."""
+    """With no MISS the file is refused, and a network check will not move a bot check."""
     with pytest.raises(CratekitError) as raised:
         _wire(
             beatport=_Response(503),
@@ -831,8 +823,7 @@ def test_the_interstitial_title_written_with_one_ellipsis_character_is_blocked()
 
 
 def test_a_bandcamp_track_page_that_is_gone_is_a_dead_listing_and_still_a_miss():
-    """A 404 track page is no answer about the track; held as unreachable, the
-    file would stay undecidable while the dead link is listed."""
+    """A 404 track page is no answer about the track, and not unreachable either."""
     assert _no_hit(_wire(track=_Response(404), bandcamp=_Response(200, GENRELESS_LISTING)))
 
 
