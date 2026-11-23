@@ -1,0 +1,1301 @@
+name = "u304-replay-after-p1a"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1289.M10_warning_ready_filter"
+source = { table = "r1289.json", id = "M10_warning_ready_filter" }
+description = "_plan_playlists: the unread warning covers a playlist that was not queued, saying its other tracks are"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '        identity: tracks for identity, tracks in sweep.unread.items() if identity in sweep.ready'
+new = '        identity: tracks for identity, tracks in sweep.unread.items() if True'
+
+[[rows]]
+id = "r1289.M11_warning_absent"
+source = { table = "r1289.json", id = "M11_warning_absent" }
+description = "_plan_playlists: no unread warning at all"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '    if left:'
+new = '    if False:'
+
+[[rows]]
+id = "r1289.M12_warning_promise"
+source = { table = "r1289.json", id = "M12_warning_promise" }
+description = "_plan_playlists: the warning reworded to promise a later sync offers the playlist again, which is false once its job succeeds"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''                    "playlist's intake job succeeds no later sync offers it again, so "'''
+new = '''                    "playlist's intake job succeeds the next sync takes it up again, so "'''
+
+[[rows]]
+id = "r1289.M13_warning_names"
+source = { table = "r1289.json", id = "M13_warning_names" }
+description = "_plan_playlists: the warning names each playlist but not its unread tracks"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''                        + ", ".join(f"{ref} ({one['why']})" for ref, one in tracks.items())'''
+new = '                        + "some tracks"'
+
+[[rows]]
+id = "r227.C6_composed_limit_spelled"
+source = { table = "r227.json", id = "C6_composed_limit_spelled" }
+description = "sync all judges against a seven spelled in the shell"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)'
+new = '    age = source.export_age(exported, limit_days=7)'
+
+[[rows]]
+id = "r359.M5_unwired"
+source = { table = "r359.json", id = "M5_unwired" }
+description = "The playlists planner no longer hands its note to the plan"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)'
+new = '    plan = _Plan(spec=spec, describe=describe, detail=describe([]))'
+
+[[rows]]
+id = "r359.M6_no_append"
+source = { table = "r359.json", id = "M6_no_append" }
+description = "The check computes the note and never appends it to the detail a person reads"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '        check["detail"] += f"; {noted}"'
+new = '        pass'
+
+[[rows]]
+id = "r359.M7_note_before_describe"
+source = { table = "r359.json", id = "M7_note_before_describe" }
+description = "The note reads an empty block instead of the source's own, so it says nothing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    noted = plan.note(plan.detail or {}) if plan.note is not None else None'
+new = '    noted = plan.note({}) if plan.note is not None else None'
+
+[[rows]]
+id = "r504-b.B10_check_no_numbers"
+source = { table = "r504-b.json", id = "B10_check_no_numbers" }
+description = "The inbound check fails without naming the three numbers"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            f"; the listing came back short, {short.summary()}, which does not say which"'
+new = '            "; the listing came back short, which does not say which"'
+
+[[rows]]
+id = "r504-b.B7_sync_drops_short"
+source = { table = "r504-b.json", id = "B7_sync_drops_short" }
+description = "sync all lists the hearts and keeps no shortfall"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    inbound.shortfall = short'
+new = '    inbound.shortfall = None'
+
+[[rows]]
+id = "r504-b.B8_check_passes"
+source = { table = "r504-b.json", id = "B8_check_passes" }
+description = "A short listing leaves the inbound check at its prior status instead of failing it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        check["status"] = "fail"
+        if inbound.not_queued == playlists.Excluded.EMPTY:'''
+new = '        if inbound.not_queued == playlists.Excluded.EMPTY:'
+
+[[rows]]
+id = "r504-b.B9_all_withheld_says_no_hearts"
+source = { table = "r504-b.json", id = "B9_all_withheld_says_no_hearts" }
+description = "Every heart withheld still reads as an account that lists no hearts"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            check["detail"] = "not queued: the provider served none of the account's hearts"'''
+new = '            pass'
+
+[[rows]]
+id = "r515-operator.S13_sweep_no_warning"
+source = { table = "r515-operator.json", id = "S13_sweep_no_warning" }
+description = "The sync all sweep says nothing of a short playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    if sweep.short:'
+new = '    if False:'
+
+[[rows]]
+id = "r835-c.S2_sync_hands_the_ledger_to_the_sweep_again"
+source = { table = "r835-c.json", id = "S2_sync_hands_the_ledger_to_the_sweep_again" }
+description = "sync.cli._plan_playlists: the sweep is handed no label built playlists, so every year playlist is swept as intake"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_intake_writers_native.py", "tests/test_label_playlists.py", "tests/test_sync_all.py"]
+old = '    label_built = ledger.label_playlist_ids(cfg)'
+new = '    label_built = frozenset()'
+
+[[rows]]
+id = "r837-a.A17_sweep_hand_off"
+source = { table = "r837-a.json", id = "A17_sweep_hand_off" }
+description = "sync.cli: the sweep is handed no set playlist, so the exclusion has nothing to exclude"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_export_set.py", "tests/test_intake_writers_native.py", "tests/test_label_playlists.py", "tests/test_sync_all.py"]
+old = '            set_built=set_built,'
+new = '            set_built=frozenset(),'
+
+[[rows]]
+id = "u109-a.A1_plan_guided"
+source = { table = "u109-a.json", id = "A1_plan_guided" }
+description = "Plan every enabled source again, guided ones included, so labels is planned as a source with no worker"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    plans = [_plan(spec, ctx) for spec in enabled if spec.guided_by is None]'
+new = '    plans = [_plan(spec, ctx) for spec in enabled]'
+
+[[rows]]
+id = "u109-a.A2_guided_empty"
+source = { table = "u109-a.json", id = "A2_guided_empty" }
+description = "Collect no guided source, so nothing names crate label sync anywhere"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    guided = tuple(spec for spec in enabled if spec.guided_by is not None)'
+new = '    guided = ()'
+
+[[rows]]
+id = "u109-a.A3_no_check_row"
+source = { table = "u109-a.json", id = "A3_no_check_row" }
+description = "Drop the guided check row, the one line the human output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    checks.extend(_guided_check(spec) for spec in guided)'
+new = ''
+
+[[rows]]
+id = "u109-a.A4_summary_guided"
+source = { table = "u109-a.json", id = "A4_summary_guided" }
+description = "Drop summary.guided from the pass report"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        "guided": _guided(guided),
+    }
+    for plan in plans:'''
+new = '''
+    }
+    for plan in plans:'''
+
+[[rows]]
+id = "u109-a.A5_gate_guided"
+source = { table = "u109-a.json", id = "A5_gate_guided" }
+description = "Drop the guided block from what the favourites gate shows"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+            if p.inbound is not None
+        },
+        "guided": _guided(guided),
+    }'''
+new = '''
+            if p.inbound is not None
+        },
+    }'''
+
+[[rows]]
+id = "u109-a.A6_refusal_step_dropped"
+source = { table = "u109-a.json", id = "A6_refusal_step_dropped" }
+description = "A pass that queued nothing refuses without the step naming the guided verb"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),'
+new = '            steps=first.remediation.steps,'
+
+[[rows]]
+id = "u109-a.A7_refusal_step_first"
+source = { table = "u109-a.json", id = "A7_refusal_step_first" }
+description = "Prepend the guided step instead of appending it, so it displaces the refusing source's own first step"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),'
+new = '            steps=(*(_guided_step(spec) for spec in guided), *first.remediation.steps),'
+
+[[rows]]
+id = "u109-a.A8_row_reworded"
+source = { table = "u109-a.json", id = "A8_row_reworded" }
+description = "Reword the guided row so it no longer says the source is not swept here"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            f"not swept by sync all; {spec.command()} takes this source on its "'
+new = '            f"left to another verb; {spec.command()} takes this source on its "'
+
+[[rows]]
+id = "u147-c.M19_sweep_handoff"
+source = { table = "u147-c.json", id = "M19_sweep_handoff" }
+description = "sync.cli: the sync source hands the sweep no mirrored playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '            mirrored=mirrored,'
+new = ''
+
+[[rows]]
+id = "u73-c.C3_next_only_with_intake_jobs"
+source = { table = "u73-c.json", id = "C3_next_only_with_intake_jobs" }
+description = "Name intake missing --run on every pass, including one that queued no intake job"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    if not filed:'
+new = '    if False:'
+
+[[rows]]
+id = "u73-c.C4_next_counts_intake_jobs_only"
+source = { table = "u73-c.json", id = "C4_next_counts_intake_jobs_only" }
+description = "Count every filed job as an intake job when deciding to name the run verb"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = 'if job.handler_key in intake_cli.INTAKE_KEYS]'
+new = 'if True]'
+
+[[rows]]
+id = "u73-c.C5_next_check_row"
+source = { table = "u73-c.json", id = "C5_next_check_row" }
+description = "Keep the command in the summary and drop the check row the human output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '        checks.append(step["check"])'
+new = '        pass'
+
+[[rows]]
+id = "u74-b.B10_refused_check_status"
+source = { table = "u74-b.json", id = "B10_refused_check_status" }
+description = "Report a hearts refusal as info rather than fail"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+    elif inbound.refused is not None:
+        check["status"] = "fail"'''
+new = '''
+    elif inbound.refused is not None:
+        check["status"] = "info"'''
+
+[[rows]]
+id = "u74-b.B11_gate_screen"
+source = { table = "u74-b.json", id = "B11_gate_screen" }
+description = "The gate screen says the hearts are queued whatever the answer when the listing refused"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '                "queued_whatever_the_answer": p.inbound.queue is not None,'
+new = '                "queued_whatever_the_answer": True,'
+
+[[rows]]
+id = "u74-b.B12_next_step_outbound_only"
+source = { table = "u74-b.json", id = "B12_next_step_outbound_only" }
+description = "Name no intake missing --run step when only the hearts filed an intake job"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    filed = [job for p in plans for job in _filed(p) if job.handler_key in intake_cli.INTAKE_KEYS]'
+new = '    filed = [job for p in plans for job in p.filed if job.handler_key in intake_cli.INTAKE_KEYS]'
+
+[[rows]]
+id = "u74-b.B1_source_id_dropped"
+source = { table = "u74-b.json", id = "B1_source_id_dropped" }
+description = "Queue the hearts job with no source_id, so the next pass cannot see it is open"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+                run_id=run_id,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,
+            )'''
+new = '''
+                run_id=run_id,
+                source_id=None,
+            )'''
+
+[[rows]]
+id = "u74-b.B2_compose_skips_inbound"
+source = { table = "u74-b.json", id = "B2_compose_skips_inbound" }
+description = "The composer never queues the read half"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        if p.inbound is not None and p.inbound.queue is not None:
+            ready.append'''
+new = '''
+        if False:
+            ready.append'''
+
+[[rows]]
+id = "u74-b.B3_queue_refusal_raised"
+source = { table = "u74-b.json", id = "B3_queue_refusal_raised" }
+description = "Raise a queue time refusal instead of recording it against its half"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '                    half.refused, half.not_queued = exc.cause, exc.cause.reason'
+new = '                    raise'
+
+[[rows]]
+id = "u74-b.B4_filed_outbound_only"
+source = { table = "u74-b.json", id = "B4_filed_outbound_only" }
+description = "Count only the write half's jobs as filed, so a pass that queued only the hearts refuses or reads as a no-op"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '    return [*plan.filed, *(plan.inbound.filed if plan.inbound is not None else ())]'
+new = '    return [*plan.filed]'
+
+[[rows]]
+id = "u74-b.B5_inbound_refusal_not_counted"
+source = { table = "u74-b.json", id = "B5_inbound_refusal_not_counted" }
+description = "Leave the hearts refusal out of the refusal list, so a declined pass it alone stopped reads as a no-op"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '        for cause in (p.refused, p.inbound.refused if p.inbound else None)'
+new = '        for cause in (p.refused, None)'
+
+[[rows]]
+id = "u74-b.B6_inbound_warning"
+source = { table = "u74-b.json", id = "B6_inbound_warning" }
+description = "Emit no warning for a hearts refusal"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        if plan.inbound is not None and plan.inbound.refused is not None:
+            warnings.append('''
+new = '''
+        if False:
+            warnings.append('''
+
+[[rows]]
+id = "u74-b.B7_block_dropped"
+source = { table = "u74-b.json", id = "B7_block_dropped" }
+description = "Leave the favourites.inbound block out of the summary"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            plan.detail = {**(plan.detail or {}), "inbound": plan.inbound.block()}'
+new = '            pass'
+
+[[rows]]
+id = "u74-b.B8_check_dropped"
+source = { table = "u74-b.json", id = "B8_check_dropped" }
+description = "Leave the sync.favorites.inbound check out, which is all the default output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            checks.append(_inbound_check(plan, plan.inbound))'
+new = '            pass'
+
+[[rows]]
+id = "u74-b.B9_check_wording"
+source = { table = "u74-b.json", id = "B9_check_wording" }
+description = "Say the hearts were not listed for a half that was listed and refused at the queue"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '            if inbound.hearts is None'
+new = '            if True'
+
+[[rows]]
+id = "u74.A10_export_refusal_raised"
+source = { table = "u74.json", id = "A10_export_refusal_raised" }
+description = "Raise the write half's export refusal to _plan again, which drops the read half with it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        plan.refused, plan.not_queued = exc.cause, exc.cause.reason
+        return plan'''
+new = '        raise'
+
+[[rows]]
+id = "u74.A11_queue_not_bound"
+source = { table = "u74.json", id = "A11_queue_not_bound" }
+description = "Never bind the read half's queue callable, so a listed half queues nothing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+    inbound.queue = queue
+    return inbound'''
+new = '    return inbound'
+
+[[rows]]
+id = "u74.A12_run_id_dropped"
+source = { table = "u74.json", id = "A12_run_id_dropped" }
+description = "Queue the hearts job without the shared run id, so intake missing --run cannot find it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+                tracks=tracks,
+                run_id=run_id,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,'''
+new = '''
+                tracks=tracks,
+                run_id=None,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,'''
+
+[[rows]]
+id = "u74.A3_handler_filter"
+source = { table = "u74.json", id = "A3_handler_filter" }
+description = "Drop the handler key filter, so an open outbound favourites job holds the hearts listing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        if job.handler_key == handler_key
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID'''
+new = '''
+        if True
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID'''
+
+[[rows]]
+id = "u74.A4_source_filter"
+source = { table = "u74.json", id = "A4_source_filter" }
+description = "Drop the source_id filter, so an open playlists job holds the hearts listing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID
+        and job.library_id == cfg.library.volume_id'''
+new = '''
+        and True
+        and job.library_id == cfg.library.volume_id'''
+
+[[rows]]
+id = "u74.A5_library_filter"
+source = { table = "u74.json", id = "A5_library_filter" }
+description = "Drop the library filter, so another library's open hearts job holds this one"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        and job.library_id == cfg.library.volume_id
+    )'''
+new = '''
+        and True
+    )'''
+
+[[rows]]
+id = "u74.A6_open_filter"
+source = { table = "u74.json", id = "A6_open_filter" }
+description = "Count a finished hearts job as open, so a failed job holds every later pass"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+                if job.is_open()
+            )'''
+new = '''
+                if True
+            )'''
+
+[[rows]]
+id = "u74.A7_in_flight_guard"
+source = { table = "u74.json", id = "A7_in_flight_guard" }
+description = "Ignore an open hearts job, so every pass queues a second listing beside it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        if in_flight:
+            inbound.not_queued'''
+new = '''
+        if False:
+            inbound.not_queued'''
+
+[[rows]]
+id = "u74.A8_empty_guard"
+source = { table = "u74.json", id = "A8_empty_guard" }
+description = "Queue an empty hearts listing as a job, rather than reporting no hearts"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+    if not tracks:
+        inbound.not_queued = playlists.Excluded.EMPTY'''
+new = '''
+    if False:
+        inbound.not_queued = playlists.Excluded.EMPTY'''
+
+[[rows]]
+id = "u74.A9_listing_refusal_raised"
+source = { table = "u74.json", id = "A9_listing_refusal_raised" }
+description = "Raise a hearts listing refusal instead of recording it, so it ends the favourites source"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''
+        inbound.refused, inbound.not_queued = exc.cause, exc.cause.reason
+        return inbound'''
+new = '        raise'
+
+[[rows]]
+id = "r1056.S1_no_landing_step_names_intake_missing"
+source = { table = "r1056.json", id = "S1_no_landing_step_names_intake_missing" }
+description = "_native_proof: drop the named source from the no landing step, so a label batch is told intake missing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '            f"land the pass with crate intake land --pass and {named}, then run {verb} "'
+new = '            f"land the pass with crate intake land --pass and {SYNC_PASS_NAMED}, then run {verb} "'
+
+[[rows]]
+id = "r1056.S2_unreachable_step_names_sync"
+source = { table = "r1056.json", id = "S2_unreachable_step_names_sync" }
+description = "_native_proof: name sync mark in the unreachable library step whatever verb asked"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '            f"mount the library volume, then run {verb} again",'
+new = '            "mount the library volume, then run crate sync mark again",'
+
+[[rows]]
+id = "r361-a.A7_mark_verb_forgets_debris"
+source = { table = "r361-a.json", id = "A7_mark_verb_forgets_debris" }
+description = "The mark verb's plan no longer decides label-debris, so the playlist falls through to the reports"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''
+        elif playlists.is_library_debris(entry.name):
+            entry.reason = LABEL_DEBRIS
+        elif job.state is not jobs.JobState.SUCCEEDED:'''
+new = '        elif job.state is not jobs.JobState.SUCCEEDED:'
+
+[[rows]]
+id = "r361-a.A8_mark_verb_respells_the_word"
+source = { table = "r361-a.json", id = "A8_mark_verb_respells_the_word" }
+description = "The mark verb spells its own word for the reason instead of reading the enum"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = 'LABEL_DEBRIS = str(playlists.Excluded.LABEL_DEBRIS)'
+new = 'LABEL_DEBRIS = "label-library"'
+
+[[rows]]
+id = "r361-a.A9_reword_the_why"
+source = { table = "r361-a.json", id = "A9_reword_the_why" }
+description = "The why sentence is reworded, never appended to, since the suite asserts with in"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''
+        "its name is the source system's label run debris, which a sync never "
+        "offers and never renames"'''
+new = '''
+        "its name is a throwaway the other system left, which a sync never "
+        "offers and never renames"'''
+
+[[rows]]
+id = "r777-confirm.N4_plain_name"
+source = { table = "r777-confirm.json", id = "N4_plain_name" }
+description = "Confirm: _native_proof takes a pass name no landing could have been given, after the test that pins its message"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '    if not landing.plain_name(name):'
+new = '    if False:'
+
+[[rows]]
+id = "r777-confirm.N7_digest_marks"
+source = { table = "r777-confirm.json", id = "N7_digest_marks" }
+description = "Confirm, the first table's old text was moved by the fix round: the native digest no longer covers the planned marks"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+            "landings": list(proof.landings),
+            "marks": planned,'''
+new = '            "landings": list(proof.landings),'
+
+[[rows]]
+id = "r777.N10_screen_says_pass"
+source = { table = "r777.json", id = "N10_screen_says_pass" }
+description = "The gate screen on a native pass shows an intake file line instead of the pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+        if isinstance(proof, marks.NativeLanding)
+        else {"intake file": str(proof)}'''
+new = '''
+        if False
+        else {"intake file": str(proof)}'''
+
+[[rows]]
+id = "r777.N11_exclusive"
+source = { table = "r777.json", id = "N11_exclusive" }
+description = "--xml and --pass are no longer one or the other"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '    proof = parser.add_mutually_exclusive_group(required=True)'
+new = '    proof = parser'
+
+[[rows]]
+id = "r777.N12_no_landing_required"
+source = { table = "r777.json", id = "N12_no_landing_required" }
+description = "_native_proof makes a proof when no closed landing of the pass committed"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+    if not landings:
+        raise _blocked('''
+new = '''
+    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "r777.N18_unreachable_called_bridge"
+source = { table = "r777.json", id = "N18_unreachable_called_bridge" }
+description = "An unreachable library falls through to the bridge refusal"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+    if medium.declared is None:
+        # AN UNREACHABLE ROOT'''
+new = '''
+    if False:
+        # AN UNREACHABLE ROOT'''
+
+[[rows]]
+id = "r777.N19_digest_landings"
+source = { table = "r777.json", id = "N19_digest_landings" }
+description = "The native digest no longer covers the landings that prove the pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+            "landings": list(proof.landings),
+'''
+new = ''
+
+[[rows]]
+id = "r777.N5_bridge_accepted"
+source = { table = "r777.json", id = "N5_bridge_accepted" }
+description = "_native_proof accepts --pass on an intake tree still on the xml bridge"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '''
+    if not medium.native:
+        raise _blocked('''
+new = '''
+    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "r777.N6_no_reread"
+source = { table = "r777.json", id = "N6_no_reread" }
+description = "apply_pass no longer reads the proof again before the first rename"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '        if _native_proof(cfg, planned.name) != planned.native:'
+new = '        if False:'
+
+[[rows]]
+id = "r777.N9_proof_is_file"
+source = { table = "r777.json", id = "N9_proof_is_file" }
+description = "PassPlan.proof hands the engine the absent file on a native pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land_names.py", "tests/test_sync_mark.py"]
+old = '        return self.native if self.native is not None else self.xml'
+new = '        return self.xml'
+
+[[rows]]
+id = "u174.M10_dedupe"
+source = { table = "u174.json", id = "M10_dedupe" }
+description = "plan_pass: keep a playlist named twice twice in the narrowing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '    named = tuple(dict.fromkeys(str(one) for one in playlists_named))'
+new = '    named = tuple(str(one) for one in playlists_named)'
+
+[[rows]]
+id = "u174.M11_stranger_before_no_jobs"
+source = { table = "u174.json", id = "M11_stranger_before_no_jobs" }
+description = "plan_pass: refuse a stranger only after the no jobs return, so a file of no pass given --playlist asks a gate"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''
+    _refuse_strangers(named, found, name)
+    if not found:'''
+new = '''
+    if found:
+        _refuse_strangers(named, found, name)
+    if not found:'''
+
+[[rows]]
+id = "u174.M1_stranger_refusal"
+source = { table = "u174.json", id = "M1_stranger_refusal" }
+description = "plan_pass: drop the refusal of a named playlist that is not the pass's, so it plans nothing and says nothing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''
+    strangers = [identity for identity in named if identity not in held]
+    if strangers:'''
+new = '''
+    strangers = [identity for identity in named if identity not in held]
+    if False:'''
+
+[[rows]]
+id = "u174.M2_narrowing"
+source = { table = "u174.json", id = "M2_narrowing" }
+description = "plan_pass: drop the narrowing of the decided playlists, so --playlist plans the whole pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '        decided = [entry for entry in decided if entry.identity in named]'
+new = '        decided = list(decided)'
+
+[[rows]]
+id = "u174.M3_unfinished_refusal"
+source = { table = "u174.json", id = "M3_unfinished_refusal" }
+description = "plan_pass: drop the refusal of a named playlist the pass did not complete, so it is shown as a skip"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''
+    unfinished = [entry for entry in decided if entry.reason in UNFINISHED]
+    if unfinished:'''
+new = '''
+    unfinished = [entry for entry in decided if entry.reason in UNFINISHED]
+    if False:'''
+
+[[rows]]
+id = "u174.M4_unfinished_rows_outstanding"
+source = { table = "u174.json", id = "M4_unfinished_rows_outstanding" }
+description = "UNFINISHED: leave out rows-outstanding, so a playlist with a missing track is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = 'UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'
+new = 'UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE})'
+
+[[rows]]
+id = "u174.M5_unfinished_job"
+source = { table = "u174.json", id = "M5_unfinished_job" }
+description = "UNFINISHED: leave out job-unfinished, so a playlist whose job failed is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = 'UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'
+new = 'UNFINISHED = frozenset({REPORTS_UNREADABLE, ROWS_OUTSTANDING})'
+
+[[rows]]
+id = "u174.M6_unfinished_reports"
+source = { table = "u174.json", id = "M6_unfinished_reports" }
+description = "UNFINISHED: leave out reports-unreadable, so a playlist whose reports cannot be read is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = 'UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'
+new = 'UNFINISHED = frozenset({JOB_UNFINISHED, ROWS_OUTSTANDING})'
+
+[[rows]]
+id = "u174.M7_digest_names_the_narrowing"
+source = { table = "u174.json", id = "M7_digest_names_the_narrowing" }
+description = "_payload: leave the narrowing out of the digest, so an answer to one playlist's screen carries out the whole pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '        identity["only"] = sorted(named)'
+new = '        pass'
+
+[[rows]]
+id = "u174.M8_screen_names_the_narrowing"
+source = { table = "u174.json", id = "M8_screen_names_the_narrowing" }
+description = "_shown: drop the gate screen's line naming the playlists the plan was narrowed to"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '        shown[ONLY_SAID] = list(named)'
+new = '        pass'
+
+[[rows]]
+id = "u174.M9_verb_passes_the_flag"
+source = { table = "u174.json", id = "M9_verb_passes_the_flag" }
+description = "sync_mark: hand plan_pass no playlists, so --playlist is parsed and ignored"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '        playlists_named=list(getattr(ctx.args, "playlist", None) or ()),'
+new = '        playlists_named=(),'
+
+[[rows]]
+id = "u174.P1_bridge_plans_no_native_pass"
+source = { table = "u174.json", id = "P1_bridge_plans_no_native_pass" }
+description = "native_passes: read native records on a tree on the bridge too, so every old record is planned as a refusal"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''
+    if not medium.native:
+        return ()
+    return native.landed_passes(cfg)'''
+new = '    return native.landed_passes(cfg)'
+
+[[rows]]
+id = "u174.P2_unreachable_is_refused"
+source = { table = "u174.json", id = "P2_unreachable_is_refused" }
+description = "native_passes: read an unreachable root as no pass, so organize asks over a clean plan"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''
+    if medium.declared is None:
+        raise _blocked('''
+new = '''
+    if medium.declared is None:
+        return ()
+        raise _blocked('''
+
+[[rows]]
+id = "u242.M21_mark_cli_already_marked_by_title"
+source = { table = "u242.json", id = "M21_mark_cli_already_marked_by_title" }
+description = "sync mark: decide already marked by the title alone, so a taken playlist is planned again"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_u242_taken.py"]
+old = '        elif playlists.is_taken(identity, entry.name, sweep.taken):'
+new = '        elif playlists.is_swept_name(entry.name):'
+
+[[rows]]
+id = "u82-b.B5_not_listed_is_skipped"
+source = { table = "u82-b.json", id = "B5_not_listed_is_skipped" }
+description = "_decided: drop the not listed reason, so the plan declares a rename of a playlist the account no longer has"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''
+        if not entry.name:
+            entry.reason = NOT_LISTED'''
+new = '''
+        if False:
+            entry.reason = NOT_LISTED'''
+
+[[rows]]
+id = "u82-b.B6_a_failed_job_is_skipped"
+source = { table = "u82-b.json", id = "B6_a_failed_job_is_skipped" }
+description = "_decided: drop the unfinished job reason, so a playlist whose tracks were never all resolved is read from whatever reports it has"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '        elif job.state is not jobs.JobState.SUCCEEDED:'
+new = '        elif False:'
+
+[[rows]]
+id = "u82-b.B7_unread_reports_hold_the_playlist"
+source = { table = "u82-b.json", id = "B7_unread_reports_hold_the_playlist" }
+description = "_decided: stop catching the report reader's refusal, so one damaged report refuses the whole verb and the whole playlists beside it are never marked"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''
+        except CratekitError as exc:
+            # UNREAD IS NOT NOTHING OWED.'''
+new = '''
+        except ZeroDivisionError as exc:
+            # UNREAD IS NOT NOTHING OWED.'''
+
+[[rows]]
+id = "u82-b.B8_an_offered_track_is_owed"
+source = { table = "u82-b.json", id = "B8_an_offered_track_is_owed" }
+description = "_NOT_FOUND: count only missing reports, which is what the manifest carried, so a playlist holding a track the pass offered for review is marked over it"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '_NOT_FOUND = frozenset({"missing", "offered"})'
+new = '_NOT_FOUND = frozenset({"missing"})'
+
+[[rows]]
+id = "u82-c.C1_a_tombstoned_track_is_settled"
+source = { table = "u82-c.json", id = "C1_a_tombstoned_track_is_settled" }
+description = "_settle: drop the suppressed branch, so a track deleted on purpose since the pass holds its playlist back for ever"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '            elif found.state is match.MatchState.SUPPRESSED:'
+new = '            elif False:'
+
+[[rows]]
+id = "u82-c.C2_one_outstanding_track_holds_the_playlist"
+source = { table = "u82-c.json", id = "C2_one_outstanding_track_holds_the_playlist" }
+description = "_settle: never set the outstanding reason, so a playlist with a track still not in the library is planned for the prefix"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''
+        if entry.outstanding:
+            entry.reason = ROWS_OUTSTANDING'''
+new = '''
+        if False:
+            entry.reason = ROWS_OUTSTANDING'''
+
+[[rows]]
+id = "u82-c.C3_landed_is_told_from_owned"
+source = { table = "u82-c.json", id = "C3_landed_is_told_from_owned" }
+description = "_settle: call every matched track landed, so the screen credits this landing with files it did not bring"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '                entry.settled[LANDED if held & named else OWNED] += 1'
+new = '                entry.settled[LANDED] += 1'
+
+[[rows]]
+id = "u82-c.C9_the_accounts_reason_is_kept"
+source = { table = "u82-c.json", id = "C9_the_accounts_reason_is_kept" }
+description = "_failed_part_way: treat a refusal the account raised as a defect, so a provider timeout is reported as internal-error"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''
+    if isinstance(exc, CratekitError):
+        cause = exc.cause'''
+new = '''
+    if False:
+        cause = exc.cause'''
+
+[[rows]]
+id = "u82-d.B2_paths_compared_resolved_again"
+source = { table = "u82-d.json", id = "B2_paths_compared_resolved_again" }
+description = "The zero of u82-b re-measured after test_a_library_reached_through_a_link_still_reads_its_files_as_landed. _comparable: compare the spelled path and not the resolved one"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '    return locations.norm_for_compare(str(Path(path).resolve()))'
+new = '    return locations.norm_for_compare(str(path))'
+
+[[rows]]
+id = "r838-c.R1_library_bound"
+source = { table = "r838-c.json", id = "R1_library_bound" }
+description = "mark_record._recognize: accept a record written for another library"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '        if library_id != self.cfg.library.volume_id:'
+new = '        if False:'
+
+[[rows]]
+id = "r838-c.R2_remark_clears"
+source = { table = "r838-c.json", id = "R2_remark_clears" }
+description = "mark_record.record_marked: append a second entry for a re-mark by the same pass rather than replacing the first"
+file = "src/cratekit/sync/mark_record.py"
+surface = "maintainer"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+                    if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):
+                        entries[index] = fresh
+                        break'''
+new = '''
+                    if False:
+                        entries[index] = fresh
+                        break'''
+
+[[rows]]
+id = "r838-d.R3b_stamp_target"
+source = { table = "r838-d.json", id = "R3b_stamp_target" }
+description = "mark_record.record_unmarked: stamp the playlist's mark under any pass, so another pass's mark reads as put back"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+                if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):
+                    entries[index] = replace(entry, unmarked=when)'''
+new = '''
+                if entry.playlist_id == playlist_id:
+                    entries[index] = replace(entry, unmarked=when)'''
+
+[[rows]]
+id = "u242.M6_record_v1_reads_a_taken_key"
+source = { table = "u242.json", id = "M6_record_v1_reads_a_taken_key" }
+description = "mark record: drop the version 1 branch, so a record written before U242 is refused for having no taken list"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_u242_taken.py", "tests/test_sync_unmark.py"]
+old = '''
+        if version == 1:
+            # BEFORE U242 NOTHING WAS TAKEN HERE. A version 1 record that
+            # somehow carries the key is still read as it was written.
+            return []'''
+new = '''
+        if False:
+            return []'''
+
+[[rows]]
+id = "u242.M9_take_overwrites_a_held_entry"
+source = { table = "u242.json", id = "M9_take_overwrites_a_held_entry" }
+description = "take: replace an entry still held, so a second taker's stamp replaces the first and the migration is not idempotent"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_u242_taken.py", "tests/test_sync_mark.py"]
+old = '                elif not taken[at].held:'
+new = '                elif True:'
+
+[[rows]]
+id = "r777.N1_empty_proof"
+source = { table = "r777.json", id = "N1_empty_proof" }
+description = "marks.require_proof accepts a NativeLanding naming no tree, no pass or no landing"
+file = "src/cratekit/sync/marks.py"
+surface = "maintainer"
+tests = ["tests/test_incremental_sync.py", "tests/test_sync_mark.py"]
+old = '        if not local_output.tree_id or not local_output.pass_name or not local_output.landings:'
+new = '        if False:'
+
+[[rows]]
+id = "r777.N2_neither_proof"
+source = { table = "r777.json", id = "N2_neither_proof" }
+description = "marks.require_proof hands anything that is not a NativeLanding to require_output, so None is no longer refused by name"
+file = "src/cratekit/sync/marks.py"
+surface = "maintainer"
+tests = ["tests/test_incremental_sync.py", "tests/test_sync_mark.py"]
+old = '    if not isinstance(local_output, Path):'
+new = '    if False:'
+
+[[rows]]
+id = "r777.N3_engine_unchecked"
+source = { table = "r777.json", id = "N3_engine_unchecked" }
+description = "apply_deferred no longer checks its proof before renaming"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_incremental_sync.py", "tests/test_sync_mark.py"]
+old = '''
+    require_proof(local_output)
+    applied: list[str] = []'''
+new = '    applied: list[str] = []'
+
+[[rows]]
+id = "u82-a.A1_stat_oserror_is_the_refusal"
+source = { table = "u82-a.json", id = "A1_stat_oserror_is_the_refusal" }
+description = "require_output: stop turning an OSError out of the one stat into sync-marks-blocked, so a file gone at that moment is a bare FileNotFoundError again, which is R-398"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''
+    except OSError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+new = '''
+    except ZeroDivisionError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+
+[[rows]]
+id = "u82-a.A2_a_folder_is_not_a_file"
+source = { table = "u82-a.json", id = "A2_a_folder_is_not_a_file" }
+description = "require_output: drop the regular file check, so a folder named like the intake file counts as the importable file"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '    if not stat.S_ISREG(found.st_mode):'
+new = '    if False:'
+
+[[rows]]
+id = "u82-a.A3_an_empty_file_is_not_proof"
+source = { table = "u82-a.json", id = "A3_an_empty_file_is_not_proof" }
+description = "require_output: drop the empty file check, so a zero byte file lets the renames through"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '    if found.st_size == 0:'
+new = '    if False:'
+
+[[rows]]
+id = "r1360.F1_walk_uncounted"
+source = { table = "r1360.json", id = "F1_walk_uncounted" }
+description = "unpaged_calls: the walk past a first page is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '    return UNPAGED_READ + math.ceil(beyond / (PLAYLIST_PAGE - 1))'
+new = '    return UNPAGED_READ'
+
+[[rows]]
+id = "r1360.F2_step_a_page"
+source = { table = "r1360.json", id = "F2_step_a_page" }
+description = "unpaged_calls: each later request is counted as a whole new page"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = 'math.ceil(beyond / (PLAYLIST_PAGE - 1))'
+new = 'math.ceil(beyond / PLAYLIST_PAGE)'
+
+[[rows]]
+id = "r1360.F3_judged_without_walk"
+source = { table = "r1360.json", id = "F3_judged_without_walk" }
+description = "judged_calls: a judged reading counts one unpaged request whatever its length"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '    return listing_calls(count) + unpaged_calls(count)'
+new = '    return listing_calls(count) + UNPAGED_READ'
+
+[[rows]]
+id = "u210.R23_margin"
+source = { table = "u210.json", id = "R23_margin" }
+description = "pair_calls.named: carry no margin over the estimate"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = 'MARGIN = 1.25'
+new = 'MARGIN = 1.0'
+
+[[rows]]
+id = "u220.C1_moves_head_rule"
+source = { table = "u220.json", id = "C1_moves_head_rule" }
+description = "pair_calls._moves: count the moves by the old head rule"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '    for one in reversed(before):'
+new = '    for one in before:'
+
+[[rows]]
+id = "u226.M24_estimate_no_unpaged"
+source = { table = "u226.json", id = "M24_estimate_no_unpaged" }
+description = "pair_calls: a judged reading forecast at a listing's cost"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair.py"]
+old = '''
+UNPAGED_READ = 1
+'''
+new = '''
+UNPAGED_READ = 0
+'''
+
+[[rows]]
+id = "u231.M24_forecast_without_the_settle_reading"
+source = { table = "u231.json", id = "M24_forecast_without_the_settle_reading" }
+description = "forecast: an order's settle reading is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '            calls += moves * (1 + REPARSE) + judged_calls(len(now))'
+new = '            calls += moves * (1 + REPARSE)'
+
+[[rows]]
+id = "u246.S7_pair_calls_before_empty"
+source = { table = "u246.json", id = "S7_pair_calls_before_empty" }
+description = "account_write: an empty set of what the playlist held, so no removal is counted as taking anything"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '    held_before = set(now)'
+new = '    held_before = set()'
+
+[[rows]]
+id = "u246.S8_pair_calls_after_empty"
+source = { table = "u246.json", id = "S8_pair_calls_after_empty" }
+description = "account_write: an empty set of what the removals left, so an add the playlist already holds is counted as sent"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '    held_after = set(now)'
+new = '    held_after = set()'
+
+[[rows]]
+id = "u246.S9_pair_calls_after_stale"
+source = { table = "u246.json", id = "S9_pair_calls_after_stale" }
+description = "account_write: the after set reuses the before set, so a track the removals took off reads as still held and its add is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '    held_after = set(now)'
+new = '    held_after = held_before'
+
+[[rows]]
+id = "r1264-composites.M7_account_add_filter"
+source = { table = "r1264-composites.json", id = "M7_account_add_filter" }
+description = "plan_pair: offer an unread track to the account as an addition, which already lists it; reached on a first sync, where no base strips the unread key"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '        if remote_of(key) and key not in unseen and key not in unread_keys'
+new = '        if remote_of(key) and key not in unseen'
+
+[[rows]]
+id = "r1264.M12_record_holds_back"
+source = { table = "r1264.json", id = "M12_record_holds_back" }
+description = "_record: hold the snapshot back while a track is unread, the round one defect"
+file = "src/cratekit/sync/pair_write.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_write.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '    whole = rekordbox_after is not None and account_after is not None and not one.withheld'
+new = '''
+    whole = (
+        rekordbox_after is not None
+        and account_after is not None
+        and not one.withheld
+        and not one.unread
+    )'''
+
+[[rows]]
+id = "r1264.M14_check_unread_moved"
+source = { table = "r1264.json", id = "M14_check_unread_moved" }
+description = "check: never read the unread tracks as moved, so a new unread track after the plan is written over"
+file = "src/cratekit/sync/pair_check.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_check.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '            unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}'
+new = '            unread_moved = False'
+
+[[rows]]
+id = "r1264.M15_check_unread_as_tuple"
+source = { table = "r1264.json", id = "M15_check_unread_as_tuple" }
+description = "check: compare the unread tracks by place, so tracks trading places refuses stale"
+file = "src/cratekit/sync/pair_check.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_check.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '            unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}'
+new = '            unread_moved = tuple(listing.unread) != tuple(named.remote_id for named in one.unread)'
+
+[[rows]]
+id = "r1264.M18_identity_unread"
+source = { table = "r1264.json", id = "M18_identity_unread" }
+description = "PairPlan.identity: leave the unread ids out of the digest"
+file = "src/cratekit/sync/pair_model.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_model.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '                {"unread": [named.remote_id for named in self.unread]} if self.unread else {}'
+new = '                {} if self.unread else {}'
