@@ -1,6 +1,6 @@
 """The additive whitelist's tables and the writable-column registry, part of :mod:`cratekit.core.rb_writer`.
 
-Read them through ``rb_writer``, which re-exports every name here. Data, not logic: the
+Read them through ``rb_writer``, which re-exports every name its callers read. Data, not logic: the
 tables are value for value what the writer judged against before the split (U300).
 """
 

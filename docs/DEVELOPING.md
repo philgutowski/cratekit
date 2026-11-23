@@ -227,10 +227,11 @@ whose code calls it.
 ## The guarded writer, the session and the restore, in parts
 
 `core/rb_writer.py`, `core/session.py` and `core/restore.py` are each split
-into parts (U300), and each still answers for every name it had: code,
-scripts and tests import and patch `rb_writer`, `session` and `restore`,
-never a part. A part is re-exported by its module and is not imported from
-anywhere else.
+into parts (U300), and each answers for every name code, scripts and tests
+read through it: they import and patch `rb_writer`, `session` and `restore`,
+never a part. A name nothing reads through its module is not re-exported
+(U953), and a part is imported only by its module and its module's other
+parts.
 
 | Module | Its parts |
 |---|---|
@@ -246,7 +247,8 @@ Four rules keep the split invisible:
   inside a part, so a `monkeypatch.setattr(rb_writer, ...)` bites there too.
   `restore`'s parts read `os` and `shutil` the same way, since a capacity test
   patches them on `restore`. Only `rb_tables`, which reads nothing back, is
-  imported directly.
+  imported directly, and `restore_retention` and `restore_recovery` take
+  `restore_perform`'s accessor and logger rather than holding their own.
 - **What the beat grid suites and the source guards read stays in the module
   itself**: every writer refusal slug `test_rb_writer_guard.py` scans for, the
   one read of the soft-delete marker, `commit_guarded`, the write lock, and

@@ -1,7 +1,7 @@
 """What the machine says: the installed application's version, the running processes, and the
 settings file Cloud Library Sync is read from.
 
-Part of :mod:`cratekit.core.rb_writer`, which re-exports every name here and raises the
+Part of :mod:`cratekit.core.rb_writer`, which re-exports every name its callers read and raises the
 refusals these readings feed; read them there. A name of the writer outside this file,
 and every seam a test patches, is read through ``rb_writer`` at call time so a patch on
 the writer bites here too (U300).
