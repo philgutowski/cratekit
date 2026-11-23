@@ -14,10 +14,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from cratekit.cli import converge as converge_cli
 from cratekit.core import convergence, rb_writer, tree_registry
-from cratekit.write import rebuild, routing_pass, trees
+from cratekit.write import convergence_check, metadata_cli, rebuild, routing_pass, trees
 from tests import test_rebuild as _rebuild_suite
 from tests.test_second_genre import (
     DECLARED,
@@ -131,11 +132,11 @@ def test_a_tree_adopted_before_the_record_names_the_renamed_folder_as_not_compar
     # Before the clear the track is still declared there, so the playlist is
     # missing by its declared name; it is no person's own either way.
     report = _check(cfg, db, adopted_root, DECLARED, _derived(_track(cfg, second=None)))
-    assert not report.converged
     assert report.differences == ()
     assert report.foreign == ()
     assert report.unidentified == (_under(RENAMED),)
-    assert report.summaries() == (f"not-compared:{_under(RENAMED)}",)
+    # Not a difference: no rebuild can answer it, so the flag's evidence omits it.
+    assert report.summaries() == ()
 
 
 def test_the_converge_verb_never_says_matching_over_an_unrecorded_renamed_folder(
@@ -150,29 +151,51 @@ def test_the_converge_verb_never_says_matching_over_an_unrecorded_renamed_folder
 
     (check,) = _rebuild_suite._converge()["data"]["checks"]
     assert check["status"] == converge_cli.NOT_COMPARED, check
-    assert _under(RENAMED) in check["detail"]
-    assert "rename" in check["detail"]
+    assert f"not-compared:{_under(RENAMED)}" in check["detail"]
+    assert check["detail"].endswith(converge_cli.UNIDENTIFIED), check
+    # The dimension the run left out is still said, as the matching line says it.
+    assert "; not compared: vocal;" in check["detail"], check
 
     # A difference beside it says differing, the folder still named.
     readings[:] = [_track(cfg, second=None), replace(_track(cfg), location=_rebuild_suite._music(
         cfg, _rebuild_suite.PLAIN), energy=1, second_genre=None)]
     (check,) = _rebuild_suite._converge()["data"]["checks"]
     assert check["status"] == converge_cli.DIFFERING, check
-    assert f"not-compared:{_under(RENAMED)}" in check["detail"]
+    # First, so the cut at twenty never drops it.
+    assert check["detail"].startswith(f"not-compared:{_under(RENAMED)}; "), check
 
 
-def test_a_rebuild_clears_no_flag_over_an_unrecorded_renamed_folder(
+def test_the_converge_verb_says_differing_over_a_doubled_row_beside_an_unread_folder(
+    monkeypatch,
+):
+    """A doubled row is damage, whatever else the check could not read."""
+    report = convergence_check.ConvergenceReport(
+        tree_id=TREE_ID, root_id="root", derived=1,
+        doubled=(f"{ONE}/{HIGH}:1",), unidentified=(_under(RENAMED),),
+    )
+    monkeypatch.setattr(rebuild, "report_convergence", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda _cfg: None)
+    status, detail = converge_cli._compare(
+        None, SimpleNamespace(get_playlist=list, get_content=list),
+        tree_id=TREE_ID, entries=None, declared=DECLARED,
+    )
+    assert status == converge_cli.DIFFERING
+    assert detail == f"not-compared:{_under(RENAMED)}; doubled:{ONE}/{HIGH}:1"
+
+
+def test_a_rebuild_still_clears_a_restored_flag_over_an_unrecorded_renamed_folder(
     cfg, gates_pass, db, adopted_root
 ):
-    """``summaries`` is the evidence the clearing call is handed; the folder is in it."""
+    """No rebuild can tie the folder to a genre, so it never holds the flag (round one)."""
     _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
     _rename(db, adopted_root, TWO)
     convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
     report = _rebuild_suite._rebuild(
         cfg, db, adopted_root, DECLARED, [], truth=[_track(cfg, second=None)]
     )
-    assert not report.cleared
-    assert convergence.read(cfg).tree(TREE_ID).blocking
+    assert report.cleared
+    assert not convergence.read(cfg).tree(TREE_ID).blocking
+    assert report.after.unidentified == (_under(RENAMED),)
 
 
 def test_a_folder_a_rebuild_recorded_is_compared_after_a_rename_as_before(
@@ -245,19 +268,59 @@ def test_a_vocal_playlist_the_run_did_not_compare_stays_foreign_under_an_unrecor
     assert judged.unidentified == (_under(RENAMED, TWO, trees.VOX_SUB_CLASS),)
 
 
-def test_a_folder_any_record_names_is_not_named_as_unidentified(
+def test_a_renamed_folder_a_record_names_for_a_dropped_bucket_is_named_as_not_compared(
     cfg, gates_pass, db, adopted_root
 ):
-    """A record naming a bucket the taxonomy dropped still says a write knew the folder."""
-    made = _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    """The record names no bucket this taxonomy declares, so it ties the folder to none."""
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
     folder_id = _rename(db, adopted_root, TWO)
     convergence.record_nodes(cfg, TREE_ID, [convergence.DestinationNode(
         bucket="retired_genre", sub=HIGH, folder_id=folder_id, playlist_id="gone-1"
     )])
-    assert made
+    report = _check(cfg, db, adopted_root, DECLARED, _derived(_track(cfg, second=None)))
+    assert report.unidentified == (_under(RENAMED),)
+    assert report.foreign == ()
+
+
+def test_a_leftover_beside_a_folder_a_write_made_again_is_named_as_not_compared(
+    cfg, gates_pass, db, adopted_root
+):
+    """ROUND ONE: the record ties the renamed folder to Tech House, but its Low is bound elsewhere.
+
+    A write that finds its playlists by name made Tech House / Low again, so
+    the leftover's playlist reads as a second node of a bound destination,
+    which :func:`namesakes` leaves alone; it is named rather than read clean.
+    """
+    _by_hand(db, adopted_root, {(ONE, LOW): ("1",), (TWO, LOW): ("1",)})
+    _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
+    _rename(db, adopted_root, TWO)
+    _by_hand(db, adopted_root, {(TWO, LOW): ("2",)})
+    one = _truth(_rebuild_suite._music(cfg, _rebuild_suite.COMPOSED), energy=1, second=None)
+    two = replace(one, location=_rebuild_suite._music(cfg, _rebuild_suite.PLAIN), genre=TECH)
+    (held,) = [
+        node
+        for node in rebuild.read_tree(db, str(adopted_root.ID))
+        if f"{node.folder_display}/{node.playlist_display}" == _under(RENAMED)
+    ]
+    rb_writer.remove_memberships(db, db.get_playlist(ID=held.playlist_id), ["1"])
+    db.session.commit()
+
+    report = _check(cfg, db, adopted_root, DECLARED, _derived(one, two))
+    assert report.differences == (), report.summaries()
+    assert report.unidentified == (_under(RENAMED, TWO, LOW),)
+
+
+def test_a_playlist_under_a_genre_named_folder_is_never_unidentified(
+    cfg, gates_pass, db, adopted_root
+):
+    """A folder bearing a bucket's name is read by it; a playlist it does not compare stays foreign."""
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",)})
+    folder = rb_writer.ensure_folder(db, DECLARED.bucket(TWO).display, parent=adopted_root)
+    own = rb_writer.ensure_playlist(db, _pair(THIRD, "candy")[1], folder)
+    rb_writer.add_membership(db, own, "1")
+    db.session.commit()
     report = _check(cfg, db, adopted_root, DECLARED, _derived(_track(cfg, second=None)))
     assert report.unidentified == ()
-    assert report.foreign == (_under(RENAMED),)
 
 
 # 3. What adoption's writer records
@@ -294,6 +357,27 @@ def test_the_writer_gives_no_node_a_second_destination(cfg, gates_pass, db, adop
     )])
     _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
     assert _recorded(cfg) == {(THIRD, HIGH): (held.folder_id, held.playlist_id)}
+
+
+def test_the_writer_records_no_node_rekordbox_removed(cfg, gates_pass, db, adopted_root):
+    """The writer may file into a removed row it found by name; that row is nobody's destination."""
+    made = _by_hand(db, adopted_root, {(TWO, HIGH): ("2",)})
+    setattr(db.get_playlist(ID=made[(TWO, HIGH)]), rb_writer.SOFT_DELETE_COLUMN, 1)
+    db.session.commit()
+    _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
+    assert _recorded(cfg) == {}
+
+
+def test_the_writer_never_chooses_between_two_live_nodes_at_one_pair(
+    cfg, gates_pass, db, adopted_root
+):
+    folder_name, playlist_name = _pair(TWO, HIGH)
+    for _ in range(2):
+        folder = db.create_playlist_folder(folder_name, parent=adopted_root)
+        db.create_playlist(playlist_name, parent=folder)
+    db.session.commit()
+    _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
+    assert _recorded(cfg) == {}
 
 
 def test_the_writer_records_only_a_pair_it_filed_into(cfg, gates_pass, db, adopted_root):

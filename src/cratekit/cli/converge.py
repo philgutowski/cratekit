@@ -4,7 +4,8 @@ It is read only, opening no session, lock or acknowledgment, since it is what
 a person runs when a tree already refuses every write; it is a module apart
 from ``rebuild`` so the destructive verb never parks it. It never reports a
 tree converged that it could not compare: each check is matching, differing,
-or not compared and why.
+or not compared and why, a comparison that ran but could not read a playlist
+under a renamed folder included (R-1991).
 """
 
 from __future__ import annotations
@@ -27,6 +28,15 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 MATCHING = "matching"
 DIFFERING = "differing"
 NOT_COMPARED = "not-compared"
+
+#: What a person reads after a playlist the check could not tie to a genre (R-1991).
+UNIDENTIFIED = (
+    ": each sits under a folder whose name is no genre's, so which genre's "
+    "playlist it is cannot be read and a track left in it is not named; look "
+    "in each in rekordbox for a track its genre no longer files, or give the "
+    "folder back its genre's name, where no other folder bears that name, and "
+    "converge compares it"
+)
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
@@ -89,21 +99,16 @@ def _compare(
         )
     except CratekitError as exc:
         return NOT_COMPARED, exc.cause.message
-    present = f"{report.derived} declared placement(s) all present"
-    if report.converged:
-        if report.not_compared:
-            present += f"; not compared: {', '.join(report.not_compared)}"
-        return MATCHING, present
-    if report.unidentified and not report.differences and not report.doubled:
-        # Nothing differs that was compared, and these could not be (R-1991).
-        return NOT_COMPARED, (
-            f"{present}; not compared: {', '.join(report.unidentified)}, under a "
-            f"folder whose name is no genre's and that no adopt apply, rebuild or "
-            f"route resort recorded, so which genre's playlist it is cannot be "
-            f"read; rename the folder back to its genre's name and converge "
-            f"compares it"
-        )
-    return DIFFERING, "; ".join(report.summaries()[:20])
+    unread = tuple(f"{NOT_COMPARED}:{entry}" for entry in report.unidentified)
+    if not report.converged:
+        # The playlists not compared first, so the cut never drops them (R-1991).
+        return DIFFERING, "; ".join((*unread, *report.summaries())[:20])
+    detail = f"{report.derived} declared placement(s) all present"
+    if report.not_compared:
+        detail += f"; not compared: {', '.join(report.not_compared)}"
+    if not report.unidentified:
+        return MATCHING, detail
+    return NOT_COMPARED, f"{detail}; {'; '.join(unread)}{UNIDENTIFIED}"
 
 
 def converge(ctx: "Context") -> Envelope:

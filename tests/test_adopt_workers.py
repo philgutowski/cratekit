@@ -469,23 +469,33 @@ def test_an_apply_records_the_node_of_each_destination_it_filed_into(cut_over):
         rb_writer.close_db(handle)
 
 
-def test_planned_destinations_leave_out_a_pair_two_destinations_share(monkeypatch):
-    """A pair that means two destinations is recorded as neither."""
+def test_planned_destinations_name_each_pair_once_and_skip_what_names_none(monkeypatch):
+    """A pair two destinations share is recorded as neither; a vocal addition by its
+    vocal sub; a destination the taxonomy no longer declares is skipped, as the
+    membership mapping skips it, never raised before the write."""
     entries = [
         SimpleNamespace(bucket="one", sub="high"),
         SimpleNamespace(bucket="two", sub="high"),
         SimpleNamespace(bucket="two", sub="low"),
+        SimpleNamespace(bucket="gone", sub="high"),
     ]
-    plan = SimpleNamespace(applicable=lambda: entries, vocal_additions=lambda: [])
-    shared = {("one", "high"): ("Shared", "High"), ("two", "high"): ("Shared", "High")}
+    sung = [SimpleNamespace(bucket="two", sub="low", vocal_sub="with_vox")]
+    plan = SimpleNamespace(applicable=lambda: entries, vocal_additions=lambda: sung)
+    names = {
+        ("one", "high"): ("Shared", "High"),
+        ("two", "high"): ("Shared", "High"),
+        ("two", "low"): ("Two", "Low"),
+        ("two", "with_vox"): ("Two", "with vox"),
+    }
 
     def named(_declared, bucket, sub):
-        if (bucket, sub) == ("two", "low"):
-            return ("Two", "Low")
-        return shared[(bucket, sub)]
+        return names[(bucket, sub)]
 
     monkeypatch.setattr(apply_cli, "destination", named)
-    assert apply_cli.planned_destinations(plan, DECLARED) == {("Two", "Low"): ("two", "low")}
+    assert apply_cli.planned_destinations(plan, DECLARED) == {
+        ("Two", "Low"): ("two", "low"),
+        ("Two", "with vox"): ("two", "with_vox"),
+    }
 
 
 def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_over):

@@ -12,9 +12,7 @@ KEBAB_LITERALS = {
         'utf-8',
     ],
     # 2026-11-22, U302: the export path and the convergence check left their modules.
-    # 2026-11-23, R-1991: the summary word for a playlist the check could not compare.
     'write/convergence_check.py': [
-        'not-compared',
         'routing-destination-renamed',
         'tree-unconverged',
     ],

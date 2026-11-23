@@ -325,9 +325,6 @@ def _under_recorded_folders(
 #: compared (D7); the ``with vox`` classes are not judged on such a run.
 VOCAL_DIMENSION = "vocal"
 
-#: The word a summary names a playlist :func:`unidentified` found by (R-1991).
-NOT_COMPARED = "not-compared"
-
 
 class Direction(StrEnum):
     """Which way a difference points. Both are reported; only one is repairable."""
@@ -392,7 +389,10 @@ class ConvergenceReport:
     #: reported so "not compared" reads apart from "matched".
     undeclared: tuple[str, ...] = ()
     #: Every playlist :func:`unidentified` names, as ``folder/playlist`` in the
-    #: names a person finds them by: NOT COMPARED, so never converged (R-1991).
+    #: names a person finds them by (R-1991). NOT COMPARED AND NOT A DIFFERENCE:
+    #: ``converged`` does not wait on it, since no rebuild can answer it and a
+    #: restored tree's flag must stay clearable; ``crate converge`` names it and
+    #: never says matching over it.
     unidentified: tuple[str, ...] = ()
 
     @property
@@ -402,30 +402,22 @@ class ConvergenceReport:
 
     @property
     def converged(self) -> bool:
-        """Whether this tree matches what the library declares. FOUR conditions.
+        """Whether this tree matches what the library declares. THREE conditions.
 
         No difference in either direction; a derivation that placed something;
-        no playlist holding a track twice, which an additive rebuild cannot
-        repair; and no playlist the check could not tie to a destination that
-        may be one (R-1991), which a clean report would stand over unread.
+        and no playlist holding a track twice, which an additive rebuild cannot
+        repair. ``unidentified`` is not one: see it.
         """
-        return (
-            not self.differences
-            and self.derived > 0
-            and not self.doubled
-            and not self.unidentified
-        )
+        return not self.differences and self.derived > 0 and not self.doubled
 
     def summaries(self) -> tuple[str, ...]:
         """Everything that stands between this tree and a cleared flag.
 
-        The doubled rows and the playlists not compared included, since this is
-        the evidence the clearing call is handed.
+        The doubled rows included, since this is the evidence the clearing call
+        is handed.
         """
-        return (
-            tuple(entry.summary() for entry in self.differences)
-            + tuple(f"doubled:{entry}" for entry in self.doubled)
-            + tuple(f"{NOT_COMPARED}:{entry}" for entry in self.unidentified)
+        return tuple(entry.summary() for entry in self.differences) + tuple(
+            f"doubled:{entry}" for entry in self.doubled
         )
 
 
@@ -547,20 +539,21 @@ def unidentified(
     nodes: Sequence[TreeNode],
     compared: Collection[tuple[str, str]],
     not_compared: Sequence[str],
-    record: convergence.TreeConvergence | None,
     filed: Collection[str],
 ) -> tuple[TreeNode, ...]:
-    """The playlists under the root no name or record ties to a bucket that may hold a leftover.
+    """The playlists under a folder renamed in rekordbox the check could not compare.
 
-    A FOLDER RENAMED IN REKORDBOX THAT NO WRITE RECORDED (R-1991): its name
-    declares no bucket and the record names none, so a playlist under it
-    bearing a declared destination's playlist name could be any bucket's, and
-    :func:`namesakes` cannot compare it. While it holds a track this run files
-    (``filed``), it may be a genre's playlist holding a cleared second genre's
-    track, so it is named as not compared rather than read as a person's own.
-    Left as they were, in ``foreign``: a node already ``compared``, one
-    rekordbox removed, one under a folder whose name declares a bucket or that
-    any record names (:func:`namesakes` read those), one whose name no
+    A FOLDER WHOSE NAME DECLARES NO BUCKET (R-1991): when no write recorded it,
+    a playlist under it bearing a declared destination's playlist name could
+    be any bucket's; when a write did, :func:`namesakes` still leaves one whose
+    recorded reading is a destination already bound to another node (a write
+    that found its playlists by name made the folder again) or that the
+    recorded bucket does not declare. Either way, while it holds a track this
+    run files (``filed``), it may be a genre's playlist holding a cleared
+    second genre's track, so it is named as not compared rather than read as a
+    person's own. Left as they were, in ``foreign``: a node already
+    ``compared``, one rekordbox removed, one under a folder bearing a declared
+    bucket's name (:func:`namesakes` reads those by it), one whose name no
     destination bears or bears only in a dimension this run did not compare
     (U119), and one holding no filed track.
     """
@@ -570,7 +563,6 @@ def unidentified(
         readings.setdefault(playlist, set()).add(sub)
     skipped = _uncompared_subs(declared, not_compared)
     bucket_names = {declared.bucket(bucket_id).display for bucket_id in declared.bucket_ids()}
-    recorded = {entry.folder_id for entry in (() if record is None else record.nodes)}
     holding = set(filed)
     return tuple(
         node
@@ -578,7 +570,6 @@ def unidentified(
         if not node.removed
         and (node.folder_id, node.playlist_id) not in compared
         and node.folder_display not in bucket_names
-        and node.folder_id not in recorded
         and readings.get(node.playlist_display, set()) - skipped
         and node.content_ids & holding
     )
@@ -651,7 +642,7 @@ def check(
     unread = {
         (node.folder_id, node.playlist_id)
         for node in unidentified(
-            declared, nodes, governed, not_compared, record, set(resolved_id.values()) & active
+            declared, nodes, governed, not_compared, set(resolved_id.values()) & active
         )
     }
     unexpected: list[Difference] = []
