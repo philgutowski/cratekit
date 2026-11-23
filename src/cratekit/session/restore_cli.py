@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 # Aliased: ``cratekit.cli.exit_codes`` is the reserved-cause table a refusal's
 # remediation is looked up in, not ``cratekit.core.exit_codes``.
 from cratekit.cli import exit_codes as reservations
-from cratekit.cli.output import Envelope, digest_of, load_config
+from cratekit.cli.output import Envelope, digest_of, from_cause, load_config
 from cratekit.core import analysis_store, config, processes, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
@@ -589,6 +589,8 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
     if outcome is not None:
         totals["converged"] = outcome.converged
         totals["outstanding"] = len(outcome.outstanding)
+        # The files' half (R-1924): planned, read back, not written, not reading back.
+        totals["file_tags"] = outcome.file_tags.to_json()
     return {"digest": offered["digest"], "items": items, "totals": totals, "chunk": None}
 
 
@@ -644,7 +646,84 @@ def perform_restore(ctx) -> Envelope:
         include_mirror=ctx.args.include_mirror,
         target=target,
     )
-    return ctx.envelope(data=_performed(report, offered))
+    answered = ctx.envelope(data=_performed(report, offered))
+    if report.outcome is None or not report.outcome.file_tags.unwritten:
+        return answered
+    # A DRY RUN THAT FINDS A FILE IT COULD NOT PUT BACK REFUSES AS THE RUN WOULD,
+    # so the rehearsal proves this refusal too (review round one).
+    # A FILE THAT DID NOT TAKE ITS OLD TAGS BACK REFUSES, after the rest landed,
+    # through ``from_cause``, what the restore did kept as its data (R-1924).
+    return from_cause(
+        verb=ctx.entry.name,
+        run_id=ctx.run.run_id,
+        started=ctx.started,
+        cause=_tags_unwritten(report.outcome).cause,
+        schema=ctx.entry.output_schema,
+        data=answered.data,
+    )
+
+
+#: The refusal of a restore whose database half landed and whose files did not all
+#: take back the title tag and key tag the session kept.
+TAGS_UNWRITTEN = "restore-tags-unwritten"
+
+
+def _tags_unwritten(outcome: restore.RestoreOutcome) -> CratekitError:
+    """Refuse naming every file that does not carry its old tags, after the rest landed."""
+    files = outcome.file_tags
+    session_id = outcome.plan.session_id
+    if outcome.dry_run:
+        return CratekitError(
+            Cause(
+                reason=TAGS_UNWRITTEN,
+                message=(
+                    f"a dry run of the restore of session {session_id} wrote nothing, "
+                    f"and {len(files.failed)} of {files.planned} file(s) whose title tag "
+                    f"and key tag it would put back are gone or cannot be read: "
+                    + ", ".join(files.failed)
+                ),
+                remediation=Remediation(
+                    steps=(
+                        "put each named file back where it was, or make it readable, "
+                        "then walk the restore again",
+                    )
+                ),
+                origin=("session.restore_cli",),
+                detail={"failed": list(files.failed), "wrong": [], "session": session_id},
+            )
+        )
+    parts = []
+    if files.failed:
+        parts.append(f"{len(files.failed)} could not be written: {', '.join(files.failed)}")
+    if files.wrong:
+        parts.append(
+            f"{len(files.wrong)} do not read back as they were: {', '.join(files.wrong)}"
+        )
+    return CratekitError(
+        Cause(
+            reason=TAGS_UNWRITTEN,
+            message=(
+                f"session {session_id} was restored, the database and "
+                f"{len(files.read_back)} of {files.planned} file(s) put back, and these "
+                f"files do not carry the title tag and key tag the session kept: "
+                + "; ".join(parts)
+            ),
+            remediation=Remediation(
+                steps=(
+                    "check each named file is there, can be written and is not open "
+                    "elsewhere",
+                    f"run the same restore of session {session_id} again, which puts "
+                    f"the files back from its record and asks no new discard",
+                )
+            ),
+            origin=("session.restore_cli",),
+            detail={
+                "failed": list(files.failed),
+                "wrong": list(files.wrong),
+                "session": session_id,
+            },
+        )
+    )
 
 
 def _snapshot_offered(cfg: config.Config, args) -> backup.ResolvedSnapshot:

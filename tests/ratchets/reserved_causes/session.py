@@ -11,6 +11,7 @@ KEBAB_LITERALS = {
         'off-machine',
         'restore-flag-needs-pull',
         'restore-record-unusable',
+        'restore-tags-unwritten',  # 2026-11-23, R-1924
         'restore-target-invalid',
         'restore-target-is-live-root',
     ],
@@ -24,7 +25,18 @@ LITERAL_HOLDERS = {
         'internal-error',
         'restore-flag-needs-pull',
         'restore-record-unusable',
+        'restore-tags-unwritten',  # 2026-11-23, R-1924
         'restore-target-invalid',
         'restore-target-is-live-root',
     ],
+}
+
+NAMED_WITHOUT_OWN = {
+    # 2026-11-23, R-1924: a restore refusing a file that did not take its old tags back.
+    'session/restore_cli.py': ['restore-tags-unwritten'],
+}
+
+NAMED_WITH_OWN = {
+    # 2026-11-23, R-1924: the same name, counted with the file's own declarations.
+    'session/restore_cli.py': ['restore-tags-unwritten'],
 }

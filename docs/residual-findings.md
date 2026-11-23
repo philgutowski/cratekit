@@ -3123,3 +3123,140 @@ suite. M21's tests mostly need `rclone`, absent here, so the Mac may kill it.
 helper, and one asserts that a full check age differs from a full comparison
 age when the two held keys differ. Ledger only: no wrong value is produced
 today.
+
+---
+
+## R-1932. An audio file removed since an adopt makes every restore reaching past that adopt end refused
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** A restore puts back the title tag and key tag of every
+file a later session kept, and names a file that is gone as not written,
+which ends the verb refused under `restore-tags-unwritten`. A file removed on
+purpose, or one an adopt stopped before writing, is named on every run, the
+dry run included, and the step "check each named file is there" cannot be met.
+
+**Measured cost.** Driven at review round two with an adopt stopped before
+its first file and one file unlinked: four of four runs, dry and real, exit
+30 naming a file no session changed. The database half and every other file
+land on each real run and the message is true. The stop needed an injected
+fault and the removal was by hand.
+
+**Closes when:** a file whose tags already read as kept, or that no session
+wrote, is not named, or the refusal says the file is gone and how to restore
+past it. Ledger only: the work lands and nothing false is said.
+
+---
+
+## R-1933. A restore skips a later session record it cannot read, and puts back no file that session wrote
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** `restore.plan` reads the title tag and key tag every later
+session kept through `_later_started`, which borrows `session.records`, and
+that reader drops a record it cannot parse ("a policy for reporting only, since
+a gate that borrowed it would fail open"). `session.scan_log` returns the
+unread half and nothing in the restore looks at it. `_later_committed`, which
+decides the discard set, has the same shape on `main`.
+
+**Measured cost.** Driven at review round two: an adopt stopped between its
+files and its rows, its record then made unreadable three ways (truncated
+JSON, a `state` this build does not know, the record removed), then `crate
+restore run` of the landing before it. Exit 0, `ok`, `file_tags.planned 0`,
+no warning, all five files still adopted, in three of three cases. No verb
+was found that writes an unreadable record (`write_record` is atomic), so the
+three were made by hand and the reachability is unmeasured.
+
+**Closes when:** the restore reads the session log through a reader that
+returns what it could not read, and a plan over a log with an unread record
+says so, in the files' half and the discard set alike. Ledger only: no
+shipped verb was driven to produce the input.
+
+---
+
+## R-1934. A restore of a landing taken after an adopt, once the adopt was restored, brings the adopted rows back and leaves the files old
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** A restore puts files back from the before values later
+sessions kept, and keeps no record of the tags it wrote itself. A capture
+taken after an adopt holds the adopted rows; restored once the adopt itself
+was restored, it brings those rows back, and no record says the files should
+carry the adopted tags again.
+
+**Measured cost.** Driven at review round two: adopt, land a second batch,
+`restore run ADOPT` naming the second landing to discard (ok, 5 of 5 put
+back), then `restore run SECOND_LANDING`: exit 0, ok, `planned 0`, no
+warning; the rows carry the adopted titles and the five files the old title
+tag and key tag. Nothing false is said, and `analyze adopt` run afterwards
+plans those files again, so it is repairable with the shipped verbs.
+
+**Closes when:** a restore records the tags it wrote, so a later restore can
+bring them forward, or says that the files were left as they are. Ledger
+only: repairable by the adopt verb.
+
+---
+
+## R-1935. An analyze adopt run again after one that stopped among its files keeps the adopted tags as its old ones
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** An adopt stopped after its files and before its rows
+leaves the files adopted and the rows old (R-1925). Run again, the adopt plans
+the rows and keeps, as each file's before value, the tags the stopped run
+wrote. A restore of the second run is faithful to its capture: the rows go
+back and the files keep the adopted tags, since that is what they held before
+it. Only a restore of the stopped session, discarding the second, puts both
+sides back, and no answer names that session.
+
+**Measured cost.** Driven at review round one: stopped adopt, adopt again
+(exit 0, 5 rows), `restore run` of the second: exit 0, ok, 5 of 5 read back,
+rows old and files adopted. `restore run` of the stopped session with the
+second discarded put every surface back.
+
+**Closes when:** the adopt's answer after a stopped run names the stopped
+session as the one whose restore undoes both, or the adopt takes its before
+values from that session's record. Ledger only; it closes with R-1925.
+
+---
+
+## R-1936. The files' half of a restore writes a recorded path without asking whether the session authorises it
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** Every target of the database half passes
+`Held.authorises_path` before it is written; the title tag and key tag a
+session kept are written at the recorded path, re-based as every recorded
+path is, with no such check. The adopt wrote the same paths without one.
+
+**Measured cost.** One candidate driven at review round one: a row whose file
+sits outside the library root is left `path-unmapped` by the adopt, so no
+entry names it, and no write outside the root was produced. A prefix map rule
+resolving outside the root was not driven.
+
+**Closes when:** the put back names a path the session does not authorise as
+not written, or the plan refuses it. Ledger only: no input was driven to a
+write.
+
+---
+
+## R-1937. A restore's gate and answer name no audio file it rewrites, nor the sessions their values came from
+
+**Found:** at the review of #970, R-1924, 2026-11-23.
+
+**The mechanism.** The files' half of a restore is planned under the gates,
+after the question is asked, so `restore.run.confirm` shows only "Restore
+this session, discarding everything after it?" and its digest covers no
+file. The answer gives counts in `file_tags` and the default output reads
+`restore.run: ok`. The files read include those of later sessions the discard
+flag never named (one that committed nothing needs no discard). A title tag
+edited by hand after the adopt is put back over, counted read back, and the
+edited value is kept nowhere.
+
+**Measured cost.** Driven at both review rounds: the gate envelope and the
+real and dry answers read in JSON and in the default output. Nothing false is
+said; the files a person is about to have rewritten are unsaid.
+
+**Closes when:** the gate, or the dry run's items, list each file and the
+session its value came from, and the run keeps the values it overwrote.
+Ledger only.

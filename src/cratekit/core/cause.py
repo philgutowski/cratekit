@@ -1065,6 +1065,9 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # U327. A title tag or key tag ``analyze adopt`` could not write; the
         # row keeps its old title so title and file agree.
         "analyze-adopt-unwritten": ExitCode.PRECONDITION,
+        # R-1924. A file a restore could not put its kept title tag and key tag
+        # back into; the database half and every other file landed.
+        "restore-tags-unwritten": ExitCode.PRECONDITION,
         # ── R-835's refusals ──
         # A label's catalogue was not read in full; refused before the gate.
         "label-playlists-incomplete": ExitCode.PRECONDITION,

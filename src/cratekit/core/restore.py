@@ -18,7 +18,9 @@ that releases the lock lets a second process commit before the run.
 
 **A DRY RUN AND A REAL RUN WALK ONE LIST.** :func:`plan` yields :class:`Step`
 values and :func:`run` checks each against the disk before acting; a preview on a
-second path reports on a different program.
+second path reports on a different program. The files' half is the one write not
+in that list: a dry run checks each of its files is there and readable, and a
+write a file then refuses is found only by the real run.
 
 **NOTHING IS DELETED THAT NOTHING ELSE HOLDS A COPY OF.** The live write-ahead log
 is moved aside, a replaced directory is removed only after its replacement lands,
@@ -36,6 +38,10 @@ Three parts hold the rest, each name a caller reads re-exported here (U300): the
 performing steps (``restore_perform``), retention and the prune (``restore_retention``, which cites
 :data:`RESIDUAL_CAPTURE_VOLUME_UNREPORTED`), and bare-metal recovery
 (``restore_recovery``, which cites :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`).
+A fourth, ``restore_tags``, is the files' half (R-1924): the title tag and key
+tag a session kept before it wrote them, read at the plan and put back by
+:func:`run` after the database half lands and before the latch is retracted.
+It is the one write outside the coupled set, and the plan's ``file_tags``.
 
 LAYER: write, the tree registry's exception, because it reads that registry; it
 imports no ``cratekit.write.*`` module, which ``tests/test_layering.py`` asserts.
@@ -58,6 +64,7 @@ from cratekit.core import (
     preflight,
     processes,
     reconcile,
+    restore_tags,
     session,
     snapshot,
     tree_registry,
@@ -559,6 +566,9 @@ class Plan:
     tree_markers: tuple[reconcile.Marker, ...] = ()
     unconverged: tuple[str, ...] = ()
     unverified_sessions: tuple[str, ...] = ()
+    #: Each file's title tag and key tag before the restored session and every
+    #: session it discards wrote them, put back after the database (R-1924).
+    file_tags: tuple[restore_tags.FileBefore, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,6 +584,8 @@ class RestoreOutcome:
     resolved: tuple[str, ...] = ()
     outstanding: tuple[str, ...] = ()
     outstanding_unreadable: str = ""
+    #: What the files' half did; a dry run plans its files and writes none.
+    file_tags: restore_tags.TagsPutBack = field(default_factory=restore_tags.TagsPutBack)
 
     @property
     def converged(self) -> bool:
@@ -665,6 +677,16 @@ def plan(
 
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, discarding)
+    # READ BEFORE ANYTHING IS REPLACED, so a record kept in a form this build
+    # cannot read refuses here and never after the rows went back (R-1924). The
+    # restored session first: the files go back to before the earliest it undoes.
+    # EVERY LATER SESSION, NOT ONLY THOSE THAT COMMITTED: a session that wrote
+    # files and no rows, or stopped between the two, holds the only true before
+    # values, and a commit is no evidence about files (review round one, B1).
+    file_tags = restore_tags.befores(
+        (record, *_later_started(cfg, record)),
+        rebased=lambda path: _rebased(path, recorded_root, rooted_at),
+    )
 
     allowed = restorable_targets(cfg)
     steps: list[Step] = []
@@ -765,6 +787,7 @@ def plan(
         tree_markers=trees,
         unconverged=unconverged,
         unverified_sessions=unverified,
+        file_tags=file_tags,
     )
 
 
@@ -796,6 +819,23 @@ def _later_committed(
                 and _committed(entry)
             ),
             key=lambda entry: entry.started,
+        )
+    )
+
+
+def _later_started(
+    cfg: config.Config, target: session.SessionRecord
+) -> tuple[session.SessionRecord, ...]:
+    """Every session that started after the one being restored to, whatever its
+    state, by recorded start: what the files' half reads (R-1924)."""
+    return tuple(
+        sorted(
+            (
+                entry
+                for entry in session.records(cfg)
+                if entry.session_id != target.session_id and entry.started > target.started
+            ),
+            key=lambda entry: (entry.started, entry.session_id),
         )
     )
 
@@ -991,7 +1031,15 @@ def run(
     _preflight(decided, cfg, held=held, recorded_root=Path(configured.library.root))
     performed: list[Step] = []
     resolved: list[str] = []
+    files = restore_tags.TagsPutBack(planned=len(decided.file_tags))
     for step in decided.steps:
+        if step.act is Act.RELEASE:
+            # THE FILES AFTER THE DATABASE HALF LANDED AND BEFORE THE LATCH IS
+            # RETRACTED (R-1924), so a restore stopped among the files still says
+            # it did not finish. Nothing in the put back raises for one file, so a
+            # finished restore is never closed abandoned for it. A dry run checks
+            # each file is there and readable, and writes none.
+            files = restore_tags.put_back(decided.file_tags, dry_run=dry_run)
         performed.append(step)
         if dry_run:
             continue
@@ -1019,6 +1067,7 @@ def run(
         resolved=tuple(resolved),
         outstanding=outstanding,
         outstanding_unreadable=unreadable,
+        file_tags=files,
     )
 
 

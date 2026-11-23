@@ -35,10 +35,16 @@ for, and dropping it answers their question with silence.
 ## What a restore replaces, and what it does not
 
 The database and the state coupled to it, together, as one capture. Not the
-values this product wrote into audio files on disk. A genre tag written during an
-adoption is in no capture, and the ledger that adoption kept is the only
-surviving copy of what those tags held beforehand. A restore does not put them
-back, so losing the state directory loses that undo rather than just a log.
+values this product wrote into audio files on disk, with one exception. A genre
+tag written during an adoption is in no capture, and the ledger that adoption
+kept is the only surviving copy of what those tags held beforehand. A restore
+does not put them back, so losing the state directory loses that undo rather
+than just a log. The exception is the title tag and key tag `analyze adopt`
+wrote: its session record keeps each file's old values, and a restore puts them
+back after the database, for the session restored and every session after it,
+the earliest kept value winning, and reads each back. A file that does not take
+them is named and the restore ends refused under `restore-tags-unwritten`; the
+same restore run again puts back what is left.
 
 The session a restore opens asserts three things before it writes anything: the
 library volume is mounted, the volume that answered is the volume that was
@@ -73,7 +79,9 @@ crate restore run SESSION-ID --discard LATER-SESSION --discard LATER-STILL
 
 Walk it first. The dry run performs no step and passes through the same gates and
 the same single session as the real thing, so it proves the refusals as well as
-the plan.
+the plan. Of the audio files whose tags it would put back it checks only that
+each is there and can be read; a file that then refuses the write is found only
+by the real run.
 
 ```bash
 crate restore run SESSION-ID --dry-run

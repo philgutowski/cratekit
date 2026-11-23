@@ -200,6 +200,7 @@ KEBAB_LITERALS = {
         'restore-record-unusable',
         'restore-staging-occupied',
         'restore-step-failed',
+        'restore-tags-unwritten',  # 2026-11-23, R-1924
         'restore-target-absent',
         'restore-target-invalid',
         'restore-target-is-live-root',
@@ -441,6 +442,8 @@ KEBAB_LITERALS = {
     'core/restore_recovery.py': ['recovery-target-refused'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore_retention.py': ['internal-error'],
+    # 2026-11-23, R-1924: a restore refusing a record it cannot put the files back from.
+    'core/restore_tags.py': ['restore-record-unusable'],
     # 2026-11-22, U301: the exchange and the grouping moved to modules of their own.
     'core/review.py': [
         'awaiting-human-action',
@@ -769,6 +772,8 @@ LITERAL_HOLDERS = {
     'core/restore_recovery.py': ['recovery-target-refused'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore_retention.py': ['internal-error'],
+    # 2026-11-23, R-1924: the files' half of a restore, refusing a record it cannot read.
+    'core/restore_tags.py': ['restore-record-unusable'],
     'core/review.py': [
         'awaiting-human-action',
         'review-already-resolved',

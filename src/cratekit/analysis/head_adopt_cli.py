@@ -198,8 +198,8 @@ def _written(plan: ha.AdoptPlan, written: ha.Written) -> dict[str, str]:
         f"tag and key tag, read back, and {written.written} row(s) in their title, "
         f"{written.read_back} read back from the database as written, the title and no "
         f"other column; the file names keep their old head; a restore of session "
-        f"{written.session_id} puts the rows back and not the files, whose old title "
-        f"and key tag its record keeps",
+        f"{written.session_id} puts the rows back and each file's old title tag and "
+        f"key tag, which its record keeps",
     )
 
 
