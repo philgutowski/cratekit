@@ -258,7 +258,8 @@ read whole for six hours, so run `crate --output json sync removed` again,
 once the hour's calls have left the window when the stop was the hour's, and
 it reads only what is left; report the calls each run spent. The copy's state
 directory, copied from the volume's, carries those held reads, so the
-rehearsal reads only what the account shows written since. The files are not touched:
+rehearsal reads only what the account shows written since and what is
+never held (a playlist changed lately or holding a track twice, the hearts). The files are not touched:
 `crate delete review`, which only Phillip runs, offers them to the Trash.
 
 ## 6. One closing report

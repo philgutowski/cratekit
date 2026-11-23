@@ -169,10 +169,11 @@ class SyncedReads:
         self.entries, self.unread = _document(self.path)
         #: Why the last write failed, ``""`` while nothing is owed.
         self.unkept = ""
-        #: The playlists this run took from the store, read and held, and dropped.
+        #: The playlists this run took from the store, and read and held.
         self.used: dict[str, None] = {}
         self.kept: dict[str, None] = {}
-        self.dropped: dict[str, None] = {}
+        #: The playlists this run dropped, each with when it read it not whole.
+        self.dropped: dict[str, datetime] = {}
         self._unwritten = 0
 
     def _fresh(self, read_at: datetime | None) -> bool:
@@ -225,7 +226,7 @@ class SyncedReads:
             # A READ NOT WHOLE, UNMARKED, OR NOT YET AGREEING WITH THE LISTING
             # LEAVES NOTHING TO REUSE.
             if self.entries.pop(account, None) is not None:
-                self.dropped[account] = None
+                self.dropped[account] = moment
                 self._counted()
             return
         self.entries[account] = {
@@ -246,16 +247,24 @@ class SyncedReads:
             self.flush()
 
     def standing(self) -> int:
-        """How many held reads a run starting now could use, whatever run made them."""
+        """How many held reads a run starting now could use, whatever run made them.
+
+        MEASURED AT NOW, not at this run's start, so the reads this run made
+        count (round two's finding 1).
+        """
+        now = unavailable.now()
         return sum(
-            1 for entry in self.entries.values() if self._fresh(_instant(entry.get("read_at")))
+            1
+            for entry in self.entries.values()
+            if (read_at := _instant(entry.get("read_at"))) is not None
+            and timedelta(0) <= now - read_at < HELD_FOR
         )
 
     def flush(self) -> None:
         """Write every entry still under :data:`HELD_FOR`, merged with what another run wrote.
 
         THE LATER READ OF A PLAYLIST WINS, and one this run dropped stays
-        dropped unless another run read it later. A REFUSED WRITE IS SAID,
+        dropped unless another run read it after the drop. A REFUSED WRITE IS SAID,
         never raised: it costs the next run calls, and nothing it would have
         answered.
         """
@@ -265,10 +274,11 @@ class SyncedReads:
         merged: dict[str, dict[str, Any]] = {}
         for account in sorted({*theirs, *self.entries}):
             other = theirs.get(account)
-            if account in self.dropped and other is not None:
-                # DROPPED BY THIS RUN: another run's read stands only if made after this one began.
+            dropped_at = self.dropped.get(account)
+            if dropped_at is not None and other is not None:
+                # DROPPED BY THIS RUN: another run's read stands only if made after the drop.
                 other_at = _instant(other.get("read_at"))
-                other = other if other_at is not None and other_at > self.moment else None
+                other = other if other_at is not None and other_at > dropped_at else None
             held = [
                 (read_at, entry)
                 for entry in (self.entries.get(account), other)

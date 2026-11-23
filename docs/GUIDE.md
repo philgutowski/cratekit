@@ -877,9 +877,10 @@ not been measured.
   when it holds as many tracks as the account counts and the stamp is at
   least half an hour old, since the service serves a playlist's old tracks for
   minutes after a change; a playlist changed lately is read on every run until
-  then. A playlist the account lists with no stamp, one it does not list, the
-  hearts, and a playlist gone, unreadable, short or empty are read on every
-  run. Runs that need more than the hour's line of 1,125 calls go on in the
+  then. A playlist the account lists with no stamp, one it does not list,
+  one that holds a track twice (its count then differs from the tracks
+  read), the hearts, and a playlist gone, unreadable, short or empty are read
+  on every run. Runs that need more than the hour's line of 1,125 calls go on in the
   next hour, and the one after, with nothing read twice, as long as the whole
   read and your answer at the gate come within the six hours. The plan, and
   the gate when it asks, say how many playlists were taken from held reads.

@@ -24,13 +24,15 @@ new = '''    if False:
         return None'''
 
 [[rows]]
-id = "K3_negative_count_marks"
-description = "mark_of: a negative count marks the playlist, the floor one lower"
+id = "K3_standing_at_run_start"
+description = "standing: held reads counted at the run's start, so the stopping run's own reads are left out, round two's BLOCKING finding"
 file = "src/cratekit/sync/removed_kept.py"
 surface = "user"
 tests = ["tests/test_sync_removed_kept.py"]
-old = '''isinstance(tracks, bool) or tracks < 0:'''
-new = '''isinstance(tracks, bool) or tracks < -1:'''
+old = '''        now = unavailable.now()
+        return sum('''
+new = '''        now = self.moment
+        return sum('''
 
 [[rows]]
 id = "K4_unstamped_marks"
@@ -202,7 +204,7 @@ description = "flush: a playlist this run dropped comes back from an older write
 file = "src/cratekit/sync/removed_kept.py"
 surface = "user"
 tests = ["tests/test_sync_removed_kept.py"]
-old = '''                other = other if other_at is not None and other_at > self.moment else None'''
+old = '''                other = other if other_at is not None and other_at > dropped_at else None'''
 new = '''                other = other if other_at is not None else None'''
 
 [[rows]]

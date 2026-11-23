@@ -20,9 +20,10 @@ The rules are :mod:`cratekit.sync.removed`'s; this is the order a person meets t
   refuses ``decision-stale`` on any change. No file is touched; ``crate delete
   review`` offers them later from the session record.
 
-``--retire`` (U320) reads every synced playlist, lists each unlisted one whose
-id answered not found at the gate ``sync.removed.retire``, and writes the
-record only on ``retire``. It makes no removal plan.
+``--retire`` (U320) reads every synced playlist the held reads do not hold,
+lists each unlisted one whose id answered not found at the gate
+``sync.removed.retire``, and writes the not found record only on ``retire``;
+the held reads are written as it reads. It makes no removal plan.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -81,10 +82,11 @@ def build_removed(parser, entry) -> None:
         "--retire",
         action="store_true",
         help=(
-            "read every synced playlist, list each one the account no longer lists "
-            "whose id answered not found, and retire them behind the explicit gate "
-            "sync.removed.retire, so they stop holding back every removal; writes "
-            "Cratekit's own record only, never the account or the database"
+            "read every synced playlist the held reads do not hold, list each one the "
+            "account no longer lists whose id answered not found, and retire them behind "
+            "the explicit gate sync.removed.retire, so they stop holding back every "
+            "removal; writes Cratekit's own records only, the held reads as it reads, "
+            "never the account or the database"
         ),
     )
     parser.set_defaults(_handler=sync_removed)

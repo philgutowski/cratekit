@@ -721,3 +721,92 @@ def test_a_store_whose_clock_is_behind_keeps_a_newer_read_another_run_wrote(nati
     behind.flush()
 
     assert set(_kept_document(cfg)["reads"]) == {"acc-ahead", "acc-behind"}
+
+
+class Ticking:
+    """``unavailable.now`` moving a second at every reading, as the real clock does."""
+
+    def __init__(self, monkeypatch, moment: datetime = NOW) -> None:
+        self.moment = moment
+
+        def now() -> datetime:
+            self.moment += timedelta(seconds=1)
+            return self.moment
+
+        monkeypatch.setattr(unavailable, "now", now)
+
+
+def test_a_stop_on_a_moving_clock_counts_the_reads_of_the_run_that_stopped(
+    five_landed, monkeypatch
+):
+    """Round two's finding 1: each read is stamped when made, after the run began, and the stop
+    still counts it."""
+    Ticking(monkeypatch)
+    account = Counted(monkeypatch)
+    _synced(account, 20)
+    account.ceiling = 1 + PER_PLAYLIST + 8 * PER_PLAYLIST
+
+    code, first = account.command_run()
+    assert code == int(ExitCode.REFUSED_BY_POLICY), first
+    assert first["cause"]["detail"]["kept"] == 9
+    code, second = account.command_run()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    assert second["cause"]["detail"]["kept"] == 18
+    assert len(_kept_document(config.load())["reads"]) == 18
+
+
+def test_standing_counts_only_reads_under_their_hours_at_now(native_library, pinned):
+    cfg, _root = native_library
+    pinned.moment = NOW - removed_kept.HELD_FOR
+    store = removed_kept.SyncedReads(cfg, pinned.moment)
+    store.keep("acc-old", _shown("acc-old"), _listing("acc-old"))
+    store.flush()
+    pinned.moment = NOW
+    later = removed_kept.SyncedReads(cfg, NOW)
+    later.keep("acc-new", _shown("acc-new"), _listing("acc-new"))
+
+    assert later.standing() == 1
+
+
+def test_a_drop_holds_against_a_read_made_before_it_and_yields_to_one_after(native_library, pinned):
+    """Round two's finding 4: compared with when this run dropped it, not when it began."""
+    cfg, _root = native_library
+    dropping = removed_kept.SyncedReads(cfg, NOW)
+    pinned.moment = NOW + timedelta(minutes=1)
+    other = removed_kept.SyncedReads(cfg, pinned.moment)
+    other.keep("acc-x", _shown(), _listing())
+    other.flush()
+    pinned.moment = NOW + timedelta(minutes=5)
+    dropping.entries["acc-x"] = dict(_kept_document(cfg)["reads"]["acc-x"])
+    dropping.keep("acc-x", _shown(), removed.Listing(account="acc-x", name="X", state=removed.SHORT))
+    dropping.flush()
+    assert _kept_document(cfg)["reads"] == {}
+
+    again = removed_kept.SyncedReads(cfg, pinned.moment)
+    pinned.moment = NOW + timedelta(minutes=6)
+    again.keep("acc-y", _shown("acc-y"), _listing("acc-y"))
+    pinned.moment = NOW + timedelta(minutes=7)
+    later = removed_kept.SyncedReads(cfg, pinned.moment)
+    later.keep("acc-x", _shown(), _listing())
+    later.flush()
+    again.dropped["acc-x"] = NOW + timedelta(minutes=5)
+    again.flush()
+
+    assert set(_kept_document(cfg)["reads"]) == {"acc-x", "acc-y"}
+
+
+def test_the_gate_line_counts_the_synced_playlists_and_the_held_ones_apart(five_landed, monkeypatch):
+    clock = Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    others = _synced(account, 3)
+    account.command_run()
+    account.written(others[0], [track("Other 0"), track("Other 0 B")], updated=FRESH_WRITE)
+    clock.moment = NOW + timedelta(minutes=1)
+
+    code, held = account.command_run()
+
+    assert code == int(ExitCode.DECISION_REQUIRED), held
+    assert "3 of the 4 synced playlist(s) were taken from a read made whole" in json.dumps(
+        held["cause"]["detail"]
+    )
