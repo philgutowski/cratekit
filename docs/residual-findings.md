@@ -4538,3 +4538,87 @@ rekordbox itself does not read for playback.
 with two survivors after it on each of two playlists, column by column on two
 dated copies, and the stamp rule is kept or changed to match. Ledger only: it
 closes only at an attended sitting.
+
+---
+
+## R-1997. A row leaving a former place keeps the with vox and Favorites of the folder that holds the place
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `alongside_left` reads the places beside the band of the bucket being left, in that bucket's own folder. A former place (R-797) sits in another bucket's folder (NonElectronic), so a row `tag set` moves out of the declaring bucket leaves the former place but keeps the holding folder's `with vox` and Favorites.
+
+**Measured cost.** Driven in review round one on a seeded row in NonElectronic / Soul / R&B with `with vox` and Favorites there, given Deep House by `tag set`, then `adopt move`: it ended in Deep House / High and still in NonElectronic / with vox and Favorites. The seeded state needs a filing made before the former place was declared, which was not driven.
+
+**Closes when:** the holding folder's places beside the band are read for a row leaving a former place and left with it, Favorites under the same keep rule, with the seeded drive as its test.
+
+---
+
+## R-1998. A genre move entry for a folder the row held nothing in stays recorded, so a later hand placement there is planned out
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move_cli.py` `handle` spends a genre move only through a move across buckets that names the recorded bucket and reads back moved. A bucket recorded by `tag set` that the row holds nothing in by the time of the move (R&B to Soul, then Soul to Deep House) plans no move there, so its entry stays; a track a person later puts in that folder by hand is then planned out of it, against GUIDE's "left where it is". The path is U339's.
+
+**Measured cost.** Driven in review round two by verbs up to the hand placement: after the move the entry read `{mover: {soul}}`, and with the row put in Soul High by hand `adopt move` showed a move taking it out. The gate shows it before anything is written; the hand placement was made through the writer, not rekordbox.
+
+**Closes when:** the move spends a recorded bucket the row holds nothing in, as the plan reads it, with the verb chain above as its test.
+
+---
+
+## R-1999. A renamed with vox or Favorites in the old genre folder now lists the whole move across folders instead of moving the band
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `moved_out_of` folds a place beside the band held under another name only (`holds_alongside_unnamed`) into the move's `unnamed`, so the whole move is listed under `held-under-another-name` with the band in `holds`, where main moved the band and left the renamed playlist unmentioned. The writer finds a playlist by its declared name, so it could not remove the renamed one; listing says so rather than moving half.
+
+**Measured cost.** At the engine only (`test_a_derived_class_held_under_another_name_only_is_listed_never_moved`); the reader path through a renamed playlist with a recorded node was not driven end to end. The row stays in both folders' bands until the playlist's name is put back, and the gate names it with its reason; GUIDE says so.
+
+**Closes when:** a renamed place beside the band is either found through its recorded node by the writer, or left behind with the band moved and the leftover named, with a dispatcher drive as its test.
+
+---
+
+## R-2000. A band the new genre's bucket settles but lists rather than moves still lets the old folder's with vox and Favorites go
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `leaving_moved` counts a place settled in the other bucket (`settled_in_the_other_bucket`) as left for the Favorites rule, on the ground that the bucket the entry claims takes it out in the same job. Where that bucket's `standing` lists the track instead (no reading, or the band held under another name only), the move out of the old folder still removes its `with vox` and Favorites while the track stays in the old folder's band.
+
+**Measured cost.** Driven in review round two on a seeded state: an R&B row with no energy tag in R&B High, with vox, Favorites and Soul Low, given Soul by `tag set`, then `adopt apply` and `adopt move`. It ended in R&B High, Soul Low and Soul Unsorted with the entry spent; `favorites refresh` then planned putting R&B's Favorites back. The seeded mix of an R&B band and a Soul band was not produced by a verb.
+
+**Closes when:** a settled place counts as left only when the claiming bucket's standing is a move removing it, asked through the same plan pass, with the seeded drive as its test.
+
+---
+
+## R-2001. A Soul row still in an R&B band, given a third genre by tag set, is recorded as leaving Soul and the move neither moves nor lists it
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records the bucket the row's old genre names (Soul), while the row sits in the bucket that holds Soul's split place (R&B). `adopt move` asks Soul for that row, which holds nothing there, so it plans nothing and lists nothing, and the row stays in R&B beside its new folder. The path is U339's, untouched by R-1965.
+
+**Measured cost.** Driven in review round two on a seeded state (a Soul row in R&B High, with vox and Favorites, given Deep House): the answer said the move takes 1 row out, the plan was empty, and the row stayed in R&B with the entry recorded for Soul. The one verb chain tried does not produce the state; `tag retag` and `tag remap` were not driven. Not measured on main.
+
+**Closes when:** `_leaves` records the bucket the tree actually holds the row in (the split place's holder too), with the seeded drive as its test.
+
+---
+
+## R-2002. Rows adopt move took out of a genre folder before R-1965 landed keep that folder's with vox and Favorites, unlisted
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** A row `tag set` moved and `adopt move` moved on main between U339 and R-1965 had its genre move entry spent (`adopt/genre_moves.py` `discharge`) once its band read back moved, leaving its old folder's `with vox` and Favorites. With the entry spent, the fixed move never asks that folder again, and nothing else lists the leftover.
+
+**Measured cost.** Driven in review round one on a state built by hand to main's documented end state: the leftovers stay and nothing lists them. Whether Phillip's library holds such rows is unmeasured; the run's answer on main told the person to remove them in rekordbox, so nothing false was said.
+
+**Closes when:** a sitting reads whether any row sits in a genre folder's `with vox` or Favorites with no band of that folder (or `converge`'s unexpected list names them), and either they are removed in rekordbox or a one time verb plans them out.
+
+---
+
+## R-2003. tag set records no folder a row holds only through with vox, Favorites or a genre sub, so adopt move never asks it
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records a genre folder as left only when the row holds a competing sub there (`Placements.holds`), while the move across genre folders (`adopt/move.py` `leaving_moved`) now also leaves the places beside the band, `with vox`, Favorites and a genre sub. A row whose band in its old folder was taken out by hand, but which still sits in that folder's `with vox` or Favorites, is never recorded by `tag set`, so `adopt move` plans and lists nothing for it.
+
+**Measured cost.** Driven in review round one with the band removed by `rb_writer.remove_memberships` by hand, not by a verb, before `tag set`: the row ended in both folders' `with vox` and Favorites, `adopt move` planned and listed nothing, and `converge` read matching. No verb was driven that produces the state, so reachability is unmeasured. When the band goes after `tag set` recorded the entry, the move is correct (driven).
+
+**Closes when:** `_leaves` asks the same places the move leaves (`holds` and `holds_alongside`, through one predicate the move shares), with a test that records and moves such a row.
