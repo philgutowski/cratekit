@@ -36,6 +36,9 @@ Three parts hold the rest, each re-exported here (U300): the performing steps
 (``restore_perform``), retention and the prune (``restore_retention``, which cites
 :data:`RESIDUAL_CAPTURE_VOLUME_UNREPORTED`), and bare-metal recovery
 (``restore_recovery``, which cites :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`).
+A fourth, ``restore_tags``, is the files' half (R-1924): the title tag and key
+tag a session kept before it wrote them, read at the plan and put back by
+:func:`run` after the database half lands.
 
 LAYER: write, the tree registry's exception, because it reads that registry; it
 imports no ``cratekit.write.*`` module, which ``tests/test_layering.py`` asserts.
@@ -59,6 +62,7 @@ from cratekit.core import (
     processes,
     rb_writer,
     reconcile,
+    restore_tags,
     session,
     snapshot,
     tree_registry,
@@ -557,6 +561,9 @@ class Plan:
     tree_markers: tuple[reconcile.Marker, ...] = ()
     unconverged: tuple[str, ...] = ()
     unverified_sessions: tuple[str, ...] = ()
+    #: Each file's title tag and key tag before the restored session and every
+    #: session it discards wrote them, put back after the database (R-1924).
+    file_tags: tuple[restore_tags.FileBefore, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -572,6 +579,8 @@ class RestoreOutcome:
     resolved: tuple[str, ...] = ()
     outstanding: tuple[str, ...] = ()
     outstanding_unreadable: str = ""
+    #: What the files' half did; a dry run plans its files and writes none.
+    file_tags: restore_tags.TagsPutBack = field(default_factory=restore_tags.TagsPutBack)
 
     @property
     def converged(self) -> bool:
@@ -674,6 +683,12 @@ def plan(
 
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, discarding)
+    # READ BEFORE ANYTHING IS REPLACED, so a record kept in a form this build
+    # cannot read refuses here and never after the rows went back (R-1924). The
+    # restored session first: the files go back to before the earliest it undoes.
+    file_tags = restore_tags.befores(
+        (record, *later), rebased=lambda path: _rebased(path, recorded_root, rooted_at)
+    )
 
     allowed = restorable_targets(cfg)
     steps: list[Step] = []
@@ -774,6 +789,7 @@ def plan(
         tree_markers=trees,
         unconverged=unconverged,
         unverified_sessions=unverified,
+        file_tags=file_tags,
     )
 
 
@@ -1009,6 +1025,13 @@ def run(
         if dry_run:
             continue
         resolved.extend(_perform(step, decided, cfg, now=now))
+    # THE FILES AFTER THE DATABASE HALF LANDED (R-1924). Nothing in the put back
+    # raises for one file, so a finished restore is never closed abandoned for it.
+    files = (
+        restore_tags.TagsPutBack(planned=len(decided.file_tags))
+        if dry_run
+        else restore_tags.put_back(decided.file_tags)
+    )
     # Read on both paths, since outstanding is a fact about the library. Read
     # defensively, because raising after the work would close a finished
     # restore ABANDONED.
@@ -1032,6 +1055,7 @@ def run(
         resolved=tuple(resolved),
         outstanding=outstanding,
         outstanding_unreadable=unreadable,
+        file_tags=files,
     )
 
 

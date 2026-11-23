@@ -194,6 +194,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'restore-record-unusable',
     'restore-staging-occupied',
     'restore-step-failed',
+    'restore-tags-unwritten',  # 2026-11-23, R-1924: a file a restore could not put back.
     'restore-target-invalid',
     'restore-target-is-live-root',
     'review-already-resolved',
