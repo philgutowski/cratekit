@@ -1,16 +1,8 @@
 """Intake's repair scenarios: a doubled file name proposed, accepted and renamed (U307).
 
-`crate repair paths --root` scans a folder and offers into the path repair
-queue a shorter name for each file whose trailing segment repeats its lead;
-a person accepts one proposal and leaves the other open; `crate repair paths
---apply` stops at its gate and, answered, renames the accepted file and
-only that one. On a collection holding a row no rule resolves under a name
-the repair would take, the apply refuses before any rename, in name
-apply's words. On the repair suite's own machines: one whose collection
-read and holds no row, and one whose collection is a disposable database.
-
-A file of its own, because the repair suite calls its library ``library``
-as other intake suites call theirs.
+`crate repair paths --root` offers a shorter name for each doubled file, and
+`--apply` renames only the accepted one behind its gate, or refuses before any
+rename over a row the new name would take. Its own file for its ``library``.
 """
 
 from __future__ import annotations

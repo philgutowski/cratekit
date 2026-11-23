@@ -1,8 +1,7 @@
 """U146 on the native medium: a heart on an owned track joins All Favorites and its month.
 
-``crate intake land --pass`` places a hearted track the library holds under the
-landing's own gate, with or without a file to land, on the native suite's
-disposable database. Nothing is downloaded or removed, and nothing is real (D1).
+``crate intake land --pass`` places a held hearted track under the landing's
+gate, with or without a file to land; nothing is downloaded or removed. D1.
 """
 
 from __future__ import annotations

@@ -1,11 +1,7 @@
 """Favorites split's scenarios: the quarter playlists turned into months behind the gate (U308).
 
-`crate favorites split` dates each member of a quarter playlist under the
-Favorites folder by its hearts job, else by the account, else leaves it
-undated, shows each month and each quarter at its explicit gate, and once the
-gate is answered fills the months and retires the quarters. On the split
-suite's own library: hearts landed natively with no pass, quarters made on a
-handle, the account faked.
+`crate favorites split` dates each quarter member by its hearts job, the
+account, or not at all, then fills the months and retires the quarters.
 """
 
 from __future__ import annotations
@@ -29,11 +25,8 @@ OK = int(ExitCode.OK)
 
 
 def _landed_hearts(stage, cfg, silence, titles: dict[str, str | None]) -> None:
-    """The suite's hearts landed with no pass, the staged files given the pinned instant.
-
-    The landing's digest names each staged file by its time, and the suite's
-    own ``_landed_hearts`` stages and lands in one call with no settle between.
-    """
+    """The suite's hearts landed with no pass, the staged files given the pinned
+    instant, since the landing's digest names each by its time."""
     hearts_swept(cfg, {title: UNKNOWN if when is None else when for title, when in titles.items()}, run_id="")
     for title in titles:
         _stage(cfg, silence, title)

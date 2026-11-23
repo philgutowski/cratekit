@@ -1,9 +1,7 @@
 """U279: ``crate setbuild`` indexes only the library itself.
 
-The library state folder and the download staging folder, when under the root,
-are left out of the walk, matched by location and never by name. The engine half
-drives ``iter_audio`` and ``build_index`` with a fake reader; the verb half drives
-``crate setbuild`` over real tagged FLAC in a disposable library.
+The state and staging folders under the root are left out of the walk by
+location, never by name, in the engine (a fake reader) and the verb (real FLAC).
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.modules.tools import setbuilder
 from cratekit.setbuilder import cli as setbuild_cli
 from tests._containers import synth_container
+from tests._sync_builders import exited
 
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[LQ]"),))
 GENRE = "Deep House"
@@ -87,9 +86,7 @@ def test_the_excluded_walk_is_todays_walk_less_the_excluded_folders(tmp_path):
     for name in names:
         touch(root / name)
     elsewhere = touch(tmp_path / "outside" / "L.flac").parent
-    # A symlinked folder in a subtree rglob takes whole, and two in the
-    # folders walked by hand (the root, and Downloads, which holds an excluded
-    # folder): today's walk descends into none of them.
+    # Symlinked folders in a subtree and in the two folders walked by hand.
     (root / "Music" / "linked").symlink_to(elsewhere, target_is_directory=True)
     (root / "linked-at-root").symlink_to(elsewhere, target_is_directory=True)
     (root / "Downloads" / "linked").symlink_to(elsewhere, target_is_directory=True)
@@ -305,8 +302,7 @@ def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
     excluded = config.library_state_dir(cfg) if where == "state" else folder
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
-    code, document = envelope_of(["setbuild", str(held["anchor"])])
-    assert code == int(ExitCode.OK), document
+    document = exited(envelope_of(["setbuild", str(held["anchor"])]))
     paths = named_paths(document)
     assert sorted(paths) == sorted([str(held["low"]), str(held["up"])])
     assert_nothing_from(document, excluded)
@@ -316,8 +312,7 @@ def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
     index = setbuild_cli._index(config.load(), library)
     assert setbuild_cli.named_anchor("Alder - Anchor Work", index).path == str(held["anchor"])
     assert not [t.path for t in index if under(Path(t.path), excluded)]
-    code, document = envelope_of(["setbuild", "--named", "Alder - Anchor Work"])
-    assert code == int(ExitCode.OK), document
+    document = exited(envelope_of(["setbuild", "--named", "Alder - Anchor Work"]))
     assert sorted(named_paths(document)) == sorted(paths)
     assert_nothing_from(document, excluded)
 
@@ -328,8 +323,7 @@ def test_a_companion_held_only_in_staging_is_left_out_of_the_set(configure, libr
     folder = state / "local" / "rehearsals" / "X" / "staging"
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
-    code, document = envelope_of(["setbuild", str(held["anchor"])])
-    assert code == int(ExitCode.OK), document
+    document = exited(envelope_of(["setbuild", str(held["anchor"])]))
     titles = {item["title"] for item in document["data"]["items"]}
     assert "Only Staged" not in titles
     assert titles == {"Same Key Lower", "Neighbour Up"}
@@ -345,8 +339,7 @@ def test_an_anchor_inside_an_excluded_folder_is_refused_naming_the_folder(
     folder = rehearsal if where == "state" else Path(cfg.paths.download_staging)
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
-    code, document = envelope_of(["setbuild", str(held["staged"])])
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", str(held["staged"])]), ExitCode.PRECONDITION)
     cause = document["cause"]
     assert cause["reason"] == "setbuild-anchor-not-indexed"
     named = str(state) if where == "state" else str(folder)

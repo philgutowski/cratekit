@@ -1,10 +1,7 @@
 """Label approved's scenarios: the download list written from the accepted label releases (U308).
 
-`crate label approved` reads every label release accepted in review, asks
-the provider for each one's tracks, leaves out what the library owns, and
-writes the list `acquire download` reads. A run with nothing accepted is a
-no op that opens no catalogue. On the approved suite's own machine, its
-strict fake catalogue and releases offered by the sweep's own producer.
+`crate label approved` writes the download list of accepted releases' unowned
+tracks; with nothing accepted it opens no catalogue.
 """
 
 from __future__ import annotations

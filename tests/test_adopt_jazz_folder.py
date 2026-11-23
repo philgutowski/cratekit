@@ -219,14 +219,11 @@ def test_a_jazz_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(leve
 
 
 def test_a_partial_jazz_match_already_in_rock_is_filed_in_jazz_and_stays_in_rock():
-    """THE COST OF THE MOVED KEYWORD RULE, pinned so a fix shows up here.
+    """The cost of the moved keyword rule, pinned so a fix shows up here.
 
-    The old code filed "Acid Jazz" in NonElectronic's default sub, Rock. It
-    routes to Jazz now, and Rock is not a place Jazz competes on, so adoption
-    files it into a Jazz band and the move plans nothing: it sits in both
-    folders, which no verb settles. R-804 named this cost for R&B and chose
-    not to pay it; the author named the rule for Jazz, and the residual U133
-    filed carries it.
+    "Acid Jazz" once filed in Rock now routes to Jazz, where Rock does not
+    compete, so it sits in both folders and the move plans nothing. R-804 named
+    this cost for R&B; the residual U133 filed carries it for Jazz.
     """
     rock = NONELEC.sub_by_source.default
     held = {NONELEC.id: {"t": (rock,)}}

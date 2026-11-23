@@ -1,6 +1,6 @@
 """U201: an edit made on the account to a mirrored genre playlist changes the library.
 
-End to end on a disposable tree and the strict fake account, a new organize run each pass. D1 applies.
+End to end on a disposable tree and the strict fake account. D1 applies.
 """
 
 from __future__ import annotations

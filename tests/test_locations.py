@@ -1,15 +1,8 @@
 """The Location primitives: the composition-form rule and the KTD27 emitter invariant.
 
-The COMPARISON rule fails by reporting a present file as absent, which is how 144
-still-referenced accented files were deleted. The EMITTER rule (KTD27) fails by
-making rekordbox create a second collection row: an emitted ``Location`` one byte
-off its own output is enough, so the character table pins every printable ASCII
-character as literal or encoded.
-
-Nothing here is copied from a real library; the synthetic names exercise the
-classes that matter. The rule WAS verified against all 10,070 ``Location``
-values of a live export byte for byte, which corrected lowercase escapes and a
-literal ``#`` in the ported encoder.
+The COMPARISON rule fails by reading a present file absent, which deleted 144 accented files.
+The EMITTER rule fails by making rekordbox create a second row, so every printable ASCII
+character is pinned literal or encoded, as verified against 10,070 live values.
 """
 
 from __future__ import annotations
@@ -145,8 +138,7 @@ def test_an_emitted_location_is_pure_ascii():
        ("`", "%60"), ("{", "%7b"), ("|", "%7c"), ("}", "%7d")],
 )
 def test_every_printable_ascii_character_is_pinned_literal_or_encoded(character, expected):
-    """An edit to the safe set fails HERE. Space encodes and ``!`` does not (KTD27);
-    the hex is lowercase, which alone failed 711 of 10,070 real rows."""
+    """Space encodes and ``!`` does not (KTD27); lowercase hex alone failed 711 real rows."""
     assert location_url("/" + character) == "file://localhost/" + expected
 
 
@@ -286,36 +278,25 @@ def test_leading_prefix_names_no_platform_mount_root():
 #: The four call names that encode or decode a Location, by name alone.
 _LOCATION_CODEC_CALLS = frozenset({"unquote", "unquote_plus", "quote", "quote_plus"})
 
-#: The one call that wears this shape and is not it, as (module, function),
-#: narrow on both axes. U56's searcher builds a ``?q=artist+title`` query string
-#: for public catalogues and never sees a Location; ``quote_plus`` encodes a space
-#: as ``+``, which is wrong for a path, so it cannot be a seventh decoder even by
-#: accident. Spelling it as ``urlencode`` to dodge the scan is what P7 calls
-#: routing around a guard; stating the exemption is the honest form.
+#: The one call that wears this shape and is not it, as (module, function): U56's searcher
+#: builds a ``?q=`` query string with ``quote_plus`` and never sees a Location. Stating the
+#: exemption is the honest form of routing around a guard (P7).
 _PERMITTED_CODEC_CALLS = frozenset({("cratekit/tagging/searchers.py", "quote_plus")})
 
 
 def _location_codec_offenders(root: Path) -> list[str]:
-    """Every call outside the one decoder that encodes or decodes a Location.
+    """``<path relative to root> calls <name>()`` for every call outside the one decoder.
 
-    One line per call, ``<path relative to root> calls <name>()``, in sorted
-    file order and walk order. The relative path is computed once per file
-    (U253): once per node it cost about forty seconds of a suite run.
-
-    A file whose text, read as Python reads identifiers (NFKC), never spells
-    ``quote`` cannot call any of the four names, so it is not parsed. That
-    skips most of the tree and finds exactly what a full parse would.
+    The relative path is computed once per file (U253). A file that never spells ``quote``,
+    read as Python reads identifiers (NFKC), cannot call any of the names and is not parsed.
     """
     vendor_root = root / "cratekit" / "_vendor"
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
         if path.name == "locations.py":
             continue
-        # The vendored tree is out of scope for this guard alone: it is about
-        # how WE organize code, and the vendored downloader's two unquote calls
-        # derive a filename from an HTTP URL. A SAFETY guard (beatgrid, secret
-        # scan, personal literals) must reach in here; that tree arrived writing
-        # tempo tags and carrying live credentials.
+        # The vendored tree is out of scope for this organizing guard alone; a SAFETY
+        # guard must reach in, since that tree arrived writing tempo tags and credentials.
         if vendor_root in path.parents:
             continue
         relative = path.relative_to(root).as_posix()
@@ -335,8 +316,7 @@ def _location_codec_offenders(root: Path) -> list[str]:
 
 
 def test_no_module_outside_this_one_decodes_a_location_itself():
-    """Six copies of this decoder drifted apart once, one without the
-    composition-form step that cost 144 files. This stops a seventh."""
+    """Six copies of this decoder once drifted apart; this stops a seventh."""
     offenders = _location_codec_offenders(SRC_ROOT)
     assert not offenders, (
         "Location encoding and decoding live in cratekit.core.locations and "
@@ -393,8 +373,7 @@ def test_the_sweep_reports_each_name_called_bare_or_as_an_attribute(tmp_path, na
 
 
 def test_the_sweep_reports_every_call_and_reads_the_name_alone(tmp_path):
-    """One line per call, two calls in one file are two lines, and the name is
-    read without its owner, so ``shlex.quote`` is reported as ``quote`` is."""
+    """One line per call, the name read without its owner, so ``shlex.quote`` counts."""
     _plant(tmp_path, "cratekit/a.py", _UNQUOTE + "    unquote(v)\n")
     _plant(tmp_path, "cratekit/b/c.py", "import shlex\n\ndef g(v):\n    return shlex.quote(v)\n")
 
@@ -419,8 +398,7 @@ def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
 
 
 def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
-    """Only ``cratekit/_vendor`` under the root and files named ``locations.py``
-    are skipped; lookalikes are swept."""
+    """Only ``cratekit/_vendor`` and files named ``locations.py``; lookalikes are swept."""
     call = _UNQUOTE
     _plant(tmp_path, "cratekit/core/locations.py", call)
     _plant(tmp_path, "cratekit/_vendor/downloader/fetch.py", call)
@@ -437,8 +415,7 @@ def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
 
 
 def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypatch):
-    """U253's proof is a count: one ``relative_to`` per file swept, not per node
-    (834,825 calls for 311 files at ``a7fcc9f4``)."""
+    """U253's proof is a count: one ``relative_to`` per file swept, not per node."""
     # Spells "quote" in a string, so each file is parsed and its nodes walked.
     body = "note = 'unquoted'\n" + "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
     for name in ("one", "two", "three"):
@@ -463,8 +440,7 @@ def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypat
 
 
 def test_the_one_permitted_call_is_still_there_and_is_still_a_query_string():
-    """An exemption for a call nobody makes is an exemption nobody maintains, so
-    the pair still matches a call, and it still builds a catalogue query string."""
+    """An exemption for a call nobody makes is one nobody maintains."""
     source = (SRC_ROOT / "cratekit" / "tagging" / "searchers.py").read_text()
     calls = [
         node
@@ -485,9 +461,8 @@ def test_the_one_permitted_call_is_still_there_and_is_still_a_query_string():
 
 
 def test_the_vendor_exclusion_is_not_copied_into_the_safety_guards():
-    """The guard above skips the vendored tree; the safety guards must not, since
-    that tree arrived writing tempo tags and carrying live credentials. Asserted
-    by construction: the beatgrid guard must still enumerate a vendored module."""
+    """The vendored tree arrived writing tempo tags and carrying credentials, so the beatgrid
+    guard must still enumerate a vendored module."""
     from tests.test_no_beatgrid_ever import _package_modules
 
     assert _VENDOR_ROOT.is_dir(), "vendored tree missing; this guard has nothing to prove"

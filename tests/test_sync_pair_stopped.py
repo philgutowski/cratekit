@@ -1,9 +1,7 @@
 """U225, pure: a write stopped part way through its order, read back from its run's steps.
 
-The front rule is held to the adapter's own, and a record of a write is read
-back only as it was written. ``tests/test_sync_pair_stopped_order.py`` drives
-the same rules through the verb. D1 applies, nothing here names a real
-account, person or track.
+The front rule is the adapter's own, and a record is read back only as it was
+written; ``tests/test_sync_pair_stopped_order.py`` drives the verb. D1 applies.
 """
 
 from __future__ import annotations

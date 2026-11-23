@@ -1,10 +1,8 @@
 """U157: a native landing marks the rows whose tempo moves with the dyn My Tag.
 
-A file whose drift is at or above the configured cut joins carrying ``dyn`` in
-the same gated commit, so Analyze Tracks runs those rows Dynamic and the rest
-Normal, and the warning names and counts both. Too little pulse lands steady,
-an older file is counted unscored, neither is tagged on a guess, and ``crate
-analyze check`` reads the mark with the landing's own reader. D1 applies.
+A file at or above the configured cut joins carrying ``dyn`` in the gated commit
+and the warning counts both kinds; too little pulse lands steady, an older file
+is counted unscored, and neither is tagged on a guess. D1 applies.
 """
 
 from __future__ import annotations
@@ -201,9 +199,8 @@ def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untag
 def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
     native_library, silence
 ):
-    """The writer refuses to invent a category's shape, asked before the gate, so
-    the batch lands, the screen says no tag is written, and the warning names
-    each row the person must still run with Dynamic."""
+    """The writer will not invent a category, so the batch lands untagged and the
+    warning names each row to run with Dynamic."""
     cfg, _root = native_library
     _read(cfg, silence, "Live.flac", "5.0", drift.VARIABLE)
     _read(cfg, silence, "Straight.flac", "0.1", drift.STEADY)
@@ -235,9 +232,7 @@ def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(nativ
 
 
 def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(native_library, silence):
-    """The writer finds the value by name and reads no marker, so over a removed dyn
-    value it writes where the check does not read: the read back is the check's
-    own, so the report counts no tag and the warning names the row."""
+    """Over a removed dyn value the check's own read back counts no tag and names the row."""
     cfg, _root = native_library
     _add_rows(
         cfg, _my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
@@ -263,9 +258,8 @@ def test_a_refused_commit_leaves_no_tag(writable, silence, monkeypatch):
 
 # What is approved
 def test_the_digest_and_the_answer_move_with_a_rescore_and_with_the_cut(writable, silence):
-    """The score is read against the cut configured now, not the verdict written
-    beside it, so raising the cut lands the same file steady; a rescore across
-    the cut and any change of cut are each another plan."""
+    """The score is read against the cut configured now, and a rescore or a change
+    of cut is another plan."""
     cfg = writable
     path = _read(cfg, silence, "One.flac", "0.4", drift.STEADY)
     first = _shown(_asked(_land()))

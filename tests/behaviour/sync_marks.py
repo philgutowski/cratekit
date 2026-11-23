@@ -1,9 +1,7 @@
 """Sync mark, unmark, strip and the taken ledger: the suite's own tests, driven through the stage (U304).
 
-As ``sync_pair.py`` does, on the slim installation the marks suites build: a
-refusal before the gate, a playlist renamed since its plan, marks put back, a
-strip with a collision, and the migration recorded. Four mark tests are left
-out: their plan's digest differed between two captures of one commit.
+As ``sync_pair.py`` does. Four mark tests are left out: their plan's digest
+differed between two captures of one commit.
 """
 
 from __future__ import annotations

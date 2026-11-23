@@ -1,8 +1,6 @@
 """U20: a flipped tree refuses the XML bridge; an unflipped sibling still accepts it.
 
-The guard is proved per emitter in ``tests/test_tree_registry.py``; this is the
-coexistence claim: one document, two governed trees, one flipped, and a write
-into the unflipped tree still lands.
+The guard per emitter is ``tests/test_tree_registry.py``'s.
 """
 
 from __future__ import annotations

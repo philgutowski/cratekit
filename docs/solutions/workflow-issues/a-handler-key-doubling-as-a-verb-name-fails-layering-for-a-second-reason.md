@@ -78,20 +78,20 @@ built to catch.
 Concretely, in this repo's `tests/test_layering.py`:
 
 - **Rule 1, import direction (KTD23).** `import_direction_violations`
-  (`tests/test_layering.py:238`) walks the whole AST, not just the module
+  (`tests/test_layering.py:165`) walks the whole AST, not just the module
   header, specifically because both live violations it was built to catch
   were lazy, function-body imports. A core module (rank `infrastructure`)
   importing `cratekit.cli.registry` (rank `cli`) trips this the moment the
   import exists anywhere in the file, deferred or not.
 - **Rule 2, a lower layer never names a higher-layer concept as a string**
-  (`tests/test_layering.py:315`, function `higher_concept_violations`). For
+  (`tests/test_layering.py:209`, function `higher_concept_violations`). For
   any module ranked below `modules`
   (`LAYERS = ("foundation", "domain", "infrastructure", "write", "modules",
-  "cli")`, `tests/test_layering.py:57`), the checker walks every
+  "cli")`, `tests/test_layering.py:31`), the checker walks every
   `ast.Constant` string literal in the source and fails if the value starts
   with a dotted path whose second segment names a feature-module package
   (`MODULE_PACKAGES`), or **is itself a verb name**, checked against
-  `verb_names()` (`tests/test_layering.py:162`), which reads
+  `verb_names()` (`tests/test_layering.py:106`), which reads
   `cratekit.cli.registry.VERB_NAMES`.
 
   This is why a handler table cannot dodge rule 1 by holding

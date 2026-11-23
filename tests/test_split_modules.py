@@ -1,19 +1,15 @@
 """``tests/_split_modules.py`` reads every part of each split module (R-1890).
 
-The scans that read a split module through the helper trust its glob, so the
-glob is held here against three independent lists of the parts: the module
-table in ``docs/DEVELOPING.md``, which is what a person is told; the import
-graph, since ``DEVELOPING.md`` says a part is imported only by its module and
-that module's other parts; and the call time accessor most parts hold back
-to their module. A part named off the convention fails here when it is in the
-table, when only its module and its parts import it by an absolute import, or
-when it holds an accessor in the spelling the parts use. One that escapes all
-three is described in the helper's docstring.
+Scans trust the helper's glob, so it is held against three independent lists
+of the parts: the ``docs/DEVELOPING.md`` table, the import graph (a part is
+imported only by its module and its parts), and the accessor a part holds
+back to its module.
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import re
 from pathlib import Path
 
@@ -27,6 +23,7 @@ def _glob_matched() -> dict[str, set[str]]:
     return {module: {path.stem for path in files_of(module)} for module in SPLIT_MODULES}
 
 
+@functools.cache
 def _imports_by_module() -> dict[str, set[str]]:
     """Every authored module's dotted name, and the cratekit modules it imports anywhere in it."""
     found: dict[str, set[str]] = {}
@@ -45,11 +42,11 @@ def _imports_by_module() -> dict[str, set[str]]:
     return found
 
 
+@functools.cache
 def _exclusive_parts() -> dict[str, set[str]]:
-    """Each split module's core imports that nothing outside it and those imports imports.
+    """Each split module's imports that nothing outside it and its parts imports.
 
-    Grown to a fixed point from the module itself, so a part imported only by
-    its module and by its sibling parts (``rb_tables``) joins once they have.
+    Grown to a fixed point, so a part only its siblings import (``rb_tables``) joins.
     """
     imports = _imports_by_module()
     found: dict[str, set[str]] = {}
@@ -128,12 +125,8 @@ def test_the_glob_reads_every_part_only_its_module_imports():
 def test_a_module_holding_an_accessor_is_read_with_the_module_it_reaches():
     """Read with the module it reaches back to, or proved another module's part.
 
-    A session part may break an import cycle with the writer's accessor, and is
-    then the session's part, not the writer's: it passes only when the import
-    graph proves it the session's (only the session and its parts import it).
-    A writer part merely named ``session_*`` is not proved so, and fails.
-    The accessor is read in the spelling the parts use, a module level
-    function returning a name ``from cratekit.core import X`` bound.
+    A session part may use the writer's accessor to break a cycle; it passes
+    only when the import graph proves it the session's, never by its name.
     """
     accessors = _accessor_parts()
     assert all(accessors.values()), f"no accessor found for some module: {accessors}"

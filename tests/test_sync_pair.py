@@ -7,6 +7,7 @@ account, so a write is what the next listing serves.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -21,6 +22,7 @@ from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import ledger, pairs
 from cratekit.sync import pair_cli
 from tests import outbound_fakes
+from tests._sync_builders import exited, silent_flac
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_rb_writer_db import _build_disposable_database
@@ -56,11 +58,7 @@ class Listed:
 
 
 class LivePlaylist:
-    """The account playlist as the catalogue lists it, read off the fake account now.
-
-    ``declared`` is a count the provider publishes beside the listing; None
-    publishes none, so the listing is never short.
-    """
+    """The account playlist as listed now, with ``declared`` the count published beside it."""
 
     page_size = 100
 
@@ -196,8 +194,7 @@ def sync(args: list[str], *, rekordbox: str = "apply", account: str = "apply"):
             return code, envelope
         run_id = envelope["run_id"]
         gate = envelope["cause"]["detail"]["gate"]
-        decided, said = drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
     raise AssertionError("the verb kept asking after both gates were answered")
 
 
@@ -254,8 +251,7 @@ def _pair(cfg) -> pairs.Pair:
 
 def test_the_first_sync_marks_the_pair_and_adds_only(world, cfg):
     w = world(account=("1", "2"), rekordbox=("2", "3"))
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["1", "2", "3"]
     assert w.on_account() == ["t1", "t2", "t3"]
     held = _pair(cfg)
@@ -267,8 +263,7 @@ def test_the_first_sync_marks_the_pair_and_adds_only(world, cfg):
 
 def test_the_first_sync_removes_nothing_on_either_side(world):
     w = world(account=("1",), rekordbox=("2",))
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     assert set(w.held()) == {"1", "2"} and set(w.on_account()) == {"t1", "t2"}
     assert envelope["data"]["totals"]["rekordbox_removes"] == 0
     assert envelope["data"]["totals"]["account_removes"] == 0
@@ -278,8 +273,7 @@ def test_a_track_added_on_the_account_only_lands_in_rekordbox_in_place(world):
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT] = ["t1", "t4", "t2"]
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "4", "2"]
     assert w.on_account() == ["t1", "t4", "t2"]
 
@@ -288,8 +282,7 @@ def test_a_track_added_in_rekordbox_only_lands_on_the_account(world):
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_add("5")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.on_account() == ["t1", "t2", "t5"]
     assert w.held() == ["1", "2", "5"]
 
@@ -300,8 +293,7 @@ def test_a_track_removed_on_the_account_leaves_the_playlist_and_stays_in_the_col
     w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT] = ["t1", "t3"]
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "3"]
     removed = [item for item in envelope["data"]["items"] if item["action"] == "remove"]
     assert [(item["side"], item["content_id"]) for item in removed] == [("rekordbox", "2")]
@@ -320,8 +312,7 @@ def test_a_track_removed_in_rekordbox_is_taken_off_the_account(world):
     w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_remove("2")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.on_account() == ["t1", "t3"]
     assert w.account.taken == [(ACCOUNT, ("t2",))]
 
@@ -332,8 +323,7 @@ def test_a_track_removed_on_the_account_and_put_back_in_rekordbox_is_kept(world)
     w.account.playlists[ACCOUNT] = ["t1", "t3"]
     w.rekordbox_remove("2")
     w.rekordbox_add("2")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert "2" in w.held()
     assert "t2" in w.on_account()
     assert w.account.taken == []
@@ -344,8 +334,7 @@ def test_when_both_sides_reorder_the_account_order_wins(world):
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT] = ["t3", "t2", "t1"]
     w.rekordbox_order("2", "1", "3")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["3", "2", "1"]
     assert w.on_account() == ["t3", "t2", "t1"]
 
@@ -354,8 +343,7 @@ def test_when_rekordbox_alone_reorders_the_account_follows(world):
     w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_order("3", "1", "2")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.on_account() == ["t3", "t1", "t2"]
     assert w.held() == ["3", "1", "2"]
 
@@ -364,8 +352,7 @@ def test_an_unmatched_rekordbox_track_is_named_and_stays_in_rekordbox(world):
     w = world(account=("1",), rekordbox=("1", "6"))
     del w.account.catalog["6"]
     w.account.reasons["6"] = "three releases share its ISRC"
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     assert w.on_account() == ["t1"]
     assert w.held() == ["1", "6"]
     warning = next(
@@ -381,8 +368,7 @@ def test_an_account_track_the_library_lacks_is_queued_once_and_never_written_as_
     w = world(account=("1",), rekordbox=("1",))
     w.account.playlists[ACCOUNT].append("t-missing")
     w.codes["t-missing"] = "GBZZZ2600099"
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     assert w.held() == ["1"]
     queued = envelope["data"]["totals"]["queued_jobs"]
     assert len(queued) == 1
@@ -392,8 +378,7 @@ def test_an_account_track_the_library_lacks_is_queued_once_and_never_written_as_
     assert job.payload["source_id"] == pair_cli.PAIR_SOURCE
     assert list(job.payload["tracks"]) == ["t-missing"]
 
-    code, again = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), again
+    again = exited(sync([*VERB, ACCOUNT]))
     assert again["data"]["totals"]["queued_jobs"] == []
     assert pair_cli.AWAITING in _codes(again)
     assert w.held() == ["1"]
@@ -412,20 +397,17 @@ def test_an_account_track_found_by_isrc_is_linked_and_the_link_is_kept(world, cf
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     w = world(account=("1",), rekordbox=("1",))
     session.ack_path(cfg).unlink()
-    code, refused = drive(w.args())
-    assert code == int(ExitCode.ACK_REQUIRED), refused
+    refused = exited(drive(w.args()), ExitCode.ACK_REQUIRED)
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
 
 
 def test_both_gates_are_asked_before_anything_is_written(world, cfg):
     w = world(account=("1",), rekordbox=("2",))
-    code, first = drive(w.args())
-    assert code == int(ExitCode.DECISION_REQUIRED)
+    first = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     assert first["cause"]["detail"]["gate"] == pair_cli.REKORDBOX_GATE
     run_id = first["run_id"]
     drive(["run", "decide", run_id, pair_cli.REKORDBOX_GATE, "apply", "--actor", "a-person"])
-    code, second = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_REQUIRED)
+    second = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_REQUIRED)
     assert second["cause"]["detail"]["gate"] == pair_cli.ACCOUNT_GATE
     assert w.held() == ["2"] and w.on_account() == ["t1"]
     assert pairs.PairStore(cfg).get(ACCOUNT) is None
@@ -436,13 +418,11 @@ def test_a_skipped_account_side_is_finished_by_the_next_sync(world, cfg):
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_remove("2")
     w.rekordbox_add("5")
-    code, envelope = sync([*VERB, ACCOUNT], account="skip")
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT], account="skip"))
     assert w.on_account() == ["t1", "t2"], "a skipped side was written"
     assert w.held() == ["1", "5"]
 
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.on_account() == ["t1", "t5"]
     assert w.held() == ["1", "5"], "the owed removal came back as an addition"
 
@@ -451,20 +431,17 @@ def test_a_skipped_rekordbox_side_is_finished_by_the_next_sync(world):
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT] = ["t1"]
-    code, envelope = sync([*VERB, ACCOUNT], rekordbox="skip")
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT], rekordbox="skip"))
     assert w.held() == ["1", "2"]
 
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert w.on_account() == ["t1"]
 
 
 def test_both_sides_skipped_writes_nothing_and_marks_nothing(world, cfg):
     w = world(account=("1",), rekordbox=("2",))
-    code, envelope = sync(w.args(), rekordbox="skip", account="skip")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args(), rekordbox="skip", account="skip"))
     assert envelope["outcome"] == "no_op"
     assert pairs.PairStore(cfg).get(ACCOUNT) is None
     assert w.held() == ["2"]
@@ -475,8 +452,7 @@ def test_a_short_account_listing_reads_nothing_as_removed(world):
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT] = ["t1"]
     w.declared = 2
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "2"], "a withheld track was read as a removal"
     assert pair_cli.WITHHELD in _codes(envelope)
 
@@ -486,8 +462,7 @@ def test_a_short_listing_removes_nothing_from_the_account(world):
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_remove("2")
     w.declared = 5
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.account.taken == []
     assert w.on_account() == ["t1", "t2"]
     # U246: a base track the short listing still served stays in the base, so
@@ -503,8 +478,7 @@ def test_a_rekordbox_change_between_the_gates_and_the_write_refuses_as_stale(wor
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, "apply", "--actor", "a-person"])
     w.rekordbox_add("3")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert w.on_account() == ["t1"]
 
 
@@ -577,8 +551,7 @@ def test_with_no_argument_every_marked_pair_is_synced(world):
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT].append("t3")
-    code, envelope = sync(VERB)
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(VERB))
     assert w.held() == ["1", "2", "3"]
 
 
@@ -596,10 +569,14 @@ def test_the_pairs_document_names_both_identifiers_and_no_path(world, cfg):
 
 def _untagged_row(cfg, content_id: str, tmp_path: Path, *, file_isrc: str) -> None:
     """Give a row no ISRC of its own and a real audio file carrying ``file_isrc``."""
-    from tests._containers import tagged_container
+    from cratekit.core import tags
 
+    probe = tmp_path / "probe.flac"
+    probe.write_bytes(silent_flac())
+    assert tags.write_tags(probe, {"isrc": file_isrc})
     target = Path(cfg.library.root) / "Music" / f"{content_id}.flac"
-    tagged_container(tmp_path, target, isrc=file_isrc)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(probe, target)
     conn = sqlite3.connect(cfg.library.db_path)
     try:
         conn.execute("UPDATE djmdContent SET ISRC = '' WHERE ID = ?", (content_id,))
@@ -611,8 +588,7 @@ def _untagged_row(cfg, content_id: str, tmp_path: Path, *, file_isrc: str) -> No
 def test_a_rekordbox_row_with_no_isrc_column_is_matched_on_its_files_isrc(world, cfg, tmp_path):
     w = world(account=(), rekordbox=("7",))
     _untagged_row(cfg, "7", tmp_path, file_isrc=isrc("7"))
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     asked = [one for one in w.account.matches if one["identity"] == "7"]
     assert asked and asked[0]["isrc"] == isrc("7")
     assert w.on_account() == ["t7"]
@@ -650,8 +626,7 @@ def test_a_landed_track_is_found_in_the_inbox_playlist_landed_for_the_account(
         cfg,
     )
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert _pair(cfg).links.get("t8") == "8"
@@ -705,8 +680,7 @@ def test_a_track_another_account_playlist_landed_is_added_and_never_queued(world
     _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert envelope["data"]["totals"]["acquire"] == 0
@@ -718,8 +692,7 @@ def test_a_track_another_account_playlist_landed_with_its_isrc_in_the_row_is_add
     assert sync(w.args())[0] == int(ExitCode.OK)
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
 
@@ -732,8 +705,7 @@ def test_a_track_no_landing_brought_in_is_still_queued(world, cfg, tmp_path):
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert _acquired(envelope) == ["t40"]
 
@@ -746,8 +718,7 @@ def test_two_landed_rows_carrying_the_code_are_ambiguous_and_queue_nothing(world
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     _landed_for(w, cfg, "acc-third", ("9",), session_id="s-third", name="Third")
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert pair_cli.AMBIGUOUS in _codes(envelope)
     assert envelope["data"]["totals"]["queued_jobs"] == []
@@ -763,8 +734,7 @@ def test_this_account_playlists_own_landing_wins_over_anothers(world, cfg, tmp_p
     # The widened step answers only what earlier steps left lacking, never t8 again.
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].extend(["t8", "t40"])
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert pair_cli.AMBIGUOUS not in _codes(envelope)
     assert _acquired(envelope) == ["t40"]
@@ -785,8 +755,7 @@ def test_a_track_another_pairs_intake_job_found_owned_is_added(world, cfg, tmp_p
         lambda _store, _job: ({"item_id": "t8", "state": pair_cli.OWNED_STATE, "paths": [owned]},),
     )
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
 
@@ -832,8 +801,7 @@ def test_another_pairs_job_that_no_longer_reads_stops_no_plan(world, cfg):
     _other_pairs_job(cfg, state=str(jobs.JobState.SUCCEEDED), config_toml="[library]\nroot = 1\n")
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _acquired(envelope) == ["t40"]
 
 
@@ -859,8 +827,7 @@ def _second_pair(w, cfg, tracks) -> str:
         second_id = str(made.ID)
     finally:
         rb_writer.close_db(handle)
-    code, envelope = sync([*VERB, SECOND, "--rekordbox", second_id])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, SECOND, "--rekordbox", second_id]))
     return second_id
 
 
@@ -892,8 +859,7 @@ def test_two_pairs_listing_one_lacking_track_queue_it_once(world, cfg):
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
     w.account.playlists[SECOND].append("t40")
-    code, envelope = sync(VERB)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(VERB))
     assert len(envelope["data"]["totals"]["queued_jobs"]) == 1
     assert _acquired(envelope) == ["t40"]
     assert envelope["data"]["totals"]["acquire"] == 1
@@ -903,8 +869,7 @@ def test_two_pairs_listing_one_lacking_track_queue_it_once(world, cfg):
     assert why.startswith(pair_cli.QUEUED_HERE)
     assert "when its rekordbox side is applied" in _warning(envelope, pair_cli.AWAITING)
     # THE NEXT SYNC QUEUES NOTHING: the one job holds t40 for both pairs.
-    code, again = sync(VERB)
-    assert code == int(ExitCode.OK), again
+    again = exited(sync(VERB))
     assert again["data"]["totals"]["queued_jobs"] == []
     assert sorted(track for _pair, track, _why in _awaiting(again)) == ["t40", "t40"]
 
@@ -923,8 +888,7 @@ def test_a_track_another_pairs_job_still_holds_is_awaiting_and_not_queued(world,
     _other_pairs_job(cfg, state=str(state), tracks=LACKING)
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert envelope["data"]["totals"]["queued_jobs"] == []
     ((pair, track, why),) = _awaiting(envelope)
     assert (pair, track) == (ACCOUNT, "t40")
@@ -940,8 +904,7 @@ def test_a_track_only_a_failed_or_cancelled_job_held_is_queued(world, cfg, state
     _other_pairs_job(cfg, state=str(state), tracks=LACKING)
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _acquired(envelope) == ["t40"]
     assert _awaiting(envelope) == []
 
@@ -954,13 +917,11 @@ def test_skipping_the_first_pairs_rekordbox_side_says_nothing_was_queued(world, 
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
     w.account.playlists[SECOND].append("t40")
-    code, envelope = sync(VERB, rekordbox="skip")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(VERB, rekordbox="skip"))
     assert envelope["data"]["totals"]["queued_jobs"] == []
     said = _warning(envelope, pair_cli.AWAITING)
     assert "were queued" not in said and "when its rekordbox side is applied" in said
-    code, again = sync(VERB)
-    assert code == int(ExitCode.OK), again
+    again = exited(sync(VERB))
     assert _acquired(again) == ["t40"]
 
 
@@ -970,8 +931,7 @@ def test_a_job_naming_no_playlist_is_named_by_its_account_playlist(world, cfg):
     _other_pairs_job(cfg, state=str(jobs.JobState.QUEUED), tracks=LACKING, name=None)
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _awaiting(envelope) == [(ACCOUNT, "t40", "queued for acc-other")]
 
 
@@ -982,24 +942,21 @@ def test_a_track_this_pair_alone_lists_is_queued_once_beside_anothers_job(world,
     _other_pairs_job(cfg, state=str(jobs.JobState.QUEUED), tracks={"t41": "USZZZ2600041"})
     w.codes.update(LACKING)
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _acquired(envelope) == ["t40"]
     assert _awaiting(envelope) == []
 
 
 def _held_at_its_gate(w):
     """Drive a sync of every pair to its first gate, answering nothing: the run id."""
-    code, first = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(VERB), ExitCode.DECISION_REQUIRED)
     return first["run_id"], first["cause"]["detail"]["gate"]
 
 
 def _finished(run_id: str, gate: str):
     """Answer each gate the run asks and resume it, until it answers."""
     for _ in range(3):
-        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"]))
         code, envelope = drive(["--run", run_id, *VERB])
         if code != int(ExitCode.DECISION_REQUIRED):
             return code, envelope
@@ -1014,8 +971,7 @@ def test_another_pairs_job_queued_since_the_plan_refuses_the_write_as_stale(worl
     w.account.playlists[ACCOUNT].append("t40")
     run_id, gate = _held_at_its_gate(w)
     _other_pairs_job(cfg, state=str(jobs.JobState.QUEUED), tracks=LACKING)
-    code, refused = _finished(run_id, gate)
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(_finished(run_id, gate), ExitCode.DECISION_STALE)
     assert "another sync queued since the plan" in json.dumps(refused)
 
 
@@ -1028,8 +984,7 @@ def test_the_runs_own_job_for_an_earlier_pair_stops_no_later_command(world, cfg)
     w.account.playlists[ACCOUNT].append("t40")
     w.account.playlists[SECOND].append("t40")
     run_id, gate = _held_at_its_gate(w)
-    code, envelope = _finished(run_id, gate)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_finished(run_id, gate))
     assert _acquired(envelope) == ["t40"]
 
 
@@ -1040,8 +995,7 @@ def test_one_row_landed_in_two_inbox_playlists_is_one_row(world, cfg, tmp_path):
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     _landed_for(w, cfg, "acc-third", ("8",), session_id="s-third", name="Third")
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert pair_cli.AMBIGUOUS not in _codes(envelope)
 
@@ -1064,8 +1018,7 @@ def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatc
         return real(config_read, recorded)
 
     monkeypatch.setattr(pair_read, "file_identity", counted)
-    code, envelope = drive([*VERB, ACCOUNT])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    exited(drive([*VERB, ACCOUNT]), ExitCode.DECISION_REQUIRED)
     assert [one for one in read if one.endswith("/8.flac")] == [
         f"{cfg.library.root}/Music/8.flac"
     ]
@@ -1104,8 +1057,7 @@ def test_an_unreadable_landing_record_holds_the_track_it_may_have_brought_in(
     assert sync(w.args())[0] == int(ExitCode.OK)
     path, _whole = _damaged_landing(w, cfg, tmp_path, how)
     w.account.playlists[ACCOUNT].append("t8")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert envelope["data"]["totals"]["acquire"] == 0
@@ -1128,8 +1080,7 @@ def test_the_same_plan_with_the_record_readable_adds_the_row(world, cfg, tmp_pat
     w.account.playlists[ACCOUNT].append("t8")
     assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
     path.write_bytes(whole)
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert pair_cli.LANDING_UNREAD not in _codes(envelope)
@@ -1151,8 +1102,7 @@ def test_a_session_log_that_cannot_be_listed_holds_the_track(world, cfg, tmp_pat
         return real(directory)
 
     monkeypatch.setattr(session, "_listed", refused)
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert "cannot be listed" in _said(envelope, pair_cli.LANDING_UNREAD)
@@ -1166,8 +1116,7 @@ def test_a_track_carrying_no_isrc_is_still_queued_beside_an_unreadable_record(
     _damaged_landing(w, cfg, tmp_path, "torn")
     w.codes["t40"] = ""
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _acquired(envelope) == ["t40"]
 
 
@@ -1178,8 +1127,7 @@ def test_a_track_no_landing_brought_in_is_held_while_a_record_is_unread(world, c
     _damaged_landing(w, cfg, tmp_path, "unknown-state")
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert pair_cli.LANDING_UNREAD in _codes(envelope)
 
@@ -1191,12 +1139,10 @@ def test_a_track_an_earlier_sync_queued_is_awaiting_beside_an_unreadable_record(
     w = world(account=("1",), rekordbox=("1",))
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
-    code, first = sync(w.args())
-    assert code == int(ExitCode.OK), first
+    first = exited(sync(w.args()))
     assert _acquired(first) == ["t40"]
     _damaged_landing(w, cfg, tmp_path, "torn")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert envelope["data"]["totals"]["awaiting"] == 1
     assert envelope["data"]["totals"]["landing_unread"] == 0
     assert envelope["data"]["totals"]["queued_jobs"] == []
@@ -1211,8 +1157,7 @@ def test_a_plan_with_every_landing_record_readable_warns_nothing_of_them(world, 
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _acquired(envelope) == ["t40"]
     assert pair_cli.LANDING_UNREAD not in _codes(envelope)
     assert envelope["data"]["totals"]["landing_unread"] == 0
@@ -1251,8 +1196,7 @@ def test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg):
     finally:
         conn.close()
     w.account.playlists[ACCOUNT].append("t4")
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     assert w.held() == ["1"]
     assert pair_cli.AMBIGUOUS in _codes(envelope)
     assert envelope["data"]["totals"]["queued_jobs"] == []
@@ -1301,8 +1245,7 @@ def test_the_sync_pass_hands_the_pairs_to_the_sweep(world, cfg, monkeypatch):
 def test_a_first_sync_with_a_side_skipped_records_no_snapshot_and_stays_first(world, cfg):
     """With one side's snapshot alone, the other side would read every track as added."""
     w = world(account=("1", "2"), rekordbox=("1", "2"))
-    code, envelope = sync(w.args(), account="skip")
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args(), account="skip"))
     held = _pair(cfg)
     assert held.first is True and held.account is None and held.rekordbox is None
 
@@ -1313,8 +1256,7 @@ def test_a_whole_sync_after_a_skipped_one_finishes_both_sides_from_the_old_base(
     w.rekordbox_remove("2")
     assert sync([*VERB, ACCOUNT], account="skip")[0] == int(ExitCode.OK)
     w.rekordbox_order("3", "1")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.on_account() == ["t3", "t1"]
     assert w.held() == ["3", "1"]
 
@@ -1323,8 +1265,7 @@ def test_a_track_the_account_already_holds_by_isrc_is_linked_without_asking_the_
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     # The provider would name another release of row 2's recording.
     w.account.catalog["2"] = "t2-album"
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert [one["identity"] for one in w.account.matches] == []
     assert w.on_account() == ["t1", "t2"]
     assert _pair(cfg).links.get("t2") == "2"
@@ -1338,8 +1279,7 @@ def test_a_row_with_no_isrc_anywhere_is_named_and_the_provider_is_not_asked(worl
         conn.commit()
     finally:
         conn.close()
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     assert "6" not in [one["identity"] for one in w.account.matches]
     warning = next(one for one in envelope["warnings"] if one["code"] == pair_cli.UNMATCHED)
     assert pair_cli.NO_ISRC in warning["message"]
@@ -1351,15 +1291,13 @@ def test_a_short_listing_leaves_the_snapshot_so_a_withheld_track_is_not_read_as_
     assert sync(w.args())[0] == int(ExitCode.OK)
     before = _pair(cfg)
     w.withheld = {"t2"}
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert _pair(cfg).account == before.account
     assert envelope["data"]["totals"]["account_adds"] == 0, "a withheld track was offered back"
     # The provider serves t2 again, and the author took it out of rekordbox.
     w.withheld = set()
     w.rekordbox_remove("2")
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert w.on_account() == ["t1"]
 
@@ -1405,8 +1343,7 @@ def test_a_pair_whose_playlist_is_gone_does_not_hold_every_other_pair(world, cfg
     pairs.PairStore(cfg).mark("acc-gone", "no-such-rekordbox-playlist", name="Gone")
     w.catalogue.account.append(AccountPlaylist(playlist_id="acc-gone", name="Gone"))
     w.account.playlists[ACCOUNT].append("t2")
-    code, envelope = sync(VERB)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(VERB))
     assert w.held() == ["1", "2"]
     assert pair_cli.LEFT_OUT in _codes(envelope)
     code, refused = drive([*VERB, "acc-gone"])
@@ -1428,8 +1365,7 @@ def test_a_track_held_twice_that_lost_one_copy_is_not_read_as_put_back(world):
     finally:
         conn.close()
     w.account.playlists[ACCOUNT] = ["t1"]
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1"]
     assert w.on_account() == ["t1"]
 
@@ -1438,8 +1374,7 @@ def test_skipping_the_only_side_with_changes_answers_no_op(world):
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.account.playlists[ACCOUNT].append("t2")
-    code, envelope = sync([*VERB, ACCOUNT], rekordbox="skip")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT], rekordbox="skip"))
     assert envelope["outcome"] == "no_op"
     assert w.held() == ["1"]
 
@@ -1520,15 +1455,12 @@ def test_a_live_plan_after_its_rehearsal_asks_the_provider_no_isrc_again(
     shutil.copytree(root / cfg.library.state_dirname, root / scratch)
     _loading(monkeypatch, rehearsal)
 
-    code, rehearsed = drive(w.args())
-    assert code == int(ExitCode.DECISION_REQUIRED), rehearsed
+    rehearsed = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     assert sorted(client.asked) == [isrc("2"), isrc("3")]
     assert (root / scratch) in config.state_path("playlist_pairs", rehearsal).parents
     _loading(monkeypatch, live_cfg)
 
-    code, live = drive(w.args())
-
-    assert code == int(ExitCode.DECISION_REQUIRED), live
+    live = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     assert live["cause"]["detail"]["shown"]["digest"] == rehearsed["cause"]["detail"]["shown"]["digest"]
     said = [one["message"] for one in live["warnings"] if one["code"] == ISRC_LOOKUPS]
     if days:

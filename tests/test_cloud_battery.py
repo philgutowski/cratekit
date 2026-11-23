@@ -1,9 +1,7 @@
 """Tests for ``scripts/cloud_battery.py``, the Linux battery read against the base.
 
-The clones are real (U200), shallow over ``file://`` and unshallowed by the real
-fetch; the scratch suites below fail chosen whole ids (U268); and the places are
-read off a mount table the test writes (U273), so they are the same on the
-container and on the Mac, which has no mount table.
+The clones are real and shallow over ``file://`` (U200), the scratch suites fail chosen
+whole ids (U268), and places are read off a mount table the test writes (U273).
 """
 
 from __future__ import annotations
@@ -282,10 +280,7 @@ def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch, place
 
 
 def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkeypatch, places):
-    """The real run, under the repository's distribution, with a stolen failure.
-
-    Under xdist the controller collects nothing itself, so the count is a worker's.
-    """
+    """The real run under the repository's distribution: a worker's count, with a stolen failure."""
     suite = stealing.write(tmp_path / "suite")
     log = tmp_path / "workers"
     stealing.prepare_environment(monkeypatch, log)
@@ -300,8 +295,7 @@ def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkey
 
 # Every failing id is read and compared whole, U268
 
-#: Ids that differ only after a space, or after ` - `, the separator a summary
-#: line puts after an id; which fail is read from the environment.
+#: Ids differing only after a space or a summary's ` - `; which fail is read from the environment.
 SPACED_SUITE = '''import os
 
 import pytest
@@ -445,8 +439,7 @@ def test_a_run_that_wrote_no_report_is_refused(spaced, monkeypatch):
         battery.measure_suite("disk")
 
 
-# The run record the mutation driver reads in place of its full baseline, U271;
-# the driver's side is in `tests/test_mutation_driver.py`.
+# The run record the mutation driver reads (U271, ``tests/test_mutation_driver.py``).
 
 
 @pytest.fixture

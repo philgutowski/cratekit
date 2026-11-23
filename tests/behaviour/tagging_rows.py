@@ -1,16 +1,9 @@
 """Tagging's row scenarios: a row's genre written from its file (U298).
 
-`crate tag rows` plans a genre for every row whose file says another word,
-stops at its explicit gate, and once the gate is answered writes the rows
-inside one guarded database session and reads every one back. On the rows
-suite's own library: its disposable database and the FLAC containers the
-encoder synthesized, one row per outcome. The verb asks its gate through the
-shell's one lookup, takes its capture through the write layer and records its
-commit through the row writer, three of the things U298 gave one home each.
-
-A file of its own beside ``tagging.py``, because the two suites these
-scenarios borrow from each call their machine ``machine``, and one file can
-hold one fixture of a name.
+`crate tag rows` writes each row's genre from its file behind its gate inside
+one guarded session and reads every one back, one row per outcome; its gate,
+capture and commit are three of the things U298 gave one home each. Its own file
+because both borrowed suites name ``machine``.
 """
 
 from __future__ import annotations

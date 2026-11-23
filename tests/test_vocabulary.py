@@ -1,9 +1,7 @@
 """R-799: the general catalogue's words are filed by a table of their own.
 
-The loader refusing a row whose tag names no folder, the resolver asking the
-table first, the chooser writing an alias word only when it names a folder,
-and the tagger writing the word that files. EVERY EXPECTED VALUE IS A LITERAL,
-so a template row that drifts fails. Nothing here reaches a network.
+The loader, the resolver asking the table first, the chooser and the tagger.
+EVERY EXPECTED VALUE IS A LITERAL. Nothing here reaches a network.
 """
 
 from __future__ import annotations
@@ -86,8 +84,7 @@ def filed(taxonomy, genre: str) -> tuple[str, str | None, Match]:
 
 
 def test_the_shipped_template_declares_the_catalogues_table_and_the_cards_rows():
-    """Two tables since U244, the general catalogue's and Discogs'; this card's
-    rows are the first one's, and Discogs' are ``tests/test_discogs_searcher.py``'s."""
+    """Two tables since U244; Discogs' rows are ``tests/test_discogs_searcher.py``'s."""
     assert {one.source for one in TAXONOMY.vocabularies} == {CATALOGUE, searchers.DISCOGS}
     (table,) = [one for one in TAXONOMY.vocabularies if one.source == CATALOGUE]
     assert {row.word: (row.tag, row.bucket, row.sub) for row in table.words} == SHIPPED
@@ -116,9 +113,7 @@ def test_no_shipped_tag_is_the_bare_name_of_a_bucket_that_files_by_source():
 
 
 def test_the_word_for_the_pop_sub_is_not_the_subs_name_which_routes_to_the_dance_bucket():
-    """Why the row writes a word of its own. A file whose genre is Pop is
-    filed in the dance bucket by that bucket's alias, so the sub's name is not
-    a word that files under it."""
+    """The dance bucket's alias files Pop, so the sub's name files elsewhere."""
     assert filed(TAXONOMY, "Pop")[0] == "dance_pop"
     assert filed(TAXONOMY, "NonElectronic / Pop")[:2] == ("non_electronic", "pop")
 
@@ -156,8 +151,7 @@ def test_a_top_level_word_with_no_row_is_declined_and_never_written(word):
 def test_a_word_with_no_row_goes_on_to_the_aliases_and_is_written_when_it_names_a_folder(
     word, written
 ):
-    """The table is asked first and is not the whole answer. A specific word
-    the aliases already file correctly is still written."""
+    """The table is asked first, and a word the aliases file correctly is still written."""
     assert TAXONOMY.vocabulary(CATALOGUE).get(word.lower()) is None
     assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE) == routing.suggest_tag(
         TAXONOMY, word
@@ -167,9 +161,7 @@ def test_a_word_with_no_row_goes_on_to_the_aliases_and_is_written_when_it_names_
 
 
 def test_a_dance_word_the_aliases_file_is_not_passed_over_for_a_broad_word_with_a_row():
-    """What the review drove. Declining every word with no row made an album
-    listing Electro, Disco and Pop a pop record, where the aliases had filed
-    it under the disco bucket."""
+    """Declining every rowless word made an Electro, Disco and Pop album a pop record."""
     assert published.choose(TAXONOMY, ["Electro", "Disco", "Pop"]) == (
         "Disco",
         "House / Funky House / Disco",
@@ -178,9 +170,7 @@ def test_a_dance_word_the_aliases_file_is_not_passed_over_for_a_broad_word_with_
 
 @pytest.mark.parametrize("word", ["Indie Rock", "Punk", "Latin", "World Music", "Bollywood"])
 def test_a_word_the_aliases_answer_with_a_bare_bucket_name_is_declined(word, no_table):
-    """R-799's second fault, for the words with no row. The aliases answer each
-    with the non electronic bucket's own name, which a copy with no table
-    wrote, and a copy that declares the table never does."""
+    """R-799's second fault: a bare bucket name is never written once the table is declared."""
     assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE).tag == "NonElectronic"
     assert published.choose(no_table, [word]) == (word, "NonElectronic")
     assert published.choose(TAXONOMY, [word]) is None
@@ -216,15 +206,13 @@ def test_an_empty_word_is_declined_before_any_table_is_read():
 
 @pytest.mark.parametrize("source", [None, searchers.BEATPORT, searchers.TRAXSOURCE, "bandcamp"])
 def test_a_record_shops_pop_goes_where_it_went_before(source):
-    """The pin the card asks for. The record shops have no table, and a caller
-    that names no source is the shops' own caller."""
+    """The shops have no table, and a caller naming no source is theirs."""
     answer = routing.suggest_tag(TAXONOMY, "Pop", source=source)
     assert (answer.tag, answer.bucket_id, answer.sub_id) == ("Dance / Pop", "dance_pop", None)
 
 
 def test_the_record_shops_searcher_names_no_source_to_the_resolver():
-    """Driven, not read: Beatport's Pop through the shipped searcher is the
-    dance bucket's name, on the template that declares the catalogue's table."""
+    """Driven: Beatport's Pop through the shipped searcher is the dance bucket's name."""
     page = _beatport_page([_beatport_track("an artist", "a title", "Pop")])
     refused = Fetched(note="HTTP 403", status=403)
     search = searchers.catalogue_searcher(
@@ -385,8 +373,7 @@ def test_a_source_name_that_no_record_could_carry_is_refused(default_raw, name):
 
 @pytest.mark.parametrize("name", ["dezer", "beatport", "traxsource", "bandcamp"])
 def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name):
-    """A misspelled name and a record shop's. Each would load clean and change
-    nothing, and the review found nothing said so."""
+    """A misspelled source and a shop's would each load clean and change nothing."""
 
     def mutate(data):
         data["vocabulary"][name] = {"words": [{"word": "Pop", "tag": "Rock"}]}
@@ -398,10 +385,7 @@ def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name
 
 
 def test_the_sources_the_loader_knows_are_the_ones_the_tagger_reads_a_table_for():
-    """The loader cannot import the tagging package, so its tuple is pinned to
-    the names the chooser passes the resolver: the general catalogue's,
-    Discogs' since U244, and Cyanite's since U245, whose trial resolves its
-    words through one. No record shop asked by page has one."""
+    """The loader cannot import tagging, so its tuple is pinned to the chooser's (U244, U245)."""
     assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE, searchers.DISCOGS, cyanite.CYANITE)
     assert published.SOURCE == CATALOGUE
     assert not set(taxonomy.VOCABULARY_SOURCES) & set(searchers.SCRAPED_WALK)
@@ -429,9 +413,7 @@ def _declared_strings() -> list[str]:
 
 @pytest.mark.parametrize("genre", _declared_strings())
 def test_a_named_folder_is_where_routing_files_the_genre(genre):
-    """The loader spells routing's two exact tiers for itself. This holds the
-    spelling to routing over every string the template declares: whenever a
-    folder is named, routing files the genre there by an exact declaration."""
+    """The loader's spelling of routing's two exact tiers, held to routing over every string."""
     place = TAXONOMY.named_folder(genre)
     landed_bucket, landed_sub, match = filed(TAXONOMY, genre)
     if place is None:
@@ -451,9 +433,7 @@ def test_a_named_folder_is_where_routing_files_the_genre(genre):
 
 
 def test_the_named_folder_population_is_not_empty_on_either_side():
-    """Measured on the shipped template on 2026-10-02: 154 strings, 77 naming a
-    folder and 77 not. Floors, so the test above cannot pass over a walk that
-    collapsed to one side."""
+    """Floors from 2026-10-02's 77 and 77, so the walk above cannot collapse to one side."""
     answers = [TAXONOMY.named_folder(genre) for genre in _declared_strings()]
     assert sum(place is not None for place in answers) >= 70
     assert sum(place is None for place in answers) >= 70
@@ -523,8 +503,7 @@ def test_a_tag_the_taxonomy_calls_too_coarse_is_refused(default_raw, tag):
 
 
 def test_the_bare_name_of_a_bucket_that_files_by_source_is_refused(default_raw):
-    """R-799's second measured fault: Alternative written as the bucket's name,
-    filed in the default sub with the word lost."""
+    """R-799: Alternative as the bucket's name filed in the default sub, the word lost."""
 
     def mutate(data):
         rows_of(data).append({"word": "Metal", "tag": "NonElectronic"})
@@ -574,8 +553,7 @@ def test_every_problem_in_a_table_is_reported_at_once(default_raw):
 
 
 def test_a_template_at_schema_version_1_may_declare_a_vocabulary(default_raw):
-    """No schema version moves for this table. A build older than this unit
-    ignores it and files the catalogue's words as it did before."""
+    """No schema version moves; an older build ignores the table."""
 
     def mutate(data):
         data["schema_version"] = 1

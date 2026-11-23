@@ -1,8 +1,7 @@
 """U113: a playlist the author made on the account lands as its own INBOX playlist.
 
-Driven on the xml bridge over a pass whose jobs are queued the way ``crate
-sync all`` queues them and run by the real worker, so the landing reads the
-reports the product writes. D1 applies: no real person or track is named.
+On the xml bridge, over jobs queued as ``crate sync all`` queues them and run by
+the real worker. D1 applies.
 """
 
 from __future__ import annotations
@@ -54,10 +53,7 @@ def swept(
     run_id: str = RUN,
     source_id: str = playlists.SOURCE_ID,
 ) -> list[jobs.Job]:
-    """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run.
-
-    The library holds none of the titles, so every report says missing.
-    """
+    """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run."""
     with jobs.open_store() as store:
         queued = [
             intake_cli.queue_playlist(
@@ -152,9 +148,7 @@ def _decided(argv: list[str]) -> dict:
     return refused
 
 
-# ---------------------------------------------------------------------------
 # The scenarios the brief names
-# ---------------------------------------------------------------------------
 
 
 def test_two_swept_playlists_land_as_two_inbox_playlists_under_their_exact_names(
@@ -187,9 +181,7 @@ def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
     first = _intake(_applied(export, "--pass", PASS))
-    # A week on: the next pass of the same playlist, landed against an export
-    # that holds the first landing's playlist under INBOX, as one taken after
-    # its import does.
+    # A week on, the next pass lands against an export holding the first playlist.
     run = "2026-10-10T101500Z-ef56"
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Two",))}, run_id=run)
     _staged(cfg, silence, "Two")
@@ -236,9 +228,7 @@ def test_a_label_landing_keeps_the_name_u110_gives_it(cfg, silence, export, tmp_
     assert not _written(envelope)
 
 
-# ---------------------------------------------------------------------------
 # What stays as it was, and what the batch playlist keeps
-# ---------------------------------------------------------------------------
 
 
 def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(cfg, silence, export):
@@ -280,9 +270,7 @@ def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
 
 
 def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silence, export):
-    # The library holds the file and the export the batch is spliced into has
-    # no entry for it, so there is no TrackID for the playlist to name: the
-    # track is left, and the landing names it rather than dropping it (U128).
+    # The export has no entry for the owned file, so it is left and named (U128).
     owned = _music(cfg, "older batch")
     owned.mkdir(parents=True)
     _stage(cfg, silence, "Held.flac").rename(owned / "Held.flac")
@@ -295,9 +283,7 @@ def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silenc
     assert account_playlists.NO_ROW in warning["message"]
 
 
-# ---------------------------------------------------------------------------
 # U128: the INBOX playlist mirrors the whole account playlist
-# ---------------------------------------------------------------------------
 
 
 def _owned_export(cfg, silence, export: Path, titles: tuple[str, ...]) -> Path:
@@ -335,9 +321,7 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
 
 
 def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence, export):
-    # The download for Gone never arrived, a lossy file refused or a row
-    # nothing answered, so the library does not hold it and the landing did
-    # not bring it.
+    # The download for Gone never arrived.
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Gone"))})
     _staged(cfg, silence, "One")
     envelope = _applied(export, "--pass", PASS)
@@ -382,9 +366,7 @@ def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export
     assert _held(envelope) == {BATCH: ["One"], "Sunset Warmup 2026-10-03": ["Two"]}
 
 
-# ---------------------------------------------------------------------------
 # The gate, the digest and the record
-# ---------------------------------------------------------------------------
 
 
 def test_the_gate_screen_names_each_playlist_before_anything_moves(cfg, silence, export):
@@ -457,9 +439,7 @@ def test_a_name_the_export_came_to_hold_after_the_gate_is_refused_and_moves_noth
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
 
 
-# ---------------------------------------------------------------------------
 # The sweep records the name, and the naming rule
-# ---------------------------------------------------------------------------
 
 
 def test_sync_all_records_the_name_the_account_listed_on_each_playlist_job(slim, monkeypatch):
@@ -507,10 +487,7 @@ def test_inbox_names_puts_the_landing_date_at_the_end_of_the_accounts_name(monke
 
 
 def test_an_export_rewritten_after_the_gate_moves_nothing(cfg, silence, export):
-    """The owned tracks' TrackIDs are read again before the first move.
-
-    The gate screen counts the owned tracks beside the new.
-    """
+    """The owned tracks' TrackIDs are read again before the first move."""
     held = _owned_export(cfg, silence, export, ("Held1",))
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
     _staged(cfg, silence, "New1")

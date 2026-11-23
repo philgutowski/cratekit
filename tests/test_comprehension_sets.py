@@ -1,26 +1,14 @@
 """U246: no comprehension rebuilds the same set once for every element it tests.
 
-``favorites = tuple(entry for entry in placements if entry not in set(derived))``
-read as a membership test against a set and ran as a set built anew for every
-placement: ``derived`` names nothing the comprehension binds, so every one of
-those sets was the same set, and a rebuild of ten thousand tracks spent 17 of
-its 28 seconds building it (the speed survey of 2026-11-12, card U246). Ten
-comprehensions elsewhere carried the same shape over one playlist's length.
+``x not in set(derived)`` inside a comprehension builds the same set per element; a
+rebuild of ten thousand tracks spent 17 of 28 seconds that way. The guard walks every
+module under ``src/cratekit`` but the vendored downloader and refuses a set (``set``,
+``frozenset``, ``dict.fromkeys``, or a set or dict comprehension) built per element from
+names the comprehension, or a comprehension or lambda inside it, does not bind: in a
+condition, or as a membership test's right hand side. The fix is to build it once above.
 
-The guard walks every module under ``src/cratekit``, the vendored downloader
-aside, and refuses a set (``set``, ``frozenset``, ``dict.fromkeys``, or a set or
-dict comprehension) built anew per element from names that do not change per
-element: anywhere in a comprehension's condition, or as the set a membership
-test in its element tests against. A name varies when the comprehension binds
-it, or a comprehension or lambda between it and the set does. The fix is the
-one U246 made eleven times: build the set once, above the comprehension, and
-test against the name.
-
-A call with no argument is not the shape (an empty set costs nothing to make and
-reads as a default), and neither is a call over the element itself
-(``set(row.tags)``), which is a different set for each element. A ``for``
-statement and a later ``for`` clause's iterable are not read; the record names
-them.
+An empty call and a set over the element itself (``set(row.tags)``) are not the shape. A
+``for`` statement and a later ``for`` clause's iterable are not read.
 """
 
 from __future__ import annotations
@@ -75,11 +63,8 @@ def _builds_a_set(node: ast.AST) -> bool:
 
 
 def _scoped_children(node: ast.AST, names: set[str]):
-    """Each child of ``node`` with the names that vary where it is evaluated.
-
-    A comprehension's own variables vary inside it, except in its first ``for``
-    clause's iterable, which Python evaluates once in the enclosing scope. A
-    lambda's parameters vary in its body.
+    """Each child of ``node`` with the names varying there; a first iterable is
+    evaluated outside.
     """
     if isinstance(node, COMPREHENSIONS):
         first, *rest = node.generators
@@ -121,12 +106,8 @@ def _membership_operands(expression: ast.AST):
 
 
 def _invariant_sets(expression: ast.AST, varying: set[str], *, anywhere: bool):
-    """Each set built in ``expression`` that reads none of the ``varying`` names.
-
-    ``varying`` grows by what every comprehension or lambda between the
-    comprehension and the set binds, since those change per element too.
-    ``anywhere`` reads every set the expression builds; otherwise only a set
-    that is the right hand side of a membership test.
+    """Each set in ``expression`` reading none of ``varying``: all of them if
+    ``anywhere``, else only membership tests' right hand sides.
     """
     found = []
     pending = [(expression, varying)]
@@ -141,12 +122,7 @@ def _invariant_sets(expression: ast.AST, varying: set[str], *, anywhere: bool):
 
 
 def rebuilt_per_element(source: str) -> list[str]:
-    """Each set a comprehension builds anew, per element, from a value it does not vary.
-
-    Read in two places: anywhere in a condition (an ``if`` clause), and as the
-    set a membership test in the element (or a dict comprehension's key or
-    value) tests against. As ``line: expression``, in source order.
-    """
+    """Each set a comprehension builds per element from invariant names, as ``line: expression``."""
     found: dict[int, tuple[int, str]] = {}
     for comprehension in ast.walk(ast.parse(source)):
         if not isinstance(comprehension, COMPREHENSIONS):
@@ -232,8 +208,7 @@ def test_the_guard_finds_the_shape_in_every_comprehension(source):
         "kept = [e for e in xs if any(1 for o in set(e.options) if o)]",
         # Built in the element but not tested against: a value, not a lookup.
         "kept = [frozenset(ys) for x in xs]",
-        # An inner comprehension's first iterable reads the outer variable,
-        # even when the inner one rebinds its name.
+        # An inner comprehension's first iterable reads the outer variable, even when rebound.
         "kept = [one for one in rows if 1 in {one for one in one.kids}]",
         "kept = [x for x in xs if x in set(x for x in x.kids)]",
         "kept = [e for e in xs if any(filter(lambda *g, **h: 'a' in set(g), e.groups))]",

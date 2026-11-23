@@ -1,9 +1,8 @@
 """U276: an analysis run reads the key without the harmonic separation.
 
-``plain`` is the default wherever a caller names no method (A121's reading).
-Held here: which method each caller gets, that the default never separates,
-that ``whole`` is the old arithmetic bit for bit, and that nothing but the key
-can move. The audio tests skip where the analysis extra is absent.
+``plain`` is the default wherever a caller names no method (A121); ``whole`` is
+the old arithmetic bit for bit, and nothing but the key can move. The audio
+tests skip where the analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -65,11 +64,7 @@ def _keywords_of_partials(path: Path, callee: str) -> list[set[str]]:
 
 @pytest.mark.parametrize("module", ["cli.py", "ahead.py"])
 def test_the_runs_shipped_bindings_name_no_method_so_they_take_the_default(module):
-    """``analyze run`` binds the detector in the driver and in each stream worker.
-
-    Neither names a key method, so both read the key the way the default says,
-    and a head measured ahead is the head the driver would have measured.
-    """
+    """``analyze run`` binds the detector in the driver and each worker with the default key."""
     bound = _keywords_of_partials(REPO_ROOT / "src" / "cratekit" / "analysis" / module, "analyse_file")
     assert bound, f"no detector binding found in analysis/{module}"
     for keywords in bound:
@@ -104,13 +99,8 @@ def _name_of(node: ast.AST) -> str | None:
 
 
 def test_no_shipped_caller_of_the_detector_names_a_key_method():
-    """Every module of the package, the warm up included, reads the key the default's way.
-
-    Read from the source rather than listed by hand, so a caller added later
-    is held too. The only reader that names a method is the detector itself,
-    passing its own argument on, and the measuring scripts, which take it
-    from their ``--key``.
-    """
+    """Every module reads the key the default's way, read from source; only the
+    detector and the measuring scripts' ``--key`` name a method."""
     package = REPO_ROOT / "src" / "cratekit"
     named: list[str] = []
     seen = 0
@@ -237,11 +227,7 @@ RATE = detect.MEASURE_RATE
 
 
 def _in_key(np, tonic: int, seconds: float, *, minor: bool = False):
-    """A key's I, IV, V, I in sustained triads with a bass, two seconds a chord.
-
-    The fixture of ``tests/test_analysis_key_methods.py``, with its minor scale
-    beside the major one so every one of the twenty four keys is written.
-    """
+    """A key's I, IV, V, I in sustained triads with a bass, every one of twenty four keys."""
     scale = [0, 2, 3, 5, 7, 8, 10] if minor else [0, 2, 4, 5, 7, 9, 11]
     out = np.zeros(int(seconds * RATE), dtype=np.float32)
     chord = int(2.0 * RATE)
@@ -338,11 +324,8 @@ def test_the_default_profile_is_the_plain_chroma_bit_for_bit():
 
 
 def test_nothing_but_the_key_moves_for_a_track_both_methods_key(tmp_path):
-    """For a track both methods key, tempo, drift, its verdict, energy and its status agree.
-
-    Whether a track is keyed at all can move too, which the record says: a
-    file of clicks with no tone was keyless under whole and is keyed now.
-    """
+    """For a track both methods key, tempo, drift, its verdict, energy and its status
+    agree; whether a track is keyed can move."""
     np, soundfile = _extra()
     from cratekit.analysis import energy
 

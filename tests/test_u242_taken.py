@@ -1,10 +1,7 @@
 """U242: the DOWNLOADED prefix is retired, and Cratekit records what it took itself.
 
-THE PRODUCER IS THE PRODUCT. A hand prefixed playlist is listed under the
-prefix with nothing in the cursor or the record, as the live account's 599
-are. A Cratekit marked one is made by the real verbs through
-``tests/test_sync_mark.py``'s helpers; only the two provider seams are faked.
-The fake catalogue does not see the fake account's renames, so each test
+A hand prefixed playlist is listed with no cursor or record; a marked one is
+made by the real verbs; only the provider seams are faked, and each test
 retitles the listing to what the account would list after a strip.
 """
 
@@ -24,6 +21,7 @@ from cratekit.organize import inspiration
 from cratekit.sync import mark_record, pair_discover, playlists, strip_cli, taken_cli, twins
 from tests import outbound_fakes
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_sync_all import _playlist, _tracks, bind_playlists
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture, re-exported
@@ -78,9 +76,7 @@ def _queued(passed: dict) -> list[str]:
     return [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The ledger, and the one predicate every reader asks
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_is_taken_holds_a_recorded_id_whatever_its_title_and_a_legacy_prefix():
@@ -200,9 +196,7 @@ def test_a_record_of_an_unknown_version_refuses(slim):
             record.taken_ids()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The declarations
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_marks_write_nothing_on_the_account_and_the_strip_is_its_one_write():
@@ -222,9 +216,7 @@ def test_the_record_still_survives_a_restore():
         assert config.state_file(key).snapshot is config.SnapshotRole.NEVER_RESTORED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The migration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 HAND = (_playlist("pl-h", "DOWNLOADED Hand", 2), _tracks("901", "902"))
@@ -283,9 +275,7 @@ def test_the_migration_does_not_copy_the_cursor(slim, monkeypatch):
     del fake
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The strip, and a stripped playlist never offered as new
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _strip(*extra: str, option: str = "apply") -> tuple[int, dict]:
@@ -511,9 +501,7 @@ def test_playlist_narrows_and_refuses_a_playlist_with_no_prefix(slim, monkeypatc
     assert account.renamed == [("pl-2", "Two")]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. sync unmark lets go what a pass took
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_unmark_lets_go_a_pass_mark_with_no_write_to_the_account(slim, monkeypatch):
@@ -536,9 +524,7 @@ def test_unmark_lets_go_a_pass_mark_with_no_write_to_the_account(slim, monkeypat
     del fake
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The readers, unchanged for a stripped playlist
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class _Folders:
@@ -596,9 +582,7 @@ def test_filing_reads_a_found_prefix_as_undated_and_a_pass_mark_as_dated():
     assert filing.year_of_mark(standing["pl-m"]) == "2025"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Marks, labels and releases, driven through the producers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stripped(slim, monkeypatch, *listed):
@@ -763,17 +747,11 @@ def test_unmark_playlist_narrows_the_releases(slim, monkeypatch):
     del fake
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. Titles retitled since, and strip records older than a mark
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_whose_title_was_retitled_since_stamps_the_pass_mark(slim, monkeypatch):
-    """The strip trims ``Warmup `` to ``Warmup``, which reads retitled since.
-
-    The release still stamps the pass's mark, and neither the next migration
-    nor the next strip takes it again.
-    """
+    """The strip reads ``Warmup`` as retitled since; the release still stamps the pass's mark."""
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-a": ("Warmup ", "DOWNLOADED Warmup ")})
     _stripped(slim, monkeypatch, (_playlist("pl-a", "DOWNLOADED Warmup ", 1), _tracks("1")))

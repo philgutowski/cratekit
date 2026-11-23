@@ -1,11 +1,8 @@
 """Two refusals a gated database verb meets after its gate (U300).
 
-On the native landing suite's library. `crate intake land --rehearse`, its
-gate answered, then a second container staged before the landing runs: the
-plan approved is not the plan the command would now apply, so the run refuses
-on the moved digest and writes nothing. And `crate favorites order`, its gate
-answered, with the installed application off its recorded pin: the guarded
-open refuses on the version and the folder is left as it was.
+On the native landing suite's library: `crate intake land --rehearse` refuses
+on a digest moved by a second staged container, and `crate favorites order`
+refuses on an application off its recorded pin, each writing nothing.
 """
 
 from __future__ import annotations

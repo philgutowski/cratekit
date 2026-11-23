@@ -1,9 +1,7 @@
 """A genre word outside the taxonomy, answered in one command (U194).
 
-The planner, ``core.taxonomy_word``, on the shipped text and copies cut from
-it: which words it answers, the edit it makes, and that nothing else moves.
-Then the two verbs through the real dispatcher, on a library holding a copy and
-real tagged containers: the gate, the stale answer, the writes and the read back.
+The planner, ``core.taxonomy_word``, on the shipped text and copies cut from it,
+then the two verbs through the dispatcher on a copy and real tagged containers.
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
 from tests.test_active_taxonomy import write_active
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 WORD = "Latin Electronic"
 AFRO = "Afro House"
@@ -93,8 +92,7 @@ def test_the_genre_is_named_by_its_folder_name_its_id_or_its_name_in_another_cas
 
 
 def refusal(id_, answer, why, *said, unsaid=(), step_end=None):
-    """An answer refused: ``why`` (None when not asserted), texts the refusal
-    says and does not say, and the end of its step."""
+    """An answer refused: ``why`` (None unasserted), texts said and unsaid, and its step's end."""
     return pytest.param(answer, why, said, unsaid, step_end, id=id_)
 
 
@@ -147,8 +145,7 @@ def test_an_answer_the_planner_cannot_give_is_refused_with_why(answer, why, said
 
 
 def test_a_sub_is_not_a_genre_an_alias_can_name():
-    """Routing recognises a bucket's name and never a sub's (Caribbean), so a
-    file retagged to a sub would never be filed by its own name."""
+    """Routing files a bucket's name, never a sub's (Caribbean)."""
     declared = taxonomy.load_taxonomy(_shipped())
     assert declared.bucket_for_display("Caribbean") is None
     with pytest.raises(word_edit.Refused):
@@ -157,8 +154,7 @@ def test_a_sub_is_not_a_genre_an_alias_can_name():
 
 @pytest.mark.parametrize("name", ["Electronica / Other", "NonElectronic"])
 def test_an_alias_to_a_folder_whose_name_files_nothing_by_itself_is_refused(name):
-    """The fallback's name is a catch-all, and the non electronic folder files by
-    the track's own genre, so either name on a file files it by a default."""
+    """The fallback and the non electronic folder file by a default, never by their name."""
     with pytest.raises(word_edit.Refused) as refused:
         word_edit.alias(_shipped(), WORD, name)
     assert refused.value.why == word_edit.BARE_FOLDER
@@ -168,8 +164,7 @@ def test_an_alias_to_a_folder_whose_name_files_nothing_by_itself_is_refused(name
 
 
 def test_a_declined_word_that_is_a_folders_name_is_a_folder_already_declared():
-    """Techno declines for tagging and is the Techno folder's name, so the
-    folder answer is already given and plans nothing."""
+    """Techno declines for tagging and names the Techno folder, so nothing is planned."""
     edit = word_edit.folder(_shipped(), "Techno")
     assert not edit.writes and edit.bucket_id == "techno"
     with pytest.raises(word_edit.Refused) as refused:
@@ -179,9 +174,7 @@ def test_a_declined_word_that_is_a_folders_name_is_a_folder_already_declared():
 
 @pytest.mark.parametrize("word", [BREAKS_LOWER, "nonelectronic", "AFRO HOUSE"])
 def test_a_folders_own_name_in_another_case_is_refused_to_any_other_folder(word):
-    """R-1184: a folder's lowercased name is off taxonomy, and an alias of
-    another folder would retag the exact name too, a folder of its own would be
-    a second of that name, so both refuse saying where the files are filed now."""
+    """R-1184: a folder's lowercased name refuses both verbs, saying where its files are filed."""
     declared = taxonomy.load_taxonomy(_shipped())
     if word != "AFRO HOUSE":
         assert routing.suggest_tag(declared, word).off_taxonomy
@@ -196,8 +189,7 @@ def test_a_folders_own_name_in_another_case_is_refused_to_any_other_folder(word)
 
 
 def test_the_premise_routing_knows_a_folders_name_only_exactly():
-    """Driven on the shipped template: each lowercased name is filed by a
-    keyword rule, nonelectronic in the fallback and not in NonElectronic."""
+    """Each lowercased name files by a keyword rule, nonelectronic in the fallback."""
     declared = taxonomy.load_taxonomy(_shipped())
     breaks = routing.resolve_bucket(declared, BREAKS_LOWER)
     assert breaks.match is routing.Match.FUZZY and breaks.bucket_id == "breaks_dnb_dubstep"
@@ -208,17 +200,14 @@ def test_the_premise_routing_knows_a_folders_name_only_exactly():
 
 @pytest.mark.parametrize("name", [BREAKS, "breaks_dnb_dubstep", BREAKS_LOWER])
 def test_a_folders_own_name_in_another_case_is_answered_by_its_own_folder(name):
-    """A plan that changes no text, since the word is the folder's name, and
-    files the word's files under the exact name, which files them by itself."""
+    """No text changes; the word's files go under the folder's exact name."""
     edit = word_edit.alias(_shipped(), BREAKS_LOWER, name)
     assert not edit.writes and edit.own_name
     assert edit.bucket_id == "breaks_dnb_dubstep" and edit.display == BREAKS
 
 
 def test_a_folders_own_name_whose_folder_files_nothing_by_its_name_is_refused_truly():
-    """NonElectronic files by each track's own genre, so its bare name files
-    nothing: refused by its own folder, the one step is a retag by hand, never
-    the folder verb that refuses it too."""
+    """NonElectronic files nothing by its bare name, so the one step is a retag by hand."""
     with pytest.raises(word_edit.Refused) as refused:
         word_edit.alias(_shipped(), "nonelectronic", "NonElectronic")
     assert refused.value.why == word_edit.OWN_NAME
@@ -271,8 +260,7 @@ def test_an_edit_the_loader_refuses_is_refused_with_its_problems(monkeypatch):
 
 
 def test_a_copy_whose_headers_do_not_match_its_buckets_is_not_edited():
-    """A header written indented loads, and cannot be matched to its entry, so
-    the alias is refused with the hand edit rather than placed by a guess."""
+    """An indented header cannot be matched, so the alias is refused with the hand edit."""
     text = _shipped().replace('[[bucket]]\nid = "afro_house"', '  [[bucket]]\nid = "afro_house"', 1)
     assert taxonomy.load_taxonomy(text).bucket("afro_house").display == AFRO
     with pytest.raises(word_edit.Refused) as refused:
@@ -486,8 +474,7 @@ def test_an_alias_to_an_undeclared_genre_is_refused_before_the_gate(configured, 
 
 
 def test_a_file_carrying_a_folders_own_name_is_never_retagged(configured, silence):
-    """The tagger writes the breaks folder's name; its lowercased twin on
-    another file must not retag either."""
+    """The breaks folder's exact name and its lowercased twin are never retagged."""
     copy = write_active(configured, _shipped())
     exact = _track(configured, silence, "exact.flac", "Breaks / D&B / Dubstep")
     lower = _track(configured, silence, "lower.flac", "breaks / d&b / dubstep")
@@ -502,8 +489,7 @@ def test_a_file_carrying_a_folders_own_name_is_never_retagged(configured, silenc
 
 
 def test_a_folders_own_name_in_another_case_is_retagged_to_the_exact_name(configured, silence):
-    """R-1184 through the verb: the lowercased name is retagged to the exact
-    one, the copy is not rewritten and the exact name's file is not touched."""
+    """R-1184: the lowercased name is retagged to the exact one, the copy untouched."""
     copy = write_active(configured, _shipped())
     exact = _track(configured, silence, "exact.flac", BREAKS)
     lower = _track(configured, silence, "lower.flac", BREAKS_LOWER)

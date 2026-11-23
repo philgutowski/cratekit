@@ -1,20 +1,10 @@
 """The pre-consolidation resolvers, frozen, as the parity suite's reference.
 
-WHY THIS FILE EXISTS. "Parity" is only a claim if the thing being compared
-against is pinned. A parity test written as a table of expected answers proves
-that somebody typed a table; a parity test written against the ORIGINAL CODE
-proves the consolidation preserved behaviour. So the eight resolvers and twelve
-energy mappings this unit collapsed are copied here verbatim, once, and never
-edited again.
-
-They are deliberately ugly. The duplication, the hardcoded folder names, the
-substring chains, and the two tables that disagree with each other are the point:
-this is what one taxonomy looked like spread across a codebase, and the tests
-next door assert that the declared version answers identically.
-
-Nothing in the package imports this. If a future change makes a test here fail,
-the change altered routing behaviour, and that needs a decision rather than an
-edit to this file.
+Parity against the ORIGINAL CODE, not a typed table: the eight resolvers and
+twelve energy mappings the unit collapsed are copied verbatim, ugliness and
+disagreements included, and never edited again. Nothing in the package
+imports this; a failure here means routing behaviour changed and needs a
+decision, not an edit to this file.
 """
 
 from __future__ import annotations
@@ -368,12 +358,10 @@ def energy_to_rating(level: int | None) -> int | None:
 
 
 def stars_to_energy_band(stars: int) -> str | None:
-    """The DASHBOARD's band, keyed on stars rather than on energy.
+    """The DASHBOARD's band, keyed on stars, kept since seam decision D3 resolves its divergence.
 
-    Kept because seam decision D3 resolves the divergence between this and
-    energy_to_sub explicitly, and a resolution nobody can reproduce is not a
-    resolution. Composing energy_to_rating, RATING_TO_STARS and this function
-    puts exactly one energy level in a different band from the tree.
+    Composing energy_to_rating, RATING_TO_STARS and this puts exactly one energy
+    level in a different band from the tree.
     """
     if stars <= 0:
         return None
@@ -515,14 +503,9 @@ def gate_decisions(genres: list[str], out_of_place_share: float = OUT_OF_PLACE_S
 
 
 
-# Every distinct genre tag value present in a real 10070-track library, read
-# from a rekordbox export dated 2026-07-15. This is the population that
-# matters: 25 of these values appear in NO resolver table, so a parity suite
-# built from the table keys alone would exercise neither the keyword tier nor
-# the fallback, which is exactly where the drift lived.
-#
-# Only the genre STRINGS are here. No track, artist, path, or count from that
-# library ships.
+# Every distinct genre tag value in a real 10070-track library (export of
+# 2026-07-15): 25 appear in no resolver table, so the keyword tier and fallback
+# are exercised. Only the genre strings ship.
 LIBRARY_GENRE_VALUES: list[str] = [
     '',
     '140 / Deep Dubstep / Grime',
@@ -632,9 +615,7 @@ LIBRARY_GENRE_VALUES: list[str] = [
 ]
 
 
-# Distinct source-taxonomy genre strings seen across 48 label sweeps, 4624
-# rows. Every one already appears above, which is itself worth knowing: the
-# acquisition path introduces no genre the library does not already hold.
+# Distinct source-taxonomy genres across 48 label sweeps, all already above.
 LABEL_SOURCE_VALUES: list[str] = [
     '',
     'Afro House',

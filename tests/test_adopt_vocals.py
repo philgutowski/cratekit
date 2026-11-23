@@ -1,13 +1,9 @@
 """R-788: adoption files a vox tagged track under its bucket's vocal sub.
 
-The pure halves: which buckets declare the sub, what the plan does with a
-track that carries the tag, what the digest covers, how a tree already read
-becomes the value the plan takes, and how the tag is read off a database. The
-read off a real database and the approved apply are driven in
-``tests/test_adopt_workers.py``. Expected identifiers are derived from the
-shipped taxonomy's declarations rather than spelled.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The pure halves: which buckets declare the sub, what the plan does with a tagged
+track, what the digest covers, and how the tree and the tag are read; the apply
+is in ``tests/test_adopt_workers.py``. Identifiers are derived from the shipped
+taxonomy. D1 applies.
 """
 
 from __future__ import annotations
@@ -104,8 +100,7 @@ def test_the_shipped_template_has_the_vocal_sub_in_every_bucket():
 
 
 def test_the_vocal_sub_is_where_the_routing_pass_files_whatever_present_in_says():
-    """Nothing reads ``present_in``. The routing pass files a vocal track under
-    every bucket, so adoption does, and the two cannot disagree about one."""
+    """Nothing reads ``present_in``: adoption files under every bucket, as routing does."""
     declared = _with_vocal_class(present_in="energy_buckets")
     truth = [
         rebuild.Truth(location=f"/m/{bucket.id}.flac", genre=bucket.display, voxlevel=90)
@@ -120,8 +115,7 @@ def test_the_vocal_sub_is_where_the_routing_pass_files_whatever_present_in_says(
 
 
 def test_no_additive_class_of_the_vocal_identifier_is_no_vocal_sub():
-    """The derivation knows the signal for one additive class. Filing the tag
-    under any other would be answering for a dimension nobody defined."""
+    """Only the one additive class the derivation knows the signal for is the vocal sub."""
     for declared in (
         NO_ADDITIVE,
         _with_vocal_class(additive=False),
@@ -131,8 +125,7 @@ def test_no_additive_class_of_the_vocal_identifier_is_no_vocal_sub():
 
 
 def test_a_bucket_whose_own_sub_carries_the_vocal_name_has_no_vocal_sub():
-    """The loader accepts it. In that folder the two are one playlist, so the
-    reader and the writer could not tell a style from the vocal sub."""
+    """There the two are one playlist, so a style cannot be told from the vocal sub."""
     declared = _style_named_as_the_vocal_sub()
     style = _style_bucket().id
 
@@ -227,8 +220,7 @@ def test_a_track_without_the_tag_is_never_added():
 
 
 def test_an_untagged_track_sitting_in_a_vocal_sub_is_left_out_of_the_plan_entirely():
-    """Nothing here removes. A membership whose tag is absent is not a state
-    the plan has, so no writer is ever handed it."""
+    """Nothing here removes: an absent tag's membership is no state the plan has."""
     vocals = replace(_vocals(), filed={BUCKET: frozenset({"t"})})
     plan = _plan([_scanned("t")], vocals)
 
@@ -247,8 +239,7 @@ def test_a_track_in_the_sub_under_another_name_only_is_not_added():
 
 
 def test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_added():
-    """The track is not in the sub. Adding it would not put it in the renamed
-    playlist, it would make a second one of the declared name beside it."""
+    """Adding it would make a second playlist of the declared name beside the renamed one."""
     vocals = replace(_vocals("t", "u", unnamed=("u",)), renamed=frozenset({BUCKET}))
     plan = _plan([_scanned("t"), _scanned("u")], vocals)
 
@@ -266,9 +257,8 @@ def test_a_tree_nobody_read_plans_no_vocal_membership():
 
 
 def test_a_library_with_no_calibrated_cut_plans_no_vocal_membership():
-    """The routing pass files nothing under the vocal sub without a cut. A tag
-    written from the default cut is the product's answer, so adoption files
-    nothing from it either, and says why."""
+    """Without a cut adoption files nothing under the vocal sub, from a default cut
+    tag either, and says why."""
     uncalibrated = replace(_vocals("t"), calibrated=False)
     plan = _plan([_scanned("t")], uncalibrated)
 
@@ -297,9 +287,7 @@ def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
 
 
 def test_an_entry_the_plan_does_not_place_has_no_bucket_whatever_bucket_it_is_handed():
-    """The function's own contract, asked directly. The plan blanks the bucket
-    of an entry it does not place before it asks, and a caller that did not
-    must get the same answer and not an addition."""
+    """Asked directly, an entry the plan does not place gets no addition."""
     for disposition in adopt_scan.Disposition:
         placed = disposition in (
             adopt_scan.Disposition.ROUTE,
@@ -413,8 +401,7 @@ def test_the_digest_changes_when_a_vocal_membership_is_added_to_the_plan():
 
 
 def test_the_digest_does_not_move_when_the_membership_it_approved_lands():
-    """The apply's own write turns an addition into a presence. A digest that
-    told them apart would refuse a stopped run's own half finished work."""
+    """The digest does not tell an addition from a presence, or a resume would refuse."""
     tracks = [_scanned("t"), _scanned("u")]
     before = _plan(tracks, _vocals("t", "u"))
     after = _plan(tracks, _vocals("t", "u", filed=("t", "u")))
@@ -499,8 +486,7 @@ def test_the_gate_shows_what_the_document_says_about_vocals():
 
 
 def test_every_row_the_writer_may_be_handed_is_on_the_gate_whatever_the_tree_holds_now():
-    """A row present when the person answered and missing when the worker runs
-    is written back under the same digest, so it has to have been shown."""
+    """A row missing when the worker runs is written under the same digest, so is shown."""
     tracks = [_scanned("t"), _scanned("u")]
     answered = _plan(tracks, _vocals("t", "u", filed=("u",)))
     later = _plan(tracks, _vocals("t", "u"))
@@ -635,8 +621,7 @@ def test_a_removed_vocal_playlist_is_not_a_place():
 
 
 def test_an_empty_renamed_vocal_playlist_still_names_its_bucket():
-    """Nobody sits in it, so nothing is filed, and the next tagged track must
-    still not be handed to a writer that would make a second playlist."""
+    """Nobody sits in it, and no tagged track is handed to a writer to make a second one."""
     empty = _node(BUCKET, VOX, playlist_display="Singers")
     found = _vocals_from(DECLARED, [empty], _record(BUCKET, empty))
 
@@ -645,8 +630,7 @@ def test_an_empty_renamed_vocal_playlist_still_names_its_bucket():
 
 
 def test_a_bucket_that_has_no_vocal_sub_is_not_read_for_one():
-    """The playlist of the vocal name in that folder is the bucket's own style
-    sub, and its tracks are not vocal tracks already filed."""
+    """That folder's vocal name playlist is its own style sub, not vocal tracks filed."""
     declared = _style_named_as_the_vocal_sub()
     style = _style_bucket().id
     nodes = [_node(style, VOX, "s"), _node(BUCKET, VOX, "t")]

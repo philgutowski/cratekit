@@ -1,8 +1,4 @@
-"""U135: a set landed in several INBOX batches is one playlist under the set's name.
-
-A set landed in two parts on two days: the second landing adds to the INBOX
-playlist the first recorded, under its first name. D1 applies.
-"""
+"""U135: a set landed in several INBOX batches is one playlist under the set's name. D1 applies."""
 
 from __future__ import annotations
 
@@ -20,6 +16,7 @@ from tests import cutover_fixtures
 from tests import test_intake_land_native as land_native
 from tests import test_set_inspiration_playlist as inspiration
 from tests.test_intake_land_native import _query, _two_acts
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_set_inspiration_playlist import (
     BATCH,
     FOLDER,
@@ -46,10 +43,7 @@ SECOND = ["intake", "land", "--name", "2026-10-10 Set"]
 
 
 def _inbox_under(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
-    """Each live child playlist of the intake root, its member titles in order.
-
-    All but INBOX / Analyze (U166), whose own suite is ``tests/test_inbox_analyzed.py``.
-    """
+    """Each live child playlist of the intake root but INBOX / Analyze (U166), titles in order."""
     rows = _query(
         cfg,
         "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND Attribute = 0 "
@@ -115,10 +109,7 @@ def _next_day(monkeypatch, cfg: config.Config, silence, job_id: str, title: str)
 def test_one_landing_of_a_set_files_its_inbox_playlist_in_set_order_not_name_order(
     native_library, silence
 ):
-    """Both tracks staged in one landing, the set's order the opposite of their
-    names'. The landing sorts its files by name, so only the set's positions
-    put Zebra first; a landing of one file per part cannot tell the two orders
-    apart. The one INBOX playlist is named for the set and recorded for its job."""
+    """One landing files in set order, not name order, under the set's name and job."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("Zebra", "Apple"), "Apple", "Zebra")
     shown = _shown(_land("--set", job_id, *WORDS))
@@ -138,13 +129,7 @@ def test_one_landing_of_a_set_files_its_inbox_playlist_in_set_order_not_name_ord
 def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     native_library, silence, monkeypatch
 ):
-    """The second landing reads the first's batch playlist record, adds to it,
-    and keeps its name, so a set landed in two parts is one INBOX playlist.
-
-    Track titles are Zebra then Apple so set order differs from name order; the
-    joined INBOX playlist must follow set order, not the landing's file sort.
-    U121's INSPIRATION join holds beside it, and is not rebuilt.
-    """
+    """A second landing joins the first's INBOX playlist in set order; U121's join holds beside."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("Zebra", "Apple"), "Zebra")
     assert _shown(_land("--set", job_id, *WORDS))["inbox playlist"] == NAME
@@ -181,8 +166,7 @@ def test_a_landing_without_set_keeps_todays_dated_name(native_library, silence):
 def test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joined(
     native_library, silence
 ):
-    """And a folder under INBOX of the set's name is never taken as its playlist
-    (A15): the landing makes the playlist beside both and files nothing into either."""
+    """A15: neither a leftover nor a folder of the set's name is taken as its playlist."""
     cfg, root_id = native_library
     twin = f"{NAME} 2"
     _make_playlist(cfg, twin, under=root_id)
@@ -206,9 +190,7 @@ def test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joine
 def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joined(
     native_library, silence, monkeypatch
 ):
-    """An earlier --set landing wrote a dated INBOX playlist and the set under
-    INSPIRATION, with no job key on the batch record. A later landing names it
-    and makes the set-named INBOX playlist beside it rather than joining."""
+    """A dated batch with no job key is named, and the set's playlist is made beside it."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("One", "Two"), "One")
     _shown(_land("--set", job_id, *WORDS))
@@ -247,11 +229,7 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
 
 
 def test_a_removed_set_named_inbox_playlist_is_not_written_into(native_library, silence):
-    """A soft-deleted INBOX playlist of the set's name must not receive members.
-
-    The set name recurs by design, so the write skips removed namesakes the way
-    the INSPIRATION path already does.
-    """
+    """A removed namesake receives no members, as on the INSPIRATION path."""
     cfg, root_id = native_library
     removed_id = _make_playlist(cfg, NAME, under=root_id)
     _soft_delete_playlist(cfg, removed_id)
@@ -268,8 +246,7 @@ def test_a_removed_set_named_inbox_playlist_is_not_written_into(native_library, 
 def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     native_library, silence
 ):
-    """A live INBOX playlist of the set's name with no job record is joined, and
-    the screen says so apart from making one, then the job key is stamped."""
+    """A live namesake with no record is joined, said apart, and stamped with the job key."""
     cfg, root_id = native_library
     handmade_id = _make_playlist(cfg, NAME, under=root_id)
     job_id = _set(cfg, silence, ("One",), "One")
@@ -281,17 +258,13 @@ def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     assert kept["id"] == handmade_id and kept[native.INBOX_JOB_KEY] == job_id
 
 
-# ---------------------------------------------------------------------------
 # U139: the U135 guards no test reached (rows A6 and A11; A15 is above)
-# ---------------------------------------------------------------------------
 
 
 def test_a_recorded_inbox_playlist_removed_before_the_next_landing_is_not_joined(
     native_library, silence, monkeypatch
 ):
-    """A6. The first landing records its INBOX playlist; a person removes it in
-    rekordbox; the second landing reads the record, sees the row is soft
-    deleted, and makes the set's playlist afresh rather than joining it."""
+    """A6: a recorded playlist removed in rekordbox is made afresh, not joined."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("One", "Two"), "One")
     _shown(_land("--set", job_id, *WORDS))
@@ -306,9 +279,7 @@ def test_a_recorded_inbox_playlist_removed_before_the_next_landing_is_not_joined
 
 
 def test_a_recorded_inbox_playlist_removed_after_the_plan_is_refused_at_the_write(native_library):
-    """A11. The plan named a recorded playlist live; by the write it was removed.
-    Asked of the write's own row lookup, since between two drives the landing
-    plans again and refuses on the digest before the write is reached."""
+    """A11: asked of the write's own lookup, since a second drive refuses on the digest first."""
     cfg, root_id = native_library
     removed_id = _make_playlist(cfg, NAME, under=root_id)
     _soft_delete_playlist(cfg, removed_id)

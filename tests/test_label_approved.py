@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import errno
-import io
 import json
 import re
 from pathlib import Path
 
-import pytest
-
-from cratekit import cli
 from cratekit.acquire import listdoc, match_cli
 from cratekit.cli import registry
 from cratekit.core import config, review
@@ -22,28 +18,13 @@ from cratekit.label import approved_cli, catalogue, harvest, sweep
 from cratekit.sync import run
 from tests.cli_drive import drive
 from tests.label_fakes import StrictCatalogue, UnreadableCatalogue, catalogue_factory
-from tests.test_config import valid_data
+from tests.test_intake_missing import human
+from tests.test_intake_missing_isrc import cfg as cfg  # noqa: PLC0414 - fixture
+from tests.test_intake_missing_isrc import library as library  # noqa: PLC0414 - fixture
 from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 #: What a payload written before R-379 carries where the artist belongs.
 ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch) -> Path:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
-
-
-@pytest.fixture
-def cfg(library) -> config.Config:
-    built = config.from_dict(valid_data(library, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    return built
 
 
 class Track:
@@ -147,12 +128,6 @@ def listed_one(cfg, monkeypatch, year: int | None = 2024) -> dict:
     one_release(cfg, monkeypatch, year)
     return listed(monkeypatch)
 
-
-def human(argv: list[str]) -> tuple[int, str]:
-    """The DEFAULT output a person reads. ``drive`` always asks for json."""
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(argv, stdout=out, stderr=err)
-    return code, out.getvalue() + err.getvalue()
 
 
 def lists_dir(library: Path) -> Path:

@@ -1,11 +1,8 @@
 """A collection most of whose rows record an unmapped drive is refused, not read as ok (R-372).
 
-rekordbox keeps rows under the drive name they were imported with, so without
-a ``library.location_prefix_map`` rule nearly every row is unresolved. The plan
-and its apply refuse under one slug with the totals in the payload, doctor's
-``library.paths_resolved`` reads the same ratio off a disposable copy, and
-setup reads rekordbox's two drive names off a copy and offers the rule. Every
-open is spied on, so the live database is shown never handed to the binding.
+The plan and apply refuse under one slug with the totals, doctor reads the same
+ratio off a disposable copy, and setup offers a ``location_prefix_map`` rule from
+rekordbox's drive names. Every open is spied on: the live database is never bound.
 """
 
 from __future__ import annotations
@@ -31,14 +28,12 @@ from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
-#: The drive the rows were recorded under, no longer mounted. Built under the
-#: temporary directory because the repository scan refuses a volume literal;
-#: it is absolute, outside the library root, and under no rule.
+#: The unmounted drive the rows were recorded under, built under the temporary
+#: directory as the repository scan refuses a volume literal.
 def _old_drive(tmp_path: Path) -> Path:
     return tmp_path / "Volumes" / "RENAMED"
 
-#: The prompter class captured before any test replaces the module attribute,
-#: so a scripted prompter is still built from the real one.
+#: The prompter class captured before any test replaces it, to build scripted ones from.
 _RealPrompter = prompt.Prompter
 
 
@@ -58,12 +53,7 @@ class Bench:
     old_drive: Path
 
     def add_rows(self, *, old: int = 0, local: int = 0, silence: Path | None = None) -> None:
-        """``old`` rows recorded under the renamed drive, ``local`` rows under the root.
-
-        The old rows' files sit where a rule from the old drive to the root
-        would rewrite them, so one fixture is unmapped without the rule and
-        resolved with it.
-        """
+        """``old`` rows under the renamed drive, where a rule would rewrite them, and ``local``."""
         from pyrekordbox.db6 import tables
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
@@ -203,9 +193,7 @@ def _never_the_live_path(opened: list[Path], live: Path) -> None:
         assert not path.exists(), f"the copy at {path} outlived its read"
 
 
-# ---------------------------------------------------------------------------
 # The rule
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -234,9 +222,7 @@ def test_the_verb_declares_the_check_and_the_slug_is_registered():
     assert REASONS[metadata_cli.PATHS_MAJORITY_UNRESOLVED] is ExitCode.PRECONDITION
 
 
-# ---------------------------------------------------------------------------
 # The plan and the apply
-# ---------------------------------------------------------------------------
 
 
 def test_a_plan_over_a_majority_of_unmapped_rows_fails_with_the_totals_in_the_payload(
@@ -253,8 +239,7 @@ def test_a_plan_over_a_majority_of_unmapped_rows_fails_with_the_totals_in_the_pa
     assert envelope["cause"]["remediation"]["remedy"] == str(Remedy.RUN_SETUP)
     assert envelope["warnings"] == []
     totals = envelope["data"]["totals"]
-    # The two fixture rows with no recorded path count as unresolved and are not
-    # unmapped: a streaming row is not a prefix rule's to fix.
+    # Rows with no recorded path are unresolved, not unmapped: no prefix rule fixes them.
     assert (totals["active"], totals["unresolved"], totals["unmapped"]) == (12, 12, 10)
     assert totals["count"] == 0
     prefixes = envelope["cause"]["detail"]["prefixes"]
@@ -307,9 +292,7 @@ def test_the_rule_setup_should_have_offered_turns_the_majority_into_a_plan(bench
     assert all(item["values"] == ["vox", "female vox"] for item in envelope["data"]["items"])
 
 
-# ---------------------------------------------------------------------------
 # Doctor
-# ---------------------------------------------------------------------------
 
 
 def _real_survey() -> doctor.Probes:
@@ -393,13 +376,11 @@ def test_the_two_synthetic_machines_answer_the_check_opposite_ways(bench):
         if f.key == "library.paths_resolved"
     )
     assert healthy.status is doctor.Status.OK
-    # The hostile machine has rekordbox running, and that is the first question
-    # the check asks: a copy taken under a live application is not taken.
+    # rekordbox running is the check's first question: no copy is taken under it.
     assert broken.status is doctor.Status.FAIL
     assert broken.remedy is Remedy.QUIT_REKORDBOX
     assert broken.cause is None
-    # With the application closed and the volume recognised, the hostile
-    # machine's survey is what refuses, under the plan's own slug.
+    # Closed and recognised, the survey refuses under the plan's own slug.
     surveyed = next(
         f
         for f in doctor.run(
@@ -415,9 +396,7 @@ def test_the_two_synthetic_machines_answer_the_check_opposite_ways(bench):
     assert surveyed.cause is not None
 
 
-# ---------------------------------------------------------------------------
 # Setup
-# ---------------------------------------------------------------------------
 
 
 def _scripted(answers: list[str]) -> prompt.Prompter:
@@ -544,11 +523,9 @@ def test_setup_notes_a_copy_it_could_not_open_and_leaves_the_verdict_to_doctor(b
 def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
     bench, silence, opened, monkeypatch
 ):
-    """Through the real dispatcher: the offer is taken, saved once, and the closing
-    doctor resolves every row through the rule it just wrote."""
+    """The offer is taken and saved once; the closing doctor resolves every row through it."""
     bench.add_rows(old=10, silence=silence)
-    # Two answers: the backup destinations offer comes first on a full profile
-    # with none recorded (R-345), declined here; the second is the prefix map offer.
+    # The backup destinations offer comes first (R-345), declined; then the prefix map offer.
     monkeypatch.setattr(prompt, "Prompter", lambda: _scripted(["no", "yes"]))
     monkeypatch.setattr(
         doctor,
@@ -647,8 +624,7 @@ def test_setup_skips_the_offer_while_rekordbox_is_running(bench, opened, monkeyp
 
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
-    # The wizard's own sentence, not the copy's refusal repeated, since the
-    # wizard asked before it copied.
+    # The wizard's own sentence, since it asked before it copied.
     assert "none was taken and no drive rule was offered" in _note(wizard).detail
 
 
@@ -760,8 +736,7 @@ def test_a_refusal_built_from_the_totals_names_the_prefixes_and_the_current_map(
 
 
 def test_the_read_only_copy_refuses_under_a_running_application_on_its_own(bench, monkeypatch):
-    """The copy's own guard, alone: doctor and setup ask first, and this is the layer
-    beneath them that a new caller inherits without asking."""
+    """The copy's own guard alone, the layer a new caller inherits without asking first."""
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
     with pytest.raises(CratekitError) as caught:
         with rb_writer.read_only_copy(bench.db_path, cfg=bench.cfg):
@@ -769,9 +744,7 @@ def test_the_read_only_copy_refuses_under_a_running_application_on_its_own(bench
     assert caught.value.cause.reason == "rekordbox-running"
 
 
-# ---------------------------------------------------------------------------
 # A path whose file is not a library (R-663)
-# ---------------------------------------------------------------------------
 
 
 def _empty(path: Path) -> Path:
@@ -782,11 +755,7 @@ def _empty(path: Path) -> Path:
 
 
 def _foreign(path: Path, tables: tuple[str, ...] = ("manage_tbl",)) -> Path:
-    """A real SQLite file holding tables, none of them the ones the canary reads.
-
-    rekordbox keeps several of these beside its own database, so a search for
-    a database file finds them too.
-    """
+    """A real SQLite file holding none of the canary's tables, as rekordbox keeps beside its own."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     for table in tables:
@@ -904,12 +873,10 @@ def test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing
     assert "bytes" in envelope["cause"]["message"]
     config.reset_cache()
     assert Path(config.load().library.db_path) == bench.db_path
-    # Refused before the pin and the drive rule were offered: the one answer
-    # read is the backup offer that comes ahead of the validation.
+    # Refused before the pin and rule were offered; only the backup offer was read.
     assert len(asked) <= 1
     assert bench.db_path.read_bytes() == live_bytes
-    # An empty copy is refused before any open; a foreign one is opened, and
-    # only ever as a copy.
+    # An empty copy is refused before any open; a foreign one is opened only as a copy.
     assert (opened == []) is (make is _empty)
     assert wrong not in opened
     for path in opened:
@@ -939,8 +906,7 @@ def test_setup_leaves_a_damaged_library_to_the_notes_and_doctor(bench, opened):
 
 @pytest.mark.parametrize("make", [_empty, _foreign], ids=["empty", "foreign"])
 def test_the_file_whose_tables_are_listed_is_only_ever_a_copy(bench, monkeypatch, make):
-    """The table listing opens its own handle, beside ``open_db`` rather than
-    through it, so the spy on the opener cannot see it and this one can."""
+    """The table listing opens its own handle beside ``open_db``, unseen by the opener's spy."""
     bench.db_path.unlink()
     make(bench.db_path)
     listed: list[Path] = []
@@ -995,11 +961,7 @@ def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opene
 
 
 def test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path(bench, monkeypatch):
-    """Only the canary's own failure is asked whether the copy is a library.
-
-    A binding pin that refuses is a fact about this installation, true of every
-    file, and a foreign file behind it must still be answered with the pin.
-    """
+    """Only the canary's own failure asks whether the copy is a library; a refusing pin stands."""
     bench.db_path.unlink()
     _foreign(bench.db_path)
 

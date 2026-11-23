@@ -1,10 +1,8 @@
 """The library volume precondition: three broken states, three distinct refusals.
 
-Exempt from the conftest fixture that disarms the precondition, so this drives
-the real thing. The states look identical to a directory check and each has a
-different fix; a backup clone at the configured path passes a directory check
-completely. A second volume is simulated through the injected identity
-provider and mount enumerator; the one real platform call is run separately.
+Exempt from the conftest fixture that disarms it. A backup clone passes any
+directory check; a second volume is simulated through injected identity and
+mount seams, and the one real platform call is run separately.
 """
 
 from __future__ import annotations
@@ -145,8 +143,7 @@ def test_the_right_volume_at_the_configured_path_passes(tmp_path):
 
 
 def test_the_identity_gate_is_callable_with_no_paths_at_all(tmp_path):
-    """A destructive session refuses before resolving one path: resolving
-    against the wrong volume is already the damage."""
+    """A destructive session refuses before resolving a path against the wrong volume."""
     configured = tmp_path / "library"
     configured.mkdir()
     resolved: list[Path] = []

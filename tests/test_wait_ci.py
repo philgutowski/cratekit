@@ -1,8 +1,4 @@
-"""`scripts/wait_ci.py` reads a head's pull request runs as one verdict (U196).
-
-The REST answer is served by the test, and the clock and the sleep are replaced
-so a timeout is measured without waiting.
-"""
+"""`scripts/wait_ci.py` reads a head's pull request runs as one verdict (U196), with no wait."""
 
 from __future__ import annotations
 

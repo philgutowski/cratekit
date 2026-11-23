@@ -1,13 +1,8 @@
 """The harness is itself verified: the timing shape, the calibration, both volumes.
 
-Deterministic tests drive the timing runner with a scripted clock, so the pass
-rate arithmetic is pinned without a single real sleep. The volume tests are
-real: they create, mount, and tear down actual disk images, because the whole
-reason the harness exists is that a double of a filesystem proves nothing
-about one. On a machine without hdiutil those tests FAIL rather than skip,
-the same choice test_tags makes for ffmpeg and for the same reason: a skipped
-hardware proof is indistinguishable from a passing one in every summary
-anybody reads.
+The timing runner is driven by a scripted clock. The volume tests mount real
+disk images, since a filesystem double proves nothing, and fail rather than
+skip without hdiutil, as a skipped hardware proof reads as a pass.
 """
 
 from __future__ import annotations
@@ -50,12 +45,7 @@ def _require_hdiutil() -> None:
 
 
 class ScriptedClock:
-    """A perf_counter double that replays declared durations.
-
-    ``time_repeated`` reads the clock twice per run, once before the callable
-    and once after, so the script is a running sum where each duration
-    advances time only between its own pair of reads.
-    """
+    """A perf_counter double replaying declared durations, two reads per run."""
 
     def __init__(self, durations: list[float]) -> None:
         readings: list[float] = []
@@ -70,25 +60,16 @@ class ScriptedClock:
         return next(self._readings)
 
     def assert_exhausted(self) -> None:
-        """Fail if the runner read fewer instants than the script provided.
-
-        Without this, a test that scripts more durations than repeats passes
-        silently against a partial script and its assertions go quietly
-        vacuous for the tail.
-        """
+        """Fail if the runner read fewer instants than the script provided."""
         leftover = list(self._readings)
         assert not leftover, f"{len(leftover)} scripted clock readings were never consumed"
 
 
-# ---------------------------------------------------------------------------
 # Timing arithmetic, no hardware and no sleeping.
-# ---------------------------------------------------------------------------
 
 
 def test_pass_rate_counts_only_runs_under_threshold() -> None:
-    # Binary exact fractions on purpose: the scripted clock accumulates a
-    # running sum, and decimal values like 0.1 pick up float error there that
-    # nudges a boundary duration over the threshold.
+    # Binary exact fractions, so the running sum picks up no float error.
     clock = ScriptedClock([0.25, 0.5, 0.75, 1.0, 1.25])
     table = time_repeated(lambda: None, repeats=5, threshold_seconds=0.75, clock=clock)
     assert table.repeats == 5
@@ -140,23 +121,13 @@ def test_a_record_whose_count_disagrees_with_its_evidence_is_refused() -> None:
         TimingTable(repeats=0, threshold_seconds=1.0, durations=())
 
 
-# ---------------------------------------------------------------------------
 # Calibration: stored whole, loaded guarded, thresholds are multiples.
-# ---------------------------------------------------------------------------
 
 
 def test_calibration_round_trips_and_threshold_is_a_multiple(tmp_path: Path) -> None:
     payload = calibrate(repeats=2)
-    # The spread is PINNED rather than measured, the same way
-    # test_an_unquiet_calibration_refuses_to_write pins it to 0.5, and for the
-    # mirror image of that test's reason. This test's subject is the round trip
-    # and the threshold arithmetic, neither of which is about how busy the
-    # machine is, but write_calibration's quiet machine refusal sits in its path
-    # and a live two sample spread crosses 0.25 under any concurrent load. Left
-    # measured it failed 2 of 3 full suite runs on 2026-08-14 while passing 10
-    # of 10 in isolation, which puts a red battery in front of a reader for a
-    # reason that has nothing to do with their change. The refusal itself is
-    # already covered deterministically by the test named above.
+    # The spread is pinned, not measured: a live spread crosses the quiet machine
+    # refusal under load, which test_an_unquiet_calibration_refuses_to_write covers.
     payload["relative_spread"] = 0.01
     stored = tmp_path / "cal.json"
     write_calibration(payload, stored)
@@ -182,11 +153,7 @@ def test_nonpositive_multiplier_is_refused() -> None:
 def test_a_calibration_from_another_machine_is_refused(tmp_path: Path) -> None:
     payload = calibrate(repeats=2)
     payload["cpu_count"] = int(payload["cpu_count"]) + 1
-    # Pinned for the reason the round trip test above gives at length. This one
-    # has not fired yet, and it is the same shape: a live two sample spread on
-    # its way through the quiet machine refusal, in a test whose subject is the
-    # machine identity check instead. Found by looking for the shape one
-    # function over rather than by watching it fail.
+    # Pinned for the reason the round trip test above gives.
     payload["relative_spread"] = 0.01
     stored = tmp_path / "cal.json"
     write_calibration(payload, stored)
@@ -206,20 +173,14 @@ def test_an_unquiet_calibration_refuses_to_write(tmp_path: Path) -> None:
 
 
 def test_committed_calibration_loads() -> None:
-    """The repository carries a calibration the timing consumers can trust.
-
-    Only the shape is asserted, never the magnitude, because the file is a
-    measurement of whichever machine wrote it.
-    """
+    """The committed calibration's shape, never its magnitude, which is the machine's."""
     cal = load_calibration()
     assert cal.median_seconds > 0
     assert cal.repeats >= 2
     assert cal.captured
 
 
-# ---------------------------------------------------------------------------
 # Volumes: real images, real mounts, real teardown.
-# ---------------------------------------------------------------------------
 
 
 def test_fat_volume_refuses_sizes_fat32_cannot_hold() -> None:
@@ -290,14 +251,8 @@ def test_content_manifest_pins_content_and_ignores_platform_noise(tmp_path: Path
 
 
 def test_mount_lookup_is_exact_never_a_prefix(tmp_path: Path) -> None:
-    """The mount table answer for NAME must not come from a sibling NAME (1).
-
-    macOS mounts a second volume with a duplicated label at ``NAME (1)``, the
-    shape every rekordbox stick labeled PIONEER produces. A substring lookup
-    asked about the absent ``NAME`` would return the sibling's entry and
-    answer "is this volume here" falsely, which for the doctor's consumers is
-    the exact question.
-    """
+    """The mount table answer for NAME must not come from a sibling ``NAME (1)``,
+    as macOS mounts a second PIONEER stick."""
     _require_hdiutil()
     image = tmp_path / "probe.dmg"
     mountpoint = tmp_path / "PROBE (1)"

@@ -1,14 +1,9 @@
 """``crate sync bandcamp`` takes new Bandcamp purchases to their landing gate in one verb (U179).
 
-It plans before it fetches, so an expired session ends before anything
-downloads; fetches into one batch folder, continuing an open fetch there;
-runs the shared tail in order and never plans a landing over files the tail
-has not run on; names the batch from the files' label tags and passes
-``--label-from-tags`` only when one carries a label; rehearses with the very
-arguments the landing takes; and ends at the landing's gate with a closing
-report. The plan and the fetch run through the real dispatcher over the fake
-account; the tail, the rehearsal and the landing stand in through
-``cratekit.cli.tail.dispatch``. D1 applies; ``pulsromania`` and
+It plans before it fetches, fetches into one batch folder, runs the shared tail
+in order, names the batch from its label tags, rehearses with the landing's own
+arguments and ends at the landing's gate. The tail, rehearsal and landing stand
+in through ``cratekit.cli.tail.dispatch``. D1 applies; ``pulsromania`` and
 ``otherlabel`` are the fake account's sellers.
 """
 
@@ -28,6 +23,7 @@ from cratekit.core import config, jobs, rb_writer, tags
 from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import batch_name
+from tests._sync_builders import exited, failed
 from tests.bandcamp_fakes import FakeAccount, item
 from tests.cli_drive import drive
 from tests.test_bandcamp_cli import (
@@ -61,9 +57,7 @@ TODAY = date(2026, 11, 1)
 OTHER_FILE = "Coral Arc - Drift - 01 Drift.flac"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The stand ins
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Landing:
@@ -140,9 +134,7 @@ def _verbs(stand_in: Tail) -> list[tuple[str, ...]]:
     return [tuple(argv[:2]) if argv[:1] != ["-d"] else ("name", "apply") for argv in stand_in.calls]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_queues_nothing_of_its_own_and_declares_no_gate():
@@ -159,9 +151,7 @@ def test_the_steps_are_the_plan_the_fetch_the_shared_tail_the_rehearsal_and_the_
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. One label's purchases to the gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label(
@@ -169,9 +159,7 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
 ):
     chain.work[tail_chain.TAG] = _tag_with("Rominimal")
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert envelope["outcome"] == "pending"
     folder = _folder(signed_in)
     # THE ORDER: the plan, the fetch, the tail, the rehearsal, then the landing.
@@ -220,7 +208,6 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
     assert any("Analyze Tracks" in step for step in steps)
 
 
-
 def test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host(
     rekordbox_on_the_host, signed_in, account, puls, chain, library
 ):
@@ -244,9 +231,7 @@ def test_the_tail_runs_on_the_absolute_batch_folder(signed_in, account, puls, ch
     assert named[-1] == folder
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. What ends before a download, and what has nothing to do
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_expired_session_stops_at_the_plan_with_the_login_step_before_any_download(
@@ -254,9 +239,7 @@ def test_an_expired_session_stops_at_the_plan_with_the_login_step_before_any_dow
 ):
     account_ = bind(monkeypatch, collection(tmp_path, silence, expired=True))
 
-    code, envelope = run("--batch", BATCH)
-
-    assert code == int(ExitCode.UPSTREAM_AUTH), envelope
+    envelope = exited(run("--batch", BATCH), ExitCode.UPSTREAM_AUTH)
     cause = envelope["cause"]
     assert cause["reason"] == "auth-failed"
     assert any(f"crate login {SESSION} --from-file" in step for step in cause["remediation"]["steps"])
@@ -282,9 +265,7 @@ def test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing(
         ),
     )
 
-    code, envelope = run("--batch", BATCH)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(run("--batch", BATCH))
     assert envelope["outcome"] == "no_op"
     assert _verbs(chain) == [("acquire", "bandcamp")]
     assert _fetch_jobs() == []
@@ -304,9 +285,7 @@ def test_a_second_run_after_a_landing_finds_nothing_new_and_lands_nothing(
         path.unlink()
     chain.calls.clear()
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH))
     assert envelope["outcome"] == "no_op"
     assert _verbs(chain) == [("acquire", "bandcamp")]
     assert len(_fetch_jobs()) == 1
@@ -316,22 +295,16 @@ def test_a_second_run_after_a_landing_finds_nothing_new_and_lands_nothing(
 def test_rekordbox_running_refuses_before_the_plan(signed_in, account, monkeypatch, chain):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
 
-    code, envelope = run("--batch", BATCH)
-
-    assert code == int(ExitCode.REKORDBOX_OPEN), envelope
+    envelope = exited(run("--batch", BATCH), ExitCode.REKORDBOX_OPEN)
     assert "crate sync bandcamp" in envelope["cause"]["message"]
     assert chain.calls == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Sellers, labels and the batch's name
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_seller_no_label_names_lands_unlabelled_and_is_named(signed_in, account, puls, chain):
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "otherlabel", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     (landed,) = chain.landing.landed
     # NO LABEL TAG, NO LABEL FLAG, and the batch is not named for any label.
     assert landed == ["intake", "land", str(_folder(signed_in)), "--name", "2026-11-01 Bandcamp"]
@@ -344,18 +317,14 @@ def test_a_seller_no_label_names_lands_unlabelled_and_is_named(signed_in, accoun
 def test_a_batch_of_a_label_and_an_unregistered_seller_files_by_tag_under_a_plain_name(
     signed_in, account, puls, chain
 ):
-    code, envelope = run("--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--batch", BATCH), ExitCode.PENDING_HUMAN)
     (landed,) = chain.landing.landed
     assert landed[-3:] == ["--name", "2026-11-01 Bandcamp", "--label-from-tags"]
     assert sorted(_summary(envelope)["staged"]) == sorted([*PULS_FILES, OTHER_FILE])
 
 
 def test_files_left_without_a_genre_are_named_in_the_report(signed_in, account, puls, chain):
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert _summary(envelope)["no_genre"] == sorted(PULS_FILES)
     (warned,) = [w for w in envelope["warnings"] if w["code"] == sync_bandcamp.NO_GENRE]
     assert all(name in warned["message"] for name in PULS_FILES)
@@ -374,9 +343,7 @@ def test_a_file_whose_tags_cannot_be_read_is_unread_not_ungenred_and_names_no_la
     real_work = chain.work[tail_chain.TAG]
     chain.work[tail_chain.TAG] = lambda job, it: None if it.item_id == "Broken.flac" else real_work(job, it)
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     summary = _summary(envelope)
     assert summary["tags_unread"] == ["Broken.flac"]
     assert "Broken.flac" not in summary["no_genre"]
@@ -408,9 +375,7 @@ def test_a_taken_batch_name_takes_the_next_number(cfg, monkeypatch):
     assert batch_name.bandcamp(cfg, ("PULS",)) == "2026-11-01 Bandcamp PULS 2"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The landing is never planned over files the tail did not run on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _analysis_fails(job: jobs.Job, item_: jobs.Item) -> None:
@@ -429,9 +394,7 @@ def test_a_failed_tail_step_plans_no_landing_and_names_the_continuation(
 ):
     chain.work[tail_chain.ANALYZE] = _analysis_fails
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "PULS", "--batch", BATCH))
     assert chain.landing.landed == [] and chain.landing.rehearsed == []
     assert ("name", "apply") not in _verbs(chain)
     assert _summary(envelope)["stopped_at"] == "analyze"
@@ -451,9 +414,7 @@ def test_the_same_batch_again_takes_the_staged_files_on_and_fetches_nothing_twic
     del chain.work[tail_chain.ANALYZE]
     chain.calls.clear()
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert len(_fetch_jobs()) == 1, "the purchases the first run staged are not fetched again"
     assert ("acquire", "bandcamp-fetch") not in _verbs(chain)
     assert "already staged" in _checks(envelope)["sync.bandcamp.fetch"]["detail"]
@@ -470,12 +431,7 @@ def test_a_failed_rehearsal_plans_no_live_landing(signed_in, account, puls, chai
     )
     chain.landing.rehearsal = _refused(stale)
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    # A GATE CODE FROM A STEP IS THE STEP'S OWN, never this verb's refusal,
-    # since raised as the verb's own it would mark the run resumable over a
-    # question it does not declare (``tail.required``). It ends for a person.
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     (rehearsed,) = chain.landing.rehearsed
     assert chain.landing.landed == []
     assert _summary(envelope)["stopped_at"] == "decision-stale"
@@ -495,9 +451,7 @@ def test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_
     )
     chain.landing.rehearsal = _refused(missing, outcome="blocked")
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert envelope["pending_human_action"]["kind"] == "backup_ack"
     assert chain.landing.landed == []
     (rehearsed,) = chain.landing.rehearsed
@@ -507,9 +461,7 @@ def test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_
     assert any("Analyze Tracks" in step for step in steps)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The fetch: refused releases, a parked fetch, an open one elsewhere
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none(
@@ -517,9 +469,7 @@ def test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none(
 ):
     bind(monkeypatch, collection(tmp_path, silence, encodings=("mp3-320",)))
 
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] == "no_op"
     summary = _summary(envelope)
     (refused,) = summary["fetch_refused"]
@@ -545,9 +495,7 @@ def test_a_fetch_failed_by_a_transient_answer_ends_the_verb_and_lands_nothing(
 
     account.get = unavailable
 
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] != "pending"
     assert _summary(envelope)["stopped_at"] == "fetch"
     assert _summary(envelope)["fetch_refused"] == []
@@ -561,9 +509,7 @@ def test_a_plan_holding_only_part_owned_releases_still_fetches_the_rest(
     """The compilation alone: one track owned and held back, the other fetched."""
     account.items = [one for one in account.items if str(one["item_id"]) == "3"]
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert ("acquire", "bandcamp-fetch") in _verbs(chain)
     assert _staged(signed_in) == ["Various Artists - Compiled - 01 Coral Arc - Glass.flac"]
     (held,) = _summary(envelope)["held"]
@@ -582,8 +528,7 @@ def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_o
         return original(url, cookie=cookie)
 
     account.get = expiring
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] == "blocked"
     (job,) = _fetch_jobs()
     assert str(job.state) == "blocked"
@@ -592,9 +537,7 @@ def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_o
     state["expired"] = False
     bandcamp_cli.forget()
     chain.calls.clear()
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    exited(run("--seller", "otherlabel", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert [one.job_id for one in _fetch_jobs()] == [job.job_id], "driven on, not queued twice"
     assert chain.calls[0] == ["acquire", "bandcamp-fetch", "--job", job.job_id]
     assert _staged(signed_in) == [OTHER_FILE]
@@ -621,9 +564,7 @@ def test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first(
     state["expired"] = False
     bandcamp_cli.forget()
 
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "otherlabel", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert chain.calls[:2] == [
         ["acquire", "bandcamp-fetch", "--job", oldest.job_id],
         ["acquire", "bandcamp-fetch", "--job", newest.job_id],
@@ -661,9 +602,7 @@ def test_a_release_refused_by_two_fetches_is_named_once(
         )
     bind(monkeypatch, collection(tmp_path, silence, encodings=("mp3-320",)))
 
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(run("--seller", "otherlabel", "--batch", BATCH))
     summary = _summary(envelope)
     assert len(summary["fetch_jobs"]) == 2
     assert [row["item_id"] for row in summary["fetch_refused"]] == ["4"]
@@ -685,9 +624,7 @@ def test_the_tags_are_read_from_the_files_the_name_step_renamed(
 
     monkeypatch.setattr(tail_chain, "dispatch", renaming)
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     summary = _summary(envelope)
     assert summary["staged"] == sorted(f"01A - 124 - {name}" for name in PULS_FILES)
     assert summary["tags_unread"] == []
@@ -707,9 +644,7 @@ def test_an_open_fetch_into_another_batch_is_named_and_nothing_is_fetched(
             item_ids=("9",),
         )
 
-    code, envelope = run("--batch", BATCH)
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(run("--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert chain.calls == []
     (step,) = envelope["pending_human_action"]["steps"]
     assert step == "continue that batch first: crate sync bandcamp --batch 'Bandcamp 2026-10-31'"

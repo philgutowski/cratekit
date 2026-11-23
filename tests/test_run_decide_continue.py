@@ -1,10 +1,8 @@
 """``crate run decide RUN GATE OPTION --continue`` answers and continues in one command (U168).
 
-It records the answer, then continues the owning verb with the arguments its
-first invocation recorded plus ``--run RUN``. With no ``--actor`` the actor is
-``session`` without a controlling terminal and ``cli`` with one. An explicit
-gate still takes no inline answer on the verb. Driven through the real
-dispatcher on a temporary library. D1 applies.
+It continues the owning verb with its recorded arguments plus ``--run RUN``. With
+no ``--actor`` the actor is ``session`` without a terminal and ``cli`` with one.
+D1 applies.
 """
 
 from __future__ import annotations
@@ -18,6 +16,7 @@ from cratekit.cli.verbs import runs
 from cratekit.core import session
 from cratekit.core.exit_codes import ExitCode
 from tests import test_session_cli as session_suite
+from tests._sync_builders import exited, failed
 from tests.test_session_ack_by_session import _backed_up
 from tests.test_session_cli import (  # noqa: F401
     ACK_GATE,
@@ -41,14 +40,11 @@ def nobody_at_a_terminal(installed, monkeypatch):  # noqa: F811
 
 
 def _asked() -> str:
-    code, refused = _drive(["session", "ack"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)
     return refused["run_id"]
 
 
-# ---------------------------------------------------------------------------
 # One command per gate
-# ---------------------------------------------------------------------------
 
 
 def test_a_session_answers_and_mints_in_one_command_with_no_actor_given(nobody_at_a_terminal):
@@ -57,9 +53,7 @@ def test_a_session_answers_and_mints_in_one_command_with_no_actor_given(nobody_a
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
     run_id = _asked()
 
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"]))
     assert envelope["verb"] == "session.ack" and envelope["run_id"] == run_id
     summary = envelope["data"]["summary"]
     assert summary["recorded"] is True
@@ -78,9 +72,7 @@ def test_a_continuation_that_refuses_answers_with_its_refusal_and_keeps_the_answ
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=6))
     run_id = _asked()
 
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"])
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"]))
     assert envelope["verb"] == "session.ack"
     assert session.read_acknowledgment(cfg) is None
     assert gates.load(run_id).decisions[ACK_GATE].actor == "session"
@@ -116,17 +108,13 @@ def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
     assert gates.load(run_id).decisions[ACK_GATE].option == "acknowledged"
 
 
-# ---------------------------------------------------------------------------
 # Who answered, by default
-# ---------------------------------------------------------------------------
 
 
 def test_with_no_terminal_and_no_actor_the_answer_is_the_sessions(nobody_at_a_terminal):
     run_id = _asked()
 
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged"]))
     assert envelope["data"]["summary"]["actor"] == "session"
     assert "no controlling terminal" in envelope["data"]["summary"]["actor_because"]
     assert gates.load(run_id).decisions[ACK_GATE].actor == "session"
@@ -135,9 +123,7 @@ def test_with_no_terminal_and_no_actor_the_answer_is_the_sessions(nobody_at_a_te
 def test_at_a_terminal_and_no_actor_the_answer_is_the_command_lines(installed):  # noqa: F811
     run_id = _asked()
 
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged"]))
     assert envelope["data"]["summary"]["actor"] == "cli"
     assert gates.load(run_id).decisions[ACK_GATE].actor == "cli"
 
@@ -150,9 +136,7 @@ def test_an_actor_given_is_recorded_whatever_the_terminal(nobody_at_a_terminal):
     assert gates.load(run_id).decisions[ACK_GATE].actor == "a-person"
 
 
-# ---------------------------------------------------------------------------
 # The explicit gate is unchanged
-# ---------------------------------------------------------------------------
 
 
 def test_an_explicit_gate_still_refuses_an_inline_answer_on_the_verb(nobody_at_a_terminal):
@@ -160,7 +144,5 @@ def test_an_explicit_gate_still_refuses_an_inline_answer_on_the_verb(nobody_at_a
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
 
-    code, envelope = _drive(["-d", f"{ACK_GATE}=acknowledged", "session", "ack"])
-
-    assert code != int(ExitCode.OK), envelope
+    failed(_drive(["-d", f"{ACK_GATE}=acknowledged", "session", "ack"]))
     assert session.read_acknowledgment(cfg) is None

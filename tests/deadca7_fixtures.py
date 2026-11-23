@@ -1,34 +1,17 @@
 """A DEADCA7 push into a disposable database, written the way the push writes it (U185).
 
-The research note of 2026-10-26 read the push's SQL from the app: a folder named
-``DEADCA7`` at the top of the playlist tree, playlists in it with their
-memberships, ``rb_local_usn`` bumped on what it wrote, hot cues per track
-(``djmdCue`` rows of ``Kind`` above zero) with ``CueUpdated`` set, and grids
-and waveforms as analysis files with ``AnalysisUpdated`` set. This module
-writes those rows straight through SQLite, as another app would, never through
-this product's writer, and reads them back whole so a test can assert they are
-byte for byte what they were.
+From the 2026-10-26 research note: a ``DEADCA7`` folder at the top of the
+tree, its playlists and memberships, ``rb_local_usn`` bumped, hot cues
+(``djmdCue`` rows of ``Kind`` above zero) with ``CueUpdated``, and analysis
+files with ``AnalysisUpdated``. Written straight through SQLite, never this
+product's writer, and read back whole. The content row update is a superset
+of what the note found, which can only widen the proof.
 
-THE CONTENT ROW UPDATE IS A SUPERSET. The note's SQL reading found only
-SELECTs against ``djmdContent``, while the same note says the push sets
-``AnalysisUpdated`` and ``CueUpdated``; this fixture writes those columns so
-the proof covers them either way. A fixture that writes more than the push
-cannot make the guard weaker, only the proof wider than the app needs.
-
-THE ZERO DATE IS THE PRODUCER'S OWN VALUE (U285). DEADCA7 0.2.3, read on a
-real push at sitting 98, stamps ``created_at`` and ``updated_at`` on its folder,
-its playlists and every membership as ``0001-01-01T00:00:00Z``, where
-rekordbox writes ``2026-03-09 21:06:07.516 +00:00``. :data:`ZERO_STAMP` is that
-text exactly, and :func:`push` writes it when asked. The cue rows take the same
-stamp: their stamp on a real push was not read, and writing the zero date there
-too makes the proof wider than the app needs, never narrower. The binding turns
-the value into local time, so it fails to read only west of UTC, which
-:func:`west_of_utc` sets for the process.
-
-THE FOLDER'S POSITION IS PAST THE ROOT'S ROW COUNT on purpose: rekordbox's
-binding renumbers every root sibling at or past a position a caller names, so
-the folder sits where such a write would move it, and a test that writes beside
-it would see it move.
+The zero date is DEADCA7 0.2.3's own value (U285): :data:`ZERO_STAMP`, read
+on a real push, on its folder, playlists, memberships and cues. The binding
+reads it in local time, failing only west of UTC, which :func:`west_of_utc`
+sets. The folder sits past the root's row count, where rekordbox's
+renumbering would move it.
 """
 
 from __future__ import annotations
@@ -72,11 +55,7 @@ class Pushed:
 
 @contextmanager
 def west_of_utc(zone: str = EASTERN) -> Iterator[None]:
-    """The process's local time zone set west of UTC, and put back after.
-
-    The zero date reads as the year before year 1 only at a negative offset, so
-    a test run on a machine at UTC would pass by accident without this.
-    """
+    """The process's local time zone set west of UTC, and put back after, so the zero date bites."""
     before = os.environ.get("TZ")
     os.environ["TZ"] = zone
     time.tzset()
@@ -93,8 +72,7 @@ def west_of_utc(zone: str = EASTERN) -> Iterator[None]:
 def push(db_path: Path | str, content_ids: tuple[str, ...], *, stamp: str = STAMP) -> Pushed:
     """Write one push: the folder, two playlists holding ``content_ids``, cues, analysis.
 
-    ``stamp`` is the date written on every row the push makes;
-    :data:`ZERO_STAMP` is what the real app writes.
+    ``stamp`` is the date on every row; :data:`ZERO_STAMP` is the real app's.
     """
     conn = sqlite3.connect(db_path)
     try:
@@ -153,12 +131,7 @@ def push(db_path: Path | str, content_ids: tuple[str, ...], *, stamp: str = STAM
 
 
 def written(db_path: Path | str, pushed: Pushed) -> dict[str, list[tuple]]:
-    """Every row the push wrote, whole, as the database holds it now.
-
-    The folder, its playlists, their memberships, the cue rows, and the
-    pushed track's analysis and cue columns, each table's rows sorted by
-    identifier, so two readings compare equal exactly when nothing moved.
-    """
+    """Every row the push wrote, sorted by identifier: equal readings mean nothing moved."""
     nodes = (pushed.folder_id, *pushed.playlist_ids)
     marks = ", ".join("?" for _ in nodes)
     conn = sqlite3.connect(db_path)
@@ -185,11 +158,7 @@ def written(db_path: Path | str, pushed: Pushed) -> dict[str, list[tuple]]:
 
 
 def push_analysis_files(share: Path) -> dict[Path, tuple[bytes, int]]:
-    """The analysis files a push writes for its grid and waveforms, under ``share``.
-
-    Answers each file's bytes and modification time, so a test can assert no
-    step rewrote, moved or removed one.
-    """
+    """The analysis files a push writes under ``share``, with bytes and modification time."""
     folder = Path(share) / "PIONEER" / "USBANLZ" / "dc7" / "0001"
     folder.mkdir(parents=True, exist_ok=True)
     written: dict[Path, tuple[bytes, int]] = {}

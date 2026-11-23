@@ -61,7 +61,7 @@ the two rules agree (`tests/modules/test_reports_engines.py:415`).
 `src/cratekit/cli/doctor.py:455` and killed nothing because the guard watched a
 temporary directory for a created folder, and on macOS `layout_for` resolves that
 directory's volume root to `/`, so the create was refused by the filesystem
-rather than by the argument under test (`tests/test_doctor.py:2449`).
+rather than by the argument under test (`tests/test_doctor.py:2268`).
 
 The fourth was not a test gap at all, and round one read it as one.
 
@@ -253,12 +253,12 @@ HANDLER_KEY = "duplicates.audit"
 ```
 
 `S5b_engine_default_drift` killed 3 on a subset of 371, across
-`tests/modules/test_reports.py:781`, `:800` and
-`tests/test_reports_cli.py:264`.
+`tests/modules/test_reports.py:725`, `:735` and
+`tests/test_reports_cli.py:261`.
 
 That third kill is the guard the inert row had hidden the need for, and it is
 three lines of assertion with a docstring that is longer than the test
-(`tests/test_reports_cli.py:264`):
+(`tests/test_reports_cli.py:261`):
 
 ```python
 def test_the_two_copies_of_the_duplicate_handler_key_cannot_drift():
@@ -272,7 +272,7 @@ def test_the_two_copies_of_the_duplicate_handler_key_cannot_drift():
 ```
 
 The wiring itself, the thing the deleted argument was supposed to be about, is
-driven separately at `tests/test_reports_cli.py:279` by wrapping
+driven separately at `tests/test_reports_cli.py:276` by wrapping
 `duplicates.audit_and_offer` with `monkeypatch`, running the real verb, and
 asserting `seen == [registry.entry("audit.duplicates").handler_key]`. Its
 docstring says why the mutation could never have reached it: "The engine's

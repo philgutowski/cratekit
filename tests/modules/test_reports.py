@@ -11,6 +11,7 @@ an import allowlist and a filesystem mutation rule.
 from __future__ import annotations
 
 import ast
+import functools
 import hashlib
 import os
 import re
@@ -35,8 +36,7 @@ SRC_ROOT = REPO_ROOT / "src"
 REPORTS_ROOT = SRC_ROOT / "cratekit" / "modules" / "reports"
 
 #: The naming template this library declares: a key and tempo head, and a lossy
-#: marker inside it. Built here rather than defaulted, so the head stripping is
-#: exercised against the shape a real name has.
+#: marker, so head stripping meets the shape a real name has.
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
 TODAY = date(2026, 8, 2)
@@ -61,7 +61,9 @@ def _collection(
     return lines
 
 
-def _document(*, collection: list[str], root_children: list[str], root_count: int) -> bytes:
+def _document(
+    *, collection: list[str], root_children: list[str] = (), root_count: int = 0
+) -> bytes:
     """A byte-exact export: CRLF everywhere, and the indents the locates expect."""
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -102,6 +104,33 @@ INTAKE = default_taxonomy().intake
 TREE = default_taxonomy().tree
 
 
+def _view(tracks: list[tuple[int, str, str, str]]) -> export.LibraryView:
+    return export.read_export(_document(collection=_collection(tracks)))
+
+
+def _one_track_tree(root_children: list[str], root_count: int = 1) -> export.LibraryView:
+    """One track, held by every playlist of ``root_children``."""
+    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+    return export.read_export(
+        _document(
+            collection=_collection(tracks), root_children=root_children, root_count=root_count
+        )
+    )
+
+
+def _refused(content: bytes):
+    """The cause ``read_export`` refuses ``content`` with."""
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(content)
+    return raised.value.cause
+
+
+def _aged(view, cfg):
+    return aging.intake_aging(
+        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
+    )
+
+
 def library_export() -> bytes:
     """One export carrying every shape the two reports have to handle."""
     tracks = [
@@ -132,24 +161,28 @@ def library_export() -> bytes:
     return _document(collection=_collection(tracks), root_children=root_children, root_count=2)
 
 
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    """A configured library, saved, so a second process resolves the same one."""
+def _raw_config(tmp_path, monkeypatch, **extra) -> dict:
+    """A library under ``tmp_path`` named by the environment, as a raw config document."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
+    return {
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(root),
+            "volume_id": "F1E2-D3C4",
+            "db_path": str(root / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(tmp_path / "staging")},
+        "profile": {"name": "full"},
+        **extra,
+    }
+
+
+@pytest.fixture
+def cfg(tmp_path, monkeypatch):
+    """A configured library, saved, so a second process resolves the same one."""
+    built = config.from_dict(_raw_config(tmp_path, monkeypatch))
     config.save(built)
     config.reset_cache()
     return built
@@ -171,37 +204,32 @@ def view():
 
 def test_a_document_that_is_not_an_export_refuses_rather_than_reading_as_empty():
     """The U11 shape, one package along."""
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(b'{"tracks": []}')
-    assert raised.value.cause.reason == "library-export-unusable"
-    assert "not a rekordbox collection export" in raised.value.cause.message
+    cause = _refused(b'{"tracks": []}')
+    assert cause.reason == "library-export-unusable"
+    assert "not a rekordbox collection export" in cause.message
 
 
 @pytest.mark.parametrize(
     "content, expected",
     [
         (
-            _document(collection=[], root_children=[], root_count=0),
+            _document(collection=[]),
             "no COLLECTION section",
         ),
         (
             _document(
                 collection=["  <COLLECTION>", "  </COLLECTION>"],
-                root_children=[],
-                root_count=0,
             ),
             "declares no entry count",
         ),
         (
             _document(
                 collection=['  <COLLECTION Entries="many">', "  </COLLECTION>"],
-                root_children=[],
-                root_count=0,
             ),
             "not a number",
         ),
         (
-            _document(collection=_collection([]), root_children=[], root_count=0).replace(
+            _document(collection=_collection([])).replace(
                 b"  <PLAYLISTS>\r\n", b""
             ),
             "no PLAYLISTS section",
@@ -210,30 +238,24 @@ def test_a_document_that_is_not_an_export_refuses_rather_than_reading_as_empty()
 )
 def test_each_missing_structure_is_refused_by_name(content, expected):
     """Recognized positively, one structure at a time, so the failure is legible."""
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert expected in raised.value.cause.message
+    assert expected in _refused(content).message
 
 
 def test_a_playlist_section_with_no_root_node_refuses():
-    content = _document(collection=_collection([]), root_children=[], root_count=0)
+    content = _document(collection=_collection([]))
     stripped = content.replace(b'    <NODE Type="0" Name="ROOT" Count="0">\r\n', b"")
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(stripped)
-    assert "no root node" in raised.value.cause.message
+    assert "no root node" in _refused(stripped).message
 
 
 def test_a_document_carrying_both_names_in_the_wrong_order_refuses():
     """Something else that happens to contain both names is not a damaged export."""
-    body = _document(collection=_collection([]), root_children=[], root_count=0)
+    body = _document(collection=_collection([]))
     opening = b'<DJ_PLAYLISTS Version="1.0.0">\r\n'
     section = b'  <COLLECTION Entries="0">\r\n  </COLLECTION>\r\n'
     assert section in body and opening in body
     moved = body.replace(section, b"").replace(opening, section + opening)
 
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(moved)
-    assert "outside the document element" in raised.value.cause.message
+    assert "outside the document element" in _refused(moved).message
 
 
 def test_the_entry_count_is_read_from_the_section_and_never_from_a_track():
@@ -245,27 +267,20 @@ def test_the_entry_count_is_read_from_the_section_and_never_from_a_track():
             'Artist="a" Location="file://localhost/library/a.flac"/>',
             "  </COLLECTION>",
         ],
-        root_children=[],
-        root_count=0,
     )
     assert b'Entries="99"' in content
 
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert "declares no entry count" in raised.value.cause.message
+    assert "declares no entry count" in _refused(content).message
 
 
 def test_a_truncated_export_refuses_because_the_declared_count_disagrees():
     """The half-copied file, which is the case the count check exists for."""
     content = _document(
         collection=_collection([(1, "a", "b", "file://localhost/library/a.flac")], declared=4),
-        root_children=[],
-        root_count=0,
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.detail["declared"] == 4
-    assert raised.value.cause.detail["located"] == 1
+    cause = _refused(content)
+    assert cause.detail["declared"] == 4
+    assert cause.detail["located"] == 1
 
 
 def test_a_track_element_with_no_identifier_makes_the_count_disagree():
@@ -277,12 +292,8 @@ def test_a_track_element_with_no_identifier_makes_the_count_disagree():
             '    <TRACK Name="c" Artist="d" Location="file://localhost/library/c.flac"/>',
             "  </COLLECTION>",
         ],
-        root_children=[],
-        root_count=0,
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.detail["located"] == 1
+    assert _refused(content).detail["located"] == 1
 
 
 def test_a_track_element_spanning_several_lines_is_read_whole():
@@ -296,8 +307,6 @@ def test_a_track_element_spanning_several_lines_is_read_whole():
             "    </TRACK>",
             "  </COLLECTION>",
         ],
-        root_children=[],
-        root_count=0,
     )
     entries = export.read_export(content).entries
     assert len(entries) == 1
@@ -314,13 +323,10 @@ def test_one_track_identifier_used_twice_refuses():
             '    <TRACK TrackID="7" Name="a" Artist="b" Location="file://localhost/b.flac"/>',
             "  </COLLECTION>",
         ],
-        root_children=[],
-        root_count=0,
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert "the same TrackID more than once" in raised.value.cause.message
-    assert raised.value.cause.detail["repeated"] == ["7"]
+    cause = _refused(content)
+    assert "the same TrackID more than once" in cause.message
+    assert cause.detail["repeated"] == ["7"]
 
 
 def test_the_reader_reports_the_folders_it_walked_through(view):
@@ -332,7 +338,7 @@ def test_the_reader_reports_the_folders_it_walked_through(view):
 
 def test_a_genuinely_empty_library_reads_as_empty_rather_than_refusing():
     """P7's other half: the guard must not fire on the correct document."""
-    view = export.read_export(_document(collection=_collection([]), root_children=[], root_count=0))
+    view = _view([])
     assert view.entries == ()
     assert view.playlists == ()
 
@@ -358,13 +364,9 @@ def test_the_reader_returns_playlists_and_never_folders(view):
     assert TREE.display not in displays and "Deep House" not in displays
 
 
-#: THE THREE SPELLINGS OF A KIND THIS BUILD CANNOT READ, applied to the export
-#: every other test in this file drives rather than to a document written for the
-#: occasion. ``Type="2"`` is a value the format does not define, the attribute
-#: removed is the one a truncated or hand-edited export produces, and ``Type=""``
-#: is the attribute present and saying nothing. All three reach the classifier as
-#: something that is neither declared type, and no fixture in this repository
-#: built one of them before, which is why nothing could see the defect.
+#: The three spellings of a node kind this build cannot read, applied to the
+#: export every other test drives: an undefined value, no attribute (a truncated
+#: or hand-edited export), and an empty one.
 UNREADABLE_KINDS = [
     ("a Type value the format does not define", b'Type="1"', b'Type="2"'),
     ("no Type attribute at all", b' Type="1"', b""),
@@ -380,18 +382,15 @@ UNREADABLE_KINDS = [
 def test_a_node_whose_kind_cannot_be_read_refuses_rather_than_reading_as_a_folder(old, new, cfg):
     """The two answers side by side, which is the whole finding."""
     healthy = export.read_export(library_export())
-    report = aging.intake_aging(
-        healthy, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(healthy, cfg)
     assert (len(report.expired), len(report.stale)) == (1, 2)
 
     content = library_export().replace(old, new)
     assert content != library_export(), "the substitution changed nothing"
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.reason == "library-export-unusable"
-    assert "kind it does not declare" in raised.value.cause.message
-    assert f"{INTAKE.display} / phil_07_01_2026" in raised.value.cause.detail["nodes"]
+    cause = _refused(content)
+    assert cause.reason == "library-export-unusable"
+    assert "kind it does not declare" in cause.message
+    assert f"{INTAKE.display} / phil_07_01_2026" in cause.detail["nodes"]
 
 
 def _paths_the_shipped_classification_called_folders(content: bytes) -> tuple:
@@ -482,33 +481,28 @@ def test_entries_with_nothing_to_compare_are_never_grouped(view):
     assert "5" not in grouped
 
 
-def test_entries_carrying_only_an_artist_are_never_grouped():
+def _copies(name: str, artist: str, count: int) -> export.LibraryView:
+    """``count`` entries of one name and artist, each at its own file."""
+    return _view(
+        [
+            (index, name, artist, f"file://localhost/library/{index}.flac")
+            for index in range(1, count + 1)
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "name, artist",
+    [("", "Recondite"), ("08A - 124 - Untitled", "")],
+    ids=["only an artist", "only a title"],
+)
+def test_half_tagged_entries_are_never_grouped(name, artist):
     """The half-tagged case, which fails the same way the untagged one does."""
-    tracks = [
-        (index, "", "Recondite", f"file://localhost/library/{index}.flac") for index in (1, 2, 3)
-    ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=[], root_count=0)
-    )
-    assert duplicates.audit(view, template=TEMPLATE) == ()
+    assert duplicates.audit(_copies(name, artist, 3), template=TEMPLATE) == ()
 
 
-def test_entries_carrying_only_a_title_are_never_grouped():
-    """The mirror of the case above, refused by the same rule for the same reason."""
-    tracks = [
-        (index, "08A - 124 - Untitled", "", f"file://localhost/library/{index}.flac")
-        for index in (1, 2, 3)
-    ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=[], root_count=0)
-    )
-    assert duplicates.audit(view, template=TEMPLATE) == ()
-
-
-#: One recording, two composition forms. Written as ESCAPES rather than as
-#: literal characters, because the two spellings are indistinguishable on
-#: screen and in a diff, and a fixture whose whole point is that they differ
-#: must not depend on anybody's editor or terminal preserving the difference.
+#: One recording, two composition forms, written as escapes because the two
+#: spellings look the same on screen and in a diff.
 _NFC_NAME = "Bj\u00f6rk"
 _NFD_NAME = "Bjo\u0308rk"
 
@@ -520,9 +514,7 @@ def test_two_composition_forms_of_one_name_are_one_recording():
         (1, "08A - 124 - Cold Light", _NFC_NAME, "file://localhost/library/a.flac"),
         (2, "11A - 126 - Cold Light", _NFD_NAME, "file://localhost/library/b.flac"),
     ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=[], root_count=0)
-    )
+    view = _view(tracks)
     groups = duplicates.audit(view, template=TEMPLATE)
     assert len(groups) == 1
     assert {member.track_id for member in groups[0].members} == {"1", "2"}
@@ -531,17 +523,9 @@ def test_two_composition_forms_of_one_name_are_one_recording():
 def test_re_tagging_into_the_other_composition_form_keeps_the_decision(store):
     """The consequence that is worse than the missed duplicate."""
 
-    def viewed(artist: str):
-        tracks = [
-            (index, "08A - 124 - Cold Light", artist, f"file://localhost/library/{index}.flac")
-            for index in (1, 2)
-        ]
-        return export.read_export(
-            _document(collection=_collection(tracks), root_children=[], root_count=0)
-        )
-
-    before = duplicates.audit_and_offer(viewed(_NFC_NAME), store, template=TEMPLATE)
-    after = duplicates.audit_and_offer(viewed(_NFD_NAME), store, template=TEMPLATE)
+    name = "08A - 124 - Cold Light"
+    before = duplicates.audit_and_offer(_copies(name, _NFC_NAME, 2), store, template=TEMPLATE)
+    after = duplicates.audit_and_offer(_copies(name, _NFD_NAME, 2), store, template=TEMPLATE)
     assert before.items[0].item_id == after.items[0].item_id
     assert len(review.list_items(store, queue=review.Queue.DUPLICATES).items) == 1
 
@@ -554,14 +538,7 @@ def test_a_recording_present_once_is_not_a_duplicate(view):
 
 def test_three_copies_are_one_question_rather_than_three_pairs():
     """Pairwise questions about one recording are the same question, repeated."""
-    tracks = [
-        (index, "08A - 124 - Cold Light", "Recondite", f"file://localhost/library/{index}.flac")
-        for index in (1, 2, 3)
-    ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=[], root_count=0)
-    )
-    groups = duplicates.audit(view, template=TEMPLATE)
+    groups = duplicates.audit(_copies("08A - 124 - Cold Light", "Recondite", 3), template=TEMPLATE)
     assert len(groups) == 1
     assert len(groups[0].members) == 3
 
@@ -620,30 +597,9 @@ def test_running_the_audit_twice_produces_one_item(view, store):
 
 def test_a_renamed_or_re_imported_copy_keeps_the_decision(store):
     """The identity is the RECORDING, so nothing about the file is in it."""
-    before = export.read_export(
-        _document(
-            collection=_collection(
-                [
-                    (1, "08A - 124 - Cold Light", "Recondite", "file://localhost/library/a.flac"),
-                    (2, "08A - 124 - Cold Light", "Recondite", "file://localhost/library/b.flac"),
-                ]
-            ),
-            root_children=[],
-            root_count=0,
-        )
-    )
-    after = export.read_export(
-        _document(
-            collection=_collection(
-                [
-                    (77, "08A - 124 - Cold Light", "Recondite", "file://localhost/library/x.flac"),
-                    (78, "08A - 124 - Cold Light", "Recondite", "file://localhost/library/y.flac"),
-                ]
-            ),
-            root_children=[],
-            root_count=0,
-        )
-    )
+    cold, lib = ("08A - 124 - Cold Light", "Recondite"), "file://localhost/library/"
+    before = _view([(1, *cold, f"{lib}a.flac"), (2, *cold, f"{lib}b.flac")])
+    after = _view([(77, *cold, f"{lib}x.flac"), (78, *cold, f"{lib}y.flac")])
     first = duplicates.audit_and_offer(before, store, template=TEMPLATE)
     second = duplicates.audit_and_offer(after, store, template=TEMPLATE)
     assert first.items[0].item_id == second.items[0].item_id
@@ -739,24 +695,14 @@ def test_the_thresholds_come_from_the_configured_values(cfg):
 
 def test_changing_the_configured_thresholds_changes_the_report(view, cfg):
     """The same library, two policies, two answers. Nothing is pinned in code."""
-    lenient = aging.intake_aging(
-        view,
-        intake=INTAKE,
-        thresholds=aging.thresholds_from(cfg),
-        today=TODAY,
-    )
+    lenient = _aged(view, cfg)
     strict_cfg = config.from_dict(
         {
             **config.load().to_toml_dict(),
             "reports": {"intake_stale_days": 1, "intake_expired_days": 2},
         }
     )
-    strict = aging.intake_aging(
-        view,
-        intake=INTAKE,
-        thresholds=aging.thresholds_from(strict_cfg),
-        today=TODAY,
-    )
+    strict = _aged(view, strict_cfg)
     assert {group.display for group in lenient.expired} == {"phil_5_01_25"}
     assert {group.display for group in strict.expired} == {
         "phil_5_01_25",
@@ -768,9 +714,7 @@ def test_changing_the_configured_thresholds_changes_the_report(view, cfg):
 
 
 def test_the_report_carries_the_thresholds_it_was_run_against(view, cfg):
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     assert report.thresholds == aging.thresholds_from(cfg)
     assert report.as_of == TODAY
 
@@ -788,22 +732,7 @@ def test_a_configured_threshold_that_cannot_describe_a_policy_is_refused(
     tmp_path, monkeypatch, raw, expected
 ):
     """Reported with the key that is wrong, which is what a file needs."""
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    problems = config.validate(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-            "reports": raw,
-        }
-    )
+    problems = config.validate(_raw_config(tmp_path, monkeypatch, reports=raw))
     assert any(expected in problem for problem in problems), problems
 
 
@@ -811,22 +740,8 @@ def test_a_rejected_threshold_is_never_reported_against_the_default_it_did_not_s
     tmp_path, monkeypatch
 ):
     """The message has to name the line the person can go and fix."""
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    problems = config.validate(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-            "reports": {"intake_stale_days": "thirty", "intake_expired_days": 5},
-        }
-    )
+    reports = {"intake_stale_days": "thirty", "intake_expired_days": 5}
+    problems = config.validate(_raw_config(tmp_path, monkeypatch, reports=reports))
     assert any("intake_stale_days must be a positive" in problem for problem in problems)
     assert not any("earlier than" in problem for problem in problems), problems
 
@@ -845,9 +760,7 @@ def test_a_threshold_pair_built_in_code_refuses_the_same_rule(stale, expired):
 
 def test_every_grouping_lands_in_exactly_one_band(view, cfg):
     """A grouping in two bands is acted on twice; one in none was never surfaced."""
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     every = aging.intake_groupings(view, intake=INTAKE, today=TODAY)
     banded = [group.path for group in report.groupings]
     assert sorted(banded) == sorted(group.path for group in every)
@@ -855,9 +768,7 @@ def test_every_grouping_lands_in_exactly_one_band(view, cfg):
 
 
 def test_the_bands_are_the_ages_the_thresholds_declare(view, cfg):
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     assert {group.display for group in report.expired} == {"phil_5_01_25"}
     assert {group.display for group in report.stale} == {
         "phil_07_01_2026",
@@ -869,9 +780,7 @@ def test_the_bands_are_the_ages_the_thresholds_declare(view, cfg):
 
 def test_a_grouping_nested_below_the_intake_flow_is_aged_too(view, cfg):
     """Somebody who filed their intake into a folder has organized it, not hidden it."""
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     nested = [group for group in report.expired if group.display == "phil_5_01_25"]
     assert nested and nested[0].path == (INTAKE.display, "Old", "phil_5_01_25")
 
@@ -884,9 +793,7 @@ def test_nothing_outside_the_intake_flow_is_reported(view):
 
 
 def test_an_undated_grouping_is_reported_and_never_aged(view, cfg):
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     assert [group.display for group in report.undated] == ["white labels"]
     assert all(group.age_days is None for group in report.undated)
 
@@ -925,26 +832,23 @@ def test_a_name_with_two_dates_is_dated_by_the_first():
     assert aging.parse_intake_date("6_01_26 lisa_5_26_26") == date(2026, 6, 1)
 
 
-def test_the_oldest_grouping_is_reported_first():
-    """Ties break on the path, so two runs of an unchanged library agree."""
-    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
+def _expired_intake(*names: str) -> tuple:
+    """Intake playlists of one track each, aged under a one day policy."""
     root_children = [
-        _folder(INTAKE.display, 3, 1),
-        *_playlist("phil_01_01_2026", [1], 2),
-        *_playlist("phil_03_01_2026", [1], 2),
-        *_playlist("phil_02_01_2026", [1], 2),
+        _folder(INTAKE.display, len(names), 1),
+        *[line for name in names for line in _playlist(name, [1], 2)],
         _close(1),
     ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
-    )
-    report = aging.intake_aging(
-        view,
-        intake=INTAKE,
-        thresholds=aging.AgingThresholds(stale_days=1, expired_days=2),
-        today=TODAY,
-    )
-    assert [group.display for group in report.expired] == [
+    thresholds = aging.AgingThresholds(stale_days=1, expired_days=2)
+    return aging.intake_aging(
+        _one_track_tree(root_children), intake=INTAKE, thresholds=thresholds, today=TODAY
+    ).expired
+
+
+def test_the_oldest_grouping_is_reported_first():
+    """Ties break on the path, so two runs of an unchanged library agree."""
+    expired = _expired_intake("phil_01_01_2026", "phil_03_01_2026", "phil_02_01_2026")
+    assert [group.display for group in expired] == [
         "phil_01_01_2026",
         "phil_02_01_2026",
         "phil_03_01_2026",
@@ -953,25 +857,10 @@ def test_the_oldest_grouping_is_reported_first():
 
 def test_two_groupings_of_one_age_are_ordered_by_path_not_by_the_walk():
     """The TIE-BREAK, which the fixture above never reached."""
-    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
-    root_children = [
-        _folder(INTAKE.display, 2, 1),
-        *_playlist("phil_01_01_2026 zulu", [1], 2),
-        *_playlist("phil_01_01_2026 alpha", [1], 2),
-        _close(1),
-    ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
-    )
-    report = aging.intake_aging(
-        view,
-        intake=INTAKE,
-        thresholds=aging.AgingThresholds(stale_days=1, expired_days=2),
-        today=TODAY,
-    )
-    ages = {group.age_days for group in report.expired}
+    expired = _expired_intake("phil_01_01_2026 zulu", "phil_01_01_2026 alpha")
+    ages = {group.age_days for group in expired}
     assert len(ages) == 1, f"the two groupings must be the same age to tie: {ages}"
-    assert [group.display for group in report.expired] == [
+    assert [group.display for group in expired] == [
         "phil_01_01_2026 alpha",
         "phil_01_01_2026 zulu",
     ]
@@ -1044,12 +933,7 @@ def test_the_aging_report_changes_no_byte_anywhere(cfg, library_on_disk, tmp_pat
     rows_before = _database_rows(cfg.library.db_path)
     before = _tree_digest(tmp_path)
 
-    aging.intake_aging(
-        export.read_export_file(library_on_disk),
-        intake=INTAKE,
-        thresholds=aging.thresholds_from(cfg),
-        today=TODAY,
-    )
+    _aged(export.read_export_file(library_on_disk), cfg)
 
     assert _tree_digest(tmp_path) == before
     assert _database_rows(cfg.library.db_path) == rows_before
@@ -1078,8 +962,7 @@ def test_the_duplicate_audit_changes_nothing_except_the_review_queue(
     assert _database_rows(cfg.library.db_path) == rows_before
 
 
-#: The name the lock probe writes. Named once so the proof below and the tidy-up
-#: after it cannot drift apart into a file left in a library on a failing run.
+#: The name the lock probe writes, shared by the proof and its tidy-up.
 _LOCK_PROBE = "scratch.tmp"
 
 
@@ -1116,10 +999,8 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
     """READ ONLY, proved by taking the permission away rather than by watching."""
     music = cfg.library.root / "Music"
     database = cfg.library.db_path
-    # The decision store lives under the library root, so the directory it writes
-    # into has to exist before the root is locked. Creating it here is what lets
-    # the lock cover the library ROOT rather than only the audio folder, which is
-    # where a report writing ``library/.cratekit-sightings`` would have landed.
+    # The decision store lives under the library root, so it is made before the
+    # lock, which then covers the root and not only the audio folder.
     with review.open_store(cfg):
         pass
     locked = [library_on_disk, database, *sorted(music.glob("*.flac"))]
@@ -1134,11 +1015,8 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         refused = _directories_refusing_a_write(directories)
         assert refused == directories, (
             f"only {refused} refused a write after chmod 0o555, so this proof "
-            f"would pass without proving anything for the rest. It needs an "
-            f"ordinary user and a filesystem that honours permission bits; "
-            f"running as root defeats it. There is deliberately no skip here, "
-            f"because a read-only claim that quietly stops being checked is the "
-            f"defect this unit is."
+            f"proves nothing for the rest. It needs an ordinary user and a "
+            f"filesystem honouring permission bits, and deliberately never skips."
         )
 
         stamped = sorted(music.glob("*.flac"))[0]
@@ -1151,17 +1029,12 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         except OSError:
             utimed = touched = False
         assert utimed and touched, (
-            "a bare stamp on a locked file was refused after all, so this lock "
-            "does cover the shape a sighting ledger reaches for and the docstring "
-            "above now says something false about its own limit. The digest is "
-            "what covers that act; this says so out loud so the two proofs are "
-            "not read as one."
+            "a bare stamp on a locked file was refused after all, so the lock "
+            "covers what only the digest was meant to cover; revisit both proofs."
         )
 
         view = export.read_export_file(library_on_disk)
-        report = aging.intake_aging(
-            view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-        )
+        report = _aged(view, cfg)
         assert [group.display for group in report.expired] == ["phil_5_01_25"]
         assert [group.display for group in report.undated] == ["white labels"]
 
@@ -1170,17 +1043,11 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         assert len(audited.items) == 1
         assert audited.items[0].payload["copies"] == 2
     finally:
-        # This restore is also the chmod half of what the docstring above claims:
-        # every one of these succeeds through the lock, on files and directories
-        # the lock has already refused a write to, because a mode change needs
-        # ownership rather than the write bit.
+        # A mode change needs ownership, not the write bit, so this restore
+        # succeeds through the lock.
         for path, mode in modes.items():
             path.chmod(mode)
-        # Only reachable when a lock did not hold, and the tree digest tests run
-        # against their own temporary directories, so this is tidiness rather
-        # than isolation. It is here because a file left behind by a failing
-        # read-only proof is the one piece of evidence somebody debugging it
-        # would most want to be sure came from the test.
+        # Reached only when a lock did not hold: tidiness, not isolation.
         for scratch in scratches:
             scratch.unlink(missing_ok=True)
 
@@ -1210,24 +1077,16 @@ ALLOWED_IMPORTS = frozenset(
     }
 )
 
-#: The package this allowlist governs. Named once and matched WITH A DOT
-#: BOUNDARY, because the bare-prefix version of this test accepted every module
-#: whose dotted name merely started with these characters. A sibling file
-#: ``cratekit/modules/reports_ledger.py`` was importable from inside the package
-#: on that reading AND sat outside the directory ``_report_modules`` walks, so
-#: the private ignore ledger the countdown against this unit forbids by name
-#: could have been written, imported, and called with both structural guards
-#: green. The dot boundary is what the allowlist entries below already get right
-#: through ``startswith(f"{allowed}.")``; only the self reference was loose.
+#: The package this allowlist governs, matched with a dot boundary: a bare
+#: prefix admitted a sibling such as ``cratekit/modules/reports_ledger.py``,
+#: which sits outside the directory ``_report_modules`` walks.
 REPORTS_PACKAGE = "cratekit.modules.reports"
 
 #: Method names that mutate the filesystem and are not also ordinary methods on a
 #: string, a mapping, or a sequence.
 FILESYSTEM_MUTATIONS = frozenset(
     {
-        # U254: the synced append beside the atomic writer, for a ledger that
-        # grows a record at a time. Flat like its sibling, a name nothing else
-        # carries.
+        # U254: the synced append beside the atomic writer.
         "append_durable_bytes",
         "atomic_write_bytes",
         "chmod",
@@ -1252,8 +1111,8 @@ QUALIFIED_MUTATIONS = frozenset(
     {
         "config._back_up_version",
         "config.exclusive_lock",
-        # U298: the lock every state store shared, in its four forms. Each
-        # creates the lock file, and the directory above it, when it is absent.
+        # U298: the shared state store lock in its four forms, each creating
+        # its file and directory when absent.
         "config.flock_exclusive",
         "config.held",
         "config.lock_now",
@@ -1294,19 +1153,13 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.assert_binding_version",
         "rb_writer.assert_schema_version",
         "rb_writer.default_protected_snapshot_paths",
-        # The disposable copy of the database from the residual finding "Setup
-        # wrote no location prefix rule for rekordbox's renamed drive, and the
-        # My Tags plan read clean over 9770 rows it could not resolve": it
-        # creates a private temporary directory, copies the file set into it,
-        # and removes the directory afterwards, and the read only handle over
-        # it opens that copy. A report has no business making one, and a
-        # report that read through the copy would be reading through a
-        # writer, so both are named here rather than admitted.
+        # The disposable database copy and the read only handle over it both
+        # write a temporary directory, so a report reading through one reads
+        # through a writer.
         "rb_writer.disposable_copy",
         "rb_writer.read_only_copy",
-        # U267: the organize report's one read handle opens the database at
-        # its first read, so a report holding one opens through a writer, and
-        # the reader's end of a read closes or releases that handle.
+        # U267: the shared read handle opens the database at its first read,
+        # and its end closes or releases it.
         "rb_writer.SharedRead",
         "rb_writer.done_reading",
         "rb_writer.integrity_ok",
@@ -1324,8 +1177,7 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.write_lock_path",
         "rb_writer.write_session_lock",
         "reconcile._locked",
-        # U298: the mode the convergence lock is held to, handed to
-        # ``config.flock_exclusive`` as its hardening.
+        # U298: the convergence lock's hardening mode.
         "reconcile._own_only",
         "reconcile._write",
         "reconcile.close_marker",
@@ -1360,9 +1212,8 @@ QUALIFIED_MUTATIONS = frozenset(
         "tree_registry.record_cutover",
         "tree_registry.revert_cutover",
         "tree_registry.write",
-        # U298: the one config load every verb's shell shares. It calls
-        # ``config.load``, which writes the file back, so it is a writer by the
-        # rule above, and a report is HANDED its configuration and loads none.
+        # U298: calls ``config.load``, which writes the file back; a report is
+        # handed its configuration and loads none.
         "output.load_config",
     }
 )
@@ -1374,17 +1225,13 @@ _QUALIFYING_MODULES = frozenset(name.split(".", 1)[0] for name in QUALIFIED_MUTA
 #: Characters in an ``open`` mode that mean the handle can write.
 _WRITING_MODES = frozenset({"w", "a", "x", "+"})
 
-#: How many dotted parts make a PACKAGE rather than a module, for reading a
-#: ``from X import y``. ``cratekit`` and ``cratekit.<subpackage>``, plus the
-#: stdlib's own one and two level packages.
+#: How many dotted parts make a package rather than a module, for reading a
+#: ``from X import y``.
 _PACKAGE_DEPTH = 2
 
 
-#: What a dynamic import spells when its argument is not a literal this can read.
-#: It is deliberately not a module path, so ``_permitted`` can never match it: a
-#: computed import is exactly how a name check is walked past, and the guard's
-#: answer to something it cannot read is the same as its answer to ``open`` with
-#: a computed mode.
+#: What a dynamic import spells when its argument is not a readable literal. It
+#: is not a module path, so ``_permitted`` never matches it.
 _COMPUTED_IMPORT = "<computed import>"
 
 
@@ -1452,9 +1299,8 @@ class _Instance(NamedTuple):
     root: str = ""
 
 
-#: What an instance of a class renders as inside the binding table. Written as a
-#: suffix on the class path rather than as the parameter's own spelling, because
-#: the parameter's spelling is the thing that is not stable.
+#: What an instance of a class renders as in the binding table: a suffix on the
+#: class path, since the parameter's spelling is not stable.
 _INSTANCE = "::self"
 
 
@@ -1476,8 +1322,7 @@ def _receiver_key(node: ast.AST | None, instance: _Instance = _Instance()) -> st
     return ""
 
 
-#: The node types that OPEN A SCOPE, which is what makes the binding table below
-#: lexical rather than a flat sweep of the file.
+#: The node types that open a scope, which keep the binding table lexical.
 _SCOPES = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -1490,20 +1335,23 @@ _SCOPES = (
 )
 
 
-def _memoized_on_node(walk):
-    """Keep a walk's answer on the node it was asked of: no tree is mutated after
-    it is parsed, and the audit asks the same scope the same question many times.
-    """
-    key = f"_cached_{walk.__name__}"
+def _kept_on_node(read):
+    """Keep a read's answer on its node; no tree is mutated after it is parsed."""
+    key = f"_cached_{read.__name__}"
 
-    def cached(node: ast.AST) -> tuple[ast.AST, ...]:
+    def cached(node: ast.AST):
         found = node.__dict__.get(key)
         if found is None:
-            found = tuple(walk(node))
+            found = read(node)
             setattr(node, key, found)
         return found
 
     return cached
+
+
+def _memoized_on_node(walk):
+    """A walk's nodes as a tuple, kept on the node it was asked of."""
+    return _kept_on_node(functools.wraps(walk)(lambda node: tuple(walk(node))))
 
 
 def _walk_scope(node: ast.AST):
@@ -1528,9 +1376,8 @@ _scope_nodes = _memoized_on_node(_walk_scope)
 _nested_scopes = _memoized_on_node(_walk_nested)
 
 
-#: The statement fields a single run can SKIP ENTIRELY, by the node that holds
-#: them. ``finalbody`` is deliberately absent: a ``finally`` block runs on every
-#: path there is, so a binding written in one is not optional at all.
+#: The statement fields a single run can skip entirely. ``finalbody`` is absent:
+#: a ``finally`` block runs on every path.
 _BRANCHED_FIELDS = ("body", "orelse", "handlers", "cases")
 
 _BRANCHING = (
@@ -1544,6 +1391,7 @@ _BRANCHING = (
 )
 
 
+@_kept_on_node
 def _branched(scope: ast.AST) -> frozenset[int]:
     """Every statement in one scope a single run can skip, by node identity."""
     found: set[int] = set()
@@ -1637,13 +1485,8 @@ def _defined_here(node: ast.AST) -> frozenset[str]:
 
 
 def _rebound_to_itself(node: ast.AST, instance: _Instance = _Instance()) -> frozenset[str]:
-    """The receiver keys one assignment binds to the value they already hold.
-
-    ``Keeper = Keeper`` cannot change what the name is bound to, unlike
-    ``Keeper = dataclass(Keeper)``, which the residual
-    "A class rebound after its own definition is no longer reachable by name"
-    files as undecidable.
-    """
+    """The receiver keys one assignment binds to the value they already hold, as
+    ``Keeper = Keeper`` does and ``Keeper = dataclass(Keeper)`` does not."""
     if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
         return frozenset()
     sources = {
@@ -1657,6 +1500,7 @@ def _rebound_to_itself(node: ast.AST, instance: _Instance = _Instance()) -> froz
     )
 
 
+@_kept_on_node
 def _names_taken(node: ast.AST) -> frozenset[str]:
     """Every bare name one scope binds to something of its OWN."""
     taken = set(_defined_here(node))
@@ -1945,14 +1789,9 @@ def _scope_own_bindings(
             idle = _rebound_to_itself(child, instance)
             optional = id(child) in skippable
             for key, owner in found.items():
-                # A SKIPPED VETO ONLY COUNTS WHEN SOMETHING ELSE STILL SUPPLIES
-                # THE KEY on the path that skipped it. For a NAME that is always
-                # so, because the statement that bound it ran. For an OBJECT key
-                # it is so in exactly two cases: the attribute is already in this
-                # scope's table, which is what a class body binding it does, or
-                # this scope chains to a base initializer that binds it. Anything
-                # else and the arm that skipped the override reaches an attribute
-                # that was never created, so the veto stands.
+                # A skipped veto counts only when something else supplies the
+                # key on the skipping path: always for a name; for an object key,
+                # when this scope's table holds it or a chained base binds it.
                 supplied = key.isidentifier() or chained or bool(table.get(key))
                 if key in idle or (optional and not owner and supplied):
                     continue
@@ -1963,10 +1802,8 @@ def _scope_own_bindings(
                 else:
                     objects.setdefault(key, "")
             for key in idle:
-                # WHAT THE KEY HELD, and what the statement could still evaluate
-                # to when it held nothing this pass could read. ``alias = alias or
-                # config`` keeps its own value on one path and the module on the
-                # other, and reading only the first would lose the module.
+                # What the key held, or else what the statement evaluates to:
+                # ``alias = alias or config`` can still be the module.
                 held = table.get(key, "") or found.get(key, "")
                 if not held:
                     continue
@@ -2385,10 +2222,8 @@ def mutations_in(
     found: list[str] = []
     for node in _scope_nodes(tree):
         if isinstance(node, ast.Attribute):
-            # The ATTRIBUTE rather than the call around it, so a bound method
-            # captured now and called later is caught at the point it is
-            # reached. A called one lands here too and only here, because the
-            # call branch below deliberately checks a bare name only.
+            # The attribute, not the call, so a bound method captured now and
+            # called later is caught; the call branch checks bare names only.
             if node.attr in FILESYSTEM_MUTATIONS:
                 found.append(f"line {node.lineno}: {node.attr}")
             else:
@@ -2396,12 +2231,9 @@ def mutations_in(
                 if holder and f"{holder}.{node.attr}" in QUALIFIED_MUTATIONS:
                     found.append(f"line {node.lineno}: {holder}.{node.attr}")
         elif isinstance(node, ast.Subscript):
-            # Rule 5, with the receiver read THROUGH THE TABLE. ``table =
-            # vars(Path)`` followed by ``table["write_text"](p, d)`` is the same
-            # two-line refactor ``alias = config`` is, and reading the receiver
-            # inline saw neither line. Reported on the subscript rather than on a
-            # call around it, on the same terms rule 1 reads an attribute: bound
-            # now and called later still writes.
+            # Rule 5, the receiver read through the table, so ``table =
+            # vars(Path)`` then ``table["write_text"](p, d)`` is caught, on the
+            # subscript as rule 1 reads an attribute.
             space = _bound_value(node.value, resolved, instance)
             if isinstance(space, _Namespace):
                 said = _namespace_reads(
@@ -2410,9 +2242,8 @@ def mutations_in(
                 if said is not None:
                     found.append(f"line {node.lineno}: [{said}]")
         elif isinstance(node, ast.Name) and node.id in reachable:
-            # A writer imported off an admitted module, or one of that module's
-            # own, reached with no receiver to read. Bound rather than called is
-            # the same answer rule 1 gives for the same reason.
+            # A writer imported off an admitted module, or its own, reached with
+            # no receiver; bound counts as called, as in rule 1.
             found.append(f"line {node.lineno}: {node.id}")
         elif isinstance(node, ast.Call):
             found += _call_mutations(
@@ -2456,12 +2287,9 @@ def _call_mutations(
     if isinstance(func, ast.Name) and name in FILESYSTEM_MUTATIONS:
         return [f"line {node.lineno}: {name}"]
     if isinstance(func, ast.Attribute):
-        # RULE 5 ASKED RATHER THAN INDEXED. ``Path.__dict__.get("write_text")``
-        # hands back the same function object the subscript does, and so does
-        # ``vars(obj).pop(...)``. Any method of a namespace is read on the same
-        # terms, because the narrowing that keeps this off ordinary code is the
-        # RECEIVER being a type's attribute mapping, not the list of method names
-        # somebody might use to reach into one.
+        # Rule 5 asked rather than indexed: ``Path.__dict__.get("write_text")``
+        # and ``vars(obj).pop(...)`` hand back the same function. The narrowing
+        # is the receiver being a type's attribute mapping, not the method name.
         space = _bound_value(func.value, resolved, instance)
         if isinstance(space, _Namespace):
             said = _namespace_reads(
@@ -2493,15 +2321,10 @@ def _call_mutations(
     if wanted is None:
         return []
     if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
-        # The COMPUTED half. ``getattr`` is what an author reaches for, so inside
-        # the governed package a computed one is reported whether or not its
-        # result is called: there, an attribute this cannot read is the
-        # violation. ``__getattribute__`` is not that. Written out by hand its
-        # ordinary spelling is ``return super().__getattribute__(name)``, a
-        # delegation that forwards the name the interpreter already asked for and
-        # calls nothing, and reporting it was collateral the rule's own comment
-        # said it did not have. So the dunder is read on the RESULT BEING CALLED
-        # in both directions, which still catches
+        # The computed half. Inside the governed package a computed ``getattr``
+        # is reported whether or not it is called. ``__getattribute__`` is read
+        # only when its result is called, which keeps the ordinary delegation
+        # ``super().__getattribute__(name)`` quiet and still catches
         # ``object.__getattribute__(p, n)(d)``.
         if id(node) in invoked or (reflection and name == "getattr"):
             return [f"line {node.lineno}: {name}(<computed attribute>)"]
@@ -2514,9 +2337,7 @@ def _call_mutations(
     return []
 
 
-#: The builtin and the dunder that read an attribute by NAME. ``getattr`` is the
-#: one anybody writes; ``__getattribute__`` is what it calls, it is reachable in
-#: both a bound and an unbound spelling, and both of them write when they are
+#: The builtin and the dunder that read an attribute by name, both writing when
 #: handed ``"write_text"``.
 _REFLECTIVE_READERS = frozenset({"getattr", "__getattribute__"})
 
@@ -2537,11 +2358,9 @@ def _library_receiver(func: ast.AST, libraries: frozenset[str]) -> str:
     return ""
 
 
-#: The ``os.open`` flags that cannot change a file. ``os.open`` is the one module
-#: level ``open`` whose second argument is a FLAG SET rather than a mode string,
-#: so reading it as a mode gives an unreadable answer and an unreadable answer is
-#: a finding. ``cratekit/core/jobs.py`` line 788 opens a DIRECTORY read only to
-#: fsync it, and that is what was being reported as a write.
+#: The ``os.open`` flags that cannot change a file. Its second argument is a flag
+#: set, not a mode string, and ``cratekit/core/jobs.py`` opens a directory read
+#: only to fsync it.
 _READING_FLAGS = frozenset(
     {
         "O_RDONLY",
@@ -2645,25 +2464,21 @@ def test_the_guard_literals_have_no_element_written_twice(name):
     assert not repeated, f"written twice and collapsed at parse time: {repeated}"
 
 
-#: Where a residual finding is DEFINED, as git spells it, so it is one string for
-#: the derivation that must not police it and for the diff that names what this
-#: branch added to it.
+#: Where a residual finding is defined, as git spells it.
 RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 
 #: Its archives by number range (U314), which define findings as it does.
 RESIDUAL_ARCHIVES_NAME = "docs/ledger/"
 
 
+@functools.cache
 def _residual_document_text() -> str:
     """The residual document as one text, its archives first, in number order."""
     archives = sorted((REPO_ROOT / RESIDUAL_ARCHIVES_NAME).glob("*.md"))
     return "".join(path.read_text() for path in [*archives, REPO_ROOT / RESIDUAL_FINDINGS_NAME])
 
-#: The files this unit is KNOWN to write. A FLOOR rather than the list, because a
-#: hand kept list is the defect this guard exists to answer, one level in: the
-#: previous version named nine files while the branch changed seventeen, and eight
-#: of the eight it missed were invisible to every check here. Two of those eight
-#: carry residual citations already.
+#: The files this unit is known to write: a floor rather than the list, since a
+#: hand kept list is the defect this guard answers.
 CITED_FLOOR = (
     "tests/modules/test_reports.py",
     "tests/test_rbxml.py",
@@ -2685,14 +2500,14 @@ CITED_FLOOR = (
 )
 
 
-#: How a commit says which unit made it. Every commit this unit has ever written
-#: carries it in the subject line, and it is the one identifier of this unit's
-#: work that a MERGE does not move.
+#: How a commit names this unit, in its subject: the one identifier a merge does
+#: not move.
 UNIT_COMMIT_TAG = "(U34)"
 
 
+@functools.cache
 def _git(*argv: str) -> str:
-    """One git read, from the repository root, for the derivations below."""
+    """One git read, from the repository root, read once per run."""
     return subprocess.run(
         ["git", *argv], cwd=REPO_ROOT, capture_output=True, text=True, check=True
     ).stdout
@@ -2723,9 +2538,7 @@ def _files_this_unit_writes() -> tuple[str, ...]:
 
 
 def _files_this_unit_writes_by_a_second_route() -> tuple[str, ...]:
-    """The same question, asked with different plumbing, so a narrowing has to
-    happen twice to stay silent.
-    """
+    """The same question by other plumbing, so a narrowing must happen twice."""
     named: set[str] = set()
     for commit in _unit_commits():
         fields = [
@@ -2795,16 +2608,13 @@ def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
         named |= {str(one.relative_to(REPO_ROOT)) for one in REPO_ROOT.glob(pattern)}
     absent = sorted(one for one in _PACKAGE_MODULES_ANOTHER_UNIT_OWNS if one not in named)
     assert absent == [], (
-        f"the exclusion names files the package does not hold: {absent}. A stale "
-        f"entry here silently shrinks the bound, which is the failure the bound "
-        f"exists to catch one level up"
+        f"the exclusion names files the package does not hold: {absent}, which "
+        f"silently shrinks the bound"
     )
     claimed = sorted(set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS) & set(CITED_FLOOR))
     assert claimed == [], (
-        f"the exclusion names files this unit's own floor claims: {claimed}. The "
-        f"two registers would then disagree about who owns them, and the widening "
-        f"that adds a genuinely owned file to the exclusion is exactly the drift "
-        f"this bound exists to refuse"
+        f"the exclusion names files this unit's own floor claims: {claimed}, so "
+        f"the two registers disagree about who owns them"
     )
     remaining = tuple(sorted(named - set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS)))
     assert remaining, "the exclusion emptied the bound, so it bounds nothing"
@@ -2883,10 +2693,8 @@ def _banned_addresses(
     return tuple(f"R-{numbers[one]}" for one in titles)
 
 
-#: The ONE passage whose subject is the numbers themselves, delimited rather than
-#: guessed at. A statement that says which numbers collide has to spell them, and
-#: an exemption that is a pair of markers can be grepped, cannot widen by accident,
-#: and shows up in a diff when somebody moves it.
+#: The one passage whose subject is the numbers themselves, delimited by markers
+#: so the exemption cannot widen unseen.
 _COLLISION_OPEN = "[[collision-set]]"
 _COLLISION_CLOSE = "[[/collision-set]]"
 
@@ -2911,12 +2719,9 @@ def _citing_lines(text: str):
 def test_this_units_residuals_are_cited_by_title_and_never_by_number():
     """The citation rule, measured over `docs/` too rather than asserted about it."""
     banned = set(_banned_addresses(UNIT_RESIDUAL_TITLES, filed=_residual_titles_this_unit_filed()))
-    # THE COVERAGE IS DERIVED AND THEN ASSERTED, not left to be inferred from a
-    # typed list. The claim this replaces was true of source, docstrings and tests
-    # and false of `docs/`, and the list that replaced THAT was true of nine files
-    # and silent about eight more the same branch writes. `_citing_files` reads
-    # git twice by two routes, so a file this branch adds is covered the moment it
-    # exists and a narrowing of either derivation is refused by the other.
+    # The coverage is derived, then asserted. `_citing_files` reads git by two
+    # routes, so a file this branch adds is covered as it exists and a narrowing
+    # of either derivation is refused by the other.
     covered = _citing_files()
     assert RESIDUAL_FINDINGS_NAME not in covered, "the file that DEFINES them is not policed"
     offenders: list[str] = []
@@ -3074,9 +2879,7 @@ def test_no_report_module_calls_a_filesystem_mutation():
     assert not problems, f"the reports package can change a file: {problems}"
 
 
-#: The one module in ``ALLOWED_IMPORTS`` that is ALLOWED to write, which is the
-#: whole of R12 and the reason the allowlist is an allowlist. Named once so the
-#: audit below can exempt it without spelling it a second time.
+#: The one module in ``ALLOWED_IMPORTS`` allowed to write (R12).
 SANCTIONED_PERSISTENCE = "cratekit.core.review"
 
 
@@ -3163,11 +2966,9 @@ def _import_module_calls(source: str) -> list[str]:
 def _admitted_closure(
     entries=ALLOWED_IMPORTS, root: Path = SRC_ROOT
 ) -> tuple[list[tuple[str, Path]], list[str]]:
-    """Every first party module the allowlist admits OR REACHES, and what it could not follow.
-
-    The residual "The reports allowlist audit is one hop deep" is why: an admitted
-    module's imports are its attributes, so a write it delegates is reachable too.
-    """
+    """Every first party module the allowlist admits or reaches, and what it could
+    not follow. The residual "The reports allowlist audit is one hop deep" is why:
+    an admitted module's imports are its attributes."""
     found = dict(_admitted_repository_modules(entries, root))
     waiting = sorted(found)
     unfollowed: list[str] = []
@@ -3206,35 +3007,25 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     tree = ast.parse(source)
     imported, from_admitted = _writer_bindings(tree)
     own = _writer_names_of(dotted) | from_admitted
-    # THE WHOLE FILE ANSWERS BOTH OF THESE and one statement cannot. A reflective
-    # read in one function is bound to a module level name and called in another,
-    # and the import that says ``os`` is a module sits at the top of a file this
-    # loop reads a statement at a time.
+    # Read off the whole file: a reflective read is bound in one function and
+    # called in another, and the imports sit above the statements this loop reads.
     invoked = _invoked_reads(tree)
     libraries = _imported_modules(tree)
-    # A FUNCTION ATTACHED TO A CLASS is a method of it, and the audit reads one
-    # top level statement at a time, so the pairing has to be read off the whole
-    # module before the loop starts. ``Row.go = _go`` puts a writer on a class
-    # with the writing method written nowhere near it.
+    # A function attached to a class (``Row.go = _go``) is a method of it, read
+    # off the whole module before the loop.
     attached = _attachments(tree)
     short = dotted.rsplit(".", 1)[-1]
     unnamed: list[str] = []
     loose: list[str] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # The reachable name is what a caller in the reports package
-            # would have to spell: the function, or the class it constructs
-            # to get at a writing method or a context manager.
+            # The name a caller in the reports package would spell: the
+            # function, or the class it constructs.
             named = (
                 node.name in FILESYSTEM_MUTATIONS or f"{short}.{node.name}" in QUALIFIED_MUTATIONS
             )
-            # A CLASS IS ITS OWN OWNER here, because the audit reads one top
-            # level statement at a time and there is no walk above it to say so.
-            # Without it every method's ``self`` renders unqualified and the
-            # class body's attributes are keyed under nothing. It is keyed by
-            # DEFINITION SITE rather than by name, which is what the binding
-            # table above is keyed by, and deriving both from the node is what
-            # keeps the two from drifting.
+            # A class is its own owner here, keyed by definition site as the
+            # binding table is, or its methods' ``self`` renders unqualified.
             owner = (
                 _class_key(node) if isinstance(node, ast.ClassDef) else attached.get(node.name, "")
             )
@@ -3253,9 +3044,8 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
             if found and not named:
                 unnamed.append(node.name)
         else:
-            # A write at module level has no name to guard at all, so
-            # importing the module performs it. That is never acceptable on
-            # the allowlist, whatever it is called.
+            # A module level write runs on import, never acceptable on the
+            # allowlist.
             loose += mutations_in(
                 node,
                 reflection=False,
@@ -3294,34 +3084,22 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
 
     assert not unnamed, (
         f"the reports allowlist admits modules whose writers this guard cannot "
-        f"name: {unnamed}. Either add each name to FILESYSTEM_MUTATIONS, or to "
-        f"QUALIFIED_MUTATIONS with the module in front of it, so a report calling "
-        f"it is caught, or drop the module from ALLOWED_IMPORTS. The allowlist's "
-        f"comment claims nothing it admits can touch a file except through "
-        f"pathlib, and that claim is what this asserts."
+        f"name: {unnamed}. Add each to FILESYSTEM_MUTATIONS, or to "
+        f"QUALIFIED_MUTATIONS behind its module, or drop the module from "
+        f"ALLOWED_IMPORTS."
     )
 
 
-#: An admitted module whose writer is spelled through ``getattr`` with a LITERAL
-#: name, which is the shape that walks past an audit with reflection off. Nothing
-#: about it is exotic: the helper is four tokens long, it reads as a wrapper, and
-#: with the literal half of rule 4 gated off the audit reports nothing, so the
-#: helper is never forced into the mutation set. A report then reaches it through
-#: the allowlisted module by name, ``forbidden_imports`` is empty because the
-#: module is allowlisted, and ``filesystem_mutations`` is empty because there is
-#: no mutating attribute, no ``getattr``, no ``open`` and no ``replace`` anywhere
-#: in the report. Both structural guards green, and a private ignore ledger
-#: written.
+#: An admitted module whose writer is spelled through ``getattr`` with a literal
+#: name. Unnamed by the audit, a report reaches it by name with both structural
+#: guards green and a private ignore ledger written.
 ADMITTED_REFLECTIVE_WRITER = """
 def stash(path, data):
     getattr(path, "write_text")(data)
 """
 
-#: THE SAME HELPER ONE TOKEN LONGER, three ways. Ungating the LITERAL half of
-#: rule 4 was round three's fix and it lost nothing, but it did not close the
-#: hole, it moved it: a concatenation, a module constant and an f-string each
-#: spell exactly the same four-token wrapper and each was invisible to the audit
-#: again. The switch has to be on something other than literal versus computed.
+#: The same helper one token longer, three ways: a concatenation, a module
+#: constant and an f-string, each once invisible to the audit.
 ADMITTED_REFLECTIVE_WRITER_BY_CONCATENATION = """
 def stash(path, data):
     getattr(path, "write_" + "text")(data)
@@ -3350,20 +3128,15 @@ def stash(path, data):
     Path.__dict__["write_text"](path, data)
 """
 
-#: The four helpers the reflection switch was turned off FOR, in the shape they
-#: really have: a computed attribute read off a dataclass. Every one of the four
-#: was reported by the computed half and none by the literal half, which is why
-#: gating the literal half with it was a hole that bought nothing.
+#: The helpers the reflection switch was turned off for, in their real shape: a
+#: computed attribute read off a dataclass.
 ADMITTED_REFLECTIVE_READER = """
 def _field_value(name, spec):
     return getattr(spec, name)
 """
 
-#: An admitted module reaching ANOTHER admitted module's writer. The audit reads
-#: one function at a time, so before round four it had no import table to resolve
-#: ``config`` with and this was invisible: a one-line helper in ``naming``, which
-#: ``duplicates`` already imports, writing the configuration file. No module on
-#: the allowlist does this today, which is exactly why it is a fixture.
+#: An admitted module reaching another admitted module's writer: a one-line
+#: helper in ``naming`` writing the configuration file through ``config``.
 ADMITTED_MODULE_REACHING_ANOTHER_MODULES_WRITER = """
 from cratekit.core import config
 
@@ -3394,20 +3167,15 @@ def read(path):
     return Path(path).read_text()
 """
 
-#: An admitted module exposing an ordinary attribute read whose name collides
-#: with a filesystem verb. This is the false positive the receiver check exists
-#: to prevent, and it fails the audit outright while ``load`` is a bare member of
-#: the mutation set.
+#: An admitted module's ordinary attribute read named like a filesystem verb: the
+#: false positive the receiver check prevents.
 ADMITTED_GENERIC_ATTRIBUTE_READ = """
 def describe(spec):
     return spec.load
 """
 
-#: An admitted module reaching its OWN writer, which has no receiver to read
-#: because inside ``config.py`` there is nothing to spell. This is the shape a
-#: receiver qualified set loses if a bare name inside a module is not qualified
-#: by that module, and losing it would mean a new entry point reaching a writer
-#: through a one-line private wrapper is admitted unnamed.
+#: An admitted module reaching its own writer with no receiver, which a bare
+#: name inside a module must be qualified by that module to catch.
 ADMITTED_MODULE_REACHING_ITS_OWN_WRITER = """
 def refresh(cfg):
     return load()
@@ -3493,10 +3261,8 @@ def _plant(root: Path, modules: dict[str, str]) -> Path:
     return root
 
 
-#: The one hop audit's own driven relocation. ``cause`` keeps a thin caller and the raw
-#: ``os.open`` moves into ``access_probe``, a module the allowlist does not name.
-#: Driven on the real tree on 2026-08-14, it took the one hop audit from red to
-#: green with the package's reach to a write capable handle unchanged.
+#: The one hop audit's driven relocation: ``cause`` keeps a thin caller and the
+#: raw ``os.open`` moves into ``access_probe``, which the allowlist does not name.
 DELEGATING_CAUSE = """
 from cratekit.core import access_probe
 
@@ -3513,9 +3279,8 @@ def open_for_probe(path):
     return os.open(path, os.O_RDWR | os.O_CREAT)
 """
 
-#: The SIDEWAYS case the layering guard cannot see: an admitted module
-#: delegating to a module at its own layer, two hops deep, with a cycle back to
-#: the admitted module so the walk has to end on what it has seen.
+#: The sideways case the layering guard cannot see, two hops deep, with a cycle
+#: back so the walk must end on what it has seen.
 SIDEWAYS_RBXML = """
 from cratekit.write import helper
 
@@ -3555,10 +3320,8 @@ def keep(path):
     path.touch()
 """
 
-#: The same delegation with NO import statement for the closure to read, once
-#: through the module attribute and once through an aliased bare name. The
-#: built in review drove the first against the closure's first version and it
-#: came back green.
+#: The same delegation with no import statement for the closure to read, through
+#: the module attribute and through an aliased bare name.
 IMPORT_MODULE_CAUSE = """
 import importlib
 
@@ -3575,10 +3338,8 @@ def probe(path):
     return load("cratekit.core.access_probe").open_for_probe(path)
 """
 
-#: A relative import inside a THREE level package, which the resolver answers
-#: by asking the tree whether the base is a directory. Asked of the real tree,
-#: the planted ``cratekit.modules.planted`` is no directory, the import reads as
-#: the package itself, and ``stash`` is never reached.
+#: A relative import inside a three level package, resolved by asking the tree
+#: whether the base is a directory; the real tree has no planted one.
 RELATIVE_OPENER = """
 from . import keeper
 
@@ -3719,17 +3480,12 @@ def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_pa
     assert [dotted for dotted, _ in audited] == ["cratekit.core", "cratekit.core.cause"]
 
 
-#: The REAL module every shape below is driven against. ``aging`` imports
-#: ``config`` at line 61 and ``taxonomy`` beside it, which is what makes it the
-#: right file: a false positive here is not a fixture's problem, it is a line
-#: somebody could write in this package tomorrow.
+#: The real module every shape below is driven against: it imports ``config``
+#: and ``taxonomy``, so a false positive here is a line somebody could write.
 AGING_SOURCE = (REPORTS_ROOT / "aging.py").read_text()
 
-#: Ten shapes an ORDINARY AUTHOR writes, each appended to the real ``aging`` and
-#: each a finding before this round. The defect they share is one defect: the
-#: binding table was swept FLAT off the whole file and only a PARAMETER could
-#: take a name back, so every other way of rebinding a name left the stale import
-#: binding live underneath it.
+#: Ten shapes an ordinary author writes, appended to the real ``aging``, each a
+#: finding when the binding table was swept flat and only a parameter rebound.
 ORDINARY_SHAPES_IN_A_REPORT = [
     (
         "a loop target",
@@ -3835,11 +3591,8 @@ class Row:
     ),
 ]
 
-#: Four ordinary MAPPING LOOKUPS whose key happens to spell a filesystem verb.
-#: ``touch``, ``rename``, ``truncate``, ``mkdir`` and ``chmod`` are all plausible
-#: keys, and rule 5 compared every constant subscript against the mutation set
-#: with no receiver read at all while its own docstring claimed an ordinary
-#: dispatch table never sees it.
+#: Ordinary mapping lookups whose key happens to spell a filesystem verb, which
+#: rule 5 once reported with no receiver read.
 ORDINARY_MAPPING_LOOKUPS = [
     (
         "a counter read twice",
@@ -3869,10 +3622,8 @@ class Row:
         return super().__getattribute__(name)
 """
 
-#: Three REAL WRITES that were missed, all through the same flat table. The first
-#: two never rendered a receiver key at all: a tuple right hand side and a
-#: conditional are neither a name, a subscript nor an attribute. The third was
-#: read one container level deep and stopped.
+#: Three real writes once missed through the flat table: a tuple right hand side,
+#: a conditional, and a container more than one level deep.
 MISSED_WRITES_IN_A_REPORT = [
     (
         "a parallel unpacking",
@@ -3980,11 +3731,8 @@ def test_a_container_key_this_cannot_read_binds_nothing():
     assert filesystem_mutations(constant + "\n\ndef go(cfg):\n    MODS['c'].save(cfg)\n")
 
 
-#: Eight INDIRECT spellings of one act: a reflective read whose result is called.
-#: The switch that decides rule 4's computed half was read off nothing but a
-#: ``Call`` whose ``func`` was itself a ``Call``, so it saw the inline spelling
-#: and none of these. Every one of them is a wrapper somebody writes on purpose,
-#: and against the audit with reflection off every one of them returned nothing.
+#: Eight indirect spellings of a reflective read whose result is called, which a
+#: switch reading only an inline ``Call`` of a ``Call`` missed.
 INDIRECTLY_INVOKED_REFLECTIVE_READS = [
     (
         "bound to a name and called",
@@ -4083,12 +3831,8 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         'import tarfile\n\n\ndef read(p):\n    return tarfile.open(p, "r")\n',
         "import os\n\n\ndef sync(p):\n    return os.open(str(p), os.O_RDONLY)\n",
         "import os\n\n\ndef walk(p):\n    return os.open(p, os.O_RDONLY | os.O_DIRECTORY)\n",
-        # THE BARE IMPORTED FLAG, which was a pure read reported as a write.
-        # ``_READING_FLAGS`` holds bare names and ``_flag_names`` could only ever
-        # produce one from the dotted spelling, so the identical call written
-        # with ``from os import O_RDONLY`` was an unreadable flag set and
-        # therefore a finding. The real ``jobs.py`` happens to spell it dotted,
-        # which is the only reason this was not live in the tree.
+        # The bare imported flag, a pure read once reported as a write because
+        # only the dotted spelling was read.
         "import os\nfrom os import O_RDONLY\n\n\ndef sync(p):\n    return os.open(str(p), O_RDONLY)\n",
         "import os\nfrom os import O_DIRECTORY, O_RDONLY\n\n\n"
         "def walk(p):\n    return os.open(p, O_RDONLY | O_DIRECTORY)\n",
@@ -4103,9 +3847,8 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         "import os\n\n\ndef make(p):\n    return os.open(p, os.O_CREAT | os.O_EXCL)\n",
         "import os\n\n\ndef make(p, flags):\n    return os.open(p, flags)\n",
         "import io\n\n\ndef go(p, mode):\n    return io.open(p, mode)\n",
-        # Every WRITING flag still fires in the bare spelling, and so does a flag
-        # held in a VARIABLE, which is what keeps reading a name from being the
-        # same thing as accepting one.
+        # Every writing flag still fires in the bare spelling, and so does a flag
+        # held in a variable.
         "import os\nfrom os import O_CREAT\n\n\ndef make(p):\n    return os.open(p, O_CREAT)\n",
         "import os\nfrom os import O_WRONLY\n\n\ndef make(p):\n    return os.open(p, O_WRONLY)\n",
         "import os\nfrom os import O_RDWR\n\n\ndef make(p):\n    return os.open(p, O_RDWR)\n",
@@ -4113,9 +3856,8 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         "import os\nfrom os import O_APPEND\n\n\ndef make(p):\n    return os.open(p, O_APPEND)\n",
         "import os\nfrom os import O_EXCL, O_RDONLY\n\n\n"
         "def make(p):\n    return os.open(p, O_RDONLY | O_EXCL)\n",
-        # A flag EXPRESSION that is neither a name nor an attribute is unreadable,
-        # and unreadable is reported. Reading a bare name is not the same act as
-        # accepting one, and this is the line that says so.
+        # A flag expression that is neither a name nor an attribute is
+        # unreadable, and unreadable is reported.
         "import os\n\n\ndef make(p, chosen):\n    return os.open(p, chosen())\n",
     ]
     for source in writing:
@@ -4144,8 +3886,7 @@ def test_the_binding_table_is_scoped_and_the_object_half_is_not():
     assert filesystem_mutations(stored)
 
 
-#: TWO CLASSES, ONE SPELLING, and the reason the test above cannot see the defect
-#: it was written for: it uses ONE class, so the table's key can be as coarse as
+#: Two classes, one spelling: with one class the table's key can be as coarse as
 #: it likes and nothing disagrees.
 TWO_SELVES_IN_ONE_FILE = """
 
@@ -4206,10 +3947,8 @@ class Keeper:
         cls.mod.save(cfg)
 """
     assert filesystem_mutations(AGING_SOURCE + through_the_class)
-    # A CLASS ATTRIBUTE OVERRIDDEN PER INSTANCE, which is ordinary and runnable.
-    # ``cls.mod`` is the class's ``None``, not the constructor's module. Read as
-    # an instance, ``cls`` would resolve to the constructor's binding and this
-    # ordinary classmethod would be a write to the library.
+    # A class attribute overridden per instance: ``cls.mod`` is the class's
+    # ``None``, not the constructor's module.
     overridden = """
 
 class Keeper:
@@ -4225,12 +3964,8 @@ class Keeper:
     assert filesystem_mutations(AGING_SOURCE + overridden) == []
 
 
-#: A CLASS ATTRIBUTE BOUND TO AN ADMITTED MODULE, in every spelling that reaches
-#: it. ``self.mod = config`` in a constructor was caught and had a test; the
-#: identical assignment written in the class body was not, because a class body
-#: was read as part of the scope around it and bound only the bare name ``mod``.
-#: Two lines wrote the configuration file with ruff, both structural guards and
-#: the audit green.
+#: A class attribute bound to an admitted module, in every spelling that reaches
+#: it; the class body form was once read as the scope around it and missed.
 CLASS_ATTRIBUTE_REACHES_A_WRITER = [
     (
         "read through the instance",
@@ -4353,11 +4088,8 @@ def test_the_audit_names_a_class_that_reaches_a_writer_through_its_body():
     assert _unnamed_writers("cratekit.core.naming", injected) == []
 
 
-#: A KEY THAT LANDED ON THE CLASS THAT DECLARES IT rather than on the class that
-#: REACHES it. Every one of these is two or three lines appended to the real
-#: ``aging``, every one of them wrote the configuration file with both structural
-#: guards and the audit green, and not one of them is evasion: a base class, a
-#: mixin and a method attached after the fact are ordinary author code.
+#: A key that landed on the class declaring it rather than the class reaching it:
+#: a base, a mixin and a method attached after the fact, all ordinary code.
 INHERITED_ATTRIBUTE_REACHES_A_WRITER = [
     (
         "a base class constructor's binding, read in a subclass",
@@ -4391,10 +4123,8 @@ INHERITED_ATTRIBUTE_REACHES_A_WRITER = [
     ),
 ]
 
-#: The other direction, and the one a family-wide key would get wrong. Two
-#: subclasses of one base are not each other's business, a base does not borrow
-#: from its subclass through the CLASS spelling, and a class is identified by
-#: where it is written rather than by what it is called.
+#: The other direction, which a family-wide key would get wrong: siblings do not
+#: share, a base does not borrow from its subclass, and a class is its site.
 INHERITANCE_STAYS_IN_THE_FAMILY = [
     (
         "a sibling subclass's binding is not this subclass's",
@@ -4447,10 +4177,8 @@ def test_a_class_key_names_one_class_and_never_two(shape, snippet):
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
-#: SIX ORDINARY SHAPES, every one of them a subclass overriding an attribute its
-#: base binds, and every one of them reported as a write to the library by the
-#: round that added inheritance. Not one is evasion. Overriding an inherited
-#: attribute in a constructor is the most ordinary thing inheritance does.
+#: Six ordinary shapes of a subclass overriding an attribute its base binds, each
+#: once reported as a write.
 AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
     (
         "a subclass overrides in its own constructor with a plain dict",
@@ -4493,11 +4221,8 @@ AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
 ]
 
 
-#: The writes the failed attempt rule must not cost, and they are the ones a rule
-#: written one degree too wide would take. An override is a fact about the class
-#: that wrote it, so it blocks what is ABOVE it and nothing else: not a sibling,
-#: not a mixin reading the same attribute through a different subclass, and not
-#: another method of the same class that binds the real module.
+#: The writes the override rule must not cost: an override blocks what is above
+#: it, never a sibling, a mixin, or another method binding the real module.
 AN_OVERRIDE_BLOCKS_NOTHING_ELSE = [
     (
         "a sibling subclass that binds the real module is still reached",
@@ -4553,9 +4278,7 @@ def test_an_override_blocks_upward_and_never_sideways_or_down(shape, snippet):
     assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
-#: AN OVERRIDE ONE INDENT IN, which is the same false positive as the six above
-#: with a branch around it, and which the branch rule put back for six rounds
-#: because the rule's scope was stated in PROSE and driven on the NAME half only.
+#: An override one indent in: the same false positive with a branch around it.
 AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING = [
     (
         "both arms of an if/else override it",
@@ -4619,10 +4342,8 @@ AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING = [
 ]
 
 
-#: THE MISS DIRECTION OF THE SAME RULE, and the reason a flag on the key's spelling
-#: was not enough. The base's binding really is reachable in each of these, so each
-#: has to keep firing, and a restriction that only asked whether the key was an
-#: identifier made the first one quiet.
+#: The miss direction of the same rule: the base's binding is reachable in each,
+#: so each keeps firing.
 A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES = [
     (
         "a conditional override in a constructor that chains first",
@@ -4688,9 +4409,8 @@ CLASS_BODY_READ_THROUGH_THE_CLASS = (
     "def through_the_class(cfg):\n    return Keeper.mod.save(cfg)\n"
 )
 
-#: The CLASS spelling under a method that rebinds it, which is the write a weak
-#: class spelling would lose. ``Keeper.mod`` is the module until ``clear`` runs
-#: and the read is reachable before it does, so this fires.
+#: The class spelling under a method that rebinds it: ``Keeper.mod`` is the
+#: module until ``clear`` runs, so this fires.
 CLASS_BODY_REBOUND_THROUGH_THE_CLASS = (
     "\n\nclass Keeper:\n    mod = config\n\n"
     "    def clear(self):\n        Keeper.mod = None\n\n"
@@ -4705,9 +4425,8 @@ def test_an_instance_override_shadows_a_class_body_binding_but_not_the_class():
     assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_REBOUND_THROUGH_THE_CLASS)
 
 
-#: THE ORDER THE WALK HAPPENS TO VISIT TWO SCOPES IN, which must not decide. The
-#: class body is written after the constructor here and before it above, and the
-#: table has to give the same answer to both.
+#: The order the walk visits two scopes in must not decide: the class body comes
+#: after the constructor here and before it above.
 CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR = (
     "\n\nclass Keeper:\n"
     "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
@@ -4721,11 +4440,8 @@ def test_the_faint_tier_does_not_depend_on_which_scope_the_walk_reached_first():
     assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR) == []
 
 
-#: TWO INSTANCE WRITES TO ONE ATTRIBUTE, one resolved and one not, under a class
-#: body that binds the same name. ``_record``'s rule is that a key which RESOLVED
-#: is never taken back by one that did not, and the class body's mark is what
-#: would let it happen anyway: a mark admits an unresolved write, so the write
-#: that resolved the key has to clear it on the way out.
+#: Two instance writes to one attribute, one resolved and one not, under a class
+#: body binding the same name: a resolved key is never taken back.
 A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE = (
     "\n\nclass Keeper:\n    mod = config\n\n"
     "    def __init__(self, raw):\n        self.mod = config\n\n"
@@ -4740,10 +4456,8 @@ A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE = (
     "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
 )
 
-#: The same pair with the class body binding something that is NOT the module,
-#: which is the shape that separates the mark from the value under it. ``mod =
-#: None`` still takes the attribute for the class, so the mark is still written,
-#: and the resolved instance write is still the strongest fact about the key.
+#: The same pair with the class body binding ``None``, which separates the mark
+#: from the value under it.
 A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES = (
     "\n\nclass Keeper:\n    mod = None\n\n"
     "    def __init__(self, raw):\n        self.mod = config\n\n"
@@ -4766,19 +4480,15 @@ def test_an_unresolved_instance_write_never_takes_back_a_resolved_one(snippet):
     assert filesystem_mutations(AGING_SOURCE + snippet)
 
 
-#: ``del`` PUTS THE CLASS ATTRIBUTE BACK, which is a real write and was quiet.
-#: Executed, the deleting method returns the module's own result, so the guard
-#: reporting nothing was a miss rather than a judgement.
+#: ``del`` puts the class attribute back, a real write that was once quiet.
 A_DELETE_THAT_REACHES_THE_CLASS_ATTRIBUTE = (
     "\n\nclass Deleter:\n    mod = config\n\n"
     "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
     "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n"
 )
 
-#: The same statement with nothing underneath it to reach. ``del self.mod`` here
-#: leaves an ``AttributeError`` rather than a module, so the restore must be a
-#: FILL rather than an assertion: it takes what the class spelling holds, and the
-#: class spelling holds nothing.
+#: The same statement with nothing underneath to reach, so the restore takes what
+#: the class spelling holds, which is nothing.
 A_DELETE_THAT_REACHES_NOTHING = (
     "\n\nclass Deleter:\n"
     "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
@@ -4792,14 +4502,9 @@ def test_deleting_an_instance_attribute_reaches_the_class_attribute_under_it():
     assert filesystem_mutations(AGING_SOURCE + A_DELETE_THAT_REACHES_NOTHING) == []
 
 
-#: TWO CLASS DEFINITIONS OF ONE NAME, and the distinction the residual "A class
-#: rebound after its own definition is no longer reachable by name" was missing. Read
-#: at module level, ``class Keeper`` twice in one statement list leaves one
-#: reachable ``Keeper`` and the first one's attributes are an ``AttributeError``,
-#: so reporting nothing is right. In two ARMS of one conditional only one arm runs
-#: and nothing was taken from anything, so a module bound in either arm can write.
-#: That residual transferred the first judgement onto the second and called it
-#: correct.
+#: Two class definitions of one name. In one statement list the second replaces
+#: the first, so nothing is reported; in two arms of a conditional only one runs,
+#: so a module bound in either arm can write.
 A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
     (
         "two class definitions in the arms of one conditional",
@@ -4861,10 +4566,8 @@ A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
 ]
 
 
-#: What the two fixes above must not cost. The first is that residual's own shape, which
-#: stays quiet because it stays correct. The second and third are the shadows a
-#: self rebinding must not weaken: a parameter of that name still takes it, and an
-#: assignment that is not a self rebinding still does.
+#: What the two fixes above must not cost: the replaced class stays quiet, and a
+#: parameter or a real assignment of that name still takes it.
 A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
     (
         "two class definitions in ONE statement list",
@@ -4924,10 +4627,8 @@ A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
     ids=[one[0] for one in A_NAME_THAT_STILL_MEANS_ITS_CLASS],
 )
 def test_a_binding_that_replaced_nothing_leaves_the_name_alone(shape, snippet):
-    """Two real writes filed as undecidable by the residual "A class rebound after
-    its own definition is no longer reachable by name", one of which it called
-    correct.
-    """
+    """Two real writes filed as undecidable by the residual
+    "A class rebound after its own definition is no longer reachable by name"."""
     assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
@@ -5003,12 +4704,8 @@ def test_the_audit_names_a_writer_a_subclass_reaches_through_its_base():
     assert _unnamed_writers("cratekit.core.naming", inherited) == ["Row"]
 
 
-#: A TYPE'S ATTRIBUTE MAPPING, reached through a BINDING rather than inline.
-#: Round four caught ``vars(Path)["write_text"]`` with a receiver free rule that
-#: fired on ``counts["rename"]`` too. Round five gave the rule its receiver and
-#: read it off the subscript's own ``value``, which is one binding out: the round
-#: built a binding table that follows ``alias = config`` and then did not ask it
-#: about ``table = vars(Path)``.
+#: A type's attribute mapping reached through a binding rather than inline, as
+#: ``table = vars(Path)`` then ``table["write_text"]``.
 NAMESPACE_REACHES_A_WRITER = [
     (
         "bound to a name from vars",
@@ -5068,12 +4765,8 @@ NAMESPACE_REACHES_A_WRITER = [
         "a generic writer named only by the module it belongs to",
         '\n\ndef go(cfg):\n    vars(config)["save"](cfg)\n',
     ),
-    # FOUR SPELLINGS ONE OPERATOR OUT FROM ONES ALREADY HELD, and the reason the
-    # rule stopped enumerating. ``dict(vars(Path))`` and ``{**vars(Path)}`` were
-    # each written out by hand; a dict union and a ``.copy()`` are the same act
-    # on the same object, they were measured quiet, and all three were executed
-    # to confirm they write a real file. The ``ChainMap`` needs no forbidden
-    # import either, because ``collections`` is on the allowlist.
+    # Four spellings one operator out from those above, each executed to confirm
+    # it writes a real file; ``collections`` is on the allowlist.
     (
         "carried through a dict UNION",
         '\n\ndef go(p, d):\n    (Path.__dict__ | {})["write_text"](p, d)\n',
@@ -5120,10 +4813,8 @@ ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
         "a generic name on a namespace nobody admits",
         '\n\ndef go(view):\n    return vars(view)["save"]\n',
     ),
-    # THE SAME MAPPING OPERATIONS ON AN ORDINARY MAPPING. Propagation is what
-    # carries a namespace through a union, a copy and a constructor, and if it
-    # carried mapping-ness itself rather than the namespace it found, every one
-    # of these would be a finding on a dispatch table.
+    # The same operations on an ordinary mapping: propagation carries the
+    # namespace it found, not mapping-ness itself.
     (
         "an ordinary mapping through a union",
         '\n\ndef go(counts):\n    return (counts | {})["rename"]\n',
@@ -5202,10 +4893,8 @@ def test_a_module_reached_through_the_globals_mapping_is_still_that_module():
     )
 
 
-#: Six more ways a scope takes a name back, each one the ONLY thing driving a
-#: line of the shadow list. Some are odder than the ten above and they are
-#: written out rather than argued: a shadow that nothing exercises is a shadow
-#: somebody deletes, and this file has already shipped six of those.
+#: Six more ways a scope takes a name back, each the only thing driving a line of
+#: the shadow list, since a shadow nothing exercises gets deleted.
 SHADOWS_IN_A_SCOPE = [
     (
         "an import of something else under the same name",
@@ -5346,9 +5035,7 @@ def clean(a, b):
     swap(a, b)
 """
 
-#: The same evasion one layer further out: the writer reached through the package
-#: rather than through the module, which is the shape a layering-aware author
-#: reaches for first.
+#: The same evasion one layer further out, through the package.
 EVASIVE_PACKAGE_IMPORT = """
 from cratekit.core import rb_writer
 
@@ -5366,9 +5053,7 @@ def snapshot(cfg):
     return rb_writer.open_db(cfg)
 """
 
-#: The same writer reached through a LAZY import inside a function body, which is
-#: the shape both of the source system's live layering violations take and the
-#: reason ``tests/test_layering.py`` walks the whole tree rather than the header.
+#: The same writer reached through a lazy import inside a function body.
 EVASIVE_LAZY_IMPORT = """
 def snapshot(cfg):
     import sqlite3
@@ -5396,10 +5081,8 @@ def remember(path, decided):
         handle.write(decided)
 """
 
-#: The same handle through the BOUND method, which is the idiomatic spelling and
-#: is the one that got through: ``Path.open`` takes the mode as its first
-#: argument because its receiver is already the file, so a guard reading position
-#: one saw the default read mode and said nothing.
+#: The same handle through the bound method, whose mode is its first argument
+#: because its receiver is already the file.
 EVASIVE_BOUND_OPEN_HANDLE = """
 from pathlib import Path
 
@@ -5423,9 +5106,8 @@ def remember(path, decided):
         handle.write(decided)
 """
 
-#: ``Path.replace`` overwrites its destination without asking, which is strictly
-#: worse than the ``rename`` sitting beside it in the mutation set, and it is
-#: how a private ledger gets swapped into place atomically.
+#: ``Path.replace`` overwrites its destination, how a private ledger is swapped
+#: into place atomically.
 EVASIVE_PATH_REPLACE = """
 from pathlib import Path
 
@@ -5434,9 +5116,8 @@ def remember(scratch, ledger):
     Path(scratch).replace(ledger)
 """
 
-#: The writer loaded with no import statement at all. Three modules, because the
-#: allowlist's whole argument is that nothing in it can open a database, spawn a
-#: process, or touch a file, and the builtin reaches all three.
+#: The writer loaded with no import statement at all: a database, a process and
+#: a file, all through the builtin.
 EVASIVE_DYNAMIC_IMPORT = """
 def remember(path, argv, db):
     __import__("os").truncate(path, 0)
@@ -5464,9 +5145,7 @@ def remember(path, decided):
     getattr(Path(path), "write_" + "text")(decided)
 """
 
-#: The mutating method BOUND AND NOT CALLED, then called through the local it
-#: was bound to. Every mutating name has left the call positions the guard read,
-#: which is round one's bound-``open`` hole one step further out.
+#: The mutating method bound and not called, then called through its local.
 EVASIVE_CAPTURED_BOUND_METHOD = """
 from pathlib import Path
 
@@ -5476,9 +5155,8 @@ def remember(path, decided):
     keep(decided)
 """
 
-#: The writer reached through a module the ALLOWLIST admits, with no forbidden
-#: import anywhere in the file. ``config.save`` writes the configuration file and
-#: ``config.load_from_path`` writes it back too, which its name does not say.
+#: The writer reached through an admitted module with no forbidden import:
+#: ``config.load_from_path`` writes the file back too.
 EVASIVE_ALLOWLISTED_WRITER = """
 from cratekit.core import config
 
@@ -5488,9 +5166,7 @@ def remember(cfg, path):
     return config.load_from_path(path)
 """
 
-#: And through the other admitted module that opens a file for writing.
-#: ``duplicates`` already imports ``cratekit.core.naming`` for the head stripping,
-#: so this one needs no new import at all.
+#: And through ``naming``, which ``duplicates`` already imports.
 EVASIVE_ALLOWLISTED_CLAIM = """
 from cratekit.core import naming
 
@@ -5499,10 +5175,8 @@ def remember(target):
     return naming.claim_target(target)
 """
 
-#: The admitted writer reached through an ALIASED MODULE, which is what the
-#: receiver check has to survive to be worth having. The word ``config`` appears
-#: nowhere beside the call, and an alias is the shape that has already defeated a
-#: guard in this repository once.
+#: The admitted writer reached through an aliased module, which the receiver
+#: check must survive.
 EVASIVE_ALIASED_ALLOWLISTED_WRITER = """
 from cratekit.core import config as settings
 
@@ -5511,10 +5185,8 @@ def remember(cfg):
     settings.save(cfg)
 """
 
-#: The admitted writer imported STRAIGHT OFF its module and renamed, so there is
-#: no receiver to qualify at all. Both halves of that import are permitted, and
-#: making the generic names receiver qualified is exactly what would lose this
-#: shape if the bare local were not tracked back to what it was bound to.
+#: The admitted writer imported straight off its module and renamed, with no
+#: receiver: the bare local is tracked back to what it was bound to.
 EVASIVE_IMPORTED_ALLOWLISTED_WRITER = """
 from cratekit.core.naming import claim_target as reserve
 
@@ -5523,12 +5195,8 @@ def remember(target):
     return reserve(target)
 """
 
-#: The mutating name reached as a BARE CALL, with the attribute the widened rule
-#: reads nowhere in the file. Every other planted module here reaches its writer
-#: through an attribute, so this is the only thing driving the bare-name branch,
-#: and until it existed that branch could be deleted with the suite green. The
-#: import guard catches this file too, which is the point: the two rules are not
-#: supposed to depend on each other.
+#: The mutating name reached as a bare call: the only fixture driving the
+#: bare-name branch. The import guard catches it too, independently.
 EVASIVE_BARE_NAME_WRITER = """
 from shutil import rmtree
 from os import truncate
@@ -5539,11 +5207,8 @@ def clean(a, path):
     truncate(path, 0)
 """
 
-#: The mutating method named as a LITERAL string inside ``getattr``. It never
-#: appears as an attribute, so rule 1 cannot see it, and the mode and arity rules
-#: have nothing to read. Only the literal half of rule 4 catches it, and that
-#: half had no fixture at all: ``CORRECT_MODULE`` exercises it in the negative
-#: with ``getattr(review, "Queue")`` and nothing exercised it in the positive.
+#: The mutating method named as a literal string inside ``getattr``, which only
+#: the literal half of rule 4 catches.
 EVASIVE_LITERAL_GETATTR = """
 from pathlib import Path
 
@@ -5572,12 +5237,8 @@ def remember(cfg):
     alias.save(cfg)
 """
 
-#: The module reached through its own DOTTED PATH after a plain ``import``,
-#: which is the one receiver shape that names no local at all. Round three read
-#: it off the attribute chain's last name, and that reading is what fired on
-#: ``row.config`` and ``view.naming``; resolving it as a BINDING instead keeps
-#: this shape and drops those, and without a fixture the swap would have lost it
-#: silently, which is the relocation failure a fix round is for.
+#: The module reached through its own dotted path after a plain ``import``, the
+#: one receiver shape naming no local, resolved as a binding.
 EVASIVE_DOTTED_IMPORT_ALLOWLISTED_WRITER = """
 import cratekit.core.config
 
@@ -5720,18 +5381,15 @@ def remember(path, decided):
     object.__getattribute__(path, "write_text")(decided)
 """
 
-#: And the BOUND one, which has spent its receiver on the attribute it was
-#: reached through, so its single argument is the method name. The arity is what
-#: separates the two, which is the reading ``replace`` already gets.
+#: And the bound one, whose single argument is the method name: arity separates
+#: the two.
 EVASIVE_BOUND_GETATTRIBUTE = """
 def remember(path, decided):
     path.__getattribute__("write_text")(decided)
 """
 
-#: A private ledger in a SIBLING module whose name merely starts with this
-#: package's. It is not inside the package, so ``_report_modules`` never scans
-#: it, and the bare-prefix allowlist waved the import through, which is the pair
-#: of holes that let it be written, imported and called with both guards green.
+#: A private ledger in a sibling module whose name merely starts with this
+#: package's, outside what ``_report_modules`` scans.
 EVASIVE_SIBLING_PACKAGE = """
 from cratekit.modules import reports_ledger
 
@@ -5740,13 +5398,9 @@ def remember(path, decided):
     reports_ledger.remember(path, decided)
 """
 
-#: Correct code, in both directions: the one persistence this package is allowed,
-#: a read through every read primitive available including a BOUND READ METHOD
-#: captured before it is called, and the methods whose names collide with
-#: filesystem verbs. ``dataclasses.replace`` is the third of those and is the one
-#: that matters, because ``dataclasses`` is on the allowlist while ``str`` and
-#: ``date`` merely turn up: it takes one positional argument, so only the
-#: keywords beside it keep the arity rule off correct code.
+#: Correct code: the one persistence allowed, every read primitive including a
+#: bound read method, and methods named like filesystem verbs, where only the
+#: keywords keep the arity rule off ``dataclasses.replace``.
 CORRECT_MODULE = """
 import dataclasses
 from pathlib import Path
@@ -5778,9 +5432,8 @@ def run(store, path, name, today, option):
     )
 """
 
-#: Correct code that imports a SIBLING module of this package, the shape the dot
-#: boundary must keep legal. Nothing here uses one today; a guard that failed the
-#: first correct one is a guard that gets deleted rather than obeyed (P7).
+#: Correct code that imports a sibling module of this package, which the dot
+#: boundary must keep legal (P7).
 CORRECT_IN_PACKAGE_IMPORT = """
 from cratekit.modules.reports import aging
 from cratekit.modules.reports.export import LibraryView
@@ -5790,14 +5443,8 @@ def run(view: LibraryView, intake, today):
     return aging.intake_groupings(view, intake=intake, today=today)
 """
 
-#: Correct code whose attribute names COLLIDE with the generic writers, which is
-#: the shape the receiver check exists for. A view that can save itself, a
-#: taxonomy loaded from a call, and a spec field read off a parameter are three
-#: ordinary things, and while ``load`` and ``save`` sat bare in the mutation set
-#: all three were reported as writes to the library. Nothing in the tree spells
-#: any of them today, which is the only reason the suite was green, and a guard
-#: that fires the first time somebody writes correct code is one that gets
-#: deleted rather than obeyed (P7).
+#: Correct code whose attribute names collide with the generic writers, which
+#: the receiver check exists for (P7).
 CORRECT_GENERIC_ATTRIBUTE_NAMES = """
 from cratekit.core import taxonomy
 
@@ -5818,10 +5465,8 @@ def describe(config, naming, row, view, target):
     return first, second, third, naming.claim_target(target)
 """
 
-#: The harder half of the same thing: a module that really does import ``config``
-#: AND takes a parameter of that name, which ``aging`` is two characters away
-#: from being. A parameter SHADOWS, and without that the fix for the five above
-#: would have been a fix that only worked in files with no import in them.
+#: The harder half: a module importing ``config`` and taking a parameter of that
+#: name, which shadows it.
 CORRECT_PARAMETER_SHADOWING_AN_IMPORTED_MODULE = """
 from cratekit.core import config
 
@@ -5834,19 +5479,16 @@ def elsewhere(cfg):
     return config.state_path("x", cfg)
 """
 
-#: A method whose ``self`` is a parameter, reading an attribute named after an
-#: admitted module. Every method carries ``self``, so a shadow rule that took the
-#: whole chain would have lost ``self.mod = config`` in a constructor; this is
-#: the direction that rule must NOT break.
+#: A method reading an attribute of ``self`` named after an admitted module; a
+#: shadow must not take the whole chain.
 CORRECT_ATTRIBUTE_NAMED_LIKE_A_MODULE = """
 class View:
     def describe(self):
         return self.config.load, self.naming.claim_target
 """
 
-#: A LAMBDA whose parameter is named after an admitted module, in a file that
-#: imports that module. A lambda carries a parameter list and therefore shadows,
-#: and it is the one scope with no statement body for a walk to notice.
+#: A lambda whose parameter is named after an imported admitted module, the one
+#: scope with no statement body.
 CORRECT_LAMBDA_PARAMETER_SHADOWING_A_MODULE = """
 from cratekit.core import config
 
@@ -5930,9 +5572,7 @@ _EVERY_MUTATING_NAME = (
     "write_text",
 )
 
-#: Every character ``_WRITING_MODES`` carries, on the same terms and for the same
-#: reason: only ``w`` was driven, so ``open(p, "a")`` and ``open(p, "r+")`` rested
-#: on set members nothing exercised.
+#: Every character ``_WRITING_MODES`` carries, each driven.
 _EVERY_WRITING_MODE = ("w", "a", "x", "+")
 
 #: A mode each of those characters really appears in. ``+`` is never a mode by
@@ -6068,7 +5708,6 @@ def test_a_declared_intake_flow_that_is_nowhere_in_the_tree_refuses(view):
 
 def test_an_intake_flow_nested_inside_another_folder_is_still_the_intake_flow():
     """The filter used to be anchored at position zero of the path."""
-    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
     root_children = [
         _folder("Old", 1, 1),
         _folder(INTAKE.display, 1, 2),
@@ -6079,9 +5718,7 @@ def test_an_intake_flow_nested_inside_another_folder_is_still_the_intake_flow():
         *_playlist("phil_2_1_26", [1], 2),
         _close(1),
     ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=root_children, root_count=2)
-    )
+    view = _one_track_tree(root_children, root_count=2)
     groupings = aging.intake_groupings(view, intake=INTAKE, today=TODAY)
     assert {group.path for group in groupings} == {
         ("Old", INTAKE.display, "phil_1_1_26"),
@@ -6091,7 +5728,6 @@ def test_an_intake_flow_nested_inside_another_folder_is_still_the_intake_flow():
 
 def test_an_intake_flow_holding_only_the_nested_one_is_still_found():
     """The reviewer's sharper case: the report used to be completely silent."""
-    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
     root_children = [
         _folder("Old", 1, 1),
         _folder(INTAKE.display, 1, 2),
@@ -6099,9 +5735,7 @@ def test_an_intake_flow_holding_only_the_nested_one_is_still_found():
         _close(2),
         _close(1),
     ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
-    )
+    view = _one_track_tree(root_children)
     groupings = aging.intake_groupings(view, intake=INTAKE, today=TODAY)
     assert [group.display for group in groupings] == ["phil_1_1_26"]
 
@@ -6115,28 +5749,20 @@ def test_an_intake_flow_present_and_empty_reports_nothing_without_refusing(cfg):
             root_count=1,
         )
     )
-    report = aging.intake_aging(
-        view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
-    )
+    report = _aged(view, cfg)
     assert report.groupings == ()
 
 
 def test_a_grouping_dated_in_the_future_is_undated_rather_than_permanently_current():
     """A typo in a year must not buy a grouping immunity from the report."""
-    tracks = [(1, "n", "a", "file://localhost/library/a.flac")]
     root_children = [
         _folder(INTAKE.display, 1, 1),
         *_playlist("phil_1_5_99", [1], 2),
         _close(1),
     ]
-    view = export.read_export(
-        _document(collection=_collection(tracks), root_children=root_children, root_count=1)
-    )
+    thresholds = aging.AgingThresholds(stale_days=30, expired_days=90)
     report = aging.intake_aging(
-        view,
-        intake=INTAKE,
-        thresholds=aging.AgingThresholds(stale_days=30, expired_days=90),
-        today=TODAY,
+        _one_track_tree(root_children), intake=INTAKE, thresholds=thresholds, today=TODAY
     )
     assert [group.display for group in report.undated] == ["phil_1_5_99"]
     assert report.current == ()

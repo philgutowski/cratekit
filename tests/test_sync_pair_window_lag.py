@@ -1,11 +1,6 @@
 """U226: a sync pair plan reads an account playlist as it stands, not the lagging window.
 
-Planning from a stale window read would write an order nobody holds into
-rekordbox. The verb runs through the dispatcher on the disposable database
-and the discovery catalogue, whose window read serves an older order while
-the unpaged read serves the playlist as it stands.
-
-D1 applies. Nothing here names a real account, person or track.
+A stale window read would write an order nobody holds into rekordbox. D1 applies.
 """
 
 from __future__ import annotations
@@ -31,11 +26,7 @@ from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
 
 def _lagging_window(world, monkeypatch, served: dict[str, list[str]], *, whole: bool) -> None:
-    """Serve each named playlist's window read in an older order, the unpaged read as it is.
-
-    ``whole`` declares the count so the unpaged read reads as the whole
-    playlist; without it the count is undeclared, as the catalogue leaves it.
-    """
+    """Serve each named playlist's window read in an older order; ``whole`` declares the count."""
 
     def tracks(self, limit=None, offset=0):
         members = self.world.account.playlists.get(self.playlist_id, [])
@@ -81,11 +72,7 @@ def test_a_window_that_serves_an_old_order_plans_no_rekordbox_order(world, monke
 def test_a_window_that_lags_an_order_past_the_unpaged_reads_first_page_plans_no_order(
     world, monkeypatch, cfg
 ):
-    """R-1360: an unpaged read capped at a first page that matches a lagging window.
-
-    The unpaged read is walked past its first page and read whole, so no
-    order nobody holds is planned.
-    """
+    """R-1360: the unpaged read is walked past a first page matching a lagging window."""
     gig = world.folder("GIG READY")
     long = world.playlist("Long", "1", "2", "3", "4", "5", under=gig)
     code, envelope = sync()

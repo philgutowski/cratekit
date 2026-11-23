@@ -1,11 +1,9 @@
 """U289: a tag sweep asks Discogs with the title read past its ``KEY - BPM`` head.
 
-At sitting 100 Discogs matched none of nineteen files asked with the naming
-verb's head in the title, and fifteen of twenty without. Guarded: a headed
-title is asked past its head and marker, of every source; an untagged file is
-asked by the one split its name reads to, or with no artist; a title with no
-head is asked exactly as before; and the match is unchanged. The fetch answers
-only what a person would type. Nothing touches the network.
+At sitting 100 Discogs matched none of nineteen headed titles and fifteen of twenty
+without. A headed title is asked past its head and marker; an untagged file by the one
+split its name reads to, or with no artist; an unheaded title as before; the match
+unchanged. The fetch answers only what a person would type, offline.
 """
 
 from __future__ import annotations
@@ -30,8 +28,7 @@ from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, NAMED_MIX_UN
 
 TAXONOMY = default_taxonomy()
 
-#: The releases the sitting matched, by the artist and title a person types.
-#: Each is (artist, title, release number, style).
+#: The sitting's matched releases: (artist, title, release number, style) as typed.
 CATALOGUE = (
     ("Earth, Wind & Fire", "That's the Way of the World", 11, "Funk"),
     ("Lane 8", "Aba", 12, "Progressive House"),
@@ -45,11 +42,8 @@ def _typed(value: str) -> str:
 
 
 def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
-    """A fetch answering Discogs as a catalogue a person types into.
-
-    The search answers a release only when its ``artist`` and ``track`` are one
-    of :data:`CATALOGUE`'s as typed. Beatport, if asked, answers an empty page
-    unless ``beatport`` is given.
+    """A fetch answering a release only for one of :data:`CATALOGUE`'s artist and track
+    as typed; Beatport answers an empty page unless ``beatport`` is given.
     """
     by_question = {(_typed(artist), _typed(title)): number for artist, title, number, _ in CATALOGUE}
     pages = {
@@ -146,9 +140,7 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
 
 
 def test_the_same_title_asked_with_its_head_misses_as_it_did_at_the_sitting():
-    """The fixture answers a person's question and not the head's: the asker handed the title
-    tag as its question misses, as sitting 100 measured, and handed the title past the head
-    matches the same release."""
+    """Asked with its head the title misses, as sitting 100 measured; past it, it matches."""
     seen: list[str] = []
     asker = searchers.discogs_asker(token=SENT, fetch=typed_fetch(seen), sleep=lambda _s: None)
     headed = "03B - 83 - That's the Way of the World"
@@ -166,8 +158,7 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
     (question,) = discogs_questions(seen)
     assert question["artist"] == "Obiman"
-    # Past the older naming's _PN tail too, so Discogs sets the mix aside
-    # (R-1724, ``tests/test_name_tail.py``).
+    # Past the older naming's _PN tail too (R-1724, ``tests/test_name_tail.py``).
     assert question["track"] == "On The Rocks"
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
         "Obiman",
@@ -258,9 +249,8 @@ def test_the_record_shops_free_text_query_carries_no_head():
 # B. A title with no head is asked exactly as before
 
 
-#: Titles a freshly downloaded file carries, and what each was asked as
-#: before this unit, written out rather than computed: the Discogs track (its
-#: last bracketed group off) and Beatport's escaped query.
+#: Fresh download titles and what each was asked as before, written out: the
+#: Discogs track and Beatport's escaped query.
 FRESH = [
     ("Sunrise Mood (Extended Mix)", "Sunrise Mood", "Bernard+Badie+Sunrise+Mood+%28Extended+Mix%29"),
     ("99 - Luftballons", "99 - Luftballons", "Bernard+Badie+99+-+Luftballons"),
@@ -309,8 +299,7 @@ def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
 # C. Every earlier matcher case: the question changes, the verdict does not
 
 
-#: The shared matcher's own corpus of file titles and rows, both ways round
-#: and headed, from ``tests/test_title_matcher.py``.
+#: The shared matcher's corpus, both ways round and headed (``test_title_matcher``).
 CORPUS = [*SAME, *DIFFERENT, *HEADED, *HEADED_NOT]
 
 
@@ -336,15 +325,12 @@ def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(se
     (question,) = discogs_questions(seen)
     assert hit.asked is not None and hit.asked.artist == "Bernard Badie"
     if hit.asked.read is titles.Read.PAST_HEAD:
-        # Only the front is read off, the head and the marker after it: the
-        # rest of the title is the file's own.
+        # Only the head and its marker are read off the front.
         assert searched.endswith(hit.asked.title) and len(hit.asked.title) < len(searched)
         assert titles.words(searched)[0] not in titles.words(question["track"])
     else:
         assert hit.asked.title == searched
-    # Discogs sets a round bracketed group the title ends with aside, and asks
-    # a title that is nothing but one whole, written out here rather than read
-    # off the searcher.
+    # Discogs sets a trailing round group aside and asks a title that is only one whole.
     asked = hit.asked.title.strip()
     assert question["track"] == (re.sub(r"\s*\([^()]*\)\s*$", "", asked).strip() or asked)
 
@@ -445,8 +431,7 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
 
 
 def test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name(tmp_path, silence):
-    """Only a file with neither tag is asked by its name: one with a title tag
-    and no artist is asked past its head with no artist, whatever its name says."""
+    """A title tag with no artist tag is asked past its head, whatever its name says."""
     path = tagged(
         tmp_path, silence, "8A - 122 - Kerri Chandler - On My Way.flac", title="8A - 122 - Kerri Chandler - On My Way"
     )
@@ -475,8 +460,7 @@ def test_the_artists_part_is_read_off_only_when_a_title_follows_it():
 
 
 def test_the_pictures_question_after_a_discogs_genre_carries_no_head(tmp_path, silence):
-    """A file Discogs tagged that has no picture asks Beatport for its cover
-    (U282), by the same question: the title past its head."""
+    """A Discogs-tagged file with no picture asks Beatport for its cover past its head (U282)."""
     path = tagged(tmp_path, silence, "x.flac", title="08A - 124 - [MP3] Aba", artist="Lane 8")
     seen: list[str] = []
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)), fetch_image=lambda _url: None)

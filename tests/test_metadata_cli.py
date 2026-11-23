@@ -166,8 +166,7 @@ def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypa
 
     cfg = config.from_dict(valid_data(tmp_path / "library"))
     path = _vocal_calibration(cfg, '{"threshold": 37.5}')
-    # Raised rather than produced with chmod, because an account that bypasses
-    # file permissions would read the file and the row would measure nothing.
+    # Raised, not chmod, since an account bypassing permissions would read the file.
     real_read_text = Path.read_text
 
     def denied(self, *args, **kwargs):
@@ -178,10 +177,8 @@ def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypa
     monkeypatch.setattr(Path, "read_text", denied)
     with pytest.raises(CratekitError) as caught:
         metadata_cli.vocal_cut(cfg)
-    # The site declares its own slug, and cause.classified corrects a refusal
-    # the operating system made to the access slug whose remedy is granting
-    # access, as it does for every ``raise refuse(...) from exc``. Either way it
-    # is a refusal and never the default cut.
+    # The site's own slug, or the access slug ``cause.classified`` corrects it to; either
+    # way a refusal and never the default cut.
     assert caught.value.declared_cause.reason == "vocal-calibration-unreadable"
     assert caught.value.declared_cause.detail["kind"] == "PermissionError"
     assert caught.value.cause.reason == "path-permission-denied"

@@ -60,7 +60,7 @@ reporting it".
 files, using ffmpeg's concat demuxer under a stream copy. Before U44 it read the join's
 zero exit status as proof the file existed and returned the destination path unread.
 `git grep -n "concatenate(" -- tests src` returns six lines: the `def` itself, two call
-sites, both in `tests/modules/test_tools.py:1057` and `:1077`, and three `np.concatenate`
+sites, both in `tests/modules/test_tools.py:1038` and `:1058`, and three `np.concatenate`
 calls in `src/cratekit/analysis/vocal.py:86` through `:88`, which are numpy's function
 and not this one. So nothing in `src` calls `concatenate` at all as of this merge, a
 fact `mastering.py:734` states directly in its own comment. The unrelated hits are worth
@@ -122,7 +122,7 @@ somewhere the mutated line cannot touch.
 B3 never reached that moment, because no new guard was ever written in round one. The
 fixture here does reach a passing state, on both the correct tree and the mutated one,
 for a much simpler reason: the edited stand-in writes the destination file
-unconditionally (`tests/modules/test_tools.py:1054`,
+unconditionally (`tests/modules/test_tools.py:1035`,
 `Path(command.argv[-1]).write_bytes(b"joined")`), so `_wrote_or_refuse`'s check,
 `target.exists() or target.stat().st_size == 0`, is satisfied whether the check runs or
 not. There is no red assertion to diagnose, because the pre-existing test's own
@@ -242,7 +242,7 @@ def runner(command):
 mastering.concatenate([part], tmp_path / "joined.wav", runner=runner)
 assert "it''s part one.wav" in written["text"]
 ```
-(`tests/modules/test_tools.py:1045` through `:1058`)
+(`tests/modules/test_tools.py:1026` through `:1039`)
 
 The comment is accurate and the test's one assertion never mentions
 `_wrote_or_refuse`, the exception it can raise, or the file it checks for. Reverting the
@@ -272,7 +272,7 @@ def test_a_join_that_exits_zero_and_writes_nothing_refuses_rather_than_returning
     assert excinfo.value.refusal is mastering.Refusal.ENCODER_FAILED
     assert not destination.exists()
 ```
-(`tests/modules/test_tools.py:1061` through `:1079`)
+(`tests/modules/test_tools.py:1042` through `:1060`)
 
 The only difference from the existing stand-in is what it leaves out: `silent_success`
 returns a zero exit code and writes nothing, which is precisely the state the earlier

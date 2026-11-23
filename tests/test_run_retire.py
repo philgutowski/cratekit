@@ -1,12 +1,9 @@
 """Old open gates are one line in ``crate status``, and ``crate run retire`` answers them (U170).
 
-Status collapses every open gate idle past a threshold, seven days by default
-or ``reports.open_gate_stale_days``, into one line with the count and the
-command, so stale gates do not bury what matters. ``crate run retire
---older-than 7d`` answers each ``abort`` as ``session`` after one confirm. A
-newer gate shows and stays as before. Driven through the real dispatcher on a
-temporary library, a run's age set by its ``created`` stamp and its record's
-last write.
+Gates idle past ``reports.open_gate_stale_days`` (seven by default) collapse
+into one status line; ``crate run retire --older-than 7d`` aborts each as
+``session`` after one confirm. A run's age is set by its ``created`` stamp and
+its record's last write.
 """
 
 from __future__ import annotations
@@ -22,6 +19,7 @@ from cratekit.cli.verbs import runs
 from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from tests import test_doctor as doctor_suite
+from tests._sync_builders import exited
 from tests.test_doctor import document_for, drive
 
 #: The temporary library and its saved configuration, assigned for the
@@ -57,8 +55,7 @@ def _json(argv: list[str]) -> tuple[int, dict]:
 
 
 def _status() -> dict:
-    code, envelope = _json(["status"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_json(["status"]))
     return envelope["data"]
 
 
@@ -66,9 +63,7 @@ def _retire(*argv: str) -> tuple[int, dict]:
     return _json(["-d", f"{CONFIRM}=apply", "run", "retire", *argv])
 
 
-# ---------------------------------------------------------------------------
 # crate status
-# ---------------------------------------------------------------------------
 
 
 def test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before(configured):
@@ -141,23 +136,19 @@ def test_a_run_started_recently_is_not_old_whatever_its_file_says(configured):
     assert f"run.{run_id}" in {check["key"] for check in _status()["checks"]}
 
 
-# ---------------------------------------------------------------------------
 # crate run retire
-# ---------------------------------------------------------------------------
 
 
 def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured):
     old = sorted([_open(ORDINARY, idle_days=20), _open(EXPLICIT, idle_days=9)])
     new = _open(ORDINARY, idle_days=3)
 
-    code, asked = _json(["run", "retire", "--older-than", "7d"])
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = exited(_json(["run", "retire", "--older-than", "7d"]), ExitCode.DECISION_REQUIRED)
     shown = asked["cause"]["detail"]
     assert shown["gate"] == CONFIRM
     assert sorted(item["run_id"] for item in shown["shown"]["items"]) == old
 
-    code, done = _retire("--older-than", "7d")
-    assert code == int(ExitCode.OK), done
+    done = exited(_retire("--older-than", "7d"))
     assert done["data"]["summary"]["retired"] == 2
     for run_id in old:
         state = gates.load(run_id)
@@ -171,9 +162,7 @@ def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured)
 def test_an_explicit_gate_is_retired_with_abort_and_never_apply(configured):
     run_id = _open(EXPLICIT, idle_days=12)
 
-    code, done = _retire()
-
-    assert code == int(ExitCode.OK), done
+    exited(_retire())
     decision = gates.load(run_id).decisions[EXPLICIT[1]]
     assert decision.option == "abort" != "apply"
     assert decision.actor == runs.SESSION_ACTOR
@@ -183,9 +172,7 @@ def test_retire_lists_what_it_retired_and_what_it_kept(configured):
     retired = _open(ORDINARY, idle_days=10)
     kept = _open(NO_ABORT, idle_days=10)
 
-    code, done = _retire()
-
-    assert code == int(ExitCode.OK), done
+    done = exited(_retire())
     checks = {check["key"]: check for check in done["data"]["checks"]}
     assert checks[f"gate.{retired}.{ORDINARY[1]}"]["status"] == "retired"
     assert checks[f"gate.{kept}.{NO_ABORT[1]}"]["status"] == "kept"
@@ -202,9 +189,7 @@ def test_retire_lists_what_it_retired_and_what_it_kept(configured):
 def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
     run_id = _open(ORDINARY, idle_days=2)
 
-    code, envelope = _json(["run", "retire"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1]
 
@@ -212,9 +197,7 @@ def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
 def test_a_declined_retirement_answers_nothing(configured):
     run_id = _open(ORDINARY, idle_days=9)
 
-    code, envelope = _json(["-d", f"{CONFIRM}=abort", "run", "retire"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_json(["-d", f"{CONFIRM}=abort", "run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1] and not gates.load(run_id).decisions
 
@@ -223,33 +206,27 @@ def test_a_wider_threshold_retires_fewer(configured):
     twenty = _open(ORDINARY, idle_days=20)
     ten = _open(ORDINARY, idle_days=10)
 
-    code, done = _retire("--older-than", "14d")
-
-    assert code == int(ExitCode.OK), done
+    exited(_retire("--older-than", "14d"))
     assert gates.load(twenty).open_gate is None
     assert gates.load(ten).open_gate == ORDINARY[1]
 
 
 def test_an_answer_given_over_one_plan_is_stale_once_another_gate_ages_in(configured):
     _open(ORDINARY, idle_days=10)
-    code, asked = _json(["run", "retire"])
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = exited(_json(["run", "retire"]), ExitCode.DECISION_REQUIRED)
     run_id = asked["run_id"]
     code, _out, err = drive(["run", "decide", run_id, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
 
     later = _open(ORDINARY, idle_days=8)
-    code, refused = _json(["--run", run_id, "run", "retire"])
-
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(_json(["--run", run_id, "run", "retire"]), ExitCode.DECISION_STALE)
     assert gates.load(later).open_gate == ORDINARY[1]
 
 
 def test_retire_never_retires_its_own_run(configured):
     """A retirement resumed on its own old run plans every old gate but that one."""
     _open(ORDINARY, idle_days=10)
-    code, asked = _json(["run", "retire"])
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = exited(_json(["run", "retire"]), ExitCode.DECISION_REQUIRED)
     own = asked["run_id"]
     written = (datetime.now(timezone.utc) - timedelta(days=9)).timestamp()
     state = gates.load(own)
@@ -261,8 +238,7 @@ def test_retire_never_retires_its_own_run(configured):
     )
     assert own not in {one.run_id for one in found}
 
-    code, done = _json(["-d", f"{CONFIRM}=apply", "--run", own, "run", "retire"])
-    assert code == int(ExitCode.OK), done
+    done = exited(_json(["-d", f"{CONFIRM}=apply", "--run", own, "run", "retire"]))
     assert done["data"]["summary"]["retired"] == 1
 
 
@@ -271,9 +247,7 @@ def test_a_record_retire_cannot_read_is_said_and_not_dropped(configured):
     (gates.run_dir() / "2026-09-01T00:00:00Z-dead.json").write_text("{not json")
     _open(ORDINARY, idle_days=10)
 
-    code, done = _retire()
-
-    assert code == int(ExitCode.OK), done
+    done = exited(_retire())
     assert done["data"]["summary"]["unreadable"] == 1
     statuses = {check["key"]: check["status"] for check in done["data"]["checks"]}
     assert statuses["run.2026-09-01T00:00:00Z-dead"] == "unreadable"
@@ -297,9 +271,7 @@ def test_older_than_reads_whole_days():
     assert runs.older_than(f"{config.MAX_OPEN_GATE_STALE_DAYS}d").days == config.MAX_OPEN_GATE_STALE_DAYS
 
 
-# ---------------------------------------------------------------------------
 # the one predicate
-# ---------------------------------------------------------------------------
 
 
 def test_a_gate_exactly_at_the_threshold_is_not_yet_old(configured):
@@ -349,17 +321,13 @@ def test_retire_says_nothing_about_an_old_run_already_answered(configured):
     then = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
     os.utime(path, (then, then))
 
-    code, envelope = _json(["run", "retire"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["checks"] == []
     assert envelope["data"]["summary"]["kept"] == 0
 
 
-# ---------------------------------------------------------------------------
 # reports.open_gate_stale_days
-# ---------------------------------------------------------------------------
 
 
 def test_the_threshold_defaults_to_a_week_and_moves_with_the_file(library):
@@ -379,9 +347,7 @@ def test_the_ceiling_itself_is_a_threshold(library):
     assert config.validate({**document_for(library), "reports": {"open_gate_stale_days": ceiling}}) == []
 
 
-# ---------------------------------------------------------------------------
 # Guards against a run or gate moving under the plan
-# ---------------------------------------------------------------------------
 
 
 def test_retire_reads_its_default_threshold_from_the_file(library):
@@ -390,9 +356,7 @@ def test_retire_reads_its_default_threshold_from_the_file(library):
     four = _open(ORDINARY, idle_days=4)
     two = _open(ORDINARY, idle_days=2)
 
-    code, done = _retire()
-
-    assert code == int(ExitCode.OK), done
+    done = exited(_retire())
     assert done["data"]["summary"]["older_than"] == "3d"
     assert gates.load(four).open_gate is None
     assert gates.load(two).open_gate == ORDINARY[1]
@@ -415,8 +379,7 @@ def test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again(
 def test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old(configured):
     """The digest covers when each gate went idle, not only which runs are planned."""
     run_id = _open(ORDINARY, idle_days=20)
-    code, asked = _json(["run", "retire"])
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = exited(_json(["run", "retire"]), ExitCode.DECISION_REQUIRED)
     retire_run = asked["run_id"]
     code, _out, err = drive(["run", "decide", retire_run, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
@@ -424,9 +387,7 @@ def test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old(c
     path = gates.run_path(run_id)
     touched = (datetime.now(timezone.utc) - timedelta(days=12)).timestamp()
     os.utime(path, (touched, touched))
-    code, refused = _json(["--run", retire_run, "run", "retire"])
-
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(_json(["--run", retire_run, "run", "retire"]), ExitCode.DECISION_STALE)
     assert gates.load(run_id).open_gate == ORDINARY[1]
 
 

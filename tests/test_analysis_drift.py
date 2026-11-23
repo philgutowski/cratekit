@@ -1,8 +1,7 @@
 """U157: how far a track's tempo moves, measured on tracks whose tempo is known.
 
-Synthetic drum tracks held constant, ramped, stepped and broken by a pad,
-plus noise, a pad and a clip too short to judge. The thresholds are the
-shipped cut's two sides. Skipped where the analysis extra is absent.
+Synthetic drum tracks against the shipped cut's two sides. Skipped where the
+analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -25,11 +24,7 @@ SECONDS = 120.0
 
 
 def _train(tempo_at: Callable[[float], float], seconds: float, *, every: float = 1.0) -> np.ndarray:
-    """One short burst per beat, the beat's length read off ``tempo_at`` as it goes.
-
-    ``every`` is the fraction of a beat between bursts, so a half puts one on
-    each off beat as well.
-    """
+    """One burst per beat, read off ``tempo_at``; ``every`` is the fraction between bursts."""
     samples = np.zeros(int(RATE * seconds), dtype=np.float32)
     burst = np.hanning(200).astype(np.float32)
     at = 0.0
@@ -71,9 +66,8 @@ def test_a_constant_tempo_scores_steady(known):
 
 
 def test_a_constant_tempo_with_a_long_beatless_breakdown_still_scores_steady():
-    """Forty seconds of pad and hiss in the middle of a steady track. Read
-    window by window with no gate, those windows read 125, 130 and 136 and
-    the track scores variable; gated, they are passed over."""
+    """Forty seconds of pad and hiss in a steady track are gated out, not read as 125
+    to 136 and scored variable."""
     samples = _drums(lambda _at: 124.0)
     rng = np.random.default_rng(1)
     start, stop = int(40 * RATE), int(80 * RATE)
@@ -118,18 +112,16 @@ def test_a_stepped_change_scores_variable():
     ids=["up-a-sixth", "up-a-sixth-slower", "up-a-quarter", "down-a-seventh"],
 )
 def test_a_step_wider_than_the_heads_own_section_still_scores_variable(first, second):
-    """The head names the tempo of one section; the other section's windows
-    must still be read, or a two tempo track is tagged steady and analysed
-    Normal, which the first band of twelve percent did to every one of these."""
+    """The other section's windows are still read, or a two tempo track is tagged
+    steady."""
     _tempo, moved = _drift(_drums(lambda at: first if at < 60.0 else second))
     assert moved is not None and moved > 10.0, moved
     assert drift.verdict(moved, CUT) == drift.VARIABLE
 
 
 def test_a_section_of_hats_at_three_to_two_over_a_steady_pulse_is_not_a_drift():
-    """Forty seconds where only hats play, three to every two beats, over a
-    pulse at 100 that does not move. A window searched wide enough to reach
-    the hats' own rate would read 150 there and call the track variable."""
+    """Hats three to every two beats over a steady 100 pulse; a window searched wide
+    enough would read 150 and call the track variable."""
     samples = _drums(lambda _at: 100.0)
     start, stop = int(40 * RATE), int(80 * RATE)
     hats = 0.6 * _train(lambda _at: 150.0, SECONDS)
@@ -167,9 +159,7 @@ def test_a_beatless_or_very_short_file_scores_unknown(samples):
 
 
 def test_a_track_with_a_pulse_in_only_two_windows_scores_unknown():
-    """A minute where the drums play for the first twenty seconds and a pad
-    holds the rest: six windows, two of them with a pulse, which is a spread of
-    two numbers and not a reading of the track."""
+    """Two pulsed windows of six are a spread of two numbers, not a reading."""
     samples = _drums(lambda _at: 124.0, 60.0)
     samples[int(20 * RATE) :] = _pad(60.0)[int(20 * RATE) :]
     _tempo, moved = _drift(samples)

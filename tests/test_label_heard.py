@@ -81,11 +81,8 @@ def test_the_verb_writes_only_the_account_behind_one_explicit_gate():
 
 
 def test_nothing_on_the_heard_path_reaches_rekordbox_a_grid_a_tempo_or_a_rating():
-    """Neither module imports a rekordbox or tag writer, or names a grid, tempo or rating.
-
-    The guarded writer is banned with its parts (R-1890): ``cratekit.core.rb_nodes``
-    writes playlists and does not start with ``cratekit.core.rb_writer``.
-    """
+    """No rekordbox or tag writer, grid, tempo or rating; the guarded writer is banned with its
+    parts (R-1890), since ``cratekit.core.rb_nodes`` does not start with its name."""
     from tests._split_modules import names_of
 
     banned = (*names_of("cratekit.core.rb_writer"), "cratekit.write", "cratekit.core.tags")

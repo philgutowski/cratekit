@@ -146,7 +146,7 @@ are logged with the reason, because a truncation nobody logged reads as coverage
 a probe that imports `cratekit.cli.registry` and nothing else, walks every landed
 entry, calls `by_handler_key`, and collects any module whose name starts with
 `cratekit` that entered `sys.modules` across the call
-(`tests/test_cli_contract.py:1256` through `:1320`). That fresh interpreter is
+(`tests/test_cli_contract.py:1158` through `:1216`). That fresh interpreter is
 what the supervisor genuinely is when it validates a queued job's handler before
 spawning. One subprocess covers every landed verb, so no hand picked subject
 remains to expire, and the population is derived rather than named, so the next
@@ -173,14 +173,14 @@ It was found in round one and restated in round one, alongside its twin, into th
 same in-process difference form. So the class reproduced, was noticed, and was
 then fixed with the fix that did not work, in both files at once. Round two
 removed it rather than restating it a second time, and put a comment block in its
-place at `tests/test_jobs.py:686` through `:700` recording where the property
+place at `tests/test_jobs.py:673` through `:687` recording where the property
 lives now and why this file does not hold a copy. The two tests immediately below
 it are what that file genuinely owes, and they were already there:
 `test_a_job_queued_for_a_handler_this_build_does_not_register_refuses`
 (`tests/test_jobs.py:702`) and
 `test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing`
-(`tests/test_jobs.py:712`). The second of those still asserts
-`unlanded[0].module not in sys.modules` (`tests/test_jobs.py:726`), and that
+(`tests/test_jobs.py:699`). The second of those still asserts
+`unlanded[0].module not in sys.modules` (`tests/test_jobs.py:712`), and that
 assertion is sound where it stands, because an unlanded module genuinely cannot be
 in `sys.modules` and the test is about the refusal reaching the caller, not about
 the interpreter's state.
@@ -379,7 +379,7 @@ def by_handler_key(key: str) -> Entry:
 ```
 
 **Shape three, the version that kills it.** From
-`tests/test_cli_contract.py:1282` onward, the probe body:
+`tests/test_cli_contract.py:1178` onward, the probe body:
 
 ```python
     probe = textwrap.dedent(
@@ -401,7 +401,7 @@ def by_handler_key(key: str) -> Entry:
     )
 ```
 
-and its run and assertions at `tests/test_cli_contract.py:1301` through `:1320`:
+and its run and assertions at `tests/test_cli_contract.py:1197` through `:1216`:
 
 ```python
     finished = subprocess.run(
@@ -429,7 +429,7 @@ The same three lines are a measurement in one process and a formality in the
 other, which is the whole point.
 
 **The duplicate, removed rather than restated.** What now stands at
-`tests/test_jobs.py:686`, in place of the second copy:
+`tests/test_jobs.py:673`, in place of the second copy:
 
 ```python
 # THE HANDLER-KEY IMPORT PROPERTY LIVES IN tests/test_cli_contract.py NOW, and a

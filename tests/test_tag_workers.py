@@ -1,9 +1,8 @@
-"""U3 and U4: the shell and artifact helper the tagging verbs stand on, and tag folder end to end.
+"""U3 and U4: the tagging verbs' shell and artifact helper, and tag folder end to end.
 
-Each property the adoption original states is asserted against the copy, and
-three that no behaviour shows (a name, a call shape, a sort key) by parsing
-the source. The second half drives ``crate tag folder`` through the real
-dispatcher. Nothing here names a real volume, person or track (D1).
+Each property of the adoption original is asserted against the copy, three by
+parsing the source; the second half drives ``crate tag folder`` through the
+real dispatcher. D1 applies.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ from tests.test_catalogue_searcher import _beatport_page as beatport_page
 from tests.test_catalogue_searcher import _beatport_track as beatport_track
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_published_genre import (
     ISRC,
     RATE_LIMITED,
@@ -72,13 +72,7 @@ def store(tmp_path):
 
 
 class Ctx:
-    """The dispatcher context reduced to the one attribute ``advance`` uses.
-
-    ``advance`` takes ``ctx`` untyped because ``cratekit.cli`` sits above the
-    modules rank (KTD23), so a test can hand it the one method it needs.
-    ``settle`` moves the rows as a real driver does, so ``advance`` re-reads a
-    job that genuinely moved.
-    """
+    """The dispatcher context cut to ``run_job`` (KTD23); ``settle`` moves rows as a driver does."""
 
     def __init__(self, store, *, warnings=(), settle=True):
         self._store = store
@@ -105,13 +99,7 @@ def a_job(store, cfg: config.Config, *item_ids: str):
 
 
 def test_an_extra_mapping_rides_under_progress_and_never_beside_it(store, cfg):
-    """The closed surface, asserted on the payload rather than on the intent.
-
-    ``job_state/1`` declares ``additionalProperties: false``, so a per verb
-    detail at the top level is an undeclared field every generated consumer
-    rejects. The four top level keys are asserted by equality, not membership,
-    since a green suite once missed that defect (U51).
-    """
+    """``job_state/1`` forbids extra top level keys, so the four are asserted by equality (U51)."""
     job = a_job(store, cfg, "one.flac", "two.flac")
 
     payload = shell.reported(store, job, {"tagging": {"tagged": 2}})
@@ -144,12 +132,7 @@ def test_a_job_carrying_a_cause_reports_it_as_the_declared_object(store, cfg):
 
 
 def test_the_honest_zero_names_an_empty_job_id_rather_than_a_null():
-    """R-234, which shipped once and must not be ported back in.
-
-    ``cli.output`` types ``job_id`` as a required string, so a null fails the
-    verb's own schema. Asserted on the value rather than truthiness, because
-    ``None`` and ``""`` are both falsey and only one is the bug.
-    """
+    """R-234: ``job_id`` is a required string, so the value is asserted, not its truthiness."""
     payload = shell.no_op("no-op")
 
     assert payload["job_id"] == ""
@@ -157,12 +140,7 @@ def test_the_honest_zero_names_an_empty_job_id_rather_than_a_null():
 
 
 def test_the_honest_zero_validates_against_the_job_state_surface():
-    """Validated against the DECLARED schema, not against a hand written literal.
-
-    ``output.payload_problems`` is the check ``tests/cli_drive.py`` runs over a
-    driven verb's envelope. Field types typed by hand would be a second opinion
-    that would not notice a field added to the surface.
-    """
+    """Validated against the declared schema, the check ``tests/cli_drive.py`` runs."""
     for state in ("no-op", "declined"):
         assert output.payload_problems("job_state", shell.no_op(state)) == [], state
 
@@ -171,13 +149,7 @@ def test_the_honest_zero_validates_against_the_job_state_surface():
 
 
 def test_a_job_with_no_items_is_refused_rather_than_driven(store, cfg):
-    """The false success this refusal exists to stop.
-
-    ``core.jobs`` reports a job with no items as SUCCEEDED, so driving one would
-    tell a person a folder was tagged over a job with no file in it. It is
-    ``internal-error`` because no person can fix it: a build that did not
-    record its items queued it.
-    """
+    """A job with no items reads SUCCEEDED, so it is refused as ``internal-error``, never driven."""
     ctx = Ctx(store)
     job = a_job(store, cfg)
 
@@ -198,12 +170,7 @@ def test_a_job_with_no_items_is_refused_rather_than_driven(store, cfg):
 
 
 def test_a_cancelled_job_raises_rather_than_reporting_through_a_normal_envelope(store, cfg):
-    """R-225, and the reason the predicate is not ``FAILED``.
-
-    Built through ``jobs.cancel``, so the predicate meets a state the engine
-    produces. A run stopped by a signal lands CANCELLED with a cause, and the
-    narrower predicate would hand it back as a payload the dispatcher exits 0 on.
-    """
+    """R-225: a run stopped by a signal lands CANCELLED, which ``FAILED`` alone would miss."""
     ctx = Ctx(store)
     job = a_job(store, cfg, "one.flac")
     jobs.cancel(store, job.job_id)
@@ -263,22 +230,12 @@ def test_an_open_job_is_driven_and_comes_back_as_it_stands_afterwards(store, cfg
 
 
 def test_the_counter_this_guard_borrows_sees_a_call_it_is_meant_to_see():
-    """P7's other half: a guard nobody has watched fire proves nothing.
-
-    ``_drive_calls`` is imported from ``tests/test_handlers.py``, not copied, so
-    the two guards agree on what a driver call looks like. This case stops the
-    assertion below from passing because the counter is broken.
-    """
+    """P7: the borrowed ``_drive_calls`` counter is shown to fire."""
     assert _drive_calls(ast.parse("jobs.drive(store, job)\ndrive(store, job)\n")) == 2
 
 
 def test_nothing_in_the_tagging_shell_is_named_drive():
-    """Why the function is called ``advance``, asserted where it can be checked.
-
-    ``tests/test_handlers.py`` asserts one place calls the job driver, counting
-    every ``ast.Call`` whose callee is NAMED ``drive``. A function of that name
-    here would read as a second caller, so a DEFINITION is covered as well.
-    """
+    """``tests/test_handlers.py`` counts callees named ``drive``, so none is defined here."""
     tree = ast.parse(SHELL_SOURCE.read_text(encoding="utf-8"))
 
     assert _drive_calls(tree) == 0
@@ -294,12 +251,7 @@ def test_nothing_in_the_tagging_shell_is_named_drive():
 
 
 def test_an_item_identifier_holding_a_separator_cannot_escape_the_directory(store, cfg):
-    """The reason the filename is the ordinal, driven with an identifier that tries.
-
-    A tagging item identifier is a path relative to the swept folder, so it
-    holds separators as a matter of course, and a filename built from one is a
-    path traversal wearing a report.
-    """
+    """An item identifier holds separators, so the report is named by its ordinal."""
     job = a_job(store, cfg, "../../escape.flac")
     item = jobs.items(store, job.job_id)[0]
 
@@ -314,10 +266,7 @@ def test_an_item_identifier_holding_a_separator_cannot_escape_the_directory(stor
 
 
 def test_staging_is_cleared_before_an_attempt_writes_into_it(cfg):
-    """A half written report from an attempt that died is not this attempt's.
-
-    Left in place, the next attempt would commit it as its own: wrong, not missing.
-    """
+    """A dead attempt's half written report would be committed as this attempt's."""
     first = artifacts.staged_path(cfg, "job-one", 3)
     first.write_text("half a report", encoding="utf-8")
     stray = first.parent / "left-behind.json"
@@ -331,12 +280,7 @@ def test_staging_is_cleared_before_an_attempt_writes_into_it(cfg):
 
 
 def test_staging_sits_on_the_same_filesystem_as_the_place_it_is_committed_to(cfg):
-    """Why staging is a SIBLING rather than a temp directory.
-
-    ``jobs.commit_artifact`` is an ``os.replace``, atomic only within one
-    filesystem, and a temp directory on another fails at commit after the work
-    is done. Asserted as a shared device, because the device is the property.
-    """
+    """``commit_artifact`` is an ``os.replace``, atomic only within one filesystem."""
     final = artifacts.final_path(cfg, "job-one", 0)
     staged = artifacts.staged_path(cfg, "job-one", 0)
     root = jobs.store_dir(cfg)
@@ -347,11 +291,7 @@ def test_staging_sits_on_the_same_filesystem_as_the_place_it_is_committed_to(cfg
 
 
 def test_reports_past_the_four_digit_name_come_back_in_item_order(cfg):
-    """The sort key is the ordinal as a NUMBER, and a folder can reach that far.
-
-    The name is ``{ordinal:04d}.json``, so as text ``"10000"`` sorts before
-    ``"9999"``. Two reports at that boundary tell the two sorts apart.
-    """
+    """The ordinal sorts as a number: as text ``"10000"`` sorts before ``"9999"``."""
     for ordinal in (10000, 9999):
         artifacts.write(artifacts.final_path(cfg, "job-one", ordinal), {"ordinal": ordinal})
 
@@ -359,11 +299,7 @@ def test_reports_past_the_four_digit_name_come_back_in_item_order(cfg):
 
 
 def test_a_report_that_cannot_be_parsed_is_skipped_rather_than_raised_on(cfg):
-    """A summary is a display over work that already happened.
-
-    Refusing would let one unreadable file hide every other item, all of whose
-    work is done and committed.
-    """
+    """A summary is a display, so one unreadable file must not hide the rest."""
     artifacts.write(artifacts.final_path(cfg, "job-one", 0), {"outcome": "tagged"})
     artifacts.final_path(cfg, "job-one", 1).write_text("{ not json", encoding="utf-8")
     artifacts.final_path(cfg, "job-one", 2).write_text('"a string"', encoding="utf-8")
@@ -386,11 +322,7 @@ def test_a_written_report_is_sorted_json_so_two_runs_produce_one_file(cfg):
 
 
 def test_the_two_directory_names_are_the_tagging_ones(cfg):
-    """The only thing this copy changes from the adoption one, so it is asserted.
-
-    Keeping ``adopt-artifacts`` would file tagging reports where the adoption
-    summary reads them back as its own.
-    """
+    """``adopt-artifacts`` would file tagging reports where adoption reads its own."""
     assert artifacts.ARTIFACTS_DIRNAME == "tag-artifacts"
     assert artifacts.STAGING_DIRNAME == "tag-staging"
     assert artifacts.final_path(cfg, "job-one", 0).parents[1].name == "tag-artifacts"
@@ -398,13 +330,7 @@ def test_the_two_directory_names_are_the_tagging_ones(cfg):
 
 
 def test_the_artifact_helper_never_resolves_the_queue_root_for_itself():
-    """KTD9's defect wearing an indirection, asserted where it is visible.
-
-    ``jobs.store_dir()`` with no argument loads the CURRENT configuration, which
-    a resume must not do. The handler guard cannot follow a reload through a
-    helper, and the installation scoped queue makes both calls look alike, so
-    the property survives only as a guard over the source.
-    """
+    """KTD9: ``jobs.store_dir()`` bare loads the current configuration, which a resume must not."""
     tree = ast.parse(ARTIFACTS_SOURCE.read_text(encoding="utf-8"))
     bare: list[str] = []
     for node in ast.walk(tree):
@@ -434,33 +360,20 @@ def test_the_artifact_helper_never_resolves_the_queue_root_for_itself():
 
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
-    """One real FLAC container, synthesized once and copied per file.
-
-    Real because the write under test goes all the way through
-    ``core.tags.write_genre`` and is read back off the file.
-    """
+    """One real FLAC container, synthesized once and copied per file: the write is read back."""
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
 @pytest.fixture
 def folder(tmp_path) -> Path:
-    """A download folder OUTSIDE the library, which is where tagging happens.
-
-    ``crate tag folder`` is pointed at a fresh download before any of it is in
-    the library, so files under the library root would be a case it lacks.
-    """
+    """A download folder outside the library, where tagging happens."""
     out = tmp_path / "downloads"
     out.mkdir()
     return out
 
 
 def bound(monkeypatch, searcher):
-    """Bind ``searcher`` where the worker looks one up (KTD11, R23).
-
-    The worker calls ``searchers.for_taxonomy`` at CALL TIME because a fixed
-    three argument ``ItemHandler`` leaves nowhere else to hand a fake in, and
-    without one every case below would touch the network.
-    """
+    """Bind ``searcher`` where the worker looks one up at call time (KTD11, R23)."""
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None, refusals=None: searcher)
     # The general catalogue too, to a lookup failing on any request (R-796);
     # a test wanting an answer calls :func:`general` after this.
@@ -468,13 +381,21 @@ def bound(monkeypatch, searcher):
     return searcher
 
 
-def general(monkeypatch, track, album=None, seen: list[str] | None = None):
-    """Bind the general catalogue's lookup where the worker's seam reads it.
+def shipped_over(monkeypatch, fetch, *, token) -> None:
+    """Bind the shipped searcher per call over ``fetch``, Discogs holding ``token``, as bound."""
+    asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
 
-    ``published.for_taxonomy`` is built over ``published.for_lookup`` at call
-    time, so replacing the lookup is the whole substitution and the rules of
-    when the catalogue is asked stay the shipped ones.
-    """
+
+def general(monkeypatch, track, album=None, seen: list[str] | None = None):
+    """Bind the general catalogue's lookup, which ``published.for_taxonomy`` reads at call time."""
     lookup = published.genre_lookup(
         fetch=deezer_fetch(track, album, seen), sleep=lambda _seconds: None
     )
@@ -483,12 +404,7 @@ def general(monkeypatch, track, album=None, seen: list[str] | None = None):
 
 
 def raising_on(searcher, title: str):
-    """``searcher``, except that one title raises the way the shipped one does.
-
-    ``catalogue-unreachable`` is what the shipped searcher raises when a network
-    drops mid folder. RETRYABLE as the shipped raise is, since ``jobs.retry``
-    reads the flag before it re-arms the item (R-390).
-    """
+    """``searcher``, except one title raises ``catalogue-unreachable``, retryable (R-390)."""
 
     def wrapped(artist: str, name: str):
         if name == title:
@@ -507,12 +423,7 @@ def raising_on(searcher, title: str):
 
 
 def hit(source_genre: str, genre: str | None = None, *, off_taxonomy: bool = False) -> SearchHit:
-    """One catalogue answer, carrying what it answered even when it declines.
-
-    A decline that cannot say what it declined is one nobody can act on (R24).
-    ``off_taxonomy`` goes with a GENRE and never a decline, as the shipped
-    searcher builds one: it qualifies a word about to be written.
-    """
+    """One answer, naming what it answered even declining (R24); ``off_taxonomy`` with a genre."""
     return SearchHit(
         genre=genre,
         source=searchers.BEATPORT,
@@ -534,12 +445,7 @@ def tag_job():
 
 
 def resume_argv(job_id: str) -> list[str]:
-    """The command line the job driver would spawn for this job.
-
-    Through the real ``argv_for``, because the property is that the frozen
-    folder survives the round trip, and a hand written resume would assert
-    about a string this test typed.
-    """
+    """The command line the job driver would spawn, through the real ``argv_for``."""
     from cratekit.cli import jobs as cli_jobs
 
     with jobs.open_store() as store:
@@ -571,14 +477,10 @@ def item_causes(job_id: str) -> dict[str, str]:
 # The binding
 
 
-def test_the_tag_folder_key_resolves_to_a_worker():
-    """The R-203 half this unit closes, asserted against the table itself.
-
-    ``tests/test_handlers.py`` checks each queued verb is in exactly ONE of the
-    two mappings, which ``HANDLERS_NOT_YET_BOUND`` satisfies. Only an assertion
-    naming this key tells "declared as unbound" from "bound".
-    """
-    key = registry.entry("tag.folder").handler_key
+@pytest.mark.parametrize("verb", ["tag.folder", "tag.retag"])
+def test_the_tagging_key_resolves_to_a_worker(verb):
+    """R-203: only an assertion naming this key tells unbound from bound."""
+    key = registry.entry(verb).handler_key
 
     assert handlers.is_known(key), f"{key} still has no worker"
     assert handlers.unbound_reason(key) is None
@@ -591,14 +493,7 @@ def test_the_tag_folder_key_resolves_to_a_worker():
 def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
     cfg, folder, silence, monkeypatch
 ):
-    """The whole seam in one case: queue, drive, write, and read back.
-
-    The files are read back off disk: a worker reporting a genre it never wrote
-    would still drive every item to done with the counts adding up. The third
-    file holds the policy, fill if empty: its curation comes back a skip with a
-    reason. It carries a picture too, since a tagged file with none is asked
-    for art (U85).
-    """
+    """Read back off disk; the third holds fill if empty and a picture, so no art search (U85)."""
     from tests.test_tagging_engine import _jpeg, plant
 
     place(folder, silence, "a")
@@ -636,12 +531,7 @@ def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
 def test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged(
     cfg, folder, silence, monkeypatch
 ):
-    """The walk recurses, so an identifier holding a separator is ordinary input.
-
-    A download folder is usually release directories, so ``sub/deep.flac`` is
-    the common case: the worker joins it back onto the payload's folder and the
-    report is named after the ORDINAL, not this string.
-    """
+    """``sub/deep.flac`` is the common case, joined back onto the payload's folder."""
     place(folder / "sub", silence, "deep")
     bound(monkeypatch, answering({"deep": hit("deep house", SPECIFIC)}))
 
@@ -658,12 +548,7 @@ def test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged
 def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
     cfg, folder, silence, monkeypatch
 ):
-    """R16 at the surface a person reads.
-
-    A reason that stops at the committed artifact has to be found on disk. The
-    counts ride under ``progress``, the one place ``job_state/1`` leaves open
-    for a per verb detail.
-    """
+    """R16: the counts ride under ``progress``, the one open place in ``job_state/1``."""
     place(folder, silence, "a")
     place(folder, silence, "b", genre=SPECIFIC)
     bound(monkeypatch, answering({}))
@@ -689,13 +574,7 @@ def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
 def test_the_report_names_each_unresolved_source_genre_with_its_count(
     cfg, folder, silence, monkeypatch
 ):
-    """R24, and the reason a bare ``unmapped-genre`` total is not enough.
-
-    A count says a gap exists; the STRING names the alias their taxonomy lacks,
-    the only half a person can act on. The strings are ones the shipped resolver
-    really declines, since a fake hit can carry any pair, and a fixture that
-    cannot occur is METHOD's fourth defect pattern.
-    """
+    """R24: each string names an alias the taxonomy lacks, as the resolver declines it."""
     for name in ("a", "b", "c"):
         place(folder, silence, name)
     declines = [
@@ -719,13 +598,7 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
 def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     cfg, folder, silence, monkeypatch
 ):
-    """R-650. The written word a person was never told about.
-
-    Three files are tagged, two with a word the declared taxonomy has never
-    heard of, and the report must say so. The two maps are not one: a decline
-    left its file askable and an off taxonomy write is on disk, so merging them
-    would send somebody looking for files that are not there.
-    """
+    """R-650: an off taxonomy word written to disk is reported, apart from a decline."""
     for name in ("a", "b", "c", "d", "e"):
         place(folder, silence, name)
     bound(
@@ -770,12 +643,7 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
 
 
 def _catalogues(per_title: dict[str, dict[str, searchers.Fetched]]):
-    """The SHIPPED searcher, over a fetch that answers per title and per source.
-
-    R-791 is about what the searcher reports for each catalogue, and a fake
-    would only report what this test told it. ``Fetched`` is the seam's own
-    contract, so a 403 here is the shape ``default_fetch`` hands a fallback.
-    """
+    """The shipped searcher over a fetch answering per title and source (R-791)."""
     bases = {
         searchers.BEATPORT: searchers.BEATPORT_SEARCH,
         searchers.TRAXSOURCE: searchers.TRAXSOURCE_SEARCH,
@@ -830,11 +698,7 @@ def _fetched(answer) -> searchers.Fetched:
 def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_as_no_hit(
     cfg, folder, silence, monkeypatch
 ):
-    """R-791 end to end, through the verb.
-
-    Beatport misses and both fallbacks refuse this machine, and every surface
-    must say two catalogues were never read rather than ``no-hit``.
-    """
+    """R-791: two catalogues never read are said on every surface, never as ``no-hit``."""
     for name in ("a", "b"):
         place(folder, silence, name)
     refused = {
@@ -886,13 +750,7 @@ BEATPORT_CHALLENGE = searchers.Fetched(note="Cloudflare challenge, HTTP 403", st
 
 
 def _refusing_sweep(monkeypatch, seen: list[str]):
-    """Bind the worker's searcher to the shipped one over a Beatport refusing every lookup.
-
-    A searcher per call carrying the run count the worker hands in, as the
-    shipped binder builds one, so what is tested is the worker's run scope.
-    Discogs answers an empty result set, so every file settles
-    ``sources-unread`` rather than failing.
-    """
+    """Bind the shipped searcher per call over a refusing Beatport; Discogs answers empty."""
     from tests.test_discogs_searcher import SENT, results
 
     def fetch(url: str) -> searchers.Fetched:
@@ -925,11 +783,7 @@ def _beatport_asked(seen: list[str]) -> int:
 def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refused(
     cfg, folder, silence, monkeypatch
 ):
-    """U281 through the verb: five files, Beatport refusing every lookup with
-    Cloudflare's challenge. Three requests reach Beatport, not five; the two
-    files after them record it blocked and unsent, every file stays askable,
-    Discogs is asked on all five, and the warning names a refusal rather than
-    an outage."""
+    """U281: three of five reach Beatport, the rest recorded unsent, every file askable."""
     for name in ("a", "b", "c", "d", "e"):
         place(folder, silence, name)
     seen: list[str] = []
@@ -977,9 +831,7 @@ def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refuse
 def test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file(
     cfg, folder, silence, monkeypatch
 ):
-    """The count is the run's: a second sweep in the same process, a new job,
-    sends Beatport its first three lookups again rather than inheriting the
-    first sweep's stop."""
+    """The count is the run's: a second sweep starts from Beatport's first three lookups."""
     for name in ("a", "b", "c", "d"):
         place(folder, silence, name)
     seen: list[str] = []
@@ -1010,10 +862,7 @@ def test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file(
 def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
     cfg, folder, silence, monkeypatch
 ):
-    """The count is the RUN's, not the job's: a retried job driven again in
-    the same process is a new drive, and asks Beatport its first three lookups
-    again. With no Discogs token every file fails ``catalogue-unreachable``,
-    retryable, which is the shape a retry re-arms."""
+    """The count is the run's, not the job's: a retried job driven again asks afresh."""
     from tests.test_discogs_searcher import results
 
     for name in ("a", "b", "c", "d", "e"):
@@ -1026,15 +875,7 @@ def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
             return BEATPORT_CHALLENGE
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=None, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=None)
 
     drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
@@ -1052,10 +893,7 @@ def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
 def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sent(
     cfg, folder, silence, monkeypatch
 ):
-    """Discogs remembers its first refusal and sends nothing more in the run,
-    recording each later file blocked and unsent, so the source blocked
-    warning counts the one search it was sent and names the files it was not
-    (U281's review)."""
+    """Discogs sends nothing after its first refusal, and the warning counts one search (U281)."""
     for name in ("a", "b", "c", "d"):
         place(folder, silence, name)
     seen: list[str] = []
@@ -1068,15 +906,7 @@ def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sen
 
     from tests.test_discogs_searcher import SENT
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -1130,15 +960,7 @@ def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence
             return searchers.Fetched(note="HTTP 503", status=503)
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     drive(["tag", "folder", "--queue-only", str(folder)])
     code, resumed = drive(resume_argv(tag_job().job_id))
@@ -1154,9 +976,7 @@ def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence
 def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_warning(
     cfg, folder, silence, monkeypatch
 ):
-    """Bandcamp blocked on every file it was SENT. One file ended at a Beatport
-    match and never asked it, and that file must not hide the refusal on the
-    other; Traxsource answered, so it is not named."""
+    """Bandcamp blocked on every file it was sent is named, though one file never asked it."""
     for name in ("a", "b"):
         place(folder, silence, name)
     assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
@@ -1199,9 +1019,7 @@ def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_war
 def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
     cfg, folder, silence, monkeypatch
 ):
-    """A parse break beside a MISS leaves the file undecided like a block does,
-    and the warning must not leave it under the promise that a rerun settles
-    it. One file, so the sentence reads as one."""
+    """A parse break beside a miss leaves the file undecided, and the warning says the defect."""
     place(folder, silence, "a")
     broken = searchers.Fetched(
         text='<div data-trid="1" class="trk-row"><span>moved</span></div>', status=200
@@ -1234,9 +1052,7 @@ def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
 def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
     cfg, folder, silence, monkeypatch
 ):
-    """A fallback never asked was blocked on zero of zero searches, which is not
-    a refusal. Bought by row C5 of ``r791-b``, a zero: without the guard this
-    sweep, the commonest clean one, warned that both fallbacks refused it."""
+    """A fallback never asked is no refusal (row C5 of ``r791-b``)."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
     matched = searchers.Fetched(
@@ -1255,8 +1071,7 @@ def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
 
 
 def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, silence, monkeypatch):
-    """Every catalogue asked, the general one included, and none knows the
-    track. That is the absence ``no-hit`` means, and no warning qualifies it."""
+    """Every catalogue asked and none knows the track: the absence ``no-hit`` means, unqualified."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
@@ -1281,8 +1096,7 @@ def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, si
 def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     cfg, folder, silence, monkeypatch
 ):
-    """AE1 end to end, in the state measured on the author's machine: Beatport
-    misses, both fallbacks refuse, and the general catalogue knows the album."""
+    """AE1: Beatport misses, both fallbacks refuse, and the general catalogue knows the album."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS}))
@@ -1332,9 +1146,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
 def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
     cfg, folder, silence, monkeypatch
 ):
-    """A 429 on every file the catalogue was asked about. No file got a
-    published genre, and the surface a person reads says which catalogue and
-    how many, once, and does not also file it under the record shops' warning."""
+    """A 429 on every file: the summary names the catalogue and count once."""
     for name in ("a", "b", "c"):
         place(folder, silence, name)
     for name in ("a", "b"):
@@ -1384,8 +1196,7 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
 def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(
     cfg, folder, silence, monkeypatch
 ):
-    """A miss on one file and an outage on the other. The catalogue was there
-    for the run, and the file it was not there for is still said."""
+    """A miss on one file and an outage on the other: the second is still said."""
     for name in ("a", "b"):
         place(folder, silence, name)
         assert tags.write_tags(folder / f"{name}.flac", {"isrc": ISRC})
@@ -1408,10 +1219,7 @@ def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(
 
 
 def test_a_block_on_a_file_a_record_shop_declined_is_still_said(cfg, folder, silence, monkeypatch):
-    """Beatport called the track by a catch-all, so the file is
-    ``unmapped-genre`` whatever the general catalogue did, and no file in the
-    run is ``sources-unread``. The block is still a sentence and not only a
-    count."""
+    """A block is a sentence even when no file in the run is ``sources-unread``."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"artist": "Somebody", "isrc": ISRC})
     declined = searchers.Fetched(
@@ -1453,10 +1261,7 @@ def test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it(
 def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_reason(
     cfg, folder, silence, monkeypatch
 ):
-    """AE4 at the surface a person reads. One file's fallbacks were blocked, so
-    it is ``sources-unread``; the other's all answered, so it is ``no-isrc``.
-    Both were never asked about at the general catalogue, and the warning
-    counts both."""
+    """AE4: both files lack an ISRC under different skip reasons, and the warning counts both."""
     for name in ("a", "b"):
         place(folder, silence, name)
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS, "b": ALL_MISSED}))
@@ -1485,8 +1290,7 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
 
 
 def test_a_published_word_with_no_folder_is_listed_as_unresolved(cfg, folder, silence, monkeypatch):
-    """R3 at the report. The catalogue's own word is the one a person would add
-    an alias for, so it is the string the summary names."""
+    """R3: the catalogue's own word is the one to alias, so the summary names it."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
@@ -1508,11 +1312,7 @@ def test_a_published_word_with_no_folder_is_listed_as_unresolved(cfg, folder, si
 def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
     cfg, folder, silence, monkeypatch
 ):
-    """The quiet case, which is every ordinary sweep.
-
-    A warning that fires on a clean run soon goes unread, so the zero is
-    asserted as its own property.
-    """
+    """The quiet case: a warning on a clean run soon goes unread."""
     for name in ("a", "b"):
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("Deep House", "Deep House"), "b": hit("Techno")}))
@@ -1526,12 +1326,7 @@ def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
 def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status(
     cfg, folder, silence, monkeypatch
 ):
-    """U84. The repair runs on every item and its status reaches both surfaces.
-
-    Two files carry the downloader's zeroed block, one already tagged, which a
-    repair placed after the genre skip would miss. The third carries no picture.
-    Every status is counted, zeroes included.
-    """
+    """U84: the repair runs on every item, already tagged ones too, and every status is counted."""
     from tests.test_tagging_engine import _jpeg, blocks, plant
 
     for name, genre in (("a", None), ("b", SPECIFIC), ("c", None)):
@@ -1564,10 +1359,7 @@ def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status
 
 
 def test_a_report_from_before_the_repair_is_counted_under_no_status(cfg, store):
-    """A committed report carrying no status says nothing about the art.
-
-    Counting it as ``ok`` or ``none`` would state a status nobody measured.
-    """
+    """A report with no status says nothing about the art."""
     job = a_job(store, cfg, "old.flac")
     (item,) = jobs.items(store, job.job_id)
     produced = artifacts.produced(
@@ -1584,13 +1376,7 @@ def test_a_report_from_before_the_repair_is_counted_under_no_status(cfg, store):
 
 
 def test_new_art_reaches_the_file_the_artifact_and_the_summary(cfg, folder, silence, monkeypatch):
-    """U85 through the verb. The worker looks its image fetch up at call time.
-
-    Four files: no genre and no picture, a genre and no picture, a genre and a
-    picture, and one whose picture 404s. The first two get art, the third is
-    never asked, and the fourth still gets its genre and says its art was
-    unavailable, with every status counted.
-    """
+    """U85: two files get art, one already has it, and a 404 keeps its genre and says so."""
     from tests.test_tagging_engine import _jpeg, blocks, plant
 
     place(folder, silence, "a")
@@ -1646,12 +1432,7 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(cfg, folder, sile
 def test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_counts_discogs_first(
     cfg, folder, silence, monkeypatch
 ):
-    """U282 through the verb, with the shipped searcher and a recorded Discogs
-    and Beatport. Three files: no genre and no picture, no genre and a picture,
-    a genre and no picture. Discogs decides both genres; Beatport is asked
-    twice, for the two missing covers, and never for the file whose picture is
-    in place; the file that had a genre keeps it; the summary says Discogs
-    tagged two, Beatport matched twice and was not asked once."""
+    """U282: Discogs decides both genres and Beatport is asked only for the two missing covers."""
     from tests.test_catalogue_searcher import ARTIST, BUCKET_GENRE, TITLE
     from tests.test_discogs_searcher import SENT, release, results, routed
     from tests.test_tagging_engine import _jpeg, plant
@@ -1717,10 +1498,7 @@ def test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_count
 
 
 def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, monkeypatch):
-    """U282: the summary counts Discogs first, so the sentence a person reads
-    names the catalogues in that order. File a: Discogs times out and Beatport
-    misses. File b: Discogs misses and Beatport refuses. Both stay askable,
-    and the warning names Discogs' outage before Beatport's refusal."""
+    """U282: the warning names Discogs' outage before Beatport's refusal."""
     from tests.test_discogs_searcher import SENT, results
 
     place(folder, silence, "a")
@@ -1738,15 +1516,7 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
             return searchers.Fetched(note="timed out")
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -1761,10 +1531,7 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
 def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_every_file(
     cfg, folder, silence, monkeypatch
 ):
-    """U282's review, round two: Discogs answers 401 and Beatport matches all
-    three files. They are tagged by Beatport as before, the token is sent once,
-    and the sweep says Discogs refused it rather than ending clean, without
-    counting the files as having no token."""
+    """U282: a 401 from Discogs is warned about though Beatport tags all three."""
     from tests.test_catalogue_searcher import ARTIST, BUCKET_GENRE, TITLE
     from tests.test_discogs_searcher import SENT, routed
 
@@ -1777,15 +1544,7 @@ def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_ever
         beatport=beatport_page([beatport_track(ARTIST, TITLE, BUCKET_GENRE)]),
         seen=seen,
     )
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -1805,12 +1564,7 @@ def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_ever
 def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
     cfg, folder, silence, monkeypatch
 ):
-    """U260 through the verb. Ten files of one album name one cover address.
-
-    Only the shipped image fetch's HTTP getter and sleep are replaced, so the
-    binder the worker calls per item, its memory and the encoder's are the
-    shipped ones.
-    """
+    """U260: ten files of one album fetch and encode one cover; only HTTP and sleep are faked."""
     from tests.test_album_cover_once import ALBUM, Host
     from tests.test_tagging_engine import _jpeg, blocks
 
@@ -1865,12 +1619,7 @@ def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
 def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory(
     cfg, folder, silence, monkeypatch
 ):
-    """What makes the number true across a resume.
-
-    A sweep continued tomorrow has every report on disk, and the person means
-    all of them. The total is asserted against what the queue committed, so a
-    summary counting only this invocation fails.
-    """
+    """The total is read off the committed reports, so it holds across a resume."""
     for name in ("a", "b", "c"):
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
@@ -1887,11 +1636,7 @@ def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory
 
 
 def test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is(cfg, folder):
-    """AE3. Nothing is queued, and the exit code is still success.
-
-    ``core.jobs`` reports a job with no items as SUCCEEDED, so queueing one
-    would report a clean sweep over a folder nothing walked.
-    """
+    """AE3: a job with no items would read as a clean sweep."""
     (folder / "cover.jpg").write_bytes(b"not audio")
 
     code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
@@ -1907,14 +1652,7 @@ def test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is(cfg,
 def test_an_empty_folder_argument_never_sweeps_the_working_directory(
     cfg, folder, silence, monkeypatch
 ):
-    """The third zero, and the only one of them that is dangerous.
-
-    The parser accepts an empty string and ``Path("")`` is the current
-    directory, so this writing verb would sweep the working directory. It is a
-    no-op rather than a refusal, since a refusal needs its own slug in
-    ``cause.REASONS``. Asserted with audio in the working directory, as it
-    passes trivially without.
-    """
+    """``Path("")`` is the working directory, so an empty folder is a no-op, with audio present."""
     place(folder, silence, "a")
     monkeypatch.chdir(folder)
 
@@ -1931,13 +1669,7 @@ def test_an_empty_folder_argument_never_sweeps_the_working_directory(
 def test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_tree(
     cfg, folder, silence
 ):
-    """R-289's measured cost, reproduced through the shipped verb.
-
-    ``acquire`` stages every item under a dot directory in the download root,
-    and a staged file is a killed attempt's partial download or evidence a tag
-    write would alter. It reports the SAME zero as an empty folder, since there
-    is no audio here to tag.
-    """
+    """R-289: the staging tree under the download root is never swept."""
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
 
@@ -1952,12 +1684,7 @@ def test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_t
 
 
 def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silence):
-    """The other half, because the test above passes for a verb that queues NOTHING.
-
-    Skipping the staging tree must not cost the sweep of committed tracks
-    beside it. The identifier is asserted too, being relative to the frozen
-    folder.
-    """
+    """The other half: skipping staging must not skip the tracks beside it."""
     place(folder, silence, "committed")
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
@@ -1969,11 +1696,7 @@ def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silen
 
 
 def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
-    """Both walk to nothing, and the person's next move is different for each.
-
-    One says put some audio in it, the other says the folder does not exist.
-    Folded together, a typed path looks like an empty download directory.
-    """
+    """A missing folder and an empty one ask different next moves."""
     code, envelope = drive(["tag", "folder", "--queue-only", str(tmp_path / "no-such-folder")])
 
     assert code == int(ExitCode.OK), envelope
@@ -1988,12 +1711,7 @@ def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, t
 
 
 def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, silence, monkeypatch):
-    """R19x's first half, and the reason a decline and a refusal are not one thing.
-
-    The searcher raises when it could not READ a catalogue at all. That item
-    fails, its neighbours stay done and written, and the job carries a cause,
-    so nobody is told the folder was tagged.
-    """
+    """R19x: an unread catalogue fails its item and the job carries a cause."""
     for name in ("a", "b", "c"):
         place(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
@@ -2017,12 +1735,7 @@ def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, si
 
 
 def test_a_retried_job_drives_only_the_item_that_failed(cfg, folder, silence, monkeypatch):
-    """R19x, and the guarantee this whole seam exists for.
-
-    Asserted by counting the searcher's calls, since a resume re-asking about
-    files already tagged leaves the same item states and costs two more
-    requests against a rate limited source.
-    """
+    """R19x: counted by searcher calls, since re-asking leaves the same states."""
     for name in ("a", "b", "c"):
         place(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
@@ -2048,12 +1761,7 @@ def test_a_retried_job_drives_only_the_item_that_failed(cfg, folder, silence, mo
 def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
     cfg, folder, silence, monkeypatch
 ):
-    """R15. The folder is not frozen, so this is reachable input.
-
-    Refused rather than reported done, which would be a clean report over
-    unreadable state. The slug is the SHARED ``source-missing`` (R-251), and
-    not an internal error, since deleting one's own download is not a defect.
-    """
+    """R15: refused under the shared ``source-missing`` (R-251), not an internal error."""
     for name in ("a", "b"):
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
@@ -2077,12 +1785,7 @@ def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
 def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
     cfg, folder, silence, monkeypatch
 ):
-    """The payload is frozen at queue time, so only the verb can rebuild it.
-
-    The run flag is asserted as a whole token, since the run id flag contains
-    it and a substring check would call a broken argv clean. This verb declares no gate,
-    so a resume minting a run would ask a question nobody posed.
-    """
+    """The run flag is asserted as a whole token, since a substring would match the run id flag."""
     place(folder, silence, "a")
     bound(monkeypatch, answering({}))
 
@@ -2106,12 +1809,7 @@ RETAG_GATE = "tag.retag.confirm"
 
 @pytest.fixture
 def repair_on(cfg) -> config.Config:
-    """``cfg`` with the module that gates this verb switched on.
-
-    ``tag.retag`` is gated by ``repair``, and under the SLIM profile the
-    fixture configures the parser does not offer the verb at all. Turning the
-    module on makes it reachable through the real dispatcher.
-    """
+    """``cfg`` with ``repair`` on, so the slim profile offers ``tag.retag``."""
     built = config.from_dict(valid_data(Path(cfg.library.root), modules={"repair": True}))
     config.save(built)
     config.reset_cache()
@@ -2119,11 +1817,7 @@ def repair_on(cfg) -> config.Config:
 
 
 def coarse(folder: Path, silence: Path, name: str) -> Path:
-    """One file carrying the catch-all this verb exists to replace.
-
-    The value is the declared taxonomy's own, so a template edit moves the
-    fixture with it.
-    """
+    """One file carrying the declared taxonomy's catch-all."""
     return place(folder, silence, name, CATCH_ALL)
 
 
@@ -2133,9 +1827,7 @@ def selected(folder: Path) -> list[Path]:
 
 
 def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, folder, silence):
-    """The gate carried the question and not one file (R-693). Its ``shown``
-    now holds the plan rows the digest was taken over, each file with the genre
-    it carries, and the folder in front of them."""
+    """R-693: ``shown`` holds the folder and each planned file with its genre."""
     del repair_on
     for name in ("a", "b"):
         coarse(folder, silence, name)
@@ -2152,8 +1844,7 @@ def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, fol
 
 
 def test_the_retag_resume_gate_shows_the_frozen_rows_it_asks_about(repair_on, folder, silence):
-    """A resume on a run holding no answer shows the rows the confirmation was
-    recorded against, read off the frozen payload and never off a fresh walk."""
+    """A resume shows the rows read off the frozen payload, never off a fresh walk."""
     del repair_on
     for name in ("a", "b"):
         coarse(folder, silence, name)
@@ -2179,13 +1870,7 @@ def test_the_retag_resume_gate_shows_the_frozen_rows_it_asks_about(repair_on, fo
 def test_a_resume_after_a_partial_run_meets_its_gate_rather_than_going_stale(
     repair_on, folder, silence, monkeypatch
 ):
-    """KTD8 and AE4, and the permanent stall this unit would otherwise ship.
-
-    A corrected file leaves the selection, so a plan rebuilt by walking digests
-    differently from the confirmed one and every resume meets ``DecisionStale``
-    for ever. The correction is written rather than driven, since the selection
-    shrinking is the mechanism and ``core.tags.write_genre`` the only effect.
-    """
+    """KTD8 and AE4: a corrected file leaving the selection must not make every resume stale."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "bc"}))
@@ -2218,33 +1903,13 @@ def retag_reports(cfg: config.Config, job_id: str) -> dict:
 # The binding
 
 
-def test_the_tag_retag_key_resolves_to_a_worker():
-    """The other half of R-203 this unit closes, asserted against the table.
-
-    ``tests/test_handlers.py`` checks each queued verb sits in exactly ONE of
-    the two mappings, which ``HANDLERS_NOT_YET_BOUND`` satisfies. Only an
-    assertion naming this key tells "declared as unbound" from "bound".
-    """
-    key = registry.entry("tag.retag").handler_key
-
-    assert handlers.is_known(key), f"{key} still has no worker"
-    assert handlers.unbound_reason(key) is None
-    assert callable(handlers.resolve(key))
-
-
 # The happy path
 
 
 def test_three_confirmed_files_go_from_pending_to_done_and_carry_a_specific_genre(
     repair_on, folder, silence, monkeypatch
 ):
-    """The whole seam in one case: confirm, queue, drive, write, and read back.
-
-    The files are read back off disk: a worker reporting a genre it never wrote
-    would still drive every item to done. The items are the confirmed rows, one
-    per candidate path, since a shell queueing its own walk would second guess
-    what was confirmed.
-    """
+    """Confirm, queue, drive, write and read back; the items are the confirmed rows."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     searcher = bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
@@ -2267,13 +1932,7 @@ def test_three_confirmed_files_go_from_pending_to_done_and_carry_a_specific_genr
 def test_the_report_is_derived_from_what_ran_rather_than_from_what_was_planned(
     repair_on, folder, silence, monkeypatch
 ):
-    """R16 at the surface a person reads, and the reason it is read back off disk.
-
-    All three files were confirmed and did three different things. A summary
-    kept in memory would report only today's part of a continued sweep. Zeroes
-    included, on ``adopt.scan.categories``'s rule: otherwise "none here" and
-    "not counted" read the same.
-    """
+    """R16: the report is read back off disk, zeroes included."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
@@ -2334,13 +1993,7 @@ def test_an_empty_plan_is_still_asked_about_and_queues_nothing_and_says_which_ze
 def test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing(
     repair_on, folder, silence, monkeypatch
 ):
-    """The branch a person reaches by reading the plan and saying no.
-
-    The payload is the declared ``job_state`` shape, through ``shell.no_op``, so
-    this verb's zero paths cannot reintroduce R-234 apart from the sibling's.
-    ``tests/cli_drive.drive`` validates the envelope, so the shape fails here as
-    well as the outcome.
-    """
+    """Abort answers the declared ``job_state`` shape through ``shell.no_op`` (R-234)."""
     coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
 
@@ -2383,12 +2036,7 @@ def test_a_genre_changed_between_the_confirm_and_the_drive_is_left_to_its_owner(
 def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
     repair_on, folder, silence, monkeypatch
 ):
-    """R15. The folder is not frozen, so this is reachable input.
-
-    Refused rather than reported done, which would be a clean report over
-    unreadable state. The slug is the SHARED ``source-missing`` (R-251), and
-    not an internal error, since deleting one's own file is not a defect.
-    """
+    """R15: refused under the shared ``source-missing`` (R-251), not an internal error."""
     for name in ("a", "b"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
@@ -2411,12 +2059,7 @@ def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
 def test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue(
     repair_on, folder, silence, monkeypatch
 ):
-    """The engine's rule, asserted through the WORKER that now runs it.
-
-    The worker opens a review queue per item against the FROZEN configuration,
-    unlike ``retag_folder``'s sweep. A catch-all written to a file here would
-    never be selected again.
-    """
+    """A catch-all answer goes to the review queue, opened per item on the frozen configuration."""
     path = coarse(folder, silence, "a")
     other = TAXONOMY.fallback.too_coarse_as_source[2]
     bound(monkeypatch, answering({"a": hit("some vendor genre", other)}))
@@ -2440,12 +2083,7 @@ def test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue(
 def test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked(
     repair_on, folder, silence, monkeypatch
 ):
-    """The ordering inside the worker, and the only assertion that can see it.
-
-    Asking the catalogue before reading the verdict would spend a request per
-    run on an answered question and let a fresh answer overwrite it. Only
-    asserting the searcher was never asked separates the two orders.
-    """
+    """The verdict is read before the catalogue is asked, seen only as no search."""
     path = coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
     _first_run, first_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
@@ -2477,11 +2115,7 @@ def test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked(
 def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item(
     repair_on, folder, silence, monkeypatch
 ):
-    """R19x's first half. A network dropping out mid folder is not a decline.
-
-    The unanswered item fails, its neighbours stay done and written, and the
-    job carries a cause, so nobody is told the folder was corrected.
-    """
+    """R19x: the unanswered item fails, its neighbours stay done, the job carries a cause."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in "abc"}
@@ -2503,12 +2137,7 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
 
 
 def test_a_retried_retag_drives_only_the_item_that_failed(repair_on, folder, silence, monkeypatch):
-    """R19x, and the guarantee the whole per item seam exists for.
-
-    Asserted by counting the searcher's calls, since a resume re-asking about
-    files already corrected leaves the same item states and costs two more
-    requests against a rate limited source.
-    """
+    """R19x: counted by searcher calls, since re-asking leaves the same states."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in "abc"}
@@ -2533,13 +2162,7 @@ def test_a_retried_retag_drives_only_the_item_that_failed(repair_on, folder, sil
 def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recovers_it(
     repair_on, folder, silence, monkeypatch
 ):
-    """R-185 DRIVEN AND MEASURED, not repaired. The measurement is the point.
-
-    The database half of this verb is deferred, so the library row keeps the
-    catch-all the file no longer carries. A corrected file stops being
-    selectable, so only the committed artifact, naming the path and the old and
-    new values, can recover the row; a dropped field fails here.
-    """
+    """R-185 measured: the row keeps the catch-all, and only the artifact can recover it."""
     for name in ("a", "b"):
         coarse(folder, silence, name)
     bound(monkeypatch, raising_on(answering({"a": hit("deep house", SPECIFIC)}), "b"))
@@ -2578,12 +2201,7 @@ def warning_codes(envelope: dict) -> list[str]:
 
 
 def job_cause(job_id: str):
-    """The cause the QUEUE recorded, which is the one a refusal has to carry on.
-
-    Read back from the store, because a cause described in the test's own words
-    would pass against a verb that replaced the job's cause with its own, the
-    shape ``origin`` is append-only to prevent.
-    """
+    """The cause the queue recorded, read back from the store."""
     with jobs.open_store() as store:
         return jobs.get(store, job_id).cause
 
@@ -2591,13 +2209,7 @@ def job_cause(job_id: str):
 def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
     repair_on, folder, silence, monkeypatch
 ):
-    """R-185's COST, reproduced as the thing a person is left holding.
-
-    The file is corrected and the row is not, and no later run finds the row.
-    The warning names the act, the row's own verb, not just the defect, since a
-    warning that only announced a disagreement leaves nothing to do. The folder
-    is in the text, because a resume's envelope is read later beside others.
-    """
+    """R-185: the warning names the row's reload and the folder."""
     for name in ("a", "b"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "ab"}))
@@ -2622,12 +2234,7 @@ def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
 def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
     repair_on, folder, silence, monkeypatch
 ):
-    """The zero half, and it is what keeps the warning worth reading.
-
-    A sweep that wrote no genre left no row stale, and an instruction shown
-    whether or not it applies stops being read. Driven through the decline, not
-    an empty folder, which never queues and so could not reach the resume path.
-    """
+    """The zero half, driven through a decline so the resume path is reached."""
     for name in ("a", "b"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({}))
@@ -2644,13 +2251,7 @@ def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
 def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
     repair_on, folder, silence, monkeypatch
 ):
-    """The run R-185 is actually about, and the one the warning first missed.
-
-    A job closed with a cause leaves through that cause (R-225), yet files
-    corrected before the failure have stale rows. The step rides the
-    remediation's ``steps``, since a refusal carries no warnings, and the retry
-    remedy stays first.
-    """
+    """R-185 and R-225: the reload rides the refusal's steps, the retry remedy first."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in "abc"}
@@ -2681,13 +2282,7 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
 
 
 def refusing_writes_on(monkeypatch, *names: str) -> None:
-    """The one genre writer, answering False for the files named (R-1103).
-
-    What ``tags.write_genre`` answers for a locked or read only file. Patched
-    after the fixture files are placed, which tag through the same writer, and
-    patched at all because root ignores a read only mode and the immutable flag
-    is Linux's alone and privileged.
-    """
+    """The genre writer answering False for the files named, as for a locked file (R-1103)."""
     real = tags.write_genre
 
     def writer(path: Path, genre: str) -> bool:
@@ -2701,12 +2296,7 @@ def refusing_writes_on(monkeypatch, *names: str) -> None:
 def test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_are_corrected(
     repair_on, folder, silence, monkeypatch
 ):
-    """The brief's first scenario, through the verb a person types (R-1103).
-
-    The refusing file's item fails under ``tag-retag-unwritten`` with the file
-    named, its report is never committed, so ``corrected`` counts the two that
-    landed, and the files are read back off disk rather than off the report.
-    """
+    """R-1103: the refusing file fails ``tag-retag-unwritten`` and the other two land."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
@@ -2745,11 +2335,7 @@ def test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_a
 def test_a_retag_whose_only_file_will_not_take_its_genre_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
-    """Nothing was corrected, so no row went stale and nothing is sent to rekordbox.
-
-    Every item failed, so the job engine leaves through its own ``no-evidence``
-    carrying the item's cause, which names the file.
-    """
+    """Nothing was corrected, so the job leaves through ``no-evidence`` and names no reload."""
     coarse(folder, silence, "a")
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
     _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
@@ -2787,12 +2373,7 @@ def test_a_retag_file_that_will_not_take_its_genre_is_named_in_the_human_answer(
 def test_a_parked_retag_keeps_both_the_block_and_the_reload(
     repair_on, folder, silence, monkeypatch
 ):
-    """R-290 through the one shell that REBUILDS its refusal, found by the review.
-
-    A parked job leaves as ``JobBlocked`` and the dispatcher reads that TYPE as
-    blocked. ``with_reload_step`` builds a new exception to append its step, so
-    it must keep the type, or a parked retag reads ``failed``.
-    """
+    """R-290: ``with_reload_step`` must keep the ``JobBlocked`` type."""
     for name in ("a", "b", "c"):
         coarse(folder, silence, name)
     inner = answering({name: hit("deep house", SPECIFIC) for name in "abc"})
@@ -2822,12 +2403,7 @@ def test_a_parked_retag_keeps_both_the_block_and_the_reload(
 def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
-    """The zero half of the refusal, and it is the half that keeps it honest.
-
-    A sweep whose only item could not be answered wrote no genre, so no row
-    went stale. Appending the reload to every failure would send a person to
-    reconcile a library against a run that changed nothing in it.
-    """
+    """The zero half: a run that changed nothing names no reload."""
     coarse(folder, silence, "a")
     bound(monkeypatch, raising_on(answering({}), "a"))
     _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
@@ -2843,13 +2419,7 @@ def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
 def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
     repair_on, folder, silence, monkeypatch
 ):
-    """The other reader, and the reason this one is unconditional.
-
-    This envelope is the last thing the person reads in the terminal. It cannot
-    know how many files will be corrected, but every planned file was selected
-    as too coarse, so saying nothing is the worse answer. The three drives are
-    spelled out, since ``approve_and_queue`` consumes the envelope under test.
-    """
+    """The queueing envelope always names the reload: every planned file is too coarse."""
     coarse(folder, silence, "a")
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
 
@@ -2873,13 +2443,7 @@ def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
 
 
 def test_the_retag_entry_declares_the_file_surface_alone_and_no_database_decision():
-    """R-246 CLOSED, and it is asserted against the absence that caused it.
-
-    Nothing in ``src`` reaches the row relink, so declaring ``db_metadata``
-    would say something false in the registry. The cloud sync decision goes
-    with it, since this verb opens no database. The two are asserted together,
-    because restoring either alone leaves a registry the contract suite refuses.
-    """
+    """R-246: no database is opened, so no ``db_metadata`` and no cloud sync decision."""
     entry = registry.entry("tag.retag")
 
     assert entry.writes == frozenset({"files"}), (
@@ -2903,12 +2467,7 @@ def test_the_retag_entry_declares_the_file_surface_alone_and_no_database_decisio
 def test_the_retag_resume_argv_carries_the_gate_run_before_the_verb_path(
     repair_on, folder, silence, monkeypatch
 ):
-    """The flag belongs to the ROOT parser, so its position is the contract.
-
-    A decision belongs to the invocation, and the run flag after the verb path
-    is not a flag this parser accepts. Asserted through the real ``argv_for``, so
-    the command line checked is the one the job driver would spawn.
-    """
+    """The run flag belongs to the root parser, so it precedes the verb path."""
     coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
     gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
@@ -3060,8 +2619,7 @@ def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it
 
 
 def test_the_off_taxonomy_warning_names_a_folders_own_name_with_its_one_answer():
-    """R-1184: a folder's own name in another case is named with the one
-    answer it has, and without a readable taxonomy the warning is unchanged."""
+    """R-1184: named with its one answer; with no readable taxonomy the warning is unchanged."""
     from cratekit.core import taxonomy
 
     declared = taxonomy.load_taxonomy(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
@@ -3076,10 +2634,7 @@ def test_the_off_taxonomy_warning_names_a_folders_own_name_with_its_one_answer()
 def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_when_the_copy_breaks(
     cfg, folder, silence, monkeypatch
 ):
-    """R-1184 through the dispatcher. The sweep writes the catalogue's word as
-    given, so a folder's own name in another case is on disk and named, with
-    the alias to its own folder. A copy that no longer loads at the report
-    keeps the plain warning rather than refusing the report."""
+    """R-1184: a folder's own name in another case is named; a broken copy warns plainly."""
     from tests.test_active_taxonomy import write_active
 
     for name in ("a", "b"):
@@ -3110,9 +2665,7 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
 def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
     cfg, folder, silence, monkeypatch
 ):
-    """U244, through the verb: the default walk, Beatport missing both files and
-    no Discogs token recorded. Both are ``sources-unread``, the warning names
-    the login step, and the unread tally names Discogs rather than nothing."""
+    """U244: with no Discogs token both files are ``sources-unread`` and the login step is named."""
     for name in ("a", "b"):
         place(folder, silence, name)
 

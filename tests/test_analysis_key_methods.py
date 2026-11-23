@@ -1,9 +1,7 @@
 """U241: the three ways the key's chroma is taken, on audio whose key is known.
 
-The windowed key hears a key change wherever it falls, a track shorter than
-its windows is the whole track method bit for bit, and the drift is still
-read over the whole track. Agreement with rekordbox is an attended sitting's
-(A121). Skipped where the analysis extra is absent.
+Agreement with rekordbox is an attended sitting's (A121). Skipped where the
+analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -75,12 +73,8 @@ def test_a_key_that_changes_late_does_not_take_the_track(method):
 
 @pytest.mark.parametrize("method", [detect.KEY_WHOLE, detect.KEY_WINDOWS])
 def test_a_key_that_arrives_after_the_intro_is_the_tracks_key(method):
-    """A quarter in one key, the rest in another: windows over the WHOLE track hear it.
-
-    The opening thirty seconds alone are in the first key, which the last
-    assertion shows, so a windowed method that read only the start of the
-    track would name the wrong one. That is what the spread is for.
-    """
+    """A quarter in one key, the rest in another: windows over the whole track hear it,
+    where the opening thirty seconds alone name the first key."""
     samples = _two_keys(260.0, 0.25)
     assert _key(samples, method) == F_SHARP_MAJOR
     assert _key(samples[: int(30.0 * RATE)], detect.KEY_WHOLE) == C_MAJOR

@@ -1,13 +1,9 @@
 """U261: one process validates the stored provider session once, and an unchanged
 session is not written back to the keychain.
 
-Driven against the in memory keychain and a counting client whose login sends the two
-requests the provider library sends, through a transport the real gate wraps.
-
-1. An unchanged session makes no keychain write, and a refreshed one is written once.
-2. One process validates the session once however many times either seam resolves.
-3. A refused session is forgotten for every seam that shares the client.
-4. The gate is asked before every use, and a login that failed holds nothing.
+Against the in memory keychain and a counting client whose login sends the
+library's two requests through a gated transport. A refreshed session is written
+once, a refused one forgotten for every seam, and a failed login holds nothing.
 """
 
 from __future__ import annotations
@@ -72,10 +68,7 @@ class Transport:
 
 
 class Client:
-    """A client whose login sends the library's two requests and refuses on any non 200.
-
-    ``refresh_to`` stands for a login that refreshed the access token.
-    """
+    """A client whose login sends two requests, refusing any non 200; ``refresh_to`` refreshes."""
 
     def __init__(self, *, status: int = 200, refresh_to: str | None = None,
                  country_code: str | None = None) -> None:

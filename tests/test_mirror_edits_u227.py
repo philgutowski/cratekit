@@ -1,7 +1,6 @@
-"""U227: a track queued for download by an account edit is filed where the edit put it.
+"""U227: a track queued by an account edit is filed where the edit put it.
 
-The landing's own filing is read as the landing's and the edit carried once; a change in
-rekordbox after the landing goes by the later change rule. Pure.
+The landing's own filing is the landing's and the edit is carried once. Pure.
 """
 
 from __future__ import annotations

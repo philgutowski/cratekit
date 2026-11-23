@@ -1,10 +1,7 @@
 """R-1305. A rejected session whose answer body is not JSON still asks for a login.
 
-The client decodes an error body inside its own handler of the HTTP error, so a
-401 or 403 carrying a gateway's page surfaces as a decode error with the HTTP
-error as its context, three links down. Every failure here is raised by the
-installed client's own handler (``tests.provider_answers``). The two readers:
-``account.provider_failure`` after login, ``provider_session.client_session`` at it.
+A 401 or 403 page surfaces as a decode error three links above the HTTP error;
+failures are raised by the installed client's own handler (``tests.provider_answers``).
 """
 
 from __future__ import annotations
@@ -43,13 +40,7 @@ class AuthenticationError(Exception):
 
 
 class Looping(ValueError):
-    """A failure whose links lead back to it, and that will not be walked forever.
-
-    Each read of a link is counted, and past a bound far above any honest walk's
-    the read raises, once, so an unguarded walk fails rather than hanging the
-    suite. The links are the interpreter's own fields, set through the base
-    descriptors, so the chain is a real one.
-    """
+    """A real cyclic chain whose link reads raise once past a bound, so a walk cannot hang."""
 
     #: Reads of a link past which the walk is taken not to end.
     BOUND = 1000
@@ -96,8 +87,7 @@ def cyclic() -> Looping:
 
 
 def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
-    """``later``'s failure, raised while a refusal raised from a 401 is handled: the 401 is
-    reachable under it, and only the walk's refusal limit keeps it out."""
+    """``later``'s failure under a refusal raised from a 401; only the refusal limit hides it."""
     rejected = client_failure(401, HTML)
     refusal = account.provider_failure(rejected, "heart the track 8")
     assert refusal.cause.reason == "credential-missing"
@@ -236,8 +226,7 @@ def test_a_login_rejected_with_a_page_tells_the_person_to_log_in_again(installed
     ],
 )
 def test_a_login_failure_that_is_no_rejection_is_a_wait(monkeypatch, failure):
-    """A cyclic chain, an outage met while a rejection was handled, and an authentication
-    error reached only as context: each a wait at login, as after it."""
+    """A cyclic chain, an outage under a rejection, and context only: each a wait at login."""
     login_with(monkeypatch, failure())
     with pytest.raises(provider_session.ProviderUnavailable):
         provider_session.client_session()

@@ -1,33 +1,13 @@
 """The helpers every package used to write for itself, tested once at their home (U298).
 
-U290's survey found the same few functions written in dozens of files: the
-config load that turns a ``ConfigError`` into ``config-unusable``, the lookup
-of a verb's gate by name, the read of who approved it, the ``job_state``
-payload, and the paths one queued item's report is staged at and lands at.
-U298 gave each one home. A home is only worth having if what it does is pinned
-where it lives, so that the next caller does not have to prove it again and a
-change to it is one failing test, not forty.
+Functions once written in dozens of files each got one home (U290's survey),
+and what each does is pinned here, so a change to one is one failing test.
 
-What each section holds:
-
-1. ``cli.output``: the plumbing a verb's shell needs. A verb that lives
-   beside its domain may import that module and no other part of the shell,
-   which is why it is the home.
-2. ``core.jobs``: the report base, :class:`cratekit.core.jobs.Artifacts`.
-   The job report and the job shell are held where they always were, in
-   ``tests/test_tag_workers.py`` and ``tests/test_adopt_workers.py``, through
-   the two shell modules that now only name them.
-3. ``core.private_store``: the store both queues open, with each queue's own
-   rule for a file it cannot make private.
-4. ``core.config``: the lock held across a read then write cycle, the two
-   locks that do not wait and the one that does, and the read of a state
-   document that refuses what it cannot parse.
-5. The small readers a second package came to need: a count, the two name
-   templates, the name budget, a path's device, a registry entry by its tree.
-6. ``core.jobs``: the tail of every resume.
-7. ``write``: the rollback that never hides its cause, where a membership row
-   holds its columns, and the commit a row write records.
-8. What two modules of one feature each wrote, where it now lives.
+Sections: 1. ``cli.output``, the plumbing a verb's shell needs. 2. ``core.jobs``,
+the report base. 3. ``core.private_store``. 4. ``core.config``'s locks and its
+state document read. 5. Small shared readers. 6. ``core.jobs``, the tail of every
+resume. 7. ``write``: rollback, membership columns, the commit. 8. What two
+modules of one feature each wrote.
 """
 
 from __future__ import annotations
@@ -94,9 +74,7 @@ def an_entry(*names: str, verb: str = "tag.rows"):
     return SimpleNamespace(name=verb, gates=tuple(SimpleNamespace(name=name) for name in names))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. cli.output: what a verb's shell needs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_readable_config_is_returned_as_config_load_reads_it(cfg):
@@ -223,9 +201,7 @@ def test_the_two_shells_name_the_one_report_the_one_no_op_and_the_one_resume():
         assert shell.no_op is output.no_job
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. core.jobs: where one item's report is staged, and where it lands
-# ═══════════════════════════════════════════════════════════════════════════
 
 REPORTS = jobs.Artifacts(final="home-artifacts", staging="home-staging")
 
@@ -358,11 +334,7 @@ def test_a_file_that_is_named_for_no_ordinal_is_no_report(cfg):
 
 
 def test_each_feature_orders_its_committed_reports_as_it_did_before_the_base(cfg):
-    """Adoption sorts every file by number and outbound by name: neither was changed.
-
-    The base takes the order as an argument so that sharing the reader did not
-    quietly decide, for two features, which files are reports.
-    """
+    """Adoption sorts every file by number and outbound by name: neither was changed."""
     for module in (adopt_artifacts, outbound_artifacts):
         for ordinal in (10000, 2, 9999):
             module.final_path(cfg, "job-1", ordinal).write_text(
@@ -396,14 +368,9 @@ def test_a_report_location_is_two_different_directory_names(final, staging):
 
 
 def test_the_report_base_never_resolves_the_queue_root_for_itself():
-    """KTD9's defect behind an indirection, asserted where the paths are now built.
+    """KTD9: the paths are built from the job's configuration, never the current one.
 
-    ``jobs.store_dir()`` with no argument loads the CURRENT configuration, and a
-    resume that ran against a configuration somebody edited since the job was
-    queued is the bug KTD9 exists to close. The queue is installation scoped,
-    so no behaviour tells the two calls apart today, which is why this reads
-    the source. The feature modules passed this guard when they built the
-    paths themselves; the base they now share has to.
+    No behaviour tells the two calls apart today, so this reads the source.
     """
     tree = ast.parse((SRC_ROOT / "core" / "jobs.py").read_text(encoding="utf-8"))
     (base,) = [
@@ -423,21 +390,14 @@ def test_the_report_base_never_resolves_the_queue_root_for_itself():
     assert all(isinstance(call.args[0], ast.Name) and call.args[0].id == "cfg" for call in resolvers)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. core.private_store: the store both queues open
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("kind", [jobs.JobStore, review.ReviewStore])
 def test_a_store_is_opened_private_before_its_log_exists_and_on_the_queues_pragmas(
     tmp_path, monkeypatch, kind
 ):
-    """The mode goes on before the write ahead log pragma, sidecars included.
-
-    SQLite gives the log and the shared memory file the permissions the
-    database file has when it creates them, so a mode set afterwards leaves two
-    umask moded sidecars beside a correctly moded database.
-    """
+    """The mode goes on before the write ahead log pragma, so SQLite's sidecars inherit it."""
     path = tmp_path / "store.db"
     seen: list[tuple[str, bool]] = []
 
@@ -464,11 +424,7 @@ def test_each_queue_keeps_its_own_rule_for_a_file_it_cannot_make_private():
 
 
 def test_the_review_queue_opens_its_store_without_the_job_engine():
-    """The reports package persists through ``core.review`` alone (R12).
-
-    What that module imports is what the reports guard has to be able to name,
-    so the store's home is a module of its own and never ``core.jobs``.
-    """
+    """The reports package persists through ``core.review`` alone (R12), never ``core.jobs``."""
     tree = ast.parse((SRC_ROOT / "core" / "review.py").read_text(encoding="utf-8"))
     imported = {
         alias.name if isinstance(node, ast.Import) else f"{node.module}.{alias.name}"
@@ -510,9 +466,7 @@ def test_a_store_that_cannot_be_opened_names_its_path_on_the_drivers_own_error(t
     assert getattr(raised.value, DATABASE_PATH_ATTRIBUTE) == str(missing)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. core.config: the lock and the read every state document's store shared
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class StoreRefused(Exception):
@@ -827,12 +781,7 @@ def test_the_read_in_the_platforms_encoding_agrees_with_the_other_on_every_share
 
 
 def test_bytes_that_are_not_text_leave_the_platform_read_as_the_decoding_failure_they_are(tmp_path):
-    """The one case the two reads differ on, which is why they are two functions.
-
-    What the platform's own decoder makes of the bytes is read here and not
-    assumed: where it refuses them, the failure leaves undressed, and where it
-    accepts any byte, what it produced is refused as not JSON.
-    """
+    """The one case the two reads differ on; the platform decoder is read, not assumed."""
     path = tmp_path / "document.json"
     path.write_bytes(b"\xff\xfe\x00")
     try:
@@ -869,9 +818,7 @@ def test_a_config_failure_and_an_adapter_failure_are_remedied_and_neither_is_the
     assert not issubclass(config.ConfigError, acquire_adapter.AdapterError)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The small readers a second package came to need
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -945,9 +892,7 @@ def test_a_registry_entry_is_found_by_its_tree_identifier_and_the_first_recorded
     assert tree_registry.by_tree_id(iter(()), "genres") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. core.jobs: the tail of every resume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def a_job(job_id: str, *, is_open: bool):
@@ -1005,9 +950,7 @@ def test_a_job_that_ended_cleanly_before_the_ask_is_returned_with_no_warnings(mo
     assert jobs.resumed(SimpleNamespace(run_job=None), "the store", done) == (done, ())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. write: what every guarded writer does on its way in and on its way out
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def a_handle(rollback):
@@ -1106,9 +1049,7 @@ def test_the_two_row_writes_report_through_one_shape_and_one_adds_what_it_renumb
     assert not isinstance(genres, row_defaults.Written)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. What two modules of one feature each wrote, held where it now lives
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_module_this_build_can_import_is_importable_and_one_it_cannot_is_not(tmp_path, monkeypatch):

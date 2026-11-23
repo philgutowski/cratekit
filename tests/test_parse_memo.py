@@ -1,22 +1,9 @@
 """The parse memo the package wide guards share inside one test, held to its promises (U258).
 
-``tests/_parse_memo.py`` hands one tree per source text to every question asked
-inside a sharing scope. That buys back the parses a test used to repeat, and it
-is only sound if four things hold, each driven here rather than trusted:
-
-1. ONE PARSE PER TEXT inside a scope, and the sweeps that share one really do
-   parse each file once between them.
-2. NEVER STALE. The key is the text itself, so a file edited between two reads
-   is parsed afresh and answered from what it now says.
-3. NOTHING HELD OUTSIDE A SCOPE. Outside one, ``parsed`` is ``ast.parse``, and
-   a scope's trees are dropped when it ends, however it ends.
-4. NEVER WRITTEN. Every question the shared scopes ask, run over one shared tree
-   in either order, answers as it does over a tree of its own, and leaves each
-   tree equal to a fresh parse of its text, node by node, field by field, with
-   no attribute added.
-
-And the at risk population test, which now reads the package once, still fails
-naming a module planted beside the real ones.
+``tests/_parse_memo.py`` hands one tree per source text to a sharing scope. It is
+sound only if each text is parsed once per scope, never served stale, held by
+nothing outside a scope, and never written to; and the at risk population test
+that reads the package once still names a planted module.
 """
 
 from __future__ import annotations
@@ -46,9 +33,7 @@ def parses(monkeypatch):
     return calls
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One parse per text, inside a scope and only there
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_inside_a_scope_one_text_is_parsed_once_however_many_ask(parses):
@@ -115,21 +100,12 @@ def test_a_decorated_test_shares_and_keeps_its_name_and_its_fixtures(parses):
 
 
 def test_the_population_sweeps_parse_each_package_file_once_between_them(parses):
-    """The brief's count, over the real package and the helpers that sweep it.
-
-    The at risk population test asks six helpers about the same files, and before
-    U258 each parsed every file again and two of them read the package again
-    once per module. Inside one scope the first sweep parses each distinct text
-    once and every sweep after it parses nothing.
-    """
-    # The first eighty modules in the sweep's own order: the count is per file, so
-    # a slice measures it as well as the whole package does at a quarter the cost.
+    """Inside one scope the first sweep parses each distinct text once, later sweeps none."""
+    # The count is per file, so eighty modules measure it as well as the whole package.
     scanned = reserved.package_sources()[:80]
     distinct = {source for _, source in scanned}
     assert len(distinct) >= 51, f"the slice collapsed to {len(distinct)} texts"
-    # The cause set imports the package and reads each module's annotations once
-    # per process, through its own cache; asked first so its parses, which are
-    # not a sweep of these texts, stay out of the count.
+    # The cause set parses through its own cache; asked first to keep it out of the count.
     reserved.declared_causes()
     parses.clear()
     with sharing_parses():
@@ -153,17 +129,11 @@ def test_the_population_sweeps_parse_each_package_file_once_between_them(parses)
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Never stale
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_file_edited_inside_a_scope_is_read_as_it_now_is(tmp_path, parses):
-    """The case a key on the path or the size would get wrong, on disk.
-
-    The edit keeps the file's length, so a key on the path, the size, or both
-    would serve the old tree; the text differs, so the memo cannot.
-    """
+    """An edit that keeps the file's length is read afresh, where a path or size key would not."""
     module = tmp_path / "planted.py"
     module.write_text('CODES = {"rclone-missing": 30}\n')
     with sharing_parses():
@@ -179,13 +149,9 @@ def test_a_file_edited_inside_a_scope_is_read_as_it_now_is(tmp_path, parses):
     assert len(parses) == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Never written
-# ═══════════════════════════════════════════════════════════════════════════
 
-#: Real modules the shared questions have something to say about: the two
-#: reservation table owners, the vocabulary with its own enum, and a module the
-#: at risk population counts.
+#: Real modules the shared questions have something to say about.
 SHARED_MODULES = (
     "cli/exit_codes.py",
     "core/cause.py",
@@ -193,8 +159,7 @@ SHARED_MODULES = (
     "write/metadata.py",
 )
 
-#: A planted second table, so the questions a real module answers with nothing
-#: have an answer to lose if a shared tree were written to.
+#: A planted second table, so a question a real module answers with nothing has one to lose.
 PLANTED = {
     "core/planted_table.py": (
         'CODES = {\n    "rclone-missing": 30,\n    "rekordbox-running": 21,\n}\n'
@@ -232,12 +197,7 @@ def _asked(
 
 
 def _fingerprint(tree: ast.AST) -> tuple[str, list[tuple[str, tuple[str, ...]]]]:
-    """A tree's every field and position, and every attribute any node carries.
-
-    ``ast.dump`` sees a rewritten field or a moved line; the attribute names see a
-    note a guard left on a node, a parent pointer or a cache, which ``ast.dump``
-    does not print.
-    """
+    """A tree's every field and position, and every attribute name, which ``ast.dump`` omits."""
     return (
         ast.dump(tree, include_attributes=True),
         [(type(node).__name__, tuple(sorted(vars(node)))) for node in ast.walk(tree)],
@@ -270,12 +230,7 @@ def test_every_shared_question_leaves_a_shared_tree_as_a_fresh_parse_would():
 
 
 def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
-    """The brief's scenario: questions sharing a tree answer alike in either order.
-
-    One pass asks each module's questions in the order written over shared trees,
-    another in the reverse order over a fresh scope, and a third asks each
-    question alone, outside any scope, over a tree nobody else touched.
-    """
+    """Questions over shared trees answer alike forward, backward, and each over a tree alone."""
     sources = _sources()
     forward: dict[str, dict[str, object]] = {}
     with sharing_parses():
@@ -308,22 +263,10 @@ def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
     assert any(answers["named_with_own"] for answers in forward.values())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The population test that now reads the package once still sees all of it
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# It was rewritten to read the package once and hand that reading to every
-# helper. It is run here over the real package plus one planted module holding a
-# second table, and has to fail naming it. What this catches is narrow and said
-# so: the test stops at its first pin, the kebab literals, so it proves that
-# helper reads what it was handed and no other. A helper further down reading
-# the package again for itself sees the same files on the real tree and passes
-# here. The parse count above catches that for two of the helpers it sweeps,
-# kebab_literals_by_module and modules_holding_a_cause_literal: it hands them a
-# slice of the package, so either reading the whole package for itself parses
-# more files than it was handed. It does not reach modules_holding_a_named_cause,
-# which it does not sweep, or holds_an_in_range_integer, which is handed one text
-# at a time; the review of 2026-11-12 drove both and found them unreached.
+# It stops at its first pin, so this proves only the kebab literal helper reads what
+# it was handed; modules_holding_a_named_cause and holds_an_in_range_integer are
+# unreached by this and by the parse count (review of 2026-11-12).
 
 
 def test_the_at_risk_population_names_a_planted_module(monkeypatch):

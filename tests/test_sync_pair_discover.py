@@ -20,6 +20,7 @@ from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover
 from tests import outbound_fakes
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_rb_writer_db import _build_disposable_database
@@ -201,15 +202,13 @@ def sync(args: list[str] = VERB, *, rekordbox: str = "apply", account: str = "ap
             return code, envelope
         run_id = envelope["run_id"]
         gate = envelope["cause"]["detail"]["gate"]
-        decided, said = drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
     raise AssertionError("the verb kept asking after both gates were answered")
 
 
 def plan_only(args: list[str] = VERB):
     """The plan both gates show, both answered skip, so nothing is written."""
-    code, envelope = sync(args, rekordbox="skip", account="skip")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(args, rekordbox="skip", account="skip"))
     return envelope["data"]
 
 
@@ -266,8 +265,7 @@ def _items(plan, side: str, action: str) -> list[dict]:
 def test_a_gig_ready_playlist_is_made_on_the_account_in_its_folder_and_filled(world, cfg):
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     inside = world.in_folder("GIG READY")
     assert list(inside) == ["GIG READY Opener"]
     made = inside["GIG READY Opener"]
@@ -285,8 +283,7 @@ def test_a_playlist_deleted_in_rekordbox_is_never_found(world):
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)
     world.delete_rekordbox(world.playlist("Closer", "2", under=gig))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert list(world.in_folder("GIG READY")) == ["GIG READY Opener"]
 
 
@@ -296,8 +293,7 @@ def test_a_second_run_plans_nothing(world):
     assert sync()[0] == int(ExitCode.OK)
     created = list(world.account.created)
     asked = len(world.account.matches)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert envelope["outcome"] == "no_op"
     assert world.account.created == created
     assert len(world.account.matches) == asked
@@ -321,8 +317,7 @@ def test_an_archive_playlist_is_listed_and_never_written(world):
     plan = plan_only()
     skipped = _items(plan, "discovery", pair_discover.SKIPPED)
     assert [item["where"] for item in skipped] == ["ARCHIVE / Old"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert "ARCHIVE" not in world.account.folder_names.values()
     assert not any("Old" in name for name in world.account.titles.values())
     assert "ARCHIVE" in _said(envelope, pair_cli.NOT_DISCOVERED)
@@ -351,8 +346,7 @@ def test_cratekits_own_trees_and_the_favorites_folder_are_never_discovered(world
     world.playlist("Favorites 2026-10", "3", under=favorites)
     twins = world.folder("Custom Playlists 2026")
     world.playlist("A twin", "4", under=twins)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert envelope["outcome"] == "no_op"
     assert world.account.created == []
     assert world.account.folders_created == []
@@ -371,8 +365,7 @@ def test_two_playlists_taking_one_title_refuse_that_title_only(world):
     a = world.folder("A", under=gig)
     world.playlist("B", "2", under=a)
     world.playlist("Closer", "3", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert list(world.in_folder("GIG READY")) == ["GIG READY Closer"]
     said = _said(envelope, pair_cli.NOT_DISCOVERED)
     assert "GIG READY A B" in said
@@ -396,8 +389,7 @@ def test_an_existing_root_folder_of_the_name_is_reused_and_a_persons_title_is_le
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)
     world.playlist("Closer", "2", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.folders_created == ["GIG READY"]
     inside = world.in_folder("GIG READY")
     assert sorted(inside) == ["GIG READY Closer", "GIG READY Opener"]
@@ -412,8 +404,7 @@ def test_two_root_folders_of_the_name_leave_that_folder_out(world):
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)
     world.playlist("Loose", "2")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert sorted(world.account.titles.values()) == ["Playlists Loose"]
     assert "2 root folders" in _said(envelope, pair_cli.NOT_DISCOVERED)
 
@@ -425,8 +416,7 @@ def test_a_root_folder_another_list_of_cratekits_keeps_is_not_adopted(world, cfg
     ledger.reserve_mirror_folder(cfg, "GIG READY", lambda: "unused", adopt=folder_id)
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.created == []
     assert "another list" in _said(envelope, pair_cli.NOT_DISCOVERED)
 
@@ -434,8 +424,7 @@ def test_a_root_folder_another_list_of_cratekits_keeps_is_not_adopted(world, cfg
 def test_skipping_the_account_gate_makes_and_marks_nothing(world, cfg):
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)
-    code, envelope = sync(account="skip")
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(account="skip"))
     assert world.account.created == []
     assert pairs.PairStore(cfg).all() == {}
 
@@ -490,12 +479,10 @@ def test_an_unowned_track_added_on_the_account_is_queued_once_and_then_awaiting(
     opener, made = _made_pair(world)
     world.account.playlists[made].append("t99")
     world.codes["t99"] = "USBBB2699999"
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert len(envelope["data"]["totals"]["queued_jobs"]) == 1
     assert world.held(opener) == ["1", "2"]
-    code, again = sync()
-    assert code == int(ExitCode.OK), again
+    again = exited(sync())
     assert again["data"]["totals"]["queued_jobs"] == []
     assert pair_cli.AWAITING in _codes(again)
 
@@ -515,15 +502,13 @@ def test_a_removal_on_each_side_comes_off_the_other(world):
 def test_a_playlist_deleted_on_the_account_unpairs_stays_and_is_not_made_again(world, cfg):
     opener, made = _made_pair(world)
     world.account.remove_playlist(made)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.RELEASED in _codes(envelope)
     assert pairs.PairStore(cfg).get(made) is None
     assert world.held(opener) == ["1", "2"]
     assert pairs.PairStore(cfg).released().rekordbox == frozenset({opener})
     created = list(world.account.created)
-    code, again = sync()
-    assert code == int(ExitCode.OK), again
+    again = exited(sync())
     assert world.account.created == created
     plan_said = _said(again, pair_cli.NOT_DISCOVERED)
     assert "Opener" in plan_said
@@ -532,8 +517,7 @@ def test_a_playlist_deleted_on_the_account_unpairs_stays_and_is_not_made_again(w
 def test_a_playlist_deleted_in_rekordbox_unpairs_and_leaves_the_account_playlist(world, cfg):
     opener, made = _made_pair(world)
     world.delete_rekordbox(opener)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.RELEASED in _codes(envelope)
     assert pairs.PairStore(cfg).get(made) is None
     assert world.account.playlists[made] == ["t1", "t2"]
@@ -544,8 +528,7 @@ def test_a_hand_named_pair_whose_rekordbox_playlist_is_gone_is_still_left_out(wo
     """The release is a made pair's; a pair a person named keeps U130's rule."""
     theirs = world.account.create_playlist("Theirs")
     pairs.PairStore(cfg).mark(theirs, "no-such-playlist", name="Theirs")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     assert pairs.PairStore(cfg).get(theirs) is not None
 
@@ -562,8 +545,7 @@ def test_a_short_account_listing_removes_nothing(world, monkeypatch):
 
     monkeypatch.setattr(LivePlaylist, "tracks", short)
     monkeypatch.setattr(LivePlaylist, "num_tracks", property(lambda self: 3))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(opener) == ["1", "2", "3"]
     assert world.account.playlists[made] == ["t1", "t2", "t3"]
     assert pair_cli.WITHHELD in _codes(envelope)
@@ -578,8 +560,7 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     world.account.reasons["3"] = "the provider has no track under this ISRC"
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     made = world.titled("GIG READY Opener")
     assert world.account.playlists[made] == ["t1"]
     assert world.held(opener) == ["1", "2", "3"]
@@ -588,10 +569,8 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     assert pairs.PairStore(cfg).misses()["3"] == pairs.Miss(
         isrc("3"), "the provider has no track under this ISRC"
     )
-    code, again = sync()
-    assert code == int(ExitCode.OK), again
-    code, third = sync()
-    assert code == int(ExitCode.OK), third
+    exited(sync())
+    third = exited(sync())
     assert [one["identity"] for one in world.account.matches].count("3") == 1
     assert "2" not in [one["identity"] for one in world.account.matches]
     assert third["data"]["totals"]["unmatched"] == 2
@@ -754,14 +733,12 @@ def test_a_made_pair_moved_into_archive_is_let_go_and_never_written_again(world,
     archive = world.folder("ARCHIVE")
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
     world.account.playlists[made].append("t3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(opener) == ["1", "2"]
     assert pairs.PairStore(cfg).get(made) is None
     assert "ARCHIVE" in _said(envelope, pair_cli.RELEASED)
     assert world.account.playlists[made] == ["t1", "t2", "t3"]
-    code, again = sync()
-    assert code == int(ExitCode.OK), again
+    exited(sync())
     assert world.held(opener) == ["1", "2"]
 
 
@@ -772,8 +749,7 @@ def test_two_favourites_playlists_leave_both_folders_out_and_say_so(world):
     favorites = world.folder("Favorites")
     world.playlist("All Favorites", "3", under=favorites)
     world.playlist("Loose", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert sorted(world.account.titles.values()) == ["Playlists Loose"]
     said = _said(envelope, pair_cli.NOT_DISCOVERED)
     assert "2 playlists are named 'All Favorites'" in said
@@ -854,8 +830,7 @@ def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(
     world.account.playlists[made].append("t3")
     gig = [pid for pid, name in world.sql("SELECT ID, Name FROM djmdPlaylist") if name == "GIG READY"][0]
     world.playlist("Closer", "4", under=str(gig))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(opener) == ["1", "2"]
     assert pairs.PairStore(cfg).get(made) is None
     assert pair_cli.RELEASED in _codes(envelope)
@@ -867,8 +842,7 @@ def test_a_made_pair_deleted_inside_archive_is_said_to_be_gone(world):
     archive = world.folder("ARCHIVE")
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
     world.delete_rekordbox(opener)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert "playlist is gone" in _said(envelope, pair_cli.RELEASED)
 
 
@@ -890,7 +864,6 @@ def test_a_favourites_name_inside_another_apps_folder_does_not_unsettle_the_home
     favorites = world.folder("Favorites")
     world.playlist("All Favorites", "2", under=favorites)
     world.playlist("Loose", "3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert sorted(world.account.titles.values()) == ["Playlists Loose"]
     assert pair_cli.NOT_DISCOVERED not in _codes(envelope)

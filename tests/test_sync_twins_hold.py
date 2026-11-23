@@ -1,9 +1,8 @@
 """U221: a twin's missing tracks are held for Phillip's choice per playlist.
 
-``crate sync twins`` records each twin's missing tracks as its pair's hold,
-``crate sync pair`` names them and queues none, and ``crate sync release``
-lets one twin's or every twin's go at its own explicit gate. Driven through
-the dispatcher on the disposable world tests/test_sync_twins.py builds.
+``sync twins`` records the hold, ``sync pair`` names it and queues none, and
+``sync release`` lets one or every twin's go at its own explicit gate, on the
+world tests/test_sync_twins.py builds.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, release_cli, twins, twins_cli
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -88,9 +88,7 @@ def _two_twins(w: World) -> None:
     w.playlist(OTHER, OTHER_NAME, ["t4", "t23", "t5"])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_twin_with_three_missing_tracks_queues_none_and_names_three_on_hold(world, cfg):
@@ -248,9 +246,7 @@ def test_release_all_lets_every_twin_go(world, cfg):
     assert _queued(synced) == ["t20", "t21", "t22", "t23"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A twin paired before U221, read by time
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _as_before_u221(cfg) -> str:
@@ -296,9 +292,7 @@ def test_a_twin_paired_before_u221_is_released_by_name_and_counted_by_time(world
     assert _queued(synced) == ["t20", "t21", "t22"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The release verb's refusals and its plan of nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_abort_lets_nothing_go(world, cfg):
@@ -353,9 +347,7 @@ def test_a_twin_paired_again_since_the_plan_is_left_held(world, cfg):
     assert sorted(store.release_hold({PHIL: held.rekordbox_id})) == [PHIL]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The other makers, the note and the record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_backfills_note_says_the_missing_are_held_not_queued(world):
@@ -428,9 +420,7 @@ def test_a_pair_that_is_no_twin_never_holds(cfg):
     assert not pair_cli.held_for_choice(None, "t1", {})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Late served tracks and stale links
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_short_listings_twin_records_no_hold_and_holds_a_track_served_later(world, cfg):

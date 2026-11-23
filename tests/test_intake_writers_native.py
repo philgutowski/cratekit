@@ -1,11 +1,9 @@
 """R-770: every intake writer chooses its medium by the intake tree's mode.
 
-Both callers of the intake emitter go through ``place_files``, driven by the
-landing and ``intake file``. Against the native landing's own fixtures this
-pins: ``intake file`` on a native tree adds one row and one batch playlist and
-writes no export (1), and on the bridge is unchanged (2); the splice refuses a
-native tree in its own words, never as a defect (3); the verbs that never
-splice run the same on both media (4); and one switch reads the mode (5). D1.
+``intake file`` on a native tree adds one row and one batch playlist and writes
+no export, and on the bridge is unchanged; the splice refuses a native tree in
+its own words; the verbs that never splice run the same on both media; and one
+switch reads the mode. D1.
 """
 
 from __future__ import annotations
@@ -13,6 +11,7 @@ from __future__ import annotations
 import ast
 import shutil
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -351,9 +350,7 @@ def test_an_answer_is_stale_once_the_file_changed_after_it(native_library, silen
 
 
 def test_intake_file_tags_its_row_vox_from_the_files_score(native_library, silence):
-    """U127 on the other native route: ``intake file`` plans through the same
-    engine, so a file scoring at the cut joins carrying the vox My Tag, the
-    screen says so, and adoption's reader answers the row."""
+    """U127 through ``intake file``: a file scoring at the cut joins with the vox My Tag."""
     from cratekit.adopt import placements as adopt_placements
     from tests.test_intake_land_vox_native import _calibrate, _seed_vocals
 
@@ -543,9 +540,7 @@ def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_ad
 def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_remedy(
     native_library, silence, tmp_path, monkeypatch
 ):
-    """A binding failure says what it leaves; the engine's skew refusal, whose
-    remedy is not its reason's default, keeps both, so a wrapper that dropped
-    the remedy would answer with another one."""
+    """A binding failure says what it leaves, and the skew refusal keeps its own remedy."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
 
@@ -657,9 +652,8 @@ def _assert_names_the_landing_and_no_defect(cause) -> None:
 def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
     native_library, silence, export, tmp_path
 ):
-    """``place_files`` is the one path every xml intake write takes, so the refusal
-    is there, for a caller that did not read the switch, and before it looks
-    for the export: "export the collection again" would be the wrong remedy."""
+    """The refusal sits in ``place_files``, the one xml intake path, before the export
+    is looked for, since re-exporting would be the wrong remedy."""
     cfg, _root = native_library
     path = _single(cfg, silence)
     destination = tmp_path / "direct_inboxed.xml"
@@ -678,9 +672,8 @@ def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
 def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_nothing(
     native_library, silence, export, tmp_path
 ):
-    """The pre-move check reaches the emitter on a copy, and the apply reads the
-    registry again before its first move (R-677) for a cutover recorded between
-    the verb's read and the engine's: each says what the splice says, unwrapped."""
+    """The pre-move check and the apply's second registry read (R-677) each say what
+    the splice says, unwrapped."""
     cfg, _root = native_library
     staged = _staged_one(cfg, silence)
     planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
@@ -697,13 +690,16 @@ def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_
     assert staged.exists() and not destination.exists()
     assert not (Path(cfg.library.root) / cfg.library.music_dir / "2026-09-30_batch").exists()
 def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_builder():
-    """The emitter guard says ``report-defect``, so every named caller builds its tree
-    through the one function that refuses a native tree first; a second builder
-    would be a second way past it."""
+    """Every caller builds its tree through the one function that refuses a native tree."""
     callers: dict[str, tuple[int, list[int]]] = {}
     builders: list[str] = []
     for module in sorted(SRC.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
+        text = module.read_text(encoding="utf-8")
+        # Neither name in the text, no node of either: only such modules are parsed.
+        folded = unicodedata.normalize("NFKC", text)
+        if "intake_tree" not in folded and "insert_intake_playlist" not in folded:
+            continue
+        tree = ast.parse(text)
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -851,9 +847,8 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     medium = ingest.intake_medium(cfg)
     assert (medium.declared, medium.registry, medium.native) == (None, None, False)
 def test_both_intake_verbs_read_the_one_switch_and_nothing_beside_it_reads_the_mode():
-    """No second switch: under ``intake`` the recorded mode is read in one module,
-    and both verbs that write the intake tree call the function there, as does
-    the set playlist's backfill (U121), only to refuse a bridge tree by name."""
+    """No second switch: the recorded mode is read in one module, which both verbs
+    and the set playlist's backfill (U121) call."""
     readers: set[str] = set()
     switched: set[str] = set()
     for module in sorted((SRC / "intake").glob("*.py")):

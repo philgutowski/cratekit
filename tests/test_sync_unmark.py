@@ -1,11 +1,8 @@
 """``crate sync unmark``: a mark a pass wrote can be taken off again (R-838).
 
-A legacy mark since U242: ``sync mark`` now holds a playlist as taken in the
-record (driven in ``tests/test_u242_taken.py``) and retitles nothing. This
-file drives the title half, which still puts back every prefix a pass wrote
-before U242. Each test lands a pass with ``tests/test_sync_mark.py``'s helpers
-and then writes the record entry and retitled listing a pre U242 mark left,
-as the live account holds them.
+Since U242 a mark retitles nothing (``tests/test_u242_taken.py``); this drives
+the title half, putting back every prefix a pass wrote before U242, over the
+record entry and retitled listing such a mark left.
 """
 
 from __future__ import annotations
@@ -22,6 +19,7 @@ from cratekit.intake import land_cli
 from cratekit.sync import mark_record
 from tests import outbound_fakes
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_sync_all import _playlist, _tracks
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture, re-exported
@@ -45,10 +43,7 @@ def fresh_cache():
 
 
 def _marked(slim_cfg, monkeypatch, *listed):
-    """A pass over ``listed``, landed whole and marked, the listing retitled to the mark.
-
-    Returns the fake catalogue, the account, the pass's name and the intake file.
-    """
+    """A pass over ``listed``, landed whole and marked, its listing retitled to the mark."""
     listed = listed or THREE
     fake, name = _swept_pass(monkeypatch, *listed)
     account = outbound_fakes.FakeAccount()
@@ -84,9 +79,7 @@ def _answered(name: str, *extra: str, option: str = "apply") -> tuple[int, dict]
     return drive(["--run", run_id, "sync", "unmark", "--pass", name, *extra])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration, and the record the mark keeps
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_one_remote_write_behind_an_explicit_gate():
@@ -120,9 +113,7 @@ def test_sync_mark_since_u242_holds_each_playlist_as_taken_under_the_pass(slim, 
     assert account.renamed == [] and mark_record.MarkRecord(slim).of_pass(name) == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_that_marked_three_plans_three_renames_back_and_applies_them(slim, monkeypatch):
@@ -218,9 +209,7 @@ def test_a_pass_the_record_holds_nothing_for_is_a_gated_plan_of_nothing(slim, mo
     assert account.renamed == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. Naming the pass, narrowing it, and the answer
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -327,9 +316,7 @@ def test_a_mark_after_an_unmark_clears_the_stamp(slim, monkeypatch):
     assert len(record.of_pass(name)) == 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A record that cannot be read is not an empty one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -374,9 +361,7 @@ def test_an_unreadable_record_refuses_rather_than_reading_as_empty(slim, monkeyp
     assert refused["cause"]["reason"] == "sync-mark-record-unusable"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. Stamps, record failures and a playlist gone from the account
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_title_already_put_back_is_skipped_without_a_stamp(slim, monkeypatch):

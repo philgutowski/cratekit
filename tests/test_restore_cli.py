@@ -1,9 +1,7 @@
 """U27: the restore verbs, and the ONE session that spans both halves of a restore.
 
-The conformance drives reach only the empty path, so the destructive session is
-driven here, through the real ``backup.plan_restore`` and ``backup.run_restore``:
-taking the lock a second time in this process raises, which makes one
-acquisition measurable. No name here is a real volume, person or track (D1).
+Driven through the real ``backup.plan_restore`` and ``backup.run_restore``; taking
+the lock twice in one process raises, so one acquisition is measurable (D1).
 """
 
 from __future__ import annotations
@@ -30,8 +28,7 @@ from cratekit.session import restore_cli
 from tests import test_restore as restore_suite
 from tests.test_restore import acknowledge, completed_session, gate_seams
 
-#: The configured, saved library fixture, by assignment so a test parameter of
-#: the same name does not shadow an import.
+#: The configured library fixture, assigned so a test parameter cannot shadow an import.
 cfg = restore_suite.cfg
 
 #: The confirmation gate's declared name, spelled once.
@@ -154,9 +151,7 @@ def _lock_taken_in_another_process(path: Path) -> int:
     ).returncode
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The one session. This is the unit.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(cfg, tmp_path):
@@ -222,8 +217,7 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
         **gate_seams(cfg),
     )
 
-    # Expected from the state inventory and the listing, never from the report
-    # itself: the database plus one per restored sidecar the snapshot holds.
+    # From the inventory and the listing, never the report: the database plus each sidecar.
     expected = 1 + len(restored)
     assert expected > 1, "the inventory restores no sidecar, so this pins nothing"
 
@@ -273,14 +267,11 @@ def _without_remote(cfg_value):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # restore list
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_counts(installed):
-    """AE18's first half, through the dispatcher, on a library never acknowledged:
-    read only, so it is outside the gates."""
+    """AE18's first half, through the dispatcher, unacknowledged: read only, outside the gates."""
     record, _captured = completed_session(installed)
 
     code, envelope = _drive(["restore", "list"])
@@ -312,9 +303,7 @@ def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
     assert only["unusable"], "an unusable capture was listed with no sentence saying why"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # restore run: the two acts, and what is behind them
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_confirmation_is_two_acts_and_then_the_database_comes_back(installed, monkeypatch):
@@ -366,8 +355,7 @@ def test_a_decision_recorded_against_an_offer_the_world_has_moved_past_is_refuse
     run_id = refused["run_id"]
     _answer(run_id, "restore")
 
-    # The world moves: the session's recorded change summary is no longer the one
-    # the person was shown when they answered.
+    # The world moves: the recorded change summary is no longer the one shown.
     record.change = session.ChangeSummary(
         (session.TreeChange(tree="routing", created=99, updated=99),)
     )
@@ -588,8 +576,7 @@ def test_the_digest_moves_when_the_discard_set_moves(installed):
 def test_the_digest_moves_when_the_mirror_half_or_the_rehearsal_flag_is_added(
     installed, monkeypatch
 ):
-    """Approving one session authorises neither a mirror pull nor, from a preview,
-    a restore that performs every step."""
+    """Approving one session authorises neither a mirror pull nor a full restore from a preview."""
     record, _captured = completed_session(installed)
     # The offer asks the remote which snapshot it is offering.
     _fake_rclone(installed, monkeypatch)
@@ -673,10 +660,7 @@ def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fix round 2: the two blocking findings an independent review drove, and the
-# command-line coverage whose absence was the cause of eleven of its zero rows.
-# ═══════════════════════════════════════════════════════════════════════════
+# Fix round 2: the review's two blocking findings, and command line coverage
 
 
 def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen(cfg):
@@ -1057,10 +1041,8 @@ def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
 
 
 
-# ── R-368: a restore into a directory that is not the live library ────────────
-#
-# Every property is one of the two hazards of the flag: a target that is the
-# live library by another name, and a target beside a capture rollback.
+# R-368: a restore into a directory that is not the live library: the live library
+# by another name, and a target beside a capture rollback.
 
 
 def _sidecars_beside(path: Path) -> tuple[Path, ...]:
@@ -1401,9 +1383,7 @@ def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Snapshot provenance, at the verb. What is approved is what arrives.
-# ═══════════════════════════════════════════════════════════════════════════
 
 LATER = "2026-08-22T235959Z"
 
@@ -1509,8 +1489,7 @@ def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, mo
     assert item["recorded_volume"] == "0000-aaaa"
     _answer(refused["run_id"], "restore")
 
-    # The same answer, against the invocation without the flag: refused, and
-    # refused as a mismatch before the recorded decision is even consulted.
+    # Without the flag: refused as a mismatch before the recorded decision is consulted.
     code, envelope = _drive(["--run", refused["run_id"], *named])
     assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
     assert _copied_from(log) == []
@@ -1615,25 +1594,26 @@ def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
     assert copied and all(f"/{STAMP}/db/" in source for source in copied), copied
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # restore bare-metal: the library volume is gone
-# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _recover(cfg, target, runner, **seams):
+    """The bare metal session, accepted, into ``target`` through ``runner``."""
+    return restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=runner, **seams
+    )
+
 
 #: A file the mirror carries, relative to the volume it was taken from.
 MIRRORED = "Music/a-track.flac"
 
 
 class _Remote:
-    """A runner that answers the listings and PERFORMS a copy as a file write.
+    """A runner that answers the listings and PERFORMS each copy as a file write.
 
-    The shell stand-in above transfers nothing, which is enough to read what
-    rclone was asked and not enough to say where bytes landed. This one writes a
-    file at every destination it is handed, so "only under the target" is
-    measured on the disk rather than read off an argument list. ``failing``
-    names the labels that exit non-zero, and a failing transfer writes nothing.
-    ``cut`` names the labels that land what they carry and THEN exit non-zero,
-    a transfer interrupted part way. ``failing_files`` names snapshot files
-    whose own transfer fails, so one half can land some of the fileset.
+    ``failing`` labels exit non-zero writing nothing; ``cut`` labels land what they
+    carry and THEN exit non-zero; ``failing_files`` names snapshot files whose own
+    transfer fails, so one half can land part of the fileset.
     """
 
     def __init__(
@@ -1665,8 +1645,7 @@ class _Remote:
         if command.label == backup.LIST_SNAPSHOT_CONTENTS:
             return backup.CommandResult(0, "".join(f"{name}\n" for name in self.holds))
         if command.label == backup.LIST_SHARE:
-            # A MIRRORED SHARE IS ALWAYS HELD, so an outside layout plans the
-            # share's transfer and a test that sees none is seeing a decision.
+            # A MIRRORED SHARE IS ALWAYS HELD, so an outside layout plans its transfer.
             return backup.CommandResult(0, "PIONEER/\n")
         if command.label in self.failing:
             return backup.CommandResult(3)
@@ -1676,8 +1655,7 @@ class _Remote:
         if source.rsplit("/", 1)[-1] in self.failing_files:
             return backup.CommandResult(3)
         if command.label == backup.RESTORE_MIRROR:
-            # AN ANCHORED EXCLUDE IS HONOURED, the way rclone reads one, so a
-            # mirror still carrying the database is measured on the disk.
+            # AN ANCHORED EXCLUDE IS HONOURED, as rclone reads one.
             argv = command.argv
             excluded = {
                 argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == "--exclude"
@@ -1730,9 +1708,7 @@ def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg,
     state = Path(config.installation_state_dir())
     before = _everything_on_disk(tmp_path, state)
 
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=remote, **seams
-    )
+    report = _recover(cfg, target, remote, **seams)
 
     assert (target / MIRRORED).read_bytes() == b"mirrored"
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
@@ -1821,9 +1797,7 @@ def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_i
     remote = _Remote(cfg)
 
     with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
-        )
+        _recover(cfg, target, remote, **_gone(cfg))
 
     assert excinfo.value.cause.reason == "recovery-target-refused"
     assert "already holds master.db" in excinfo.value.cause.message
@@ -1848,9 +1822,7 @@ def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
                 observed.append(_lock_taken_in_another_process(restore.recovery_lock_path()))
             return super().__call__(command)
 
-    restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Watching(cfg), **seams
-    )
+    _recover(cfg, target, _Watching(cfg), **seams)
 
     assert observed == [3, 3, 3], observed
     assert _lock_taken_in_another_process(restore.recovery_lock_path()) == 0
@@ -1868,9 +1840,7 @@ def test_a_recovery_already_running_here_refuses_the_second_one(cfg, tmp_path):
     with open(lock, "a+") as other:
         fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with pytest.raises(CratekitError) as excinfo:
-            restore_cli.recover_under_bare_metal_session(
-                cfg, target=target, accepted=True, runner=remote, **seams
-            )
+            _recover(cfg, target, remote, **seams)
 
     assert excinfo.value.cause.reason == "session-lock-held", excinfo.value.cause
     assert str(lock) in excinfo.value.cause.message
@@ -1909,9 +1879,7 @@ def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
     remote = _Remote(cfg, failing={backup.RESTORE_MIRROR})
 
     with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=remote, **seams
-        )
+        _recover(cfg, target, remote, **seams)
 
     cause = excinfo.value.cause
     assert cause.reason == "restore-transfer-failed"
@@ -1924,9 +1892,7 @@ def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not list(target.rglob("*.db"))
 
-    again = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Remote(cfg), **seams
-    )
+    again = _recover(cfg, target, _Remote(cfg), **seams)
     assert again.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
 
 
@@ -1935,9 +1901,7 @@ def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, 
     remote = _Remote(cfg, failing={backup.RESTORE_DATABASE})
 
     with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
-        )
+        _recover(cfg, target, remote, **_gone(cfg))
 
     cause = excinfo.value.cause
     assert cause.reason == "restore-transfer-failed"
@@ -2004,8 +1968,7 @@ def test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything(
     assert list(target.iterdir()) == []
 
 
-#: What an interrupted run leaves beside the music: the state directory the
-#: mirror carries, holding the review queue and a capture, both database files.
+#: An interrupted run's state directory beside the music: a review queue and a capture.
 CARRIED = (MIRRORED, ".cratekit/queue.db", ".cratekit/snapshots/one/master.db")
 
 
@@ -2015,15 +1978,11 @@ def test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed(cfg, 
     seams = _gone(cfg)
     first = _Remote(cfg, failing={backup.RESTORE_DATABASE}, mirrored=CARRIED)
     with pytest.raises(CratekitError) as failed:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=first, **seams
-        )
+        _recover(cfg, target, first, **seams)
     assert failed.value.cause.detail["half"] == restore_cli.DATABASE_HALF
     assert (target / ".cratekit" / "queue.db").exists(), "the fixture landed nothing"
 
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=CARRIED), **seams
-    )
+    report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
 
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / ".cratekit" / "queue.db").exists()
@@ -2036,16 +1995,12 @@ def test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed(cfg, tm
     seams = _gone(cfg)
     first = _Remote(cfg, cut={backup.RESTORE_MIRROR}, mirrored=CARRIED)
     with pytest.raises(CratekitError) as failed:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=first, **seams
-        )
+        _recover(cfg, target, first, **seams)
     assert failed.value.cause.detail["half"] == restore_cli.MIRROR_HALF
     assert not any("remove" in step for step in failed.value.cause.remediation.steps)
     assert len(list(target.rglob("*.db"))) == 2, "the fixture landed nothing"
 
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=CARRIED), **seams
-    )
+    report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
 
     assert report.mirror == (backup.RESTORE_MIRROR,)
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
@@ -2059,16 +2014,12 @@ def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
     stale = (*CARRIED, "db/master.db", "db/master.db-wal")
     first = _Remote(cfg, cut={backup.RESTORE_MIRROR}, mirrored=stale)
     with pytest.raises(CratekitError):
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=first, **seams
-        )
+        _recover(cfg, target, first, **seams)
     assert (target / ".cratekit" / "queue.db").exists(), "the fixture landed nothing"
     assert not (target / "db" / "master.db").exists()
     assert not (target / "db" / "master.db-wal").exists()
 
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=stale), **seams
-    )
+    report = _recover(cfg, target, _Remote(cfg, mirrored=stale), **seams)
 
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
@@ -2082,25 +2033,19 @@ def test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_st
     seams = _gone(cfg)
     first = _Remote(cfg, mirrored=CARRIED, failing_files={"master.db-wal"})
     with pytest.raises(CratekitError) as failed:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=first, **seams
-        )
+        _recover(cfg, target, first, **seams)
     step = failed.value.cause.remediation.steps[-1]
     assert (target / "db" / "master.db").exists(), "the fixture landed nothing"
 
     with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=CARRIED), **seams
-        )
+        _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
     assert "already holds master.db" in excinfo.value.cause.message
 
     assert "remove master.db and any companion" in step
     assert str(target / "db") in step
     for landed in (target / "db").glob("master.db*"):
         landed.unlink()
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=CARRIED), **seams
-    )
+    report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
 
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / ".cratekit" / "queue.db").exists()
@@ -2151,18 +2096,14 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
         "the fixture does not reproduce the layout, so this pins nothing"
     )
     target = _replacement(tmp_path)
-    # A snapshot with no write ahead log, so the plan DOES name an absent
-    # companion and the report's silence about it is a decision under test.
+    # No write ahead log, so the plan names an absent companion the report must not.
     remote = _Remote(outside, holds=("master.db",))
 
-    report = restore_cli.recover_under_bare_metal_session(
-        outside, target=target, accepted=True, runner=remote, **_gone(outside)
-    )
+    report = _recover(outside, target, remote, **_gone(outside))
 
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not (target / "master.db").exists()
-    # The share rides the database half and is withheld before the remote is
-    # asked about it (R-338).
+    # The share rides the database half and is withheld before the remote is asked (R-338).
     assert [c.label for c in remote.calls if c.label == backup.LIST_SHARE] == []
     assert not (target / "share").exists()
     assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"

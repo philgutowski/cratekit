@@ -1,12 +1,9 @@
 """Acquire's download scenarios: the vendored drive through its fake provider (U305).
 
-`crate acquire download` queues a list's tracks and a resume drives them
-through the vendored downloader, which the suite stands a fake provider and
-tool in for. A drive that lands every track, one whose login is refused, one
-whose session is withdrawn part way and then resumed, and one with no session
-stored, each with the files it leaves and the job's state as `crate` prints
-them. Kept apart from ``acquire.py`` because the drive suite names its own
-``cfg`` and ``library``.
+`crate acquire download` queues a list and a resume drives it: one drive lands
+every track, one is refused at login, one loses its session part way and
+resumes, one has no session. Apart from ``acquire.py`` because the drive suite
+names its own ``cfg`` and ``library``.
 """
 
 from __future__ import annotations
@@ -34,10 +31,8 @@ OK = int(ExitCode.OK)
 def stepped_gate_clock(monkeypatch):
     """The provider gate's clock, stepping a millisecond a reading from the pinned instant.
 
-    ``provider_gate.Gate`` binds ``time.time`` as a default argument when it is
-    imported, before the capture pins the clock, so its state file would carry
-    the real time and differ between any two captures of one revision. A clock
-    held still would never let the gate's spacing elapse, so each reading steps.
+    ``provider_gate.Gate`` binds ``time.time`` at import, before the pins, and a
+    clock held still would never let its spacing elapse.
     """
     readings = itertools.count()
     defaults = dict(provider_gate.Gate.__init__.__kwdefaults__)
@@ -47,12 +42,8 @@ def stepped_gate_clock(monkeypatch):
 
 @pytest.fixture
 def temporary(tmp_path):
-    """The drive suite's own, less its move of the temporary directory.
-
-    The suite points ``tempfile`` at a folder of the test's so it can count
-    token directories; a capture refuses any configuration outside the
-    temporary directory, so here the scenario's own directory stands for it.
-    """
+    """The drive suite's own, less its move of the temporary directory, which a
+    capture refuses; the scenario's own directory stands for it."""
     return tmp_path
 
 

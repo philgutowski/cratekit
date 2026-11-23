@@ -1,11 +1,8 @@
 """The label sweep's scenarios: the releases it offers for a label, through every verb that drives it (U308).
 
-`crate sync labels` no longer queues a sweep, and a sweep queued before U109
-still resumes through it and offers each label's confirmed releases into
-review; `label import` queues one label's sweep and runs it on the same
-worker; `label harvest` offers the labels behind a playlist. On the workers
-suite's own machine with its fake catalogue, one release tombstoned and one
-label the catalogue cannot list.
+A sweep queued before U109 still resumes through `crate sync labels`, `label
+import` runs one label's sweep, and `label harvest` offers a playlist's labels;
+one release is tombstoned and one label cannot be listed.
 """
 
 from __future__ import annotations

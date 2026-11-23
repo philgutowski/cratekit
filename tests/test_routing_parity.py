@@ -1,11 +1,8 @@
 """Parity: the declared taxonomy answers exactly as the eight resolvers it replaced.
 
-The population is the library's own genre values plus the sweeps' source
-strings, not the old tables' keys: every key hits the exact tier, while drift
-lives in the keyword and fallback tiers that fire only on strings no table holds.
-The reference is tests/legacy_taxonomy.py, the original code frozen. Every
-deliberate difference has its own test; populations are split at collection
-time, so each excluded case is owned by a named test rather than skipped.
+The population is the library's genre values and the sweeps' source strings,
+where drift lives, against tests/legacy_taxonomy.py, the original code frozen.
+Each deliberate difference is split off at collection and owned by a named test.
 """
 
 from __future__ import annotations
@@ -255,9 +252,7 @@ def test_the_reserved_and_derived_subs_are_never_returned_by_routing(policy):
 
 
 def test_energy_level_four_follows_the_tree_rule_not_the_dashboard_rule():
-    """Level 4 alone is the middle band in the tree and the low one on the
-    dashboard. The tree wins: the dashboard reads a rating not always derived
-    from energy. Asserted so nobody "fixes" it and re-files a tenth of a library."""
+    """Level 4 is the tree's middle band and the dashboard's low one; the tree wins, on purpose."""
     tree_band = routing.energy_sub(TAXONOMY, PLAIN.id, 4)
     dashboard_band = legacy.stars_to_energy_band(
         legacy.RATING_TO_STARS[routing.energy_rating(TAXONOMY, 4)]
@@ -416,9 +411,7 @@ def test_the_sweep_gains_the_alias_table_it_never_had(value):
 
 
 def test_tagging_refuses_the_catch_all_buckets_both_old_taggers_disagreed_about():
-    """The old tagger mapped these, the old sweep asked; the refusal wins as the
-    reversible choice. A specific sub-genre of the family still resolves, which
-    is why refusals are exact strings, not substrings."""
+    """The refusal wins as the reversible choice; it is an exact string, so sub-genres resolve."""
     for value in ("Techno", "Electronica", "Electronic", "Electronica / Other"):
         suggestion = routing.suggest_tag(TAXONOMY, value)
         assert suggestion.declined, value

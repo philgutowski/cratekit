@@ -1,40 +1,11 @@
 """The guarded writer's source scans, read over the writer AND its parts (R-1890).
 
-``tests/test_rb_writer_guard.py`` scans ``inspect.getsource(rb_writer)`` for two
-things: that the writer raises no bare ``RuntimeError`` or ``SystemExit``, and,
-through ``_raised_reasons``, that every refusal it raises has a reserved code
-and a remedy and every reserved writer slug is raised. U300 moved code from
-``rb_writer.py`` into parts (``rb_tables``, ``rb_probes``, ``rb_copies``,
-``rb_nodes``, ``rb_changes``, ``rb_removal``), and ``getsource`` of the module
-reads none of them, so a bare ``RuntimeError("...")`` or a refusal with no
-reserved code written in a part passed both.
-
-THAT FILE IS NOT EDITED HERE, AND THAT IS A RULE, NOT A PREFERENCE. It is one of
-the two beat grid suites, which under the refactor epic are never edited,
-trimmed, moved or renamed, and every name they import keeps its module. So the
-same checks are applied here to the writer and its parts, read through
-``tests/_split_modules.py``, and the scans in the beat grid suite stay as they
-are beside them: a shape in ``rb_writer.py`` fails both files, a shape in a part
-fails this one.
-
-A part raises the writer's refusals through its call time accessor,
-``_writer()._unavailable(...)`` and ``_writer()._running(...)``, which the beat
-grid suite's scan, keyed on a bare ``_unavailable`` name, does not see. Both
-spellings are read here, and any attribute spelling ending in the name
-(``rb_writer._unavailable``, ``W._unavailable``) with them. Like the suite's
-scan, this reads refusals raised THROUGH THOSE TWO FACTORIES and no other
-route: a part's own ``refuse`` or ``_node_refusal`` call is held by the
-population pins in ``tests/test_reserved_causes.py`` instead, and a factory
-bound to a local name first is not read.
-
-The suite's other direction, that every reserved writer slug is raised, is
-not repeated: every one is raised in ``rb_writer.py`` itself, so a copy here
-could only fail together with the suite's own test, never alone.
-
-The third item R-1890 names in that file, the soft-delete guard's resolution of
-``_writer().SOFT_DELETE_COLUMN``, is not a scan in the suite but a rule in
-``tests/_source_guards.py``, fixed there and proved below; the suite's package
-wide assertion reads the fixed rule without an edit.
+``tests/test_rb_writer_guard.py`` scans ``inspect.getsource(rb_writer)``, which
+reads none of the parts U300 split out, so a bare error or unreserved refusal in a
+part passed it. That beat grid suite is never edited, so its checks are applied
+here to the writer and its parts (``tests/_split_modules.py``), refusals read
+through both factory spellings; other routes are held by the population pins.
+The soft delete guard's fix lives in ``tests/_source_guards.py`` and is proved here.
 """
 
 from __future__ import annotations
@@ -46,8 +17,7 @@ from tests._split_modules import files_of
 
 WRITER = "cratekit.core.rb_writer"
 
-#: The writer's two refusal constructors, ``_unavailable(reason, message)`` and
-#: ``_running(message)``, the second of which always raises ``rekordbox-running``.
+#: The writer's two refusal constructors; ``_running`` always raises ``rekordbox-running``.
 REFUSAL_FACTORIES = frozenset({"_unavailable", "_running"})
 
 
@@ -107,11 +77,7 @@ def test_the_parts_raise_refusals_through_the_accessor_and_the_scan_sees_them():
 
 
 def test_no_part_of_the_writer_raises_a_bare_runtime_error_or_system_exit():
-    """The beat grid suite's KTD25 scan, over the writer and every part.
-
-    Never a literal status, never an untyped error: a refusal that is a bare
-    ``RuntimeError`` collapses to status one downstream and cannot be recovered.
-    """
+    """KTD25 over the writer and every part: never a literal status or an untyped error."""
     for path in files_of(WRITER):
         source = path.read_text(encoding="utf-8")
         assert "RuntimeError(" not in source, f"{path.name} raises a bare RuntimeError"
@@ -133,12 +99,7 @@ def test_every_refusal_the_writer_or_a_part_raises_through_a_factory_is_reserved
 
 
 def test_every_refusal_names_its_reason_as_a_literal_the_scan_can_read():
-    """A slug held in a variable is a refusal the two checks above cannot see.
-
-    Read as absence, it would pass both: the code check reads no slug to test,
-    and the vocabulary check is satisfied by the other call sites. So every
-    ``_unavailable`` call in the writer and its parts names its reason literally.
-    """
+    """Every ``_unavailable`` call names its reason literally, or both checks above miss it."""
     unread = [
         f"{path.name}:{node.lineno}"
         for path in files_of(WRITER)
@@ -174,12 +135,7 @@ _ACCESSOR = (
 
 
 def test_the_soft_delete_guard_fires_on_a_permissive_read_through_the_accessor():
-    """The parts' spelling, ``_writer().SOFT_DELETE_COLUMN``, names the column.
-
-    Before R-1890 the guard resolved ``rb_writer.SOFT_DELETE_COLUMN`` only by the
-    module's local name, so a part reading the marker through its accessor
-    with a falsey default read every soft-deleted row as active and passed.
-    """
+    """``_writer().SOFT_DELETE_COLUMN``, the parts' spelling, names the column (R-1890)."""
     evasions = (
         "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n",
         "def read(row):\n    return row.get(_writer().SOFT_DELETE_COLUMN, False)\n",

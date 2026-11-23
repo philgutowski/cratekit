@@ -1,19 +1,9 @@
 """Intake's set scenarios: a recording identified, queued and resolved, and its refusals (U307).
 
-`crate intake identify` asks the recognition seam about each chunk of a
-recording and writes its tracklist; `crate intake set` over the same
-recording reads the answers identify kept and queues one item per track, and
-the resume through the driver reports each track owned, offered or missing.
-A mix address is fetched through the fetch seam, identified and removed. A
-set named for its account playlist stops at the account gate and, answered,
-makes the playlist on the faked account. Then the spend refusals, which
-queue nothing: a month over its configured bound, a provider quota answered
-mid run, and a machine holding no recognition key. Every outside touch is
-the worker suite's own fake: the carver, the transport, the ledger, the
-fetcher, the catalogue and the account.
-
-A file of its own, because the worker suite calls its configuration ``cfg``
-and its library ``library`` as other intake suites call theirs.
+`crate intake identify` writes a tracklist, `crate intake set` queues and
+resolves its tracks, a mix address is fetched, and an account playlist is made
+behind its gate; the spend refusals queue nothing. Every outside touch is the
+worker suite's fake. Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

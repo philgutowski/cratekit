@@ -1,9 +1,7 @@
 """U241: the separation is librosa's, element for element, and sooner.
 
-``array_equal`` against librosa's own calls on signals built to hold what a
-median can get wrong: silence, repeated values, bursts, and every edge length.
-Where librosa does not equal itself the claim is the definition. Skipped
-where the analysis extra is absent.
+``array_equal`` against librosa's own calls on signals holding what a median can
+get wrong. Skipped where the analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -32,12 +30,8 @@ def _signal(samples: int, *, seed: int = 3):
 
 
 def _quietly(call):
-    """Run ``call`` with librosa's own short signal warnings off and ours an error.
-
-    A write back warning out of scipy means a strided line reached the one
-    dimensional filter and the answer rode back on a temporary numpy says it
-    will stop honouring, so here it fails the test.
-    """
+    """Run ``call`` with librosa's short signal warnings off and scipy's write back
+    warning, a strided line reaching the filter, an error."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         warnings.filterwarnings("error", message=".*WRITEBACKIFCOPY.*")
@@ -154,12 +148,8 @@ def test_the_energy_pass_reads_its_percussive_share_from_the_same_pair():
 
 @pytest.mark.parametrize("scale", [1e-40, 1e-41])
 def test_a_signal_at_the_bottom_of_single_precision_is_split_as_librosa_splits_it(scale):
-    """Where both medians fall under the smallest normal number, the pair is halved, not dropped.
-
-    The one place the split of a silent bin reaches the output: digital
-    silence is zero times either mask, so it cannot tell a half from a zero,
-    and the mutation table measured that guard at zero until this signal.
-    """
+    """Where both medians fall under the smallest normal, the pair is halved, not
+    dropped, which digital silence cannot show."""
     rng = np.random.default_rng(7)
     faint = (scale * rng.standard_normal(RATE * 2)).astype(np.float32)
     assert np.count_nonzero(faint) > faint.size // 2

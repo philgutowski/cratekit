@@ -1,8 +1,7 @@
 """R-746: ``crate intake land`` on a library whose intake tree has cut over.
 
-Real FLAC containers through the real dispatcher, against a disposable database
-whose intake tree is database native. The bridge keeps ``test_intake_land.py``;
-this pins what the native medium adds and must never write. D1 applies.
+What the native medium adds and must never write; the bridge keeps
+``test_intake_land.py``. D1 applies.
 """
 
 from __future__ import annotations
@@ -518,9 +517,8 @@ def _link_keeps_the_bindings(monkeypatch):
 def test_a_row_whose_file_id_or_link_did_not_take_is_refused_after_the_commit(
     native_library, silence, monkeypatch, dropped
 ):
-    """Standing in for a binding or guard that drops the column: the row is one
-    rekordbox will not load, and the read back says so naming the session to
-    restore, rather than exiting OK."""
+    """A dropped column makes a row rekordbox will not load, and the read back names
+    the session to restore."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     column, durable = dropped(monkeypatch)
@@ -540,9 +538,7 @@ def test_a_row_whose_file_id_or_link_did_not_take_is_refused_after_the_commit(
 def test_a_failure_after_the_commit_landed_is_recorded_and_still_refuses(
     native_library, silence, monkeypatch
 ):
-    """A step that fails once the commit is on disk: the session record names
-    the rows the commit wrote, so restore can find them, and the verb still
-    refuses rather than reading the landing as done."""
+    """A step failing after the commit: the record names its rows and the verb refuses."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     real = rb_writer.commit_guarded
@@ -744,9 +740,8 @@ def test_no_majority_link_refuses_by_name(machine, rows):
 
 
 def test_the_link_is_not_an_analysis_column_and_not_bookkeeping():
-    """Given on a created row, so the creation policy must admit it, and never
-    blinded for every writer by being called bookkeeping. And the counterpart of
-    the guard's own source test: the landing module asks the writer itself."""
+    """Given on a created row, so the creation policy must admit it, and asked of the
+    writer by the landing module itself."""
     assert rb_writer.CONTENT_LINK_COLUMN not in rb_writer.CONTENT_ROW_EMPTY_COLUMNS
     assert rb_writer.CONTENT_LINK_COLUMN not in rb_writer.BOOKKEEPING_COLUMNS
     assert rb_writer.CONTENT_LINK_COLUMN not in native.LEFT_EMPTY
@@ -1109,9 +1104,7 @@ def test_a_suffix_the_database_has_no_type_for_is_left_in_staging_and_the_batch_
 def test_a_file_whose_tags_resolve_to_no_sub_stays_in_staging_on_the_native_medium_too(
     native_library, silence, monkeypatch
 ):
-    """A row added for it would sit in the intake with no route. The shipped
-    taxonomy declares a sub for every file, so the check is driven at its seam:
-    this proves the native landing asks it at all."""
+    """A row with no route is refused, driven at the check's seam."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")

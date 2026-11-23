@@ -1,26 +1,9 @@
 """Analysis's scenarios: `crate analyze run`, `calibrate`, `validate` and `restamp` (U306).
 
-Each verb runs on a configured machine with the full profile and FLAC
-containers the encoder synthesized, with the heavy stack's seams bound to the
-fakes the workers suite uses: a detector that finds one key on every file, a
-model that scores a signal as vocal, a decoder handing it that signal, and a
-feature extractor answering a seeded vector per file. The heavy stack itself
-is read as absent, as it is on a slim container, so the capture does not
-depend on what a machine has installed.
-
-`analyze run` queues and drives a folder in one call, renaming each file to
-its head, and a second run skips both by their head; queued by itself and
-driven by its job, a keyless file is a terminal skip and a file gone before
-the drive fails its item; an empty and an absent folder are told apart, and a
-process with nothing bound refuses its item for the missing extra. `analyze
-calibrate` sets a vocal cut by hand, replaces it, refuses one off the scale,
-fits energy and the vocal cut over a folder, refuses a genre folder that is
-not the library, fits over the whole library walked, and says what it could
-not fit over too few tracks, no folder, an empty and an absent one, and
-without the extra. `analyze validate` says nothing was scored. `analyze
-restamp` refuses with no calibration, rescores a folder and then finds every
-level unchanged, walks a tree, reports a file it cannot measure, and refuses
-its item without the extra. Self contained, so the suites it stands beside
+On a full profile machine with synthesized FLAC, the heavy stack's seams bound
+to the workers suite's fakes and the stack itself read as absent, so the
+capture does not depend on what is installed. Each verb's runs, skips,
+refusals and missing extra are driven. Self contained, so the suites beside it
 can be trimmed without moving it.
 """
 
@@ -148,9 +131,7 @@ def bind_measuring(monkeypatch, table: dict[str, int | None]) -> None:
     monkeypatch.setattr(energy, "_EXTRACTOR", extractor)
 
 
-# ---------------------------------------------------------------------------
 # analyze run
-# ---------------------------------------------------------------------------
 
 
 def test_run_analyses_a_folder_and_then_skips_it(stage, machine, silence, tmp_path, monkeypatch):
@@ -201,9 +182,7 @@ def test_run_with_nothing_bound_refuses_its_item(stage, machine, silence, tmp_pa
     assert (folder / "track.flac").is_file()
 
 
-# ---------------------------------------------------------------------------
 # analyze calibrate and analyze validate
-# ---------------------------------------------------------------------------
 
 
 def test_calibrate_by_hand_and_by_fit(stage, machine, silence, tmp_path, monkeypatch):
@@ -259,9 +238,7 @@ def test_validate_says_nothing_was_scored(stage, machine, tmp_path):
     assert stage.crate("analyze", "validate", str(tmp_path)).code == OK
 
 
-# ---------------------------------------------------------------------------
 # analyze restamp
-# ---------------------------------------------------------------------------
 
 
 def test_restamp_rescores_a_folder_and_then_finds_it_unchanged(

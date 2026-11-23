@@ -1,9 +1,8 @@
 """U155: a sub chosen by genre inside a bucket that splits by energy.
 
-A genre sub is additive: a Rominimal track files into its band exactly as
-before and into the sub as well; a Minimal track never reaches it. Expected
-values are spelled from the brief or read from a second taxonomy built without
-the genre sub, never from the code under test.
+A Rominimal track files into its band as before and into the sub as well; a
+Minimal track never reaches it. Expected values never come from the code under
+test.
 """
 
 from __future__ import annotations

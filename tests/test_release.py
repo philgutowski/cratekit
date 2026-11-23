@@ -1,8 +1,6 @@
 """The release script, U159: plan a bump, refuse an unsafe cut, write and publish.
 
-`scripts/release.py` is loaded by path. Every git operation runs against a
-throwaway repository with a bare one as its `origin`, and every `gh` call is
-answered by a fake runner, so nothing here reaches GitHub.
+Against a throwaway repository with a bare ``origin`` and a fake ``gh`` runner.
 """
 
 from __future__ import annotations
@@ -399,8 +397,7 @@ def test_a_unit_reachable_through_its_head_and_its_merge_is_listed_once(repo):
     _git(repo, "checkout", "-q", "upstream")
     _nff(repo, "merge(u3): after U2", "cloud/3-b")
     _pull_upstream(repo)
-    # GitHub's merge commit for a pull request merged by a local push is not
-    # always the commit on main; the head is what finds it.
+    # A locally pushed pull request's merge commit is not always on main; its head finds it.
     _since, prs, direct = _gather([_pr(31, "U2: a", "e" * 40, head_a)])
     # It lands at the branch sync that took its head, and is listed once; no sync is listed.
     assert [(p.number, p.sha) for p in prs] == [(31, merge_a)]
@@ -428,8 +425,7 @@ def test_a_range_with_no_local_merge_lists_what_the_first_parent_line_lists(repo
 
 
 def test_a_unit_shipped_in_the_last_tag_is_not_listed_again_through_a_sibling_sync(repo):
-    # cloud/3-b took cloud/2-a's final head before either landed; U2 shipped
-    # in v0.2.0, and U3 lands after it carrying that sync.
+    # cloud/3-b took cloud/2-a's head early; U2 shipped in v0.2.0, U3 lands carrying it.
     _git(repo, "checkout", "-q", "-b", "cloud/2-a")
     head_a = _commit(repo, "a.txt", "feat: a")
     _git(repo, "checkout", "-q", "-b", "cloud/3-b", "main")
@@ -543,8 +539,7 @@ def test_plan_reads_the_bump_from_the_version_the_range_starts_at(repo, capsys, 
     assert "current version 0.2.0" in out
     assert "proposed bump: patch, v0.2.0 to v0.2.1" in out
     assert "merge(u4)" not in out
-    # A range ending at a version tag is titled by that tag however the tip is
-    # spelled: a repair alone proposes v0.3.1, and the release cut was v0.4.0.
+    # A range ending at a version tag is titled by that tag, however the tip is spelled.
     _merge(repo, "cloud/5-r", "merge(r-5): a repair")
     _set_version(repo, "0.4.0")
     _git(repo, "branch", "at-v0.4.0", "v0.4.0")

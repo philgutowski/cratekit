@@ -96,20 +96,20 @@ might be the platform, and it is a smaller list.
 the checkout has, and that dependency is invisible on a developer clone.** This
 is the mechanism worth naming. `tests/modules/test_reports.py` derives which
 files U34 writes and which residuals U34 filed by asking git which commits carry
-the tag `(U34)` in their subject: `UNIT_COMMIT_TAG` at `:4308`, `_unit_log` at
-`:4318` running `git log --format= -F --grep=(U34) HEAD`, `_unit_commits` at
-`:4334`, `_files_this_unit_writes` at `:4342`,
-`_files_this_unit_writes_by_a_second_route` at `:4374`, and
-`_residual_titles_this_unit_filed` at `:4550`. On a full clone at `138c4e5` that
+the tag `(U34)` in their subject: `UNIT_COMMIT_TAG` at `:4043`, `_unit_log` at
+`:4053` running `git log --format= -F --grep=(U34) HEAD`, `_unit_commits` at
+`:4069`, `_files_this_unit_writes` at `:4077`,
+`_files_this_unit_writes_by_a_second_route` at `:4106`, and
+`_residual_titles_this_unit_filed` at `:4275`. On a full clone at `138c4e5` that
 query finds fourteen commits and names twenty five files, re-driven while this
-document was validated. The source's own docstrings at `:4306` and `:4357` still
+document was validated. The source's own docstrings at `:4041` and `:4092` still
 say thirteen and twenty three, which were true when measured on the branch and
 went stale when two later commits carried the tag: the very shape this document
 is about, sitting inside the code it describes. On a clone with one commit whose
 subject does not carry the tag it finds nothing, so the derived file list is
 empty and the derived residual list is empty. A developer never sees this,
 because a developer clone always has the whole history and a worktree shares it.
-The design was chosen deliberately, and the docstring at `:4289` through `:4307`
+The design was chosen deliberately, and the docstring at `:4024` through `:4042`
 says why: it replaced a merge base derivation that went empty once the branch
 WAS main. It traded one history dependency for another, and the new one is
 narrower but not zero.
@@ -134,7 +134,7 @@ corrected entry lists three groups. The five in `test_reports.py` are marked
 `tests/test_adoption.py` and `tests/test_deletion.py`, and the four cgroup reader
 failures in `tests/test_pool_sizing.py`, are marked "NOT DRIVEN, because no Linux
 machine was available". Both are in the same entry, side by side, so a reader
-knows how much to trust each. That is METHOD's rule at `:154` applied to a
+knows how much to trust each. That is METHOD's rule at `:157` applied to a
 diagnosis: "Every number was measured or the report says it was not." An
 attribution that could not be driven is not worthless, but it has to be filed as
 a reading, and a reading is a different measurement from a reproduction.
@@ -264,11 +264,11 @@ counts above are from that re-run.
 ```
 E   AssertionError: fewer residuals filed than this unit is known to have filed: []
 E   assert 0 >= 12
-tests/modules/test_reports.py:4620
+tests/modules/test_reports.py:4343
 
 E   AssertionError: the two would be indistinguishable
 E   assert 0 > 17
-tests/modules/test_reports.py:4710
+tests/modules/test_reports.py:4429
 ```
 
 Both are floors firing on an empty derivation. Neither names a tool, a path, or
@@ -327,7 +327,7 @@ technique.
   `portable` job replaces `test` and runs no pytest, and `cold-install` runs on
   3.12 and 3.13. Every `actions/checkout@v4` step in it still fetches one commit,
   which is fine now precisely because nothing in the workflow reads history.
-- `tests/modules/test_reports.py:4268` through `:4460`: `CITED_FLOOR`, `UNIT_COMMIT_TAG`, the
+- `tests/modules/test_reports.py:4003` through `:4188`: `CITED_FLOOR`, `UNIT_COMMIT_TAG`, the
   three git derivations, and `_covered_files`. The block's own
   docstrings record why it reads commit subjects rather than a merge base, and
   the floors in it are what turned an empty derivation into a loud failure rather

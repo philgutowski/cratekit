@@ -1,16 +1,9 @@
 """Organize's edit pass: a move made on the account carried into the library (U309).
 
-`crate organize --only mirror-edits --only mirror` reads the mirrored genre
-playlists on the account once for both areas: the rekordbox area's step
-retags, refiles and regenres a track a person moved on the account, behind
-the rekordbox gate, and the mirror, behind the account's, writes nothing back
-over the edit. On the mirror edits suite's own machine: a disposable database
-holding a BY GENRE + ENERGY tree of two genre folders and two tagged files,
-mirrored once by its fixture, and the account the suite's recording fake.
-
-A file of its own beside ``organize.py``, because the two suites these
-scenarios borrow from each call their machine ``machine``, and one file can
-hold one fixture of a name.
+`crate organize --only mirror-edits --only mirror` carries a move made on the
+account into the library behind the rekordbox gate, and the mirror writes
+nothing back over it. Its own file because both borrowed suites name
+``machine``.
 """
 
 from __future__ import annotations

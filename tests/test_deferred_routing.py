@@ -1,9 +1,7 @@
 """Deferred routing, from the decision to the mark to the run that closes (U19).
 
-Three joints go wrong when a placement is decided before the library holds a
-row: the decision never persisted, the mark written before the commit, and the
-run closed while a track was still nowhere. D1: no name here is a real volume,
-person or track; the paths keep a space and an accent for the identity primitives.
+Decided before the library holds a row, a placement can lose its decision, mark before
+the commit, or close the run early. Paths keep a space and an accent (D1).
 """
 
 from __future__ import annotations
@@ -108,9 +106,7 @@ def _volume_agrees(cfg, monkeypatch):
 
 
 def _unlocked_integrity(monkeypatch):
-    """An unencrypted fixture fails the key-reaching integrity check, so it is asked unlocked.
-
-    Compensated here, never by handing the writer a verifier it could be lied to through."""
+    """An unencrypted fixture is asked unlocked, never via a verifier that could lie."""
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
 
@@ -494,8 +490,7 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
 def test_the_pass_run_before_the_import_is_read_only(cfg, gates_pass, db, adopted_root, declared):
     """Asserted against the FILESYSTEM."""
     routing_pass.record_intents(cfg, [_not_yet_there(cfg, declared)])
-    # The state tree is everything a pass could write; the database is outside it, since a
-    # pure read of a write-ahead-log file touches its shared-memory index.
+    # The state tree is all a pass could write; a WAL read touches the database's index.
     roots = (config.library_state_dir(cfg), config.installation_state_dir(), config.config_dir())
     before = _state_fingerprint(*roots)
     report = _route(cfg, db, adopted_root, declared)
@@ -790,8 +785,7 @@ def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
     if isinstance(node, ast.Constant):
         return isinstance(node.value, str)
     if isinstance(node, ast.JoinedStr):
-        # An f-string with nothing substituted into it is a literal wearing a
-        # prefix. One with a substitution carries a value from somewhere.
+        # An f-string with no substitution is a literal; one with a substitution carries a value.
         return not any(isinstance(part, ast.FormattedValue) for part in node.values)
     if isinstance(node, ast.IfExp):
         return _is_invented(node.body, constants) and _is_invented(node.orelse, constants)

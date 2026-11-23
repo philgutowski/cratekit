@@ -1,17 +1,17 @@
 """R-290 and R-225: how a job ended decides how its verb exits, in every queued verb.
 
-A parked (blocked) or failed job must not leave through a normal envelope that
-exits 0, or anything wrapping the verb reads success while the provider has
-walled the account. The population is ``handlers.HANDLERS``, never a typed list,
-so a verb bound later is covered the moment it is bound. Every driven case
-asserts the job's state before the exit, because a precondition refusal also
-exits non zero and would otherwise pass as the property.
+A parked or failed job must not leave through a normal envelope that exits 0.
+The population is ``handlers.HANDLERS``, so a verb bound later is covered, and
+every driven case asserts the job's state, since a precondition refusal also
+exits non zero.
 """
 
 from __future__ import annotations
 
 import ast
 import dataclasses
+import functools
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -36,18 +36,15 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 #: ``job.resume`` is the supervisor's own key: it spawns a child and drives nothing.
 SUPERVISOR = "job.resume"
 
-#: Keys whose parked test lives in another suite, because their verb needs a
-#: machine this file does not build before it reads the job. The guard below
-#: keeps this table from outliving the reason.
+#: Keys whose parked test lives in another suite, whose verb needs a machine this
+#: file does not build; the guard below keeps the table from outliving the reason.
 DRIVEN_ELSEWHERE = {
     "adopt.apply": "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
-    # R-758: it reads the backup acknowledgment and answers its gate from the
-    # job's frozen plan, so it needs that file's machine.
+    # R-758: it answers its gate from the job's frozen plan.
     "adopt.move": "tests/test_adopt_move.py::test_a_parked_move_leaves_blocked_and_non_zero",
 }
 
-#: What each verb's argv builder or argument check reads off the frozen
-#: payload. No file named here exists, because no worker in this suite is real.
+#: What each verb's argv builder reads off the frozen payload; no file named exists.
 PAYLOADS: dict[str, dict[str, object]] = {
     "master": {"source": "set.wav"},
     "rebuild": {"actor": "a-person"},
@@ -83,13 +80,12 @@ def _block() -> CratekitError:
 
 
 def parks(job, item, cfg):
-    """The worker's answer that the RUN must stop."""
+    """The worker's answer that the run must stop."""
     raise jobs.Parked(_block().cause)
 
 
 def fails_the_second(job, item, cfg):
-    """One item completes and one does not, which ``drive`` returns normally over
-    with the job recorded failed."""
+    """One item completes and one does not, so ``drive`` returns with the job failed."""
     if item.item_id == "two":
         raise refuse("source-missing", "the second item is not there", origin=("test",))
     return None
@@ -112,11 +108,7 @@ def job_of(job_id: str) -> jobs.Job:
 
 
 def resumed(job: jobs.Job) -> tuple[int, dict]:
-    """Drive the verb's own resume command line, answering its gate if it has one.
-
-    A gated verb refuses with ``decision-required``; the decision is recorded as a
-    separate act and the resume driven again naming the run (R34).
-    """
+    """Drive the verb's own resume command line, answering its gate if it has one (R34)."""
     argv = cli_jobs.argv_for(job)
     code, envelope = drive(argv)
     if code != int(ExitCode.DECISION_REQUIRED):
@@ -130,9 +122,7 @@ def resumed(job: jobs.Job) -> tuple[int, dict]:
     return drive(["--run", run_id, *argv])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The mapping itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _job_in(machine, state: jobs.JobState, *, cause=None) -> jobs.Job:
@@ -156,8 +146,7 @@ def test_a_blocked_job_raises_the_blocked_type_carrying_the_jobs_own_cause(machi
 
 
 def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
-    """A blocked row with no cause, which only a writer other than the engine can
-    make, is still not a success: a missing reason is not a missing problem."""
+    """A blocked row with no cause, which only another writer makes, is no success."""
     job = dataclasses.replace(
         _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause), cause=None
     )
@@ -165,15 +154,13 @@ def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
     with pytest.raises(JobBlocked) as caught:
         jobs.raise_for_state(job)
 
-    # The type as well as the reason, since a plain refusal would read ``failed``
-    # over a row whose state reads ``blocked``.
+    # The type too, since a plain refusal would read ``failed`` over a blocked row.
     assert caught.value.cause.reason == "internal-error"
     assert job.job_id in caught.value.cause.message
 
 
 def test_a_failed_job_raises_its_own_cause_as_neither_carried_type(machine):
-    """A failed job is not reported as blocked, which would send a person to their
-    account rather than to what broke."""
+    """A failed job is not reported as blocked, which would send a person to their account."""
     cause = refuse("source-missing", "it is gone", origin=("test",)).cause
     job = _job_in(machine, jobs.JobState.FAILED, cause=cause)
 
@@ -197,17 +184,12 @@ def test_a_cancelled_job_raises_the_cancelled_type_carrying_its_own_cause(machin
 
 @pytest.mark.parametrize("state", [jobs.JobState.QUEUED, jobs.JobState.SUCCEEDED])
 def test_a_job_that_is_waiting_or_done_is_reported_and_not_refused(machine, state):
-    """A merely queued job is reported through this same envelope, so the mapping
-    leaves it alone."""
+    """A merely queued job is reported through this same envelope."""
     jobs.raise_for_state(_job_in(machine, state))
 
 
 def test_the_dispatcher_reads_the_blocked_type_as_the_blocked_outcome(machine, monkeypatch):
-    """The dispatcher reads the blocked type as the blocked outcome.
-
-    ``resumable`` stays false: it names a gate run ``crate run`` can continue, and a
-    parked job continues through its verb with the job id.
-    """
+    """``resumable`` stays false: a parked job continues through its verb, not ``crate run``."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
     job = queued(machine, "master", ("one",))
 
@@ -232,16 +214,13 @@ def _gate_coded_park(job, item, cfg):
 def test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run(
     machine, monkeypatch
 ):
-    """``resumable`` stays false even when the park's cause carries a gate code,
-    since ``transition`` names a missing acknowledgment as a reason to park. The
-    code is asserted to be a gate code, or this drives nothing."""
+    """``resumable`` stays false even when the park's cause carries a gate code."""
     from cratekit.cli import gates
 
     monkeypatch.setattr(handlers, "resolve", lambda _key: _gate_coded_park)
     job = queued(machine, "master", ("one",))
 
-    # Not ``resumed``, which reads this exit code as a gate to answer; ``master``
-    # has no gate, so the code can only come from the park.
+    # Not ``resumed``, which would answer this code as a gate; ``master`` has none.
     code, envelope = drive(cli_jobs.argv_for(job))
 
     assert job_of(job.job_id).state is jobs.JobState.BLOCKED, envelope
@@ -264,9 +243,7 @@ def test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero(machine
     assert envelope["cause"]["reason"] == "cancelled", envelope
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The population, driven
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("key", QUEUED_KEYS)
@@ -289,8 +266,7 @@ def test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero(
 def test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked(
     machine, monkeypatch, key
 ):
-    """A blocked job is open, so a second ask drives it again and must read as
-    blocked again rather than as a report."""
+    """A blocked job is open, so a second ask drives it again and reads blocked again."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
     job = queued(machine, key, ("one",))
     resumed(job)
@@ -305,8 +281,7 @@ def test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked(
 def test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero(
     machine, monkeypatch, key
 ):
-    """R-225 over the whole population. ``drive`` raises only when every item
-    failed, so this ending is the shell's to refuse."""
+    """R-225 over the whole population; ``drive`` raises only when every item failed."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: fails_the_second)
     job = queued(machine, key, ("one", "two"))
 
@@ -321,8 +296,7 @@ def test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero(
 def test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked(
     machine, monkeypatch, key
 ):
-    """A job failed on entry is not open, so the drive is skipped, and a check
-    inside that branch would be skipped with it."""
+    """A job failed on entry skips the drive, and any check inside that branch."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: fails_the_second)
     job = queued(machine, key, ("one", "two"))
     resumed(job)
@@ -343,9 +317,21 @@ def test_the_tables_name_only_keys_that_are_bound():
         assert f"def {name}(" in source, f"{where} is named here and does not exist"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The population, read
-# ═══════════════════════════════════════════════════════════════════════════
+
+
+@functools.cache
+def _tree(path: Path) -> ast.Module:
+    """A source module parsed once, read only by the walks below."""
+    return ast.parse(path.read_text())
+
+
+def _parsed(*spellings: str):
+    """Every source module whose text holds one of ``spellings``, the only ones that
+    can hold a node naming it."""
+    for path in sorted(SRC.rglob("*.py")):
+        if any(s in unicodedata.normalize("NFKC", path.read_text()) for s in spellings):
+            yield path, _tree(path)
 
 
 def _functions(tree: ast.AST):
@@ -365,14 +351,13 @@ def _calls(function: ast.AST, attribute: str) -> list[ast.Call]:
 
 
 def _shells() -> list[tuple[Path, ast.FunctionDef, frozenset[str]]]:
-    """Every function outside the driver's own two modules that runs a job, with
-    the names its module declares as never returning."""
+    """Every function outside the driver's two modules that runs a job, with the
+    names its module declares as never returning."""
     own = {SRC / "cli" / "__init__.py", SRC / "cli" / "handlers.py"}
     found = []
-    for path in sorted(SRC.rglob("*.py")):
+    for path, module in _parsed("run_job"):
         if path in own:
             continue
-        module = ast.parse(path.read_text())
         for function in _functions(module):
             if _calls(function, "run_job"):
                 found.append((path, function, _never_returns(module)))
@@ -408,11 +393,7 @@ def _path_to(block: list[ast.stmt], target: ast.AST) -> list[tuple[list[ast.stmt
 
 
 def _is_the_call(statement: ast.stmt) -> bool:
-    """A statement that is the mapping call and nothing else.
-
-    As ``jobs.raise_for_state(job)`` in a shell, or by its bare name, which is
-    how ``core.jobs`` calls it in the tail every resume shares (U298).
-    """
+    """A statement that is the mapping call alone, by attribute or bare name (U298)."""
     if not (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)):
         return False
     callee = statement.value.func
@@ -443,11 +424,8 @@ def _leaves(handler: ast.ExceptHandler, never_returns: frozenset[str]) -> bool:
 
 
 def _is_the_mapping(statement: ast.stmt, never_returns: frozenset[str] = frozenset()) -> bool:
-    """The mapping as a plain statement, or wrapped by a verb that words its exit.
-
-    The wrapped form, ``backup``'s, is a ``try`` holding only the call, whose every
-    handler ends in a ``raise`` or a call the module annotates ``NoReturn``, since a
-    handler that falls through turns the refusal back into a normal envelope.
+    """The mapping as a plain statement, or ``backup``'s ``try`` holding only the call
+    whose every handler raises, since one that falls through makes a normal envelope.
     """
     if _is_the_call(statement):
         return True
@@ -467,9 +445,8 @@ def unmapped_reason(
 ) -> str | None:
     """Why this function's drive can reach a report unmapped, or None.
 
-    Judged by control flow, not line number, because a later line is not a later
-    point in the run. Walking out from the drive, no enclosing block may return
-    before the mapping, which must be a plain statement of one of those blocks.
+    Judged by control flow, not line number: walking out from the drive, no
+    enclosing block may return before the mapping.
     """
     for call in _calls(function, "run_job"):
         path = _path_to(function.body, call)
@@ -483,8 +460,7 @@ def unmapped_reason(
                 if any(isinstance(node, ast.Return) for node in ast.walk(later)):
                     return f"returns at line {later.lineno} before the mapping is reached"
             if mapped:
-                # Inside the driving branch is not enough: when that block is the
-                # ``is_open`` branch, a job already failed on entry skips it whole.
+                # Inside the ``is_open`` branch is not enough: a failed job skips it.
                 owner = path[-depth - 2] if depth + 2 <= len(path) else None
                 if depth == 0 and owner is not None:
                     holder = owner[0][owner[1]]
@@ -497,11 +473,9 @@ def unmapped_reason(
 
 
 def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
-    """The static half, which reaches a verb whose resume refuses on a
-    precondition the driven tests do not build, such as ``adopt apply``."""
+    """The static half, reaching a verb the driven tests cannot, such as ``adopt apply``."""
     shells = _shells()
-    # Eleven since U298, and ``jobs.resumed``, the shared resume tail, is named so
-    # a walk that stopped finding it says so.
+    # Eleven since U298, ``jobs.resumed`` among them by name.
     assert len(shells) >= 11, "the walk stopped finding the shells it exists to read"
     assert ("core/jobs.py", "resumed") in {
         (path.relative_to(SRC).as_posix(), function.name) for path, function, _ in shells
@@ -581,9 +555,8 @@ _WORDED = (
     ],
 )
 def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
-    """The guard refuses a mapping a later line places after a return, or in a
-    branch the run skips, and accepts ``backup``'s wrapped mapping only while no
-    handler can swallow what it raised."""
+    """A mapping after a return or in a skipped branch is refused, and a wrapped one
+    accepted only while no handler can swallow what it raised."""
     reason = unmapped_reason(_shell(source), frozenset({"_raise_refusal"}))
     if expected is None:
         assert reason is None
@@ -592,16 +565,13 @@ def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
 
 
 def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
-    """No shell keeps its own copy of the mapping, which cannot know new states (R-290).
-
-    The predicate is matched, a condition reading both ``is_open()`` and ``cause``,
-    because shells name their job differently and one spelling would miss the rest.
-    """
+    """No shell keeps its own copy of the mapping (R-290), matched as a condition
+    reading both ``is_open()`` and ``cause`` whatever the job is named."""
     offenders = []
-    for path in sorted(SRC.rglob("*.py")):
+    for path, module in _parsed("is_open"):
         if path == SRC / "core" / "jobs.py":
             continue
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(module):
             if not isinstance(node, (ast.If, ast.IfExp, ast.While)):
                 continue
             names = {
@@ -612,9 +582,7 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
     assert offenders == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The hop between a shell and the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: Refusals built from a cause with no exception in hand, so no type to keep.
 #: ``sync`` raises the first queue refusal over the whole pass and drives no job.
@@ -633,15 +601,14 @@ def _is_a_replace(node: ast.expr) -> bool:
 
 
 def test_a_reworded_refusal_is_rebuilt_in_one_place_only():
-    """A reworded refusal keeps its carried type, so ``cause.rebuilt`` is the only
-    rebuild. Refused: ``CratekitError(replace(...))`` by hand, and either carried
-    type constructed outside the mapping."""
+    """``cause.rebuilt`` is the only rebuild: no ``CratekitError(replace(...))`` by
+    hand, and no carried type constructed outside the mapping."""
     by_hand, constructed = [], []
-    for path in sorted(SRC.rglob("*.py")):
+    for path, module in _parsed("CratekitError", "JobBlocked", "JobCancelled"):
         where = str(path.relative_to(SRC))
         if where == "core/cause.py":
             continue
-        for function in _functions(ast.parse(path.read_text())):
+        for function in _functions(module):
             for node in ast.walk(function):
                 if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
                     continue

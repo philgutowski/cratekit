@@ -1,26 +1,17 @@
 """The three modules U300 split into parts, so a scan of one reads all of it.
 
 U300 split ``core/rb_writer.py``, ``core/session.py`` and ``core/restore.py``
-into parts each module re-exports (``docs/DEVELOPING.md``, "The guarded writer,
-the session and the restore, in parts"). A guard that reads a module's own
-file, its ``inspect.getsource``, or an import of its exact dotted name reads
-the module and not the code that moved to its parts, so a forbidden shape
-written in a part passed it (R-1890). Every such guard reads its module
-through here instead.
+into parts each re-exports (``docs/DEVELOPING.md``, "The guarded writer, the
+session and the restore, in parts"). A guard reading a module's own file, its
+``inspect.getsource`` or its exact dotted name missed a forbidden shape in a
+part (R-1890), so every such guard reads through here.
 
-The parts are found by the glob of the module's file name, the convention
-U300 named them by, so a part added later is read without an edit here. A
-glob is only as good as the convention, so ``tests/test_split_modules.py``
-derives the parts three other ways and fails on one the glob misses: from the
-module table in ``docs/DEVELOPING.md``; from the import graph, since a part is
-imported by its module and by no module outside it and its parts; and from
-the call time accessor most parts hold back to their module. A module off the
-convention escapes all three when it is missing from the table, and is also
-imported from outside or only by a relative import, and holds no accessor in
-the parts' spelling; that is a recorded residual, not covered.
-The glob also matches ``rb_dates.py``, which predates U300 and is the writer's
-too (it installs the date bound the writer opens with), so it is read here as
-well: a scan that reads one file more is stricter, never weaker.
+Parts are found by the glob of the module's file name, U300's convention.
+``tests/test_split_modules.py`` derives them three other ways, from the table
+in ``docs/DEVELOPING.md``, the import graph and the call time accessor; a part
+off the convention that escapes all three is a recorded residual. The glob
+also matches ``rb_dates.py``, the writer's too, so it is read: stricter,
+never weaker.
 """
 
 from __future__ import annotations

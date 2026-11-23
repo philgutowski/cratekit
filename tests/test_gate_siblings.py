@@ -1,11 +1,8 @@
 """A gated database verb says when another run of it holds or just answered its gate (U186).
 
-The write is already safe, since the apply plans again and refuses
-``decision-stale``; the warning saves a second session from guessing why its
-numbers moved. The clear is driven through the real dispatcher against the
-disposable native database, and the run records it persisted are read. The
-warning refuses nothing, so the second run still exits at its gate with its
-usual code. D1 applies.
+The write is already safe, since the apply refuses ``decision-stale``; the
+warning tells a second session why its numbers moved, and refuses nothing.
+D1 applies.
 """
 
 from __future__ import annotations
@@ -65,9 +62,7 @@ def _answer_aged(run_id: str, age: timedelta) -> str:
     return stamp
 
 
-# ---------------------------------------------------------------------------
 # The plan at its gate
-# ---------------------------------------------------------------------------
 
 
 def test_with_no_other_run_the_gate_says_nothing_of_one(native_library):
@@ -183,9 +178,7 @@ def test_a_verb_that_writes_no_database_is_outside_the_warning():
     assert gates.writes_the_database("no.such.verb") is False
 
 
-# ---------------------------------------------------------------------------
 # crate run decide
-# ---------------------------------------------------------------------------
 
 
 def test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_plan(
@@ -262,9 +255,7 @@ def test_decide_continue_carries_the_warning_on_the_verbs_own_envelope(native_li
     assert len(found) == 1 and first in found[0]
 
 
-# ---------------------------------------------------------------------------
 # crate doctor
-# ---------------------------------------------------------------------------
 
 
 def _blocked(run_id: str, verb: str, gate: str, age: timedelta, now: datetime) -> None:
@@ -343,9 +334,7 @@ def test_the_run_record_carries_the_sibling_warning_nowhere(native_library):
     assert gates.SIBLING_RUN not in json.dumps(record)
 
 
-# ---------------------------------------------------------------------------
 # Edge cases of the warning's scope
-# ---------------------------------------------------------------------------
 
 
 def _old_open(run_id: str, age: timedelta) -> None:
@@ -479,11 +468,8 @@ def test_decide_says_nothing_when_the_sibling_answered_another_gate(native_libra
 def test_decide_continue_says_a_sibling_once_when_the_verb_stops_at_its_gate_again(
     native_library,
 ):
-    """The answer was given over a plan the continuation no longer reads, so it stops stale.
-
-    The decide names the sibling and so does the dispatcher at the stale gate:
-    the envelope carries it once.
-    """
+    """The answer was over a plan the continuation no longer reads, so it stops stale,
+    the sibling named once."""
     first = _answered()
     held = gates.load(first)
     held.decisions = {n: gates.Decision(d.option, d.actor, d.recorded, "sha256:moved") for n, d in held.decisions.items()}

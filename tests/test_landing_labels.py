@@ -1,7 +1,6 @@
 """U77: a landing given a manifest files its label tracks in the same intake file.
 
-Manifests come from the product's own emitter, :func:`listdoc.write`, so the
-format pinned is the one ``label approved`` writes. Nothing reaches a real library.
+Manifests come from :func:`listdoc.write`, the format ``label approved`` writes.
 """
 
 from __future__ import annotations
@@ -264,8 +263,7 @@ def test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves(
 def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
     cfg, silence, tmp_path
 ):
-    """The trial must reach a held playlist's layout (here, no Entries), or the
-    real write refuses AFTER the moves."""
+    """The trial must reach a held playlist's layout, or the real write refuses AFTER the moves."""
     staged = _stage(cfg, silence, "Ada", "North")
     held = tmp_path / "held.xml"
     body = _kompakt(held, 2025)
@@ -282,8 +280,7 @@ def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
 def test_a_catalog_tree_the_database_owns_refuses_before_any_file_moves(
     cfg, silence, export, tmp_path, monkeypatch
 ):
-    """A tree cut over to the database is never spliced (a second tree would
-    grow), and the writer RAISES it: a refusal with the batch still staged."""
+    """A cut over tree is never spliced, and the writer RAISES it with the batch still staged."""
     staged = _stage(cfg, silence, "Ada", "North")
     manifest = _manifest(tmp_path, ONE)
     catalog = taxonomy.default_taxonomy().catalog

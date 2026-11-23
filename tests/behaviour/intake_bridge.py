@@ -1,23 +1,10 @@
 """Intake's bridge scenarios: a landing through the XML bridge and its import verified (U307).
 
-`crate intake land --export` on a library whose intake tree is still on the
-bridge: the gate as a person reads it and as the envelope, the answer, and
-the landing that moves the batch into the music folder and writes the intake
-file rekordbox imports, ending pending on that import. `crate intake
-imported` then reads a Fresh Export taken after the import and retires the
-intake file. Beside it what refuses and moves nothing: an answer whose
-staging folder gained a file, and a staging folder that is not there. On the
-bridge landing suite's own configuration, export and FLAC containers.
-
-A file of its own, because the bridge suites call their configuration
-``cfg`` and their container ``silence``, and the native suite's ``silence``
-is another fixture of that name.
-
-THE LIBRARY FOLDER IS LEFT FOR THE SUITE TO MAKE. The stage moves the library
-root into the scenario's own directory and makes it there, and a bridge
-suite's ``cfg`` makes that same folder itself and refuses one already there.
-So ``_library_left_to_the_suite`` takes the stage's empty folder away before
-the suite's fixture runs, which then makes it as it does in the suite.
+`crate intake land --export` on a bridge tree ends pending on rekordbox's
+import, and `crate intake imported` reads a later export and retires the intake
+file; a moved staging folder and a missing one refuse. Its own file because the
+bridge suites' ``silence`` is another fixture of that name. The library folder
+is left for the suite's ``cfg`` to make, which refuses one already there.
 """
 
 from __future__ import annotations

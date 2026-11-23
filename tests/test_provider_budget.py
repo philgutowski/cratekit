@@ -1,18 +1,9 @@
 """U278: one allowance per account, whatever state is redirected, and a reserve.
 
-A disposable copy with ``CRATEKIT_STATE_DIR`` redirected once got a gate of its
-own and spent calls the live gate never saw. Five claims:
-
-1. One gate per account: the gate and its lock resolve under the installation
-   state directory whatever ``CRATEKIT_STATE_DIR`` says, unless
-   ``CRATEKIT_PROVIDER_GATE_DIR`` names another place.
-2. A rolling hourly budget per identity, across commands and processes; a call
-   past the line is not sent and parks as ``provider-budget``.
-3. A reserve: a read stops at ``calls_per_hour * (1 - reserve_share)``, a
-   write or download may spend the rest, and ``--calls`` never reaches past it.
-4. Doctor says where the account stands. 5. A sweep says its cost first.
-
-Schedules run on a fake clock; the two process test uses real processes.
+A copy with ``CRATEKIT_STATE_DIR`` redirected once spent calls the live gate never
+saw. One gate per account (unless ``CRATEKIT_PROVIDER_GATE_DIR``), a rolling hourly
+budget across processes parking as ``provider-budget``, a reserve reads stop short
+of, doctor's standing, and a sweep's cost said first. Clocks are fake but one test.
 """
 
 from __future__ import annotations
@@ -92,8 +83,7 @@ def _frees(epoch: float) -> float:
 # ── 1. One gate per account, whatever state is redirected ───────────────
 
 def test_a_redirected_state_directory_still_resolves_the_one_gate(monkeypatch, tmp_path):
-    """The copy's ``CRATEKIT_STATE_DIR`` moves every other installation entry
-    and leaves the gate and its lock where the live run finds them."""
+    """A copy's ``CRATEKIT_STATE_DIR`` moves everything but the gate and its lock."""
     monkeypatch.delenv(config.ENV_PROVIDER_GATE_DIR, raising=False)
     live = config.state_path(provider_gate.STATE_KEY)
     live_lock = config.state_path(provider_gate.LOCK_KEY)
@@ -123,8 +113,7 @@ def test_the_suite_points_the_gate_into_the_tests_own_state():
 
 
 def test_a_call_made_under_a_redirected_state_directory_is_counted_by_the_live_gate(monkeypatch, tmp_path):
-    """A call from a copy moves the count a live gate reads, and the copy's own
-    state directory holds no gate."""
+    """A copy's call moves the live gate's count, and the copy's state holds no gate."""
     monkeypatch.delenv(config.ENV_PROVIDER_GATE_DIR, raising=False)
     live = Gate()
     before = live.window_spend(ACCOUNT)
@@ -140,8 +129,7 @@ def test_a_call_made_under_a_redirected_state_directory_is_counted_by_the_live_g
 
 @pytest.mark.parametrize("pointed", [True, False])
 def test_a_rehearsal_spends_from_the_live_gate(tmp_path, monkeypatch, pointed):
-    """``core.rehearsal.redirected`` moves the state directory; the gate stays
-    the live one, pointer set or not, and the pointer is left as it was."""
+    """Under ``core.rehearsal.redirected`` the gate stays live and the pointer is untouched."""
     if not pointed:
         monkeypatch.delenv(config.ENV_PROVIDER_GATE_DIR, raising=False)
     live = config.state_path(provider_gate.STATE_KEY)
@@ -248,8 +236,7 @@ def test_the_count_is_written_before_the_send(paths, clock):
 
 
 def test_a_cooldown_still_refuses_first_and_keeps_its_own_reason(paths, clock):
-    """A trip inside the window refuses as the cooldown, never as the budget,
-    and the budget never trips the breaker."""
+    """A trip in the window refuses as the cooldown; the budget never trips the breaker."""
     gate = make_gate(paths, clock, per_hour=8)
     with provider_gate.command():
         spend_calls(gate, 6)
@@ -296,8 +283,7 @@ def test_two_processes_count_toward_one_window(paths, tmp_path):
 
 @pytest.mark.parametrize("identity", [ACCOUNT, APP], ids=["account", "app-credentials"])
 def test_a_minute_stamped_in_the_future_counts_for_an_hour_from_now_and_no_longer(gate, clock, identity):
-    """A clock set back: calls stamped ahead still count, and free an hour after
-    now, never days later (round one, R4), on either identity."""
+    """Calls stamped ahead still count and free an hour after now (round one, R4)."""
     ahead = clock.now
     clock.now += 30 * 86_400
     with provider_gate.command():
@@ -359,8 +345,7 @@ def test_a_read_stops_at_the_reserve_while_a_go_still_runs(gate):
          "a-raised-ceiling-never-spends-the-reserve"],
 )
 def test_a_read_is_held_to_the_read_line(gate, scope, read_mode):
-    """#742: ``--calls`` up to the budget on a read, or a write verb in a read
-    mode, still stops at the reserve line."""
+    """#742: ``--calls`` up to the budget on a read still stops at the reserve line."""
     with provider_gate.command(**scope):
         if read_mode:
             provider_gate.reading()
@@ -425,8 +410,7 @@ def test_an_hour_raised_in_the_environment_reaches_a_call_outside_any_scope(gate
     ids=["never-past-the-hours-budget", "held-to-the-hour-when-doubling-would-pass-it"],
 )
 def test_a_ceilings_continue_never_names_a_ceiling_past_the_hours_budget(paths, clock, per_command, reserve):
-    """Doubled, a ceiling of six would name twelve, above an hour of eight: the
-    continue names eight, which the hour holds, and so no hour at all."""
+    """A doubled ceiling of six would name twelve, above an hour of eight, so no hour."""
     gate = make_gate(paths, clock, per_command=per_command)
     with provider_gate.command(reserve=reserve):
         spend_calls(gate, per_command)
@@ -512,8 +496,7 @@ def test_a_fresh_kept_listing_costs_nothing_and_an_aged_one_a_call_an_answer(mon
 
 
 def _spent_on_the_account(n: int) -> None:
-    """Put ``n`` account calls in the one gate's window: one real call, the rest
-    counted by the gate's own state in one write, as each real call is two fsyncs."""
+    """Put ``n`` calls in the gate's window: one real, the rest written into its state at once."""
     gate = Gate(GateSettings(min_interval_s=0.0001, calls_per_hour=100_000))
     gate.call(lambda: Ok())
     state, now = gate._read(), time.time()
@@ -581,8 +564,7 @@ def test_one_label_named_is_not_held_to_the_sweeps_estimate(two_followed):
 
 
 def test_next_counts_no_label_past_the_first_saved_question(two_followed):
-    """``--next`` prints the first label's saved question again with no call,
-    so the labels after it cost nothing and cannot refuse it."""
+    """``--next`` prints the saved question again with no call, so nothing refuses it."""
     code, first = ls.sync("--next")
     assert code == int(ExitCode.OK), first
     assert first["data"]["summary"]["question"]["label_id"] == "tide-works"
@@ -597,8 +579,7 @@ def test_next_counts_no_label_past_the_first_saved_question(two_followed):
 
 
 def test_a_verb_dispatched_again_inside_a_scope_runs_under_its_own_class(gate):
-    """``run decide --continue`` dispatches the verb again in-process: a go
-    spends the reserve its verb declares, and the outer class comes back."""
+    """A ``run decide --continue`` go spends its verb's declared reserve in process."""
     with provider_gate.command() as outer:
         spend_calls(gate, 6)
         with provider_gate.command(reserve=True) as inner:
@@ -670,8 +651,7 @@ def configured(monkeypatch, tmp_path):
          "refused-before-a-verb-that-makes-no-call-runs"],
 )
 def test_calls_past_the_budget_is_refused_before_the_verb_runs(configured, verb, within, past):
-    """Checked against the hour's budget, so ``crate --calls 1500 job resume
-    JOB_ID``, what a download stopped at a raised ceiling prints, reaches the job."""
+    """Checked against the hour's budget, so a raised ``--calls`` job resume reaches the job."""
     _, envelope = drive(["--calls", within, *verb])
     assert (envelope.get("cause") or {}).get("reason") != BUDGET, envelope
     code, envelope = drive(["--calls", past, *verb])
@@ -682,8 +662,7 @@ def test_calls_past_the_budget_is_refused_before_the_verb_runs(configured, verb,
 
 
 def test_a_parked_jobs_continue_carries_the_hour_its_ceiling_needs(paths, clock):
-    """A run with its hour raised stops at its ceiling, and the continue it
-    names carries that hour beside the ceiling."""
+    """A run with a raised hour stops at its ceiling, naming that hour beside the ceiling."""
     gate = make_gate(paths, clock, per_command=4)
     with provider_gate.command(calls=6, calls_per_hour=20, reserve=True):
         spend_calls(gate, 6)

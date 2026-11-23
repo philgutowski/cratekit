@@ -99,13 +99,16 @@ def test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process():
     assert plan.max_tasks_per_child is None
 
 
-def test_sixteen_gigabytes_is_bound_by_the_hard_ceiling_at_the_default():
-    """The plan's second scenario: memory affords several, the default ceiling of two binds."""
+@pytest.mark.parametrize(
+    "available", [16 * GIB, 64 * GIB], ids=["the-plans-second-scenario", "a-roomy-machine"]
+)
+def test_the_default_ceiling_of_two_binds_where_memory_affords_several(available):
+    """The shipped ceiling is two, pinned by the pool such a machine gets."""
     # The guard is derived, NOT a pin (see affordable_for); the count is a literal.
-    assert affordable_for(16 * GIB) > 2, (
+    assert affordable_for(available) > 2, (
         "the fixture no longer leaves the ceiling as the binding constraint"
     )
-    plan = _plan(16 * GIB)
+    plan = _plan(available)
     assert plan.workers == 2
     assert plan.bound is pool.Bound.CEILING
 
@@ -349,14 +352,14 @@ def _workers_for(percent: int) -> int:
     return plan.workers
 
 
-def test_the_general_headroom_claims_three_quarters_of_what_is_left():
-    """Seventy five, pinned by the pool it produces. Darwin never runs this arm by default."""
-    assert _workers_for(pool.GENERAL_HEADROOM_PERCENT) == 75
-
-
-def test_the_darwin_headroom_claims_half_because_half_is_what_was_measured():
-    """Fifty, pinned the same way; half survives the measured inactive and free split."""
-    assert _workers_for(pool.DARWIN_HEADROOM_PERCENT) == 50
+@pytest.mark.parametrize(
+    "percent,workers",
+    [(pool.GENERAL_HEADROOM_PERCENT, 75), (pool.DARWIN_HEADROOM_PERCENT, 50)],
+    ids=["general-three-quarters", "darwin-half-as-measured"],
+)
+def test_each_headroom_share_is_pinned_by_the_pool_it_produces(percent, workers):
+    """Both shares, pinned by the pool they produce; darwin's arm never runs here by default."""
+    assert _workers_for(percent) == workers
 
 
 def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours():
@@ -373,14 +376,6 @@ def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_our
     assert affords_one.workers == 1
     assert affords_one.bound is pool.Bound.AVAILABLE_MEMORY
     assert affords_none.bound is pool.Bound.INSUFFICIENT_MEMORY
-
-
-def test_the_default_ceiling_is_two_because_two_is_what_survived_a_real_run():
-    """The shipped ceiling is two, pinned by the pool a roomy machine gets."""
-    assert affordable_for(64 * GIB) > 2, "the reading no longer leaves the ceiling binding"
-    plan = _plan(64 * GIB)
-    assert plan.workers == 2
-    assert plan.bound is pool.Bound.CEILING
 
 
 @pytest.mark.parametrize(
@@ -679,19 +674,17 @@ def test_a_pool_that_never_retires_a_child_is_one_generation():
 # The probe
 
 
-def test_the_probe_reports_what_it_measured_when_that_is_larger_than_the_floor():
-    measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: 3 * GIB
-    )
-    assert measured == 3 * GIB
-
-
-def test_the_probe_never_reports_below_the_declared_floor():
+@pytest.mark.parametrize(
+    "answered,reported",
+    [(3 * GIB, 3 * GIB), (300 * MIB, 1 * GIB)],
+    ids=["above-the-floor-is-reported", "never-below-the-floor"],
+)
+def test_the_probe_reports_its_measure_and_never_below_the_floor(answered, reported):
     """The floor is a floor, not a fallback: a working worker allocates past its load."""
     measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: 300 * MIB
+        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: answered
     )
-    assert measured == 1 * GIB
+    assert measured == reported
 
 
 @pytest.mark.parametrize(
@@ -1182,15 +1175,21 @@ def test_the_real_probe_measures_a_freshly_spawned_child():
     )
 
 
-def test_a_loader_that_never_returns_lands_on_the_floor_like_every_other_failure():
-    """A loader that never returns lands on the floor, like every other failure."""
+@pytest.mark.parametrize(
+    "loader,timeout,limit,why",
+    [
+        (_still_running_when_the_deadline_passes, 1.0, 60, "to give up on a hung loader"),
+        (_dies_without_answering, 30.0, 15, "for a dead child; the write end is still open"),
+    ],
+    ids=["a-loader-that-never-returns", "a-child-that-dies-without-answering"],
+)
+def test_a_probe_that_gets_no_answer_lands_on_the_floor_in_time(loader, timeout, limit, why):
+    """A hung loader lands on the floor like every other failure; a dead child at end of file."""
     started = time.monotonic()
-    measured = pool.measure_worker_bytes(
-        _still_running_when_the_deadline_passes, floor_bytes=4242, timeout_seconds=1.0
-    )
+    measured = pool.measure_worker_bytes(loader, floor_bytes=4242, timeout_seconds=timeout)
     elapsed = time.monotonic() - started
     assert measured == 4242
-    assert elapsed < 60, f"the probe took {elapsed:.1f} seconds to give up on a hung loader"
+    assert elapsed < limit, f"the probe waited {elapsed:.1f}s {why}"
 
 
 def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
@@ -1281,19 +1280,6 @@ def test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop():
     assert watched.rungs == ["join", "terminate", "join", "kill", "join", "close"]
 
 
-def test_a_probe_child_that_dies_without_answering_gives_up_at_once():
-    """A child that dies silently is seen at end of file, not after the deadline."""
-    started = time.monotonic()
-    measured = pool.measure_worker_bytes(
-        _dies_without_answering, floor_bytes=4242, timeout_seconds=30.0
-    )
-    elapsed = time.monotonic() - started
-    assert measured == 4242
-    assert elapsed < 15, (
-        f"the probe waited {elapsed:.1f}s for a dead child; the write end is still open"
-    )
-
-
 def test_a_real_loader_that_raises_lands_on_the_floor_without_printing_anything(capfd):
     """A raising loader lands on the floor without a traceback from the child's stderr."""
     measured = pool.measure_worker_bytes(_raises_in_the_worker, floor_bytes=4242)
@@ -1347,26 +1333,21 @@ def _host_reads(monkeypatch, available: int, **more) -> None:
     )
 
 
-def test_a_cgroup_with_a_cap_reports_what_is_left_inside_it(tmp_path):
-    _version_two(tmp_path, limit=str(512 * MIB), current=str(64 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 448 * MIB
-
-
-def test_the_older_cgroup_layout_is_read_too(tmp_path):
-    _version_one(tmp_path, limit=str(2 * GIB), usage=str(512 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 1536 * MIB
-
-
-def test_a_cap_whose_usage_cannot_be_read_is_still_a_cap(tmp_path):
-    """A cap with unreadable usage is still a cap, rather than the host's reading."""
-    _version_two(tmp_path, limit=str(512 * MIB), current=None)
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 512 * MIB
-
-
-def test_a_cgroup_already_over_its_cap_has_no_headroom_rather_than_negative(tmp_path):
-    """A cgroup over its cap has zero headroom, never a negative one."""
-    _version_two(tmp_path, limit=str(512 * MIB), current=str(600 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 0
+@pytest.mark.parametrize(
+    "layout,written,headroom",
+    [
+        (_version_two, dict(limit=str(512 * MIB), current=str(64 * MIB)), 448 * MIB),
+        (_version_one, dict(limit=str(2 * GIB), usage=str(512 * MIB)), 1536 * MIB),
+        (_version_two, dict(limit=str(512 * MIB), current=None), 512 * MIB),
+        (_version_two, dict(limit=str(512 * MIB), current=str(600 * MIB)), 0),
+    ],
+    ids=["a-cap-reports-what-is-left", "the-older-layout", "unreadable-usage-is-still-a-cap",
+         "over-the-cap-is-zero-never-negative"],
+)
+def test_a_cgroup_cap_reports_what_is_left_inside_it(tmp_path, layout, written, headroom):
+    """A cap reads what is left in it in either layout, never negative, unreadable usage or not."""
+    layout(tmp_path, **written)
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == headroom
 
 
 @pytest.mark.parametrize(

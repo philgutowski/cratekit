@@ -1,9 +1,7 @@
 """A session's own snapshot restored, the plan first and then the database (U300).
 
-`crate restore run SESSION` on the restore suite's library: a completed write
-session is on record, the database has moved on since, and the restore stops
-at its gate showing the plan, walks it with `--dry-run` once the gate is
-answered, then performs it, putting the captured database back.
+`crate restore run SESSION` stops at its gate, walks the plan with `--dry-run`,
+then puts the captured database back, on the restore suite's library.
 """
 
 from __future__ import annotations

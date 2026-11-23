@@ -1,9 +1,8 @@
-"""``crate repair rows``: rekordbox's own defaults on a row that lacks them (R-923),
-and its file's inode on a row the binding numbered at random (U115).
+"""``crate repair rows``: rekordbox's defaults on a row lacking them (R-923), and a file's
+inode on a row the binding numbered at random (U115).
 
-Every library is disposable and every row written with plain SQL, so a NULL is
-a NULL. The volume's inode bound is pinned by an autouse fixture, since on the
-boot volume it is above the binding's range; one test measures it for real.
+Libraries are disposable and rows written in plain SQL, so a NULL is a NULL. An
+autouse fixture pins the volume's inode bound; one test measures it for real.
 """
 
 from __future__ import annotations
@@ -66,8 +65,7 @@ def _bound_of(cfg: config.Config, inode: int = BOUND, *, device=None, filesystem
 
 @pytest.fixture(autouse=True)
 def _bound(monkeypatch):
-    """The inode bound, pinned under the binding's range so a random id is seen, on the library's
-    own device and read as APFS."""
+    """The inode bound, pinned under the binding's range, on the library's device, read as APFS."""
     monkeypatch.setattr(row_defaults, "inode_bound", lambda cfg: _bound_of(cfg))
 
 
@@ -121,8 +119,7 @@ def acknowledged(machine) -> config.Config:
 
 def _sql(cfg: config.Config, statement: str, *params) -> list[tuple]:
     connection = sqlite3.connect(cfg.library.db_path)
-    # Per connection and never stored in the file: a seeding commit skips the
-    # fsync, which on a slow disk was most of each test's time.
+    # Per connection, never stored: a seeding commit skips the fsync.
     connection.execute("PRAGMA synchronous = OFF")
     try:
         found = connection.execute(statement, params).fetchall()
@@ -179,8 +176,7 @@ def build(
     zero=("501",),
     missing=("601",),
 ) -> Path:
-    """A disposable library: rows a landing left bare and numbered at random, rows rekordbox made,
-    tombstones, and the rows the file id rule must leave alone."""
+    """A disposable library of bare, randomly numbered, rekordbox made and tombstoned rows."""
     db_path = Path(cfg.library.db_path)
     _build_disposable_database(db_path, with_tag_category=False)
     for content_id in ("1", "2"):
@@ -276,12 +272,10 @@ def test_the_plan_lists_each_live_row_missing_a_default_with_exactly_its_null_co
     assert by_id["102"].columns == tuple(
         column for column in row_defaults.COLUMNS if column not in ("Rating", "Commnt")
     )
-    # Six live rows besides the two landed: the builder's two, one whole, one
-    # stale, one zero and one whose file is gone.
+    # Six live rows besides the two landed: two built, whole, stale, zero, and fileless.
     assert plan.rows == 8
     assert plan.fills == len(row_defaults.COLUMNS) * 2 - 2
-    # U115: the two landed rows carry the binding's random id and are given
-    # their file's inode; nothing else is.
+    # U115: only the two landed rows' random ids become their files' inodes.
     for content_id in ("101", "102"):
         assert by_id[content_id].file_id == _inode(machine, content_id)
         assert by_id[content_id].file_id_was == str(RANDOM_ID)
@@ -300,8 +294,7 @@ def test_the_plan_lists_each_live_row_missing_a_default_with_exactly_its_null_co
 
 
 def test_a_random_id_on_a_row_with_every_default_is_an_item_of_its_own(machine):
-    """The A8 row of 2026-09-29, repaired by R-923 and still unplayable: no default to fill, a
-    random file id to replace."""
+    """The A8 row of 2026-09-29: no default to fill, a random file id to replace."""
     build(machine, landed=())
     _row(machine, "701", "A8", path=str(_file(machine, "701")), file_id=RANDOM_ID)
     _whole(machine, "701")
@@ -315,8 +308,7 @@ def test_a_random_id_on_a_row_with_every_default_is_an_item_of_its_own(machine):
 
 
 def test_an_id_above_the_bound_that_is_the_files_inode_is_not_random(machine):
-    """On a volume whose counter has run past the bound a file's own inode is above it too, and
-    reading the file is what tells it from a random id."""
+    """Past the bound, reading the file is what tells its own inode from a random id."""
     build(machine, landed=(), missing=())
     path = _file(machine, "801")
     _row(machine, "801", "matching", path=str(path), file_id=path.stat().st_ino)
@@ -355,8 +347,7 @@ def test_past_the_bindings_range_nothing_is_judged_random(machine):
 
 
 def test_off_apfs_nothing_is_judged_random_and_the_plan_says_which_filesystem(machine):
-    """exFAT synthesizes inode numbers and HFS+ can wrap them, so a fresh file's inode bounds
-    nothing there and renumbering would rewrite rekordbox's rows."""
+    """Off APFS a fresh inode bounds nothing, and renumbering would rewrite rekordbox's rows."""
     build(machine)
     for filesystem in ("exfat", "hfs", None):
         plan = _planned(machine, filesystem=filesystem)
@@ -370,8 +361,7 @@ def test_off_apfs_nothing_is_judged_random_and_the_plan_says_which_filesystem(ma
 
 
 def test_a_file_on_another_volume_than_the_bound_is_left_and_names_why(machine):
-    """A prefix rule can place a row's file on a second volume, whose inode numbers the bound says
-    nothing about."""
+    """A prefix rule can place a file on a second volume, which the bound says nothing about."""
     build(machine)
     plan = _planned(machine, device=os.stat(machine.library.root).st_dev + 1)
     assert plan.renumbers == 0
@@ -414,8 +404,7 @@ def test_the_digest_moves_when_a_random_id_is_replaced_elsewhere(machine):
 
 
 def test_the_digest_is_equal_across_two_bounds_that_select_the_same_rows(machine):
-    """A copy rehearsal and the live run each create their own file, so their bounds differ by at
-    least one and the approval must not hang on it."""
+    """A rehearsal's bound and the live run's differ by at least one; the approval must not."""
     build(machine)
     assert _planned(machine, bound=BOUND).digest == _planned(machine, bound=BOUND + 5).digest
 
@@ -468,16 +457,14 @@ def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowled
     assert "601" in acted["warnings"][1]["message"]
     assert acted["data"]["totals"]["unrenumbered"][0]["content_id"] == "601"
     assert acted["data"]["totals"]["bound"] == BOUND
-    # The policies the apply registered are gone again: no later writer in
-    # this process gains a column by them.
+    # The apply's policies are gone again: no later writer gains a column by them.
     assert rb_writer.ROW_DEFAULTS_POLICY.owner not in rb_writer.registered_field_policies()
     assert rb_writer.FILE_ID_POLICY.owner not in rb_writer.registered_field_policies()
     assert rb_writer.content_writable_columns() == {"ColorID"}
 
 
 def test_a_policy_registered_before_the_apply_survives_it(acknowledged):
-    """The restore puts back what was there, not the baseline: a metadata operation enabled earlier
-    in the process keeps its columns afterwards."""
+    """The restore puts back what was there: an operation enabled earlier keeps its columns."""
     from types import MappingProxyType
 
     build(acknowledged)
@@ -561,8 +548,7 @@ def test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind(machine
 
     assert bound.inode > probe.stat().st_ino
     assert bound.device == probe.stat().st_dev
-    # The filesystem is whatever the mount table says of this machine; it is
-    # read, not assumed, and a machine off APFS reads undecidable rather than wrong.
+    # The filesystem is read off the mount table; off APFS it reads undecidable.
     assert bound.filesystem == row_defaults.filesystem_of(state)
     assert sorted(p.name for p in state.iterdir()) == before
 
@@ -743,8 +729,7 @@ def test_every_default_is_a_real_column_and_none_is_an_analysis_column():
 
 
 def test_the_file_id_is_a_real_column_owned_by_its_policy_and_hidden_from_no_guard():
-    """U115. Owned, since the value replaced is present and wrong; not an analysis column; and NOT
-    bookkeeping, which would blind the guard for every writer."""
+    """U115: owned, as the value is present and wrong; not analysis; NOT bookkeeping."""
     from pyrekordbox.db6 import tables
 
     assert FILE_ID in tables.DjmdContent.__table__.columns.keys()
@@ -769,8 +754,7 @@ def test_the_file_id_is_a_real_column_owned_by_its_policy_and_hidden_from_no_gua
         (BOUND + 1, row_defaults.ABOVE),
         (str(RANDOM_ID), row_defaults.ABOVE),
         (f" {RANDOM_ID} ", row_defaults.ABOVE),
-        # What int() would take and no writer here produces: a sign, an
-        # underscore, a digit from another script. Not a number to this rule.
+        # What int() takes and no writer here produces is not a number to this rule.
         (f"+{RANDOM_ID}", row_defaults.WITHIN),
         ("300_000_000", row_defaults.WITHIN),
         ("٣" * 9, row_defaults.WITHIN),

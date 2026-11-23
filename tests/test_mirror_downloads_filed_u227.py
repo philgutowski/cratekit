@@ -1,6 +1,6 @@
 """U227: which adoption ledger entries ``mirror_downloads.filed`` reads as a landing's filing.
 
-The mutation table's zero rows R11, R13, R14 and R24, pinned at the reader, each time set by hand.
+The mutation table's zero rows R11, R13, R14 and R24, pinned at the reader.
 """
 
 from __future__ import annotations

@@ -1,10 +1,7 @@
 """``crate organize --report`` opens the library once (U267).
 
-The report opens one read handle at its first read, hands it to every reader and
-closes it on every way out, where each step used to open its own; the run that
-answers a gate opens as before. Every count was measured on the base: the
-``world`` report made seven opens and its applying run 26. The database is
-always the suite's disposable fixture.
+One read handle opened at the first read, shared, closed on every way out; the
+gated run opens as before. Counts were measured on the base (seven opens, 26).
 """
 
 from __future__ import annotations
@@ -127,8 +124,7 @@ def test_an_open_that_refuses_refuses_each_step_as_its_own_open_did(world, monke
     attempts.clear()
     _without_sharing(monkeypatch)
     separate = _report()
-    # AS MANY ATTEMPTS AS READERS THAT REACHED THEIR OPEN, five, measured on
-    # the base; a refusal kept and handed on would make it one.
+    # AS MANY ATTEMPTS AS READERS THAT REACHED THEIR OPEN, five, measured on the base.
     assert asked == len(attempts) == 5
     assert _said(shared) == _said(separate)
     refused = [
@@ -160,8 +156,7 @@ def test_a_failure_nobody_expected_still_closes_the_handle(world, monkeypatch):
     def failing(*_args, **_kwargs):
         raise RuntimeError("a defect in the middle of the report")
 
-    # AFTER THE READ OF THE AUTHOR'S OWN LISTING, so the handle is open when
-    # the report fails.
+    # AFTER THE READ OF THE AUTHOR'S OWN LISTING, so the handle is open at the failure.
     monkeypatch.setattr(own, "rekordbox_home", failing)
     code, envelope = drive([*VERB, "--report"])
     assert code != int(ExitCode.OK), envelope
@@ -170,8 +165,7 @@ def test_a_failure_nobody_expected_still_closes_the_handle(world, monkeypatch):
 
 # The run that answers a gate is not changed
 
-#: The applying run's opens on the base, both gates answered by their two
-#: acts and the run that writes, in order: who opened, and whether to write.
+#: The applying run's opens on the base, in order: who opened, and whether to write.
 #: The reads of one plan, in the order the run makes them.
 _PLAN = ("read_collection", "_read_tree", "planned", "reading", "read_library", "add_step", "_yours")
 APPLYING = (

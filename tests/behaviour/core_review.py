@@ -1,9 +1,7 @@
 """The review queue's scenarios: offered, grouped, resolved, withheld, exported and imported (U301).
 
-Items are offered and a label release withheld through the store, as a
-producer files them, then every `crate review` verb reads and writes them, so
-the capture holds the queue's database and each export file the verbs leave.
-On the review queue suite's own configured library.
+Items are offered and withheld through the store, then every `crate review`
+verb reads and writes them, on the review queue suite's configured library.
 """
 
 from __future__ import annotations

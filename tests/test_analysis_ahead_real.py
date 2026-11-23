@@ -1,8 +1,6 @@
 """U241: the shipped detector, on real audio, through the real verb, serial against pooled.
 
-The same claim as ``tests/test_analysis_ahead.py`` with nothing faked on the
-measuring side, and the one test where a worker rebuilds the calibration and
-binds the real detector itself. Skipped where the analysis extra is absent.
+Nothing faked on the measuring side; skipped where the analysis extra is absent.
 """
 
 from __future__ import annotations

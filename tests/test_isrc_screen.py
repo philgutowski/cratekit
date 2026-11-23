@@ -1,20 +1,10 @@
 """U207: many ISRCs are screened in a few requests, and a track found is never fetched again.
 
-The catalogue API takes up to twenty ISRCs in one request and answers one track per
-code when given several (``docs/solutions``, the multi ISRC filter entry), so a batch
-only says which codes the catalogue files anything under. Each claim is counted
-through the real pacing gate on a temporary state file.
-
-1. An ISRC with five releases costs one read, and no track is fetched again.
-2. Codes the catalogue files nothing under cost a batch, not a request each, and a
-   held code is still asked alone so every release comes back.
-3. A code absent from a batch answer is not found and the others are answered.
-4. A malformed code, a non folded spelling or a lone code never enters a batch.
-5. A batch that fails marks nothing: a 5xx falls back to each code's own lookup, a
-   429 is counted and stops the screening, as does a rejected credential.
-6. An answer the screen cannot attribute marks nothing absent.
-7. Without the app client nothing is screened.
-8. ``sync pair``, the mirror and ``intake missing`` screen before they ask.
+A batch of up to twenty ISRCs answers one track per code (``docs/solutions``, the
+multi ISRC filter entry), so it only says which codes the catalogue files anything
+under; a held code is still asked alone. Each claim is counted through the real
+pacing gate. A failed batch marks nothing, and ``sync pair``, the mirror and
+``intake missing`` screen before they ask.
 """
 
 from __future__ import annotations
@@ -71,11 +61,8 @@ def included(tracks: list[dict]) -> list[dict]:
 
 
 class Api:
-    """``openapi.tidal.com/v2`` over a catalogue of ``held`` codes to release ids.
-
-    One code is answered with every release it is filed under, several with one
-    release each. ``batch`` and ``single`` replace an answer with a status or a body.
-    """
+    """``openapi.tidal.com/v2`` over ``held`` codes to release ids; ``batch`` and
+    ``single`` replace an answer with a status or a body."""
 
     def __init__(self, held: dict[str, list[str]]) -> None:
         self.held = held

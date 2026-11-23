@@ -1,8 +1,6 @@
 """R-744: the tempo a head names is the one inside the window, to the beat.
 
-The interpolation recovers the fraction of a bin and the window picks the
-metrical level, driven on signals of known tempo. Skipped where the analysis
-extra is absent.
+Driven on signals of known tempo; skipped where the analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -97,9 +95,7 @@ def test_a_peak_outside_the_window_is_not_named_and_the_one_inside_is():
 
 
 def test_a_vertex_leaning_past_the_window_edge_is_held_at_the_edge():
-    """The bin at the floor edge with a stronger neighbour just outside: the
-    parabola leans outside, and the head must still name a value inside the
-    window, so the answer is held at the floor."""
+    """A stronger neighbour just outside the floor: the head is held at the floor."""
     lag_floor = 60.0 * RATE / (detect.TEMPO_HOP * 80.0)  # 32.3
     strength = np.zeros(384)
     strength[32] = 1.0
@@ -117,9 +113,7 @@ def test_the_interpolated_offset_is_held_to_half_a_bin():
 
 
 def test_a_head_never_names_a_value_outside_the_window():
-    """Both ends included, and the rounded head stays inside: an answer of
-    159.6 rounds to 160, which is the ceiling and allowed; nothing rounds past
-    it, and nothing rounds below the floor."""
+    """Both ends included: 159.6 rounds to the ceiling 160, nothing rounds past either."""
     for lag in np.linspace(15.0, 34.0, 200):
         tempo = detect.tempo_from_autocorrelation(_autocorrelation_peaked_at(lag))
         assert tempo is not None
@@ -134,12 +128,8 @@ def test_a_window_no_bin_falls_in_answers_none():
 
 
 def test_the_prior_prefers_the_level_nearer_the_centre_inside_the_window():
-    """Two peaks on whole bins, lag 29 at 89 and lag 19 at 136, both inside
-    the window, the slower a twentieth stronger: a flat window names 89, the
-    prior at 120 names 136. The first mutation table measured this test with
-    equal peaks and the prior's removal killed nothing, because the argmax
-    tie fell on the higher tempo anyway; the imbalance is what makes the
-    prior the thing under test."""
+    """Peaks at 89 and 136, the slower a twentieth stronger: a flat window names 89,
+    the prior at 120 names 136. The imbalance makes the prior the thing under test."""
     strength = 1.05 * _autocorrelation_peaked_at(29.0) + _autocorrelation_peaked_at(19.0)
     assert int(np.argmax(strength)) == 29
     tempo = detect.tempo_from_autocorrelation(strength)
@@ -164,10 +154,8 @@ def test_a_pulse_above_the_ceiling_is_named_by_its_value_inside_the_window():
 
 
 def test_a_pulse_below_the_floor_is_named_by_its_subdivision():
-    """A 70 beat pulse with its eighth notes sounded, as a played track has
-    them: the window holds 140 and not 70, so 140 is named. A bare click
-    train at 70 carries no energy at 140 and would be named by noise, which
-    is what the interpolated autocorrelation can and cannot see."""
+    """A 70 beat pulse with its eighths sounded names 140, the window's; a bare 70
+    click train carries nothing at 140."""
     slow = _clicks(70.0) + 0.5 * _clicks(140.0)
     default = detect.measure_tempo(slow, RATE, floor=80, ceiling=160)
     assert default is not None and abs(default - 140.0) < 1.0

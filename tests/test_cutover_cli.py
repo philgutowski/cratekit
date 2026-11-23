@@ -1,10 +1,7 @@
 """The two verbs over the tree registry, driven through the real dispatcher (R-235).
 
-Unlike ``test_cutover_precheck.py``, every scenario here goes through
-``cli.run``, the root is a row in a real database file, and the approval is
-R34's two acts. The library root is temporary too: the registry sits beside
-it, so leaving the root real would record cutovers where a real run reads.
-D1 applies.
+The root is a row in a real database file and the approval is R34's two acts. The
+library root is temporary, since the registry sits beside it (D1).
 """
 
 from __future__ import annotations
@@ -33,9 +30,7 @@ REVERT_GATE = "tree.revert.approve"
 TODAY = date(2026, 9, 27)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+# ═══ Fixtures ═══════════════════════════════════════════════════════════════
 
 
 @pytest.fixture(autouse=True)
@@ -160,9 +155,7 @@ def _cut_over(export: Path) -> dict:
     return acted
 
 
-# ---------------------------------------------------------------------------
-# The cutover
-# ---------------------------------------------------------------------------
+# ═══ The cutover ════════════════════════════════════════════════════════════
 
 
 def test_the_plan_names_the_root_and_approval_records_that_tree_alone(ready):
@@ -415,8 +408,7 @@ def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
 
 
 def test_the_intake_tree_cuts_over_on_the_same_answer_as_the_routing_tree(ready):
-    """The intake tree anchors to its own root on the same answer as the
-    routing tree, since the landing chooses its medium by the tree's mode (R-746)."""
+    """The intake tree anchors on the same answer as the routing tree (R-746)."""
     cfg, export, routing_root = ready
     intake_root = _add_folder(cfg, DECLARED.intake.display)
     code, acted, _refused = _two_acts(
@@ -453,9 +445,7 @@ def test_the_source_comes_off_the_taxonomy():
         )
 
 
-# ---------------------------------------------------------------------------
-# Adoption, which is what the cutover was for
-# ---------------------------------------------------------------------------
+# ═══ Adoption, which is what the cutover was for ═══════════════════════════
 
 
 def _resume(job_id: str) -> list[str]:
@@ -533,9 +523,7 @@ def test_after_the_cutover_adoption_writes_membership_under_the_adopted_root(rea
     )
 
 
-# ---------------------------------------------------------------------------
-# The revert
-# ---------------------------------------------------------------------------
+# ═══ The revert ═════════════════════════════════════════════════════════════
 
 
 def test_a_revert_before_any_native_write_puts_the_tree_back_on_the_bridge(ready):
@@ -634,9 +622,7 @@ def test_a_write_to_another_tree_does_not_close_this_trees_door(ready):
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
 
 
-# ---------------------------------------------------------------------------
-# Doctor
-# ---------------------------------------------------------------------------
+# ═══ Doctor ═════════════════════════════════════════════════════════════════
 
 
 def _tree_finding(cfg: config.Config) -> doctor.Finding:
@@ -692,16 +678,11 @@ def test_doctor_fails_on_a_registry_it_cannot_read_rather_than_listing_the_bridg
     )
 
 
-# ---------------------------------------------------------------------------
-# Edge cases of the cutover's remedies
-# ---------------------------------------------------------------------------
+# ═══ Edge cases of the cutover's remedies ══════════════════════════════════
 
 
 def test_the_steps_the_refused_adoption_names_are_the_steps_that_work(ready):
-    """The remedy as a person follows it: refused, cut over, apply again.
-
-    Driven, because a step nobody drove can name a resume the engine refuses.
-    """
+    """The remedy driven as a person follows it: refused, cut over, apply again."""
     cfg, export, root_id = ready
     _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
     code, refused = drive(_resume(job_id))
@@ -766,8 +747,7 @@ def _native(cfg: config.Config, tree_id: str, root_id: str, source) -> None:
 
 
 def test_doctor_reads_a_native_inbox_record_as_ok(machine):
-    """The verb records the intake tree, so doctor failing it would send the
-    person to a revert that refuses once a native landing exists (R-787)."""
+    """The verb records the intake tree, so doctor failing it would send a revert (R-787)."""
     _native(machine, DECLARED.intake.id, "root-7", tree_registry.DerivationSource.TAXONOMY)
     finding = _tree_finding(machine)
 
@@ -824,11 +804,7 @@ def test_doctor_fails_a_native_inbox_whose_source_no_rebuild_reproduces(machine)
 
 
 def test_doctor_and_the_verb_read_one_set_of_cutover_trees(machine, monkeypatch):
-    """One function names the trees a cutover may record and both ask it (R-787).
-
-    Patched to a sentinel, doctor hands back the sentinel and the verb's
-    acceptance moves with it, so neither holds a list of its own.
-    """
+    """One function names the trees a cutover may record, and both ask it (R-787)."""
     assert DECLARED.catalog is not None
     expected = frozenset({TREE, DECLARED.intake.id})
     _declared, may_cut_over, _reason = doctor_state._declared_trees(machine)

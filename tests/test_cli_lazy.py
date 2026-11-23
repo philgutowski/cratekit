@@ -1,28 +1,10 @@
 """Every ``crate`` command imports only the verb it runs (U248).
 
-Before U248 the parser imported all of the registry's verb modules before it
-read a word, so ``crate --version`` waited most of a second on modules it never
-used. Now a verb's module is imported when argparse selects that verb, and a
-help listing asks a module only when its line could read differently for it.
-
-What these tests hold, and the reason for each:
-
-1. **The saving, as modules loaded, never as a wall clock.** Measured in a
-   fresh interpreter, because by the time the suite reaches this file every
-   verb module is cached and an in-process difference is empty whatever the
-   code does (``tests/_import_probe.py`` says why at length).
-2. **Nothing a person reads changed.** Every help screen, at the top level, for
-   every group and for every verb, on both presets, is the same text from the
-   lazy parser as from the eager one, which is the construction loop as it
-   stood before U248, kept verbatim for the tree walkers. And the parser's own
-   refusals, an unknown verb, a group with no verb, an abbreviated option and a
-   bad value, carry the same status and the same words.
-3. **The stub still works**: a verb whose extra is missing is listed with what
-   it needs and refuses ``module-extras-missing`` when run.
-4. **One broken module no longer takes every command down**, the change U248
-   makes on purpose: it fails loudly for its own verb and nowhere else.
-5. **Every landed entry still imports and resolves its builder**, which the
-   parser used to prove on every run and now proves only for the verb it runs.
+A verb's module is imported when argparse selects it, and a help listing asks a module
+only when its line could read differently. These tests hold: the saving, counted in
+modules in a fresh interpreter, never a wall clock; every help screen and parser refusal
+the same as the eager parsers'; the stub listing and refusing a missing extra; one
+broken module failing only its own verb; and every landed entry resolving its builder.
 """
 
 from __future__ import annotations
@@ -41,15 +23,11 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules import extras
 from tests import _import_probe
 
-#: The ceiling on Cratekit's own modules after ``crate doctor --help`` in a fresh
-#: interpreter. Measured at U248 on the full preset: 58, against 301 before it,
-#: when every invocation loaded the whole registry's verb modules. The margin is
-#: for the doctor's own closure growing; the eager parser lands far above it.
+#: Ceiling on Cratekit's own modules after ``crate doctor --help`` on the full preset:
+#: 58 at U248 against 301 before; the margin is for the doctor's own closure growing.
 DOCTOR_HELP_CEILING = 90
 
-#: Two verb modules the card names, which ``doctor --help`` must not load.
-#: Each has a large closure of its own (163 and about 128 modules), so loading
-#: either is the regression this file exists to catch.
+#: Two verb modules with large closures of their own, which ``doctor --help`` must not load.
 NOT_DOCTORS = ("cratekit.organize.cli", "cratekit.intake.land_cli")
 
 
@@ -58,13 +36,7 @@ def _verb_modules() -> set[str]:
 
 
 def _probe(argv: list[str]) -> dict:
-    """Run ``crate ARGV`` in a fresh interpreter and say what it loaded.
-
-    On the full preset so every verb is in the tree and could have been loaded.
-    The membership is set rather than read from the isolated home, so the
-    measurement does not depend on which preset an unconfigured machine falls
-    back to.
-    """
+    """Run ``crate ARGV`` in a fresh interpreter on the full preset and say what it loaded."""
     return _import_probe.run_probe(
         f"""
         import contextlib, io, json, sys
@@ -105,9 +77,7 @@ def _closure(module: str) -> dict:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The saving, counted in modules
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 1. The saving, counted in modules ═════════════════════════════════════
 
 
 @pytest.mark.parametrize("argv", [["--version"], ["--help"], []], ids=["version", "help", "bare"])
@@ -120,12 +90,7 @@ def test_the_version_and_the_top_level_help_load_no_verb_module(argv):
 
 
 def test_doctor_help_loads_the_doctor_and_only_what_the_doctor_itself_imports():
-    """The card's scenario, against the doctor module's own closure.
-
-    The closure is measured, not listed, so a doctor that grows an import of
-    another verb module is not this test's failure, while a parser that loads a
-    verb nobody asked for is.
-    """
+    """The doctor loads its own measured closure, and the parser loads no verb nobody asked for."""
     result = _probe(["doctor", "--help"])
     assert result["code"] == 0
     assert "usage: crate doctor" in result["printed"]
@@ -150,9 +115,7 @@ def test_a_group_help_loads_no_verb_module_when_none_of_its_verbs_declares_an_ex
     assert result["verbs"] == [], result["verbs"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Nothing a person reads changed: lazy against eager
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 2. Nothing a person reads changed: lazy against eager ═════════════════
 
 
 def _paths(membership: profiles.Membership) -> list[tuple[str, ...]]:
@@ -183,11 +146,12 @@ def test_every_help_screen_reads_the_same_as_the_eager_parsers(preset, monkeypat
     membership = profiles.resolve(preset)
     paths = _paths(membership)
     assert len(paths) > 40
+    # Each lazy parser is fresh; the eager one is plain argparse, which parsing leaves as built.
+    eager = cli.build_parser(membership=membership, eager=True)
     for path in paths:
         argv = [*path, "--help"]
         lazy = _said(cli.build_parser(membership=membership), argv)
-        eager = _said(cli.build_parser(membership=membership, eager=True), argv)
-        assert lazy == eager, f"crate {' '.join(argv)} reads differently"
+        assert lazy == _said(eager, argv), f"crate {' '.join(argv)} reads differently"
         assert lazy[0] == 0 and lazy[1].startswith("usage: crate")
 
 
@@ -232,9 +196,7 @@ def test_a_group_named_with_no_verb_prints_the_same_screen(monkeypatch):
     assert lazy.getvalue().startswith("usage: crate")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3 and 4. The stub, and a broken module
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 3 and 4. The stub, and a broken module ════════════════════════════════
 
 
 def _fake(name: str, module: str, **kwargs) -> registry.Entry:
@@ -306,12 +268,8 @@ def test_a_listing_asks_only_the_verbs_whose_line_could_differ():
 
 
 def test_a_broken_module_fails_its_own_verb_and_leaves_every_other_one_working():
-    """The deliberate change of U248.
-
-    Before it, an import error of our own in any verb module escaped
-    ``build_parser`` on every command, ``crate --help`` included. Now it escapes
-    only when its own verb is selected, still as itself and never as a missing
-    extra, and a listing that would have asked it shows its plain summary.
+    """U248's deliberate change: an import error escapes only for its own verb, as
+    itself, and a listing that would have asked it shows its plain summary.
     """
     entries = [
         _with_extra("analyze.broken", "tests.cli_fixtures.broken_module"),
@@ -345,22 +303,14 @@ def test_a_module_that_raises_anything_at_import_is_listed_plainly_and_raises_fo
 
 
 def test_a_defective_builder_is_a_defect_and_never_a_usage_error():
-    """argparse reads an ArgumentError inside its parse as the user's mistake.
-
-    The eager loop raised a builder's own ArgumentError as a traceback, so the
-    lazy one must too, rather than exit 2 with a usage line that blames the
-    person who typed a correct command.
-    """
+    """A builder's own ArgumentError is a traceback, never exit 2 blaming the person."""
     entries = [_fake("status", "tests.cli_fixtures.conflicting_builder")]
     membership = profiles.resolve("full")
     parser = cli.build_parser(entries, membership=membership)
     with pytest.raises(RuntimeError, match="building status from") as raised:
         parser.parse_args(["status"])
     assert isinstance(raised.value.__cause__, argparse.ArgumentError)
-    # Built only once the builder returned, so asking again is still refused
-    # as a defect rather than handing on a verb with half its arguments. What
-    # it names the second time is the duplicate the first attempt left behind,
-    # which for this fixture is the same defect and for another may not be.
+    # Built only once the builder returned, so asking again is still a defect.
     with pytest.raises(RuntimeError, match="building status from"):
         parser.parse_args(["status"])
     with pytest.raises(argparse.ArgumentError):
@@ -397,9 +347,7 @@ def test_a_verb_is_built_once_however_often_it_is_asked():
     assert calls == ["tests.cli_fixtures.plain"] * 2, "one for the listing, one to build"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. Every landed entry imports and resolves its builder
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 5. Every landed entry imports and resolves its builder ═════════════════
 
 
 @pytest.mark.parametrize("entry", registry.landed_entries(), ids=lambda e: e.name)

@@ -1,30 +1,24 @@
 """Behaviour scenarios: what `crate` prints and writes, captured for comparison (U297).
 
-`scripts/behaviour_compare.py capture` runs the files in this directory as a
-pytest run of their own and records what each scenario did, and `compare`
-reads two such captures. The files are not named ``test_*.py``, so the suite
-does not collect them: they are run when a branch has to show it prints and
-writes what its base does, and at no other time.
+`scripts/behaviour_compare.py capture` runs these files as a pytest run of their
+own and `compare` reads two captures. They are not named ``test_*.py``, so the
+suite never collects them.
 
-ONE FILE PER PACKAGE, named for the package whose verbs it drives, so two
-cards never edit the same one. A file can hold one fixture of a name, so a
-package whose scenarios borrow from two suites that each call their machine
-``machine`` keeps the second suite's in a file named for the package and the
-verb, as ``tagging_rows.py`` is (U298). A scenario is a test function that
-takes the ``stage`` fixture and drives commands through it:
+One file per package, named for the package whose verbs it drives, so two cards
+never edit the same one; a second suite's ``machine`` lives in a file named for
+the package and the verb, as ``tagging_rows.py`` does (U298). A scenario takes
+the ``stage`` fixture and drives commands through it:
 
     def test_a_tag_is_written(stage, machine, silence):
         ...
         stage.crate("tag", "remap")
 
-Its fixtures are the suite's own, imported from the test module that defines
-them, never new builders. Assert what the scenario depends on, an exit code
-or a job id, so a scenario whose setup broke fails the capture instead of
-recording a refusal as if it were the behaviour.
+Its fixtures are the suite's own, imported, never new builders. Assert what the
+scenario depends on, an exit code or a job id, so broken setup fails the capture
+instead of recording a refusal as the behaviour.
 
-This module is the stage's parts: the pinned clock, the counted ids and the
-``Stage`` that runs a command and keeps what it did. ``conftest.py`` beside it
-holds the fixtures that put them around every scenario.
+This module holds the stage's parts: the pinned clock, the counted ids and the
+``Stage``; ``conftest.py`` puts them around every scenario.
 """
 
 from __future__ import annotations
@@ -48,30 +42,21 @@ from pathlib import Path
 #: recorded dates, a pin validated in August 2026 among them, are in its past.
 INSTANT = datetime_module.datetime(2026, 11, 21, 12, 0, 0, tzinfo=datetime_module.timezone.utc)
 
-#: The modules whose own names for the clock and the id sources are re-pointed.
-#: The standard library's modules are patched at their own attributes, which
-#: covers every later import and every ``module.name`` call; these are the
-#: packages that may already hold ``from datetime import datetime`` by then.
+#: The packages whose own names for the clock and the id sources are re-pointed,
+#: since they may already hold ``from datetime import datetime``.
 SWEPT = ("cratekit", "tests", "pyrekordbox")
 
 _REAL_DATETIME = datetime_module.datetime
 _REAL_DATE = datetime_module.date
 
-#: Whether the pins are on. Every pinned name asks this each time it is
-#: called and answers as the real one when they are off, so a reference that
-#: outlives the scenario, a default argument bound at an import made while the
-#: pins were on, a closure, a dataclass's default factory, is the real clock
-#: and the real id source again from the moment the pins come off.
+#: Whether the pins are on. Every pinned name asks each call and answers as the
+#: real one when they are off, so a reference that outlives the scenario is real.
 _PINS = {"on": False}
 
 
 class _Pinned(type):
-    """Makes a pinned class stand for the real one in ``isinstance`` and ``issubclass``.
-
-    No instance of a pinned class ever exists: its constructor returns the
-    real type's. So a check against the pinned name has to accept those, or
-    code holding the pinned name would stop recognising every date it meets.
-    """
+    """Makes a pinned class stand for the real one in ``isinstance`` and ``issubclass``,
+    since its constructor returns the real type's instances."""
 
     def __instancecheck__(cls, instance) -> bool:
         return isinstance(instance, cls._real)
@@ -121,10 +106,8 @@ class PinnedDate(_REAL_DATE, metaclass=_Pinned):
 class Counted:
     """Ids from a counted sequence, so the nth id a scenario mints is always the same.
 
-    A sequence and not a constant, because ids must stay distinct. It makes
-    the ids depend on the order they are minted in, so a change that mints one
-    more id, or mints two in the other order, shows as a difference in every
-    id after it; that is read as a difference to explain, not as noise.
+    A sequence keeps ids distinct; one more id minted, or two in another order,
+    shows as a difference in every id after it, to be explained, not ignored.
     """
 
     def __init__(self) -> None:
@@ -151,20 +134,13 @@ class Counted:
 def pin(patch):
     """Hold the clock at ``INSTANT`` and draw ids from a fresh count, through ``patch``.
 
-    ``patch`` is a ``pytest.MonkeyPatch`` of the caller's own, and what is
-    returned takes the pins off again, the seed of the shared ``random``
-    generator included. What is pinned is what Python code reads:
-    ``datetime`` and ``date``; ``time.time`` and ``time.time_ns``; the two
-    clocks a duration is measured on, ``time.monotonic`` and
-    ``time.perf_counter``, which stand still, so every measured duration is
-    zero and a wait that would have timed out never does, which the capture's
-    own timeout ends; ``uuid.uuid4``, ``secrets.token_hex`` and
-    ``secrets.token_bytes``, the last being where the rekordbox binding draws
-    a new row's id; and the stamps the binding puts on a row it writes
-    (``pin_binding_stamps``). What the operating system gives is not pinned
-    here: a file's times are set by ``Stage.settle`` between commands, and the
-    process id and each file's inode are the capture's own, which ``compare``
-    knows by name.
+    The returned callable takes the pins off again, the shared ``random`` seed
+    included. Pinned: ``datetime`` and ``date``; ``time.time`` and
+    ``time.time_ns``; ``time.monotonic`` and ``time.perf_counter``, which stand
+    still, so a wait never times out; ``uuid.uuid4``, ``secrets.token_hex`` and
+    ``secrets.token_bytes``; and the binding's row stamps
+    (``pin_binding_stamps``). File times are set by ``Stage.settle``; the process
+    id and inodes are the capture's own, which ``compare`` knows by name.
     """
     if _PINS["on"]:
         raise RuntimeError("the pins are already on, and one scenario runs at a time")
@@ -211,14 +187,8 @@ def pin(patch):
     _PINS["on"] = True
 
     def unpin() -> None:
-        """Turn the pins off, and put the real name back wherever a pinned one is held.
-
-        Off first, which makes every pinned name answer as the real one
-        wherever it is still referenced. Then the names: a module first
-        imported while the pins were on took a pinned name as its own, ``from
-        datetime import datetime`` or ``from uuid import uuid4``, and the
-        patch never set that, so undoing the patch would not put it back.
-        """
+        """Turn the pins off, then put the real name back wherever a pinned one is
+        held, since a module imported under the pins took a pinned name as its own."""
         _PINS["on"] = False
         random.setstate(state)
         for module in list(sys.modules.values()):
@@ -235,11 +205,8 @@ def pin(patch):
 def pin_binding_stamps(patch) -> None:
     """Make the rekordbox binding stamp a row with the pinned instant.
 
-    The binding's tables declare ``default=datetime.now`` and
-    ``onupdate=datetime.now`` on every row's two stamps, and that is the real
-    class's method, bound when the binding was imported, which no patch of a
-    name reaches. So each such default is re-pointed where the schema holds
-    it, on the binding's own shared declaration, for the life of the patch.
+    The binding's ``default=datetime.now`` and ``onupdate=datetime.now`` were
+    bound at import, so each is re-pointed on the shared declaration.
     """
     try:
         from pyrekordbox.db6 import tables
@@ -279,14 +246,8 @@ class Stage:
     commands: list[dict] = field(default_factory=list)
 
     def settle(self) -> None:
-        """Give everything under the scenario's directory the pinned instant as its times.
-
-        The clock is pinned and the file system's is not, so a file one
-        command wrote would carry the real time into the next command that
-        reads it: a gate reports how long a run has stood open by its record's
-        last write. Between commands every file and directory is therefore
-        set to the instant the commands themselves believe it is.
-        """
+        """Give everything under the scenario's directory the pinned instant as its
+        times, so a file one command wrote carries no real time into the next."""
         stamp = INSTANT.timestamp()
         for current, directories, files in os.walk(self.root):
             for name in (*directories, *files):
@@ -295,10 +256,8 @@ class Stage:
     def crate(self, *argv: str) -> Ran:
         """Run one `crate` command through the real dispatcher and keep what it did.
 
-        In this process, as the suite drives a verb, so the suite's fakes
-        stand where a provider or a program would. Both streams are also
-        redirected, because argparse prints a help screen to the process's own
-        standard output whatever the dispatcher was handed.
+        In this process, so the suite's fakes stand in; both streams are
+        redirected, since argparse prints help to the process's own stdout.
         """
         from cratekit import cli
 
@@ -335,11 +294,9 @@ def scenario_name(path: Path, function: str) -> str:
 def process_identity() -> list[str]:
     """The words this process is known by in what it writes: its id and when it started.
 
-    The product records both, in a session's holder, in a lock file and in
-    the job queue, and both differ between two captures whatever the tree
-    does. They are written into the capture so `compare` can read one
-    capture's against the other's instead of calling each a difference. The
-    start is spelled as ``core.session.process_started`` spells it.
+    Both differ between captures whatever the tree does, so they are written into
+    the capture for `compare` to read across. The start is spelled as
+    ``core.session.process_started`` spells it.
     """
     import psutil
 

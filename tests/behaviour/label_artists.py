@@ -1,10 +1,7 @@
 """Label artists' scenarios: an open release reading an object address given its artist (U308).
 
-`crate label artists` asks the provider for the artist of every open label
-release whose artist reads as a provider object address, and writes the
-name into that item and nothing else. A decided item and an item already
-naming its artist are left alone. On the artists suite's own machine, its
-strict fake catalogue and releases offered by the sweep's own producer.
+`crate label artists` names the artist of each open release reading as an
+object address, leaving decided and already named items alone.
 """
 
 from __future__ import annotations

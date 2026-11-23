@@ -1,23 +1,13 @@
 """Lint the shipped operator skills against the CLI they drive (R7).
 
-The skills are optional, so nothing breaks when they rot: a skill naming a
-command the CLI no longer exposes is a confidently wrong instruction. The rules:
-
-  (a) every skill has frontmatter with a name matching its directory and a
-      description;
-  (b) every project command token in a fenced COMMAND line is a real console
-      script; fenced COMMENT lines may also name skills and retired aliases;
-  (c) every ``python -m cratekit.<module>`` target exists AND is on the no
-      script allowlist, which is empty by design (R2, one entry point);
-  (d) no shipped skill carries a personal literal at all, delegated to the
-      portability scanner, with no carve out for any skill;
-  (e) no year literal path segment inside a fenced command;
-  (f) every deep reference to a repository file resolves;
-  (g) every crate invocation parses against the real parser;
-  (h) no taxonomy display name is spelled as a value in code.
-
-The checker is a pure function over a skills root, so fixture tests prove each
-rule bites against synthetic trees, and the last test runs it over the real one.
+A skill naming a command the CLI no longer exposes is a confidently wrong
+instruction. Rules: (a) frontmatter names the directory and a description;
+(b) every command token in a fenced command line is a real console script;
+(c) every ``python -m cratekit.<module>`` target exists and is allowlisted (the
+list is empty, R2); (d) no personal literal, by the portability scanner; (e) no
+year literal path segment; (f) every repository reference resolves; (g) every
+crate invocation parses with the real parser; (h) no taxonomy display name as a
+value in code. Fixtures prove each rule bites; the last test lints the real tree.
 """
 
 from __future__ import annotations
@@ -74,24 +64,14 @@ _CODE_SPANS = re.compile(r"`([^`\n]+)`")
 
 
 def real_parser():
-    """The parser the installed CLI assembles, built fresh each call.
-
-    FRESH, because argparse keeps state on a parser after a failed parse. THE
-    FULL MEMBERSHIP, so the verdict is not a property of the machine's profile.
-    """
+    """The installed CLI's parser over every module, fresh, since a failed parse leaves state."""
     from cratekit.cli import build_parser  # noqa: PLC0415
 
     return build_parser()
 
 
 class _ParserUntilRejected:
-    """The real parser, reused across lines and rebuilt after any line it exits on.
-
-    A rejected parse (or ``--help``) is what leaves state on argparse, so the
-    line after one always gets a fresh parser, as ``real_parser`` gives; a
-    successful parse leaves the parser as it was and building one per line is
-    the whole cost of the real tree's lint.
-    """
+    """The real parser, reused across lines and rebuilt after any line it exits on."""
 
     def __init__(self):
         self._parser = None
@@ -110,9 +90,7 @@ def _rejected(parser_for) -> None:
 
 
 def taxonomy_display_names() -> set[str]:
-    """Every display name the shipped taxonomy declares, derived from the template
-    (R19: a display name is a choice the user is allowed to change).
-    """
+    """Every display name the shipped taxonomy declares (R19), derived from the template."""
     from cratekit.core import taxonomy  # noqa: PLC0415
 
     declared = taxonomy.default_taxonomy()
@@ -124,12 +102,9 @@ def taxonomy_display_names() -> set[str]:
 
 
 def _verb_problems(line: str, skill: str, parser_for) -> list[str]:
-    """Check one command line by PARSING IT WITH THE REAL PARSER.
+    """Check one command line by parsing it with the real parser, whose exit 2 is the verdict.
 
-    Exit 2 is argparse's own verdict on a command a person typed; a checker that
-    reimplements argparse drifts from it. Deliberately not checked, since a rule
-    firing on correct prose gets suppressed (P7): a continuation line, the text
-    after a pipe or redirection, and a line whose quoting does not tokenise.
+    Not checked (P7): a continuation line, text after a pipe or redirection, bad quoting.
     """
     text = line.strip()
     # A prompt marker is decoration, and a person copying the line drops it.
@@ -187,11 +162,7 @@ def lint_skills(
     parser_for=None,
     taxonomy_names: set[str] | None = None,
 ) -> list[str]:
-    """Return a list of ``"<skill>: <problem>"`` over every SKILL.md found.
-
-    ``scripts`` is the ``[project.scripts]`` key set; ``skill_names`` defaults to
-    the directory names. The roots are injectable so fixtures drive synthetic trees.
-    """
+    """``"<skill>: <problem>"`` over every SKILL.md; the roots are injectable for fixtures."""
     problems: list[str] = []
     src_root = src_root if src_root is not None else SRC_ROOT
     repo_root = repo_root if repo_root is not None else REPO_ROOT
@@ -304,9 +275,7 @@ def _real_scripts() -> set[str]:
 
 
 def _fixture_parser():
-    """A tiny real argparse parser for the fixture skills, so each fixture proves
-    one rule through the same code path the real tree takes.
-    """
+    """A tiny real argparse parser, so each fixture takes the real tree's code path."""
     parser = argparse.ArgumentParser(prog="crate", add_help=True)
     parser.add_argument("--output")
     subparsers = parser.add_subparsers(dest="verb")
@@ -559,10 +528,7 @@ def test_a_rejected_line_hands_the_next_line_a_fresh_parser(tmp_path):
 
 
 def test_a_profile_disabled_verb_is_absent_rather_than_refusing():
-    """A switched off module's verb never reaches argparse: an invalid choice,
-    not a refusal with a cause. Pinned against the parser, so skills describing
-    it stay true if the product changes model.
-    """
+    """A switched off module's verb is an invalid choice to argparse, not a refusal with a cause."""
     from cratekit.cli import build_parser  # noqa: PLC0415
     from cratekit.core import profiles  # noqa: PLC0415
 

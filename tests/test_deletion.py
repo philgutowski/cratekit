@@ -1,11 +1,9 @@
 """U24: the deletion pass, the proof that gates it, and the watermark that scopes it.
 
-Most assertions are "no file moved, and here is the category that says why": the
-failure of a deletion pass is taking something it should not have. Every fixture
-is synthetic or a disposable copy built from the binding's schema in a temporary
-directory. Layers: the watermark (arithmetic, no library), the Trash (real files,
-real renames), the candidate rules (real inodes and sizes), and the pass (a fake
-binding for the branches, a real disposable database for "nothing in it changes").
+Most assertions are "no file moved, and here is the category that says why". Every
+fixture is synthetic or a disposable copy: the watermark (arithmetic), the Trash (real
+renames), the candidate rules (real inodes and sizes), and the pass (a fake binding, and
+a real disposable database for "nothing in it changes").
 """
 
 from __future__ import annotations
@@ -949,16 +947,12 @@ def test_a_move_that_fails_refuses_with_a_cause_rather_than_a_bare_error(
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
-def test_the_pass_refuses_while_rekordbox_is_open(cfg, gates_pass, monkeypatch):
+@pytest.mark.parametrize(
+    "running", ["rekordbox_running", "rekordbox_agent_running"], ids=["rekordbox", "agent"]
+)
+def test_the_pass_refuses_while_rekordbox_or_its_agent_runs(cfg, gates_pass, monkeypatch, running):
     """Without it every identity assertion is evaluated against a stale view."""
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-    with pytest.raises(CratekitError) as excinfo:
-        run.plan(cfg, FakeDb([]), actor="cli")
-    assert excinfo.value.cause.code is ExitCode.REKORDBOX_OPEN
-
-
-def test_the_pass_refuses_while_the_background_agent_is_running(cfg, gates_pass, monkeypatch):
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+    monkeypatch.setattr(rb_writer, running, lambda: True)
     with pytest.raises(CratekitError) as excinfo:
         run.plan(cfg, FakeDb([]), actor="cli")
     assert excinfo.value.cause.code is ExitCode.REKORDBOX_OPEN
@@ -1603,10 +1597,7 @@ def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(tmp_pat
 
 
 def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_path):
-    """Open 5's remediation in the residual finding
-    "Five findings the U24 review accepted, and the reason each stands",
-    which nothing asserted.
-    """
+    """Open 5's remediation, from the five findings the U24 review accepted (once unasserted)."""
     typo = tmp_path / "not-mounted"
     references = _references(
         cfg, _elsewhere(3), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(typo))]
@@ -2495,18 +2486,25 @@ def test_the_two_conventions_one_collection_holds_now_reach_one_identity(cfg):
     assert stores.version_of(split)["title"] == "strobe (michael woods remix)"
 
 
-def test_a_remixer_the_title_already_names_is_not_given_a_second_bracket(cfg):
-    """The test is on the BARE name, not on the spelled one, and it has to be."""
-    row = _remixed_row(
-        cfg, ONE, "1", title="Strobe (Michael Woods Extended Remix)", remixer="Michael Woods"
-    )
-    assert stores.version_of(row)["title"] == "strobe (michael woods extended remix)"
-
-
-def test_a_remixer_column_already_holding_a_mix_name_is_not_doubled(cfg):
-    """Some importers put a whole mix name in the column, and appending breaks it."""
-    row = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="Michael Woods Remix")
-    assert stores.version_of(row)["title"] == "strobe (michael woods remix)"
+@pytest.mark.parametrize(
+    ("title", "remixer", "expected"),
+    [
+        # The test is on the BARE name, not on the spelled one.
+        (
+            "Strobe (Michael Woods Extended Remix)",
+            "Michael Woods",
+            "strobe (michael woods extended remix)",
+        ),
+        # Some importers put a whole mix name in the column, and appending breaks it.
+        ("Strobe", "Michael Woods Remix", "strobe (michael woods remix)"),
+    ],
+    ids=["remixer-named-in-the-title", "mix-name-in-the-remixer-column"],
+)
+def test_a_remixer_already_spelled_out_is_not_given_a_second_bracket(
+    cfg, title, remixer, expected
+):
+    row = _remixed_row(cfg, ONE, "1", title=title, remixer=remixer)
+    assert stores.version_of(row)["title"] == expected
 
 
 def test_an_empty_remixer_column_leaves_the_ordinary_identity_alone(cfg):

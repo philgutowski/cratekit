@@ -1,8 +1,6 @@
 """U129: a set intake is saved as an account playlist and archived when it lands.
 
-Driven through the real dispatcher with the catalogue and account faked. No
-live account write is claimed here; the attended backfill over the two October
-sets is owed to a sitting.
+The catalogue and account are faked; the attended backfill is owed to a sitting.
 """
 
 from __future__ import annotations
@@ -33,6 +31,7 @@ from tests.intake.test_workers import job_of, recording, three_tracks
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 
 # Fixture aliases so pytest finds them from this module.
@@ -137,9 +136,7 @@ def test_intake_set_declares_the_account_gate_and_remote_write():
 def test_intake_set_with_all_three_words_freezes_the_page_upload_date(
     account, recognised, monkeypatch
 ):
-    """U136: --dj --set-name --set-date alone must not freeze today's date when
-    the page carries upload_date. The Signal set run hit this: early named
-    before the fetch, kept early, and landed under 10_12_26."""
+    """U136: the three set words with a page upload_date never freeze today's date."""
     cfg, _fake, held = account
     _paged(monkeypatch, recognised, date(2026, 10, 12))
     words = ["--dj", "Probe", "--set-name", "Friday Night Mix", "--set-date", "2026-05"]
@@ -195,8 +192,7 @@ def test_a_set_with_no_matches_makes_nothing_and_says_so(account, recognised, mo
 
 
 def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(account, recognised):
-    """No page and no name flags means the account step was never expected, so
-    the skip is silent rather than a ``set-account-unnamed`` warning."""
+    """No page and no name flags: the account step was never expected, so the skip is silent."""
     cfg, _fake, held = account
     three_tracks(recognised)
     code, done = drive(["intake", "set", str(recording(cfg.library.root))])

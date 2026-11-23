@@ -1,11 +1,9 @@
-"""U244: a track Beatport misses gets its genre from the Discogs API, with a person's own token.
+"""U244: a track Beatport misses gets its genre from the Discogs API, with a person's
+own token.
 
-Guarded, in the order a wrong answer would cost a library: absence is never
-read as an answer (no token, a rejection, a refusal, an outage, a reshape);
-a wrong release is worse than a miss; the token goes only in the
-Authorization header; and a style becomes a tag only through the resolver,
-naming a folder that is not the fallback's. Nothing touches the network, and
-the token is a fixture word.
+Absence is never an answer (no token, rejection, refusal, outage, reshape); a wrong
+release is worse than a miss; the token goes only in the Authorization header; a style
+becomes a tag only through the resolver. Offline, with a fixture token.
 """
 
 from __future__ import annotations
@@ -324,9 +322,7 @@ BRACKETED = "(Not Just) Knee Deep (Part 1)"
     ],
 )
 def test_a_release_is_taken_only_when_a_track_and_its_artist_match(artist, title, pages, answer):
-    """A wrong release is worse than a miss, a release unread is no miss, and a
-    gone one is passed over (R4: "Prodigy, The" is one artist; round two: an
-    unread pressing outranks a styleless match)."""
+    """A release needs a matching track and artist; unread is no miss, gone is passed (R4)."""
     hit = searcher(_releases(*pages))(artist, title)
     assert discogs_answer(hit).answer == answer
     if answer == "miss":
@@ -413,8 +409,7 @@ def test_a_file_swept_without_a_token_is_sources_unread_not_no_hit(tmp_path, sil
 
 
 def test_the_general_catalogue_is_still_asked_beside_an_unasked_discogs(tmp_path, silence):
-    """Beatport answered, so the general catalogue is asked; its miss leaves the
-    file askable, because Discogs was never asked."""
+    """Beatport answered, so the catalogue is asked; Discogs unasked leaves the file askable."""
     path = tmp_path / "b.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE, "isrc": "GBAYE0000001"})
@@ -477,8 +472,7 @@ def test_a_token_that_is_not_one_printable_word_is_refused_and_never_sent():
     ],
 )
 def test_a_search_nobody_can_read_a_result_off_is_unread_and_never_a_miss(page, answer):
-    """A refusal is blocked; an outage, a body that is not JSON, or a search that
-    is gone is unreachable; JSON in an unknown shape is a parse break."""
+    """Blocked, unreachable and parse break each by their own cause, never a miss."""
     hit = searcher(routed(search=page))(ARTIST, TITLE)
     assert discogs_answer(hit).answer == answer
     assert hit.unread == (searchers.DISCOGS,)
@@ -533,11 +527,7 @@ class Reply:
 
 
 def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] | None = None):
-    """The shipped asker over the shipped fetch, its getter answering by URL.
-
-    ``replies`` maps a URL prefix to a reply or to a list served in turn.
-    ``sent`` records every (url, headers) pair the getter was handed.
-    """
+    """The shipped asker over the shipped fetch; ``replies`` by URL prefix, ``sent`` recorded."""
     queues = {key: list(value) if isinstance(value, list) else value for key, value in replies.items()}
     naps = naps if naps is not None else []
 
@@ -664,11 +654,7 @@ def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_crate
 
 
 def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, silence):
-    """Every path a Discogs answer takes to a person, scanned for the token.
-
-    A transport failure whose message names the token, as a client library's
-    refusal of an invalid header does, is scrubbed before it becomes a note.
-    """
+    """Every path a Discogs answer takes to a person is scanned for the token, scrubbed too."""
     caplog.set_level(logging.DEBUG)
     sent: list = []
     seen_text: list[str] = []
@@ -787,8 +773,7 @@ def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
     monkeypatch.setattr(searchers, "default_fetch", lambda **_k: routed(search=results()))
     monkeypatch.setattr(searchers.Pacer, "wait", lambda self: 0.0)
     hit = searchers.for_taxonomy(TAXONOMY)(ARTIST, TITLE)
-    # The question's title rides beside the file's own text (U289); a title
-    # with no head is asked as written.
+    # The question's title rides beside the file's own text (U289).
     assert calls == [(ARTIST, TITLE, TITLE)]
     assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
 
@@ -808,8 +793,7 @@ def test_every_listed_style_names_a_folder_in_the_default_taxonomy(style):
 
 
 def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
-    """A row for a word the aliases already file would be a second answer to one
-    question; the measured nine are the rows, and four more from round one."""
+    """No row duplicates an alias; the measured nine, and four more from round one."""
     (table,) = [one for one in TAXONOMY.vocabularies if one.source == searchers.DISCOGS]
     rows = {row.word for row in table.words}
     assert rows == {
@@ -822,10 +806,7 @@ def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
         "Techno",
         "Garage House",
         "Soulful House",
-        # Round one's: three the substring rules filed as Progressive House,
-        # and Heavy Metal beside them. No row writes Jazz: a copy made before
-        # the Jazz folder would not load with one once its hold's edits are
-        # made (round two).
+        # Round one's three substring rows and Heavy Metal; no Jazz row (round two).
         "Progressive Trance",
         "Progressive Rock",
         "Progressive Metal",
@@ -836,8 +817,7 @@ def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
 
 
 def test_the_genre_is_resolved_by_suggest_tag_and_not_by_a_map(monkeypatch):
-    """Replace the resolver and the written tag follows it: nothing in the
-    searcher holds a second answer."""
+    """Replace the resolver and the written tag follows it: no second answer."""
     real = routing.suggest_tag
 
     def moved(declared, raw, *, bpm=None, source=None):
@@ -943,8 +923,7 @@ def test_a_discogs_blocked_on_every_search_is_named_like_any_shop():
 
 
 def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
-    """B1. The shared strip empties this title, which asked Discogs for every
-    release by the artist and read the empty remainder as a match."""
+    """B1: a title of brackets is searched whole, never as an empty match."""
     seen: list[str] = []
     other = [{"position": "A1", "type_": "track", "title": "Maggot Brain"}]
     fetch = routed(
@@ -964,8 +943,7 @@ def test_an_empty_title_on_either_side_matches_nothing():
 
 
 def test_a_rejected_token_is_not_sent_again_in_the_run():
-    """R1. After the first 401 every later file is refused the same way with
-    no request, so the rejected token is not resent per file."""
+    """R1: after the first 401 later files are refused with no request."""
     sent: list = []
     discogs = over_the_wire({searchers.DISCOGS_SEARCH: Reply(401)}, sent=sent)
     for _ in range(3):
@@ -977,8 +955,7 @@ def test_a_rejected_token_is_not_sent_again_in_the_run():
 
 
 def test_the_general_catalogue_waits_for_a_discogs_that_was_asked_and_unread():
-    """R2. An album word written while Discogs could not be read would stand in
-    for its style for good."""
+    """R2: an album word written while Discogs was unread would stand for good."""
     asked: list[object] = []
 
     def lookup(isrc):
@@ -1043,8 +1020,7 @@ def test_a_remaining_count_that_is_not_ascii_digits_is_no_count():
 
 
 def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
-    """The default fetch's wiring, through the one getter that names requests:
-    the token and the agent go to Discogs, and Beatport is asked as a browser."""
+    """The default wiring sends the token and agent to Discogs; Beatport is asked as a browser."""
     sent: list[tuple[str, dict]] = []
 
     def get(url, *, headers, timeout):
@@ -1066,8 +1042,7 @@ def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
 
 
 def test_the_numbers_this_source_spends_are_the_ones_stated():
-    """Pinned as numbers, so a change to one is a decision a reviewer reads:
-    three releases a miss, ten results a page, a ten second wait at five left."""
+    """Pinned numbers: three releases a miss, ten results a page, a ten second wait at five."""
     assert searchers.DISCOGS_RELEASES_READ == 3
     assert searchers.DISCOGS_RESULTS_PER_PAGE == 10
     assert searchers.DISCOGS_REMAINING_FLOOR == 5
@@ -1075,8 +1050,7 @@ def test_the_numbers_this_source_spends_are_the_ones_stated():
 
 
 def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
-    """``named_only`` is always on for Discogs: a word the aliases file by a
-    bucket's bare name, with no exact declaration, is not written."""
+    """``named_only`` is always on: a bucket's bare name with no declaration is not written."""
     word = "NonElectronic"
     assert TAXONOMY.named_folder(word) is None
     assert searchers.choose_word(TAXONOMY, [word], source=searchers.DISCOGS, named_only=True) is None
@@ -1085,9 +1059,7 @@ def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
 
 
 def test_a_word_resolving_to_the_fallback_is_passed_over_where_its_name_is_not_too_coarse():
-    """The fallback check stands alone on a copy whose fallback name is not in its too coarse
-    list: the shipped template's lists it, which covered the check and left it killing nothing
-    (the mutation table's M19)."""
+    """M19: the fallback check stands alone on a copy whose fallback is not in its coarse list."""
     from cratekit.core.taxonomy import load_taxonomy, shipped_template_text
 
     text = shipped_template_text("default")

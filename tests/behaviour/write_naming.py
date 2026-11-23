@@ -1,17 +1,9 @@
 """The write layer's naming scenarios: a folder put in the naming convention (U302).
 
-`crate name apply --root FOLDER` plans a rename for every file under the folder
-whose name is not in the convention, stops at its gate showing the renames and
-the files it holds back, and once answered renames each file and writes its
-title tag. On the naming suite's own library: real audio files the encoder
-synthesized, beside a real, readable collection database whose rows protect
-the files they record. Its refusals are the collection's: a row recorded under
-a volume no rule maps, which refuses the whole pass, and a rename onto a name
-another file already holds, which is never carried out.
-
-A file of its own beside ``write.py``, because the naming suite and the
-routing suite that file borrows from each call their set up machine
-``configured`` and its folder ``library``.
+`crate name apply --root FOLDER` renames each file out of convention behind its
+gate and writes its title tag; a row under an unmapped volume refuses the pass,
+and a rename onto a held name is never made. Its own file because both suites
+name ``configured`` and ``library``.
 """
 
 from __future__ import annotations

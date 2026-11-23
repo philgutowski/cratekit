@@ -1,10 +1,7 @@
 """U149: ``crate sync twins`` and the twin pairs, on a disposable database.
 
-The catalogue (which lists) and the account seam (which lists folders and
-writes) read one fake, so an edit on one is what the next listing serves. The
-backfill, the merge after it and the unpair are driven through the dispatcher,
-explicit gates included. The landing's twins are in
-tests/test_intake_land_twins.py.
+The catalogue and the account seam read one fake, so an edit on one is what the
+next listing serves. The landing's twins are in tests/test_intake_land_twins.py.
 """
 
 from __future__ import annotations
@@ -26,6 +23,7 @@ from cratekit.write import playlist_pair
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -289,14 +287,7 @@ def world(cfg, gates_pass, db, monkeypatch) -> World:
 
 @pytest.fixture
 def ladder_waits(monkeypatch) -> list[float]:
-    """The listing's real retry ladder, every rung climbed, none of it slept (U252).
-
-    ``listing.fetch_with_retry`` sleeps 31 real seconds per reading through a
-    keyword default ``sleep``, which patching ``time.sleep`` does not reach,
-    so only that sleep is bound, as tests/test_label_workers.py does; the
-    retries, pagination and re-raise run as shipped. Returns every wait asked
-    for, so a test proves the ladder was climbed.
-    """
+    """The listing's real retry ladder, its keyword ``sleep`` bound (U252); answers the waits."""
     real = harvest.playlist_tracks
     waits: list[float] = []
 
@@ -317,9 +308,7 @@ def _phil(w: World) -> None:
     w.playlist(PHIL, PHIL_NAME, ["t3", "t1", "t20", "t2"])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_downloaded_playlist_plans_its_twin_with_the_owned_rows_and_names_the_rest(world):
@@ -601,9 +590,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U213: one track, or one playlist, never refuses the whole backfill
-# ═══════════════════════════════════════════════════════════════════════════
 
 BROKEN = "acc-broken"
 BROKEN_NAME = "DOWNLOADED Broken 10-1-26"
@@ -760,9 +747,7 @@ def test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run(world, cfg
     assert not world.folder()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The pair rule, the name, and the confinement
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _registry_free():

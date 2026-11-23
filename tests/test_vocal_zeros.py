@@ -1,8 +1,7 @@
 """U171: why most of a landed batch stamps a vocal level of exactly 0.
 
-The stamp is the share of frames whose Singing score reaches the floor (A64).
-A fake model plays back Singing series shaped on A64's summaries through the
-real chunk walk, reduction and rounding; the decode is a constant signal.
+The stamp is the share of frames whose Singing score reaches the floor (A64); a
+fake model replays A64's series through the real walk, reduction and rounding.
 """
 
 from __future__ import annotations
@@ -21,14 +20,7 @@ SAMPLES_PER_FRAME = vocal.MODEL_SAMPLE_RATE // 100
 
 
 class _Playback:
-    """A frame model that replays a Singing series across however it is chunked.
-
-    Each call to ``inference`` returns the next frames of ``singing`` for the
-    width it is handed, so the chunked walk reassembles the whole series, and a
-    silent piece of signal is always answered from the series rather than from
-    its own level. Gender columns carry a fixed female lean wherever singing
-    is heard, which only the gender call reads.
-    """
+    """A frame model replaying a Singing series however chunked, leaning female where sung."""
 
     labels = ("Singing", "Male singing", "Female singing")
 
@@ -51,11 +43,7 @@ class _Playback:
 
 
 def _series(frames: int, *, heard: float, at: float, floor_noise: float) -> np.ndarray:
-    """A Singing series with ``heard`` of its frames at ``at`` and the rest low.
-
-    The heard frames are spread evenly through the track, so every chunk the
-    walk cuts carries its share and a chunk boundary cannot hide them.
-    """
+    """A Singing series with ``heard`` frames at ``at``, spread evenly so no chunk hides them."""
     series = np.full(frames, floor_noise, dtype=np.float32)
     count = int(round(frames * heard))
     if count:
@@ -94,11 +82,7 @@ def test_a_sung_lead_shaped_like_a64s_known_vocals_scores_above_the_cut(monkeypa
 
 
 class _Listening(_Playback):
-    """A frame model whose Singing follows the level of what it is handed.
-
-    Used for silence, where the answer has to come from the signal: a
-    playback model would answer from its series whatever it was fed.
-    """
+    """A frame model whose Singing follows the level it is handed, for silence."""
 
     def __init__(self) -> None:
         super().__init__(np.zeros(0, np.float32))
@@ -114,10 +98,7 @@ class _Listening(_Playback):
 
 
 def test_silence_is_heard_and_scores_zero_rather_than_no_score(monkeypatch):
-    """A silent file is a track the model listened to, so 0, never None.
-
-    The same model scores a loud signal 100, so the zero is the silence's.
-    """
+    """A silent file was listened to, so 0, never None; a loud signal scores 100."""
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", _Listening)
     monkeypatch.setattr(vocals, "_VOCAL_MODEL", None)
     monkeypatch.setattr(vocals, "_VOCAL_FAILED", False)
@@ -136,12 +117,7 @@ def test_silence_is_heard_and_scores_zero_rather_than_no_score(monkeypatch):
 
 
 def test_a_lead_the_model_never_hears_at_the_floor_scores_zero(monkeypatch):
-    """I Feel Love's row: a sung lead whose loudest Singing frame is 0.034.
-
-    This is the model's miss, not the pipeline's, and the zero is the honest
-    stamp of what the model heard. It is pinned so that a change claiming to
-    rescue such a lead is measured against it rather than assumed.
-    """
+    """I Feel Love's row, loudest frame 0.034: the model's miss, pinned so a rescue is measured."""
     singing = _series(FRAMES, heard=0.0099, at=0.034, floor_noise=0.003)
     assert float(singing.max()) < vocal.DEFAULT_FRAME_FLOOR
     scored = _score(monkeypatch, singing)

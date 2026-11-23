@@ -1,13 +1,7 @@
 """U246: a rebuild's second pass costs in proportion to its placements, not their square.
 
-The second pass's favourites comprehension built a set of every derived
-placement once per placement (106,781,222 hash calls on ten thousand tracks).
-The proof is a call count at two sizes, never a wall clock: work that grows
-with the placements doubles, while the old shape, or a tuple scan per
-placement, quadruples. Expected memberships are spelled from the brief and
-read from the file, never from the worker's report.
-
-D1 applies: nothing here names a real volume, person or track.
+The proof is a call count at two sizes, never a clock: linear work doubles, the
+old shape quadruples. Memberships come from the brief and the file. D1 applies.
 """
 
 from __future__ import annotations
@@ -27,8 +21,7 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 DECLARED = taxonomy.default_taxonomy()
 TREE = DECLARED.tree.id
 FAVORITES = DECLARED.sub_class("favorites")
-#: The genres the tracks are tagged with, so the placements spread over several
-#: folders named as the genres are; every track is top energy, so "High".
+#: The genres the tracks are tagged with, spreading placements; every track is "High".
 GENRES = ("Deep House", "Tech House", "Afro House", "Organic House")
 TOP_BAND = "High"
 FAVOURITES_PLAYLIST = "Favorites"
@@ -37,11 +30,9 @@ SMALL = 24
 
 
 def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, str], set[str]]]:
-    """Rebuild a library of ``tracks`` favourites; the placement comparisons and what was written.
+    """Rebuild ``tracks`` favourites in a library of their own; comparisons and what was written.
 
-    A comparison is a ``DeclaredPlacement.__hash__`` or ``__eq__`` call. Each size
-    has its own library, configuration and state, so the second reads nothing
-    the first recorded."""
+    A comparison is a ``DeclaredPlacement.__hash__`` or ``__eq__`` call."""
     with monkeypatch.context() as patch:
         root = base / f"library-{tracks}"
         (root / "db").mkdir(parents=True)

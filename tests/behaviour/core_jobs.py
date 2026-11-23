@@ -1,11 +1,8 @@
 """The job engine's scenarios: a job driven to each end, then read by the job verbs (U301).
 
-Jobs are queued and driven through the engine, as a feature's shell drives
-them, to success, to a failure with nothing done, to a partial failure, to a
-park, to a decline and to a cancel, each with an item that commits a report.
-Then `crate job` lists, shows, resumes and cancels them, so the capture holds
-the queue's database, every file an item committed, and what each verb prints.
-On the job engine suite's own configured library.
+Jobs are driven to success, failure, partial failure, park, decline and cancel,
+each item committing a report, then `crate job` lists, shows, resumes and
+cancels them, on the job engine suite's configured library.
 """
 
 from __future__ import annotations

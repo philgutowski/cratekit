@@ -1,9 +1,7 @@
 """U111: ``crate inbox rotate`` moves stale batches into Old and removes expired ones.
 
-Driven through the real dispatcher against a disposable database whose intake
-tree is cut over, reading the content and membership tables from SQL before and
-after, since the verb's one promise beyond its plan is that no track moves.
-D1 applies: nothing here names a real volume, person or track.
+The content and membership tables are read from SQL before and after, since the
+verb's one promise beyond its plan is that no track moves. D1 applies.
 """
 
 from __future__ import annotations
@@ -11,6 +9,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import sqlite3
+import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -616,9 +615,11 @@ def _removal_callers() -> dict[str, list[str]]:
     src = Path(rb_writer.__file__).resolve().parents[1]
     found: dict[str, list[str]] = {}
     for path in sorted(src.rglob("*.py")):
-        if "_vendor" in path.parts:
+        text = path.read_text(encoding="utf-8")
+        # No ``removals`` keyword in the text, none in the tree, so it is not parsed.
+        if "_vendor" in path.parts or "removals" not in unicodedata.normalize("NFKC", text):
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        for node in ast.walk(ast.parse(text)):
             if not isinstance(node, ast.Call):
                 continue
             name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(

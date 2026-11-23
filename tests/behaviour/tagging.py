@@ -1,9 +1,7 @@
 """Tagging's scenarios: a tag written to an audio file (U297).
 
-`crate tag remap` rewrites the genre an older mapping wrote, behind its
-explicit gate, on the remap suite's own machine: two FLAC containers the
-encoder synthesized, each carrying a genre the shipped table now maps
-elsewhere, and the tagging records that say a job wrote them.
+`crate tag remap` rewrites an older mapping's genre behind its gate, on the
+remap suite's two synthesized FLAC containers and their tagging records.
 """
 
 from __future__ import annotations

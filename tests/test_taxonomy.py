@@ -1,10 +1,8 @@
 """The template is data, and a template that cannot be trusted is refused at load.
 
-The loader's rules are each proved to bite on a template mutated from the good
-one, so a rule cannot pass by describing itself. The parameterisation claim is
-proved with a second taxonomy sharing nothing with the default, the only honest
-way to show the engine reads its taxonomy rather than remembering one. Parity
-against the old resolvers is in tests/test_routing_parity.py.
+Each rule is proved to bite on a mutated template, and a second taxonomy sharing
+nothing with the default proves the engine reads its taxonomy. Parity against
+the old resolvers is in tests/test_routing_parity.py.
 """
 
 from __future__ import annotations
@@ -75,15 +73,13 @@ def test_the_shipped_default_loads(default):
 
 
 def test_every_bucket_declares_a_tempo_window(default):
-    """With no window detection falls back to an octave wide one, which folds
-    nothing and silently turns the octave error defence off."""
+    """With no window an octave wide one folds nothing, silently ending the octave defence."""
     assert default.buckets_without_bpm_prior() == ()
 
 
 @pytest.mark.parametrize("node", ["tree", "intake", "catalog", "long_tracks", "inspiration"])
 def test_each_root_node_is_declared_by_id_and_display(default, node):
-    """R19: the old system's most copied literals are data. The optional catalog
-    tree, long track playlist (U88) and inspiration folder (U121) ship declared."""
+    """R19: root literals are data; catalog, long track (U88) and inspiration (U121) declared."""
     declared = getattr(default, node)
     assert declared is not None and declared.id and declared.display
 
@@ -137,8 +133,7 @@ def _get(*path):
 
 
 def _set(path: tuple, value):
-    """A mutation setting the key at the end of ``path``. A callable step is
-    applied to the data, and a callable value is read off the data."""
+    """A mutation setting ``path``'s key; a callable step applies, a callable value reads."""
 
     def mutate(d):
         _walk(d, path[:-1])[path[-1]] = value(d) if callable(value) else value
@@ -240,8 +235,7 @@ def _tagging_word_in_two_buckets(data):
 
 
 def case(id_: str, mutate, *needles, absent: tuple = ()):
-    """A refused mutation. A needle is a text some problem carries, or a tuple of
-    texts one problem carries together; ``absent`` texts no problem carries."""
+    """A refused mutation: needles a problem carries, alone or together; ``absent`` none carries."""
     return pytest.param(mutate, needles, absent, id=id_)
 
 
@@ -473,12 +467,7 @@ def test_a_custom_taxonomy_answers_by_its_own_declaration(second, ask, answer):
 
 
 def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):
-    """R-650. ``suggest_tag`` has no tier for a display name, so a bucket's own
-    name, which this tagger writes back onto files, passes through the last tier
-    as itself. Routing places it, so reporting it would show the person their
-    own template as something to fix. Both templates, and the second loop shows
-    the check is not vacuous.
-    """
+    """R-650: routing places a bucket's own name, so it is unreported, on both templates."""
     for declared in (default, second):
         displays = [bucket.display for bucket in declared.buckets]
         assert displays
@@ -493,10 +482,7 @@ def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, seco
 
 
 def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
-    """The suppression above is the routing tier, not the vocabulary. A sub's
-    display and a bucket display in another case (the Bandcamp picker's own
-    lowercase) both land in the fallback, the cost R-650 names, so both report.
-    """
+    """The suppression is routing's: a sub's display and a recased bucket both report (R-650)."""
     for display in ("Birds", "Water", "Engines"):
         assert routing.suggest_tag(second, display).off_taxonomy is True
         assert routing.resolve_bucket(second, display).bucket_id == second.fallback.bucket
@@ -508,8 +494,7 @@ def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
 
 
 def test_an_off_taxonomy_word_can_still_route_to_a_real_bucket(default):
-    """The flag is about the WORD: tagging and the keyword tier read two rule
-    lists, so a word nothing tags can still route by a fuzzy rule."""
+    """The flag is about the word: a word nothing tags can still route by a fuzzy rule."""
     for value in ("Psy-Trance", "Hardcore / Hard Techno"):
         assert routing.suggest_tag(default, value).off_taxonomy is True
         landing = routing.resolve_bucket(default, value)
@@ -695,8 +680,7 @@ def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
 
 
 def test_a_tagging_only_word_wins_over_another_buckets_routing_alias(default):
-    """"Trap / Wave" routes to one bucket and tags as Hip-Hop, as it did while
-    Hip-Hop was a sub: a tagging-only word is the more specific statement."""
+    """"Trap / Wave" tags as Hip-Hop: a tagging-only word is the more specific statement."""
     routed = default.routing_alias("Trap / Wave")
     tagged = default.tagging_alias("trap / wave")
     assert routed is not None and tagged is not None
@@ -798,8 +782,7 @@ def test_a_text_that_does_not_load_raises_on_every_call(monkeypatch, text, probl
 
 
 def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
-    """The active copy, the shipped template and the upgraded text, asked in turn,
-    so a memo too small for them would parse each on every round."""
+    """The active copy, the template and the upgrade each parse once across rounds."""
     texts = [unique(_shipped_text()) for _ in range(3)]
     parses = counted(monkeypatch)
 
@@ -811,8 +794,7 @@ def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
 
 
 def test_the_memo_holds_eight_texts_and_parses_the_first_again_after_a_ninth(monkeypatch):
-    """Bounded to a handful. The nine is written here, not read off the module,
-    so a bound raised to hold every text fails instead of passing by its own number."""
+    """Bounded to a handful; the nine is written here, so a bound raised to all texts fails."""
     texts = [unique(_shipped_text()) for _ in range(9)]
     parses = counted(monkeypatch)
 

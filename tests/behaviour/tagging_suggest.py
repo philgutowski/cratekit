@@ -1,23 +1,9 @@
 """Tagging's library scenarios: `crate tag suggest`, `crate tag guess` and `crate tag backlog` (U306).
 
 All three read the library's rows, so they share one machine: a disposable
-rekordbox database built from the binding's own schema, every row naming a
-FLAC container the encoder synthesized, and the platform seams a temporary
-library cannot speak for.
-
-`tag suggest` writes a genre on the file and the row behind its explicit
-gate, then a second run finds nothing left to write; it refuses with no
-backup acknowledgment, refuses an inline answer and a pick off the taxonomy,
-leaves everything as it was when declined, meets a plan that changed as
-stale, and refuses with rekordbox running; with ``--catalogue`` it asks a
-recorded catalogue once across the two acts. `tag guess` reports what it
-would write, writes it, finds nothing left, names a pass no job carries,
-goes on when the library cannot be read, and refuses a missing folder. `tag
-backlog` sorts a library's needs genre rows by cause, asks a recorded
-catalogue once and reads the kept answer the second time, says when a
-library is empty of backlog, and refuses a library most of whose rows are
-under no prefix rule. Self contained, so the suites it stands beside can be
-trimmed without moving it.
+database from the binding's schema with synthesized FLAC behind every row.
+Each verb's writes, second runs, refusals and recorded catalogue asks are
+driven. Self contained, so the suites beside it can be trimmed without moving it.
 """
 
 from __future__ import annotations
@@ -62,9 +48,7 @@ BACKLOG_LOOKUPS = (*LOOKUPS, INDIE, "Grime", AMAPIANO, MPB, ALTERNATIVE, RNB, "H
 ABSENT = object()
 
 
-# ---------------------------------------------------------------------------
 # The disposable database
-# ---------------------------------------------------------------------------
 
 
 def _relaxed_schema():
@@ -180,9 +164,7 @@ def eight(genre: str = MELODIC, artist: str = "The Artist", folder: str = "one",
     return [Track(str(first + n), genre, genre, artist=artist, folder=folder) for n in range(8)]
 
 
-# ---------------------------------------------------------------------------
 # The machine
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -280,9 +262,7 @@ def first_act(stage, *verb: str) -> str:
     return refused.envelope["run_id"]
 
 
-# ---------------------------------------------------------------------------
 # tag suggest
-# ---------------------------------------------------------------------------
 
 
 def test_suggest_written_behind_its_gate_and_then_nothing_left(stage, machine, silence):
@@ -351,9 +331,7 @@ def test_suggest_asks_the_catalogue_once_across_the_two_acts(
     assert tags.read_genre_from_file(paths["10"]) == DEEP and genre_of(machine, "10") == DEEP
 
 
-# ---------------------------------------------------------------------------
 # tag guess
-# ---------------------------------------------------------------------------
 
 
 def staged(cfg: config.Config, silence: Path, name: str, **fields: str) -> Path:
@@ -396,9 +374,7 @@ def test_guess_over_a_library_that_cannot_be_read(stage, machine, silence):
     assert tags.read_genre_from_file(lone) == PROGRESSIVE
 
 
-# ---------------------------------------------------------------------------
 # tag backlog
-# ---------------------------------------------------------------------------
 
 
 def shipped_copy(cfg: config.Config) -> None:

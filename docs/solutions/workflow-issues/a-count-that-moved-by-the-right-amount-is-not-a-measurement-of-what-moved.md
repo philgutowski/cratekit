@@ -40,7 +40,7 @@ tags:
 `tests/test_reserved_causes.py` ends with a test whose whole job is to keep the
 numbers a residual argues from honest.
 `test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned`
-(`tests/test_reserved_causes.py:4592`) recomputes five populations from the
+(`tests/test_reserved_causes.py:3482`) recomputes five populations from the
 tree on every run and pins each as an exact tuple:
 
 - the declared refusal causes, split into the non-reserved and reserved halves,
@@ -88,7 +88,7 @@ instead is the learning here.
 **A re-pin names its members. Difference sets, not counts.** `docs/METHOD.md`
 already says every number was measured or the report says it was not
 (`docs/METHOD.md:154`), and the test's own docstring already says never widen
-(`tests/test_reserved_causes.py:4603`). Those two rules leave one gap, and it is
+(`tests/test_reserved_causes.py:3489`). Those two rules leave one gap, and it is
 the gap a count falls into: a total that moved by the right amount is not a
 measurement of what moved. A member leaving while another joins reads as no
 change. Two joining while one leaves reads as one joining. A count that went
@@ -110,19 +110,19 @@ member of the merged set and collect the misses. At U27 that gave exactly five:
 is the reservation the merge itself added to `src/cratekit/cli/exit_codes.py`
 (`:257` for the comment explaining why only the merged tree could see the
 obligation, `:279` for the entry), and that is why the reserved half moved for
-the first time. The comment at `tests/test_reserved_causes.py:4630` says all of
+the first time. The comment at `tests/test_reserved_causes.py:3511` says all of
 that, by name, and says how it was measured.
 
 **When a walk derives the set, run the same walk over the pre-merge tree and
 difference the two sets.** `modules_holding_a_named_cause`
-(`tests/test_reserved_causes.py:4524`) walks every module under measurement and
+(`tests/test_reserved_causes.py:3433`) walks every module under measurement and
 asks whether it holds a name resolving to a cause declared elsewhere. Nothing in
 git answers that per member, because the answer depends on the whole tree's
 declarations. So put the pre-merge commit in a scratch worktree, point
 `PYTHONPATH` at that worktree's `src` and `tests`, import the test module there,
 print the sorted set, and difference it against the same set from the merged
 tree. At U27 that named `core/preflight.py` as the single module that joined,
-and the comment at `:4709` records both the name and the method.
+and the comment at `:3584` records both the name and the method.
 
 The first attempt at that difference failed for a reason worth keeping. It
 tried to skip the worktree by asking `git cat-file -e <pre-merge>:<path>` for
@@ -164,7 +164,7 @@ these measurements.
 
 The pins exist because six figures in a residual once decayed silently while
 the tree grew, and the test's docstring says the unit "filed that one against
-itself twice" (`tests/test_reserved_causes.py:4599`). A pin that is re-pinned by
+itself twice" (`tests/test_reserved_causes.py:3485`). A pin that is re-pinned by
 matching totals reintroduces the same decay one level up: the assertion is
 green, the comment says the number moved, and nobody can say from the record
 whether the reserved half grew because a reservation was added or because one
@@ -250,7 +250,7 @@ Confirm `git rev-parse --show-toplevel` prints the main checkout before either
 of those, and remember the walk reports package-relative paths, so do not hand
 its output to `git cat-file` without prefixing `src/cratekit/`.
 
-The comment to copy, from `tests/test_reserved_causes.py:4709`:
+The comment to copy, from `tests/test_reserved_causes.py:3584`:
 
 ```
 # Re-pinned again on the U27 merge, 2026-08-15: core/preflight.py is the one
@@ -271,13 +271,13 @@ the shape.
 - `docs/METHOD.md:154`, "Every number was measured or the report says it was
   not." This learning is the re-pin corollary: a number replaced by matching a
   delta was not measured.
-- `tests/test_reserved_causes.py:4603`, the docstring rule that a failing pin is
+- `tests/test_reserved_causes.py:3489`, the docstring rule that a failing pin is
   updated after looking, never widened.
 - `RESTART-cratekit.md:128`, "Re-pinning a population means naming what moved,
-  not matching a count", the wave-state form of this rule, and `:116` for the
+  not matching a count", the wave-state form of this rule, and `:26` for the
   collected-count reconciliation and the cwd trap.
-- `tests/test_reserved_causes.py:4592`, the test itself, and its comment blocks
-  at `:4616`, `:4650`, `:4696`, `:4723` and `:4762`, which are the ledger.
+- `tests/test_reserved_causes.py:3482`, the test itself, and its comment blocks
+  at `:3498`, `:3531`, `:3575`, `:3598` and `:3631`, which are the ledger.
 - Merge commit "Merge U27: the setup wizard and the doctor, and a probe that
   stopped opening for write", 5167f15 on `main`, the re-pin this was learned on.
 - `docs/solutions/workflow-issues/merge-falsifies-a-guard-invariant-and-every-remedy-breaks-something.md`,

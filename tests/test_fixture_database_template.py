@@ -1,12 +1,8 @@
 """The suite's disposable database is built once per worker and copied (U256).
 
-``tests/test_rb_writer_db.py::_build_disposable_database`` used to create the
-whole schema and insert the same rows from nothing on every call, 2,694 times
-in one run of the suite on the Linux container. It now builds each variant once
-per process, keeps the result as bytes, and writes a private copy for every
-call. These tests hold the two promises that change makes: every caller still
-gets a file of its own that no other caller can see or change, and the file is
-the same database a build from nothing would have made, its timestamps aside.
+Every caller still gets a file of its own that no other caller can see or
+change, and the file is the database a build from nothing would make, its
+timestamps aside.
 """
 
 from __future__ import annotations
@@ -26,11 +22,7 @@ from tests import test_rb_writer_db as fixture
 
 @pytest.fixture
 def cold(monkeypatch):
-    """No template built yet in this process, and every schema creation counted.
-
-    The cache is replaced rather than cleared, so the worker's own templates come
-    back untouched when the test ends and no later test pays to rebuild them.
-    """
+    """No template built yet, every schema creation counted, the worker's cache kept."""
     monkeypatch.setattr(fixture, "_TEMPLATES", {})
     calls: list[int] = []
     real = MetaData.create_all
@@ -66,11 +58,7 @@ def _stamp_columns() -> dict[str, set[str]]:
 
 
 def _contents(path: Path) -> dict[str, object]:
-    """Everything in the file but the timestamps: schema, modes and every row.
-
-    The timestamps are read too, and replaced by whether each one is set, so a
-    copy that lost a stamp differs from a build that has one.
-    """
+    """Everything in the file, each timestamp read as whether it is set."""
     stamps = _stamp_columns()
     conn = sqlite3.connect(path)
     try:
@@ -99,11 +87,7 @@ def _contents(path: Path) -> dict[str, object]:
 def test_a_database_written_and_encrypted_leaves_its_sibling_and_the_next_untouched(
     tmp_path, cold
 ):
-    """Shared mutable state between tests is the failure a template invites.
-
-    One copy is written to, its schema altered, and then encrypted; a copy made
-    before it and a copy made after it are both exactly what they were built as.
-    """
+    """One copy written, altered and encrypted leaves the copies before and after it."""
     first = tmp_path / "first" / "master.db"
     second = tmp_path / "second" / "master.db"
     fixture._build_disposable_database(first)
@@ -197,11 +181,7 @@ def test_the_schema_pin_read_at_the_call_reaches_the_file(tmp_path, cold, monkey
 def test_a_path_already_holding_a_file_is_built_from_nothing_as_before(
     tmp_path, cold, present
 ):
-    """Nothing already at the path is written over by a copy.
-
-    An empty file, or a sidecar a previous database left, takes the build from
-    nothing it always took, so whatever SQLite made of it before it makes now.
-    """
+    """Nothing already at the path is written over by a copy."""
     fixture._build_disposable_database(tmp_path / "warm" / "master.db")
     path = tmp_path / "db" / "master.db"
     path.parent.mkdir()
@@ -225,11 +205,7 @@ def test_a_second_build_over_the_same_database_still_refuses(tmp_path, cold):
 
 @pytest.mark.parametrize("with_tag_category", [True, False], ids=["tagged", "untagged"])
 def test_a_copy_carries_the_rows_the_safety_chain_reads(tmp_path, cold, with_tag_category):
-    """The rows named here, not read back from the builder that wrote them.
-
-    The comparison above holds that a copy loses nothing a build made; this holds
-    what the build has to make, so a row dropped from both is still caught.
-    """
+    """The rows named here, so a row dropped from both build and copy is caught."""
     path = tmp_path / "db" / "master.db"
     fixture._build_disposable_database(path, with_tag_category=with_tag_category)
 
@@ -264,11 +240,8 @@ def test_a_copy_carries_the_rows_the_safety_chain_reads(tmp_path, cold, with_tag
 
 
 def test_a_copy_has_the_mode_a_build_from_nothing_has_under_a_loose_umask(tmp_path, cold):
-    """SQLite creates a database at 0644 before the umask; a plain create is 0666.
-
-    Under the usual umask of 022 the two agree, so only a looser one tells them
-    apart. The umask is the process's own, set and put back inside this test.
-    """
+    """SQLite creates at 0644 before the umask, a plain create at 0666, told apart
+    only under a looser umask than 022."""
     copied = tmp_path / "copied" / "master.db"
     built = tmp_path / "built" / "master.db"
     built.parent.mkdir()

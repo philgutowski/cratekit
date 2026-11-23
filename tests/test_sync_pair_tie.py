@@ -1,10 +1,7 @@
 """U208: a paired row whose ISRC names several agreeing releases is paired as one of them.
 
-Every match goes through the real adapter over the fake provider client, so
-the release a tie takes is the one ``match_track`` chooses. The adapter's rule
-is pinned in ``tests/test_outbound_tidal_account.py``; this file pins that the
-pairs ask it, link what it chose, and keep every refusal before the tie. D1
-applies, nothing here names a real account, person or track.
+Matches go through the real adapter, whose rule ``tests/test_outbound_tidal_account.py``
+pins; here the pairs ask it, link its choice and keep every refusal. D1 applies.
 """
 
 from __future__ import annotations
@@ -22,6 +19,7 @@ from cratekit.sync import pair_cli
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.test_outbound_tidal_account import FakeClient, Track, no_sleep
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414

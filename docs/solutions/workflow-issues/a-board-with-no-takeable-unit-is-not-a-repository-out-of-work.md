@@ -110,7 +110,7 @@ appears in prose about failing drives and drive letters across dozens of files.
 Add the open paren. And R-198 says "the only driver that ever calls it is
 `tests/job_worker.py`", which is true only of out of process drivers.
 `git grep -rn "jobs\.drive(" -- src tests scripts` returns eight calls, one in
-`tests/job_worker.py:57` and seven in `tests/test_jobs.py`, and that second file
+`tests/job_worker.py:40` and seven in `tests/test_jobs.py`, and that second file
 is collected and runs on every battery. So the driver is not untested. It is well
 tested and unreachable from the product, which is a sharper statement of the same
 problem and the one worth carrying.

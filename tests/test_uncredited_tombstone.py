@@ -1,10 +1,9 @@
 """The companion a credited tombstone gains, on the RECORDING side (R-431).
 
-A row that kept a featured credit is also recorded with the credit groups taken
-out, under a kind of its own (the consulting half is in ``test_match_states.py``
-and ``test_intake_missing.py``). A row with no credit gains nothing, the companion
-never lands under the tombstone's own kind, and recording and lifting are each ONE
-write. Every identity asserted is a literal, never one built by the code under test.
+A row that kept a featured credit is also recorded with the credit groups out,
+under a kind of its own (the consulting half is in ``test_match_states.py`` and
+``test_intake_missing.py``). Recording and lifting are each ONE write, and every
+identity asserted is a literal.
 """
 
 from __future__ import annotations
@@ -83,9 +82,7 @@ def test_the_companion_identity_is_the_verbatim_one_with_the_credit_out():
 
 
 def test_the_companion_is_built_from_the_composed_title_not_the_title_column():
-    """The version column is composed in FIRST, the way the tombstone's own
-    identity is, so a row whose mix name sits beside the title strips to the
-    string a provider composes for it."""
+    """The version column is composed in first, as the tombstone's own identity is."""
     assert stores.uncredited_version_of(
         row("Sun Path (feat. Mira)", version="Nightwave Remix")
     ) == {"artist": "aurora bloom", "title": "sun path (nightwave remix)"}
@@ -95,8 +92,7 @@ def test_the_companion_is_built_from_the_composed_title_not_the_title_column():
 
 
 def test_adding_the_companion_did_not_move_the_identity_stamp():
-    """``uncredited_version_of`` sits on top of ``version_of``, or the stamp would move;
-    ``tests/test_deletion.py`` pins the literal stamp."""
+    """The stamp holds; ``tests/test_deletion.py`` pins the literal."""
     reached = stores._composition_rules()
     assert not any("uncredited" in name for name in reached)
 
@@ -130,8 +126,7 @@ def test_recording_the_same_deletion_twice_is_still_two_records(cfg):
 
 
 def test_a_companion_is_never_the_answer_to_a_verbatim_lookup(cfg):
-    """Its own kind, since lookups under the tombstone's kind would land on the
-    stripped title."""
+    """Its own kind, or a lookup under the tombstone's kind would land on the stripped title."""
     stores.record_tombstone(cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion")
     assert stores.suppressed_version(
         cfg, artist=ARTIST, title="Sun Path (feat. Mira) (Nightwave Remix)"
@@ -164,8 +159,7 @@ def test_lifting_a_credited_tombstone_lifts_its_companion(cfg):
 
 
 def test_a_companion_two_deletions_share_outlives_the_first_lift_and_not_the_second(cfg):
-    """Two rows crediting two guests strip to one identity: the companion outlives
-    the first lift and goes with the second."""
+    """Two guests' credits strip to one identity, which outlives the first lift only."""
     first = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
@@ -183,8 +177,7 @@ def test_a_companion_two_deletions_share_outlives_the_first_lift_and_not_the_sec
 
 
 def test_the_shared_companion_is_also_found_in_the_other_order(cfg):
-    """The second deletion's companion is found by stripping, not by pointer,
-    so lifting the SECOND first keeps it and lifting the first then takes it."""
+    """Found by stripping, so lifting the second deletion first keeps the companion."""
     first = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
@@ -210,8 +203,7 @@ def test_a_companion_is_found_by_its_pointer_when_the_stripping_rule_has_moved(c
 def test_a_shared_companion_survives_a_lift_even_when_the_stripping_rule_has_moved(
     cfg, monkeypatch
 ):
-    """The same lookup from the other end: Zed's standing tombstone still accounts for
-    the companion Mira's lift finds by pointer."""
+    """Zed's standing tombstone still accounts for the companion Mira's lift finds by pointer."""
     first = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
@@ -227,8 +219,7 @@ def test_a_shared_companion_survives_a_lift_even_when_the_stripping_rule_has_mov
 
 
 def test_a_second_deletion_leaves_the_shared_companion_exactly_as_it_stood(cfg):
-    """``beside`` writes a companion that is absent or lifted and passes over one
-    that stands, the way ``record`` itself treats a standing record."""
+    """``beside`` passes over a standing companion, as ``record`` does a standing record."""
     first = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
@@ -249,8 +240,7 @@ def test_a_second_deletion_leaves_the_shared_companion_exactly_as_it_stood(cfg):
 
 
 def test_a_tombstone_with_no_pointer_still_accounts_for_the_companion_it_strips_to(cfg):
-    """The stripping half: an earlier build's credited tombstone, with no pointer,
-    keeps the companion a second deletion wrote until it is lifted itself."""
+    """An earlier build's tombstone keeps the companion it strips to until lifted itself."""
     from cratekit.core import review
 
     legacy = review.DecisionStore(tombstone.STORE_KEY, cfg).record(
@@ -336,8 +326,7 @@ def test_a_record_that_cannot_be_written_leaves_neither_half(cfg):
 
 
 def test_a_tombstone_that_already_stood_gains_no_companion(cfg):
-    """An earlier build's tombstone: recording it again is a no-op, companion too
-    (the cost is in the residual this file's docstring names)."""
+    """Recording an earlier build's tombstone again is a no-op, companion too."""
     from cratekit.core import review
 
     review.DecisionStore(tombstone.STORE_KEY, cfg).record(
@@ -363,8 +352,7 @@ def test_a_companion_lifted_alone_does_not_come_back_behind_a_persons_back(cfg):
 
 
 def test_deleting_again_after_a_full_lift_suppresses_both_halves_again(cfg):
-    """Re-recording a REVOKED tombstone is how a person changes their mind back,
-    and it is a fresh deletion, so the companion comes back with it."""
+    """Re-recording a revoked tombstone is a fresh deletion, so the companion comes back."""
     written = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
@@ -386,9 +374,7 @@ def test_lifting_the_companion_alone_leaves_the_tombstone_standing(cfg):
 
 
 def test_lifting_a_plain_tombstone_touches_no_companion_it_does_not_own(cfg):
-    """A plain ``Sun Path (Nightwave Remix)`` deletion strips to nothing, so
-    lifting it must leave the credited deletion's companion where it is, even
-    though the two titles are the same string."""
+    """A plain deletion strips to nothing, so lifting it leaves the credited one's companion."""
     stores.record_tombstone(cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion")
     plain = stores.record_tombstone(
         cfg, row("Sun Path (Nightwave Remix)", content_id="9002"), actor="deletion"
@@ -421,8 +407,7 @@ def test_the_listing_projects_a_companion_without_inventing_fields(cfg):
 
 
 def test_the_listing_links_the_two_halves_of_one_deletion_in_both_directions(cfg):
-    """Two rows with one artist and one title, and the listing is the only
-    surface a person has weeks later. Each names the other."""
+    """The listing is what a person reads weeks later, so each half names the other."""
     stores.record_tombstone(cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion")
     stores.record_tombstone(cfg, row("Salt Road", content_id="9002"), actor="deletion")
     shown = {one["identity"]: one for one in map(stores.summarize, stores.list_tombstones(cfg))}

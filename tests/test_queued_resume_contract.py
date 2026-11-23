@@ -1,9 +1,8 @@
 """The contract a queued verb owes its own resume, derived rather than listed.
 
-A queued verb behind an ``explicit`` gate is respawned as a subprocess, and with
-no ``--run`` it meets the gate with nothing recorded on every respawn (2026-08-23).
-Derived from the registry, since any future verb can arrive at the combination,
-and the token matched whole, since ``--run-id`` contains ``--run``.
+A queued verb behind an ``explicit`` gate respawned without ``--run`` meets the
+gate afresh every time (2026-08-23). Derived from the registry; the token is
+matched whole, since ``--run-id`` contains ``--run``.
 """
 
 from __future__ import annotations
@@ -30,8 +29,7 @@ from tests.test_cli_contract import UNREACHABLE_GATES
 from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 
-#: Every landed verb that queues work behind a gate only a person can answer,
-#: the exemption taken from the conformance suite's own map.
+#: Every landed verb queueing behind a person's gate, exempted per the conformance map.
 QUEUED_GATED = [
     entry
     for entry in registry.ENTRIES
@@ -147,8 +145,7 @@ def remote(monkeypatch):
     outbound_source.forget_libraries()
 
 
-#: Stand for a folder and an export under the CONFIGURED library, substituted
-#: once a fixture has built one; the parametrisation is read before any does.
+#: A folder and an export under the CONFIGURED library, substituted once one is built.
 LIBRARY_FOLDER = "<library>"
 LIBRARY_EXPORT = "<export>"
 

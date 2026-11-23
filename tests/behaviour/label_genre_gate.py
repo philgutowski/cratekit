@@ -1,11 +1,7 @@
 """The label genre gate's scenarios: releases held, listed, returned and judged (U308).
 
-A sweep resumed through `crate sync labels --job` files each release the
-general catalogue places in its label's kind and holds the others;
-`crate label held` lists the holds and returns one to review; `crate label
-judge` queues a job that judges the releases already waiting in review. On
-the genre gate suite's own machine, its fake provider and its general
-catalogue as a table.
+A resumed sweep files releases in their label's kind and holds the rest; `crate
+label held` lists and returns one, and `crate label judge` judges the waiting.
 """
 
 from __future__ import annotations

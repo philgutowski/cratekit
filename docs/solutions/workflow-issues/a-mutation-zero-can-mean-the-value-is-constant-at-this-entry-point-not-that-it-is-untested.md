@@ -146,13 +146,13 @@ reachable.** `refusal_for` lives in the shell
 (`cratekit.backup.cli`) and is what forecloses the space. `.ok` lives in the
 engine (`cratekit.modules.tools.backup`), one layer under the shell, and
 `run_backup` itself carries no such guard, so a portion that failed can
-reach `.ok` directly there. `tests/test_backup_cli.py:845-877` drives
+reach `.ok` directly there. `tests/test_backup_cli.py:806-877` drives
 exactly that, calling `backup.run_backup` (the engine function), not
 `perform_backup` (the shell), with a runner that selectively fails one
 portion:
 
 ```python
-# tests/test_backup_cli.py:845-877
+# tests/test_backup_cli.py:806-877
 def test_the_outcome_answers_not_ok_when_a_portion_failed(cfg, rclone):
     """...:func:`refusal_for` raises whenever a portion failed, which is exactly
     the condition that makes ``ok`` false, so no report this shell can emit ever
@@ -183,13 +183,13 @@ def test_the_outcome_answers_not_ok_when_a_portion_failed(cfg, rclone):
     assert [p.ran for p in one_failed.portions] == [True, False], one_failed
 ```
 
-`_failing_on` (`tests/test_backup_cli.py:189-205`) is a selective runner
+`_failing_on` (`tests/test_backup_cli.py:178-205`) is a selective runner
 built for exactly this shape: uniform failure cannot produce "one portion
 completed, one did not", which is the only outcome that separates `all` from
 `any` here.
 
 ```python
-# tests/test_backup_cli.py:189-205
+# tests/test_backup_cli.py:178-205
 def _failing_on(label: str):
     """A runner that fails only the commands carrying one label. ..."""
 
@@ -293,7 +293,7 @@ technically satisfies the letter of the rule by asserting something
 trivially true through the same entry point (for instance, asserting
 `report["ok"] is True` twice, once per branch, which the U45 test's own
 docstring explicitly declines to do: "This file asserts `report["ok"] is
-True` twice and never the other value" `tests/test_backup_cli.py:849-850`),
+True` twice and never the other value" `tests/test_backup_cli.py:810-850`),
 manufacturing the appearance of coverage over a property nobody actually
 drove both ways.
 
@@ -339,8 +339,8 @@ The full round-trip, in the order it was actually worked:
    against `all(p.refusal is not None or p.ran for p in self.portions)`.
    `failed` is non-empty exactly when the `all(...)` is `False`.
 4. The lower-layer composite that actually kills, driving the engine
-   directly and bypassing the shell's guard: `tests/test_backup_cli.py:845-877`,
-   using the selective-failure runner `tests/test_backup_cli.py:189-205`.
+   directly and bypassing the shell's guard: `tests/test_backup_cli.py:806-877`,
+   using the selective-failure runner `tests/test_backup_cli.py:178-205`.
 5. The residual filed instead of a shell-level fix, `docs/residual-findings.md`
    R-202 (`:10204-10236`), naming the mechanism, the two remedies that would
    belong to other decisions, and stating explicitly that no value emitted is

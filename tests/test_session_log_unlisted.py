@@ -1,13 +1,8 @@
 """R-1255: a session log that is there and cannot be listed is unread, never empty.
 
-A glob over a directory the account cannot list yields nothing rather than
-raising, so a scan that globbed answered no record, every gate admitted the
-write the log may refuse and every report read clean. This file holds the scan
-and each consumer to it.
-
-THE CONTAINER RUNS AS ROOT, which no file mode bars, so each test refuses the
-two OS calls that list a directory for the one path. Each case keeps its
-readable twin beside it. D1 applies.
+A glob over an unlistable directory yields nothing, so every gate admitted a
+write the log may refuse. The container runs as root, so each test refuses the
+two OS calls that list the one path; each case keeps a readable twin. D1 applies.
 """
 
 from __future__ import annotations
@@ -21,8 +16,8 @@ import pytest
 from cratekit.analysis import rekordbox_check as rc
 from cratekit.core import session, tree_registry
 from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
 from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -286,17 +281,14 @@ def test_restore_list_and_run_refuse_a_log_they_cannot_list(cfg, monkeypatch):
     """List exited 0 with no item and no warning over a recorded session, and
     run said no session was recorded under an id that was."""
     record, _captured = completed_session(cfg)
-    code, listing = drive(["restore", "list"])
-    assert code == int(ExitCode.OK), listing
+    listing = exited(drive(["restore", "list"]))
     assert [row["session_id"] for row in listing["data"]["items"]] == [record.session_id]
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
-    code, refused = drive(["restore", "list"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["restore", "list"]))
     assert refused["cause"]["message"].startswith(
         f"{UNLISTED}, so no session recorded in it can be read"
     )
-    code, refused = drive(["restore", "run", record.session_id])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["restore", "run", record.session_id]))
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "is recorded under" not in refused["cause"]["message"]
 

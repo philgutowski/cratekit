@@ -1,4 +1,4 @@
-"""U201: an edit made on the account to a mirrored genre playlist, told apart and decided.
+"""U201: an account edit to a mirrored genre playlist, told apart and decided.
 
 The pure rule, :func:`mirror_edits.decide`, over each playlist read three ways. D1 applies.
 """
@@ -261,8 +261,7 @@ def test_a_track_put_in_a_month_is_favourited_there():
 def test_a_track_taken_off_all_favorites_is_unfavourited_and_settled_out_of_the_folder():
     got = one(held(AF, **OFF), held(OCT, **ALL))
     assert (got.outcome, got.to, got.content_id) == (edits.UNFAVOURITE, None, "c1")
-    # The month the account still holds it in keeps the snapshot's word, so the
-    # next refresh reads rekordbox's removal there and takes it off.
+    # The month the account still holds it in keeps the snapshot's word, so it comes off.
     assert got.settle == (("Favorites", "All Favorites", False),)
 
 
@@ -330,8 +329,7 @@ def test_an_inbox_change_both_sides_made_is_agreed():
 def test_a_hold_in_one_tree_is_never_a_hold_in_another():
     decided = decide(held(DHL, **OFF), held(THM, account=("t1",)), held(AF, rekordbox=("t1",)))
     assert only(decided).tree == edits.GENRE
-    # All Favorites differs and the genre move holds t1, but the Favorites
-    # tree's own rule holds nothing.
+    # All Favorites differs, but the Favorites tree's own rule holds nothing.
     assert decided.hold("All Favorites") == edits.Hold()
 
 

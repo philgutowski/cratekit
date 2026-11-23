@@ -1,12 +1,8 @@
 """Acquire's Bandcamp scenarios: the plan, the fetch and its refusals (U305).
 
-`crate acquire bandcamp` plans every purchase of the signed in account with
-one disposition each, and `acquire bandcamp-fetch` stages what the plan named
-into a batch folder and records it. Through the suite's fake account, which
-serves real tagged FLAC inside real archives: a plan, a filtered plan, a
-fetch, a second run that plans nothing, an expired session and none recorded.
-Kept apart from ``acquire.py`` because the Bandcamp suite names its own
-``cfg`` and ``library``.
+`crate acquire bandcamp` plans every purchase, and `acquire bandcamp-fetch`
+stages what the plan named, through the suite's fake account. Apart from
+``acquire.py`` because the Bandcamp suite names its own ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

@@ -1,12 +1,8 @@
-"""R-1264, a paired account playlist listing a track it cannot read, on a disposable database.
+"""R-1264: a paired account playlist listing a track it cannot read, on a disposable database.
 
-A track with no title or no artist is unread, kept by its id, never added to
-either side and never read as taken off. It may stay unread for good, so the
-pair still syncs whole: removals land on both sides, the snapshot keeps the
-unread id in its place, and a reorder goes to the account whole with each
-unread track behind the one listed before it. A listing the reader cannot use
-at all leaves its pair out, named, and the others sync. Driven through the
-dispatcher on the twins suite's world.
+An unread track is kept by its id in its place, never added and never read as
+taken off, and the pair still syncs whole; a listing the reader cannot use
+leaves its pair out, named. Driven on the twins suite's world.
 """
 
 from __future__ import annotations
@@ -22,6 +18,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414

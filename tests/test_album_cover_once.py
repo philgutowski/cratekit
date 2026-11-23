@@ -1,9 +1,7 @@
 """U260. An album's one cover is fetched and encoded once in a folder sweep.
 
-Every test tags through the per process binder, :func:`searchers.for_images`,
-one call per file as the worker makes it, over the shipped image fetch with
-only its getter and sleep replaced. What must not move is what each file
-carries: the control is today's sweep with both memories dropped before every
+Tagged through :func:`searchers.for_images` one call per file, as the worker
+does. The control is today's sweep with both memories dropped before every
 file, and every picture block and result sentence must match it byte for byte.
 """
 
@@ -45,11 +43,8 @@ class _Response:
 
 
 class Host:
-    """A fake image host: per address, its answers in order, the last repeated.
-
-    An answer is the bytes of a 200, an int status, or an exception the
-    transport raises. ``asked`` is every request that reached the host.
-    """
+    """A fake image host: per address its answers (bytes, a status or an exception) in
+    order, the last repeated; ``asked`` is every request."""
 
     def __init__(self, answers: dict[str, list]) -> None:
         self.answers = {url: list(given) for url, given in answers.items()}
@@ -106,11 +101,7 @@ def album(folder: Path, silence: Path, names, prefix: str = "") -> list[Path]:
 
 
 def sweep(paths: list[Path], address_of, *, today: bool = False) -> list[tag.TagResult]:
-    """Tag each file as the worker does, one binder call per file.
-
-    ``today`` drops both memories before every file, a fresh fetch and a fresh
-    encode for each one, the baseline the shared cover is measured against.
-    """
+    """Tag each file as the worker does; ``today`` drops both memories before each."""
     results = []
     for path in paths:
         if today:
@@ -138,10 +129,7 @@ def carried(path: Path) -> list[tuple]:
 
 
 def said(result: tag.TagResult) -> tuple[str, str]:
-    """The result and its sentence, with the one part no two runs share masked.
-
-    Pillow names an unreadable in memory buffer by its address, new each call.
-    """
+    """The result and its sentence, with Pillow's per call buffer address masked."""
     return result.art_fetch, re.sub(r" at 0x[0-9a-f]+", " at 0x", result.art_fetch_detail)
 
 
@@ -367,9 +355,8 @@ def test_an_empty_answer_handed_straight_in_is_not_remembered():
 
 
 def test_two_pictures_of_one_length_are_encoded_apart(encodes):
-    """The digest is what tells two pictures apart, never their length alone.
-    A JPEG decodes with bytes after its end marker, so the shorter of two
-    covers is padded to the longer one's length."""
+    """The digest tells two pictures apart, never their length: a JPEG decodes with
+    bytes after its end marker, so the shorter cover is padded."""
     one, two = cover(), other_cover()
     longer = max(len(one), len(two))
     one, two = (picture + b"\0" * (longer - len(picture)) for picture in (one, two))
@@ -383,9 +370,8 @@ def test_two_pictures_of_one_length_are_encoded_apart(encodes):
 
 
 def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
-    """The digest is over every byte, not a prefix. Two covers carrying one embedded colour
-    profile agree for thousands of bytes before their pixels differ, and are padded to one
-    length too, so only the whole digest tells them apart."""
+    """The digest is over every byte: two covers sharing a colour profile agree for
+    thousands of bytes, padded to one length."""
     import io
 
     from tests.test_tagging_engine import _gradient

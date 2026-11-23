@@ -1,8 +1,7 @@
 """U216, ``crate sync pair`` never brings into rekordbox a playlist an adopted account folder already held.
 
-A playlist the folder held when adopted, and a ``DOWNLOADED `` copy of one a
-pair in the same folder holds, are named on the gate and never made; a playlist
-made on the account after the sync still comes in (U202).
+What the folder held when adopted, and ``DOWNLOADED `` copies of its pairs, are
+named on the gate and never made; one made on the account since still comes in.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover
+from tests._sync_builders import exited
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -37,10 +37,9 @@ def later(minutes: int) -> datetime:
 
 @pytest.fixture
 def trivia(world):
-    """``Genre Trivia!`` on both sides, the account's holding two old DOWNLOADED copies.
+    """``Genre Trivia!`` synced, its adopted account folder holding two old DOWNLOADED copies.
 
-    Synced once, so the account folder is adopted. Answers the rekordbox folder
-    and the two copies' account identifiers.
+    Answers the rekordbox folder and the two copies' account identifiers.
     """
     folder_id = world.account.create_folder(FOLDER)
     copies = {}
@@ -54,8 +53,7 @@ def trivia(world):
     world.playlist("House", "2", under=rekordbox)
     for track in ("t1", "t2", "t3", "t4", "t5", "t6"):
         world.dates[track] = LONG_AGO
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.folders_created == [FOLDER]
     return rekordbox, copies
 
@@ -92,8 +90,7 @@ def test_a_downloaded_copy_the_adopted_folder_held_is_named_and_never_made(world
     assert set(named) == set(copies)
     assert named["DOWNLOADED Techno"]["account_id"] == copies["DOWNLOADED Techno"]
     assert "held it when a sync adopted" in named["DOWNLOADED Techno"]["why"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert set(in_rekordbox(world, rekordbox)) == {"Techno", "House"}
     assert "DOWNLOADED Techno" in _said(envelope, pair_cli.NOT_BROUGHT)
 
@@ -101,8 +98,7 @@ def test_a_downloaded_copy_the_adopted_folder_held_is_named_and_never_made(world
 def test_a_playlist_made_in_the_adopted_folder_after_the_sync_comes_in(world, cfg, trivia):
     rekordbox, _copies = trivia
     disco = on_account(world, f"{FOLDER} Disco", FOLDER, "t3", "t4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     inside = in_rekordbox(world, rekordbox)
     assert set(inside) == {"Techno", "House", "Disco"}
     assert world.held(inside["Disco"]) == ["3", "4"]
@@ -117,8 +113,7 @@ def test_a_playlist_made_in_a_created_folder_after_the_sync_comes_in(world, cfg)
     recorded = pairs.PairStore(cfg).folders()["GIG READY"]
     assert recorded.created is True and recorded.held == frozenset()
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.held(in_rekordbox(world, gig)["Closer"]) == ["4"]
     assert pairs.PairStore(cfg).get(closer).made
 
