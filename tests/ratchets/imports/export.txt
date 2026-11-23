@@ -5,4 +5,3 @@
 #   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
 # Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune export
 # A line whose crossing is gone fails nothing.
-dangling labels cratekit.label.catalogue

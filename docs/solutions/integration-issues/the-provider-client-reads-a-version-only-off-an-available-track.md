@@ -2,7 +2,7 @@
 title: "The provider client reads a track's version only off an available track, so a withdrawn remix reads as the plain record"
 date: 2026-09-20
 category: integration-issues
-module: "src/cratekit/modules/outbound/tidal_account.py"
+module: "src/cratekit/modules/outbound/tidal_reads.py"
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -47,7 +47,7 @@ alongside the fix.
 
 ## Solution
 
-`tidal_account._streamable` leaves a track whose `available` is `False` out of
+`tidal_reads._streamable` leaves a track whose `available` is `False` out of
 the choice altogether, rather than comparing it. It is counted in the unmatched
 reason. The fake gained `withdrawn()`, which sets `available` false AND blanks
 the version, because that pair is what the client really hands out.
