@@ -62,13 +62,16 @@ ways, each measured there:
   measured about fifteen hours after its first batch started, where one
   container alone was on course for about forty.
 - **A row that breaks a guard can leave the machine changed.** A row that
-  breaks `core/config.py`'s test root guard lets
+  broke `core/config.py`'s test root guard once let
   `tests/test_config_test_root.py` write a directory at the filesystem
-  root, and from then on eight of its tests fail on that container: later
-  rows read killed by those eight alone, and the next null control dies.
-  The harness refuses to remove it, so such rows run on a fresh container,
-  one guard breaking row to a container, checked for the directory before
-  the baseline and after each batch (residual `u325-a`).
+  root, and from then on eight of its tests failed on that container: later
+  rows read killed by those eight alone, and the next null control died.
+  Since R-1917 that file aims its refused writes into a folder its fixture
+  makes under the system temporary directory and removes whatever the
+  outcome, and the driver's state guard stops the batch at the child that
+  adds, removes or retypes an entry directly under the filesystem root. A
+  batch stopped that way names the entry: read it before rerunning, since
+  every later row on that container would read it.
 - **A row #855 left killed only by an inode bound test**, under no scratch
   copy, is measured again against one before it is believed (see the inode
   entry beside this one). U325's one such row read zero then, on both sides.
