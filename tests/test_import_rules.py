@@ -719,6 +719,12 @@ def test_no_package_crosses_a_seam_beyond_its_allowance():
     assert len(sources) > 100 and sum(map(len, tree.uses.values())) > 1_000
     assert all(verb.module in tree.modules for verb in verbs), "a verb names no module"
 
+    # U328: a part of the verb table is imported by the registry alone, so a verb is read
+    # through cli.registry, where the suite patches the table.
+    part = f"{registry.__name__}_"
+    reach = {use.path for uses in tree.uses.values() for use in uses if use.target.startswith(part)}
+    assert reach == {measure.REGISTRY}, f"a part of the verb table is imported past it: {reach}"
+
     allowed = measure.read_allowances(REPO_ROOT, measure.IMPORT_ALLOWANCES)
     excess = measure.over_allowance(measure.import_findings(tree, rules, verbs), allowed)
     problems = [

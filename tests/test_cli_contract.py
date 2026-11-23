@@ -1114,12 +1114,6 @@ def test_the_table_is_every_part_in_order_and_each_file_is_under_the_bar():
     assert registry.ENTRIES == tuple(entry for name in order for entry in held[name])
     over = {path.name: n for path in files if (n := len(path.read_text().splitlines())) > 1500}
     assert not over, f"over 1,500 lines, so the next verb's block opens a new part: {over}"
-    source, names_a_part = files[0].parents[1], r"^\s*(?:from|import)\s[^#\n]*\bregistry_"
-    importers = {
-        path.relative_to(source).as_posix()
-        for path in source.rglob("*.py") if re.search(names_a_part, path.read_text(), re.M)
-    }
-    assert importers == {"cli/registry.py"}, "a part is read through cli.registry, as a patch is"
 
 
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
