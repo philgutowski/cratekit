@@ -899,7 +899,8 @@ def apply_removed(
 
     WHAT IS WRITTEN IS REKORDBOX'S OWN REMOVE FROM COLLECTION (A178, A185): each
     offered row and its rows in the six tables beside it, deleted outright, and
-    later playlist members renumbered by ``TrackNo`` alone (A197, R-1830); history
+    later playlist members renumbered, each moved row's ``TrackNo``, ``rb_local_usn``
+    and ``updated_at`` written as rekordbox writes them (A197, R-1830, A202, U955); history
     keeps its numbers, being unmeasured. A row any other table names refuses the
     apply. Never a file or a beat grid; orphan artist and album rows are left
     for rekordbox's next removal.
