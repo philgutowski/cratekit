@@ -1,10 +1,8 @@
 """``crate run decide RUN GATE OPTION --continue`` answers and continues in one command (U168).
 
-It records the answer, then continues the owning verb with the arguments its
-first invocation recorded plus ``--run RUN``. With no ``--actor`` the actor is
-``session`` without a controlling terminal and ``cli`` with one. An explicit
-gate still takes no inline answer on the verb. Driven through the real
-dispatcher on a temporary library. D1 applies.
+It continues the owning verb with its recorded arguments plus ``--run RUN``. With
+no ``--actor`` the actor is ``session`` without a terminal and ``cli`` with one.
+D1 applies.
 """
 
 from __future__ import annotations

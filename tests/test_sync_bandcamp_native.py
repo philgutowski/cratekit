@@ -1,11 +1,8 @@
 """One new PULS release and one owned release land one batch filed under ``Record Labels / PULS`` (U179).
 
-``crate sync bandcamp`` plans and fetches over the fake account through the
-real dispatcher; the tail stands in at the chain's seam, since analysis needs
-an extra and a real collection; the rehearsal and the landing run for real on
-the disposable native database. The session's two acts answer and apply the
-gate, and SQL reads the batch back. D1 applies; ``pulsromania`` is the fake
-account's seller.
+Only the tail stands in; the plan, fetch, rehearsal and landing are real on the
+disposable native database, read back by SQL. D1 applies; ``pulsromania`` is
+the fake account's seller.
 """
 
 from __future__ import annotations

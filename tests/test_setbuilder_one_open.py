@@ -1,8 +1,7 @@
 """U266: the set builder's index reads each file through one container open.
 
-The assertion is the ``mutagen.File`` call count, exact on any machine, and every
-reading is compared with the seven single field reads it replaced, plus literal
-expectations. Nothing below names a real volume, person or track (D1).
+The ``mutagen.File`` call count is asserted exactly, and every reading equals
+the seven single field reads it replaced and literal expectations. D1 applies.
 """
 
 from __future__ import annotations
@@ -68,10 +67,8 @@ def _tagged(probes, folder: Path, suffix: str, name: str, fields: dict[str, obje
     return target
 
 
-# The tag sets each container is read under. Every field, a headed title with a
-# lossy marker, two fields alone, padded values, text outside ASCII, and no tags
-# at all. The title carries the name head because that is where the live
-# library keeps it (the solution on the head in the title tag).
+# The tag sets each container is read under; the title carries the name head,
+# where the live library keeps it.
 READINGS: dict[str, dict[str, object]] = {
     "every-field": {
         "title": "08A - 124 - Sun Path", "artist": "Nova Reef", "genre": "Deep House",

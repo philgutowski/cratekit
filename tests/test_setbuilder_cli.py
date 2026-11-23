@@ -1,9 +1,7 @@
 """U43: ``crate setbuild``, the shell over the set building engine.
 
-The pure half drives :func:`cratekit.setbuilder.cli.plan_for` over a frozen
-index; the disk half tags a small real library through the product's own writer
-and drives the dispatcher. Fixture tempos live in the title tag, never a tempo
-tag, because nothing in this product writes one (R17).
+The pure half drives ``plan_for`` over a frozen index, the disk half a small
+tagged library. Fixture tempos live in the title tag, never a tempo tag (R17).
 """
 
 from __future__ import annotations

@@ -1,9 +1,7 @@
 """U202, ``crate sync pair`` with no argument, the other way: a playlist made on the account comes to rekordbox.
 
-An account playlist made in a synced root folder is made in the matching
-rekordbox folder and paired. Where a track was added on one side and taken off
-the other since the last sync, the later change wins, and an unknown moment
-keeps the track and names the call.
+It is made in the matching rekordbox folder and paired. A track added on one
+side and taken off the other goes by the later change; an unknown moment keeps it.
 """
 
 from __future__ import annotations

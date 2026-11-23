@@ -57,11 +57,7 @@ class Listed:
 
 
 class LivePlaylist:
-    """The account playlist as the catalogue lists it, read off the fake account now.
-
-    ``declared`` is a count the provider publishes beside the listing; None
-    publishes none, so the listing is never short.
-    """
+    """The account playlist as listed now, with ``declared`` the count published beside it."""
 
     page_size = 100
 

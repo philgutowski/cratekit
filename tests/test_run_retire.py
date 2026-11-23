@@ -1,12 +1,9 @@
 """Old open gates are one line in ``crate status``, and ``crate run retire`` answers them (U170).
 
-Status collapses every open gate idle past a threshold, seven days by default
-or ``reports.open_gate_stale_days``, into one line with the count and the
-command, so stale gates do not bury what matters. ``crate run retire
---older-than 7d`` answers each ``abort`` as ``session`` after one confirm. A
-newer gate shows and stays as before. Driven through the real dispatcher on a
-temporary library, a run's age set by its ``created`` stamp and its record's
-last write.
+Gates idle past ``reports.open_gate_stale_days`` (seven by default) collapse
+into one status line; ``crate run retire --older-than 7d`` aborts each as
+``session`` after one confirm. A run's age is set by its ``created`` stamp and
+its record's last write.
 """
 
 from __future__ import annotations
