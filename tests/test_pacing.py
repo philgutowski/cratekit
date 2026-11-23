@@ -228,15 +228,15 @@ def test_the_status_is_read_from_whichever_attribute_the_client_exposes():
 
 
 
-def test_a_delta_seconds_header_is_honoured():
-    exc = rate_limited(headers={"Retry-After": "45"})
-    assert retry_hint_seconds(exc, now=FIXED_NOW) == 45.0
-
-
-def test_a_header_is_found_whatever_case_the_client_stored_it_in():
+@pytest.mark.parametrize(
+    "name,value,seconds",
+    [("Retry-After", "45", 45.0), ("retry-after", "20", 20.0)],
+    ids=["delta-seconds-honoured", "found-whatever-case-the-client-stored"],
+)
+def test_a_delta_seconds_header_is_honoured_whatever_its_case(name, value, seconds):
     """Header names match case insensitively, as a client library's dictionary does."""
-    exc = rate_limited(headers={"retry-after": "20"})
-    assert retry_hint_seconds(exc, now=FIXED_NOW) == 20.0
+    exc = rate_limited(headers={name: value})
+    assert retry_hint_seconds(exc, now=FIXED_NOW) == seconds
 
 
 def test_a_date_form_header_is_parsed_rather_than_dropped():

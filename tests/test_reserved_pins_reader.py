@@ -42,16 +42,20 @@ def test_each_packages_tables_are_merged_into_one_mapping_per_table(tmp_path):
     assert set(merged) == set(pins.PER_MODULE_TABLES)
 
 
-def test_a_module_pinned_in_another_packages_file_is_refused(tmp_path):
-    _write(tmp_path, "core", "KEBAB_LITERALS = {'write/trees.py': ['internal-error']}\n")
-    with pytest.raises(ValueError, match=r"core\.py pins 'write/trees\.py'.*belongs in write\.py"):
-        pins.read_package_pins(tmp_path)
-
-
-def test_a_table_the_reader_does_not_know_is_refused_rather_than_ignored(tmp_path):
-    """A misspelt table would otherwise be a pin that silently stopped pinning."""
-    _write(tmp_path, "core", "KEBAB_LITERAL = {'core/config.py': ['config-unusable']}\n")
-    with pytest.raises(ValueError, match=r"core\.py defines \['KEBAB_LITERAL'\]"):
+@pytest.mark.parametrize(
+    "text,says",
+    [
+        ("KEBAB_LITERALS = {'write/trees.py': ['internal-error']}\n",
+         r"core\.py pins 'write/trees\.py'.*belongs in write\.py"),
+        ("KEBAB_LITERAL = {'core/config.py': ['config-unusable']}\n",
+         r"core\.py defines \['KEBAB_LITERAL'\]"),
+    ],
+    ids=["a-module-pinned-in-another-packages-file", "a-table-the-reader-does-not-know"],
+)
+def test_a_file_the_reader_would_read_wrongly_is_refused(tmp_path, text, says):
+    """A misfiled pin or a misspelt table would otherwise silently stop pinning."""
+    _write(tmp_path, "core", text)
+    with pytest.raises(ValueError, match=says):
         pins.read_package_pins(tmp_path)
 
 

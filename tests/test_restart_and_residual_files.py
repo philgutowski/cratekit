@@ -569,6 +569,17 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     assert _lost(_fragments()) == []
 
 
+@functools.cache
+def _held_once() -> tuple[tuple[str, str], ...]:
+    """Moved paragraphs held by exactly one fragment other than R-301's, with that fragment."""
+    fragments = _fragments()
+    joined = "\n\n".join(fragments.values())
+    return tuple(
+        (name, p) for p in _moved_paragraphs() if joined.count(p) == 1
+        for name, text in fragments.items() if name != "r301.md" and p in text
+    )
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -585,12 +596,7 @@ def test_a_changed_or_removed_paragraph_still_fails(change):
         fragments["r301.md"] = fragments["r301.md"].replace(*change)
         opening = "**The session before: R-301, issue #168"
     else:
-        joined = "\n\n".join(fragments.values())
-        # Paragraphs held by exactly one fragment other than R-301's.
-        held_once = [
-            (name, p) for p in _moved_paragraphs() if joined.count(p) == 1
-            for name, text in fragments.items() if name != "r301.md" and p in text
-        ]
+        held_once = _held_once()
         assert len(held_once) > 200
         name, paragraph = held_once[{"first": 0, "middle": len(held_once) // 2, "last": -1}[change]]
         fragments[name] = fragments[name].replace(paragraph, "")

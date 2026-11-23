@@ -99,13 +99,16 @@ def test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process():
     assert plan.max_tasks_per_child is None
 
 
-def test_sixteen_gigabytes_is_bound_by_the_hard_ceiling_at_the_default():
-    """The plan's second scenario: memory affords several, the default ceiling of two binds."""
+@pytest.mark.parametrize(
+    "available", [16 * GIB, 64 * GIB], ids=["the-plans-second-scenario", "a-roomy-machine"]
+)
+def test_the_default_ceiling_of_two_binds_where_memory_affords_several(available):
+    """The shipped ceiling is two, pinned by the pool such a machine gets."""
     # The guard is derived, NOT a pin (see affordable_for); the count is a literal.
-    assert affordable_for(16 * GIB) > 2, (
+    assert affordable_for(available) > 2, (
         "the fixture no longer leaves the ceiling as the binding constraint"
     )
-    plan = _plan(16 * GIB)
+    plan = _plan(available)
     assert plan.workers == 2
     assert plan.bound is pool.Bound.CEILING
 
@@ -373,14 +376,6 @@ def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_our
     assert affords_one.workers == 1
     assert affords_one.bound is pool.Bound.AVAILABLE_MEMORY
     assert affords_none.bound is pool.Bound.INSUFFICIENT_MEMORY
-
-
-def test_the_default_ceiling_is_two_because_two_is_what_survived_a_real_run():
-    """The shipped ceiling is two, pinned by the pool a roomy machine gets."""
-    assert affordable_for(64 * GIB) > 2, "the reading no longer leaves the ceiling binding"
-    plan = _plan(64 * GIB)
-    assert plan.workers == 2
-    assert plan.bound is pool.Bound.CEILING
 
 
 @pytest.mark.parametrize(
