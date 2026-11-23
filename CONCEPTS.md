@@ -335,7 +335,8 @@ The verbs run over staged files before a landing, in order: `tag folder`,
 `name apply` (`cratekit.cli.tail`).
 `crate sync land`, `label sync --go` and `sync bandcamp` run it; no landing is
 planned unless every step succeeded, and a stale tail job is replaced, not
-resumed.
+resumed. Its restamp leaves out the files its `analyze run` just scored
+(`--scored-by`, U344).
 
 ### Shelve
 `crate intake shelve` (`intake/shelve.py`): moves a landed batch folder from

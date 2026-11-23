@@ -448,10 +448,11 @@ def analyse_file(
 
     ``key`` is a :data:`KEY_METHODS` name (U241, U276); ``timings`` collects
     each stage's wall time when given. ``tempo_window`` and ``drift_cut`` are
-    the configured values the run binds (U157). Energy comes from the same
-    samples under a calibration, and is otherwise an honest absence whose
-    ``energy_status`` names why (U58). librosa is imported here so a slim
-    install can still import the package.
+    the configured values the run binds (U157). Energy is measured under a
+    calibration by the restamp's own measure, so a file the run scored needs no
+    restamp (U344), and is otherwise an honest absence whose ``energy_status``
+    names why (U58). librosa is imported here so a slim install can still
+    import the package.
     """
     if key not in KEY_METHODS:
         # A DEFECT IN THE CALLER, raised before anything is opened.
@@ -494,7 +495,7 @@ def analyse_file(
     if camelot is None:
         return None
     with timed(timings, "energy"):
-        level, status = energy_from_samples(y, sr, calibration=calibration)
+        level, status = energy_from_path(path, calibration=calibration)
     return {
         "path": path,
         "camelot": camelot,
@@ -507,17 +508,21 @@ def analyse_file(
     }
 
 
-def energy_from_samples(samples: Any, rate: int, *, calibration: Any) -> tuple[int | None, str]:
-    """The level and its status for samples already decoded by the head.
+def energy_from_path(path: Any, *, calibration: Any) -> tuple[int | None, str]:
+    """The level and its status for ``path``, measured as ``analyze restamp`` measures it.
 
-    No calibration measures nothing. The head's tempo is NOT handed down: the
-    features measure their own so the run and restamp paths agree.
+    No calibration measures nothing. NOT FROM THE HEAD'S SAMPLES: the head
+    resamples the whole track before it slices, and the restamp decodes the
+    slice alone, so the two differed in every feature of a track longer than
+    the slice, and a track on a decile cut took two levels (U344). Through
+    :func:`energy.measure`, the restamp's own call, so one file under one
+    calibration has one level, and the head's tempo is not handed down.
     """
     from cratekit.analysis import energy
 
     if calibration is None:
         return None, energy.STATUS_UNCALIBRATED
-    features = energy.features_from_samples(samples, rate)
+    features = energy.measure(Path(path))
     if features is None:
         return None, energy.STATUS_FEATURES_UNAVAILABLE
     return energy.level_for(features, calibration), energy.STATUS_CALIBRATED

@@ -22,6 +22,7 @@ install can import this module and read a calibration file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -143,9 +144,11 @@ def _central(samples: Any, rate: int) -> Any:
 def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
     """The ordered feature vector for decoded mono samples, or None.
 
-    Samples, so the head pass does not decode twice; measured over the central
-    :data:`SEGMENT_SECONDS`. THE TEMPO FEATURE IS MEASURED HERE, FROM THE
-    SLICE, ON EVERY PATH, so ``analyze run`` and ``analyze restamp`` agree.
+    Measured over the central :data:`SEGMENT_SECONDS`. THE TEMPO FEATURE IS
+    MEASURED HERE, FROM THE SLICE, ON EVERY PATH. Every verb that scores a file
+    hands this the samples :func:`features_from_path` decoded, through
+    :func:`measure`, so ``analyze run`` and ``analyze restamp`` read the same
+    samples and give one file the same level (U344).
     """
     try:
         import librosa
@@ -230,9 +233,9 @@ def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
 def features_from_path(path: Path) -> dict[str, float] | None:
     """Decode the central slice of ``path`` and measure it.
 
-    The restamp and calibrate path. ONLY THE SLICE IS DECODED for a file
-    librosa reads, off the header's duration; one decoded through ffmpeg has
-    no such seek (U263).
+    The run, restamp and calibrate path (U344). ONLY THE SLICE IS DECODED for
+    a file librosa reads, off the header's duration; one decoded through ffmpeg
+    has no such seek (U263).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
@@ -408,6 +411,17 @@ def load_calibration(cfg: config.Config) -> Calibration | None:
         ) from exc
 
 
+def fingerprint(calibration: Calibration | Mapping[str, Any]) -> str:
+    """Which calibration a level was scored under, as a digest of its state mapping.
+
+    Two readings of one calibration file give one fingerprint, and a refit gives
+    another, so a level scored under one is known not to be the other's (U344).
+    """
+    mapping = calibration.to_json() if isinstance(calibration, Calibration) else calibration
+    text = json.dumps(dict(mapping), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def save_calibration(cfg: config.Config, calibration: Calibration) -> Path:
     return write_json(calibration_path(cfg), calibration.to_json())
 
@@ -489,6 +503,7 @@ __all__ = [
     "extractor_bound",
     "features_from_path",
     "features_from_samples",
+    "fingerprint",
     "index",
     "level_for",
     "load_calibration",
