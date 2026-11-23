@@ -1676,7 +1676,8 @@ def run(store, needing_review):
         )
 '''
 
-# The relative spellings a SIBLING of the review module would use.
+# The relative spellings a SIBLING of the review module would use, from the
+# residual "Two copies of one import walk still carry a relative-import defect".
 
 #: A sibling importing the symbol; ``node.module`` holds only ``review``.
 CORRECT_OFFER_SIBLING_RELATIVE_IMPORT = '''
