@@ -1364,7 +1364,7 @@ cannot be placed still fails the whole pass.
 
 | Verb | Does |
 |---|---|
-| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre, and any such row whose file is outside the library root, by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
@@ -1444,7 +1444,9 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **The needs genre backlog.** `tag backlog` reads every row adoption files
-nowhere for want of a genre and puts each in one cause: its file carries a
+nowhere for want of a genre, and a row with the same want whose file is
+outside the library root, which adoption excludes as `outside-root`, and puts
+each in one cause: its file carries a
 genre the row lacks (`tag rows` writes it), no genre on the row or the file
 (`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
 genre word no folder takes, or a file whose genre could not be read. A row

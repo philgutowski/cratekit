@@ -2,10 +2,12 @@
 
 Attended sitting 104 rehearsed ``adopt apply`` on a copy of a real library and
 the pass failed ``adopt-entries-failed`` on rekordbox's own sampler presets.
-Their rows are recorded under two home folders, both prefix rules map them onto
-the one Sampler folder on this machine, so each file has two live rows and the
-membership write could place neither. The file is outside the library root, so
-the census now reads it ``outside-root``, excluded, and the gate names it.
+Their rows are recorded under two home folders and prefix rules map them onto
+the one Sampler folder on this machine, outside the library root, where the
+membership write could not place them: one row alone fails it, since its
+resolved path does not resolve back through the rule, and two make it
+ambiguous besides (review round one). The census now reads such a row
+``outside-root``, excluded, and the gate names it.
 
 Expected values are literals or the fixture's own paths, never asked of the
 code under test. D1 applies: nothing names a real volume, person or track.
@@ -35,6 +37,7 @@ from tests.test_adopt_workers import (
     _memberships,
     _record_cutover,
     _resume,
+    _scan_job,
 )
 from tests.test_adopt_workers import _platform_seams as _platform_seams
 from tests.test_adopt_workers import _reader_cache as _reader_cache
@@ -377,3 +380,54 @@ def test_adopt_move_reads_the_same_disposition(sampled, monkeypatch):
         assert entries[content_id].disposition is Disposition.EXCLUDED, content_id
         assert entries[content_id].category is Readability.OUTSIDE_ROOT, content_id
     assert entries["r-one"].disposition is Disposition.ROUTE
+
+
+def test_adopt_scan_counts_each_sampler_row_outside_the_root(sampled):
+    """The census verb's own call reads the rows as the apply does (review R3)."""
+    from cratekit.adopt import artifacts
+
+    code, queued = drive(["adopt", "scan"])
+    assert code == int(ExitCode.OK), queued
+    job = _scan_job()
+    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    census = resumed["data"]["progress"]["census"]
+    assert census["categories"]["outside-root"] == 2
+    assert census["categories"]["readable"] == 2
+    reports = {report["content_id"]: report for report in artifacts.committed(sampled, job.job_id)}
+    for content_id in ("s-one", "s-two"):
+        assert reports[content_id]["readability"] == "outside-root", content_id
+        assert reports[content_id]["disposition"] == "excluded", content_id
+
+
+# ── tag set's closing message (review D2) ──
+
+
+def test_tag_set_promises_adoption_only_for_rows_inside_the_root(tmp_path):
+    """A written row outside the root is named as one neither verb files, and is
+    not counted among the rows `adopt move` takes out of a genre folder."""
+    from types import SimpleNamespace
+
+    from cratekit.tagging import genre_set as gs
+    from cratekit.tagging import genre_set_cli
+
+    root = tmp_path / "library"
+    inside = gs.Item(
+        "r-in", str(root / "Music" / "a.flac"), "a", "House", "House", "write", leaves="house"
+    )
+    outside = gs.Item(
+        "s-out", str(tmp_path / "Sampler" / PRESET), "k", "House", "House", "write", leaves="house"
+    )
+    plan = SimpleNamespace(genre="Deep House", writes=(inside, outside))
+    written = SimpleNamespace(
+        files=SimpleNamespace(read_back=("a", "k")), written=2, read_back=2, session_id="s"
+    )
+
+    said = [one["message"] for one in genre_set_cli._written(plan, written, root)]
+
+    assert "takes the 1 row(s) the tree filed" in said[1]
+    assert said[2] == (
+        "1 written row(s) have their file outside the library root, which adoption "
+        "leaves alone, so neither verb files or moves them: s-out"
+    )

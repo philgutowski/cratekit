@@ -271,12 +271,13 @@ def within_root(path: str, root: Path | str) -> bool:
     read, so ``/x/lib/../home`` is not under ``/x/lib`` and ``/x/libArchive`` is
     not either (U956). Only when the names disagree is each directory above the
     path asked whether it IS the root, for a volume that folds case or a name
-    that links to it; a directory that cannot be asked is no evidence. A link
-    below the root is not followed out of it.
+    that links to it, which also answers a root of ``/``; a directory that
+    cannot be asked is no evidence. A link below the root is not followed out of
+    it.
     """
     wanted = posixpath.normpath(locations.norm_for_compare(str(path)))
     anchor = posixpath.normpath(locations.norm_for_compare(str(root)))
-    if anchor == "/" or wanted == anchor or wanted.startswith(anchor + "/"):
+    if wanted == anchor or wanted.startswith(anchor + "/"):
         return True
     for parent in Path(wanted).parents:
         try:
