@@ -58,8 +58,17 @@ ways, each measured there:
 - **Ask for helper sessions.** The coordinator can start helpers, each its
   own container and four cores, that run a list of batches at the pinned
   commit with the same driver and push the tables to their own branch. U325
-  offloaded its fifty light batches to six helpers and finished in about a
-  day where one container needed about forty hours.
+  offloaded its fifty light batches to six helpers and had every row
+  measured about fifteen hours after its first batch started, where one
+  container alone was on course for about forty.
+- **A row that breaks a guard can leave the machine changed.** A row that
+  breaks `core/config.py`'s test root guard lets
+  `tests/test_config_test_root.py` write a directory at the filesystem
+  root, and from then on eight of its tests fail on that container: later
+  rows read killed by those eight alone, and the next null control dies.
+  The harness refuses to remove it, so such rows run on a fresh container,
+  one guard breaking row to a container, checked for the directory before
+  the baseline and after each batch (residual `u325-a`).
 - **A row #855 left killed only by an inode bound test**, under no scratch
   copy, is measured again against one before it is believed (see the inode
   entry beside this one). U325's one such row read zero then, on both sides.
