@@ -30,7 +30,7 @@ import logging
 import os
 import secrets
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -55,6 +55,11 @@ STORE_KEY = "snapshots"
 
 #: Verifies one captured database file, a seam so tests drive both verdicts.
 Verifier = Callable[[Path], bool]
+
+
+def _defect(message: str, *, detail: Mapping[str, Any]) -> CratekitError:
+    """A refusal that only a defect in this build or its records can reach."""
+    return refuse("internal-error", message, remedy=Remedy.REPORT_DEFECT, detail=detail)
 
 
 def new_stamp(now: datetime | None = None) -> str:
@@ -171,6 +176,14 @@ def database_paths(cfg: config.Config) -> tuple[Path, ...]:
     return (config.state_path(DATABASE_KEY, cfg), *config.sidecar_paths(DATABASE_KEY, cfg))
 
 
+def captured_paths(cfg: config.Config) -> frozenset[Path]:
+    """Every path a capture takes: the database fileset, the legacy playlist file, and
+    everything ``config.snapshot_sources`` declares. Restore replaces exactly these.
+    """
+    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    return frozenset({*database_paths(cfg), *config.snapshot_sources(cfg), playlist})
+
+
 def _harden(root: Path) -> None:
     """Give every file and directory under ``root`` an explicit private mode.
 
@@ -203,12 +216,10 @@ def _refuse_if_nested(source: Path, store: Path) -> None:
     contain every earlier one.
     """
     if source == store or store in source.parents or source in store.parents:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the declared capture source {source} and the capture store {store} "
             f"contain one another, so a capture would nest every earlier capture "
             f"inside the new one",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"source": str(source), "store": str(store)},
         )
 
@@ -256,15 +267,8 @@ def _record_unverified(record: Capture, manifest: Path) -> None:
 
     A failed write still refuses, since a capture with no manifest is unusable.
     """
-    unverified = Capture(
-        stamp=record.stamp,
-        root=record.root,
-        database=record.database,
-        integrity_verified=False,
-        sources=record.sources,
-    )
     try:
-        _write_manifest(unverified, manifest)
+        _write_manifest(replace(record, integrity_verified=False), manifest)
     except OSError as written:
         logger.warning(
             "the capture at %s could not record that it is not verified: %s", record.root, written
@@ -403,16 +407,13 @@ def _free_bytes(root: Path) -> int | None:
 
     Asked of the nearest existing ancestor. None refuses in :func:`assert_room_for`.
     """
-    probe = root
-    while True:
-        if probe.exists():
-            try:
-                return shutil.disk_usage(probe).free
-            except OSError:
-                return None
-        if probe.parent == probe:
-            return None
-        probe = probe.parent
+    probe = nearest_existing(root)
+    if not probe.exists():
+        return None
+    try:
+        return shutil.disk_usage(probe).free
+    except OSError:
+        return None
 
 
 def assert_room_for_capture(
@@ -429,10 +430,7 @@ def assert_room_for_capture(
     (P4), in allocated bytes.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
-    sources = {*database_paths(cfg), *config.snapshot_sources(cfg)}
-    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
-    sources.add(playlist)
-    needed = sum(_allocated_size(source) for source in sorted(sources))
+    needed = sum(_allocated_size(source) for source in sorted(captured_paths(cfg)))
     return assert_room_for(
         needed,
         destination_root,
@@ -508,12 +506,20 @@ _NO_ROOM_ERRNOS = frozenset(
 )
 
 
-def _device(path: Path) -> int:
-    """The device of the nearest ancestor of ``path`` that exists, as ``stat`` reads it."""
+def nearest_existing(path: Path) -> Path:
+    """``path`` or its nearest ancestor that exists, or the root when none does.
+
+    A capacity or permission question about a path not yet made is asked of it.
+    """
     probe = path
     while not probe.exists() and probe.parent != probe:
         probe = probe.parent
-    return os.stat(probe).st_dev
+    return probe
+
+
+def _device(path: Path) -> int:
+    """The device of the nearest ancestor of ``path`` that exists, as ``stat`` reads it."""
+    return os.stat(nearest_existing(path)).st_dev
 
 
 def _same_volume(first: Path, second: Path) -> bool:
@@ -665,11 +671,9 @@ def capture(
     chosen = stamp or new_stamp(now)
     destination = destination_root / chosen
     if destination.exists():
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"a capture directory already exists at {destination}; writing a "
             f"second capture into it would interleave two recovery points",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"stamp": chosen, "root": str(destination_root)},
         )
 
@@ -682,8 +686,6 @@ def capture(
     # The database half, delegated to the writer.
     try:
         database = rb_writer.snapshot_db(stamp=chosen, root=destination_root, db=db, cfg=cfg)
-    except CratekitError:
-        raise
     except OSError as exc:
         raise refuse(
             "library-database-missing",
@@ -696,23 +698,14 @@ def capture(
     captured: list[CapturedSource] = []
 
     # Recorded from the result, because a restore reads what exists.
-    for path in database_paths(cfg):
+    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    for path in (*database_paths(cfg), playlist):
         landed = destination / path.name
         captured.append(
             CapturedSource(
                 source=path, captured=landed if landed.exists() else None, directory=False
             )
         )
-    playlist_name = rb_writer.MASTER_PLAYLIST_XML
-    playlist_source = config.state_path(DATABASE_KEY, cfg).parent / playlist_name
-    landed_playlist = destination / playlist_name
-    captured.append(
-        CapturedSource(
-            source=playlist_source,
-            captured=landed_playlist if landed_playlist.exists() else None,
-            directory=False,
-        )
-    )
 
     # The coupled half, whatever the writer did not already take.
     for source in declared:
@@ -720,11 +713,9 @@ def capture(
             continue
         target = destination / source.name
         if target.exists():
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"two declared capture sources land on the same name inside a "
                 f"capture ({target.name}), so one would overwrite the other",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"source": str(source), "target": str(target)},
             )
         captured.append(_copy(source, target))
@@ -768,13 +759,7 @@ def capture(
                 "; ".join(changed[:20]),
             )
             verdict = False
-    record = Capture(
-        stamp=record.stamp,
-        root=record.root,
-        database=record.database,
-        integrity_verified=verdict,
-        sources=record.sources,
-    )
+    record = replace(record, integrity_verified=verdict)
 
     # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272),
     # because the check reads through the page cache.
@@ -791,14 +776,7 @@ def capture(
         config.flush_to_disk(destination_root)
     except OSError as exc:
         raise _not_flushed(record, manifest, exc) from exc
-    return Capture(
-        stamp=record.stamp,
-        root=record.root,
-        database=record.database,
-        integrity_verified=record.integrity_verified,
-        sources=record.sources,
-        manifest=manifest,
-    )
+    return replace(record, manifest=manifest)
 
 
 def read_manifest(capture_root: Path | str) -> Capture:
@@ -812,27 +790,21 @@ def read_manifest(capture_root: Path | str) -> Capture:
         raw = path.read_bytes()
     except OSError as exc:
         # ``from exc`` lets the refusal answer an OS refusal with an act.
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{path} could not be read, so there is no record of what this "
             f"capture holds and nothing may be restored from it: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(path)},
         ) from exc
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{path} is not readable as JSON: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(path)},
         ) from exc
     if not isinstance(data, Mapping):
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{path} does not hold an object at its top level",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(path)},
         )
     return Capture.from_json(data, manifest=path)
@@ -896,30 +868,3 @@ def assert_sources_present(record: Capture) -> None:
         detail={"stamp": record.stamp, "root": str(record.root), "absent": absent[:20]},
     )
 
-
-__all__ = [
-    "ALLOCATION_UNIT",
-    "CAPACITY_HEADROOM",
-    "CHECK_ROOM_STEPS",
-    "DATABASE_KEY",
-    "DIRECTORY_ENTRY_OVERHEAD",
-    "MANIFEST_NAME",
-    "MANIFEST_SCHEMA_VERSION",
-    "STORE_KEY",
-    "Capture",
-    "CapturedSource",
-    "Verifier",
-    "assert_room_for",
-    "assert_room_for_capture",
-    "assert_room_for_check",
-    "assert_sources_present",
-    "assert_verified",
-    "capture",
-    "check_had_no_room",
-    "database_paths",
-    "new_stamp",
-    "read_manifest",
-    "freed_bytes",
-    "incoming_bytes",
-    "store_root",
-]

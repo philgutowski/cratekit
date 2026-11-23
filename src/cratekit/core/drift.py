@@ -61,17 +61,3 @@ def reading(score_text: str | None, verdict_text: str | None, cut: float) -> tup
         return None, UNKNOWN
     return None, UNSCORED
 
-
-__all__ = [
-    "DYNAMIC_SETTINGS",
-    "NORMAL_SETTINGS",
-    "STEADY",
-    "UNKNOWN",
-    "UNSCORED",
-    "VARIABLE",
-    "VERDICTS",
-    "parse",
-    "reading",
-    "shown",
-    "verdict",
-]
