@@ -42,7 +42,8 @@ Exit codes
     3  a restore did not match git show HEAD
     4  the batch is invalid, the null control killed something
     5  pytest produced nothing readable
-    6  a child reached the real installation state (R-343)
+    6  a child reached the real installation state (R-343), or an entry directly
+       under the filesystem root changed while it ran (R-1917)
 """
 
 from __future__ import annotations
@@ -384,6 +385,37 @@ def state_fingerprint(root: Path) -> tuple[str, int]:
     return digest, len(entries) - 1
 
 
+#: The filesystem root, whose own entries the guard also lists (R-1917).
+FILESYSTEM_ROOT = Path(os.path.abspath(os.sep))
+
+
+#: What ``top_level_entries`` returns in place of a listing it could not read.
+UNREADABLE = "<unreadable>"
+
+
+def top_level_entries(top: Path) -> tuple[str, ...]:
+    """Each entry directly under ``top``, its name and its kind by ``lstat``, sorted.
+
+    Nothing deeper is read, so a child's churn in the system temporary directory is
+    not a change here; a new name at the root is (R-1917)."""
+    try:
+        with os.scandir(top) as listing:
+            found = []
+            for entry in listing:
+                if entry.is_symlink():
+                    kind = "link"
+                elif entry.is_dir(follow_symlinks=False):
+                    kind = "dir"
+                elif entry.is_file(follow_symlinks=False):
+                    kind = "file"
+                else:
+                    kind = "other"
+                found.append(f"{entry.name}\t{kind}")
+    except OSError as unread:
+        return (f"{UNREADABLE}\t{type(unread).__name__}",)
+    return tuple(sorted(found))
+
+
 def portable(path: Path) -> str:
     """``path`` with the home directory folded to ``~``, for anything written into the tree."""
     home = Path.home()
@@ -399,23 +431,42 @@ class StateGuard:
     roots: tuple[Path, ...]
     digests: tuple[str, ...]
     counts: tuple[int, ...]
+    top: Path = FILESYSTEM_ROOT
+    top_entries: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """The roots with home folded to ``~``: the scan refuses a home path under docs/."""
         pairs = zip(self.roots, self.counts, strict=True)
-        return "; ".join(f"{portable(root)} ({count} entries)" for root, count in pairs)
+        watched = [f"{portable(root)} ({count} entries)" for root, count in pairs]
+        watched.append(f"the names directly under {portable(self.top)} ({len(self.top_entries)})")
+        return "; ".join(watched)
 
 
-def take_state_guard(roots: tuple[Path, ...] | None = None) -> StateGuard:
-    """Fingerprint the real installation state before the batch touches anything."""
+def take_state_guard(
+    roots: tuple[Path, ...] | None = None, *, top: Path | None = None
+) -> StateGuard:
+    """Fingerprint the real installation state, and list the entries directly under the
+    filesystem root (``top`` stands in for it in a test), before the batch touches
+    anything."""
     resolved = installation_state_roots() if roots is None else tuple(roots)
     taken = [state_fingerprint(root) for root in resolved]
-    return StateGuard(resolved, tuple(one for one, _ in taken), tuple(one for _, one in taken))
+    top = FILESYSTEM_ROOT if top is None else top
+    entries = top_level_entries(top)
+    if entries and entries[0].startswith(UNREADABLE):
+        raise DriverRefusal(
+            f"cannot list the entries directly under {portable(top)} ({entries[0].split()[-1]}), "
+            "so a child that leaves one there would go unseen (R-1917)"
+        )
+    return StateGuard(
+        resolved, tuple(one for one, _ in taken), tuple(one for _, one in taken),
+        top, entries,
+    )
 
 
 def check_state_guard(guard: StateGuard, *, label: str) -> None:
-    """Raise ``StateLeak`` if the real installation state moved under a child, or under a
-    concurrent writer, which the driver cannot tell apart."""
+    """Raise ``StateLeak`` if the real installation state, or the entries directly under
+    the filesystem root, moved under a child, or under a concurrent writer, which the
+    driver cannot tell apart."""
     for root, before, counted in zip(guard.roots, guard.digests, guard.counts, strict=True):
         now, count_now = state_fingerprint(root)
         if now == before:
@@ -430,6 +481,30 @@ def check_state_guard(guard: StateGuard, *, label: str) -> None:
             "stopped and nothing after this point was measured. Read that "
             "directory before rerunning, and rerun with nothing else using it."
         )
+    now_top = top_level_entries(guard.top)
+    if now_top == guard.top_entries:
+        return
+    if now_top and now_top[0].startswith(UNREADABLE):
+        # Read as every entry removed, it would name removals that never happened.
+        names = f"it can no longer be listed ({now_top[0].split(chr(9))[-1]})"
+    else:
+        before = dict(entry.split("\t", 1) for entry in guard.top_entries)
+        after = dict(entry.split("\t", 1) for entry in now_top)
+        names = "; ".join(
+            [f"added {name}" for name in sorted(after.keys() - before.keys())]
+            + [f"removed {name}" for name in sorted(before.keys() - after.keys())]
+            + [f"changed {name}" for name in sorted(before.keys() & after.keys())
+               if before[name] != after[name]]
+        )
+    raise StateLeak(
+        f"the entries directly under {portable(guard.top)} changed while running {label}: "
+        f"{names}. A child of this driver that writes outside its temporary folders, as a "
+        "row that breaks the test root guard once did, leaves a folder there that fails "
+        "tests in every later run on this machine (R-1917), or something else changed "
+        "it while the child ran, and the driver cannot tell which. The batch is stopped "
+        "and nothing after this point was measured. Read that entry before rerunning; "
+        "every later measurement on this machine may read it."
+    )
 
 
 def run_pytest(

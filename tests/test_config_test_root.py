@@ -9,11 +9,17 @@ Removing the isolation is simulated by clearing ``config._TEST_WRITE_ROOT`` with
 the redirected environment left in place, so a refusal can only come from the
 guard. The configuration is held to the test root alone; ``atomic_write_bytes``
 and ``exclusive_lock`` also accept the system temporary directory.
+
+Every write meant to be refused aims at ``outside``, a folder the fixture makes
+under the system temporary directory and removes whatever the test's outcome
+(R-1917). It was once a fixed name at the filesystem root, so a mutant that broke
+the guard left it there, and eight of these tests failed on that machine in every
+later run.
 """
 
 from __future__ import annotations
 
-import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,8 +32,28 @@ from cratekit.core import config
 from tests.test_config_update import document_for
 from tests.test_config_update import library as library  # noqa: PLC0414
 
-#: A path no machine running this suite has, outside every temporary root.
-OUTSIDE = Path(os.sep, "cratekit-r926-outside-every-test-root")
+
+@pytest.fixture
+def outside(tmp_path_factory, monkeypatch):
+    """A folder outside the test root and every allowance the guard knows, removed after.
+
+    The guard also allows the system temporary directory to the state writers, so
+    for this test that allowance is narrowed to a sibling folder in the same scratch,
+    by ``tempfile.tempdir``, which ``tempfile.gettempdir`` returns. A refusal still
+    comes from the guard alone, and whatever a broken guard lets land is removed with
+    the scratch.
+    """
+    scratch = Path(tempfile.mkdtemp(prefix="cratekit-r1917-"))
+    narrowed = scratch / "system-temporary"
+    narrowed.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(narrowed))
+    folder = scratch / "outside-every-test-root"
+    try:
+        for allowed in (tmp_path_factory.getbasetemp(), narrowed):
+            assert not folder.resolve().is_relative_to(allowed.resolve()), allowed
+        yield folder
+    finally:
+        shutil.rmtree(scratch)
 
 
 @pytest.fixture
@@ -94,29 +120,29 @@ def test_a_write_to_a_tmp_path_lands_as_it_always_has(library, tmp_path):
     assert target.is_file()
 
 
-def test_a_path_outside_the_root_is_refused_with_the_isolation_in_place(library):
-    target = OUTSIDE / "config.toml"
+def test_a_path_outside_the_root_is_refused_with_the_isolation_in_place(library, outside):
+    target = outside / "config.toml"
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
         config.save(config.from_dict(document_for(library)), target)
     assert str(target) in str(refused.value)
     assert "outside the test root" in str(refused.value)
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
-def test_a_link_inside_the_root_aimed_outside_it_is_refused(library, tmp_path):
+def test_a_link_inside_the_root_aimed_outside_it_is_refused(library, tmp_path, outside):
     link = tmp_path / "looks-local"
-    link.symlink_to(OUTSIDE, target_is_directory=True)
+    link.symlink_to(outside, target_is_directory=True)
     with pytest.raises(config.WriteOutsideTestRoot):
         config.save(config.from_dict(document_for(library)), link / "config.toml")
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
-def test_a_path_resolution_that_leaves_the_root_is_refused(library, monkeypatch):
+def test_a_path_resolution_that_leaves_the_root_is_refused(library, monkeypatch, outside):
     """What a mutant of ``config_path`` or a missed redirect looks like to a save."""
-    monkeypatch.setattr(config, "config_path", lambda: OUTSIDE / "config.toml")
+    monkeypatch.setattr(config, "config_path", lambda: outside / "config.toml")
     with pytest.raises(config.WriteOutsideTestRoot):
         config.save(config.from_dict(document_for(library)))
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
 #: The state writers besides the configuration. U254's synced append never
@@ -131,21 +157,23 @@ STATE_WRITERS = pytest.mark.parametrize(
 
 
 @STATE_WRITERS
-def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated, write):
-    target = OUTSIDE / "ledger.json"
+def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated, write, outside):
+    target = outside / "ledger.json"
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
         write(target)
     assert str(target) in str(refused.value)
     assert "no test root is registered" in str(refused.value)
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
 @STATE_WRITERS
-def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place(write):
+def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place(
+    write, outside
+):
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        write(OUTSIDE / "ledger.json")
+        write(outside / "ledger.json")
     assert "outside the test root" in str(refused.value)
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
 def test_an_append_inside_the_root_adds_to_the_file_and_never_creates_one(tmp_path):
@@ -160,11 +188,11 @@ def test_an_append_inside_the_root_adds_to_the_file_and_never_creates_one(tmp_pa
     assert target.read_bytes() == b"zero\none\ntwo\n"
 
 
-def test_a_lock_outside_every_temporary_folder_is_refused(unisolated):
-    lock = config.exclusive_lock(OUTSIDE / "session.lock")
+def test_a_lock_outside_every_temporary_folder_is_refused(unisolated, outside):
+    lock = config.exclusive_lock(outside / "session.lock")
     with pytest.raises(config.WriteOutsideTestRoot), lock:
         pass
-    assert not OUTSIDE.exists()
+    assert not outside.exists()
 
 
 def test_a_scratch_write_in_the_system_temporary_folder_lands_without_a_root(unisolated):
@@ -187,10 +215,10 @@ def test_the_configuration_is_not_allowed_the_system_temporary_folder(library):
             config.save(config.from_dict(document_for(library)), scratch / "config.toml")
         assert list(scratch.iterdir()) == []
     finally:
-        scratch.rmdir()
+        shutil.rmtree(scratch)
 
 
-def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path):
+def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path, outside):
     """The guard is inert for the shipped tool, which never imports pytest: the
     child saves with no root registered, so a check that ran anyway fails it."""
     target = tmp_path / "shipped" / "config.toml"
@@ -200,7 +228,7 @@ def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path):
         "from cratekit.core import config\n"
         "assert 'pytest' not in sys.modules, sorted(m for m in sys.modules if 'pytest' in m)\n"
         "assert config._TEST_WRITE_ROOT is None\n"
-        f"config._refuse_write_outside_test_root(Path({str(OUTSIDE / 'config.toml')!r}))\n"
+        f"config._refuse_write_outside_test_root(Path({str(outside / 'config.toml')!r}))\n"
         f"document = {document_for(library)!r}\n"
         f"config.save(config.from_dict(document), Path({str(target)!r}))\n"
         "print('unchecked')\n"

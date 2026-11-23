@@ -67,8 +67,9 @@ wrong:
   reach, and a same size rewrite inside one timestamp tick is invisible to a
   stat, so directories are entries and small files are hashed by content.
 - Say what is watched. The sandbox redirects eight variables and the guard
-  fingerprints two roots, so the table says the watched roots are unchanged,
-  not that the installation state was guarded.
+  fingerprints two roots, and since R-1917 lists the names directly under the
+  filesystem root, so the table says the watched roots are unchanged, not
+  that the installation state was guarded.
 
 ## The apparatus can lie, and this is what it looks like
 
