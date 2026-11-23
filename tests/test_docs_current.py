@@ -1,28 +1,17 @@
 """The guide and the code agree on every verb, every flag and every config key (U233).
 
-WHY THIS FILE EXISTS. Phillip asked on 2026-11-07 for every doc to be kept up to
-date, always, and METHOD's Docs always current section is that rule for every
-change. A rule a session must remember is a rule a session forgets, so the part
-of it that is mechanical is a test: the guide is the one doc a DJ reads to learn
-the verbs and the settings, and three of its claims can be read off the code
-without judgement.
+METHOD's Docs always current rule, in its mechanical part (Phillip,
+2026-11-07):
 
 1. Every verb the parser builds has a place in ``docs/GUIDE.md``.
-2. Every verb the guide names exists, and every flag it puts after a verb is
-   one that verb, or the top level parser, takes.
-3. The guide's settings table names every key the config schema has, with the
-   schema's own default, and no key the schema lacks; every other config key the
-   guide or the README spells as ``section.key`` exists too.
+2. Every verb the guide names exists, and every flag after a verb is one that
+   verb, or the top level parser, takes.
+3. The settings table names every schema key with the schema's default and
+   no other; every other ``section.key`` in the guide or the README exists.
 
-WHAT IT CANNOT SEE, so nobody reads more into a green run. A sentence that
-describes a behaviour wrongly, a count in prose, a message quoted from memory:
-those are prose, and the review and the author's grep are what hold them.
-
-THE READERS ARE PURE FUNCTIONS ON TEXT, AND ARE TESTED ON DOCTORED TEXT. On the
-day this landed the guide already named every verb with flags that exist, so a
-check run only on the real guide could not show that it fails when a verb is
-dropped or invented. The doctored cases below are that proof, and each one is a
-way the guide has drifted, or could, from the verbs.
+Prose that describes a behaviour wrongly is beyond it. The readers are pure
+functions on text, proved to fail on doctored text below, since the real
+guide already passed on the day this landed.
 """
 
 from __future__ import annotations
@@ -43,23 +32,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "GUIDE.md"
 README = REPO_ROOT / "README.md"
 
-#: The heading the settings table sits under, and the table's first column. The
-#: table is found by the heading rather than by a line number, so a paragraph
-#: added above it moves nothing.
+#: The heading the settings table sits under, and its first column; found by
+#: heading, not line number.
 SETTINGS_HEADING = "## Where things live"
 
 _WORD = r"[a-z][a-z0-9-]*"
 
 #: The top level options that take a value, so ``crate --output json doctor``
-#: reads as ``doctor`` and not as a verb called ``json``. Held equal to the
-#: parser's own below.
+#: reads as ``doctor``. Held equal to the parser's own below.
 TOP_VALUED = frozenset(
     {"--output", "-d", "--decision", "--run", "--calls", "--calls-per-hour"}
 )
 
-#: Every top level option. Argparse takes one only before the verb, so one
-#: written between ``crate`` and the verb is judged against this set, and one
-#: written after the verb is judged as the verb's, which it is not.
+#: Every top level option, which argparse takes only before the verb.
 TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
 
 
@@ -71,15 +56,9 @@ TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
 def _parser_flags() -> dict[str, frozenset[str] | None]:
     """Every verb the full preset builds, with its flags, and the top level flags.
 
-    Built under the full preset explicitly rather than the machine's config, so a
-    profile that switches a module off cannot hide its verbs from the check. A
-    verb whose extra is missing is built as a stub with no flags of its own, and
-    is recorded with ``None`` so its flags are not judged against a stub.
-    Every other verb takes its own flags only: a top level option written after
-    the verb is one argparse refuses.
-
-    EAGER, because it walks every verb's own arguments, and since U248 the
-    default parser builds a verb's arguments only when that verb is chosen.
+    The full preset, so a profile cannot hide verbs. A verb whose extra is
+    missing is a stub recorded with ``None``. EAGER, since U248 builds a verb's
+    arguments only when that verb is chosen.
     """
     parser = build_parser(membership=profiles.resolve("full"), eager=True)
     verbs: dict[str, frozenset[str] | None] = {}
@@ -103,9 +82,8 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
 def _schema_defaults() -> dict[str, str]:
     """Every key the config file can carry, with its default as the guide writes it.
 
-    Walked off the ``Config`` dataclass, so a key added there is a key this
-    check owes the guide at once. ``[modules]`` is one key per module in the
-    file (``ModulesConfig`` flattens), so it is read as ``modules.<module>``.
+    Walked off the ``Config`` dataclass; ``[modules]`` reads as
+    ``modules.<module>``, since ``ModulesConfig`` flattens.
     """
     out: dict[str, str] = {}
 
@@ -156,9 +134,8 @@ def format_default(value: object) -> str:
 def code_snippets(text: str) -> list[tuple[int, str]]:
     """Every piece of code in a markdown text, with the line it starts on.
 
-    A fenced block gives one snippet per line. Outside a fence, an inline code
-    span gives one snippet, and a span may wrap across a line break, as prose
-    wraps it; an indented block gives one per line.
+    A fenced or indented block gives one snippet per line; an inline span gives
+    one, and may wrap a line break.
     """
     out: list[tuple[int, str]] = []
     fenced = False
@@ -185,14 +162,10 @@ def verb_mentions(
 ) -> tuple[set[str], list[str], list[str]]:
     """Which verbs the snippets name, which names are not verbs, which flags are not flags.
 
-    A snippet names a verb when ``crate`` is followed by it (after any top level
-    flags), or when the snippet itself opens with it, as the guide's tables and
-    prose write a verb. A snippet opening with a verb group's word and a second
-    word that is not one of that group's verbs is an unknown name, and so is
-    anything after ``crate`` that is no verb at all. A flag is judged up to the
-    next ``crate`` or the start of a comment. A top level option between
-    ``crate`` and the verb is stepped over, with its value when it takes one,
-    and is judged against :data:`TOP_OPTIONS`.
+    A verb is named after ``crate`` (past top level flags, judged against
+    :data:`TOP_OPTIONS`) or when a snippet opens with it. A group word followed
+    by a word that is not its verb is unknown, as is any non-verb after
+    ``crate``. A flag is judged up to the next ``crate`` or a comment.
     """
     valued = "|".join(re.escape(option) for option in sorted(TOP_VALUED, key=len, reverse=True))
     singles = {verb for verb in verbs if " " not in verb}
@@ -242,10 +215,8 @@ def verb_mentions(
 def settings_table(text: str) -> dict[str, str]:
     """The guide's settings table, key to the default its second column states.
 
-    The first table after the settings heading whose header reads Key and
-    Default. Each row names one key; the default is the cell's first word or
-    bracketed list, with code marks taken off, and any words after it are the
-    guide's own gloss.
+    The first Key and Default table after the heading; the default is the cell's
+    first word or bracketed list, code marks off.
     """
     section = text.split(SETTINGS_HEADING, 1)[1]
     rows: dict[str, str] = {}

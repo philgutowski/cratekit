@@ -1,15 +1,9 @@
 """U1: the package declares an installable, portable, genuinely slim core.
 
-These assertions run against ``pyproject.toml`` as data rather than against an
-installed distribution, so they fail in the pull request that introduces the
-regression instead of on the first friend's machine. One reads the installed
-distributions as well: the import guard (U269) asks the environment's own
-metadata which modules each core dependency provides, so it needs the core
-dependencies installed, as the battery's environment has them.
-
-The end-to-end proof that a clean environment installs and imports lives in
-CI's ``cold-install`` job and in the manual rehearsal recorded for U1. A unit
-test cannot build a virtual environment honestly.
+Read from ``pyproject.toml`` as data, so a regression fails its own pull
+request. The import guard (U269) also reads the installed distributions'
+metadata, so it needs the core dependencies installed. A clean install is
+proved by CI's ``cold-install`` job, not here.
 """
 
 from __future__ import annotations
@@ -25,16 +19,10 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
-# Packages that must never be DECLARED by the slim core: the audio DSP stack,
-# the machine-learning stack, and the web framework. A friend who only wants
-# playlist curation should not download any of them.
-#
-# Declared, not present. numpy does land in a slim install, transitively, because
-# pyrekordbox requires it and guarded database access is Core. That is fine —
-# numpy is neither DSP nor ML on its own. It stays on this list because the
-# analysis module must keep declaring it explicitly: relying on a transitive
-# dependency of an unrelated package for a module's own import is how a
-# pyrekordbox release note quietly breaks key detection.
+# Packages the slim core must never DECLARE: the audio DSP stack, the machine
+# learning stack and the web framework. numpy lands in a slim install through
+# pyrekordbox, which is fine, but the analysis module must keep declaring it
+# itself rather than lean on an unrelated package's dependency.
 HEAVY_PACKAGES = {
     "librosa",
     "numpy",
@@ -56,55 +44,29 @@ def pyproject() -> dict:
 
 
 def _distribution_name(specifier: str) -> str:
-    """Reduce ``"librosa>=0.10"`` to ``"librosa"``.
-
-    Extras and environment markers are stripped too, so ``cratekit[analysis]``
-    and ``foo>=1; python_version < '3.13'`` both reduce to their bare name.
-    """
+    """Reduce ``"librosa>=0.10"`` to ``"librosa"``, extras and environment markers stripped."""
     head = specifier.split(";", 1)[0]
     head = head.split("[", 1)[0]
     return re.split(r"[<>=!~ ]", head, maxsplit=1)[0].strip().lower()
 
 
 def test_python_bound_is_closed_at_both_ends(pyproject):
-    """KTD19 pins 3.12 and 3.13. An open upper bound is the failure we avoid.
-
-    Without the ceiling, a resolver happily installs on 3.14 and the vendored
-    downloader fails later with an error that names none of this.
-    """
+    """KTD19 pins 3.12 and 3.13, closed at both ends, so 3.14 never installs and fails obscurely."""
     requires = pyproject["project"]["requires-python"]
     assert ">=3.12" in requires
     assert "<3.14" in requires
 
 
 def _clauses(specifier: str) -> frozenset[str]:
-    """A requires-python string as a SET of clauses, whitespace and order removed.
-
-    Order is not meaningful in a specifier and the two sources spell it
-    differently: pyproject says ``>=3.12,<3.14`` and the metadata generated from
-    it comes back ``<3.14,>=3.12``. Comparing the strings would fail on a
-    difference that means nothing, and comparing nothing at all is what left the
-    two free to differ in ways that mean everything.
-    """
+    """A requires-python string as a SET of clauses, since metadata reorders ``>=3.12,<3.14``."""
     return frozenset(part.strip() for part in specifier.split(",") if part.strip())
 
 
 def test_the_installed_metadata_carries_the_bound_pyproject_declares(pyproject):
-    """KTD19's bound is READ from packaging metadata by doctor, so the two must agree.
+    """The installed metadata carries the bound pyproject declares, since doctor reads it (KTD19).
 
-    ``cli/doctor`` deliberately does not repeat the bound: it reads
-    ``Requires-Python`` from this distribution's own metadata, on the argument
-    that a second copy is a copy that drifts. That argument is only true while
-    something PINS the metadata to the declaration it was built from, and nothing
-    did: the assertions above read the pyproject text and never opened the
-    installed distribution at all.
-
-    What that permits is not theoretical. A stale ``dist-info`` left behind by an
-    earlier editable install carries whatever bound was declared when it was
-    generated, so with ``>=3.9,<3.11`` sitting there doctor reports the running
-    3.12 as UNSUPPORTED and exits the whole run on PRECONDITION, driven entirely
-    by a file nobody looked at. The failure names the interpreter, which is the
-    one thing that is not wrong.
+    A stale ``dist-info`` from an earlier editable install once carried an old
+    bound and made doctor call the running 3.12 unsupported.
     """
     from importlib import metadata
 
@@ -131,19 +93,14 @@ def test_the_installed_metadata_carries_the_bound_pyproject_declares(pyproject):
 
 
 def test_the_doctor_reads_the_installed_bound_rather_than_a_constant():
-    """The other half of the pin: nothing in the package repeats the number.
-
-    A constant here would be the drift the test above exists to catch, arriving
-    from the other direction and invisible to it.
-    """
+    """Nothing in the package repeats the bound as a constant."""
     import ast
 
     from cratekit.cli import doctor
 
     assert doctor._declared_python_bound() is not None
-    # Over the syntax tree rather than the text, so a COMMENT that mentions the
-    # ceiling while explaining why it is not repeated does not fire the guard
-    # that exists to stop it being repeated.
+    # Over the syntax tree, so a comment explaining why the ceiling is not
+    # repeated does not fire.
     sources: list[str] = []
     for path in sorted((REPO_ROOT / "src").rglob("*.py")):
         if "_vendor" in path.parts:
@@ -178,26 +135,19 @@ def test_slim_core_carries_no_dsp_web_or_ml_dependency(pyproject):
 # ---------------------------------------------------------------------------
 # U269: every core dependency earns its place, and the comments name real files.
 #
-# lxml sat in the core list for months "for rekordbox XML parsing" while every
-# reader of an export under src scanned bytes and nothing imported it, so each install
-# downloaded and unpacked a compiled library that no line of Cratekit used. No
-# test could see that: the slim core test above asks whether a dependency is
-# heavy, never whether anything needs it.
+# lxml sat in the core list for months while nothing imported it.
 # ---------------------------------------------------------------------------
 
-#: A core dependency declared for a reason other than an import of our own, such
-#: as bounding a transitive dependency, is named here with that reason. Empty
-#: today: every core dependency is imported by the package.
+#: A core dependency declared for a reason other than our own import, such as
+#: bounding a transitive one, named here with that reason. Empty today.
 DECLARED_WITHOUT_AN_IMPORT: dict[str, str] = {}
 
 
 def _imported_top_level_names(root: Path) -> set[str]:
     """Every top level name an import under ``root`` reaches, lazy ones included.
 
-    Read from the syntax tree, so an import inside a function counts (the
-    Bandcamp transport imports ``curl_cffi`` only when a request is made), and
-    an ``importlib.import_module("name")`` with a literal name counts too.
-    Relative imports name the package itself and are skipped.
+    Function-level imports and literal ``importlib.import_module("name")`` count;
+    relative imports name the package itself and are skipped.
     """
     names: set[str] = set()
     for path in root.rglob("*.py"):
@@ -219,14 +169,10 @@ def _imported_top_level_names(root: Path) -> set[str]:
 
 
 def test_every_core_dependency_is_imported_by_the_package(pyproject):
-    """A core dependency nothing imports is weight every install carries for nothing.
+    """Every core dependency is imported by the package, the vendored tree included.
 
-    The import names come from the installed distributions' own metadata, never
-    from a table written here, because a hand table of which distribution
-    provides which module is the second copy that drifts (Pillow is ``PIL``,
-    pycryptodome is ``Crypto``, python-ffmpeg is ``ffmpeg``). The sweep covers
-    the whole package, the vendored downloader included, because the vendored
-    tree's own dependencies are declared in the core list too.
+    Import names come from the installed metadata (Pillow is ``PIL``), never a
+    hand table that drifts.
     """
     from importlib.metadata import packages_distributions
 
@@ -264,24 +210,16 @@ def test_every_core_dependency_is_imported_by_the_package(pyproject):
     )
 
 
-#: A repository path ``pyproject.toml`` names under one of the repository's own
-#: top level directories, with an optional ``::test_name`` after a test file.
-#: Not preceded by a path or address character, so the tail of a URL is not
-#: read as a path, and not followed by one, so a glob such as ``tests/test_*.py``
-#: is skipped whole rather than read as the prefix before its star; a full stop
-#: that ends a sentence after a path is not part of it.
+#: A repository path ``pyproject.toml`` names under a top level directory, with
+#: an optional ``::test_name``. Not the tail of a URL, not the prefix of a glob
+#: such as ``tests/test_*.py``, and not a sentence's full stop.
 _NAMED_PATH = re.compile(
     r"(?<![\w./:-])((?:tests|scripts|src|docs|vendor)/[\w./-]*[\w/])(?![\w*/-]|\.[\w*])(?:::(\w+))?"
 )
 
 
 def test_every_path_pyproject_names_exists():
-    """A comment that names a guard must name one that exists.
-
-    The slim core comment named ``tests/test_slim_core.py`` as the test that
-    fails the build when a heavy dependency appears, a file that never existed
-    under that name, so a reader looking for the guard found nothing.
-    """
+    """Every path ``pyproject.toml`` names exists, so a comment never points at a missing guard."""
     text = PYPROJECT.read_text(encoding="utf-8")
     named = _NAMED_PATH.findall(text)
     assert named, "pyproject.toml names no repository path; the pattern no longer reads it"
@@ -299,11 +237,7 @@ def test_every_path_pyproject_names_exists():
 
 
 def test_extras_are_named_for_modules_and_carry_the_weight(pyproject):
-    """KTD7: extras groups map one-to-one onto modules.
-
-    The analysis extra must actually pull the DSP stack, otherwise enabling the
-    module silently produces a broken install rather than a clear one.
-    """
+    """KTD7: extras map one-to-one onto modules, and the analysis extra pulls the DSP stack."""
     extras = pyproject["project"]["optional-dependencies"]
     analysis = {_distribution_name(spec) for spec in extras["analysis"]}
     assert "librosa" in analysis
@@ -311,11 +245,8 @@ def test_extras_are_named_for_modules_and_carry_the_weight(pyproject):
     vocals = {_distribution_name(spec) for spec in extras["vocals"]}
     assert "torch" in vocals
 
-    # The aggregate must name every extra that corresponds to a feature module,
-    # so installing it cannot silently miss one. Two extras are deliberately not
-    # feature modules and are excluded by name: "all" itself, and "dev", which
-    # carries contributor tooling. A user installing every feature should not
-    # thereby install a test runner and a commit-hook framework.
+    # The aggregate names every feature module's extra; "all" and "dev" (contributor
+    # tooling) are not feature modules.
     NON_MODULE_EXTRAS = {"all", "dev"}
     aggregate = extras["all"]
     assert len(aggregate) == 1
@@ -343,14 +274,9 @@ def test_no_author_identity_in_shipped_metadata(pyproject):
 # ---------------------------------------------------------------------------
 # scripts/ci_deps.py
 #
-# CI installs whatever this script prints, so a malformed line is a broken build
-# on every branch at once. It shipped with no test and its first real CI run
-# failed: it shell-quoted each line, and the workflow consumed it with command
-# substitution, which word-splits but does NOT strip quotes, so pip received a
-# literal `'lxml>=5.0'` and rejected it.
-#
-# These tests exist to pin the output CONTRACT rather than the implementation:
-# every line parses as a real requirement, and nothing decorates it.
+# CI installs whatever this prints. Its first CI run failed: shell quoting
+# survived command substitution, and pip got a literal ``'lxml>=5.0'``. These
+# pin the output contract: every line parses as a requirement, undecorated.
 # ---------------------------------------------------------------------------
 
 
@@ -381,11 +307,7 @@ def test_every_emitted_line_parses_as_a_requirement(args):
 
 
 def test_emitted_lines_carry_no_shell_decoration():
-    """The output is consumed by xargs, which does not strip quotes either.
-
-    Asserted separately from the parse check because it names the specific
-    regression: a quote character here is always a bug, never a valid specifier.
-    """
+    """No line carries a quote: xargs does not strip quotes either."""
     for line in _run_ci_deps():
         assert not (line.startswith(("'", '"')) or line.endswith(("'", '"'))), (
             f"{line!r} is shell-quoted; emit the raw specifier and let the "
