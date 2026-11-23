@@ -1,13 +1,10 @@
 """U22: incremental sync per source, the watermark an audit, never a date floor.
 
-KTD11 is the load bearing rule: scope is most recent N deduped against what is
-owned, and a watermark gates nothing. Using it as a date floor let a silent
-zero scope run mark a playlist fully taken, the defect this must not bring back.
-
-R25 and R29: each source is its own job and one failing blocks no other, a
-watermark advances only on clean completion, a total lookup failure raises
-rather than reading as an empty catalogue, crash debris is never next run
-intake, and every source in one run goes into one importable file.
+KTD11: scope is most recent N deduped against what is owned, and a watermark
+gates nothing, since a date floor once let a silent zero scope run mark a
+playlist fully taken. R25 and R29: each source is its own job, a watermark
+advances only on clean completion, a total lookup failure raises, crash debris
+is never intake, and one run writes one importable file.
 """
 
 from __future__ import annotations
@@ -47,6 +44,16 @@ def _candidate(identity: str, recency: str) -> run.Candidate:
     return run.Candidate(identity=identity, recency=recency)
 
 
+def _increment(cfg, source, run_id: str, *, call=run.increment, **given):
+    """``call`` with the run's usual arguments, any of them given instead."""
+    if "watermarks" not in given:
+        given["watermarks"] = watermarks.WatermarkStore(cfg)
+    if "artifacts" not in given:
+        given["artifacts"] = artifacts.ArtifactRegistry(cfg)
+    defaults = {"owned": set(), "limit": 10, "staging": Path(cfg.paths.download_staging)}
+    return call(source, run_id=run_id, **{**defaults, **given})
+
+
 class FakeSource:
     """A source the tests can script. Identity is a stable id, never a name."""
 
@@ -82,11 +89,9 @@ class FakeSource:
 
 
 class OfferingSource(FakeSource):
-    """A source whose ``process`` offers for a decision rather than acquiring.
+    """A source that offers for a decision, as ``LabelSource`` does, so nothing lands.
 
-    As ``LabelSource`` does through ``review.offer``, nothing lands, so a run
-    leaves no intake file and no watermark. Declared on the class, where the
-    real source declares it, so a per instance patch cannot be what proves it.
+    Declared on the class, where the real source declares it.
     """
 
     acquires = False
@@ -102,20 +107,13 @@ def test_an_offering_source_writes_no_intake_file(cfg):
         [_candidate("r1", "3"), _candidate("r2", "2"), _candidate("r3", "1")],
     )
 
-    result = run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=registry,
-        run_id="run-offer-1",
-        staging=staging,
+    result = _increment(
+        cfg, source, "run-offer-1", watermarks=store, artifacts=registry, staging=staging
     )
 
     assert result.shortfall is None
     assert result.processed == ("r1", "r2", "r3")
-    # Asserted at the path the increment would have used, from the same
-    # helper, since an empty directory proves nothing about what was skipped.
+    # At the path the increment would have used, since an empty directory proves nothing.
     target = run.intake_path(staging, "run-offer-1")
     assert not target.exists()
     assert registry.intake_eligible([target]) == []
@@ -126,15 +124,7 @@ def test_an_offering_run_leaves_the_source_watermark_unset(cfg):
     store = watermarks.WatermarkStore(cfg)
     source = OfferingSource("labels", [_candidate("r1", "3")])
 
-    run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-offer-2",
-        staging=Path(cfg.paths.download_staging),
-    )
+    _increment(cfg, source, "run-offer-2", watermarks=store)
 
     assert store.read("labels") is None
 
@@ -144,20 +134,9 @@ def test_an_acquiring_source_still_writes_the_intake_file_and_advances(cfg):
     store = watermarks.WatermarkStore(cfg)
     staging = Path(cfg.paths.download_staging)
     source = FakeSource("playlists", [_candidate("p1", "3"), _candidate("p2", "2")])
-    assert not hasattr(source, "acquires"), (
-        "this double must NOT declare the attribute; it is what proves a source "
-        "written before the declaration existed still acquires"
-    )
+    assert not hasattr(source, "acquires"), "the double must not declare the attribute"
 
-    result = run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-acquire-1",
-        staging=staging,
-    )
+    result = _increment(cfg, source, "run-acquire-1", watermarks=store, staging=staging)
 
     assert result.shortfall is None
     target = run.intake_path(staging, "run-acquire-1")
@@ -174,13 +153,8 @@ def test_one_run_records_only_the_acquiring_source_of_a_mixed_pair(cfg):
     acquiring = FakeSource("playlists", [_candidate("p1", "1")])
     offering = OfferingSource("labels", [_candidate("l1", "1")])
 
-    results = run.run_independent(
-        [acquiring, offering],
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-mixed",
+    results = _increment(
+        cfg, [acquiring, offering], "run-mixed", call=run.run_independent, watermarks=store,
         staging=staging,
     )
 
@@ -210,15 +184,7 @@ def test_errors_leave_the_watermark_unchanged_and_report_the_shortfall(cfg):
         process_errors={"b": RuntimeError("provider 429")},
     )
 
-    result = run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-1",
-        staging=Path(cfg.paths.download_staging),
-    )
+    result = _increment(cfg, source, "run-1", watermarks=store)
 
     assert store.read("labels") is None
     assert result.errors
@@ -234,15 +200,7 @@ def test_every_lookup_failing_raises_and_does_not_advance(cfg):
     )
 
     with pytest.raises(CratekitError) as excinfo:
-        run.increment(
-            source,
-            owned=set(),
-            limit=10,
-            watermarks=store,
-            artifacts=artifacts.ArtifactRegistry(cfg),
-            run_id="run-2",
-            staging=Path(cfg.paths.download_staging),
-        )
+        _increment(cfg, source, "run-2", watermarks=store)
 
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
     assert store.read("favorites") is None
@@ -251,21 +209,12 @@ def test_every_lookup_failing_raises_and_does_not_advance(cfg):
 def test_a_lookup_failure_is_permanent_unless_the_source_says_rate_limited(cfg):
     """R-704: the source that caught the provider's error decides, the increment relays.
 
-    The default keeps every lookup failure's permanent reading word for word;
-    a rate limit is retryable, names the resume and says it was one.
+    A rate limit is retryable and says so; every other failure stays permanent.
     """
 
     def refusal(failure: run.LookupFailure):
         with pytest.raises(CratekitError) as excinfo:
-            run.increment(
-                FakeSource("labels", lookup_error=failure),
-                owned=set(),
-                limit=10,
-                watermarks=watermarks.WatermarkStore(cfg),
-                artifacts=artifacts.ArtifactRegistry(cfg),
-                run_id="run-r704",
-                staging=Path(cfg.paths.download_staging),
-            )
+            _increment(cfg, FakeSource("labels", lookup_error=failure), "run-r704")
         return excinfo.value
 
     plain = refusal(run.LookupFailure("labels down")).cause
@@ -290,20 +239,11 @@ def test_a_lookup_failure_is_permanent_unless_the_source_says_rate_limited(cfg):
 def test_one_source_failing_does_not_block_the_other(cfg):
     store = watermarks.WatermarkStore(cfg)
     staging = Path(cfg.paths.download_staging)
-    failing = FakeSource(
-        "labels",
-        lookup_error=run.LookupFailure("labels down"),
-    )
+    failing = FakeSource("labels", lookup_error=run.LookupFailure("labels down"))
     ok = FakeSource("playlists", [_candidate("p1", "9")])
 
-    results = run.run_independent(
-        [failing, ok],
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-3",
-        staging=staging,
+    results = _increment(
+        cfg, [failing, ok], "run-3", call=run.run_independent, watermarks=store, staging=staging
     )
 
     assert isinstance(results["labels"], CratekitError)
@@ -317,19 +257,10 @@ def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg):
     store = watermarks.WatermarkStore(cfg)
     staging = Path(cfg.paths.download_staging)
     registry = artifacts.ArtifactRegistry(cfg)
-    first = FakeSource(
-        "playlists",
-        [_candidate("old", "1"), _candidate("mid", "2")],
-    )
+    first = FakeSource("playlists", [_candidate("old", "1"), _candidate("mid", "2")])
 
-    first_result = run.increment(
-        first,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=registry,
-        run_id="run-4a",
-        staging=staging,
+    first_result = _increment(
+        cfg, first, "run-4a", watermarks=store, artifacts=registry, staging=staging
     )
     assert first_result.shortfall is None
     assert store.read("playlists") is not None
@@ -339,14 +270,8 @@ def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg):
         "playlists",
         [_candidate("new", "3"), _candidate("old", "1"), _candidate("mid", "2")],
     )
-    second_result = run.increment(
-        second,
-        owned=owned,
-        limit=10,
-        watermarks=store,
-        artifacts=registry,
-        run_id="run-4b",
-        staging=staging,
+    second_result = _increment(
+        cfg, second, "run-4b", owned=owned, watermarks=store, artifacts=registry, staging=staging
     )
 
     assert second.processed == ["new"]
@@ -356,27 +281,14 @@ def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg):
 def test_a_watermark_does_not_empty_the_scope_of_unowned_items(cfg):
     """KTD11. The silent zero-scope failure used the watermark as a date floor."""
     store = watermarks.WatermarkStore(cfg)
-    store.advance(
-        "playlists",
-        cursor="zzz",
-        items=99,
-        library_id=cfg.library.volume_id,
-    )
+    store.advance("playlists", cursor="zzz", items=99, library_id=cfg.library.volume_id)
     listed = [_candidate("still-unowned", "1"), _candidate("also-unowned", "2")]
 
     taken = scope.scoped(listed, owned=set(), limit=10)
     assert [item.identity for item in taken] == ["still-unowned", "also-unowned"]
 
     source = FakeSource("playlists", listed)
-    result = run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-ktd11",
-        staging=Path(cfg.paths.download_staging),
-    )
+    result = _increment(cfg, source, "run-ktd11", watermarks=store)
     assert source.processed == ["still-unowned", "also-unowned"]
     assert result.shortfall is None
     assert store.read("playlists").cursor == "also-unowned"
@@ -409,14 +321,9 @@ def test_two_sources_in_one_run_share_one_importable_file(cfg):
     labels = FakeSource("labels", [_candidate("l1", "1")])
     playlists = FakeSource("playlists", [_candidate("p1", "1")])
 
-    run.run_independent(
-        [labels, playlists],
-        owned=set(),
-        limit=10,
-        watermarks=store,
-        artifacts=registry,
-        run_id="run-6",
-        staging=staging,
+    _increment(
+        cfg, [labels, playlists], "run-6", call=run.run_independent, watermarks=store,
+        artifacts=registry, staging=staging,
     )
 
     importables = list(staging.glob("*_synced.xml"))
@@ -474,16 +381,7 @@ def test_increment_opens_one_boundary_per_source(cfg):
             return False
 
     source = FakeSource("favorites", [_candidate("f1", "1")])
-    run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=watermarks.WatermarkStore(cfg),
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-7",
-        staging=Path(cfg.paths.download_staging),
-        boundary=lambda source_id: Boundary(source_id),
-    )
+    _increment(cfg, source, "run-7", boundary=lambda source_id: Boundary(source_id))
     assert opened == ["favorites"]
 
 
@@ -580,11 +478,7 @@ def test_the_playlist_exclusions_in_the_order_a_person_is_told():
 
 
 def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
-    """R-361: `<label> LIBRARY` is label batch debris, swept as any name ending ` LIBRARY`.
-
-    Leading space included and case sensitive: the brief's five shapes, plus
-    the space that makes it a suffix rather than a substring.
-    """
+    """R-361: label batch debris is any name ending ` LIBRARY`, case sensitive."""
     from cratekit.label.catalogue import AccountPlaylist
     from cratekit.sync import playlists
 
@@ -604,8 +498,7 @@ def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
     assert decide("Colorize library") is None
     # The swept prefix is decided first, so already swept debris keeps its reason.
     assert decide(playlists.SWEPT_PREFIX + "Colorize LIBRARY") is E.SWEPT
-    # THE ACCEPTED COLLISION. A playlist a person named this way is excluded
-    # too, copied rather than narrowed so both systems agree about one account.
+    # The accepted collision: a person's playlist named this way is excluded too.
     assert decide("My Night LIBRARY") is E.LABEL_DEBRIS
     assert decide("Colorize 2026") is None
     # A suffix, not a substring: the leading space is part of the rule.
@@ -633,15 +526,7 @@ def _row(cfg, source_id: str) -> dict[str, str]:
 def test_a_clean_labels_sweep_is_not_reported_as_never_having_run(cfg):
     """The cost, driven: a sweep that succeeds, then the row doctor prints."""
     source = OfferingSource("labels", [_candidate("r1", "3"), _candidate("r2", "2")])
-    result = run.increment(
-        source,
-        owned=set(),
-        limit=10,
-        watermarks=watermarks.WatermarkStore(cfg),
-        artifacts=artifacts.ArtifactRegistry(cfg),
-        run_id="run-r263",
-        staging=Path(cfg.paths.download_staging),
-    )
+    result = _increment(cfg, source, "run-r263")
     assert result.shortfall is None
     assert result.processed == ("r1", "r2")
 
