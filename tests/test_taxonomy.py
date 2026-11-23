@@ -467,10 +467,7 @@ def test_a_custom_taxonomy_answers_by_its_own_declaration(second, ask, answer):
 
 
 def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):
-    """R-650: a bucket's own name passes the last tier as itself and routing places it: unreported.
-
-    Both templates; the second loop shows the check is not vacuous.
-    """
+    """R-650: routing places a bucket's own name, so it is unreported, on both templates."""
     for declared in (default, second):
         displays = [bucket.display for bucket in declared.buckets]
         assert displays

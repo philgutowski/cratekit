@@ -287,11 +287,7 @@ def world(cfg, gates_pass, db, monkeypatch) -> World:
 
 @pytest.fixture
 def ladder_waits(monkeypatch) -> list[float]:
-    """The listing's real retry ladder, every rung climbed, none of it slept (U252).
-
-    Only the keyword default ``sleep`` of ``listing.fetch_with_retry`` is bound, as
-    tests/test_label_workers.py does. Returns every wait asked for.
-    """
+    """The listing's real retry ladder, its keyword ``sleep`` bound (U252); answers the waits."""
     real = harvest.playlist_tracks
     waits: list[float] = []
 

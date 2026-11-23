@@ -71,10 +71,9 @@ UNREADABLE = object()
 
 @dataclass(frozen=True)
 class Track:
-    """One row to seed and the file it names.
+    """One row to seed and its file: ``file`` a genre, empty, :data:`ABSENT`, :data:`UNREADABLE`.
 
-    ``file`` is the file's genre, empty for none, :data:`ABSENT` for no file or
-    :data:`UNREADABLE`; ``recorded`` overrides the location the row records.
+    ``recorded`` overrides the location the row records.
     """
 
     content_id: str
@@ -528,8 +527,7 @@ def _id3_track(cfg: config.Config, id3_silence: Path, content_id: str, values: l
 def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
     machine, silence, id3_silence
 ):
-    """The checked reader joins an ID3 frame's values on a null byte. Compared
-    as it came, the row that agrees on FLAC differed on ID3 on every run."""
+    """ID3 values joined on a null byte made an agreeing row differ on every run."""
     agreeing = _id3_track(machine, id3_silence, "30", [DEEP, MELODIC])
     differing = _id3_track(machine, id3_silence, "31", [MELODIC, PROGRESSIVE])
     build(
@@ -1131,8 +1129,7 @@ def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silenc
 
 
 def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
-    """Every declared gate fires, and a plan that writes nothing never reaches
-    the write handle: an opener asked for write intent fails this case."""
+    """Every gate fires, and an empty plan never opens the write handle."""
     cfg = acknowledged
     build(cfg, silence, Track("30", DEEP, DEEP))
     real_open = rb_writer.open_db

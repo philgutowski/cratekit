@@ -20,10 +20,7 @@ SAMPLES_PER_FRAME = vocal.MODEL_SAMPLE_RATE // 100
 
 
 class _Playback:
-    """A frame model replaying a Singing series however it is chunked, never from the signal.
-
-    Gender columns lean female wherever singing is heard.
-    """
+    """A frame model replaying a Singing series however chunked, leaning female where sung."""
 
     labels = ("Singing", "Male singing", "Female singing")
 

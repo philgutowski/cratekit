@@ -274,10 +274,7 @@ def test_an_unchanged_score_is_not_rewritten(cfg, folder, silence, monkeypatch):
 def test_an_oversize_track_is_refused_by_the_restamp_verb_and_keeps_its_tags(
     cfg, folder, silence, monkeypatch
 ):
-    """U92, closing R-408, on the second verb sharing ``analyse``, with the cap lowered to a byte.
-
-    The shipped cap is pinned in ``tests/test_analysis_workers.py``.
-    """
+    """U92, R-408: the cap lowered to a byte; ``tests/test_analysis_workers.py`` pins its value."""
     track = place(folder, silence, "a live set", voxlevel=7, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
@@ -518,8 +515,7 @@ def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
 def test_unscored_queues_a_headed_file_with_no_score_and_leaves_the_rest_alone(
     cfg, folder, silence, monkeypatch
 ):
-    """A file the run finalized with no voxlevel is scored; one already scored,
-    and one the run has not finalized, are not queued at all."""
+    """Only a finalized file with no voxlevel is queued."""
     finalized = place(folder, silence, "08A - 124 - finalized")
     scored = place(folder, silence, "09A - 125 - scored", voxlevel=40)
     fresh = place(folder, silence, "fresh")

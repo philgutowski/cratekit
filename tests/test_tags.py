@@ -97,10 +97,7 @@ def _decoded_md5(path: Path) -> str:
 
 
 def _payload_chunk_digest(path: Path) -> str | None:
-    """Hash a RIFF or FORM container's audio payload chunk with no decoder, None if not chunk based.
-
-    A bare ID3 stream at offset 0 gives None or a different digest.
-    """
+    """A RIFF or FORM container's payload chunk hashed with no decoder, None if not chunk based."""
     data = path.read_bytes()
     if data[:4] == b"RIFF":
         wanted, big_endian = b"data", False
@@ -221,8 +218,7 @@ def test_writing_a_tempo_field_raises_rather_than_returning_false(container):
 
 
 def test_the_writable_field_set_is_a_module_constant_not_configuration():
-    """R17: a configurable field set would reopen the beat grid hole, so the table
-    is a literal in the module body and the module imports no configuration."""
+    """R17: a configurable field set would reopen the beat grid hole, so it is a literal."""
     import ast
 
     import cratekit.core.tags as tags

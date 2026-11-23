@@ -44,11 +44,7 @@ def _as_before_u231(monkeypatch) -> None:
 
 
 def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
-    """Stop the account's order on one playlist after ``moves`` of the adapter's own moves.
-
-    A read back refusal stops that pair alone (U220); answers the list of stops,
-    recorded as before U231.
-    """
+    """Stop one playlist's order after ``moves`` adapter moves by a read back refusal (U220)."""
     _as_before_u231(monkeypatch)
     real = world.account.order_tracks
     stops: list[int] = []

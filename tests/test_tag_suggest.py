@@ -582,8 +582,7 @@ def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_reco
 
 
 def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
-    """U244's round two, D1: the verb's warning tells rows a catalogue refused
-    from rows only passed over for want of a token, and names the login step."""
+    """U244 round two, D1: passed over for want of a token is not refused, and login is named."""
     from collections import defaultdict
 
     from cratekit.tagging import searchers
@@ -967,8 +966,7 @@ def test_the_verb_declares_the_file_and_the_row():
 def test_tag_suggest_asks_deezer_past_a_refusing_beatport_by_each_files_isrc(
     acknowledged, silence, monkeypatch
 ):
-    """U322: the verb's general catalogue is the suggest binder's, so a row
-    Discogs missed and Beatport refused is still asked of it by ISRC."""
+    """U322: a row Discogs missed and Beatport refused is still asked by ISRC."""
     from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import REFUSED, _over_the_wire
     from tests.test_discogs_searcher import SENT

@@ -129,10 +129,7 @@ def test_one_landing_of_a_set_files_its_inbox_playlist_in_set_order_not_name_ord
 def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     native_library, silence, monkeypatch
 ):
-    """A second landing joins the first's INBOX playlist, in set order, keeping its name.
-
-    U121's INSPIRATION join holds beside it.
-    """
+    """A second landing joins the first's INBOX playlist in set order; U121's join holds beside."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("Zebra", "Apple"), "Zebra")
     assert _shown(_land("--set", job_id, *WORDS))["inbox playlist"] == NAME
@@ -169,8 +166,7 @@ def test_a_landing_without_set_keeps_todays_dated_name(native_library, silence):
 def test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joined(
     native_library, silence
 ):
-    """And a folder under INBOX of the set's name is never taken as its playlist
-    (A15): the landing makes the playlist beside both and files nothing into either."""
+    """A15: neither a leftover nor a folder of the set's name is taken as its playlist."""
     cfg, root_id = native_library
     twin = f"{NAME} 2"
     _make_playlist(cfg, twin, under=root_id)
@@ -250,8 +246,7 @@ def test_a_removed_set_named_inbox_playlist_is_not_written_into(native_library, 
 def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     native_library, silence
 ):
-    """A live INBOX playlist of the set's name with no job record is joined, and
-    the screen says so apart from making one, then the job key is stamped."""
+    """A live namesake with no record is joined, said apart, and stamped with the job key."""
     cfg, root_id = native_library
     handmade_id = _make_playlist(cfg, NAME, under=root_id)
     job_id = _set(cfg, silence, ("One",), "One")

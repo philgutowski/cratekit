@@ -307,10 +307,7 @@ def test_a_file_reached_through_a_link_is_the_file(machine, silence, tmp_path):
 def test_a_folder_named_in_another_case_on_a_volume_that_folds_case_is_inside(
     machine, silence
 ):
-    """A folder typed in another case is inside where the volume folds case, outside where not.
-
-    Each is asserted on the volume that shows it, so this never passes by not running.
-    """
+    """Inside where the volume folds case, outside where not, each on the volume that shows it."""
     path = tagged(machine, silence, "a record", OLD_POP, "Pop")
     typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
     assert str(typed) != str(path)

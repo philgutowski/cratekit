@@ -71,11 +71,7 @@ class Clock:
 
 
 def recorded_failure(reference: str, status: int) -> tidal_catalogue.PlaylistUnresolvable:
-    """The adapter's failure for a playlist whose request answered ``status``, recorded.
-
-    A 404 is ``ObjectNotFound`` from its ``HTTPError``, any other status the ``HTTPError``,
-    each wrapped as ``PlaylistUnresolvable``.
-    """
+    """The adapter's ``PlaylistUnresolvable`` for a request answering ``status``, recorded."""
     response = requests.Response()
     response.status_code = status
     http = requests.HTTPError(f"{status} for url: /v1/playlists/{reference}", response=response)
@@ -105,10 +101,7 @@ def answering(account: Account, status: int, *references: str) -> None:
 
 
 def withholding(account: Account, withheld: int, *, served: int = 340) -> None:
-    """``served`` hearts, the test's first, the account declaring ``withheld`` more (R-504).
-
-    A179's counts by default: 349 declared, 340 listed, 9 withheld.
-    """
+    """``served`` hearts, the test's first, ``withheld`` more declared (R-504), A179's default."""
     filler = served - len(account.fake.hearts)
     account.fake.hearts.extend(
         track(f"Filler {number}", track_id=f"tid-filler-{number}") for number in range(filler)

@@ -26,10 +26,7 @@ from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
 
 def _lagging_window(world, monkeypatch, served: dict[str, list[str]], *, whole: bool) -> None:
-    """Serve each named playlist's window read in an older order, the unpaged read as it is.
-
-    ``whole`` declares the count; without it the count is undeclared, as the catalogue leaves it.
-    """
+    """Serve each named playlist's window read in an older order; ``whole`` declares the count."""
 
     def tracks(self, limit=None, offset=0):
         members = self.world.account.playlists.get(self.playlist_id, [])

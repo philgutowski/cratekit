@@ -460,10 +460,7 @@ def _png(width: int = 320, height: int = 200) -> bytes:
 
 
 def plant(path: Path, data: bytes, *, dims=(0, 0, 0), mime="image/jpeg", kind=3, desc=""):
-    """Add one FLAC picture block, by default as the vendored downloader writes it, zero dimensions.
-
-    ``dims`` fills them for a block meant to be sound.
-    """
+    """Add one FLAC picture block, zero dimensions as the downloader writes it unless ``dims``."""
     from mutagen.flac import FLAC, Picture
 
     handle = FLAC(path)
