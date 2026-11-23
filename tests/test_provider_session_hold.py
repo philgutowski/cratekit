@@ -1,25 +1,13 @@
-"""U261: one process validates the stored provider session once, and an
-unchanged session is not written back to the keychain.
+"""U261: one process validates the stored provider session once, and an unchanged
+session is not written back to the keychain.
 
-Before this unit every opener logged in on its own: two paced requests, two
-keychain reads and a keychain write of the value already stored, per resolve
-of the label catalogue and once more for the outbound account. These are the
-brief's scenarios, driven against the in memory keychain and a counting client
-whose login sends the two requests the provider library's login sends, through
-a transport the real gate wraps, so a request counted here is a request the
-gate counted.
+Driven against the in memory keychain and a counting client whose login sends the two
+requests the provider library sends, through a transport the real gate wraps.
 
-1. **An unchanged session makes no keychain write**, and a refreshed one is
-   written exactly once, through ``secrets.set`` and its index.
-2. **One process validates the session once** however many times either seam
-   resolves, and each seam still gets its own adapter.
-3. **A refused session is forgotten for every seam that shares the client**:
-   the account's 401, any 401 or 403 answered through the shared client, a
-   session the index no longer records, and a keychain that no longer holds it.
-4. **The gate is asked before every use**, and a login that failed holds
-   nothing.
-
-D1 applies. Nothing here names a real account, a real token or a real path.
+1. An unchanged session makes no keychain write, and a refreshed one is written once.
+2. One process validates the session once however many times either seam resolves.
+3. A refused session is forgotten for every seam that shares the client.
+4. The gate is asked before every use, and a login that failed holds nothing.
 """
 
 from __future__ import annotations
@@ -41,19 +29,12 @@ from tests.test_config import valid_data
 SESSION = secrets.Credential.PROVIDER_SESSION
 
 STORED = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
+    "token_type": "Bearer", "access_token": "FAKE-value-1", "refresh_token": "FAKE-value-2",
     "expiry_time": 946684800.0,
 }
 
 #: The two requests the provider library's ``load_oauth_session`` sends.
 LOGIN = [("GET", "https://api.invalid/sessions"), ("GET", "https://api.invalid/users/u1")]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Doubles
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Answer:
@@ -74,13 +55,11 @@ class HTTPFailure(Exception):
 
 
 class Transport:
-    """The client's ``requests.Session``: answers ``status`` to everything and
-    records every request, so the gate wraps it as it wraps the real one."""
+    """The client's ``requests.Session``: answers ``status`` and records every request."""
 
     def __init__(self, status: int = 200) -> None:
         self.status = status
-        #: A status to RAISE rather than answer, as a transport whose refusal
-        #: comes out as an exception carrying the answer.
+        #: A status to raise rather than answer, as a transport whose refusal is an exception.
         self.raises: int | None = None
         self.sent: list[tuple[str, str]] = []
 
@@ -93,10 +72,10 @@ class Transport:
 
 
 class Client:
-    """A provider client whose login sends the library's two requests through
-    its transport, and refuses on any answer that is not a 200, as the library
-    raises off ``raise_for_status``. ``refresh_to`` stands for a login that
-    refreshed the access token."""
+    """A client whose login sends the library's two requests and refuses on any non 200.
+
+    ``refresh_to`` stands for a login that refreshed the access token.
+    """
 
     def __init__(self, *, status: int = 200, refresh_to: str | None = None,
                  country_code: str | None = None) -> None:
@@ -186,11 +165,6 @@ def refused_with(excinfo) -> tuple[str, Any]:
     return excinfo.value.cause.reason, excinfo.value.cause.remediation.remedy
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The write back
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_an_unchanged_session_makes_no_keychain_write(monkeypatch):
     use(monkeypatch, Factory())
     record()
@@ -219,9 +193,7 @@ def test_a_refreshed_session_is_written_once_through_the_index(monkeypatch):
 
 
 def test_write_back_compares_the_value_and_not_the_spelling(tmp_path):
-    """Equal values are equal whatever the file's key order or spacing; a
-    value that changed type is not, since the keychain would then hold other
-    bytes than the ones read."""
+    """Equal values are equal whatever the key order or spacing; a changed type is not."""
     record()
     path = tmp_path / "session.json"
     path.write_text('{"expiry_time": 946684800.0,  "refresh_token": "FAKE-value-2", '
@@ -263,11 +235,6 @@ def test_a_session_the_tool_changed_is_written_back_from_the_scope(monkeypatch):
     assert secrets.get_json(SESSION) == {"access_token": "FAKE-value-9", "token_type": "Bearer"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. One validation per process
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_process_resolving_both_seams_validates_the_session_once(cfg, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
@@ -281,7 +248,7 @@ def test_a_process_resolving_both_seams_validates_the_session_once(cfg, monkeypa
     assert len(factory.built) == 1
     assert factory.requests == LOGIN
     assert keychain.writes == []
-    # One read for the login, one per reuse to see the session is still held.
+    # One read for the login, one per reuse.
     assert keychain.reads == 3
     assert isinstance(first, tidal_catalogue.TidalCatalogue)
     assert isinstance(remote, tidal_account.TidalAccount)
@@ -306,8 +273,7 @@ def test_the_surveys_drive_logs_in_once_and_writes_nothing(cfg, monkeypatch):
 
 
 def test_the_app_client_is_held_with_the_session_and_asks_one_token(cfg, monkeypatch):
-    """R-1218: two openers in one process built two app clients and asked the
-    token service twice."""
+    """R-1218: two openers in one process share one app client and ask one token."""
     use(monkeypatch, Factory(country_code="GB"))
     record()
     record_app()
@@ -356,20 +322,13 @@ def test_a_lost_app_value_is_noted_on_every_resolve_that_falls_back(cfg, monkeyp
 def test_other_gate_settings_open_a_session_of_their_own(cfg, tmp_path, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
-    slower = config.from_dict(
-        valid_data(tmp_path / "library", provider={"min_interval_s": 0.002})
-    )
+    slower = config.from_dict(valid_data(tmp_path / "library", provider={"min_interval_s": 0.002}))
 
     catalogue.resolve(cfg)
     found = catalogue.resolve(slower)
 
     assert len(factory.built) == 2
     assert found._session.request_session._cratekit_gate.settings.min_interval_s == 0.002
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. A refused session is forgotten for every seam
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_401_on_the_account_drops_the_shared_client_and_the_catalogue_logs_in_again(
@@ -408,8 +367,7 @@ def test_a_refusal_answered_through_the_shared_client_drops_it_for_both_seams(
 
 
 def test_a_refusal_the_transport_raises_drops_the_client_too(cfg, monkeypatch):
-    """A transport that raises its refusal rather than answering it, with the
-    answer on the exception as the provider library's HTTP error carries it."""
+    """A refusal raised by the transport, not answered, drops the client too."""
     factory = use(monkeypatch, Factory())
     record()
     found = catalogue.resolve(cfg)
@@ -422,8 +380,7 @@ def test_a_refusal_the_transport_raises_drops_the_client_too(cfg, monkeypatch):
 
 
 def test_a_refusal_answered_to_a_client_no_longer_held_keeps_the_newer_one(cfg, monkeypatch):
-    """The first client, still in an adapter's hands after a replaced session
-    was logged in afresh, meets a 401: the newer session is not the one refused."""
+    """A 401 to a replaced client does not drop the newer session."""
     factory = use(monkeypatch, Factory())
     record()
     first = catalogue.resolve(cfg)
@@ -466,8 +423,7 @@ def test_a_session_the_index_no_longer_records_is_refused_by_both_seams(cfg, mon
 
 
 def test_a_session_gone_from_the_keychain_after_an_open_is_refused_not_reused(cfg, monkeypatch):
-    """Deleted through the operating system's own keychain, so the index still
-    names it: the reuse reads the keychain and finds nothing."""
+    """Deleted behind the index's back, the reuse reads the keychain and finds nothing."""
     factory = use(monkeypatch, Factory())
     record()
     catalogue.resolve(cfg)
@@ -496,9 +452,7 @@ def test_a_keychain_that_cannot_be_read_on_a_reuse_says_repair_it(cfg, monkeypat
     assert refused_with(excinfo) == ("credential-missing", Remedy.REPAIR_CREDENTIAL_STORE)
 
 
-def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(
-    cfg, monkeypatch
-):
+def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(cfg, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
     catalogue.resolve(cfg)
@@ -510,11 +464,8 @@ def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value
     assert found._session.logged_in_with == "FAKE-value-7"
 
 
-def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(
-    cfg, monkeypatch
-):
-    """Round one's R2: a session recorded afresh whose login fails must not
-    leave the account's adapter over the session it replaced."""
+def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(cfg, monkeypatch):
+    """A session recorded afresh whose login fails leaves no adapter over the replaced one."""
     factory = use(monkeypatch, Factory())
     record()
     catalogue.resolve(cfg)
@@ -530,11 +481,8 @@ def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(
     assert len(factory.built) == 3
 
 
-def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(
-    cfg, monkeypatch
-):
-    """Round one's R4: the account's adapter over a replaced session meets a
-    401, and the session the catalogue logged in since stays held."""
+def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(cfg, monkeypatch):
+    """A 401 to the account's adapter over a replaced session keeps the newer session held."""
     factory = use(monkeypatch, Factory())
     record()
     account.resolve(cfg)
@@ -572,11 +520,6 @@ def test_a_refreshed_login_is_reused_while_the_keychain_holds_the_refresh(cfg, m
     assert secrets.get_json(SESSION)["access_token"] == "FAKE-value-3"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The gate, and a login that failed
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_reuse_inside_a_cooldown_refuses_without_a_call(cfg, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
@@ -595,8 +538,7 @@ def test_a_reuse_inside_a_cooldown_refuses_without_a_call(cfg, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("status", "reason"),
-    [(401, "credential-missing"), (503, "unavailable-transient")],
+    ("status", "reason"), [(401, "credential-missing"), (503, "unavailable-transient")],
     ids=["rejected", "unreachable"],
 )
 def test_a_login_that_failed_holds_nothing_and_is_asked_again(cfg, monkeypatch, status, reason):

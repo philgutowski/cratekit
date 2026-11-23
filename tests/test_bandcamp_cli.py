@@ -40,9 +40,7 @@ MARKER = "[LOSSY]"
 def _configure(library: Path, policy: str = "strict") -> config.Config:
     built = config.from_dict(
         valid_data(
-            library,
-            acquisition={"lossless_policy": policy},
-            naming={"lossy_marker": MARKER},
+            library, acquisition={"lossless_policy": policy}, naming={"lossy_marker": MARKER},
         )
     )
     config.save(built)
@@ -175,11 +173,7 @@ def test_the_plan_gives_every_purchase_newest_first_one_disposition(signed_in, a
     assert code == int(ExitCode.OK), envelope
     assert list(rows(envelope)) == ["1", "2", "3", "4", "5"]
     assert dispositions(envelope) == {
-        "1": "new",
-        "2": "owned",
-        "3": "held",
-        "4": "new",
-        "5": "not-downloadable",
+        "1": "new", "2": "owned", "3": "held", "4": "new", "5": "not-downloadable",
     }
     summary = envelope["data"]["summary"]
     assert summary["purchases"] == 5 and summary["new"] == 2 and summary["owned"] == 1
@@ -296,8 +290,7 @@ def test_the_fetch_stages_flat_into_its_batch_folder_and_records_each(signed_in,
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["state"] == "succeeded"
     assert staged(signed_in, "Batch One") == [
-        "Aurora Bloom - Sun Path - 01 Sun Path.flac",
-        "Aurora Bloom - Sun Path - 02 Tide.flac",
+        "Aurora Bloom - Sun Path - 01 Sun Path.flac", "Aurora Bloom - Sun Path - 02 Tide.flac",
         "Coral Arc - Drift - 01 Drift.flac",
         "Various Artists - Compiled - 01 Coral Arc - Glass.flac",
     ]
@@ -467,8 +460,7 @@ def test_an_absent_music_folder_refuses_rather_than_planning_everything_new(sign
 
 
 @pytest.mark.parametrize(
-    "text",
-    ["not json", "[]", '{"version": 2, "purchases": {}}', '{"version": 1}'],
+    "text", ["not json", "[]", '{"version": 2, "purchases": {}}', '{"version": 1}'],
     ids=["not-json", "not-a-map", "newer-version", "no-purchases"],
 )
 def test_an_unreadable_record_refuses_rather_than_offering_everything_again(signed_in, account, text):
@@ -508,9 +500,7 @@ def test_no_output_log_or_file_holds_the_identity_or_a_signed_link(
         assert SIGNED not in text
     assert "IDENTITYVALUE" not in caplog.text and SIGNED not in caplog.text
     kept = _every_file_under(
-        library,
-        Path(signed_in.paths.download_staging),
-        config.installation_state_dir(),
+        library, Path(signed_in.paths.download_staging), config.installation_state_dir(),
         config.config_dir(),
     )
     assert kept, "the run kept nothing, so this test measured nothing"
@@ -576,8 +566,7 @@ def test_an_album_title_opening_with_a_number_holds_only_the_track_it_names(
     code, envelope = fetch("--batch", "Batch One")
     assert code == int(ExitCode.OK), envelope
     assert staged(signed_in, "Batch One") == [
-        "Coral Arc - 2 Step Anthems - 01 Glass.flac",
-        "Coral Arc - 2 Step Anthems - 03 Shore.flac",
+        "Coral Arc - 2 Step Anthems - 01 Glass.flac", "Coral Arc - 2 Step Anthems - 03 Shore.flac",
     ]
 
 

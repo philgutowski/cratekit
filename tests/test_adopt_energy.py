@@ -1,15 +1,11 @@
 """Adoption files each track into the energy sub its own file's tag names.
 
-The residual titled "Adoption files every track as if it had no energy reading,
-and the library's files carry one" is what this module holds shut. Adoption
-passed a level of None for every track, so a library where 7,726 of 7,773
-files carried an energy tag was planned with 7,401 of them in Unsorted. The
-reading now comes off the file at the census, through the tag module's one
-reader, and rides on the scanned track into the plan.
-
-Every file here is a real container with a real tag, written by the product's
-own writer, because the defect was a reading nobody took and a fixture that
-hands the census a number would not have seen it.
+Holds shut the residual "Adoption files every track as if it had no energy
+reading, and the library's files carry one": the reading comes off the file at
+the census, through the tag module's one reader, and rides on the scanned
+track into the plan. Every file here is a real container with a real tag,
+written by the product's own writer, since a fixture handing the census a
+number would not see a reading nobody took.
 """
 
 from __future__ import annotations
@@ -212,7 +208,9 @@ def test_a_changed_reading_moves_the_digest(cfg, declared, library, silence):
     assert _plan(cfg, declared, rows).digest() != before
 
 
-def test_an_unreadable_file_and_an_untagged_one_are_different_plans(cfg, declared, library, silence):
+def test_an_unreadable_file_and_an_untagged_one_are_different_plans(
+    cfg, declared, library, silence
+):
     path = _track(library, silence, "u.flac", energy=None)
     rows = [_row(path, "Tech House", "u")]
     untagged = _plan(cfg, declared, rows)
@@ -280,13 +278,13 @@ def undecodable(tmp_path) -> Path:
     return path
 
 
-def test_an_undecodable_field_fails_the_checked_read(undecodable):
+def test_an_undecodable_field_fails_the_checked_read_and_reads_as_none_beside_its_neighbours(
+    undecodable,
+):
+    """The checked reader refuses it; the lenient reader answers per field, as
+    it always has."""
     with pytest.raises(tags.TagReadFailed):
         tags.read_energy_checked(undecodable)
-
-
-def test_an_undecodable_field_reads_as_none_beside_its_neighbours(undecodable):
-    """The lenient reader answers per field, as it always has."""
     assert tags.read_tags(undecodable, ("genre", "energylevel")) == {
         "genre": "House",
         "energylevel": None,

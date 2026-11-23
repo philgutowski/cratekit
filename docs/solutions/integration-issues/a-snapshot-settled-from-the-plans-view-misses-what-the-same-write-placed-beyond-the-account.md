@@ -2,7 +2,7 @@
 title: A snapshot settled from the plan's view misses what the same write placed beyond what the account holds
 date: 2026-11-07
 category: integration-issues
-module: src/cratekit/modules/outbound/mirror_edits.py, src/cratekit/organize/mirror_edits.py, src/cratekit/modules/outbound/ledger.py
+module: src/cratekit/modules/outbound/mirror_edits.py, src/cratekit/organize/mirror_edits.py, src/cratekit/modules/outbound/ledger_settle.py
 problem_type: integration_issue
 component: tooling
 severity: high

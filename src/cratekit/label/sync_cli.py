@@ -1,66 +1,22 @@
 """``label.sync``: ask, label by label, about what is new, and record each answer.
 
-U107, the asking half of the guided label sync brainstormed with the author on
-2026-10-02 (``docs/ideation/2026-10-02-guided-label-sync.md``). Following a
-label was meant to bring in its new music and instead filled review with back
-catalogue: 2,416 label releases waited there that day. This verb walks the
-favourite labels one at a time and asks, per label, about the releases that are
-new since that label was last asked, with four answers: download all new, pick
-releases, not now, stop following. Every answer is saved as it is given.
-Asking downloads nothing. Once every label with something new is answered, the
-walk ends at one gate over one summary of the saved answers, and ``--go`` asks
-the same gate over answers already saved; U108's :mod:`cratekit.label.go` is
-what a yes runs.
+U107, the asking half of the guided label sync. Each favourite label is asked
+about the releases new since it was last asked, with four answers: download all
+new, pick releases, not now, stop following. Every answer is saved as it is
+given and asking downloads nothing; the walk then ends at the one gate over the
+saved answers, as ``--go`` does, and :mod:`cratekit.label.go` is what a yes runs.
 
-THE MARKER IS A SET OF RELEASE IDENTITIES, NOT A DATE, and it lives in LIBRARY
-state. The catalogue dates a release by year alone and KTD11 forbids a date
-floor, so "new since this label was last asked" is "not in the set of releases
-a question already covered". The set takes places in the sweep's offer window
-exactly as a queued release does (R-790), which is what keeps back catalogue
-from returning: a label whose newest releases were all asked about offers
-nothing, and a release published since takes the one place above them. This
-reverses R-140's no cursor design for the labels source on purpose: the sweep
-only offered, this verb asks, and an answer is the event the marker records.
-Library state because what was asked depends on this library's holdings and
-its review queue, and a copy run redirects library state so a rehearsal cannot
-move the live marker; COUPLED because a restore that puts the review queue
-back must put the asked set back with it.
+THE MARKER IS A SET OF RELEASE IDENTITIES, NOT A DATE (KTD11), taking places in
+the sweep's offer window as a queued release does (R-790), so back catalogue
+never returns. It is LIBRARY state, coupled with the review queue on a restore.
 
-THE LISTING IS THE SWEEP'S, AND THE GENRE GATE RUNS BEFORE A LABEL IS ASKED.
-One :class:`~cratekit.label.sweep.LabelSource` per label, built as the worker
-builds it, with the same ownership reader and the same
-:class:`~cratekit.label.gate.SweepGate`, so a release the gate would not have
-filed is held and never reaches a question, and a hold already standing stays
-held. A label's OPEN review items are offered under the same question, once,
-which is the first run's catch up: one whose recorded words the gate would now
-hold is taken back the way ``label judge`` takes one back, with no request made,
-and one the gate has no word for is offered unjudged and counted as such.
-
-A QUESTION IS SAVED BEFORE IT IS ASKED, so the structured path answers exactly
-what was shown. ``--next`` prints the next pending question and ``--answer``
-records one answer for one named label; the interactive path does the same two
-things inline. Both write the same saved answer, and a label answered once is
-not asked about those releases again. ``all`` and ``pick`` file each taken
-release into the label-release queue under the sweep's own key and record it
-accepted, which is the shape ``label approved`` reads today and U108 reads
-tomorrow. The open items an answer did not take are superseded, closed as
-answered and never as a rejection. An untaken new release is never filed.
-There is no "always download this label" answer, by the author's standing
-rule: a label release is downloaded only after it was answered for.
-
-ONE REFUSAL OF THE PROVIDER PARKS THE RUN. A ``CratekitError`` out of the
-catalogue, a cooldown, a trip, an expired session, passes through the walk
-with the labels already answered saved and the rest unasked, their markers
-unmoved. A listing that could not be read fails that one label's line and the
-walk goes on, since one unreadable label should not silence the other
-twenty nine questions.
-
-Questions go to standard error through :mod:`cratekit.cli.prompt`, the one
-module allowed to read standard input, and this verb is the second the
-registry marks interactive. The asking is not gated: it writes the review
-database and its own record, and ``stop`` goes through the registry's own
-remove. The go behind the one gate is what writes files, see
-:mod:`cratekit.label.go`.
+THE LISTING AND THE GENRE GATE ARE THE SWEEP'S, so a release the gate holds never
+reaches a question, and a label's OPEN review items are offered once under the
+same question. A QUESTION IS SAVED BEFORE IT IS ASKED, so ``--answer`` answers
+exactly what ``--next`` showed. ``all`` and ``pick`` record each taken release
+accepted and supersede the rest; nothing is downloaded that was not answered for.
+ONE REFUSAL OF THE PROVIDER PARKS THE RUN with the answers given saved, while a
+listing that could not be read fails only that label's line.
 """
 
 from __future__ import annotations
@@ -70,6 +26,7 @@ import math
 from collections.abc import Callable, Container, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from cratekit.acquire import match_cli
@@ -80,7 +37,7 @@ from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.review import Queue, Verdict
 from cratekit.core.routing import KindVerdict
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.label import catalogue, kept_listing, sweep
+from cratekit.label import catalogue, kept_listing, review_common, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
@@ -88,9 +45,8 @@ from cratekit.sync import run
 
 RECORD_VERSION = 1
 
-#: The marker a saved answer carries once a go has taken it (U108). An answer
-#: without it is what the next go's summary covers. Added beside the fields an
-#: answer already records, so a record U107 wrote reads unchanged.
+#: The marker a saved answer carries once a go has taken it (U108); an answer
+#: without it is what the next go's summary covers.
 SETTLED = "settled"
 
 #: The four answers, in the order they are offered.
@@ -99,9 +55,8 @@ PICK = "pick"
 NOT_NOW = "not-now"
 STOP = "stop"
 ANSWERS: tuple[str, ...] = (ALL, PICK, NOT_NOW, STOP)
-#: The fifth word the interactive prompt takes: leave this label unanswered
-#: and end the run. NOT an answer, and nothing is written for it. The prompt
-#: has no default, so an empty line never moves a marker.
+#: The fifth word the prompt takes: leave this label unanswered and end the run.
+#: Not an answer, and nothing is written for it.
 QUIT = "quit"
 
 #: The actor a verdict this verb writes carries.
@@ -109,9 +64,8 @@ ACTOR = "label sync"
 #: The rule a superseded open item records: the label was answered.
 ANSWERED_RULE = "label-sync-answered"
 
-#: The size estimate, which is an estimate and says so. FLAC at 16 bit, 44.1
-#: kHz averages about 880 kilobits a second on dance music, and a track whose
-#: row carries no duration is counted as six minutes.
+#: The size estimate: FLAC at 16 bit 44.1 kHz averages about 880 kilobits a
+#: second on dance music, and a row with no duration counts as six minutes.
 BYTES_PER_SECOND = 110_000
 SECONDS_PER_TRACK = 360
 
@@ -120,49 +74,37 @@ QUEUE = str(Queue.LABEL_RELEASE)
 #: The key of the line a walk over every label says its estimate in (U278).
 _ESTIMATE_KEY = "label.sync.estimate"
 
-#: The calls a label with no kept listing is estimated at, when no followed
-#: label has one to average (U278). A hundred, about a small label's roster;
-#: Defected's was about 1,800, so an estimate is a guide and says so.
+#: The calls a label with no kept listing is estimated at when no followed
+#: label has one to average (U278), about a small label's roster.
 UNLISTED_ESTIMATE = 100
 
-#: How the interactive path gets its prompter. A module attribute so a suite
-#: can hand in a scripted one and drive the same ``_ask`` a person reaches.
+#: How the interactive path gets its prompter, a module attribute so a suite
+#: can hand in a scripted one.
 PROMPTER: Callable[[], prompt.Prompter] = prompt.Prompter
 
 
 def build_sync(parser, entry) -> None:
     parser.add_argument(
-        "--next",
-        dest="next_question",
-        action="store_true",
+        "--next", dest="next_question", action="store_true",
         help="print the next label's question instead of asking it at the terminal",
     )
     parser.add_argument(
-        "--answer",
-        choices=ANSWERS,
-        default=None,
+        "--answer", choices=ANSWERS, default=None,
         help="record this answer for the label named with --label",
     )
     parser.add_argument(
-        "--label",
-        default=None,
-        metavar="NAME",
+        "--label", default=None, metavar="NAME",
         help=(
             "with --answer, the favourite label the answer is for; with --next, "
             "the one label to ask about"
         ),
     )
     parser.add_argument(
-        "--release",
-        dest="releases",
-        action="append",
-        default=None,
-        metavar="RELEASE_ID",
+        "--release", dest="releases", action="append", default=None, metavar="RELEASE_ID",
         help="with --answer pick, a release to take; repeat for more",
     )
     parser.add_argument(
-        "--go",
-        action="store_true",
+        "--go", action="store_true",
         help=(
             "show one summary over every answer saved since the last go, ask the "
             "one gate, and on apply download what was answered for; under the run "
@@ -179,34 +121,31 @@ def build_sync(parser, entry) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _refusal(reason: str, message: str, *steps: str, **extra: Any) -> CratekitError:
+    return refuse(reason, message, steps=steps, origin=("label.sync",), **extra)
+
+
 def _unusable(path, what: str) -> CratekitError:
-    return refuse(
+    return _refusal(
         "label-sync-unusable",
         f"the label sync record at {path.name} could not be read ({what}), so "
         f"which releases each label was already asked about is unknown; treating "
         f"it as empty would ask every question again and lose every answer given",
-        steps=("repair or restore the label sync record before running label sync",),
-        scope=Scope.RUN,
-        origin=("label.sync",),
-        detail={"problem": what, "path": str(path)},
+        "repair or restore the label sync record before running label sync",
+        scope=Scope.RUN, detail={"problem": what, "path": str(path)},
     )
-
-
-def _empty() -> dict[str, Any]:
-    return {"version": RECORD_VERSION, "labels": {}, "answers": []}
 
 
 def load_record(cfg: config.Config) -> dict[str, Any]:
     """The record as stored, or an empty one when none has been written.
 
-    REFUSES A RECORD IT CANNOT READ rather than reading it as empty, on the
-    rule every state document here keeps: an unreadable marker read as unset
-    asks every question again.
+    REFUSES A RECORD IT CANNOT READ rather than reading it as empty, which
+    would ask every question again.
     """
     path = config.state_path("label_sync", cfg)
     raw = config.read_json_map(path, lambda why: _unusable(path, why))
     if raw is None:
-        return _empty()
+        return {"version": RECORD_VERSION, "labels": {}, "answers": []}
     version = raw.get("version")
     if version != RECORD_VERSION:
         raise _unusable(
@@ -218,14 +157,12 @@ def load_record(cfg: config.Config) -> dict[str, Any]:
         raise _unusable(path, "its labels are not a map of records")
     if not isinstance(answers, list):
         raise _unusable(path, "its answers are not a list")
-    return {
-        "version": RECORD_VERSION,
-        "labels": {str(key): dict(value) for key, value in held.items()},
-        "answers": list(answers),
-    }
+    labels_held = {str(key): dict(value) for key, value in held.items()}
+    return {"version": RECORD_VERSION, "labels": labels_held, "answers": list(answers)}
 
 
-def _write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
+def write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
+    """Write the record back. The caller holds :func:`record_lock`."""
     config.atomic_write_bytes(
         (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"),
         config.state_path("label_sync", cfg),
@@ -233,18 +170,22 @@ def _write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
 
 
 @contextmanager
-def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
+def record_lock(cfg: config.Config, doing: str) -> Iterator[None]:
+    """The record's own lock, for a caller that reads, decides and writes as one step.
+
+    BLOCKING, not refusing: a second go waits for the first to finish
+    planning, and then sees the job the first one queued.
+    """
     lock = config.exclusive_lock(config.state_path("label_sync_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:
-        raise refuse(
+        raise _refusal(
             "label-sync-unusable",
             f"the label sync record could not be locked ({exc}), and {doing} "
             f"unlocked discards an answer another run is recording at the same time",
-            steps=("make the library state directory writable by this account",),
+            "make the library state directory writable by this account",
             scope=Scope.RUN,
-            origin=("label.sync",),
         ) from exc
     try:
         yield
@@ -262,29 +203,22 @@ def unsettled(document: Mapping[str, Any]) -> list[tuple[int, Mapping[str, Any]]
 
 
 def settle_in(
-    document: dict[str, Any],
-    answers: Sequence[tuple[int, str, str]],
-    *,
-    marker: Mapping[str, Any],
-    keep: Container[str] = frozenset(),
+    document: dict[str, Any], answers: Sequence[tuple[int, str, str]], *,
+    marker: Mapping[str, Any], keep: Container[str] = frozenset(),
 ) -> int:
     """Mark, in ``document``, the saved answers a go took. Returns how many.
 
-    The caller holds :func:`record_lock` and writes the document back with
-    :func:`write_record`, which is what lets the go plan, queue and settle as
-    one locked step. ``answers`` names each one as ``(place, label,
-    answered_at)``, and one whose place now holds a different answer is left
-    alone, so a record rewritten while the go waited never has the wrong
-    answer settled. An answer that took a release named in ``keep`` is left
-    for the next go.
+    The caller holds :func:`record_lock` and writes back with
+    :func:`write_record`, so a go plans, queues and settles as one locked step.
+    ``answers`` names each as ``(place, label, answered_at)``; one whose place
+    now holds a different answer is left alone, and so is one that took a
+    release named in ``keep``, for the next go.
     """
     entries = document["answers"]
     now = timestamp()
     count = 0
     for index, label_id, answered_at in answers:
-        if index >= len(entries):
-            continue
-        entry = entries[index]
+        entry = entries[index] if index < len(entries) else None
         if not isinstance(entry, Mapping) or entry.get(SETTLED):
             continue
         if (
@@ -300,24 +234,15 @@ def settle_in(
     return count
 
 
-def write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
-    """Write the record back. The caller holds :func:`record_lock`."""
-    _write_record(cfg, document)
-
-
-def record_lock(cfg: config.Config, doing: str):
-    """The record's own lock, for a caller that reads, decides and writes as one step.
-
-    BLOCKING, not refusing: a second go waits for the first to finish
-    planning, and then sees the job the first one queued.
-    """
-    return _locked(cfg, doing)
+def _pending(document: Mapping[str, Any], label_id: str) -> Mapping[str, Any] | None:
+    """The question saved for ``label_id`` and not yet answered, or None."""
+    pending = (document["labels"].get(label_id) or {}).get("pending")
+    return pending if isinstance(pending, Mapping) and pending.get("releases") else None
 
 
 def asked_releases(document: Mapping[str, Any], label_id: str) -> frozenset[str]:
     """The identities a question about ``label_id`` already covered: the marker."""
-    held = document["labels"].get(label_id) or {}
-    asked = held.get("asked")
+    asked = (document["labels"].get(label_id) or {}).get("asked")
     if not isinstance(asked, list):
         return frozenset()
     return frozenset(str(one) for one in asked if isinstance(one, str) and one)
@@ -327,15 +252,16 @@ def asked_releases(document: Mapping[str, Any], label_id: str) -> frozenset[str]
 # A question
 # ---------------------------------------------------------------------------
 
+_OFFERED_FIELDS = ("identity", "artist", "title", "year", "tracks", "size", "item_id")
+
 
 @dataclass(frozen=True, slots=True)
 class Offered:
     """One release a question offers.
 
     ``item_id`` names the OPEN review item it already is, for the catch up,
-    and is None for a release the listing found, which is filed only when it
-    is taken. ``tracks`` and ``size`` are None when its tracks could not be
-    read, which the question counts rather than hides.
+    and is None for a release the listing found, filed only when taken.
+    ``tracks`` and ``size`` are None when its tracks could not be read.
     """
 
     identity: str
@@ -346,8 +272,8 @@ class Offered:
     size: int | None
     item_id: str | None
     payload: dict[str, Any]
-    #: The release listed short of the count the provider declares (R-515),
-    #: as ``ListingShortfall.block`` carries it, or None for a full listing.
+    #: The release listed short of its declared count (R-515), as
+    #: ``ListingShortfall.block`` carries it, or None for a full listing.
     short: dict[str, int] | None = None
 
     @property
@@ -357,13 +283,7 @@ class Offered:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "identity": self.identity,
-            "artist": self.artist,
-            "title": self.title,
-            "year": self.year,
-            "tracks": self.tracks,
-            "size": self.size,
-            "item_id": self.item_id,
+            **{name: getattr(self, name) for name in _OFFERED_FIELDS},
             "payload": dict(self.payload),
             "shortfall": dict(self.short) if self.short else None,
         }
@@ -372,10 +292,7 @@ class Offered:
     def from_json(cls, raw: Mapping[str, Any]) -> Offered:
         payload = raw.get("payload")
         return cls(
-            identity=str(raw.get("identity") or ""),
-            artist=str(raw.get("artist") or ""),
-            title=str(raw.get("title") or ""),
-            year=str(raw.get("year") or ""),
+            *(str(raw.get(name) or "") for name in _OFFERED_FIELDS[:4]),
             tracks=count_of(raw.get("tracks")),
             size=count_of(raw.get("size")),
             item_id=str(raw["item_id"]) if raw.get("item_id") else None,
@@ -394,6 +311,13 @@ def _short_of(raw: Any) -> dict[str, int] | None:
     return {key: int(value or 0) for key, value in block.items()}
 
 
+_QUESTION_HEAD = ("label_id", "label_name", "run", "listed_at")
+_QUESTION_COUNTS = (
+    "tracks", "size", "unknown", "provider_withheld",
+    "beyond", "beyond_unchecked", "unread", "withheld", "unjudged",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class Question:
     """What one label is asked about, and the numbers a person judges it by."""
@@ -403,8 +327,8 @@ class Question:
     run: str
     listed_at: str
     releases: tuple[Offered, ...]
-    #: Releases the listing read and the window did not reach that may still
-    #: be the label's (R-790, U238): see :attr:`sweep.LabelListing.beyond`.
+    #: Releases past the window that may still be the label's (R-790, U238):
+    #: see :attr:`sweep.LabelListing.beyond`.
     beyond: int = 0
     #: The part of ``beyond`` with no copyright line, so not yet checked (U238).
     beyond_unchecked: int = 0
@@ -443,21 +367,10 @@ class Question:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "label_id": self.label_id,
-            "label_name": self.label_name,
-            "run": self.run,
-            "listed_at": self.listed_at,
+            **{name: getattr(self, name) for name in _QUESTION_HEAD},
             "releases": [one.to_json() for one in self.releases],
             "new": len(self.releases),
-            "tracks": self.tracks,
-            "size": self.size,
-            "unknown": self.unknown,
-            "provider_withheld": self.provider_withheld,
-            "beyond": self.beyond,
-            "beyond_unchecked": self.beyond_unchecked,
-            "unread": self.unread,
-            "withheld": self.withheld,
-            "unjudged": self.unjudged,
+            **{name: getattr(self, name) for name in _QUESTION_COUNTS},
             "answers": list(ANSWERS),
         }
 
@@ -467,24 +380,18 @@ class Question:
         beyond = count_of(raw.get("beyond")) or 0
         unchecked = count_of(raw.get("beyond_unchecked"))
         return cls(
-            label_id=str(raw.get("label_id") or ""),
-            label_name=str(raw.get("label_name") or ""),
-            run=str(raw.get("run") or ""),
-            listed_at=str(raw.get("listed_at") or ""),
+            *(str(raw.get(name) or "") for name in _QUESTION_HEAD),
             releases=tuple(
                 Offered.from_json(one)
                 for one in (releases if isinstance(releases, list) else ())
                 if isinstance(one, Mapping)
             ),
             beyond=beyond,
-            # A QUESTION SAVED BEFORE U238 HAS NO SPLIT, and its ``beyond``
-            # counted every release of every artist on the roster. Read whole
-            # as unchecked, so it is said as a bound and never as the label's,
-            # and so is a split that is present and unreadable.
+            # A QUESTION SAVED BEFORE U238 HAS NO SPLIT, so its ``beyond`` is read
+            # whole as unchecked, a bound and never the label's; so is a split
+            # that is present and unreadable.
             beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),
-            unread=count_of(raw.get("unread")) or 0,
-            withheld=count_of(raw.get("withheld")) or 0,
-            unjudged=count_of(raw.get("unjudged")) or 0,
+            **{name: count_of(raw.get(name)) or 0 for name in _QUESTION_COUNTS[-3:]},
         )
 
 
@@ -498,17 +405,9 @@ def _duration(row: Any) -> int | None:
 def _measured(
     reader: catalogue.ReleaseTracks, identity: str
 ) -> tuple[int, int, catalogue.ListingShortfall | None] | None:
-    """A release's track count, estimated size and shortfall, or None when unread.
-
-    THE SHORTFALL RIDES BESIDE THE COUNT (R-515). A release the provider
-    lists short of its declared count is still measured over the rows it
-    served, and the question says how many were withheld rather than reading
-    the short count as the release.
-
-    Through the SHARED reader, so a release the ownership question or the
-    gate already read costs no second request, and the one outage rule
-    covers this asker too. A ``CratekitError`` passes through: an expired
-    session is the person's to act on, not a release with no tracks.
+    """A release's track count, estimated size and shortfall (R-515), or None
+    when unread, through the SHARED reader so no release is read twice. A
+    ``CratekitError`` passes through: an expired session is the person's to act on.
     """
     try:
         rows, _year, short = reader.release_tracks(identity)
@@ -529,13 +428,12 @@ def size_text(size: int) -> str:
 
 @dataclass
 class _Tools:
-    """What one run shares across every label it lists.
+    """What one run shares across every label it lists, built on first use so a
+    run that answers only a saved question logs in to nothing.
 
-    The catalogue, the taxonomy, one :class:`~cratekit.label.gate.Asking` so
-    an unreachable general catalogue is given up on once, one walk of the
-    library, and the open label-release items grouped by the label the
-    registry holds them under. Built on first use, so a run that answers only
-    a saved question logs in to nothing.
+    One :class:`~cratekit.label.gate.Asking`, so an unreachable general
+    catalogue is given up on once, one walk of the library, and the open
+    label-release items grouped by the label the registry holds them under.
     """
 
     cfg: config.Config
@@ -566,21 +464,16 @@ class _Tools:
         return self._view
 
     def open_for(self, store: review.ReviewStore, label_id: str) -> list[review.Item]:
-        """The open label-release items filed under one label, read once per run.
-
-        GROUPED BY THE IDENTIFIER THE REGISTRY HOLDS THE LABEL UNDER. An item
-        filed before a label's identifier moved (R-381) names the old one,
-        and the registry's ``by_id`` follows the move.
-        """
+        """The open label-release items filed under one label, read once per run,
+        grouped by the identifier the registry holds the label under, so an item
+        filed before the label's identifier moved (R-381) follows the move."""
         if self.open_items is None:
             grouped: dict[str, list[review.Item]] = {}
             page = review.list_items(store, queue=QUEUE, kinds=(sweep.KIND,), limit=None)
             for item in page.items:
                 named = str(item.payload.get("label_id") or "")
                 entry = self.followed.by_id(named) if named else None
-                grouped.setdefault(entry.label_id if entry is not None else named, []).append(
-                    item
-                )
+                grouped.setdefault(entry.label_id if entry is not None else named, []).append(item)
             self.open_items = grouped
         return self.open_items.get(label_id, [])
 
@@ -597,8 +490,18 @@ class _Listed:
     withheld: int = 0
 
 
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
+def _offered(
+    reader: catalogue.ReleaseTracks, identity: str, payload: Mapping[str, Any], year: str,
+    item_id: str | None = None,
+) -> Offered:
+    """One release as a question offers it, measured unless an open item names no release."""
+    unnamed = item_id is not None and identity.startswith("item:")
+    measured = _measured(reader, identity) if not unnamed else None
+    tracks, size, short = measured or (None, None, None)
+    return Offered(
+        identity, _text(payload.get("artist")), _text(payload.get("title")), year, tracks, size,
+        item_id, dict(payload), short.block() if short else None,
+    )
 
 
 def _question_for(
@@ -606,35 +509,23 @@ def _question_for(
 ) -> _Listed:
     """List one label as the sweep would and build its question, or say why not.
 
-    THE SWEEP'S OWN SOURCE, built as ``label.cli.handle`` builds it for one
-    item, with ``asked`` taking places in the offer window beside the queued
-    releases. Its gate records every hold it makes, so a release held here
-    is held for the next sweep too.
-
-    A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING NEW, the
-    worker's rule (``_refuse_unfinished``), so such a label is skipped with
-    the reason and its marker does not move: a question whose count came
-    from a dead verifier is the clean report over unread state every
-    refusal here exists for.
+    THE SWEEP'S OWN SOURCE, with ``asked`` taking places in the offer window
+    beside the queued releases; its gate records every hold, so a release held
+    here is held for the next sweep too. A CATALOGUE THAT CONFIRMS NOTHING IS
+    NOT A LABEL WITH NOTHING NEW (the worker's ``_refuse_unfinished``), so such
+    a label is skipped with the reason and its marker does not move.
     """
     found = tools.catalogue()
     declared = tools.taxonomy()
     reader = catalogue.ReleaseTracks(found)
-    owned = sweep.OwnedReleases(tools.cfg, reader, library=tools.library)
     source = sweep.LabelSource(
-        tools.cfg,
-        registry=labels.Registry(labels={entry.label_id: entry}),
-        catalogue=found,
-        store=store,
-        owned=owned,
+        tools.cfg, registry=labels.Registry(labels={entry.label_id: entry}), catalogue=found,
+        store=store, owned=sweep.OwnedReleases(tools.cfg, reader, library=tools.library),
         gate=genre_gate.SweepGate(
-            declared,
-            tracks=reader.release_tracks,
-            standing=genre_gate.StandingHolds(store),
+            declared, tracks=reader.release_tracks, standing=genre_gate.StandingHolds(store),
             asking=tools.asking,
         ),
-        run_id=tools.run_id,
-        offered=asked,
+        run_id=tools.run_id, offered=asked,
     )
     try:
         candidates = source.list_recent(-1)
@@ -643,120 +534,67 @@ def _question_for(
     ((_swept, listing),) = source.listings
     unconfirmed = len(source.dropped) + source.held_unconfirmed
     if not candidates and source.dropped and unconfirmed == source.read:
-        return _Listed(
-            skipped=(
-                f"the listing read {unconfirmed} release(s) from the catalogue and could "
-                f"not confirm a single one of them, so this is not a label with nothing "
-                f"new; what failed is verification rather than reach, and the registry's "
-                f"--match needle is the usual repair"
-            ),
-            listing=listing,
+        why = (
+            f"the listing read {unconfirmed} release(s) from the catalogue and could "
+            f"not confirm a single one of them, so this is not a label with nothing "
+            f"new; what failed is verification rather than reach, and the registry's "
+            f"--match needle is the usual repair"
         )
-
-    releases: list[Offered] = []
-    for candidate in candidates:
-        measured = _measured(reader, candidate.identity)
-        payload = dict(candidate.payload or {})
-        releases.append(
-            Offered(
-                identity=candidate.identity,
-                artist=_text(payload.get("artist")),
-                title=_text(payload.get("title")),
-                year=str(candidate.recency or ""),
-                tracks=measured[0] if measured else None,
-                size=measured[1] if measured else None,
-                short=measured[2].block() if measured and measured[2] else None,
-                item_id=None,
-                payload=payload,
-            )
-        )
+        return _Listed(skipped=why, listing=listing)
+    releases = [
+        _offered(reader, one.identity, dict(one.payload or {}), str(one.recency or ""))
+        for one in candidates
+    ]
 
     # THE CATCH UP: this label's open items, offered once under the same
-    # question. Judged first from the words they recorded, with no request,
-    # and one the gate would now hold is taken back as ``label judge`` takes
-    # one back. A release a person returned is theirs and is not judged.
+    # question, judged first from the words they recorded with no request; one
+    # the gate would now hold is taken back as ``label judge`` takes one back.
+    # A release a person returned is theirs and is not judged.
     withheld = unjudged = 0
     for item in tools.open_for(store, entry.label_id):
         standing = review.find_hold(store, queue=QUEUE, item_id=item.item_id)
         if not genre_gate.returned_by(standing, item.payload):
-            judged = genre_gate.judge_recorded(
-                declared,
-                entry.kind,
-                genre_gate.recorded_genres(item.payload, genre_gate.GENRES_FIELD),
-            )
+            words = genre_gate.recorded_genres(item.payload, genre_gate.GENRES_FIELD)
+            judged = genre_gate.judge_recorded(declared, entry.kind, words)
             if judged is None or judged.verdict is KindVerdict.NOT_JUDGED:
                 unjudged += 1
             elif judged.held:
                 taken_back = review.withhold(
-                    store,
-                    item.item_id,
-                    group=entry.label_id,
-                    name=entry.name,
-                    reason=judged.reason,
-                    detail=judged.detail(),
-                    run_id=tools.run_id,
+                    store, item.item_id, group=entry.label_id, name=entry.name,
+                    reason=judged.reason, detail=judged.detail(), run_id=tools.run_id,
                 )
                 if taken_back is not None:
                     withheld += 1
                     continue
         identity = genre_gate.release_id_of(store, item) or f"item:{item.item_id}"
-        measured = _measured(reader, identity) if not identity.startswith("item:") else None
-        releases.append(
-            Offered(
-                identity=identity,
-                artist=_text(item.payload.get("artist")),
-                title=_text(item.payload.get("title")),
-                year=_text(item.payload.get("year")) or _text(item.payload.get("recency")),
-                tracks=measured[0] if measured else None,
-                size=measured[1] if measured else None,
-                short=measured[2].block() if measured and measured[2] else None,
-                item_id=item.item_id,
-                payload=dict(item.payload),
-            )
-        )
+        year = _text(item.payload.get("year")) or _text(item.payload.get("recency"))
+        releases.append(_offered(reader, identity, item.payload, year, item.item_id))
     if not releases:
         return _Listed(listing=listing, withheld=withheld)
     # WHAT THE WINDOW DID NOT REACH IS RECORDED, as the sweep records it, so
     # ``review list --group-by label`` says how much more the label could offer.
     review.record_round(
-        store,
-        queue=QUEUE,
-        run_id=tools.run_id,
-        group=entry.label_id,
-        name=entry.name,
+        store, queue=QUEUE, run_id=tools.run_id, group=entry.label_id, name=entry.name,
         beyond=listing.beyond,
     )
-    return _Listed(
-        question=Question(
-            label_id=entry.label_id,
-            label_name=entry.name,
-            run=tools.run_id,
-            listed_at=timestamp(),
-            releases=tuple(releases),
-            beyond=listing.beyond,
-            beyond_unchecked=listing.beyond_unchecked,
-            unread=len(listing.unread),
-            withheld=withheld,
-            unjudged=unjudged,
-        ),
-        listing=listing,
-    )
+    return _Listed(listing=listing, question=Question(
+        entry.label_id, entry.name, tools.run_id, timestamp(), tuple(releases),
+        beyond=listing.beyond,
+        beyond_unchecked=listing.beyond_unchecked,
+        unread=len(listing.unread), withheld=withheld, unjudged=unjudged,
+    ))
 
 
 def _save_pending(cfg: config.Config, question: Question) -> None:
-    """Save the question under its label BEFORE it is asked.
-
-    So the answer, from either path, applies to exactly what was shown, and
-    a run that stops at the prompt leaves the question for ``--next`` to
-    print again with no provider call.
-    """
-    with _locked(cfg, "saving a question"):
+    """Save the question under its label BEFORE it is asked, so an answer from
+    either path applies to exactly what was shown and ``--next`` can print it
+    again with no provider call."""
+    with record_lock(cfg, "saving a question"):
         document = load_record(cfg)
         held = dict(document["labels"].get(question.label_id) or {})
-        held["name"] = question.label_name
-        held["pending"] = question.to_json()
+        held.update(name=question.label_name, pending=question.to_json())
         document["labels"][question.label_id] = held
-        _write_record(cfg, document)
+        write_record(cfg, document)
 
 
 # ---------------------------------------------------------------------------
@@ -780,49 +618,32 @@ class Answered:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "label_id": self.label_id,
-            "label_name": self.label_name,
-            "answer": self.answer,
-            "offered": self.offered,
-            "taken": [one.identity for one in self.taken],
+            "label_id": self.label_id, "label_name": self.label_name, "answer": self.answer,
+            "offered": self.offered, "taken": [one.identity for one in self.taken],
             "tracks": sum(one.tracks or 0 for one in self.taken),
             "size": sum(one.size or 0 for one in self.taken),
-            "left": list(self.left),
-            "removed": self.removed,
+            "left": list(self.left), "removed": self.removed,
         }
 
 
 def _selection_invalid(message: str, *steps: str, **detail: Any) -> CratekitError:
-    return refuse(
-        "review-selection-invalid",
-        message,
-        steps=steps,
-        origin=("label.sync",),
-        detail=detail,
-    )
+    return _refusal("review-selection-invalid", message, *steps, detail=detail)
 
 
 def _take(store: review.ReviewStore, one: Offered, run_id: str) -> bool:
-    """Record one release as accepted, filing it first when it was never filed.
+    """Record one release as accepted, filing it first under the sweep's key
+    when it was never filed, so ``label approved`` reads it as any accepted release.
 
-    A NEW RELEASE IS FILED UNDER THE SWEEP'S KEY AND THEN ACCEPTED, so the
-    item is the one the sweep would have filed and ``label approved`` reads
-    it as any accepted release. An open catch up item is accepted as it
-    stands. One that LEFT REVIEW or was DECIDED between the question and the
-    answer is not taken, and False says so: an accepted one is already what
-    the answer asked for, and any other verdict is a person's to clear.
+    One that LEFT REVIEW or was DECIDED between the question and the answer is
+    not taken, and False says so; an accepted one is already what was asked.
     """
     if one.item_id is None:
-        item = sweep.offer_release(
-            store,
-            run.Candidate(identity=one.identity, recency=one.year, payload=dict(one.payload)),
-            run_id=run_id,
-        )
+        candidate = run.Candidate(one.identity, one.year, dict(one.payload))
+        item = sweep.offer_release(store, candidate, run_id=run_id)
     else:
-        found = review.find(store, one.item_id)
-        if found is None:
+        item = review.find(store, one.item_id)
+        if item is None:
             return False
-        item = found
     if item.verdict is Verdict.ACCEPTED:
         return True
     if item.stored_verdict is not None:
@@ -831,28 +652,55 @@ def _take(store: review.ReviewStore, one: Offered, run_id: str) -> bool:
     return True
 
 
+def _chosen(
+    question: Question, entry: labels.LabelEntry, answer: str, picks: Sequence[str]
+) -> list[Offered]:
+    """The releases an answer takes, refusing a pick the question did not offer."""
+    offered = {one.identity for one in question.releases}
+    wanted = dict.fromkeys(str(pick).strip() for pick in picks if str(pick).strip())
+    if answer == PICK:
+        unknown = [pick for pick in wanted if pick not in offered]
+        if unknown or not wanted:
+            raise _selection_invalid(
+                (
+                    f"{', '.join(repr(one) for one in unknown)} "
+                    f"{'is' if len(unknown) == 1 else 'are'} not among the "
+                    f"{len(offered)} release(s) the question for {entry.name!r} "
+                    f"offered, so picking would record a choice nobody was shown"
+                    if unknown
+                    else f"pick names at least one of the {len(offered)} release(s) "
+                    f"the question for {entry.name!r} offered; to take none, "
+                    f"answer not-now"
+                ),
+                f"take the identifiers from: crate label sync --next --label {entry.label_id}",
+                label=entry.label_id,
+                unknown=unknown,
+            )
+    elif wanted:
+        raise _selection_invalid(
+            f"--release goes with --answer pick, and {answer} would ignore the "
+            f"{len(wanted)} named",
+            "drop --release, or answer pick",
+            label=entry.label_id,
+        )
+    return [
+        one
+        for one in question.releases
+        if answer == ALL or (answer == PICK and one.identity in wanted)
+    ]
+
+
 def record_answer(
-    cfg: config.Config,
-    store: review.ReviewStore,
-    entry: labels.LabelEntry,
-    answer: str,
-    picks: Sequence[str],
-    *,
-    run_id: str,
+    cfg: config.Config, store: review.ReviewStore, entry: labels.LabelEntry, answer: str,
+    picks: Sequence[str], *, run_id: str,
 ) -> Answered:
     """Record one answer for one label, against the question saved for it.
 
-    UNDER THE RECORD'S LOCK FOR THE WHOLE OF IT, so a structured answer
-    landing beside an interactive one cannot read the question the other is
-    answering. The review writes come first and the record last: a review
-    write that refuses leaves the question pending and nothing claimed, and
-    the record never says a release was taken that the queue does not hold.
-
-    EVERY ANSWER MOVES THE MARKER over every release the question offered,
-    ``not-now`` included, which is the author's decision: a release answered
-    once never returns. ``stop`` removes the label through the registry's own
-    path, after the review writes, so a remove that refuses leaves nothing
-    half done.
+    UNDER THE RECORD'S LOCK FOR THE WHOLE OF IT. The review writes come first
+    and the record last, so a review write that refuses leaves the question
+    pending, and ``stop`` removes the label through the registry's own path
+    after them. EVERY ANSWER MOVES THE MARKER over every release offered,
+    ``not-now`` included: a release answered once never returns.
     """
     if answer not in ANSWERS:
         raise _selection_invalid(
@@ -860,14 +708,13 @@ def record_answer(
             f"answer with one of: {', '.join(ANSWERS)}",
             answer=answer,
         )
-    with _locked(cfg, "recording an answer"):
+    with record_lock(cfg, "recording an answer"):
         document = load_record(cfg)
         held = dict(document["labels"].get(entry.label_id) or {})
-        pending = held.get("pending")
-        if not isinstance(pending, Mapping) or not pending.get("releases"):
+        pending = _pending(document, entry.label_id)
+        if pending is None:
             # STOP WITH NOTHING WAITING names the registry's remove, since
-            # ``--next`` asks nothing about a label with nothing new and the
-            # remedy would send a person round in a circle.
+            # ``--next`` asks nothing about a label with nothing new.
             raise _selection_invalid(
                 f"no question is waiting for {entry.name!r}, so there is nothing an "
                 f"answer could apply to; nothing was recorded",
@@ -880,97 +727,36 @@ def record_answer(
                 label=entry.label_id,
             )
         question = Question.from_json(pending)
-        offered = {one.identity: one for one in question.releases}
-        wanted: dict[str, None] = dict.fromkeys(str(pick).strip() for pick in picks if str(pick).strip())
-        if answer == PICK:
-            unknown = [pick for pick in wanted if pick not in offered]
-            if unknown or not wanted:
-                raise _selection_invalid(
-                    (
-                        f"{', '.join(repr(one) for one in unknown)} "
-                        f"{'is' if len(unknown) == 1 else 'are'} not among the "
-                        f"{len(offered)} release(s) the question for {entry.name!r} "
-                        f"offered, so picking would record a choice nobody was shown"
-                        if unknown
-                        else f"pick names at least one of the {len(offered)} release(s) "
-                        f"the question for {entry.name!r} offered; to take none, "
-                        f"answer not-now"
-                    ),
-                    f"take the identifiers from: crate label sync --next --label "
-                    f"{entry.label_id}",
-                    label=entry.label_id,
-                    unknown=unknown,
-                )
-        elif wanted:
-            raise _selection_invalid(
-                f"--release goes with --answer pick, and {answer} would ignore the "
-                f"{len(wanted)} named",
-                "drop --release, or answer pick",
-                label=entry.label_id,
-            )
-        chosen = [
-            one
-            for one in question.releases
-            if answer == ALL or (answer == PICK and one.identity in wanted)
-        ]
         taken: list[Offered] = []
-        left: list[str] = []
-        # FILED UNDER THE RUN THAT ASKED, which recorded the label's round, so
-        # a grouping by run finds the round and its filings together when the
-        # answer came from a later ``--answer``.
+        left: list[Offered] = []
+        # FILED UNDER THE RUN THAT ASKED, which recorded the label's round.
         filing_run = question.run or run_id
-        for one in chosen:
+        for one in _chosen(question, entry, answer, picks):
             (taken if _take(store, one, filing_run) else left).append(one)
         taken_ids = {one.identity for one in taken}
-        # SETTLED BY THE ID EACH RELEASE FILES UNDER, not only the ids the
-        # question knew: a sweep that ran while the question waited filed its
-        # new releases, and settling only the catch up items left those open
-        # for the next run to ask about again. ``supersede`` passes over an id
-        # nothing filed and over one already decided.
-        review.supersede(
-            store,
-            [
-                one.item_id or genre_gate.release_item_id(one.identity)
-                for one in question.releases
-                if one.identity not in taken_ids
-            ],
-            rule=ANSWERED_RULE,
-        )
-        removed = False
-        if answer == STOP:
-            removed = labels.RegistryStore().remove(entry.label_id)
+        # SETTLED BY THE ID EACH RELEASE FILES UNDER, so a release a sweep filed
+        # while the question waited is settled too; ``supersede`` passes over an
+        # id nothing filed and one already decided.
+        superseded = [
+            one.item_id or genre_gate.release_item_id(one.identity)
+            for one in question.releases if one.identity not in taken_ids
+        ]
+        review.supersede(store, superseded, rule=ANSWERED_RULE)
+        removed = labels.RegistryStore().remove(entry.label_id) if answer == STOP else False
         now = timestamp()
         asked = set(asked_releases(document, entry.label_id)) | set(question.identities())
         held.pop("pending", None)
-        held.update(
-            {
-                "name": entry.name,
-                "asked": sorted(asked),
-                "asked_at": now,
-                "answer": answer,
-                "run": run_id,
-            }
-        )
+        held.update(name=entry.name, asked=sorted(asked), asked_at=now, answer=answer, run=run_id)
         document["labels"][entry.label_id] = held
         result = Answered(
-            label_id=entry.label_id,
-            label_name=entry.name,
-            answer=answer,
-            offered=len(question.releases),
-            taken=tuple(taken),
-            left=tuple(one.identity for one in left),
-            removed=removed,
+            entry.label_id, entry.name, answer, len(question.releases), tuple(taken),
+            left=tuple(one.identity for one in left), removed=removed,
         )
-        document["answers"].append(
-            {
-                **result.to_json(),
-                "run": run_id,
-                "asked_run": question.run,
-                "answered_at": now,
-                "releases": [one.to_json() for one in taken],
-            }
-        )
-        _write_record(cfg, document)
+        document["answers"].append({
+            **result.to_json(), "run": run_id, "asked_run": question.run, "answered_at": now,
+            "releases": [one.to_json() for one in taken],
+        })
+        write_record(cfg, document)
     return result
 
 
@@ -979,16 +765,13 @@ def record_answer(
 # ---------------------------------------------------------------------------
 
 
-def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"label.sync.{key}", "title": key, "status": status,
-            "detail": detail, "remedy": None}
+_check = partial(review_common.check, "label.sync")
+_text = review_common.text
 
 
 def _named(one: Offered) -> str:
     said = f"{one.artist} - {one.title}" if one.artist else one.title or one.identity
-    if one.year:
-        said += f" ({one.year})"
-    return said
+    return said + (f" ({one.year})" if one.year else "")
 
 
 def _tracks_said(one: Offered) -> str:
@@ -1007,11 +790,8 @@ def _tracks_said(one: Offered) -> str:
 def _past_window(beyond: int, unchecked: int) -> str:
     """What lies past the window, as a count of the label's and a bound on the rest (U238).
 
-    ``beyond`` is every release past the window that may be the label's and
-    ``unchecked`` the part of it with no copyright line. The label's own are
-    a count; the unchecked are only a bound, since confirming them is a
-    provider read the sweep never made, so they are never called the
-    label's. Nothing past the window says nothing, never "0 more".
+    The unchecked part has no copyright line, so it is only a bound and never
+    called the label's. Nothing past the window says nothing, never "0 more".
     """
     unchecked = max(0, min(unchecked, beyond))
     own = beyond - unchecked
@@ -1028,40 +808,31 @@ def _counts(question: Question) -> str:
         f"{len(question.releases)} new release(s), {question.tracks} track(s), "
         f"about {size_text(question.size)}"
     )
-    if question.unknown:
-        said += f", {question.unknown} with tracks unread"
-    if question.provider_withheld:
-        said += (
-            f"; {question.provider_withheld} track(s) withheld by the provider "
-            f"on {question.short_releases} release(s), counted but not listed"
-        )
     past = _past_window(question.beyond, question.beyond_unchecked)
-    if past:
-        said += f"; {past}"
-    if question.unread:
-        said += f"; {question.unread} listing(s) of the label could not be read"
-    if question.withheld:
-        said += f"; {question.withheld} open item(s) taken back by the genre gate"
-    if question.unjudged:
-        said += f"; {question.unjudged} the genre gate has no word for"
+    for count, more in (
+        (question.unknown, f", {question.unknown} with tracks unread"),
+        (question.provider_withheld, f"; {question.provider_withheld} track(s) withheld by "
+         f"the provider on {question.short_releases} release(s), counted but not listed"),
+        (past, f"; {past}"),
+        (question.unread, f"; {question.unread} listing(s) of the label could not be read"),
+        (question.withheld, f"; {question.withheld} open item(s) taken back by the genre gate"),
+        (question.unjudged, f"; {question.unjudged} the genre gate has no word for"),
+    ):
+        if count:
+            said += more
     return said
 
 
+def _release_said(one: Offered) -> str:
+    return f"{_named(one)}, {_tracks_said(one)}" + (", waiting in review" if one.item_id else "")
+
+
 def _question_checks(question: Question, *, how: str) -> list[dict[str, Any]]:
+    name = question.label_name
     return [
-        _check(
-            f"question.{question.label_id}",
-            "info",
-            f"{question.label_name}: {_counts(question)}; {how}",
-        ),
+        _check(f"question.{question.label_id}", "info", f"{name}: {_counts(question)}; {how}"),
         *(
-            _check(
-                f"release.{one.identity}",
-                "info",
-                f"{question.label_name}: {_named(one)}, "
-                + _tracks_said(one)
-                + (", waiting in review" if one.item_id else ""),
-            )
+            _check(f"release.{one.identity}", "info", f"{name}: {_release_said(one)}")
             for one in question.releases
         ),
     ]
@@ -1102,20 +873,8 @@ def _nothing_check(entry: labels.LabelEntry, listed: _Listed) -> dict[str, Any]:
 
 
 def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str, Any]]:
-    """Where the label's listing came from (U217), and the release it re-verified (U277).
-
-    Said only for a listing this run made: a saved question printed again
-    made none, and a catalogue that keeps no listing has nothing to say of
-    where it came from.
-
-    THE RE-VERIFIED RELEASE IS SAID WHENEVER ONE WAS ASKED, on a nothing new
-    and a refused line alike, with what the verifier answered: ``unconfirmed``,
-    no label credit found for it, ``mismatch``, credited to another name, or
-    ``gone``, a release the provider no longer has (R-1634).
-    And how it was asked (R-1634): read again from the provider, or judged
-    from its own copyright line with no provider read, which says the needle is
-    right and nothing of the provider.
-    """
+    """Where a listing this run made came from (U217), and the release it
+    re-verified (U277), with what the verifier answered and how (R-1634)."""
     listing = listed.listing
     if listing is None:
         return []
@@ -1125,28 +884,40 @@ def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str,
             _check(f"listing.{entry.label_id}", "info", f"{entry.name}: {listing.kept.said()}")
         )
     if listing.canary is not None:
-        said.append(
-            _check(
-                f"reverified.{entry.label_id}",
-                "info",
-                f"{entry.name}: every release the listing asked about was turned down, "
-                f"so one already asked about or in review was verified again, "
-                f"{listing.canary.how()}: {listing.canary.said()}",
-            )
-        )
+        said.append(_check(
+            f"reverified.{entry.label_id}", "info",
+            f"{entry.name}: every release the listing asked about was turned down, "
+            f"so one already asked about or in review was verified again, "
+            f"{listing.canary.how()}: {listing.canary.said()}",
+        ))
     return said
 
 
-def _skipped_check(entry: labels.LabelEntry, why: str) -> dict[str, Any]:
-    return _check(f"label.{entry.label_id}", "fail", f"{entry.name}: not asked; {why}")
+def _unasked(
+    entry: labels.LabelEntry, listed: _Listed, checks: list[dict[str, Any]],
+    seen: list[dict[str, Any]], nothing: list[str] | None = None,
+) -> bool:
+    """Report a label listed with no question, skipped or with nothing new, and
+    say True; False when it has a question to ask."""
+    if listed.skipped is not None:
+        said = f"{entry.name}: not asked; {listed.skipped}"
+        checks.append(_check(f"label.{entry.label_id}", "fail", said))
+        state = "skipped"
+    elif listed.question is None:
+        checks.append(_nothing_check(entry, listed))
+        if nothing is not None:
+            nothing.append(entry.name)
+        state = "nothing-new"
+    else:
+        return False
+    checks.extend(_listing_checks(entry, listed))
+    seen.append({"label_id": entry.label_id, "state": state})
+    return True
 
 
 def _summary(
-    *,
-    question: Question | None = None,
-    answered: Sequence[Answered] = (),
-    labels_seen: Sequence[dict[str, Any]] = (),
-    stopped_at: str | None = None,
+    *, question: Question | None = None, answered: Sequence[Answered] = (),
+    labels_seen: Sequence[dict[str, Any]] = (), stopped_at: str | None = None,
 ) -> dict[str, Any]:
     return {
         "question": question.to_json() if question is not None else None,
@@ -1160,11 +931,10 @@ def _followed_or_refuse() -> labels.Registry:
     followed = labels.RegistryStore().load()
     if followed.labels:
         return followed
-    raise refuse(
+    raise _refusal(
         "label-registry-empty",
         "no favourite label is registered, so there is no label to ask about",
-        steps=("register a label with: crate label registry add <name>",),
-        origin=("label.sync",),
+        "register a label with: crate label registry add <name>",
     )
 
 
@@ -1172,12 +942,9 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
     entry = followed.resolve(name)
     if entry is not None:
         return entry
-    raise refuse(
-        "label-unknown",
-        f"no favourite label is named {name!r}",
-        steps=("list the registry and take the name from it",),
-        origin=("label.sync",),
-        detail={"name": name},
+    raise _refusal(
+        "label-unknown", f"no favourite label is named {name!r}",
+        "list the registry and take the name from it", detail={"name": name},
     )
 
 
@@ -1189,29 +956,17 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
 def _estimate(
     entries: Sequence[labels.LabelEntry], document: Mapping[str, Any]
 ) -> tuple[int, int]:
-    """The calls a walk over ``entries`` may make, and how many labels it may list (U278).
-
-    A label with a saved question is printed again without a call, and
-    ``--next`` stops there, so the count ends at it and nothing after it is
-    counted. Any other label costs its kept listing's aged answers, nothing
-    when every answer is still young, and a label no kept listing answers for
-    costs the mean of the kept listings' sizes, or :data:`UNLISTED_ESTIMATE`
-    when there are none. The walk may stop at the first label with something
-    new, so this is what it costs at most, as far as the kept answers say.
-    """
+    """The calls a walk over ``entries`` may make at most, and how many labels it
+    may list (U278): each kept listing's aged answers, the mean size for a label
+    with none (or :data:`UNLISTED_ESTIMATE`), ending at a saved question."""
     costs: list[kept_listing.Cost | None] = []
     for entry in entries:
-        held = document["labels"].get(entry.label_id) or {}
-        pending = held.get("pending")
-        if isinstance(pending, Mapping) and pending.get("releases"):
+        if _pending(document, entry.label_id) is not None:
             break
         costs.append(kept_listing.cost(entry))
     known = [one for one in costs if one is not None]
-    unknown = len(costs) - len(known)
-    each = (
-        math.ceil(sum(one.held for one in known) / len(known)) if known else UNLISTED_ESTIMATE
-    )
-    return sum(one.aged for one in known) + unknown * each, len(costs)
+    each = math.ceil(sum(one.held for one in known) / len(known)) if known else UNLISTED_ESTIMATE
+    return sum(one.aged for one in known) + (len(costs) - len(known)) * each, len(costs)
 
 
 def _sweep_check(
@@ -1220,45 +975,36 @@ def _sweep_check(
     """Say what a walk over every followed label may cost, or refuse it before
     its first call when the account's hour cannot hold it outside the reserve (U278).
 
-    The label crawl is the account's (U205), so the account's line is the one
-    asked. A gate file that cannot be read is read as the gate reads it, as
-    nothing spent, and said; the gate still stops each call at its line.
+    The label crawl is the account's (U205). A gate file that cannot be read
+    is read as the gate reads it, as nothing spent, and said.
     """
     calls, listed = _estimate(entries, document)
-    settings = provider_gate.GateSettings.from_config(cfg)
-    line = provider_gate.line_for(settings)
+    line = provider_gate.line_for(provider_gate.GateSettings.from_config(cfg))
     standing = provider_gate.read_standing()
     spent = standing.spent(provider_gate.ACCOUNT) if standing is not None else 0
     left = max(0, line - spent)
     unread = "" if standing is not None else " (the gate's file could not be read, so as none spent)"
     labels_said = "label" if listed == 1 else "labels"
     if calls > left:
-        frees = (
-            # THE MOMENT THE WINDOW HOLDS AT MOST ``line - calls``, which a
-            # line one higher answers as "fewer than"; an estimate past the
-            # whole line never fits, and says so.
-            provider_gate.iso(standing.frees_at(provider_gate.ACCOUNT, line - calls + 1))
-            if standing is not None and calls <= line
-            else None
-        )
+        # THE MOMENT THE WINDOW HOLDS AT MOST ``line - calls``; an estimate past
+        # the whole line never fits, and says so.
+        at = line - calls + 1
         wait = (
-            f"or wait until {frees}, when the hour holds it"
-            if frees is not None
+            f"or wait until {provider_gate.iso(standing.frees_at(provider_gate.ACCOUNT, at))}, "
+            "when the hour holds it"
+            if standing is not None and calls <= line
             else "or raise the hour's budget for one run with crate --calls-per-hour N "
             "before the verb"
         )
-        raise refuse(
+        raise _refusal(
             provider_gate.BUDGET,
             f"walking the followed labels may ask the streaming provider about {calls} "
             f"calls over {listed} {labels_said}, an estimate from each label's kept "
             f"listing, and the account has {left} of its {line} read calls left this "
             f"hour{unread}, the rest kept for writes and downloads; nothing was asked",
-            steps=(
-                "ask about one label at a time with: crate label sync --next --label NAME",
-                wait,
-            ),
+            "ask about one label at a time with: crate label sync --next --label NAME",
+            wait,
             scope=Scope.RUN,
-            origin=("label.sync",),
             detail={"estimate": calls, "labels": listed, "left": left, "line": line,
                     "spent": spent},
         )
@@ -1272,23 +1018,11 @@ def _sweep_check(
 
 
 def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
-    """Print the next question, saving it, and ask nothing.
+    """Print the next question in registry order, saving it, and ask nothing.
 
-    A SAVED QUESTION IS PRINTED AGAIN WITHOUT A PROVIDER CALL, so an agent
-    session asking twice spends nothing twice. Labels are walked in registry
-    order and the first with something to ask is the answer.
-
-    ONE LABEL NAMED IS THE ONLY LABEL TOUCHED (U189). ``--next --label`` runs
-    the same loop over that one entry, resolved before any provider is built,
-    so no other label is listed and no other saved question is rewritten, and
-    the label's own line is the whole report: a closing "no label has
-    anything new" would speak for labels nobody asked about.
-
-    A LABEL THAT COULD NOT BE READ IS NOT A LABEL WITH NOTHING NEW (R-1114).
-    The closing line names only the labels that were listed, and a run whose
-    every label was skipped refuses as ``label-sync-unlisted`` rather than
-    ending ``no_op``, carrying each label's line, so neither the words nor
-    the exit status read a failed listing as nothing to ask.
+    A saved question is printed again with no provider call. ONE LABEL NAMED IS
+    THE ONLY LABEL TOUCHED (U189). A LABEL THAT COULD NOT BE READ IS NOT A LABEL
+    WITH NOTHING NEW (R-1114): a run whose every label was skipped refuses.
     """
     followed = _followed_or_refuse()
     only = _entry_or_refuse(followed, name) if name is not None else None
@@ -1298,57 +1032,34 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     seen: list[dict[str, Any]] = []
     # A WALK OVER EVERY LABEL SAYS ITS COST FIRST (U278); one label named is
     # one listing, held by the gate call by call like any other.
-    checks: list[dict[str, Any]] = (
-        [_sweep_check(cfg, entries, document)] if only is None else []
-    )
+    checks = [_sweep_check(cfg, entries, document)] if only is None else []
     withheld = 0
     nothing: list[str] = []
     with review.open_store(cfg) as store:
         for entry in entries:
-            held = document["labels"].get(entry.label_id) or {}
-            pending = held.get("pending")
-            if isinstance(pending, Mapping) and pending.get("releases"):
+            pending = _pending(document, entry.label_id)
+            if pending is not None:
                 question = Question.from_json(pending)
             else:
                 listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))
-                if listed.skipped is not None:
-                    checks.append(_skipped_check(entry, listed.skipped))
-                    checks.extend(_listing_checks(entry, listed))
-                    seen.append({"label_id": entry.label_id, "state": "skipped"})
-                    continue
-                if listed.question is None:
-                    checks.append(_nothing_check(entry, listed))
-                    checks.extend(_listing_checks(entry, listed))
-                    withheld += listed.withheld
-                    nothing.append(entry.name)
-                    seen.append({"label_id": entry.label_id, "state": "nothing-new"})
+                withheld += listed.withheld
+                if _unasked(entry, listed, checks, seen, nothing):
                     continue
                 question = listed.question
                 _save_pending(cfg, question)
                 checks.extend(_listing_checks(entry, listed))
             seen.append({"label_id": entry.label_id, "state": "asked"})
-            checks.extend(
-                _question_checks(
-                    question,
-                    how=(
-                        f"answer with: crate label sync --answer all --label "
-                        f"{entry.label_id}, or pick with --release, or not-now, or stop"
-                    ),
-                )
-            )
-            return ctx.envelope(
-                data={"checks": checks, "summary": _summary(question=question, labels_seen=seen)}
-            )
+            checks.extend(_question_checks(question, how=(
+                f"answer with: crate label sync --answer all --label "
+                f"{entry.label_id}, or pick with --release, or not-now, or stop"
+            )))
+            return review_common.ended(ctx, checks, _summary(question=question, labels_seen=seen))
     data = {"checks": checks, "summary": _summary(labels_seen=seen)}
     if not nothing:
-        # EVERY LABEL ASKED ABOUT WAS SKIPPED (R-1114), so nothing here was
-        # read and nothing found: the ``no-evidence`` rule, at this verb. The
-        # run refuses through ``from_cause`` with its own checks as the data,
-        # so each label's line still says why it was not asked. The single
-        # label form included, since its one label skipped is the same state.
-        # THE REMEDY IS A LINE OF ITS OWN, because the human rendering shows
-        # only a refusal's summary when the run carries checks, and these
-        # checks name what failed but not what to do about it.
+        # EVERY LABEL ASKED ABOUT WAS SKIPPED (R-1114), the ``no-evidence`` rule:
+        # the run refuses with its own checks as the data, so each label's line
+        # still says why. THE REMEDY IS A LINE OF ITS OWN, because the human
+        # rendering shows only a refusal's summary when the run carries checks.
         checks.append(_check("next", "info", _UNLISTED_REMEDY))
         return from_cause(
             verb=ctx.entry.name,
@@ -1359,8 +1070,6 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
         )
     if only is None:
         # THE CLOSING LINE SPEAKS ONLY FOR THE LABELS THAT WERE LISTED (R-1114).
-        # A skipped label has its own ``fail`` line, and "nothing new" said of
-        # it would be the clean report over a listing that never answered.
         said = (
             "no label has anything new to ask about"
             if len(nothing) == len(entries)
@@ -1394,56 +1103,43 @@ def _unlisted_cause(entries: Sequence[labels.LabelEntry]) -> Cause:
         else f"none of the {len(entries)} labels asked about could be read ({names}), "
         f"so whether any of them has"
     )
-    return refuse(
+    return _refusal(
         "label-sync-unlisted",
         f"{which} anything new is unknown; no question was asked or saved",
-        steps=("read each label's line for why it was not asked", *_UNLISTED_STEPS),
+        "read each label's line for why it was not asked", *_UNLISTED_STEPS,
         retryable=True,
-        origin=("label.sync",),
         detail={"labels": [entry.label_id for entry in entries]},
     ).cause
 
 
 def _answer(ctx, cfg: config.Config) -> Envelope:
     """Record the one answer named on the command line."""
-    followed = _followed_or_refuse()
-    entry = _entry_or_refuse(followed, str(ctx.args.label))
+    entry = _entry_or_refuse(_followed_or_refuse(), str(ctx.args.label))
     with review.open_store(cfg) as store:
         answered = record_answer(
-            cfg,
-            store,
-            entry,
-            str(ctx.args.answer),
-            list(ctx.args.releases or ()),
+            cfg, store, entry, str(ctx.args.answer), list(ctx.args.releases or ()),
             run_id=ctx.run.run_id,
         )
-    return ctx.envelope(
-        data={
-            "checks": [
-                _answer_check(answered),
-                _check("next", "info", "the next question: crate label sync --next"),
-            ],
-            "summary": _summary(answered=[answered]),
-        }
-    )
+    return review_common.ended(ctx, [
+        _answer_check(answered),
+        _check("next", "info", "the next question: crate label sync --next"),
+    ], _summary(answered=[answered]))
 
 
 def _question_text(question: Question) -> str:
-    lines = [f"\n{question.label_name}: {_counts(question)}\n"]
-    for number, one in enumerate(question.releases, start=1):
-        tracks = _tracks_said(one)
-        waiting = ", waiting in review" if one.item_id else ""
-        lines.append(f"  {number:>3}. {_named(one)}, {tracks}{waiting}\n")
-    return "".join(lines)
+    numbered = enumerate(question.releases, start=1)
+    return f"\n{question.label_name}: {_counts(question)}\n" + "".join(
+        f"  {number:>3}. {_release_said(one)}\n" for number, one in numbered
+    )
 
 
 def _ask(prompter: prompt.Prompter, question: Question) -> tuple[str, list[str]]:
     """Put one question to a person and return the answer and, for a pick, the releases.
 
-    NO DEFAULT. An empty line is asked again and never read as an answer,
-    because every answer moves the marker and an accidental return must not.
-    ``quit`` leaves the label unanswered. A word outside the set is asked
-    again, :data:`prompt.MAX_ATTEMPTS` times, then the prompt is given up on.
+    NO DEFAULT: an empty line is asked again, because every answer moves the
+    marker and an accidental return must not. ``quit`` leaves the label
+    unanswered; a word outside the set is asked again,
+    :data:`prompt.MAX_ATTEMPTS` times, then the prompt is given up on.
     """
     prompter.write(_question_text(question))
     words = (*ANSWERS, QUIT)
@@ -1468,8 +1164,7 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
         numbers: list[int] = []
         bad: list[str] = []
         for word in typed.replace(",", " ").split():
-            # ``isdecimal`` and not ``isdigit``: a superscript two is a digit
-            # that ``int`` refuses, and that crashed the walk mid question.
+            # ``isdecimal``, not ``isdigit``: a superscript two is a digit ``int`` refuses.
             if word.isdecimal() and 1 <= int(word) <= count:
                 numbers.append(int(word))
             else:
@@ -1484,105 +1179,77 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
     return None
 
 
+def _unanswerable(entry: labels.LabelEntry, answered: Sequence[Answered], exc) -> CratekitError:
+    return _refusal(
+        "label-sync-unanswerable",
+        f"the question about {entry.name!r} could not be answered at this "
+        f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
+        f"saved and the question is waiting",
+        f"run label sync from a terminal, or drive it with: crate label "
+        f"sync --next --label {entry.label_id}, then crate label sync "
+        f"--answer ANSWER --label {entry.label_id}",
+        detail={"label": entry.label_id, "answered": [one.label_id for one in answered]},
+    )
+
+
 def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     """Ask every label with something new, in registry order, answer by answer.
 
-    EVERY LABEL IS LISTED AFRESH, a saved question included, since the walk
-    is the one path that can wait for a person, and what it asks should be
-    what the catalogue holds now. Afresh means through the roster, which
-    answers from the label's kept listing inside its life (U217), and the
-    label's listing line says how old that is. A run that stops, by ``quit`` or by a
-    prompt nobody can answer, has saved every answer given before it, so the
-    next run asks about the first label still unanswered.
+    EVERY LABEL IS LISTED AFRESH, a saved question included, since the walk can
+    wait for a person and should ask what the catalogue holds now (through the
+    roster's kept listing, U217). A run that stops, by ``quit`` or a prompt
+    nobody can answer, has saved every answer given before it.
     """
     followed = _followed_or_refuse()
+    entries = list(followed.labels.values())
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     answered: list[Answered] = []
     seen: list[dict[str, Any]] = []
-    # Every label is listed afresh here, a saved question included, so the
-    # estimate is asked over an empty record (U278).
-    checks: list[dict[str, Any]] = [
-        _sweep_check(cfg, list(followed.labels.values()), {"labels": {}})
-    ]
+    # Every label is listed afresh, so the estimate is asked over an empty record (U278).
+    checks = [_sweep_check(cfg, entries, {"labels": {}})]
     stopped_at: str | None = None
     withheld = 0
     with review.open_store(cfg) as store:
-        for entry in list(followed.labels.values()):
+        for entry in entries:
             document = load_record(cfg)
             listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))
-            if listed.skipped is not None:
-                checks.append(_skipped_check(entry, listed.skipped))
-                checks.extend(_listing_checks(entry, listed))
-                seen.append({"label_id": entry.label_id, "state": "skipped"})
-                continue
-            if listed.question is None:
-                checks.append(_nothing_check(entry, listed))
-                checks.extend(_listing_checks(entry, listed))
-                withheld += listed.withheld
-                seen.append({"label_id": entry.label_id, "state": "nothing-new"})
+            withheld += listed.withheld
+            if _unasked(entry, listed, checks, seen):
                 continue
             checks.extend(_listing_checks(entry, listed))
             _save_pending(cfg, listed.question)
             try:
                 answer, picks = _ask(prompter, listed.question)
             except prompt.PromptUnavailable as exc:
-                raise refuse(
-                    "label-sync-unanswerable",
-                    f"the question about {entry.name!r} could not be answered at this "
-                    f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
-                    f"saved and the question is waiting",
-                    steps=(
-                        f"run label sync from a terminal, or drive it with: crate label "
-                        f"sync --next --label {entry.label_id}, then crate label sync "
-                        f"--answer ANSWER --label {entry.label_id}",
-                    ),
-                    origin=("label.sync",),
-                    detail={
-                        "label": entry.label_id,
-                        "answered": [one.label_id for one in answered],
-                    },
-                ) from exc
+                raise _unanswerable(entry, answered, exc) from exc
             if answer == QUIT:
                 stopped_at = entry.label_id
                 seen.append({"label_id": entry.label_id, "state": "unanswered"})
-                checks.append(
-                    _check(
-                        f"label.{entry.label_id}",
-                        "info",
-                        f"{entry.name}: left unanswered; the next run asks again",
-                    )
-                )
+                said = f"{entry.name}: left unanswered; the next run asks again"
+                checks.append(_check(f"label.{entry.label_id}", "info", said))
                 break
             result = record_answer(cfg, store, entry, answer, picks, run_id=ctx.run.run_id)
             answered.append(result)
             seen.append({"label_id": entry.label_id, "state": "answered"})
             checks.append(_answer_check(result))
-    checks.append(
-        _check(
-            "run",
-            "info",
-            f"{len(answered)} label(s) answered"
-            + (f"; stopped at {stopped_at}, run label sync again to go on" if stopped_at else
-               "; every label is answered"),
-        )
+    went = f"; stopped at {stopped_at}, run label sync again to go on" if stopped_at else (
+        "; every label is answered"
     )
+    checks.append(_check("run", "info", f"{len(answered)} label(s) answered{went}"))
     data = {
         "checks": checks,
         "summary": _summary(answered=answered, labels_seen=seen, stopped_at=stopped_at),
     }
     if stopped_at is None:
         # EVERY LABEL WITH SOMETHING NEW IS ANSWERED, so the walk ends at the
-        # one gate over the summary of every saved answer, in this verb (U108).
-        # A walk that stopped asks nothing: the labels after it are unanswered.
-        # THE ESTIMATE IS NOT AN ANSWER (U278), so it is left out of the
-        # lines the go's gate shows as what this walk answered.
+        # one gate over the summary of every saved answer (U108). THE ESTIMATE
+        # IS NOT AN ANSWER (U278), so it is left out of what the gate shows.
         walk = [one["detail"] for one in checks if one["key"] != _ESTIMATE_KEY]
         return _go(ctx, cfg, walk=walk, data=data, wrote=bool(answered or withheld))
     return ctx.envelope(
         data=data,
-        # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question
-        # was saved, its round recorded, and any open item the gate took back
-        # left review. NO_OP is a run that had nothing to ask and wrote nothing.
+        # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question was
+        # saved and its round recorded. NO_OP is a run that wrote nothing.
         outcome=Outcome.OK if answered or stopped_at or withheld else Outcome.NO_OP,
     )
 
@@ -1592,8 +1259,7 @@ def _go(ctx, cfg: config.Config, **kwargs: Any) -> Envelope:
     for the record, and a module scope import each way is a cycle."""
     from cratekit.label import go  # noqa: PLC0415 - see the docstring
 
-    # THE GO SPENDS THE RESERVE (U278), the walk's go too, which runs in this
-    # read mode's command: only as far as the verb's declared writes allow.
+    # THE GO SPENDS THE RESERVE (U278), the walk's go too.
     with provider_gate.spending():
         return go.go(ctx, cfg, **kwargs)
 
@@ -1648,13 +1314,11 @@ def label_sync(ctx) -> Envelope:
         )
     cfg = label_cli._load()
     # ONLY THE GO SPENDS THE HOUR'S RESERVE (U278). Asking, answering and the
-    # walk read the catalogue, so they stop where every read stops, and a
-    # ``--calls`` past the hour's budget is refused here, before the first
-    # call. The walk's go spends the reserve again, through ``_go``.
-    if not args.go:
-        provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
+    # walk stop where every read stops, and a ``--calls`` past the hour's budget
+    # is refused here, before the first call.
     if args.go:
         return _go(ctx, cfg)
+    provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
     if args.answer is not None:
         return _answer(ctx, cfg)
     if args.next_question:
@@ -1663,30 +1327,8 @@ def label_sync(ctx) -> Envelope:
 
 
 __all__ = [
-    "ACTOR",
-    "ALL",
-    "ANSWERED_RULE",
-    "ANSWERS",
-    "BYTES_PER_SECOND",
-    "NOT_NOW",
-    "PICK",
-    "QUIT",
-    "RECORD_VERSION",
-    "SECONDS_PER_TRACK",
-    "SETTLED",
-    "UNLISTED_ESTIMATE",
-    "STOP",
-    "Answered",
-    "Offered",
-    "Question",
-    "asked_releases",
-    "build_sync",
-    "label_sync",
-    "load_record",
-    "record_answer",
-    "record_lock",
-    "settle_in",
-    "size_text",
-    "unsettled",
-    "write_record",
+    "ACTOR", "ALL", "ANSWERED_RULE", "ANSWERS", "BYTES_PER_SECOND", "NOT_NOW", "PICK", "QUIT",
+    "RECORD_VERSION", "SECONDS_PER_TRACK", "SETTLED", "UNLISTED_ESTIMATE", "STOP", "Answered",
+    "Offered", "Question", "asked_releases", "build_sync", "label_sync", "load_record",
+    "record_answer", "record_lock", "settle_in", "size_text", "unsettled", "write_record",
 ]

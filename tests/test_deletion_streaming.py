@@ -1,17 +1,9 @@
 """U243: a rekordbox streaming row is not a local file, and an unmapped one is named.
 
-The live ``crate delete review`` that filed this card refused on 153 active rows
-"this machine cannot resolve". Read from the database, 137 of them were
-rekordbox streaming rows recorded as ``/v4/catalog/tracks/<id>/``, which starts
-with a slash and so reaches the resolver as a path nothing maps, and 16 were old
-laptop paths. A streaming row can name no local file, yet it held every deletion.
-
-What must stay true is the half that protects music: a row that COULD name a
-real file still refuses, so the excusal is the exact streaming spelling, with
-nothing at it on this machine, and every other unmapped row refuses as before,
-now named by its prefix with the rule that would resolve it.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+137 of the 153 rows the live ``crate delete review`` refused on were streaming rows
+recorded as ``/v4/catalog/tracks/<id>/``. Only that exact spelling with nothing at
+it is excused; every other unmapped row still refuses, named by its prefix with the
+rule that would resolve it. D1 applies: nothing here names a real volume or track.
 """
 
 from __future__ import annotations
@@ -60,9 +52,7 @@ def _absent(path):
     raise FileNotFoundError(path)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The reference set
-# ═══════════════════════════════════════════════════════════════════════════
+# 1.
 
 
 def test_a_library_with_streaming_rows_offers_the_removed_file(cfg):
@@ -159,8 +149,7 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
     assert "2 under /Users/someone" in cause.message
     assert "1 under /Old Drive/Music" in cause.message
     steps = " ".join(cause.remediation.steps)
-    # ONE ENTRY TO ADD TO THE LIST, never a second assignment of the key, which
-    # a configuration already holding a rule refuses to load.
+    # One entry to add, never a second assignment of the key.
     assert "to the library.location_prefix_map list" in steps
     assert "location_prefix_map = [" not in steps
     assert 'from = "/Users/someone"' in steps
@@ -179,9 +168,7 @@ def test_a_refusal_names_at_most_five_prefixes_and_counts_the_rest(cfg):
     assert message.count(" under /Drive") == 5
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Through the shipped verb, on a disposable database
-# ═══════════════════════════════════════════════════════════════════════════
+# 2.
 
 
 def _insert_active(db_path: Path, rows: list[tuple[str, str]]) -> None:
@@ -209,9 +196,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
     handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
     try:
         watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle),
-            sequence=40,
-            actor="cli",
+            database_identity=library.database_identity(handle), sequence=40, actor="cli"
         )
     finally:
         rb_writer.close_db(handle)
@@ -222,10 +207,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
             ("2", "/v4/catalog/tracks/11111111/", False, 20, 0, "Streamed 2"),
         ],
     )
-    _insert_active(
-        db_path, [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")]
-    )
-
+    _insert_active(db_path, [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")])
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code == int(ExitCode.DECISION_REQUIRED), err or out
     refused = json.loads(out)
@@ -238,9 +220,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
     assert code == int(ExitCode.OK), err
     code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
     assert code == int(ExitCode.OK), err or out
-    # WHERE THE TRASH IS belongs to the platform, and the Trash tests own it;
-    # what this card owes is that the verb finished: the file was moved and its
-    # removal recorded with where it went.
+    # Where the Trash is belongs to the Trash tests; this owes the move and its record.
     del trash
     assert not music.exists()
     (recorded,) = stores.list_tombstones(review_cli)
@@ -256,9 +236,7 @@ def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows
     handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
     try:
         watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle),
-            sequence=40,
-            actor="cli",
+            database_identity=library.database_identity(handle), sequence=40, actor="cli"
         )
     finally:
         rb_writer.close_db(handle)
@@ -270,7 +248,6 @@ def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows
         ],
     )
     _insert_active(db_path, [("3", "/A Retired Drive/Music/x.flac")])
-
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code != int(ExitCode.OK)
     refused = json.loads(out)

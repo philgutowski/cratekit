@@ -6,13 +6,16 @@ cannot be parsed is refused in the registry's own words and never read as an
 empty registry. The read and the lock are two of the things U298 gave one
 home each, so this is the scenario that holds a state store's words and bytes
 across that move. On the registry verbs suite's own machine, with labels that
-name no real one.
+name no real one. The second scenario drives every other action the verb
+offers, rename, remove, adopt and the kind, genre and Bandcamp fields, and
+their refusals (U308).
 """
 
 from __future__ import annotations
 
 from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
+from tests.test_label_registry_adopt import offer
 from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
 
 OK = int(ExitCode.OK)
@@ -44,3 +47,32 @@ def test_registry_document_written_read_back_and_refused(stage, installed):
     unreadable = stage.json(*VERB, "add", "Third Shore")
     assert unreadable.code != OK, unreadable.stdout
     assert document.read_bytes() == b"{not json"
+
+
+def test_every_registry_action_and_its_refusals(stage, installed):
+    assert stage.crate(*VERB, "add", "Tide Works", "--offer", "4", "--kind", "rnb").code == OK
+    assert stage.crate(*VERB, "add", "Puls", "--bandcamp", "https://Puls.bandcamp.com/music").code == OK
+    assert stage.crate(*VERB, "set", "Puls", "--genre", "Rominimal", "--seed", "id:77").code == OK
+    assert stage.crate(*VERB, "set", "Puls", "--genre", "Polka").code != OK
+    assert stage.crate(*VERB, "set", "Puls", "--genre", "Polka", "--accept-fallback").code == OK
+    assert stage.crate(*VERB, "set", "tide-works", "--kind", "default", "--genre", "default").code == OK
+    assert stage.crate(*VERB, "add", "Other Shore", "--bandcamp", "puls.bandcamp.com").code != OK
+    assert stage.crate(*VERB, "add", "Tide Works").code == OK  # an add of a held label
+    assert stage.crate(*VERB, "add", "Bad Seed", "--seed", "id:x").code != OK
+    assert stage.crate(*VERB, "set", "Puls").code != OK
+    assert stage.crate(*VERB, "rename", "Tide Works", "--to", "Tide Works Recordings").code == OK
+    assert stage.crate(*VERB, "rename", "No Such Label", "--to", "Elsewhere").code != OK
+    assert stage.crate(*VERB, "rename", "Puls").code != OK
+    assert stage.crate(*VERB, "remove", "Puls", "--genre", "Rominimal").code != OK
+    assert stage.crate(*VERB, "remove", "Puls").code == OK
+    assert stage.crate(*VERB, "remove", "Puls").code == OK  # a remove of an absent label
+    stage.crate(*VERB, "list")
+
+    # Adopt: one harvested label accepted in review, one rejected, then a second run.
+    ids = offer(installed, "Northern Harbour", "Second Tide")
+    for item_id, verdict in ((ids["Northern Harbour"], "accepted"), (ids["Second Tide"], "rejected")):
+        assert stage.crate("review", "resolve", item_id, "--verdict", verdict).code == OK
+    assert stage.crate(*VERB, "adopt", "Northern Harbour").code != OK
+    assert stage.crate(*VERB, "adopt").code == OK
+    assert stage.json(*VERB, "adopt").code == OK
+    assert stage.json(*VERB).code == OK

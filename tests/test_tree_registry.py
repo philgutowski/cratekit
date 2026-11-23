@@ -1,34 +1,9 @@
-"""U17: per-tree write medium, the two guards, and the locate set that makes the
-guards' coverage claim true.
+"""U17: per-tree write medium, the two guards, and the locate set that makes coverage true.
 
-FOUR THINGS ARE PROVED HERE, AND THEY FAIL IN FOUR DIFFERENT WAYS.
-
-1. **The registry is library-scoped state that starts entirely on the bridge.**
-   The failure it prevents is a shipped repository carrying one person's cutover
-   flips and one person's row identifiers, which every friend who clones then
-   writes against.
-
-2. **The byte bridge refuses a tree the database owns, for EVERY emitter.** The
-   emitter set is DERIVED from the module twice, by two independent readings, and
-   the two must agree. A hand-listed emitter set is a set that misses the next
-   emitter, and the next emitter would then ship unguarded with a green build.
-
-3. **The database side refuses the inverse, and refuses a registry the database
-   disagrees with.** A mode alone cannot tell a library that has cut over from a
-   library restored from before the cutover, and writing to the second one
-   creates a silent parallel tree.
-
-4. **The locates are consolidated, so the guard cannot be routed around.** A call
-   site that can find a node can splice into it without calling any writer, so
-   the shapes the old call sites used are enumerated below and each one is proved
-   expressible with the primitives here.
-
-A NOTE ON THE FIXTURES. Every display name in this file is synthesized (D1).
-Between them they carry a space, a literal exclamation mark, an ampersand, and an
-accented character in both composition forms, which is the character coverage the
-escaper and the locates actually have to survive. None of them names a real
-volume, a real person, or a real track.
-"""
+The registry is library scoped and starts on the bridge, the byte bridge refuses a database
+tree for every DERIVED emitter, the database side refuses the inverse and a skewed registry,
+and the locates are consolidated so no call site routes around the guard. Every display
+name is synthesized (D1)."""
 
 from __future__ import annotations
 
@@ -51,9 +26,7 @@ from tests.xml_fixtures import _ml_track, _no_bare_lf, _xml_doc
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -85,12 +58,7 @@ def cfg(library):
 
 @pytest.fixture
 def permissive_umask():
-    """Run the body under umask 000, then put the process back.
-
-    A test that does not manipulate the umask cannot see this defect at all: on
-    a machine with umask 022 a plain write lands 0644, which looks fine right up
-    until somebody with a laxer umask runs the same code.
-    """
+    """Run the body under umask 000, since umask 022 hides a missing explicit mode."""
     previous = os.umask(0o000)
     try:
         yield
@@ -100,15 +68,13 @@ def permissive_umask():
 
 # ── synthesized display names (D1) ───────────────────────────────────────────
 
-#: A tree name carrying an ampersand, which the escaper has to encode and the
-#: marker builder has to encode identically or the locate misses the node.
+#: A tree name carrying an ampersand, which escaper and marker builder must encode alike.
 TREE_DISPLAY = "Shelf & Stack"
 #: A folder name carrying a literal exclamation mark and a space.
 FOLDER_DISPLAY = "Loud! Room"
 #: A sub-playlist name carrying an accented character, PRECOMPOSED.
 SUB_DISPLAY = "Café Nights"
-#: The same name DECOMPOSED. macOS stores filenames this way and rekordbox stores
-#: them the other way, so the two forms turn up in one document routinely.
+#: The same name DECOMPOSED, as macOS stores it, so both forms meet in one document.
 SUB_DISPLAY_NFD = unicodedata.normalize("NFD", SUB_DISPLAY)
 
 TREE_ID = "shelf_stack"
@@ -118,15 +84,10 @@ NEW_PLAYLIST = "Batch 001 & 002"
 CUTOVER_ON = date(2026, 8, 1)
 ADOPTED_ROOT = "root-row-7788"
 
-#: The derivation source every cutover in this file records. U36 made it a
-#: required part of a native record, so a fixture that omitted it would be
-#: exercising a shape the registry now refuses to construct.
+#: The derivation source every cutover records, a required part of a native record (U36).
 DERIVATION = tree_registry.DerivationSource.TAXONOMY
 
-#: A track key the fixture sub-playlist already holds. Present so the REMOVAL
-#: emitter has something to remove: driven against an empty self-closing sub it
-#: returns before it reaches its scope, and every guard assertion about it then
-#: compares an unchanged document to an unchanged document.
+#: A key the fixture sub already holds, so the REMOVAL emitter really removes something.
 SEEDED_TRACK = 900
 
 
@@ -180,19 +141,11 @@ def _governed(mode: tree_registry.Mode) -> rbxml.Tree:
     return rbxml.Tree(display=TREE_DISPLAY, id=TREE_ID, registry=_registry(mode))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registry: what it holds, where it lives, how it starts
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_tree_starts_on_the_bridge_and_that_is_not_a_setting(cfg):
-    """The plan's default, asserted from three directions.
-
-    A library with no registry file, a registry with no record for a tree, and a
-    record written with no explicit mode all resolve to the bridge. Anything else
-    would mean a fresh install could be talked into writing a tree natively before
-    that tree had ever been adopted.
-    """
+    """No registry, no record, or no explicit mode all resolve to the bridge."""
     assert tree_registry.DEFAULT_MODE is tree_registry.Mode.XML
     assert tree_registry.read(cfg) is tree_registry.EMPTY
     assert tree_registry.read(cfg).mode("anything_at_all") is tree_registry.Mode.XML
@@ -201,11 +154,7 @@ def test_every_tree_starts_on_the_bridge_and_that_is_not_a_setting(cfg):
 
 
 def test_a_record_carries_the_mode_the_date_and_the_adopted_root(cfg):
-    """All three, because a mode alone cannot detect skew.
-
-    The date places the flip against the snapshots either side of it, and the
-    adopted root is what a later write compares the live library against.
-    """
+    """Mode, date and adopted root, because a mode alone cannot detect skew."""
     tree_registry.record_cutover(
         cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON, source=DERIVATION
     )
@@ -217,12 +166,7 @@ def test_a_record_carries_the_mode_the_date_and_the_adopted_root(cfg):
 
 
 def test_a_native_record_without_an_adopted_root_cannot_be_constructed():
-    """Refused at construction, not at the write that would have needed it.
-
-    A record that says native and names nothing is indistinguishable from a
-    library that never cut over, so the writer would create a root and report
-    success.
-    """
+    """Refused at construction, since native naming nothing reads as never cut over."""
     with pytest.raises(ValueError, match="adopted root"):
         tree_registry.TreeRecord(
             tree_id=TREE_ID, mode=tree_registry.Mode.DATABASE, cutover_on=CUTOVER_ON
@@ -248,12 +192,7 @@ def test_a_cutover_leaves_every_other_tree_alone(cfg):
 
 
 def test_the_persisted_record_is_keyed_on_the_identifier_not_the_display_name(cfg):
-    """R19 and D5, asserted against the BYTES rather than against the API.
-
-    The failure is concrete: rename a folder in rekordbox and every record keyed
-    on its old name is orphaned, and an orphaned record reads as "still on the
-    bridge", which sends the next write to the wrong medium.
-    """
+    """R19 and D5: keyed on the identifier, read from the BYTES, so a rename orphans nothing."""
     tree_registry.record_cutover(
         cfg, TREE_ID, root_id=ADOPTED_ROOT, on=CUTOVER_ON, source=DERIVATION
     )
@@ -265,13 +204,7 @@ def test_the_persisted_record_is_keyed_on_the_identifier_not_the_display_name(cf
 
 
 def test_the_state_entry_is_library_scoped_coupled_and_never_committed():
-    """KTD22 in the three places it has to hold at once.
-
-    Library-scoped so a second installation reads the same answer, COUPLED so a
-    snapshot rolls it back with the database it describes, and ignored by git so
-    it cannot ship. The plan's top-ranked risk is this entry's snapshot coupling,
-    so it is asserted rather than assumed.
-    """
+    """KTD22: library scoped, COUPLED to snapshots, and ignored by git."""
     entry = config.state_file(tree_registry.STATE_KEY)
     assert entry.root is config.StateRoot.LIBRARY
     assert entry.snapshot is config.SnapshotRole.COUPLED
@@ -283,12 +216,7 @@ def test_the_state_entry_is_library_scoped_coupled_and_never_committed():
 def test_the_registry_file_and_the_directories_it_creates_are_private(
     permissive_umask, cfg
 ):
-    """P1: the file mode is meaningless without the directory mode.
-
-    A 0600 file inside a world-writable directory can be unlinked and replaced by
-    any local account, because unlink and rename are governed by the directory.
-    Whoever replaces this file decides which writer runs against a real library.
-    """
+    """P1: the directory mode matters too, since unlink and rename are the directory's."""
     path = tree_registry.write(cfg, _registry(tree_registry.Mode.XML))
     assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
 
@@ -307,14 +235,7 @@ def test_the_registry_file_and_the_directories_it_creates_are_private(
 def test_the_registry_is_read_through_the_effective_config_not_the_file_value(
     tmp_path, monkeypatch
 ):
-    """P2: a check and a consumer must never disagree about their input.
-
-    The configuration FILE names one library root and the environment relocates
-    it to another. A reader that composed its path from the file's value would
-    read a registry the writers never touch, and the two would then disagree about
-    which medium owns a tree, which is the shape that produced a config file
-    validating clean while violating its own invariant.
-    """
+    """P2: the registry is read through the effective config, as the writers read it."""
     written = tmp_path / "written"
     (written / "Music").mkdir(parents=True)
     relocated = tmp_path / "relocated"
@@ -358,11 +279,7 @@ def test_the_registry_is_read_through_the_effective_config_not_the_file_value(
 
 
 def test_an_unreadable_registry_is_its_own_answer_and_not_an_empty_one(cfg):
-    """Collapsing this into "no record" would read as "everything is on the bridge".
-
-    That is the single misreading that sends a byte write at a tree the database
-    already owns, so the unreadable case has to refuse rather than default.
-    """
+    """Unreadable is never "no record", which would send a byte write at a database tree."""
     path = tree_registry.path_for(cfg)
     config.atomic_write_bytes(b"{ not json", path)
     with pytest.raises(tree_registry.TreeRegistryUnreadable) as excinfo:
@@ -382,11 +299,7 @@ def test_a_registry_from_a_newer_build_is_refused_rather_than_guessed_at(cfg):
 
 
 def test_a_record_with_an_unknown_mode_is_refused_rather_than_dropped(cfg):
-    """A dropped record reads as "still on the bridge", which is the wrong medium.
-
-    So a mode this build has never heard of fails the whole read rather than
-    quietly leaving one tree unaccounted for.
-    """
+    """An unknown mode fails the whole read, since a dropped record reads as the bridge."""
     path = tree_registry.path_for(cfg)
     config.atomic_write_bytes(
         json.dumps(
@@ -402,15 +315,7 @@ def test_a_record_with_an_unknown_mode_is_refused_rather_than_dropped(cfg):
 
 
 def test_two_records_for_one_tree_are_refused_rather_than_resolved_by_position(cfg):
-    """A registry that gives two answers for one tree cannot be read at all.
-
-    The concrete file: a merge conflict resolved by keeping both sides, or a
-    restore that concatenated two registries. Records are sorted on the way in
-    and Python's sort is stable, so resolving this would silently mean "whichever
-    line came first", and the first line saying a tree is still on the bridge
-    would send a byte splice at a tree the database already owns while a later
-    line in the same file said so.
-    """
+    """Two answers for one tree fail the read, never resolved by line order."""
     path = tree_registry.path_for(cfg)
     config.atomic_write_bytes(
         json.dumps(
@@ -434,11 +339,7 @@ def test_two_records_for_one_tree_are_refused_rather_than_resolved_by_position(c
 
 
 def test_the_bytes_are_a_function_of_the_content_alone(cfg):
-    """Two writes of the same registry produce identical bytes.
-
-    An unordered dump makes every write a diff even when nothing changed, which
-    is noise in exactly the file somebody opens to find out whether anything did.
-    """
+    """Identical bytes for one registry, so the file only diffs when something changed."""
     registry = tree_registry.EMPTY.with_record(
         tree_registry.TreeRecord(tree_id="zulu")
     ).with_record(tree_registry.TreeRecord(tree_id="alpha"))
@@ -448,9 +349,7 @@ def test_the_bytes_are_a_function_of_the_content_alone(cfg):
     assert first == second
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The emitter guard, over a DERIVED emitter set (P3), cross-checked (P4)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _public_functions() -> dict[str, object]:
@@ -463,9 +362,7 @@ def _public_functions() -> dict[str, object]:
     }
 
 
-#: Methods that mutate the buffer they are called on. A function that calls one
-#: of these on one of its own parameters is writing bytes, and it is doing it
-#: without a subscript assignment anywhere for the syntax walk to catch.
+#: Methods that mutate their buffer, a byte write no subscript walk catches.
 _MUTATING_METHODS = frozenset(
     {"extend", "insert", "append", "clear", "pop", "remove", "__setitem__"}
 )
@@ -474,17 +371,7 @@ _MUTATING_METHODS = frozenset(
 def _byte_writers_by_annotation(
     functions: dict[str, object] | None = None,
 ) -> frozenset[str]:
-    """Every public function that takes a MUTABLE buffer.
-
-    The first of two independent readings of the same question. A parameter whose
-    annotation MENTIONS ``bytearray`` is a buffer the function may write; the
-    locates take ``bytes`` and cannot.
-
-    Mentions, not equals. An annotation of ``bytes | bytearray`` is a mutable
-    buffer with a permissive reading annotation, and an exact match let exactly
-    that spelling through: the emitter was then invisible to this reading, and
-    invisible to the other one too if it mutated through a method call.
-    """
+    """Every public function whose annotation MENTIONS ``bytearray``, the first reading."""
     found = set()
     for name, obj in (_public_functions() if functions is None else functions).items():
         for parameter in inspect.signature(obj).parameters.values():
@@ -495,21 +382,7 @@ def _byte_writers_by_annotation(
 
 
 def _byte_writers_by_source(source: str | None = None) -> frozenset[str]:
-    """Every public function that mutates a parameter, directly or through another.
-
-    The second reading, and it is deliberately structural rather than declared: a
-    function that assigns into, deletes from, or calls a mutating METHOD on one
-    of its own parameters is writing bytes whatever its annotation says. The
-    transitive step matters, because the rating writer mutates nothing itself, it
-    delegates to the shared attribute patcher, and a reading that stopped at
-    direct mutation would call it a locate.
-
-    The method call arm matters for the same reason from the other side. Both
-    readings once looked only for a subscript assignment or a delete, so one
-    ``buf.extend(...)`` was a byte write neither of them could see, and an
-    emitter written that way would have shipped unguarded with a green build,
-    which is the exact claim this file makes.
-    """
+    """Every public function that mutates a parameter, directly, by method, or transitively."""
     tree = ast.parse(
         Path(rbxml.__file__).read_text(encoding="utf-8") if source is None else source
     )
@@ -563,23 +436,12 @@ def _guarded_writers() -> frozenset[str]:
 
 
 def probe_buffer_mutation(buf: "bytes | bytearray", marker: bytes) -> None:
-    """Not a writer and not a test: the shape both readings once missed.
-
-    A permissive annotation and a mutation through a METHOD rather than through a
-    subscript. Added to this file rather than to the package, because its whole
-    job is to be something both derivations have to catch.
-    """
+    """The shape both readings once missed, a permissive annotation and a METHOD mutation."""
     buf.extend(marker)  # type: ignore[union-attr]
 
 
 def test_both_readings_catch_a_buffer_mutated_through_a_method_call():
-    """The hole that made the coverage claim false, pinned from both sides.
-
-    An emitter spelled this way passed the annotation reading, because the
-    annotation was not exactly ``bytearray``, and passed the source reading,
-    because it assigned into nothing. It would have landed unguarded with a green
-    build, which is precisely what point two of this file says cannot happen.
-    """
+    """The hole that made the coverage claim false, pinned from both sides."""
     source = inspect.getsource(probe_buffer_mutation)
     assert "probe_buffer_mutation" in _byte_writers_by_source(source), (
         "the syntax walk sees only subscript writes, so a method call is invisible"
@@ -590,13 +452,7 @@ def test_both_readings_catch_a_buffer_mutated_through_a_method_call():
 
 
 def test_the_two_readings_of_what_writes_bytes_agree():
-    """P4: a derivation is checked against the thing it must cover, or it is a list.
-
-    Two independent readings of the module, one from the signatures and one from
-    the syntax tree. If a writer ever annotates its buffer as immutable, or a
-    locate starts mutating, these disagree and this fails, which is the whole
-    point: the guard's coverage claim rests on the emitter set being complete.
-    """
+    """P4: the two readings agree, since the coverage claim rests on a complete emitter set."""
     by_annotation = _byte_writers_by_annotation()
     by_source = _byte_writers_by_source()
     assert by_annotation == by_source, (
@@ -607,13 +463,7 @@ def test_the_two_readings_of_what_writes_bytes_agree():
 
 
 def test_the_ungoverned_writers_are_a_real_subset_and_take_no_tree():
-    """The declared exceptions have to be exceptions to something that exists.
-
-    A stale name here would silently shrink the guarded set, which is exactly how
-    a hand-kept list stops guarding. Each one also has to be structurally
-    incapable of naming a tree, so it cannot be a governed writer that somebody
-    listed here to avoid the argument.
-    """
+    """The declared exceptions exist and cannot name a tree, so the guarded set never shrinks."""
     writers = _byte_writers_by_annotation()
     assert rbxml.UNGOVERNED_WRITERS <= writers, (
         f"declared ungoverned but not a byte writer: "
@@ -634,9 +484,7 @@ def test_every_guarded_writer_accepts_the_tree_the_guard_is_keyed_on():
         )
 
 
-#: One call per guarded emitter. The test below asserts these keys are EXACTLY
-#: the derived guarded set, so an emitter added without a call here fails the
-#: build rather than shipping unexercised.
+#: One call per guarded emitter, asserted to be EXACTLY the derived guarded set below.
 _CALLABLE_EMITTERS = frozenset(
     {
         "splice_into_subplaylist",
@@ -651,13 +499,7 @@ _CALLABLE_EMITTERS = frozenset(
 
 
 def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
-    """Drive one emitter against the fixture document.
-
-    Every call here has to CHANGE the document, or the guard assertions below
-    prove nothing about it. The removal is the one that had to be arranged: it
-    is given the key the fixture actually holds, because asking it to remove an
-    absent key is a no-op that passes every one of them.
-    """
+    """Drive one emitter so it CHANGES the fixture, or the guard assertions prove nothing."""
     if name == "splice_into_subplaylist":
         return rbxml.splice_into_subplaylist(
             content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree
@@ -669,9 +511,7 @@ def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
     if name == "insert_genre_folder":
         return rbxml.insert_genre_folder(content, NEW_FOLDER, [SUB_DISPLAY], tree=tree)
     if name == "insert_empty_subplaylist":
-        # A name the fixture does NOT already carry. Handed the seeded one this
-        # writer is correctly idempotent and does nothing, which passes the
-        # refusal assertions while proving nothing about them.
+        # A name the fixture lacks, since the seeded one is an idempotent no-op.
         return rbxml.insert_empty_subplaylist(
             content, FOLDER_DISPLAY, NEW_PLAYLIST, tree=tree
         )
@@ -687,11 +527,7 @@ def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
 
 
 def test_every_guarded_emitter_is_actually_exercised():
-    """P3 again, on the fixtures rather than on the code.
-
-    Deriving the emitter set is worth nothing if the table that drives it is
-    allowed to cover only some of them.
-    """
+    """P3 on the fixtures: every derived emitter is in the table that drives it."""
     assert _CALLABLE_EMITTERS == _guarded_writers(), (
         f"emitters with no call fixture: {sorted(_guarded_writers() - _CALLABLE_EMITTERS)}; "
         f"fixtures for something that is not an emitter: "
@@ -701,11 +537,7 @@ def test_every_guarded_emitter_is_actually_exercised():
 
 @pytest.mark.parametrize("emitter", sorted(_CALLABLE_EMITTERS))
 def test_a_byte_write_at_a_database_native_tree_is_refused_by_name(emitter):
-    """The plan's first scenario, for EVERY calling emitter rather than for one.
-
-    The refusal names the tree because a sweep touches several, and a message
-    that does not say which one stopped it leaves the reader to guess.
-    """
+    """The plan's first scenario, for EVERY emitter, naming the tree that stopped it."""
     content = bytearray(_tree_doc())
     before = bytes(content)
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
@@ -717,12 +549,7 @@ def test_a_byte_write_at_a_database_native_tree_is_refused_by_name(emitter):
 
 @pytest.mark.parametrize("emitter", sorted(_CALLABLE_EMITTERS))
 def test_a_byte_write_at_a_tree_still_on_the_bridge_passes(emitter):
-    """The other half. A guard that refused everything would also pass the first test.
-
-    The document has to actually CHANGE. Without that assertion an emitter whose
-    fixture call happens to do nothing passes this, passes the ungoverned case,
-    and passes the byte-for-byte comparison below, all by never writing anything.
-    """
+    """The other half, and the document must actually CHANGE."""
     content = bytearray(_tree_doc())
     before = bytes(content)
     _invoke(emitter, content, _governed(tree_registry.Mode.XML))
@@ -732,13 +559,7 @@ def test_a_byte_write_at_a_tree_still_on_the_bridge_passes(emitter):
 
 @pytest.mark.parametrize("emitter", sorted(_CALLABLE_EMITTERS))
 def test_an_ungoverned_playlist_bypasses_the_guard_entirely(emitter):
-    """P7 in its live form for this unit.
-
-    Most playlists in a real library are somebody's own and this product governs
-    none of them. A guard that refused those would fire on correct code, and a
-    guard that fires on correct code is switched off, and a switched-off guard
-    protects nothing.
-    """
+    """P7: a playlist nobody governs bypasses the guard, or the guard gets switched off."""
     content = bytearray(_tree_doc())
     _invoke(emitter, content, None)
     assert _no_bare_lf(bytes(content))
@@ -752,13 +573,7 @@ def test_an_ungoverned_playlist_bypasses_the_guard_entirely(emitter):
 
 @pytest.mark.parametrize("emitter", sorted(_CALLABLE_EMITTERS))
 def test_an_all_xml_registry_changes_not_one_byte(emitter):
-    """The plan's fifth scenario: goldens are unchanged while everything is on XML.
-
-    Asserted directly as well as through the golden files, because the goldens
-    call the emitters with no tree at all and this compares that call against the
-    governed one. The registry decides whether a write happens, never what it
-    writes.
-    """
+    """The registry decides whether a write happens, never what it writes."""
     ungoverned = bytearray(_tree_doc())
     _invoke(emitter, ungoverned, None)
     governed = bytearray(_tree_doc())
@@ -775,9 +590,7 @@ def test_a_tree_cannot_carry_an_identifier_without_the_registry_that_governs_it(
 
 
 def _two_tree_doc() -> bytes:
-    """Two trees, each holding a folder of the same name holding a sub of the same
-    name, each sub holding the same track key. Nothing but the tree tells them
-    apart, which is the point."""
+    """Two trees told apart by nothing but the tree."""
     return _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -796,11 +609,7 @@ def _two_tree_doc() -> bytes:
 
 
 def test_a_governed_tree_scopes_the_folder_search_to_its_own_subtree():
-    """Naming the tree narrows the anchor as well as arming the guard.
-
-    Two trees may each hold a folder of the same name, and a search across the
-    whole playlist section finds whichever comes first in the document.
-    """
+    """Naming the tree narrows the anchor, as two trees may hold folders of one name."""
     content = bytearray(_two_tree_doc())
     result = rbxml.splice_into_subplaylist(
         content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=_governed(tree_registry.Mode.XML)
@@ -815,12 +624,7 @@ def test_a_governed_tree_scopes_the_folder_search_to_its_own_subtree():
 
 
 def test_a_governed_tree_scopes_a_REMOVAL_to_its_own_subtree_too():
-    """The same narrowing, on the writer that DELETES.
-
-    Splicing into the wrong tree adds a track somebody can see and remove. A
-    removal scoped to the wrong tree takes a track out of a playlist nobody was
-    looking at, and the only evidence is a count that went down.
-    """
+    """The same narrowing on the writer that DELETES, where a wrong tree goes unseen."""
     content = bytearray(_two_tree_doc())
     removed, warning = rbxml.remove_tracks_from_subplaylist(
         content,
@@ -841,17 +645,11 @@ def test_a_governed_tree_scopes_a_REMOVAL_to_its_own_subtree_too():
     assert b'Entries="0"' in out[second:]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The inverse check, and the skew a mode alone cannot see
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_database_writer_refuses_a_tree_still_marked_xml():
-    """The plan's second scenario.
-
-    Until the cutover is recorded the export owns this tree, so a native write
-    lands rows the export knows nothing about and the next import overwrites them.
-    """
+    """The plan's second scenario: until cutover the export owns the tree."""
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
         tree_registry.refuse_database_write(TREE_ID, _registry(tree_registry.Mode.XML))
     assert excinfo.value.tree_id == TREE_ID
@@ -875,12 +673,7 @@ def test_the_anchored_root_is_returned_when_the_library_actually_has_it():
 
 
 def test_a_restored_pre_cutover_database_refuses_rather_than_forking_the_tree():
-    """The failure the adopted root identifier exists to catch.
-
-    A snapshot taken before the cutover, restored under a registry that was not
-    rolled back with it. The mode still says native, so a writer that trusted the
-    mode alone would create a second root beside the real one and report success.
-    """
+    """A restored pre-cutover database refuses, as the mode alone would fork the root."""
     with pytest.raises(tree_registry.RegistrySkew) as excinfo:
         tree_registry.anchored_root(
             TREE_ID,
@@ -893,11 +686,7 @@ def test_a_restored_pre_cutover_database_refuses_rather_than_forking_the_tree():
 
 
 def test_the_anchor_check_refuses_a_tree_on_the_bridge_before_it_looks_anything_up():
-    """Three failures, three refusals, and the order matters.
-
-    Reporting "no such root" for a tree that has not cut over would send somebody
-    looking in the database for a row that was never supposed to exist.
-    """
+    """Three failures, three refusals, the bridge checked before any lookup."""
     looked_up = []
 
     def watcher(root_id):
@@ -912,12 +701,7 @@ def test_the_anchor_check_refuses_a_tree_on_the_bridge_before_it_looks_anything_
 
 
 def _called_names(module: ast.Module) -> set[str]:
-    """Every name that is CALLED in a module, by attribute or by bare name.
-
-    Calls rather than mentions. A guard satisfied by a mention is satisfied by a
-    local variable of that name, which is the hand-rolled duplicate it exists to
-    forbid, wearing the right label.
-    """
+    """Every name CALLED in a module, since a mere mention could be a local duplicate."""
     out: set[str] = set()
     for node in ast.walk(module):
         if not isinstance(node, ast.Call):
@@ -946,17 +730,7 @@ def _imports_module(module: ast.Module, dotted: str) -> bool:
 
 
 def test_the_database_tree_writer_uses_the_shared_anchor_assertion():
-    """P5: a docstring saying a later unit will call this is a wish.
-
-    This is the countdown. The moment the tree writers land, this arms and fails
-    unless they CALL the shared assertion rather than hand-rolling their own
-    check. Two implementations of one rule is how they come to disagree, and the
-    disagreement here costs a user a duplicated tree.
-
-    A call, and an import of the module the call has to come from. Asserting that
-    the token appears somewhere in the syntax tree would be satisfied by a local
-    variable named after it, which is exactly the hand-rolled check this forbids.
-    """
+    """P5: the tree writers CALL the shared assertion, imported from its module."""
     from cratekit.write import trees
 
     module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
@@ -973,16 +747,7 @@ def test_the_database_tree_writer_uses_the_shared_anchor_assertion():
 
 
 def test_every_bridge_call_in_the_tree_writers_names_the_tree_it_targets():
-    """The other half of P5, and the half the guard's whole value rests on.
-
-    The emitter guard only fires when a call site passes ``tree=``. Every emitter
-    defaults it to None, correctly, because most playlists in a real library are
-    somebody's own and are governed by nothing. The consequence is that a routing
-    splice which simply omits the argument is refused by nothing at all, and after
-    a cutover it keeps splicing an export for a tree the database owns. Recording
-    that obligation in a docstring is a wish; this is the countdown that collects
-    it the moment the call sites land.
-    """
+    """P5: every bridge call passes ``tree=``, since an omitted one is refused by nothing."""
     from cratekit.write import trees
 
     guarded = _guarded_writers()
@@ -1005,17 +770,11 @@ def test_every_bridge_call_in_the_tree_writers_names_the_tree_it_targets():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # KTD14: the pinned intake shape, and the depth the bridge cannot express
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_taxonomy_nesting_deeper_than_the_bridge_encodes_is_refused_by_name():
-    """The plan's third scenario.
-
-    Refused rather than written at an indent no later locate finds, which reads
-    to the user as a sweep that ran and changed nothing.
-    """
+    """The plan's third scenario, refused rather than written at an unfindable indent."""
     declared = taxonomy.default_taxonomy()
     deeper = replace(declared, tree_depth=rbxml.TREE_DEPTH + 1)
     with pytest.raises(rbxml.TreeTooDeep) as excinfo:
@@ -1028,28 +787,12 @@ def test_a_taxonomy_nesting_deeper_than_the_bridge_encodes_is_refused_by_name():
 
 
 def test_the_depth_the_bridge_encodes_and_the_depth_a_template_may_declare_are_one():
-    """Two modules, one number, and nothing but this holding them together.
-
-    The taxonomy loader refuses a template at any other depth and blames the XML
-    bridge's indentation for it; the bridge encodes that indentation. They cannot
-    import each other, since the bridge already imports the taxonomy, so the pair
-    is pinned here. Let them drift and a template loads at a depth the writer
-    emits at an indent no later locate finds, with each module's own tests green.
-    """
+    """Two modules that cannot import each other share one depth, pinned here."""
     assert rbxml.TREE_DEPTH == taxonomy.SUPPORTED_TREE_DEPTH
 
 
 def test_the_bridge_refuses_only_deeper_and_the_template_loader_owns_the_rest():
-    """The bridge's own comparison is one sided, on purpose.
-
-    Deeper would emit at an indent no later locate finds, so the bridge refuses
-    it. Shallower is findable, because the indent is derived from the depth
-    rather than pinned, so the bridge does not refuse it and this asserts that it
-    does not. How many levels a TEMPLATE may declare is a different question with
-    a different owner: the loader takes one depth and refuses every other, which
-    is asserted where the loader lives. A ``Taxonomy`` is still a value a caller
-    can build without the loader, which is why this guard is not redundant.
-    """
+    """The bridge refuses only deeper, and the template loader owns the rest."""
     declared = taxonomy.default_taxonomy()
     shallower = replace(declared, tree_depth=rbxml.TREE_DEPTH - 1)
     rbxml.assert_bridge_can_serve(shallower)
@@ -1059,12 +802,7 @@ def test_the_bridge_refuses_only_deeper_and_the_template_loader_owns_the_rest():
 
 
 def test_the_intake_tree_is_pinned_and_survives_a_taxonomy_the_bridge_refuses():
-    """KTD14, and it is the whole reconciliation.
-
-    Intake is one folder holding one playlist per arriving batch. Its shape is
-    fixed here, so a taxonomy whose ROUTING tree the bridge cannot express still
-    has a working intake tree, and a user definable taxonomy costs nothing.
-    """
+    """KTD14: intake is pinned, so a taxonomy the bridge refuses still has an intake tree."""
     declared = taxonomy.default_taxonomy()
     deeper = replace(declared, tree_depth=rbxml.TREE_DEPTH + 4)
     intake = rbxml.intake_tree(deeper, tree_registry.EMPTY)
@@ -1073,15 +811,7 @@ def test_the_intake_tree_is_pinned_and_survives_a_taxonomy_the_bridge_refuses():
 
 
 def test_the_two_tree_constructors_cannot_produce_an_ungoverned_tree_by_default():
-    """These build the exact trees the registry exists to govern.
-
-    A default registry would hand a caller who omitted one argument a tree with
-    no governance at all, which passes the emitter guard in silence. That is the
-    same hole ``Tree.__post_init__`` refuses one level down, so offering it here
-    would be refusing the shape in one place and manufacturing it in the other.
-    A caller with nothing loaded yet says ``EMPTY``, which reads "nothing is
-    recorded, so every tree is still on the bridge" and can be checked.
-    """
+    """No default registry, which would make an ungoverned tree pass in silence."""
     declared = taxonomy.default_taxonomy()
     for factory in (rbxml.routing_tree, rbxml.intake_tree):
         with pytest.raises(TypeError):
@@ -1093,12 +823,7 @@ def test_the_two_tree_constructors_cannot_produce_an_ungoverned_tree_by_default(
 
 
 def test_the_intake_playlist_lands_at_the_pinned_indent():
-    """The pinned shape, asserted as bytes.
-
-    One folder, its playlists one level in, their track keys one level further.
-    Derived from the pinned depth rather than from three constants, so this test
-    fails if either the derivation or the pin moves.
-    """
+    """The pinned shape as bytes, derived from the pinned depth."""
     doc = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -1119,12 +844,7 @@ def test_the_intake_playlist_lands_at_the_pinned_indent():
 
 
 def test_a_second_intake_run_replaces_rather_than_duplicating():
-    """Every write here is re-runnable, so none of them appends a second copy.
-
-    This diverges deliberately from the system being replaced, which appended and
-    relied on each batch having a unique name. A re-run there produced two
-    playlists with one name, and the count then disagreed with the children.
-    """
+    """Every write is re-runnable, so none appends a second copy."""
     doc = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -1144,11 +864,7 @@ def test_a_second_intake_run_replaces_rather_than_duplicating():
 
 
 def test_the_indent_derivation_reproduces_the_pinned_widths():
-    """The derivation has to land exactly where the format already is.
-
-    These four numbers are what every splice anchors on, so deriving them is only
-    safe if the derivation agrees with the document rekordbox writes.
-    """
+    """The derivation must land on the widths every splice anchors on."""
     assert [rbxml.indent_at(depth) for depth in range(5)] == [4, 6, 8, 10, 12]
     assert rbxml.SUB_CLOSE_INDENT == 10
     assert rbxml.TRACK_INDENT == 12
@@ -1156,21 +872,10 @@ def test_the_indent_derivation_reproduces_the_pinned_widths():
         rbxml.indent_at(-1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The consolidated locates: every shape the old call sites used
-# ═══════════════════════════════════════════════════════════════════════════
 
-#: THE INVENTORY. Every distinct byte-level LOCATE shape found in the system
-#: being replaced, and the primitive here that covers it. The claim "the guard
-#: lives in the byte writers" is only true while a call site cannot find a node
-#: without this module, so the shapes are enumerated from the source rather than
-#: guessed at, and each names its cover.
-#:
-#: The inventory was taken from the two byte engines and the eight call sites
-#: that scan an export: the shared byte writer, the reduced-export builder, the
-#: whole-label subtree inserter, the vocal sub-playlist creator, the intake
-#: splice, the genre attribute patcher, the intake rotation report, and the
-#: unplaced sweep.
+#: THE INVENTORY: every byte-level LOCATE shape in the replaced system and the primitive
+#: covering it, so no call site needs a scan of its own.
 LOCATE_SHAPES: dict[str, tuple[str, ...]] = {
     "the playlist section's bounds, so no name search begins at byte zero": (
         "playlists_span",
@@ -1209,12 +914,7 @@ LOCATE_SHAPES: dict[str, tuple[str, ...]] = {
 
 
 def test_every_locate_shape_names_a_primitive_that_exists():
-    """The inventory is checked against the module, not trusted.
-
-    A shape whose cover was renamed away, or was never written, is a call site
-    that will have to invent its own scan, and an invented scan is a byte write
-    the guard never sees.
-    """
+    """The inventory is checked against the module, so no call site invents a scan."""
     for shape, primitives in LOCATE_SHAPES.items():
         for name in primitives:
             assert callable(getattr(rbxml, name, None)), (
@@ -1223,28 +923,14 @@ def test_every_locate_shape_names_a_primitive_that_exists():
 
 
 def test_the_section_probe_answers_from_the_document_and_not_from_a_constant():
-    """The one cover in the inventory nothing else exercises.
-
-    A cover proved only to be callable is a cover that can answer -1 for every
-    document ever handed to it and still be listed as the reason a call site does
-    not need its own scan.
-    """
+    """The one cover in the inventory nothing else exercises."""
     doc = _tree_doc()
     assert rbxml.playlists_start(doc) == doc.index(b"<PLAYLISTS>")
     assert rbxml.playlists_start(b"<DJ_PLAYLISTS>\r\n</DJ_PLAYLISTS>\r\n") == -1
 
 
 def test_a_raw_angle_bracket_in_a_display_name_does_not_unanchor_the_document():
-    """The character class the depth walks used to be bounded by.
-
-    An attribute value may legally carry a '>', and an export written by an
-    escaper that handles only the other three characters carries one. Bounding an
-    open tag with a plain search for the next '>' stops inside the NAME, reads a
-    self closed node as an opening, and hands back a close tag belonging to an
-    ancestor. Both halves of the damage are asserted: the document stops
-    resolving at all, and a splice that still reports success lands in a DIFFERENT
-    folder from the one it was given.
-    """
+    """A legal '>' in a name must not end an open tag and misplace a splice."""
     doc = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -1271,21 +957,13 @@ def test_a_raw_angle_bracket_in_a_display_name_does_not_unanchor_the_document():
 
 
 def test_a_name_search_is_never_allowed_to_default_to_byte_zero():
-    """The one locate every historical mis-anchor came through.
-
-    ``start`` has no default on purpose, so the shape that produced three silent
-    routing failures cannot be written by accident.
-    """
+    """``start`` has no default, so the historic mis-anchor cannot be written by accident."""
     parameters = inspect.signature(rbxml.find_node).parameters
     assert parameters["start"].default is inspect.Parameter.empty
 
 
 def test_the_locates_read_attributes_in_either_order():
-    """Two writers matched the same node with the attributes in opposite orders.
-
-    Each one silently found nothing in the other's output, and the sweep that
-    found nothing reported success.
-    """
+    """Attribute order differs between writers, and a miss reads as a successful sweep."""
     doc = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -1311,11 +989,7 @@ def test_the_locates_read_attributes_in_either_order():
 
 
 def test_the_escaper_and_its_inverse_round_trip_every_character_class():
-    """D1's character coverage, asserted on the pair rather than on one side.
-
-    A name read out of a document has to compare equal to the name a caller
-    passed in, or every idempotency check silently stops matching.
-    """
+    """D1: a name read back must equal the name passed in, or idempotency stops matching."""
     for name in (TREE_DISPLAY, FOLDER_DISPLAY, SUB_DISPLAY, SUB_DISPLAY_NFD, NEW_PLAYLIST):
         assert rbxml.xml_unescape_attr(rbxml.xml_escape_attr(name)) == name
     assert rbxml.xml_escape_attr("a & b") == "a &amp; b"
@@ -1325,13 +999,7 @@ def test_the_escaper_and_its_inverse_round_trip_every_character_class():
 
 
 def test_the_two_composition_forms_are_two_different_nodes():
-    """Recorded rather than fixed here, and the distinction is deliberate.
-
-    This is a BYTE splicer: it finds the bytes it was given. Folding the two forms
-    together would make a locate match a node whose bytes differ from the ones it
-    would then patch. Normalizing a path before comparing is the locations
-    module's job, and it is where the composition-form rule already lives.
-    """
+    """A BYTE splicer finds the bytes given, so folding forms is the locations module's job."""
     doc = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -1351,12 +1019,7 @@ def test_the_two_composition_forms_are_two_different_nodes():
 
 
 def test_the_tree_walk_reports_a_display_path_for_every_node():
-    """The index a document-to-document diff needs, built once here.
-
-    Two call sites in the old system built their own, one by counting indent
-    characters, and an indent count is wrong the moment a tree of another depth
-    turns up.
-    """
+    """The index a document diff needs, built once rather than by counting indents."""
     doc = _tree_doc()
     root = rbxml.root_node(doc)
     assert root is not None
@@ -1371,13 +1034,7 @@ def test_the_tree_walk_reports_a_display_path_for_every_node():
 
 
 def test_a_collection_track_is_bounded_by_its_real_close_not_the_next_slash_bracket():
-    """The multi line track element, and the token that gets it wrong.
-
-    A real export writes a track's attributes across five lines and closes it with
-    its own tag. Bounding it by the next self-closing token lands inside the very
-    same track when it carries analysis data, and the patch that follows then
-    rewrites something rekordbox authored.
-    """
+    """A track is bounded by its own close tag, so a patch never rewrites rekordbox's data."""
     doc = _xml_doc(
         collection=[
             '  <COLLECTION Entries="2">',
@@ -1409,13 +1066,7 @@ def test_a_track_id_never_matches_a_longer_one():
 
 
 def test_an_attribute_patch_never_reaches_into_the_next_element():
-    """The fixed-size window, reproduced, and refused.
-
-    The version this ports scanned a fixed number of bytes forward from the id
-    for the attribute it wanted. A track that did not carry that attribute meant
-    the scan ran on into the FOLLOWING track and patched its value instead, and
-    the user saw a change on a track they had never named.
-    """
+    """A patch never scans into the FOLLOWING track for an attribute this one lacks."""
     without_rating = [
         '    <TRACK TrackID="700" Name="No Rating Here" Artist="A"',
         '           Location="file://localhost/x.flac" Mix="">',
@@ -1440,11 +1091,7 @@ def test_an_attribute_patch_never_reaches_into_the_next_element():
 
 
 def test_rekordbox_authored_analysis_survives_a_rating_patch_verbatim():
-    """R17's other half: never create a grid, and never destroy one either.
-
-    A user who has analysed their library owns something worth more than the
-    files. Anything that rewrites an export hands every byte of it back.
-    """
+    """R17's other half: never create a grid, and never destroy one either."""
     analysed = _ml_track(101, "One Track", analyzed=True)
     grid_line = next(line for line in analysed if line.strip().startswith("<TEMPO"))
     content = bytearray(
@@ -1471,11 +1118,7 @@ def test_rekordbox_authored_analysis_survives_a_rating_patch_verbatim():
 
 
 def test_a_missing_section_is_a_warning_and_never_a_corrupting_slice():
-    """Every failure path returns a warning rather than feeding -1 into a slice.
-
-    A slice with a -1 in it does not fail, it writes to the wrong place, and in
-    this format that is a document nobody can import.
-    """
+    """Every failure returns a warning, since a -1 slice writes to the wrong place."""
     content = bytearray(b"<DJ_PLAYLISTS>\r\n</DJ_PLAYLISTS>\r\n")
     before = bytes(content)
     result = rbxml.splice_into_subplaylist(content, FOLDER_DISPLAY, SUB_DISPLAY, [1])

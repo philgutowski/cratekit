@@ -230,11 +230,8 @@ def test_unpack_flattens_audio_and_leaves_the_rest(tmp_path):
     landed = tmp_path / "release.zip"
     landed.write_bytes(
         archive({
-            "A - B - 01 One.flac": b"1",
-            "inner/A - B - 02 Two.flac": b"2",
-            "../escape.flac": b"3",
-            "cover.jpg": b"art",
-            ".hidden.flac": b"4",
+            "A - B - 01 One.flac": b"1", "inner/A - B - 02 Two.flac": b"2", "../escape.flac": b"3",
+            "cover.jpg": b"art", ".hidden.flac": b"4",
         })
     )
     into = tmp_path / "out"
@@ -423,8 +420,7 @@ def test_the_stat_request_refusing_the_session_is_rejected(tmp_path):
     [
         ('attachment; filename="Coral Arc - Don\'t Stop.flac"', "Coral Arc - Don't Stop.flac"),
         ('attachment; filename="A; B.flac"', "A; B.flac"),
-        ('attachment; filename=".hidden.zip"', ""),
-        ("attachment", ""),
+        ('attachment; filename=".hidden.zip"', ""), ("attachment", ""),
     ],
     ids=["apostrophe", "semicolon", "leading-dot", "no-name"],
 )

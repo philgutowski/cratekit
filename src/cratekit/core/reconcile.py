@@ -1,67 +1,23 @@
 """What a restore could not undo, and the refusal that stands until somebody says.
 
-A KTD21b restore is a state transition rather than a file copy. It returns the
-database and the state coupled to it to one matched earlier point, so the
-registry, the watermarks, the tombstones and the declines all agree with the rows
-they describe. That agreement is real and it is not convergence, because agreeing
-with each other is not the same as agreeing with the world:
+A KTD21b restore makes the database and its coupled state agree with each
+other, not with the world: downloaded audio stays on the volume, a playlist
+renamed at the provider stays renamed, and a tombstoned file stays in the
+Trash. This module names each one and refuses every further destructive
+session until a person disposes of it, surviving process, machine and restore.
 
-* the audio a discarded run downloaded is still on the music volume, and the next
-  acquisition pass reads those files as owned by nobody;
-* the playlist that run renamed at the provider is still renamed, so the marker
-  saying "already taken" lives on somebody else's server and did not roll back;
-* the file a discarded tombstone recorded is still in the Trash, and the library
-  now holds a row for a file nobody can open.
+The marker set is DERIVED from ``config.RollbackEffect`` on the inventory
+(P4). Every read then write cycle holds a sibling lock in its own
+NEVER_RESTORED entry, so a restore cannot swap its inode. The reader
+recognizes the document positively and refuses everything else, since an
+empty store would read as "nothing outstanding".
 
-None of those is repairable from here. What IS possible is to name every one of
-them, to refuse every further destructive session until a person has said what
-they want done about each, and to make that refusal survive the process, the
-machine, and the next restore. That is this module.
+Tree shortness is owned by ``core.convergence``, and ``core.restore`` hands
+trees there, but a tree marker found here still latches (see
+:func:`assert_converged`).
 
-THREE PROPERTIES, AND EACH ONE IS A DEFECT THIS REPOSITORY HAS ALREADY PAID FOR.
-
-**The marker set is DERIVED from the state inventory** (P4). Each COUPLED entry
-declares what its records caused outside the coupled set, in
-``config.RollbackEffect``, and this module asks the inventory rather than
-carrying a list. A list here would be right on the day it was written and silent
-about every entry added afterwards, which is the failure mode that makes a
-derivation worth building in the first place.
-
-**Every read then write cycle is under a sibling lock.** ``atomic_write_bytes``
-makes the rename atomic and does nothing for the cycle around it, so two
-processes both read the same set, both add their own record, and the second
-rename discards the first one's while the losing call returns a record reporting
-success. Two separate units shipped exactly that bug. The lock is its own
-NEVER_RESTORED inventory entry rather than a file beside the document, because
-the process replacing directories during a restore is the process holding this
-lock, and a lock whose inode gets swapped underneath its holder is exclusion
-disappearing mid-session with nothing raised.
-
-**The reader recognizes the document positively, field by field**, and refuses
-everything else. Catching only ``json.loads`` raising leaves a top-level list, a
-scalar, a null field, or records under a version this build does not know all
-reading as an empty store, and an empty store here means "nothing is
-outstanding", which is the permissive answer to the one question this module
-exists to answer conservatively.
-
-WHAT THIS MODULE DOES NOT OWN: WHETHER A TREE IS SHORT. ``core.convergence``
-owns that fact. It holds the same condition arriving from the other direction, a
-database recovered out of band, gates it per tree at the writer, and clears it
-only on a convergence check that found no difference. ``core.restore`` hands the
-trees to that module whenever it is present, so on a complete build this store
-holds no tree markers at all. It still LATCHES on one if it finds one, because a
-marker written by a build that had this record and not that one outlives the
-merge, and a fact recorded in a store nothing reads is worse than no record.
-See :func:`assert_converged` for why latching on it does not condemn its remedy.
-
-LAYER: infrastructure. It reads configuration, does input and output, names no
-verb, and carries remediation TOKENS and steps rather than any text a user types
-(D2). It deliberately does NOT import the tree registry, and for the same reason
-it does not import ``core.convergence``: both are ranked write, this one is
-imported by the session boundary below them, and a marker carries a tree's stable
-identifier rather than anything either has to resolve. The handoff to the module
-that owns the gate is therefore made by ``core.restore``, which is ranked write
-and may name it.
+LAYER: infrastructure, carrying remediation TOKENS and steps (D2). It imports
+neither the tree registry nor ``core.convergence``, both ranked above it.
 """
 
 from __future__ import annotations
@@ -84,52 +40,24 @@ from cratekit.core.exit_codes import Remedy
 
 logger = logging.getLogger(__name__)
 
-#: The state entry holding the record. Named once so this module and every
-#: consumer cannot disagree about which file is meant.
+#: The state entry holding the record.
 STATE_KEY = "restore_reconciliation"
 
-#: Its sibling lock, in an entry of its own. See the module docstring.
+#: Its sibling lock, in an entry of its own.
 LOCK_KEY = "restore_reconciliation_lock"
 
-#: Bumped only when the record's on-disk shape changes incompatibly. A document
-#: written by a later build is refused rather than guessed at: a wrong reading
-#: here reports a library as converged when it is not.
+#: Bumped only on an incompatible change; a later document is refused, not guessed.
 SCHEMA_VERSION = 1
 
 
 class Kind(StrEnum):
     """The three things a restore leaves behind, which are not the same thing.
 
-    An EFFECT is something that happened outside the coupled set and did not roll
-    back with it. A person dispositions it: they either accept it as it stands or
-    they go and repair it by hand, and either way the answer is a sentence about
-    one fact.
-
-    An IN-FLIGHT RESTORE is the record that one started and has not been seen to
-    finish. It is written before the first destructive step and retracted by the
-    step that completes, so a process killed in the middle leaves it standing, and
-    a library whose database and coupled state are at different generations
-    refuses every ordinary destructive session instead of looking finished. Seven
-    of the twelve coupled entries declare ``RollbackEffect.NONE``, so a restore
-    whose window touched only those produces no effect markers at all, and without
-    this latch such a restore could be interrupted half way and leave no trace
-    anywhere that anything reads.
-
-    An UNCONVERGED TREE is not a fact about the outside world at all. It is a
-    tree whose membership the database can no longer be trusted to hold, because
-    the restore landed on the far side of that tree's cutover. Nothing a person
-    says repairs it; only a full-scope rebuild does. Collapsing it with an effect
-    would let somebody disposition a tree away with a sentence, which is exactly
-    the escape R39 refuses.
-
-    THE TREE KIND IS TRANSITIONAL AND ITS OWNER IS ELSEWHERE. ``core.convergence``
-    owns tree shortness: it holds the same fact for an out-of-band recovery, gates
-    it per tree at the writer, and clears it only on a convergence check.
-    ``core.restore`` hands the trees to that module whenever it is present, so on
-    a complete build no marker of this kind is ever written. What remains here is
-    a marker written before that module existed, which outlives the merge and is
-    closed by the first rebuild of that tree. It is latched all the same, because
-    a fact recorded in a store nothing reads is worse than no record at all.
+    An EFFECT happened outside the coupled set and a person disposes of it. An
+    IN-FLIGHT RESTORE is written before the first destructive step and retracted
+    on completion, so a killed restore still refuses. An UNCONVERGED TREE is
+    closed only by a rebuild, never a sentence (R39); its owner is now
+    ``core.convergence``, and an old marker still latches.
     """
 
     EFFECT = "effect"
@@ -140,18 +68,9 @@ class Kind(StrEnum):
 class Disposition(StrEnum):
     """What a person decided about one marker.
 
-    ``ACCEPTED`` means "leave it as it is, I know". ``REPAIRED`` means "I went and
-    put it right". Both close the marker, and they are kept apart because the
-    difference is the only thing a later reader can use to tell a library that
-    was tidied from one that was merely acknowledged.
-
-    DELIBERATELY NOT CALLED ``Verdict``. ``core.review`` already exports a
-    ``Verdict`` whose members are ACCEPTED and REJECTED, and the two enums share
-    a member spelling while meaning different things about different objects.
-    Both are string enums, so one passed where the other belongs compares equal
-    to a stored value and nothing raises. One name for two ideas is the shape
-    this repository keeps finding after the fact, so it is spelled apart here
-    rather than recorded as a known collision.
+    ``ACCEPTED`` and ``REPAIRED`` both close it and are kept apart for later
+    readers. Not ``Verdict``, which ``core.review`` already exports with a
+    clashing member spelling.
     """
 
     ACCEPTED = "accepted"
@@ -162,37 +81,11 @@ class Disposition(StrEnum):
 class Marker:
     """One thing a restore could not undo, addressable and persisted.
 
-    ``identity`` is a STABLE IDENTIFIER and never a derived display name (R19,
-    D5). For an effect it is the state entry's inventory key, which is chosen by
-    this product and cannot be renamed by a user; for an unconverged tree it is
-    the taxonomy's tree identifier. A marker keyed on anything a person can
-    rename diverges after the rename instead of converging, and the divergence is
-    invisible: the code simply finds no entry and reports convergence.
-
-    ``marker_id`` is composed from the kind, the identity, the effect AND THE
-    RESTORE THAT OBSERVED IT rather than minted randomly, so recording the same
-    marker twice for ONE restore is idempotent rather than a second row somebody
-    has to close twice, while two different restores that happen to produce the
-    same triple stay two rows.
-
-    THE RESTORE HAS TO BE PART OF THE IDENTIFIER, and leaving it out was a defect
-    with two shapes, both verified. Restore 1 marks ``label_watermarks`` and a
-    person accepts it; weeks later restore 2 discards an entirely different window
-    over an entirely different set of orphaned files and produces the same triple.
-    Without the session and the capture in the key, :func:`record_markers` sees a
-    row already there, leaves the CLOSED record alone, and reports nothing
-    outstanding: the audio restore 2 discarded is owned by nobody and nobody is
-    told. The second shape is worse, because it survives the correct remedy. A
-    pre-cutover restore marks a tree, somebody rebuilds it and closes it REPAIRED,
-    the tree cuts over again, and a second pre-cutover restore of the same tree is
-    swallowed by the closed record of the first. One rebuild would pay for every
-    later restore of that tree, and an incremental sync structurally cannot see
-    the gap it leaves.
-
-    A marker with no session and no capture, which is what a caller building one
-    by hand gets, keys on ``-`` in both positions and therefore still collapses.
-    That is the right default: an unattributed marker is a marker nobody can date,
-    and two of them are not distinguishable by anything this module can read.
+    ``identity`` is a stable identifier, never a display name (R19, D5).
+    ``marker_id`` is composed from kind, identity, effect AND THE RESTORE THAT
+    OBSERVED IT, so recording twice for one restore is idempotent while a later
+    restore is never swallowed by an earlier closed record. An unattributed
+    marker keys on ``-`` and still collapses.
     """
 
     kind: Kind
@@ -248,35 +141,21 @@ class Record:
 
 
 def path_for(cfg: config.Config) -> Path:
-    """Where the record lives, resolved through the declared state inventory.
-
-    Through ``state_path`` and never composed here. A module that builds its own
-    path under a state root has invented a state file the inventory does not know
-    about, so nothing walking the inventory can see it, back it up, or reason
-    about whether a restore replaces it.
-    """
+    """Where the record lives, resolved through the declared state inventory."""
     return config.state_path(STATE_KEY, cfg)
 
 
 def lock_path(cfg: config.Config) -> Path:
     """The sibling lock, resolved the same way and living somewhere else.
 
-    Somewhere else is not an accident of naming. The lock entry is declared
-    NEVER_RESTORED and the record entry SURVIVES_ROLLBACK, and ``state_path``
-    derives each entry's directory from that answer, so the two land in different
-    directories by construction. A lock beside the document it guards is one a
-    restore can swap the inode of, which is the shape U11 paid for.
+    It is NEVER_RESTORED and the record SURVIVES_ROLLBACK, so they land in
+    different directories and a restore cannot swap the lock's inode (U11).
     """
     return config.state_path(LOCK_KEY, cfg)
 
 
 def _unusable(cfg: config.Config, what: str) -> CratekitError:
-    """One refusal for every way this document is not this document.
-
-    The same sentence in each case, deliberately: what a person does about it
-    does not depend on WHICH way the file is wrong, and the specific shape rides
-    on the detail where a bug report can read it.
-    """
+    """One refusal for every way this document is not this document."""
     return refuse(
         "restore-record-unusable",
         f"the restore reconciliation record at {path_for(cfg).name} could not be "
@@ -296,26 +175,9 @@ def _unusable(cfg: config.Config, what: str) -> CratekitError:
 def _assert_library_is_readable(cfg: config.Config) -> None:
     """Refuse a READ when the library this record belongs to is not there at all.
 
-    A MISSING FILE ON A MISSING VOLUME IS NOT AN EMPTY STORE, and the empty
-    reading is the permissive answer to the one question this module exists to
-    answer conservatively.
-
-    THIS IS THE WEAK HALF AND ITS LIMIT IS STATED RATHER THAN IMPLIED. The
-    directory a volume was mounted at survives the unmount on every platform, so a
-    library root can exist with everything under it gone, and from inside this
-    function that state is INDISTINGUISHABLE from a library this installation has
-    been pointed at and has not yet written to. Both are "the root is there and
-    the document is not". A stricter rule here was tried and refused the fresh
-    install, which is a guard firing on correct behaviour and therefore a guard
-    people route around (P7).
-
-    WHAT ACTUALLY CLOSES THE GAP is upstream, at the two gates that have both the
-    recorded volume identity and the seams to ask about it:
-    ``session.assert_gates`` asserts the volume before it reaches this module at
-    all, and ``session.close_session`` now does the same before its convergence
-    gate, which was the one caller that did not. The write half below is separately
-    strict, because a write is proof that something is being recorded and has no
-    fresh-install reading.
+    A missing file on a missing volume is not an empty store. An empty mount
+    point cannot be told from a fresh install here (P7), so the volume is
+    asserted upstream by ``session.assert_gates`` and ``session.close_session``.
     """
     root = Path(cfg.library.root)
     if not root.is_dir():
@@ -327,20 +189,8 @@ def _assert_library_is_readable(cfg: config.Config) -> None:
 def _assert_library_is_writable(cfg: config.Config) -> None:
     """Refuse a WRITE when the library is the husk an unmounted volume leaves.
 
-    STRICTER THAN THE READ, and the asymmetry is the point rather than an
-    inconsistency. A read against a library with nothing recorded yet is an
-    ordinary thing that happens on the first run of every install, so it cannot
-    refuse. A write is different in two ways: it is proof that something is being
-    recorded right now, and it CREATES the directory it writes into. Against a
-    library whose volume has gone, that meant rebuilding this installation's whole
-    state tree on whatever disk the mount point happens to sit on and recording
-    into it, so the record landed somewhere no library will ever read it and
-    nothing refused.
-
-    So a write asks for the two things a configured library cannot be without:
-    this installation's state directory, or the database the configuration names.
-    A library that has been written to has the first, one that has only been
-    pointed at has the second, and a husk has neither.
+    Stricter than the read, because a write creates its directory. It needs the
+    state directory or the configured database; a husk has neither.
     """
     _assert_library_is_readable(cfg)
     if config.library_state_dir(cfg).is_dir():
@@ -370,23 +220,11 @@ def _own_only(target: Path) -> None:
 def _locked(cfg: config.Config) -> Iterator[None]:
     """Hold the sibling lock across one read then write cycle.
 
-    BLOCKING, like the decision stores next door: two processes recording
-    markers should serialize rather than raise at a person. The lock file
-    persists after release, deliberately, for the reason every lock in this
-    repository states at length: unlinking the name lets a second process take a
-    lock on a fresh inode while the first still holds the old one, and both then
-    believe they hold the only lock with nothing raised.
-
-    A PLATFORM WITH NO ADVISORY LOCKING REFUSES. Proceeding unlocked is the
-    behaviour being prevented, so degrading to it on the platform where the fix
-    cannot be applied would leave exactly the defect, reachable by anybody on
-    that platform.
+    Blocking. The lock file persists after release, since unlinking it lets
+    two processes hold locks on different inodes. A platform with no advisory
+    locking refuses.
     """
-    # BEFORE the directory is created, not after. Creating the lock's parent first
-    # meant a write against a library whose volume had gone rebuilt the state tree
-    # on whatever disk the mount point happens to sit on, and then recorded into
-    # it, so the refusal below never fired and the record landed somewhere no
-    # library will ever see it.
+    # Before the directory is created, or a gone volume's state tree is rebuilt.
     _assert_library_is_writable(cfg)
     target = lock_path(cfg)
     config.mkdir_private(target.parent)
@@ -412,13 +250,8 @@ def _locked(cfg: config.Config) -> Iterator[None]:
 def _recognize(cfg: config.Config, raw: Any) -> dict[str, Record]:
     """Turn a parsed document into records, or refuse. Positively, field by field.
 
-    REFUSAL IS THE ONLY ALTERNATIVE TO A CORRECT READ. A guard that covers only
-    the case where ``json.loads`` itself raises lets every document that is good
-    JSON and is not this record fall through to an empty mapping: a top-level
-    list, a scalar, a version this build does not know, ``markers`` present and
-    null, a record whose identifier key was renamed. Each of those reports that
-    nothing is outstanding, and the empty result is then handed to the writer, so
-    one further record deletes every prior marker from the disk.
+    An empty result for good JSON that is not this record would be written back
+    and delete every prior marker.
     """
     if not isinstance(raw, Mapping):
         raise _unusable(cfg, f"the document is a {type(raw).__name__}, not a record")
@@ -447,9 +280,7 @@ def _recognize(cfg: config.Config, raw: Any) -> dict[str, Record]:
             effect = None if raw_effect is None else config.RollbackEffect(str(raw_effect))
             closed = None if raw_disposition is None else Disposition(str(raw_disposition))
         except ValueError as exc:
-            # A member this build does not know is refused rather than dropped. A
-            # dropped marker reads as "already closed", which is the one
-            # misreading that lets a library report convergence it never reached.
+            # Refused, not dropped, since a dropped marker reads as closed.
             raise _unusable(cfg, f"marker {position} carries a value this build cannot read") from exc
         record = Record(
             marker=Marker(
@@ -477,10 +308,7 @@ def _optional_str(value: Any) -> str | None:
 def _read(cfg: config.Config) -> dict[str, Record]:
     """Load the record, treating anything it cannot RECOGNIZE as a refusal.
 
-    Absence is checked through :func:`_assert_library_is_readable`, which is where
-    the argument for what "absent" means, and what this cannot see, lives. It is
-    asked HERE rather than at each of the four readers, so all four keep answering
-    identically, which they are separately asserted to do.
+    Absence is checked once here, so all four readers answer alike.
     """
     path = path_for(cfg)
     if not path.exists():
@@ -507,18 +335,11 @@ def _write(cfg: config.Config, recorded: Mapping[str, Record]) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
 # Deriving the markers a restore leaves behind
-# ---------------------------------------------------------------------------
 
 
 def _document_bytes(path: Path) -> bytes | None:
-    """The bytes at ``path``, or None when there is nothing there.
-
-    None and empty are kept apart. A coupled entry that did not exist at capture
-    time and exists now is a change; a file that exists at both ends and holds
-    the same bytes is not.
-    """
+    """The bytes at ``path``, or None when there is nothing there, kept apart from empty."""
     try:
         if path.is_dir():
             return _directory_digest(path)
@@ -530,21 +351,8 @@ def _document_bytes(path: Path) -> bytes | None:
 def _directory_digest(root: Path) -> bytes:
     """A stable summary of a directory's contents, for comparison only.
 
-    DERIVED BY WALKING (P3). Several coupled entries are directories, and a
-    comparison that looked only at the top level would report a directory
-    unchanged while every file inside it had moved.
-
-    IT HASHES THE CONTENTS, not the names and lengths. Names and lengths look
-    sufficient for "did this entry change across the window" and are not: a
-    document edited in place to the same length reads as unchanged, and
-    ``label_outcomes`` is a directory of small documents AND the one COUPLED
-    directory entry carrying a declared out-of-band effect. So the one entry where
-    a same-length edit is most likely is the one entry where missing it means an
-    effect goes unmarked. The failure direction of the cheaper comparison is
-    under-marking, which is the direction this module exists to avoid.
-
-    The cost is bounded by what is being compared: these are state documents, not
-    audio, and the walk already had to stat every one of them.
+    Derived by walking (P3), and it hashes contents, because a same-length edit
+    in ``label_outcomes`` would otherwise go unmarked.
     """
     digest = hashlib.sha256()
     for current, directories, files in os.walk(root):
@@ -559,9 +367,7 @@ def _directory_digest(root: Path) -> bytes:
                     while chunk := handle.read(1 << 20):
                         digest.update(chunk)
             except OSError:
-                # Unreadable is its own state and must not compare equal to
-                # readable-and-empty, so it contributes a token no file's bytes
-                # can produce.
+                # A token no file's bytes can produce, so unreadable never equals empty.
                 digest.update(b"\0unreadable\0")
             digest.update(b"\n")
     return digest.digest()
@@ -577,20 +383,9 @@ def effect_markers(
 ) -> tuple[Marker, ...]:
     """Every out-of-band effect inside the window this restore is about to discard.
 
-    ``captured`` maps a state entry's inventory key to the copy of it inside the
-    capture, or to None when the capture recorded that entry as legitimately
-    absent. Both answers are used: an entry present now and absent then changed,
-    and so did one whose bytes differ.
-
-    THE COMPARISON RUNS BEFORE ANYTHING IS REPLACED, and the caller is
-    responsible for that ordering. Afterwards the live document IS the captured
-    one, every comparison is equal, and the report says nothing happened.
-
-    ONE MARKER PER DECLARED EFFECT rather than one per changed file, because the
-    effects are what a person dispositions and they are dispositioned separately:
-    a label watermark that advanced means both that audio landed on the volume
-    and that a playlist was renamed at the provider, and putting one of those
-    right does not put the other right.
+    ``captured`` maps an inventory key to its captured copy, or None when it was
+    absent. The caller must run this BEFORE anything is replaced. One marker per
+    declared effect, since each is disposed of separately.
     """
     observed = timestamp(now)
     markers: list[Marker] = []
@@ -626,48 +421,10 @@ def in_flight_marker(
 ) -> Marker:
     """The latch a restore writes before its first destructive step.
 
-    IT IS KEYED ON THE CAPTURE AND CARRIES NO SESSION, which is the opposite of
-    every other marker here and is deliberate. The first version keyed it on the
-    restore's own recovery session, which mints a new identifier every attempt, so
-    the product's own printed advice, "run the restore again, it is safe to
-    repeat", produced a second permanent row on every repeat. Two attempts of one
-    restore are one restore, and what identifies a restore is the capture it is
-    putting back, which is stable across every attempt. So a repeat collides with
-    the row already there and is idempotent, which is what the advice promises.
-
-    The run that started it is not lost: the session log holds a record for every
-    restore, and the detail below names the capture, which is the field a person
-    matches against the listing.
-
-    THE STAMP IS TAKEN VERBATIM AND IS NOT VALIDATED, which is recorded rather
-    than fixed. An empty string, a path traversal, three hundred characters or an
-    embedded NUL all become a marker identity, because this takes whatever the
-    manifest holds. Nothing reaches a filesystem path from here: the staging
-    directory is named from a freshly minted stamp rather than from this identity,
-    which is the only place a stamp used to escape into a path. So the exposure is
-    a marker whose identifier reads badly in a listing, and the answer is
-    validation at the manifest reader, which owns the field, rather than a second
-    opinion about it here.
-
-    IT IS WRITTEN EVEN WHEN THERE IS NOTHING ELSE TO WRITE, which is the whole
-    point. Seven of the twelve coupled entries declare ``RollbackEffect.NONE``, so
-    a restore whose window touched only those derives no effect markers, and a
-    restore of a capture taken after every cutover derives no tree markers either.
-    Such a restore used to write nothing anywhere before it began replacing files,
-    and a hard kill part way through left the database at one generation, the
-    coupled state at another, an empty reconciliation store, and the next ordinary
-    destructive session ALLOWED. The only trace was a non-terminal session record
-    that nothing consults except the prune-protection scan.
-
-    The concrete loss that shape produces: a ``label_watermarks`` at the later
-    generation against a database at the earlier one means the next label sweep
-    believes it consumed releases whose rows are gone, so those tracks are never
-    re-imported and nothing demands the rebuild that would find them.
-
-    ITS REMEDY IS A RECOVERY, WHICH IS EXEMPT, so this latch does not condemn its
-    own remedy: finishing the interrupted restore, or running another one, is an
-    ``Intent.RECOVERY`` session and passes. A person who would rather accept the
-    half-restored state closes it with a disposition like any other marker.
+    Keyed on the capture with no session, so a repeated attempt is idempotent.
+    The stamp is taken verbatim; validation belongs to the manifest reader. It
+    is written even when nothing else is, so a killed restore refuses rather
+    than leaving mismatched generations allowed. Its remedy, a recovery, is exempt.
     """
     return Marker(
         kind=Kind.IN_FLIGHT_RESTORE,
@@ -696,9 +453,7 @@ def tree_markers(
 ) -> tuple[Marker, ...]:
     """One marker per tree a restore left unconverged.
 
-    Pure, and it takes identifiers rather than a registry, so the module that
-    holds the registry stays above this one in the ladder and this one stays
-    importable by the session boundary underneath it.
+    Pure, taking identifiers, so this module stays below the registry.
     """
     observed = timestamp(now)
     return tuple(
@@ -721,23 +476,14 @@ def tree_markers(
     )
 
 
-# ---------------------------------------------------------------------------
 # The record
-# ---------------------------------------------------------------------------
 
 
 def record_markers(cfg: config.Config, markers: Sequence[Marker]) -> tuple[Record, ...]:
     """Persist markers, idempotently, and return every record afterwards.
 
-    THE WHOLE CYCLE IS UNDER THE LOCK. The read decides what the write contains,
-    so a lock around the write alone protects nothing: the losing process still
-    writes a set it read before the winner's marker existed, and the marker it
-    drops is a library reporting convergence it never reached.
-
-    A marker already recorded is left ALONE rather than reset, including one that
-    has been dispositioned. Re-recording would silently reopen a decision a
-    person already made, which is the opposite of what an idempotent call should
-    do, and it would do it on every subsequent restore.
+    The whole cycle is under the lock. A marker already recorded is left alone,
+    so a disposition is never reopened.
     """
     with _locked(cfg):
         recorded = _read(cfg)
@@ -750,28 +496,9 @@ def record_markers(cfg: config.Config, markers: Sequence[Marker]) -> tuple[Recor
 def retract_in_flight(cfg: config.Config) -> tuple[str, ...]:
     """Discharge EVERY in-flight latch. Returns the identifiers that were there.
 
-    DELETION RATHER THAN A DISPOSITION, because the two operations mean different
-    things. A disposition is a person's answer about something that happened and
-    will always have happened, so it is kept forever and never restamped. "A
-    restore is in flight" is not that kind of fact: it is true for the length of
-    one restore and false afterwards, and recording a decision about it would put
-    a permanent row in the store for something nobody decided. It is restricted to
-    that one kind rather than offered generally, because a general delete is the
-    softening path in its purest form: every refusal this module raises could be
-    answered by removing the marker that raised it, with no record that anything
-    was ever outstanding.
-
-    EVERY LATCH, NOT THE CALLER'S OWN, and that is the correction rather than a
-    convenience. The refusal these markers raise says an unfinished restore is
-    closed by finishing one. When only the caller's own row was retracted that
-    sentence was false: restore 1 interrupted and restore 2 run to completion
-    SUCCESSFULLY left restore 1's latch standing, the outcome reported itself
-    unconverged, and the next ordinary session refused with a remedy that had
-    already been carried out. The claim in the refusal is what decides the scope
-    here, and the claim is right: the library lock is exclusive, so restores do
-    not overlap, and one that ran to the end left this library whole whatever was
-    in flight before it. A latch is a claim that the halves may not agree, and a
-    completed restore is evidence that they do.
+    Deletion, not a disposition, since the fact is true only during a restore;
+    restricted to this kind so no refusal can be deleted away. Every latch,
+    because restores do not overlap and a completed one leaves the library whole.
     """
     with _locked(cfg):
         recorded = _read(cfg)
@@ -804,10 +531,7 @@ def outstanding(cfg: config.Config) -> tuple[Record, ...]:
 def unconverged_trees(cfg: config.Config) -> tuple[str, ...]:
     """The stable identifiers of trees whose rebuild is still owed, deduplicated.
 
-    Deduplicated because a tree can now carry several open markers: the identifier
-    includes the restore that observed it, on purpose, so two pre-cutover restores
-    of one tree are two rows rather than one swallowing the other. What a caller
-    wants from this is the SET of trees, and a tree named twice is one tree.
+    A tree may carry one open marker per restore that observed it.
     """
     return tuple(
         sorted(
@@ -831,12 +555,8 @@ def close_marker(
 ) -> Record:
     """Close one marker, naming who closed it and how.
 
-    Under the lock for the same reason recording is, and losing one costs more:
-    a dropped disposition leaves a marker standing forever, so every further
-    destructive session refuses and nobody can work out why.
-
-    Closing an already closed marker returns the existing record unchanged rather
-    than restamping it. The first answer is the one that was given.
+    Under the lock, since a dropped disposition refuses forever. Closing a
+    closed marker returns it unchanged.
     """
     with _locked(cfg):
         recorded = _read(cfg)
@@ -864,16 +584,11 @@ def close_marker(
         return closed
 
 
-# ---------------------------------------------------------------------------
 # The refusal
-# ---------------------------------------------------------------------------
 
 
-#: The kinds this module LATCHES on at the session boundary.
-#:
-#: EVERY KIND, and it is written as a set rather than left implicit so that the
-#: question "which kinds does this hold" has one answer somewhere a reader can
-#: find, and so that a kind added later has to be placed deliberately.
+#: The kinds this module LATCHES on at the session boundary: every kind, named
+#: so a later kind is placed deliberately.
 LATCHING_KINDS: frozenset[Kind] = frozenset(Kind)
 
 
@@ -887,48 +602,11 @@ def converged(cfg: config.Config) -> bool:
 def assert_converged(cfg: config.Config) -> None:
     """Refuse every further destructive session while a restore is unreconciled.
 
-    ENFORCED AT THE GATE EVERY DESTRUCTIVE SESSION PASSES THROUGH, rather than in
-    each workflow, for the same reason the committed-unverified latch is: a
-    refusal a caller can forget is a refusal that is eventually forgotten. A
-    RECOVERY declares itself exempt, and it has to be, because a second restore
-    is one of the things a person may legitimately do about the first one, and a
-    latch that condemned its own remedy would leave a library with no exit but a
-    hand-edited file. That is the lesson U8 paid for and it applies unchanged
-    here.
-
-    AN UNCONVERGED TREE IS LATCHED HERE, AND THE ARGUMENT FOR THAT WAS RE-DERIVED
-    ONCE FROM A FALSE PREMISE. The first fix round removed it, reasoning that the
-    refusal names a rebuild as its remedy, that a rebuild writes through
-    ``write.trees.write_tree_membership``, and that ``write_tree_membership`` has
-    no ``intent`` parameter and therefore cannot enter these gates as anything but
-    an ordinary write. The last clause was true of this branch alone and is false
-    of the product: the unit that builds the rebuild gives that function both a
-    ``purpose`` and an ``intent``, and its rebuild declares
-    ``session.Intent.RECOVERY`` precisely so this latch cannot refuse it. So the
-    remedy CAN declare itself, the latch does not condemn it, and the rule that
-    was invoked to remove this does not apply. Removing it cost more than it
-    saved: with the latch gone, a pre-cutover restore recorded a tree marker that
-    nothing anywhere read, and both the next destructive session and the next run
-    close were allowed over a library holding a tree that is provably short.
-
-    THE EXEMPTION IS WIDER THAN THE REBUILD NEEDS AND THE REBUILD NARROWS IT BACK.
-    ``RECOVERY`` sheds this whole latch, including the EFFECT markers, which are
-    facts about the world outside this library that no rebuild repairs. That is
-    the rebuild's to put back by name, and it does.
-
-    WHERE THE FACT LIVES ON A COMPLETE BUILD. ``core.convergence`` owns tree
-    shortness: it holds the same condition arriving from an out-of-band recovery,
-    gates it per tree at the writer, and clears it only on a convergence check
-    reporting no difference. ``core.restore`` hands the trees to that module when
-    it is present, so on a complete build this store holds no tree markers at all
-    and this branch of the refusal is unreachable. What it covers is the window in
-    which this record exists and that one does not, and a marker written before
-    the merge that outlives it.
-
-    The kinds are reported SEPARATELY inside one refusal, because their remedies
-    are three different acts: an effect is closed by a person saying what they
-    want done about it, an unfinished restore by finishing one, and a tree only by
-    a full rebuild, never by a decision.
+    Enforced at the gate every destructive session passes. A RECOVERY is exempt
+    so the latch never condemns its own remedy (U8); the rebuild declares
+    ``session.Intent.RECOVERY`` and puts the effect latch back by name. Tree
+    markers still latch for builds or records predating ``core.convergence``.
+    The kinds are reported separately, since their remedies differ.
     """
     open_records = [
         record for record in outstanding(cfg) if record.marker.kind in LATCHING_KINDS

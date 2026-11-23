@@ -1,48 +1,17 @@
 """``label.artists``: give an open label release its artist's name back (R-840).
 
-WHAT THIS VERB IS FOR. Before R-379 a sweep stringified the provider's artist
-object into the review item, so the item reads ``<tidalapi.artist.Artist object
-at 0x...>`` where the artist belongs. R-379 fixed the producer. The items
-already filed kept the address, because a sweep never offers a release again
-while it holds a place in its label's window, and ``label judge`` rewrites the
-gate's fields and not the artist. This verb reads each such release again by
-its identifier and writes the name.
+Before R-379 a sweep stringified the provider's artist object into the item,
+which then reads ``<tidalapi.artist.Artist object at 0x...>``. This verb reads
+each such release again by its identifier and writes the name. Not a step of
+``label judge``, which is built to make no provider call; a repaired item no
+longer reads an address, so a second run asks only about what the first left.
 
-A VERB OF ITS OWN AND NOT A STEP OF ``label judge``, for three reasons.
-
-* ``label judge`` gives a verdict on every pending release and moves the ones
-  the gate would not have filed into a hold. A person who wants 29 names put
-  right has not asked for 2,000 releases to be judged, and here no gate
-  decision can change because no gate is consulted.
-* Most releases a judging pass meets cost no provider call at all. An artist
-  read inside that worker would put a call on the path built to avoid them.
-* The repair picks up where it stopped with no job behind it: a repaired item
-  no longer reads an address, so a second run asks only about what the first
-  left.
-
-ONLY AN OPEN ITEM, AND ONLY ITS ARTIST. A decided item keeps the payload it was
-decided on, which :func:`cratekit.core.review.redescribe` checks inside its
-write. The artist is changed on the payload as it stands under the store's
-write lock, so a field another writer put on the item since it was listed is
-kept, and an artist somebody put right in that time is not written over.
-
-A RELEASE HELD OUT OF REVIEW IS NOT AN OPEN ITEM and is not read here. A hold
-carries the payload its item had, the address included, and ``label held
-return`` files it back as it was, after which this verb repairs it.
-
-AN ADDRESS IS NEVER REPLACED BY NOTHING. A release the provider no longer
-serves, one it could not answer about, and one it names no artist for are each
-counted and left reading what they read. Nothing marks such an item, so every
-run asks about it again, one read each, until a person decides it.
-
-A READ THE PROVIDER FAILED IS A REFUSAL AND NOT A CLEAN RUN. The walk goes on,
-since the next release may answer, and stops early only when three reads in a
-row fail. Either way the run ends on ``unavailable-transient`` carrying the
-counts, because asking again may finish what this run could not.
-
-IT DECIDES NOTHING AND DOWNLOADS NOTHING. Each release asked about costs one
-provider read, paced by the provider gate the catalogue is opened with, and the
-catalogue is not opened at all when no item reads an address.
+ONLY AN OPEN ITEM, AND ONLY ITS ARTIST, on the payload as it stands under the
+store's write lock (:func:`cratekit.core.review.redescribe`). A held release is
+not an open item. AN ADDRESS IS NEVER REPLACED BY NOTHING: a release not
+served, unread, or naming no artist is counted, left, and asked about next run.
+A failed read ends the run on ``unavailable-transient`` with the counts, early
+after three in a row. The catalogue is opened only when an item needs it.
 
 Layer: modules.
 """
@@ -50,15 +19,16 @@ Layer: modules.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import review
-from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Queue
-from cratekit.label import catalogue
+from cratekit.label import catalogue, review_common
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 
@@ -69,36 +39,25 @@ ORIGIN = ("label", "artists_cli")
 #: around it, so an artist whose name merely contains such text is a name.
 ADDRESS = re.compile(r"<[A-Za-z_][\w.]* object at 0x[0-9A-Fa-f]+>")
 
-#: What happened to one open item, as the summary counts it. The first three
-#: are the brief's. The rest are the ways an address is left where it is.
+#: What happened to one open item, as the summary counts it.
 REPAIRED = "repaired"
 NOT_SERVED = "not_served"
-#: The artist does not read an address, so there is nothing here to put right.
-#: An empty artist is counted here too: it is not an address, and a release
-#: with no artist recorded is not this verb's to fill.
+#: The artist does not read an address, an empty one included: nothing to put right.
 ALREADY_FINE = "already_fine"
 #: The provider was asked and could not answer. Asking again may.
 UNREAD = "unread"
 #: The provider served the release and names no artist for it.
 UNNAMED = "unnamed"
-#: The item names no release, or not the one it is addressed by, so nothing
-#: says which release to read.
+#: The item names no release, or not the one it is addressed by.
 UNADDRESSED = "unaddressed"
 #: Decided, or gone from review, by the time it was looked at or written.
 DECIDED = "decided"
 OUTCOMES: tuple[str, ...] = (
-    REPAIRED,
-    NOT_SERVED,
-    ALREADY_FINE,
-    UNREAD,
-    UNNAMED,
-    UNADDRESSED,
-    DECIDED,
+    REPAIRED, NOT_SERVED, ALREADY_FINE, UNREAD, UNNAMED, UNADDRESSED, DECIDED
 )
 
 
 def build_artists(parser, entry) -> None:
-    del entry
     parser.set_defaults(_handler=label_artists)
 
 
@@ -109,44 +68,29 @@ def is_address(value: Any) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class _Subject:
-    """One open item reading an address, as it was listed."""
+    """One open item reading an address, as it was listed, in its row's order."""
 
-    item_id: str
     release_id: str
+    item_id: str
     label_id: str
     label_name: str
     title: str
 
 
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
-
-
-def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"label.artists.{key}", "title": key, "status": status,
-            "detail": detail, "remedy": None}
+_text = review_common.text
+_check = partial(review_common.check, "label.artists")
 
 
 def _named(subject: _Subject) -> str:
-    """One release as a person names it: identifier, title, label."""
-    said = f"release {subject.release_id or '(no identifier)'}"
-    if subject.title:
-        said += f" ({subject.title!r})"
-    return said + (f" on {subject.label_name}" if subject.label_name else "")
+    return review_common.named(subject.release_id, subject.title, subject.label_name)
 
 
 @dataclass
 class _Run:
     """What one run did so far: the counts, the lines, and the reads it spent.
 
-    ``addresses`` IS EVERY OPEN ITEM LEFT READING AN ADDRESS OR GIVEN A NAME BY
-    THIS RUN, so it is always the sum of every outcome but ``already_fine``.
-    An item that stopped reading an address while it was being read is not one
-    of them any more, and is counted with the items that never did.
-
-    ``asked`` counts the releases THE PROVIDER WAS ASKED FOR, whether or not it
-    answered. A read the catalogue or the provider gate refused is not counted,
-    since a refusal may come before any call is made.
+    ``addresses`` is the sum of every outcome but ``already_fine``. ``asked``
+    counts the releases the provider was asked for, answered or not.
     """
 
     counts: dict[str, int] = field(default_factory=lambda: dict.fromkeys(OUTCOMES, 0))
@@ -161,28 +105,15 @@ class _Run:
     def record(self, subject: _Subject, outcome: str, status: str, said: str,
                artist: str | None = None) -> None:
         self.counts[outcome] += 1
-        # KEYED BY THE ITEM WHEN NO RELEASE IS READ FOR IT. An item that does
-        # not name the release it is addressed by may name another item's, and
-        # two lines under one release's key would read as one release twice.
-        key = (
-            f"item.{subject.item_id}"
-            if outcome == UNADDRESSED
-            else f"release.{subject.release_id}"
+        # Keyed by the item when no release is read for it, since such an item
+        # may name another item's release.
+        key = f"item.{subject.item_id}" if outcome == UNADDRESSED else (
+            f"release.{subject.release_id}"
         )
         self.checks.append(_check(key, status, said))
-        # THE SENTENCE RIDES THE ROW TOO. A refusal carries the summary and no
-        # check line, and why a read failed is what a person needs from it.
+        # The sentence rides the row too, since a refusal carries no check line.
         self.releases.append(
-            {
-                "release_id": subject.release_id,
-                "item_id": subject.item_id,
-                "label_id": subject.label_id,
-                "label_name": subject.label_name,
-                "title": subject.title,
-                "outcome": outcome,
-                "artist": artist,
-                "said": said,
-            }
+            {**asdict(subject), "outcome": outcome, "artist": artist, "said": said}
         )
 
     def summary(self) -> dict[str, Any]:
@@ -197,10 +128,9 @@ class _Run:
 def _listed(store: review.ReviewStore, done: _Run) -> list[_Subject]:
     """Every open item that reads an address. The ones left out are counted.
 
-    READ OFF THE REVIEW QUEUE AND NOTHING ELSE, a page at a time. The walk
-    lists what is unresolved, so a decided item is never seen here. An item
-    carrying a verdict this build cannot read is listed and is somebody's
-    decision all the same, so it is counted decided and not asked about.
+    Read off the review queue a page at a time. An item carrying a verdict
+    this build cannot read is somebody's decision all the same: counted
+    decided and not asked about.
     """
     found: list[_Subject] = []
     wanted = review.Predicate(queue=str(Queue.LABEL_RELEASE), kind=genre_gate.RELEASE_KIND)
@@ -211,30 +141,19 @@ def _listed(store: review.ReviewStore, done: _Run) -> list[_Subject]:
         if item.stored_verdict is not None:
             done.counts[DECIDED] += 1
             continue
-        found.append(
-            _Subject(
-                item_id=item.item_id,
-                release_id=genre_gate.release_id_of(store, item),
-                label_id=_text(item.payload.get("label_id")),
-                label_name=_text(item.payload.get("label_name")),
-                title=_text(item.payload.get("title")),
-            )
-        )
+        found.append(_Subject(
+            genre_gate.release_id_of(store, item), item.item_id,
+            *(_text(item.payload.get(name)) for name in ("label_id", "label_name", "title")),
+        ))
     return found
 
 
 def _write(store: review.ReviewStore, subject: _Subject, name: str) -> str:
     """Write ``name`` as the item's artist, on the payload AS IT STANDS.
 
-    THE STORE CHANGES THE ONE FIELD UNDER ITS OWN WRITE LOCK. The listing is
-    as old as every paced read since, and a payload written from it would take
-    back whatever a judging job stamped on the item meanwhile.
-
-    The outcome, one of three. :data:`REPAIRED` when the name was written.
-    :data:`ALREADY_FINE` when the item stopped reading an address in that
-    time, which is somebody else having put it right, and their word is kept.
-    :data:`DECIDED` when it was decided or left review: the store does not
-    hand a payload over for an item that is not open.
+    Under the store's write lock, so a judging job's stamp since is kept.
+    :data:`ALREADY_FINE` when somebody put it right meanwhile, :data:`DECIDED`
+    when it was decided or left review.
     """
     seen: list[bool] = []
 
@@ -252,15 +171,10 @@ def _write(store: review.ReviewStore, subject: _Subject, name: str) -> str:
 def _with_counts(error: CratekitError, done: _Run, listed: int) -> CratekitError:
     """The same refusal, carrying what the run did before it stopped.
 
-    A refusal is the exit a person most needs the counts from: items were
-    repaired before it. The cause is extended and never rebuilt by hand, so its
-    remedy and its trail come through unchanged. ``left`` is counted against
-    the items this run set out to read, each of which is recorded once reached.
-    The addresses in the summary are the ones reached, so the ones not reached
-    are added to say how many there were.
+    ``left`` counts the items this run set out to read and did not reach, and
+    is added to the addresses to say how many there were.
     """
     left = listed - len(done.releases)
-    cause = error.cause
     step = (
         f"{done.counts[REPAIRED]} release(s) were given their artist before this "
         f"and {left} were not reached; run crate label artists again, which asks "
@@ -268,25 +182,16 @@ def _with_counts(error: CratekitError, done: _Run, listed: int) -> CratekitError
     )
     summary = done.summary()
     summary["addresses"] += left
-    return rebuilt(
-        error,
-        replace(
-            cause,
-            remediation=replace(cause.remediation, steps=(*cause.remediation.steps, step)),
-            detail={**cause.detail, "artists": summary, "left": left},
-        ),
-    )
+    return review_common.extended(error, step, artists=summary, left=left)
 
 
 def _repair_one(store: review.ReviewStore, found: catalogue.Catalogue, subject: _Subject,
                 done: _Run) -> bool:
     """Read one release's artist and write it. Whether the provider FAILED the read.
 
-    ONLY THE SEAM'S OWN EXCEPTION MEANS NOT SERVED, on the reasoning
-    ``label approved`` gives for its own read: ``LookupError`` would also catch
-    a client that failed to parse a payload, and that release is unread, not
-    gone. A ``CratekitError`` is the catalogue or the gate refusing the run and
-    is the caller's to stop on.
+    Only the seam's own exception means not served (``LookupError`` would also
+    catch a parse failure). A ``CratekitError`` is the run refused, and is the
+    caller's to stop on.
     """
     try:
         name = found.release_artist(subject.release_id)
@@ -319,23 +224,15 @@ def _repair_one(store: review.ReviewStore, found: catalogue.Catalogue, subject: 
         )
         return False
     outcome = _write(store, subject, name)
-    if outcome == REPAIRED:
-        done.record(
-            subject, REPAIRED, "ok",
-            f"{_named(subject)} now reads its artist, {name}", artist=name,
-        )
-    elif outcome == ALREADY_FINE:
-        done.record(
-            subject, ALREADY_FINE, "info",
-            f"{_named(subject)} stopped reading an address while it was being "
-            f"read, so what it reads now was kept",
-        )
-    else:
-        done.record(
-            subject, DECIDED, "info",
-            f"{_named(subject)} was decided, or left review, while it was being "
-            f"read, so it was not rewritten",
-        )
+    said = {
+        REPAIRED: f"{_named(subject)} now reads its artist, {name}",
+        ALREADY_FINE: f"{_named(subject)} stopped reading an address while it was being "
+        f"read, so what it reads now was kept",
+        DECIDED: f"{_named(subject)} was decided, or left review, while it was being "
+        f"read, so it was not rewritten",
+    }[outcome]
+    repaired = outcome == REPAIRED
+    done.record(subject, outcome, "ok" if repaired else "info", said, name if repaired else None)
     return False
 
 
@@ -356,26 +253,21 @@ def _walk(cfg, store: review.ReviewStore, subjects: list[_Subject], done: _Run) 
             )
             continue
         if found is None:
-            # OPENED ON THE FIRST RELEASE THAT NEEDS IT, so a queue with no
-            # address in it spends no login and meets no credential refusal.
+            # Opened on the first release that needs it, so a queue with no
+            # address in it spends no login.
             found = catalogue.resolve(cfg)
-        failed = _repair_one(store, found, subject, done)
-        failed_in_a_row = failed_in_a_row + 1 if failed else 0
+        failed_in_a_row = failed_in_a_row + 1 if _repair_one(store, found, subject, done) else 0
         if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:
-            # THE RUN STOPS BEFORE A READ IT ALREADY KNOWS IS WASTED, on the
-            # bound a sweep and a judging pass give an outage.
+            # THE RUN STOPS before a read it already knows is wasted.
             break
     if done.counts[UNREAD]:
-        # AFTER THE WALK AND NOT ONLY BEFORE THE NEXT READ, so an outage over
-        # the last releases of a run is the same refusal as one over the
-        # first, and a run that left a release unread never exits clean.
-        stopped_early = failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW
+        # AFTER THE WALK, so an outage over the last releases refuses too.
         raise refuse(
             "unavailable-transient",
             (
                 f"the provider failed {catalogue.READS_FAILED_IN_A_ROW} release "
                 f"reads in a row, so the run stopped reading"
-                if stopped_early
+                if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW
                 else f"the provider could not answer about "
                 f"{done.counts[UNREAD]} of the {done.asked} release(s) it was "
                 f"asked for"
@@ -390,8 +282,7 @@ def label_artists(ctx) -> Envelope:
     """Give every open label release that reads an address its artist's name."""
     cfg = label_cli._load()
     done = _Run()
-    # ONE OPEN OF THE STORE FOR THE RUN. It holds no transaction between
-    # writes, so the paced reads keep nobody out of the queue.
+    # One open of the store for the run; it holds no transaction between writes.
     with review.open_store(cfg) as store:
         subjects = _listed(store, done)
         try:
@@ -411,39 +302,18 @@ def label_artists(ctx) -> Envelope:
         )
     lines = [
         _check("addresses", "info" if left else "ok", said),
-        _check(
-            "fine",
-            "ok",
-            f"{done.counts[ALREADY_FINE]} open label release(s) do not read an "
-            f"address and were not rewritten",
-        ),
+        _check("fine", "ok", f"{done.counts[ALREADY_FINE]} open label release(s) do not "
+               "read an address and were not rewritten"),
     ]
     if done.counts[DECIDED]:
-        lines.append(
-            _check(
-                "decided",
-                "info",
-                f"{done.counts[DECIDED]} release(s) reading an address are decided "
-                f"or left review, and a decided item is never rewritten",
-            )
-        )
-    return ctx.envelope(
-        data={"checks": [*lines, *done.checks], "summary": done.summary()},
-        outcome=Outcome.OK if done.counts[REPAIRED] else Outcome.NO_OP,
-    )
+        lines.append(_check("decided", "info", f"{done.counts[DECIDED]} release(s) reading "
+                            "an address are decided or left review, and a decided item is "
+                            "never rewritten"))
+    outcome = Outcome.OK if done.counts[REPAIRED] else Outcome.NO_OP
+    return review_common.ended(ctx, [*lines, *done.checks], done.summary(), outcome)
 
 
 __all__ = [
-    "ADDRESS",
-    "ALREADY_FINE",
-    "DECIDED",
-    "NOT_SERVED",
-    "OUTCOMES",
-    "REPAIRED",
-    "UNADDRESSED",
-    "UNNAMED",
-    "UNREAD",
-    "build_artists",
-    "is_address",
-    "label_artists",
+    "ADDRESS", "ALREADY_FINE", "DECIDED", "NOT_SERVED", "OUTCOMES", "REPAIRED", "UNADDRESSED",
+    "UNNAMED", "UNREAD", "build_artists", "is_address", "label_artists",
 ]

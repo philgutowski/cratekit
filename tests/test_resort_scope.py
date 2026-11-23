@@ -1,14 +1,8 @@
 """U219: a resort after a genre sub is added writes only under the genre tree.
 
-Sitting 61 (A69) hand edited the Rominimal genre sub into a copy of the live
-library's taxonomy and ran ``crate route resort`` on a disposable copy. It made
-``BY GENRE + ENERGY / Minimal / Deep Tech / Rominimal`` as it should, and it
-also made a folder ``INBOX / Minimal / Deep Tech`` holding every band and the
-genre sub, which the live INBOX has never carried. The resort queued one item
-per database native tree, the intake tree is native, and since R-746 the
-cutover records it with the taxonomy as its derivation source, so its rebuild
-derived the routing tree's placements and wrote them under the INBOX root. This
-is R-789, which was filed unmeasured.
+R-789, found by sitting 61 (A69): with the intake tree cut over on the taxonomy
+source (R-746), a resort's rebuild of it wrote ``INBOX / Minimal / Deep Tech``
+with every band and the genre sub in it.
 
 Every expected value here is spelled from the brief or read off the database
 the fixture built, never from the code under test.
@@ -16,6 +10,7 @@ the fixture built, never from the code under test.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import io
 import json
@@ -55,6 +50,13 @@ FIRST = "Puls One.flac"
 SECOND = "Puls Two.flac"
 
 
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
+    code, envelope = result
+    assert code == int(expected), envelope
+    return envelope
+
+
 @pytest.fixture
 def library(tmp_path, monkeypatch) -> Path:
     root = tmp_path / "library"
@@ -71,10 +73,7 @@ def configured(library) -> config.Config:
         valid_data(
             library,
             profile={"name": "full"},
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
+            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
         )
     )
     config.save(cfg)
@@ -90,9 +89,7 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     monkeypatch.setattr(
         rb_writer,
         "read_rekordbox_settings",
@@ -111,14 +108,19 @@ def _music(cfg: config.Config) -> Path:
     return Path(cfg.library.root) / "Music"
 
 
+@contextlib.contextmanager
+def _handle(cfg: config.Config):
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
+
+
 @pytest.fixture
 def tagged(configured, monkeypatch) -> config.Config:
-    """Both files read as Rominimal at one energy, through the readings seam.
-
-    The derivation reads tags off disk; the readings are supplied here rather
-    than written into audio, which is the seam ``declared_membership`` names for
-    a caller supplying readings and not rules.
-    """
+    """Both files read as Rominimal at one energy, through the readings seam
+    ``declared_membership`` names for readings and not rules."""
     for name in (FIRST, SECOND):
         (_music(configured) / name).write_bytes(b"")
 
@@ -134,13 +136,9 @@ def tagged(configured, monkeypatch) -> config.Config:
 
 @pytest.fixture
 def both_native(tagged, monkeypatch) -> dict[str, str]:
-    """A disposable database where BOTH declared trees have cut over.
+    """A disposable database where BOTH declared trees have cut over (R-746).
 
-    The genre tree's root is empty; the intake root holds one landed batch with
-    both rows in it, as INBOX does after a sync landing. Both are recorded with
-    the taxonomy as their source, which is what the cutover verb records for
-    each since R-746.
-    """
+    The genre root is empty; the intake root holds one landed batch of both rows."""
     monkeypatch.setattr(
         preflight,
         "default_identity_provider",
@@ -203,10 +201,7 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 def _below(cfg: config.Config, root_id: str) -> dict[str, set[str]]:
     """Every node under a root by its path from the root, and the rows each holds.
 
-    Read straight from the file with sqlite rather than through the engine's
-    own walk, which stops two levels down and would not see a node deeper than
-    the shape it expects.
-    """
+    Read with sqlite, since the engine's own walk stops two levels down."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         found: dict[str, set[str]] = {}
@@ -244,15 +239,13 @@ def _resort() -> tuple[int, dict]:
 
 def _offered() -> dict:
     """The refusal the first ask ends in, which carries the plan it showed."""
-    code, refused = _drive(["route", "resort"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exited(_drive(["route", "resort"]), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == GATE
     return refused
 
 
 def _decide(run_id: str, option: str) -> None:
-    code, envelope = _drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), envelope
+    _exited(_drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"]))
 
 
 def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_native):
@@ -261,8 +254,7 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     before = _below(cfg, both_native["intake"])
     assert before == {BATCH: {"1", "2"}}, before
 
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _exited(_resort())
 
     assert _below(cfg, both_native["intake"]) == before, (
         "the resort wrote under INBOX, which is the folder sitting 61 found: "
@@ -270,12 +262,6 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     )
     genre = _below(cfg, both_native["genre"])
     assert genre[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}, genre
-
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The plan at its gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_gate_shows_every_add_and_only_the_routing_trees(both_native):
@@ -311,8 +297,7 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
     cfg = config.load()
     run_id = _offered()["run_id"]
     _decide(run_id, "abort")
-    code, declined = _drive(["--run", run_id, "route", "resort"])
-    assert code == int(ExitCode.OK), declined
+    declined = _exited(_drive(["--run", run_id, "route", "resort"]))
     assert declined["data"]["job_id"] == ""
     assert declined["data"]["state"] == "declined"
     assert _below(cfg, both_native["genre"]) == {}
@@ -320,47 +305,56 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
 
 def test_a_resort_with_no_change_plans_nothing_and_queues_nothing(both_native):
     """The second resort over a library the first one filed asks over nothing."""
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _exited(_resort())
     shown = _offered()["cause"]["detail"]["shown"]
     assert shown["items"] == [] and shown["adds"] == 0, shown
     refused = _offered()
     run_id = refused["run_id"]
     _decide(run_id, "apply")
-    code, again = _drive(["--run", run_id, "route", "resort"])
-    assert code == int(ExitCode.OK), again
+    again = _exited(_drive(["--run", run_id, "route", "resort"]))
     assert again["data"]["job_id"] == "", "a resort with nothing to add queued a job"
     assert again["data"]["state"] == "nothing-to-add"
 
 
-def test_a_library_that_moved_after_the_gate_refuses_before_writing(both_native, monkeypatch):
-    """The approved adds are what the worker may write, and nothing else."""
-    cfg = config.load()
-    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
+def _split(first: str, second: str):
+    """Readings that tag the first file ``first`` and the second ``second``."""
 
-    def moved(music: Path):
-        # The same two files, retagged to a genre the sub does not take.
+    def readings(music: Path):
         return [
-            rebuild.Truth(location=str(music / name), genre="Minimal", energy=5)
-            for name in (FIRST, SECOND)
+            rebuild.Truth(location=str(music / FIRST), genre=first, energy=5),
+            rebuild.Truth(location=str(music / SECOND), genre=second, energy=5),
         ]
 
-    monkeypatch.setattr(rebuild, "library_truth", moved)
+    return readings
+
+
+@pytest.mark.parametrize(
+    "approved_over, worked_over",
+    [
+        # The same two files, retagged to a genre the sub does not take.
+        pytest.param((GENRE_SUB, GENRE_SUB), ("Minimal", "Minimal"), id="the library moved"),
+        # Same count, same destinations, different files: the check reads the path.
+        pytest.param((GENRE_SUB, "Minimal"), ("Minimal", GENRE_SUB), id="two files swapped"),
+    ],
+)
+def test_a_library_that_moved_after_the_gate_refuses_before_writing(
+    both_native, monkeypatch, approved_over, worked_over
+):
+    """The approved adds are what the worker may write, and nothing else."""
+    cfg = config.load()
+    monkeypatch.setattr(rebuild, "library_truth", _split(*approved_over))
+    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
+    monkeypatch.setattr(rebuild, "library_truth", _split(*worked_over))
     code, refused = _drive(["--run", run_id, "route", "resort", "--job", job_id])
     assert code != int(ExitCode.OK), refused
     assert "resort-plan-stale" in json.dumps(refused), refused
-    assert _below(cfg, both_native["genre"]) == {}, (
-        "the worker wrote a plan nobody approved"
-    )
+    assert _below(cfg, both_native["genre"]) == {}, "the worker wrote a plan nobody approved"
 
 
 def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
-    """The rehearsal rule's hazard: an apply recorded over a disposable copy.
+    """An apply recorded over a disposable copy refuses over the live file (U161).
 
-    The copy holds the same rows, so the plan and its digest are the same, and
-    only the pin on the file the plan read tells the two apart (U161). The run
-    answered over the copy must refuse over the live file rather than queue.
-    """
+    The plans and digests agree, so only the pin on the file read tells them apart."""
     cfg = config.load()
     live = Path(cfg.library.db_path)
     copy = live.with_name("rehearsal.db")
@@ -389,14 +383,8 @@ def test_the_resume_argv_names_the_gate_run():
     assert routing_cli.resort_argv(older) == ["route", "resort", "--job", "job-1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The class one file over: rebuild, converge and inbox
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_rebuild_naming_the_intake_tree_refuses_and_queues_nothing(both_native):
-    code, refused = _drive(["rebuild", "--actor", "a-person", "--tree", "inbox"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _exited(_drive(["rebuild", "--actor", "a-person", "--tree", "inbox"]), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "rebuild-tree-not-derivable"
     assert "INBOX" in refused["cause"]["message"]
 
@@ -406,8 +394,7 @@ def test_a_rebuild_of_every_tree_leaves_the_intake_tree_alone(both_native):
     code, queued = _drive(["rebuild", "--actor", "a-person"])
     assert code == int(ExitCode.OK), queued
     assert [w["code"] for w in queued["warnings"]] == ["tree-not-derived"], queued
-    code, done = _drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]])
-    assert code == int(ExitCode.OK), done
+    _exited(_drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}
 
@@ -438,17 +425,11 @@ def test_route_inbox_files_into_the_routing_tree_only(both_native, monkeypatch):
         "read_truth",
         lambda path: rebuild.Truth(location=str(path), genre=GENRE_SUB, energy=5),
     )
-    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
-    assert code == int(ExitCode.OK), applied
+    _exited(_drive(["-d", "route.inbox.apply=apply", "route", "inbox"]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}, (
         "route inbox wrote the routing tree's folders under INBOX"
     )
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"2"}
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The guard, at the derivation
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_declared_place_but_the_routing_tree_is_not_derivable():
@@ -483,30 +464,18 @@ def test_the_derivation_refuses_the_intake_tree_before_reading_a_file(configured
     assert caught.value.cause.reason == "rebuild-tree-not-derivable"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round one: the favourites pass, and a marked INBOX
-# ═══════════════════════════════════════════════════════════════════════════
-
 FAVORITES_SOURCE = "All Favorites"
 
 
 @pytest.fixture
 def with_favourite(both_native):
-    """Track 1 is in the library's All Favorites, the favourites class's source.
-
-    Neither track sits in the genre tree yet, so its genre folder's Favorites
-    is derived only once the first write files it there: the shape the round
-    one review drove past the gate.
-    """
-    cfg = config.load()
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
+    """Track 1 is in All Favorites; its genre Favorites is derived only after the
+    first write files it, the shape round one's review drove past the gate."""
+    with _handle(config.load()) as handle:
         folder = handle.create_playlist_folder("Favorites")
         source = handle.create_playlist(FAVORITES_SOURCE, parent=folder)
         handle.add_to_playlist(source, "1")
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
     return both_native
 
 
@@ -523,8 +492,7 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
     """Every membership the resort writes was a row on the screen it was approved over."""
     cfg = config.load()
     shown = _shown(_offered()["cause"]["detail"]["shown"]["items"])
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _exited(_resort())
     written = _landed(_below(cfg, with_favourite["genre"]))
     assert written == shown, (
         f"the resort wrote {sorted(written - shown)}, which its gate never showed"
@@ -533,109 +501,71 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
 
 def test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next(with_favourite):
     cfg = config.load()
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _exited(_resort())
     following = _shown(_offered()["cause"]["detail"]["shown"]["items"])
     assert following == {(f"{BUCKET_FOLDER} / Favorites", "1")}, following
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _exited(_resort())
     assert (f"{BUCKET_FOLDER} / Favorites", "1") in _landed(_below(cfg, with_favourite["genre"]))
     assert _offered()["cause"]["detail"]["shown"]["items"] == []
 
 
 @pytest.fixture
 def restored(both_native) -> dict[str, str]:
-    """An out of band restore detected: every native tree is marked unconverged.
+    """An out of band restore detected: every native tree is marked unconverged."""
+    assert "inbox" in _restore(config.load(), 100, "2026-11-01T00:00:00Z").trees
+    return both_native
 
-    The producer is the real detection, over a fingerprint recorded ahead of
-    the database, which is what a database recovered behind the product's back
-    looks like to it.
-    """
-    cfg = config.load()
-    entries = tree_registry.read(cfg)
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
+
+def _restore(cfg: config.Config, ahead_by: int, taken_on: str):
+    """The real detection over a fingerprint recorded ahead of the database."""
+    with _handle(cfg) as handle:
         taken = convergence.probe(handle)
         ahead = convergence.Fingerprint(
             schema_version=taken.schema_version,
             active_rows=taken.active_rows,
-            local_usn=taken.local_usn + 100,
-            taken="2026-11-01T00:00:00Z",
+            local_usn=taken.local_usn + ahead_by,
+            taken=taken_on,
         )
         convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
-        found = convergence.detect_out_of_band_restore(cfg, handle, entries)
-        assert found.regression is not None
-        assert "inbox" in found.trees
-    finally:
-        rb_writer.close_db(handle)
-    return both_native
+        found = convergence.detect_out_of_band_restore(cfg, handle, tree_registry.read(cfg))
+    assert found.regression is not None
+    return found
 
 
 def _landing_refuses(cfg: config.Config, tree_id: str = "inbox") -> bool:
-    """Whether the latch every governed write meets refuses this tree.
+    """Whether ``assert_tree_writable``, the latch every intake write meets, refuses.
 
-    ``assert_tree_writable``, as the intake writes call it (the landing, the
-    refill, the rotation, the analysed clearing), which runs the restore
-    detection BEFORE it reads the flag. Reading the flag alone is how round
-    one's acceptance passed a green suite while the landing still refused.
-    """
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
-        convergence.assert_tree_writable(cfg, handle, tree_id, tree_registry.read(cfg))
-    except CratekitError as refused:
-        assert refused.cause.reason == "tree-unconverged"
-        return True
-    finally:
-        rb_writer.close_db(handle)
+    It runs the restore detection before reading the flag; reading the flag
+    alone passed round one's acceptance while the landing still refused."""
+    with _handle(cfg) as handle:
+        try:
+            convergence.assert_tree_writable(cfg, handle, tree_id, tree_registry.read(cfg))
+        except CratekitError as refused:
+            assert refused.cause.reason == "tree-unconverged"
+            return True
     return False
 
 
 def _accept(actor: str = "the-dj") -> dict:
     verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
-    code, refused = _drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exited(_drive(verb), ExitCode.DECISION_REQUIRED)
+    assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
     run_id = refused["run_id"]
-    code, envelope = _drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor])
-    assert code == int(ExitCode.OK), envelope
-    code, accepted = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), accepted
+    _exited(_drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor]))
+    accepted = _exited(_drive(["--run", run_id, *verb]))
     return accepted
 
 
 def _restore_again(cfg: config.Config) -> None:
     """A second out of band restore of the same kind, through the real detection."""
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
-        taken = convergence.probe(handle)
-        ahead = convergence.Fingerprint(
-            schema_version=taken.schema_version,
-            active_rows=taken.active_rows,
-            local_usn=taken.local_usn + 50,
-            taken="2026-11-02T00:00:00Z",
-        )
-        convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
-        assert convergence.detect_out_of_band_restore(
-            cfg, handle, tree_registry.read(cfg)
-        ).regression is not None
-    finally:
-        rb_writer.close_db(handle)
+    _restore(cfg, 50, "2026-11-02T00:00:00Z")
 
 
 def test_a_restore_marked_inbox_is_accepted_by_a_named_person(restored):
     """The one way out for a tree no rebuild can reproduce, through R34's two acts."""
     cfg = config.load()
     assert _landing_refuses(cfg)
-    verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
-    code, refused = _drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
-    run_id = refused["run_id"]
-    code, envelope = _drive(
-        ["run", "decide", run_id, "rebuild.accept", "accept", "--actor", "the-dj"]
-    )
-    assert code == int(ExitCode.OK), envelope
-    code, accepted = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), accepted
+    accepted = _accept("the-dj")
     assert accepted["data"]["state"] == "accepted"
     record = convergence.read(cfg).tree("inbox")
     assert record.unconverged and record.disposition is not None
@@ -651,8 +581,7 @@ def test_an_aborted_acceptance_leaves_the_inbox_refusing(restored):
     verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
     run_id = _drive(verb)[1]["run_id"]
     _drive(["run", "decide", run_id, "rebuild.accept", "abort", "--actor", "the-dj"])
-    code, declined = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), declined
+    declined = _exited(_drive(["--run", run_id, *verb]))
     assert declined["data"]["state"] == "declined"
     assert _landing_refuses(cfg)
 
@@ -668,34 +597,8 @@ def test_the_engine_never_accepts_a_tree_a_rebuild_can_repair(restored):
 
 
 def test_a_rebuild_of_one_named_tree_names_nothing_it_left_alone(both_native):
-    code, queued = _drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"])
-    assert code == int(ExitCode.OK), queued
+    queued = _exited(_drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"]))
     assert queued["warnings"] == [], queued
-
-
-def test_two_files_that_swap_places_after_the_gate_refuse_by_their_paths(
-    both_native, monkeypatch
-):
-    """Same count, same destinations, different files: the approved check reads the path."""
-    cfg = config.load()
-
-    def split(first: str, second: str):
-        def readings(music: Path):
-            return [
-                rebuild.Truth(location=str(music / FIRST), genre=first, energy=5),
-                rebuild.Truth(location=str(music / SECOND), genre=second, energy=5),
-            ]
-
-        return readings
-
-    monkeypatch.setattr(rebuild, "library_truth", split(GENRE_SUB, "Minimal"))
-    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
-    monkeypatch.setattr(rebuild, "library_truth", split("Minimal", GENRE_SUB))
-    code, refused = _drive(["--run", run_id, "route", "resort", "--job", job_id])
-    assert code != int(ExitCode.OK), refused
-    assert "resort-plan-stale" in json.dumps(refused), refused
-    assert _below(cfg, both_native["genre"]) == {}
-
 
 
 def test_a_second_restore_clears_the_acceptance_of_the_first(restored):
@@ -721,11 +624,8 @@ def test_the_routing_tree_stays_marked_after_inbox_is_accepted(restored):
 def test_a_resort_that_left_a_favourite_for_later_says_so(with_favourite):
     """Over a marked routing tree, the deferred favourite keeps the flag, and the report says why."""
     cfg = config.load()
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
+    with _handle(cfg) as handle:
         convergence.record_fingerprint(cfg, handle)
-    finally:
-        rb_writer.close_db(handle)
     _restore_again(cfg)
     code, done = _resort()
     assert code == int(ExitCode.OK), done

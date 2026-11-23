@@ -1,36 +1,8 @@
 """A rehearsal of a gated database write, on a scratch area of its own (U162).
 
-The session's rule since 2026-09-29 is that a database write gate is approved
-when a rehearsal matches. Until this module the rehearsal was a hand
-procedure: a script outside the repository copied ``master.db`` to a scratch
-folder that two sessions shared, redirected config and state by hand, applied
-the landing there, which MOVED THE REAL STAGED FILES into the live music
-folder, and then a second hand script parsed the plan text to move them back.
-
-An :class:`Area` is that procedure as a library helper, so any gated database
-verb can rehearse through it. Each area is per run and never shared:
-
-* the database file set is copied, with rekordbox and its agent confirmed
-  gone, into ``<library state>/rehearsals/<run>/db``;
-* the library state the verb reads is copied beside it, and the redirected
-  config names that copy as its state directory, so an approval on the copy
-  can never mark a live ledger done (sitting 13, and the solutions entry on
-  a disposable database copy);
-* the files a verb moves are CLONED into the area, never linked, so a
-  rename or a write there cannot reach a live file;
-* the installation state and the config the verb runs under are redirected to
-  ``<installation state>/rehearsals/<run>/`` for the body of
-  :func:`redirected`, so a lock, a run record or a fallback ``config.load()``
-  deep in a writer lands in the area too, all but the ISRC cache, which
-  stays live because it records the provider's catalogue and nothing the
-  rehearsal did (U206), and the provider gate, which never follows a
-  redirected state directory: a rehearsal spends from the account's one
-  allowance, and the live gate counts every call it makes (U278).
-
-Nothing here writes the live database or moves a live file, and
-:func:`witness` with :func:`assert_untouched` proves it after every rehearsal:
-the live database file set hashed before and after, the live folders listed by
-name, size, modification time and inode before and after.
+Each :class:`Area` is per run and never shared, its moved files CLONED and never
+linked, so no live ledger or file is reached; the ISRC cache (U206) and provider
+gate (U278) stay live. :func:`assert_untouched` proves the live library unmoved.
 """
 
 from __future__ import annotations
@@ -54,11 +26,8 @@ from cratekit.core.cause import refuse
 
 _ORIGIN = ("core", "rehearsal")
 
-#: The library state entries a rehearsal never copies: the database (copied as
-#: a file set on its own), every lock (a lock is held on an inode, not a
-#: content), the active run sentinel (the live run's), and the directories
-#: that are histories rather than inputs, among them the snapshots, which are
-#: whole databases, and the rehearsal areas themselves.
+#: Never copied: the database (its own file set), locks (held on an inode), the
+#: active run sentinel, and histories such as the snapshots and rehearsal areas.
 _NOT_COPIED = frozenset(
     {
         "rekordbox_db",
@@ -80,11 +49,9 @@ class Area:
 
     #: The run the rehearsal belongs to, as the run record names it.
     run_id: str
-    #: The half on the library volume: the database copy, the library state
-    #: copy and the cloned files, beside the library so a clone stays a clone.
+    #: The library volume half, beside the library so a clone stays a clone.
     volume: Path
-    #: The half on the local state disk: the redirected config and
-    #: installation state, where locks and run records belong.
+    #: The local state disk half, where locks and run records belong.
     local: Path
     #: The database copy the rehearsal opens.
     database: Path
@@ -118,15 +85,7 @@ def local_root() -> Path:
 
 
 def clone(source: Path, destination: Path) -> None:
-    """Copy ``source`` to ``destination`` as a clone where the volume clones, else bytes.
-
-    NEVER A HARD LINK. A hard link is the same file under a second name, so a
-    write into the rehearsal's copy would be a write into the live file; a
-    clone (APFS ``clonefile``, through ``cp -c``) is copy on write and costs
-    nothing until something changes it. Where the volume does not clone, the
-    bytes are copied. The modification time travels either way, since a
-    landing's fingerprint of a folder is each file's name, size and time.
-    """
+    """A clone of ``source`` where the volume clones, else its bytes, NEVER A HARD LINK."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if sys.platform == "darwin":
         done = subprocess.run(
@@ -149,15 +108,8 @@ def open_area(
 ) -> Area:
     """Make the run's scratch area and copy into it what a rehearsal reads.
 
-    REFUSES WHILE REKORDBOX OR ITS AGENT IS RUNNING, before anything is made,
-    because a copy taken under a live application is torn. REFUSES AN AREA
-    THAT EXISTS, since an area is never shared: two rehearsals of one run
-    would each read the other's moves.
-
-    ``files`` are cloned into :attr:`Area.staging` under their own names, and
-    the redirected config names that folder as download staging when
-    ``staging`` is the folder they came from. A failure part way removes what
-    was made, since nothing has been rehearsed in it yet.
+    REFUSES WHILE REKORDBOX OR ITS AGENT IS RUNNING, as the copy would be torn,
+    and REFUSES AN AREA THAT EXISTS, since an area is never shared.
     """
     rb_writer.assert_rekordbox_closed("copying the database for a rehearsal")
     live = rb_writer.live_db_path(cfg)
@@ -200,8 +152,7 @@ def open_area(
             clone(one, volume / "staging" / one.name)
         (local / "config").mkdir()
         (local / "state").mkdir()
-        # A NEW DOCUMENT IN A NEW FOLDER, written through the one locked cycle
-        # every writer uses; there is nothing on disk there for it to erase.
+        # A NEW DOCUMENT IN A NEW FOLDER, so the locked cycle has nothing to erase.
         config.update(
             lambda _absent: redirected_cfg.to_toml_dict(),
             local / "config" / config.CONFIG_FILENAME,
@@ -214,12 +165,7 @@ def open_area(
 
 
 def _copy_library_state(cfg: config.Config, redirected: config.Config) -> None:
-    """Copy the library state a rehearsal reads, and none of what it must not share.
-
-    Each entry from where the live config resolves it to where the redirected
-    one does, so the copy keeps the layout the inventory derives (one
-    subdirectory per snapshot role) without this module knowing it.
-    """
+    """Copy the library state a rehearsal reads, and none of what it must not share."""
     live_root = config.library_state_dir(cfg)
     for entry in config.STATE_FILES:
         if entry.root is not config.StateRoot.LIBRARY or not entry.relative:
@@ -242,22 +188,11 @@ def _copy_library_state(cfg: config.Config, redirected: config.Config) -> None:
 def redirected(area: Area) -> Iterator[config.Config]:
     """Run the body with config and installation state pointed into the area.
 
-    The verb's own config object is the area's already; this catches the rest,
-    a writer that falls back to ``config.load()`` or a lock taken under the
-    installation state directory. Restored on the way out whatever happened.
-
-    One thing is pointed the other way: the ISRC cache stays the live one
-    (U206), through ``config.ENV_ISRC_CACHE_DIR``. The provider gate needs no
-    pointing: ``config.provider_gate_dir`` never reads the state directory
-    this moves, so the rehearsal's calls are counted, paced and refused by
-    the live gate (U278). ``CRATEKIT_PROVIDER_GATE_DIR`` is left as it is.
+    Restored on the way out; the ISRC cache and provider gate stay live (U206, U278).
     """
     keys = (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR, config.ENV_ISRC_CACHE_DIR)
     saved = {key: os.environ.get(key) for key in keys}
-    # THE ISRC ANSWERS STAY LIVE (U206), resolved before the state directory
-    # moves: they are facts about the provider's catalogue, marking nothing
-    # done, and a rehearsal that threw them away would make its live run pay
-    # for every lookup a second time.
+    # THE ISRC ANSWERS STAY LIVE (U206), resolved before the state moves; they mark nothing done.
     os.environ[config.ENV_ISRC_CACHE_DIR] = saved[config.ENV_ISRC_CACHE_DIR] or str(
         config.state_path("isrc_cache").parent
     )
@@ -281,9 +216,7 @@ def remove(area: Area) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
-# ---------------------------------------------------------------------------
 # The live library, before and after
-# ---------------------------------------------------------------------------
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -349,18 +282,11 @@ def assert_untouched(before: Witness, *, kept: Iterable[Path] = ()) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
 # The record a live run compares against
-# ---------------------------------------------------------------------------
 
 
 def lines(identity: Any, prefix: str = "") -> list[str]:
-    """Every leaf of a plan's identity as one ``path = value`` line, in order.
-
-    What a live run prints when its digest differs from the rehearsal's: the
-    lines one has and the other does not, so the difference is named and not
-    merely counted.
-    """
+    """Every leaf of a plan's identity as one ``path = value`` line, so a difference is named."""
     if isinstance(identity, Mapping):
         out: list[str] = []
         for key in sorted(identity):
@@ -412,11 +338,7 @@ def record(
 
 
 def latest(*, verb: str, key: Mapping[str, str]) -> dict[str, Any] | None:
-    """The newest rehearsal of ``verb`` over ``key``, or None when none was kept.
-
-    A record that does not read as one is passed over rather than trusted: a
-    live run compares against a rehearsal it can read or says there is none.
-    """
+    """The newest readable rehearsal of ``verb`` over ``key``, or None when none was kept."""
     root = local_root()
     if not root.is_dir():
         return None
@@ -441,16 +363,7 @@ def latest(*, verb: str, key: Mapping[str, str]) -> dict[str, Any] | None:
 def mapped(value: Any, replacements: Iterable[tuple[str, str]]) -> Any:
     """``value`` with every string's scratch spelling replaced by its live one.
 
-    How a rehearsal shows the plan it applied in the area is the live plan: the
-    area's plan, every path mapped back to the live path it stands for, must
-    read line for line as the plan made over the live paths.
-
-    THE LONGEST SCRATCH SPELLING FIRST, whatever order the caller gave (U188).
-    A pair whose scratch spelling holds another's, as the area's folder under
-    a base drive whose path ends in the mounted drive's holds that folder
-    under the mount, would otherwise be half mapped by the shorter one and
-    read as a difference. An empty scratch spelling is dropped, since it
-    matches between every character.
+    THE LONGEST SCRATCH SPELLING FIRST, so one holding another is not half mapped (U188).
     """
     pairs = tuple(
         sorted(

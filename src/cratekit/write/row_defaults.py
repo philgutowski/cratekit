@@ -1,59 +1,22 @@
 """Fill rekordbox's own defaults on a content row that lacks them (R-923), and
 give a row the binding numbered at random its file's inode (U115).
 
-WHY THIS EXISTS. The native landing made each row with the binding's
-``add_content`` and set nothing else, so twenty one columns rekordbox fills on
-every row it makes were left NULL. Such a row is accepted, analysed and stable,
-and rekordbox will not load it to a deck. The landing now sets them; this is
-the repair for rows landed before it did, done in place so every membership the
-row already holds stays where it is.
+A row landed with the binding's ``add_content`` alone has columns NULL that
+rekordbox fills on every row it makes, and rekordbox will not load it to a
+deck; this repairs such rows in place, so their memberships stay. It writes
+:data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` and nothing else, only
+into a NULL column of a live row, under
+:data:`cratekit.core.rb_writer.ROW_DEFAULTS_POLICY` for this commit only, and
+reads every written row back from SQL. The digest names no copy, path or time,
+so a rehearsal digests equal to the live plan.
 
-WHAT IT WRITES IS :data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` AND
-NOTHING ELSE, and only into a column that is NULL. Each value is the column's
-own empty, so nothing a person could have set is replaced: a value already
-present, a rating or a colour included, is not listed and not written. The
-write goes through :func:`cratekit.core.rb_writer.write_metadata_field` under
-:data:`cratekit.core.rb_writer.ROW_DEFAULTS_POLICY`, registered by the apply
-for its commit and put back after it, so the guard's writable columns widen for
-this commit and for no other.
-
-A LIVE ROW ONLY. The plan reads ``rb_local_deleted = 0`` from SQL, so a soft
-deleted row, of which a live library holds hundreds with these columns NULL, is
-never listed, and neither is a row whose marker cannot say.
-
-EVERY WRITTEN ROW IS READ AGAIN FROM SQL AFTER THE COMMIT. Each planned column
-must read as its default, and no column outside the planned ones and the
-binding's bookkeeping may have moved. A tempo or a grid moving refuses there by
-name, after the guard already refused it before the commit.
-
-THE DIGEST NAMES NO COPY. No database path, no state path and no time, so a
-rehearsal on a disposable copy of the database digests equal to the live plan
-when the rows are the same, which is what lets a session approve the live write
-on its own (R-922 is the landing that does not).
-
-THE FILE ID (U115, R-928). rekordbox will not load a row whose
-:data:`cratekit.core.rb_writer.FILE_ID_COLUMN` the binding minted at random,
-and rekordbox's own value is the file's inode at import. A random id is told
-from one rekordbox wrote by THE VOLUME'S INODE BOUND: APFS hands out inode
-numbers from a counter that never reuses one, so the inode of a file created
-this moment on the volume is above every inode any file on it has ever had. A
-row whose id is above that bound, and whose file reads back a different inode,
-carries a value no file ever carried, and is given its file's inode, owned,
-through :data:`cratekit.core.rb_writer.FILE_ID_POLICY`. A row whose id is at or
-under the bound is left alone whether it matches its file or not: rekordbox
-tolerates a stale inode and a zero, measured on 1,358 rows carrying 0 and on
-every row whose file was copied since import, and renumbering them would be a
-write over thousands of rows rekordbox made that buys nothing. The bound is a
-measurement, so it is shown at the gate and kept out of the digest: a copy
-rehearsal and the live run each create their own file and read two numbers.
-
-The rule has edges the gate states: a random id under the bound reads as
-stale, which at this volume's counter is about one in two hundred; a volume
-whose counter has passed :data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`
-hides every random id; and a volume that is not APFS makes no such promise
-about its inode numbers at all. In the last two cases nothing is renumbered
-and the gate says why. A file a prefix rule places on another volume than the
-bound's is left too, since its inode is another volume's number.
+THE FILE ID (U115, R-928). rekordbox's own value is the file's inode. APFS
+hands out inodes from a counter it never reuses, so a row whose id is above a
+fresh file's inode and whose file reads another inode carries a number no file
+carried, and is given its file's inode through
+:data:`cratekit.core.rb_writer.FILE_ID_POLICY`. The bound is shown at the gate
+and kept out of the digest. Off APFS, or past
+:data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`, nothing is renumbered.
 
 Layer: write. It opens no database of its own and names no verb.
 """
@@ -106,8 +69,7 @@ APFS = "apfs"
 #: How many offending rows a refusal's sentence names. The detail carries all.
 _NAMED_ROWS = 5
 
-#: How many identifiers one SQL statement names. Under every SQLite build's
-#: bound parameter limit, the oldest of which is 999.
+#: How many identifiers one SQL statement names, under SQLite's oldest limit of 999.
 _CHUNK = 500
 
 _ORIGIN = ("write", "row_defaults")
@@ -240,12 +202,8 @@ class DefaultsPlan:
     def digest(self) -> str:
         """The fingerprint an approval is bound to.
 
-        OVER THE ITEMS, THE ROW COUNT AND THE VALUES WRITTEN, AND NOTHING THAT
-        NAMES A COPY, so a rehearsal on a disposable copy digests equal to the
-        live plan when the rows are the same. The values are in it so a build
-        that changes a default is a different plan. The bound is NOT in it: it
-        is a fresh file's inode and differs between any two runs, while the
-        items it selected are what the approval is for.
+        Over the items, the row count and the values written, and nothing naming a
+        copy or the bound, so a rehearsal digests equal to the live plan.
         """
         return digest_of(
             {
@@ -262,9 +220,8 @@ class RowsWritten:
     """What one write over content rows did, and what the database says afterwards.
 
     ``wrong`` names each written row that does not read back as planned, and
-    ``moved`` each written row with a column the write does not own changed.
-    Both are empty on a good run. The genre write in ``tagging.rows`` reports
-    through this as well.
+    ``moved`` each with a column the write does not own changed; both empty on a
+    good run. The genre write in ``tagging.rows`` reports through this as well.
     """
 
     session_id: str
@@ -276,28 +233,21 @@ class RowsWritten:
 
 @dataclass(frozen=True, slots=True)
 class Written(RowsWritten):
-    """What one apply did, and what the database says about it afterwards.
-
-    ``wrong`` names each written row whose planned column does not read back as
-    its default. ``moved`` names each written row with any other column changed
-    beyond the binding's bookkeeping. Both are empty on a good run and
-    :func:`assert_read_back` refuses when either is not.
+    """What one apply did; :func:`assert_read_back` refuses unless ``wrong`` and
+    ``moved`` are empty.
     """
 
     #: How many of the written rows were given their file's inode (U115).
     renumbered: int = 0
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
+# The plan.
 
 
 def filesystem_of(path: Path) -> str | None:
     """The filesystem type of the volume holding ``path``, from the mount table, or None.
 
-    Imported lazily, as :func:`cratekit.core.preflight.local_mount_points` does,
-    so a test that injects its own bound never loads the extension module.
+    ``psutil`` is imported lazily so a test injecting its own bound never loads it.
     """
     import psutil
 
@@ -311,17 +261,10 @@ def filesystem_of(path: Path) -> str | None:
 def inode_bound(cfg: config.Config) -> InodeBound:
     """The inode of a file created this moment in the library's state directory (U115).
 
-    ON APFS THIS IS ABOVE EVERY INODE THE VOLUME HAS EVER GIVEN A FILE, because
-    the volume allocates them from a counter it never winds back. So an id
-    above it was never an inode on this volume, and the binding's random id,
-    which is what every native row before U115 carries, is almost always
-    above it. The file is removed again at once. The device and the filesystem
-    are measured with it: a candidate on another device is another volume's
-    number, and a volume that is not APFS promises nothing about its numbers.
-
-    REFUSES WHEN THE LIBRARY ROOT IS ABSENT, in the words ``open_db`` uses,
-    rather than creating it: a root made on the boot volume squats the mount
-    point, and the next mount lands beside it.
+    On APFS this is above every inode the volume has given a file. The file is
+    removed at once; the device and filesystem are measured with it. Refuses when
+    the library root is absent rather than create a root that squats the mount
+    point.
     """
     root = Path(cfg.library.root)
     if not root.is_dir():
@@ -350,13 +293,9 @@ ABOVE = "above"
 def file_id_state(value: Any, bound: int) -> str:
     """Judge one stored file id against the volume's inode bound. Pure.
 
-    ``ZERO`` for NULL, an empty string and 0, which rekordbox tolerates;
-    ``ABOVE`` for a number above the bound, which no file on the volume has
-    ever carried; ``WITHIN`` for everything else, a value that was an inode on
-    this volume at some time, or a text that is not a plain run of digits and
-    that this repair makes no claim about. ``int`` alone would take a sign, an
-    underscore or a digit from another script, none of which rekordbox or the
-    binding writes.
+    ``ZERO`` for NULL, empty and 0, which rekordbox tolerates; ``ABOVE`` for a
+    number above the bound; ``WITHIN`` for anything else, including text that is
+    not plain ASCII digits.
     """
     if value is None:
         return ZERO
@@ -377,9 +316,8 @@ def _file_inode(
 ) -> tuple[int | None, str]:
     """The inode of the file a recorded path names on this machine, or why not.
 
-    ONE STAT, and the device is read from it: a file a prefix rule places on
-    another volume carries that volume's inode numbers, which the bound says
-    nothing about, so it is left with its reason rather than compared.
+    One stat; a file on another device is left with its reason, since the bound
+    says nothing about that volume's inodes.
     """
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
@@ -407,17 +345,9 @@ def plan_rows(
 ) -> DefaultsPlan:
     """Every live content row with a default column NULL or a random file id, from SQL.
 
-    FROM SQL AND NOT FROM THE MAPPED ROWS, so a NULL is what the table holds and
-    not what the binding substitutes on load. Ordered by identifier, so the
-    digest is the same whatever order the database returns rows in.
-
-    ONLY A ROW ABOVE THE BOUND HAS ITS FILE READ. A row at or under it is left
-    whatever its file says, so the plan stats the handful of candidates and
-    not the library. A candidate whose file reads back the same inode is not
-    random after all and is left; one whose file cannot be read, or sits on
-    another volume, is listed apart, unwritten, since there is no inode to give
-    it. A BOUND THAT DECIDES NOTHING, off APFS or past the binding's range,
-    judges every id as within it, so nothing is renumbered and the plan says why.
+    From SQL so a NULL is what the table holds, ordered by identifier so the
+    digest is stable. Only a row above the bound has its file read; one whose
+    file cannot be read or is on another volume is listed apart.
     """
     from sqlalchemy import text
 
@@ -446,34 +376,17 @@ def plan_rows(
         elif state == WITHIN or not decides:
             within += 1
         else:
-            inode, why = _file_inode(
-                path, root=root, prefix_map=prefix_map, device=bound.device
-            )
+            inode, why = _file_inode(path, root=root, prefix_map=prefix_map, device=bound.device)
             if inode is None:
                 unrenumbered.append(
-                    Unrenumbered(
-                        content_id=content_id,
-                        title=title,
-                        path=path,
-                        file_id=str(row[FILE_ID]),
-                        why=why,
-                    )
+                    Unrenumbered(content_id, title, path, str(row[FILE_ID]), why)
                 )
             elif str(inode) == str(row[FILE_ID]).strip():
                 matched += 1
             else:
                 file_id, was = inode, str(row[FILE_ID]).strip()
         if missing or file_id is not None:
-            items.append(
-                Item(
-                    content_id=content_id,
-                    title=title,
-                    path=path,
-                    columns=missing,
-                    file_id=file_id,
-                    file_id_was=was,
-                )
-            )
+            items.append(Item(content_id, title, path, missing, file_id, was))
     items.sort(key=lambda item: (len(item.content_id), item.content_id))
     unrenumbered.sort(key=lambda one: (len(one.content_id), one.content_id))
     return DefaultsPlan(
@@ -489,9 +402,7 @@ def plan_rows(
     )
 
 
-# ---------------------------------------------------------------------------
-# The apply and the read back
-# ---------------------------------------------------------------------------
+# The apply and the read back.
 
 
 def _chunks(values: Sequence[str]) -> Iterable[Sequence[str]]:
@@ -532,7 +443,8 @@ def moved_columns(
 ) -> list[str]:
     """Every column of one row that changed between two reads, beyond the ones
     planned and the binding's bookkeeping. Pure, sorted, and the one spelling
-    of the rule both row repairs judge by (A32)."""
+    of the rule both row repairs judge by (A32).
+    """
     skip = set(planned) | rb_writer.BOOKKEEPING_COLUMNS
     return sorted(column for column in now if column not in skip and now[column] != was.get(column))
 
@@ -547,11 +459,9 @@ def named(offenders: Sequence[str]) -> str:
 def assert_rows_as_planned(plan: DefaultsPlan, now: Mapping[str, Mapping[str, Any]]) -> None:
     """Refuse when a row to be written is not the row the plan read.
 
-    THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the apply
-    asks SQL again whether each row is still live, whether every column the
-    plan would fill is still NULL, and whether a file id to be replaced is
-    still the one the plan read. A column given a value since, by rekordbox or
-    by a person, is a row nobody was shown, and nothing is written for any row.
+    The plan is made on another handle, so the apply asks SQL again whether each
+    row is live, each planned column still NULL and each file id still the one
+    read. A row nobody was shown writes nothing for any row.
     """
     moved: list[str] = []
     for item in plan.items:
@@ -582,14 +492,8 @@ def judge(
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """What the read back found wrong. Answers (wrong, moved). Pure.
 
-    COMPARED AS TEXT. The binding declares some of these columns strings where
-    the live table declares integers, and SQLite stores the binding's ``'0'`` as
-    rekordbox's 0 by affinity, so the same value can read back either way. The
-    one float, ``SamplerGain``, was measured stored real on the live table; an
-    integer affinity there would read back ``'0'`` and refuse here, after a
-    durable commit, which the first live run would show at once. The file id
-    is declared a string by the binding and holds an integer on the live
-    table, and is compared the same way.
+    Compared as text, since SQLite stores either a string or an integer by
+    affinity.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -638,10 +542,8 @@ def record_commit(
 def _fill(plan: DefaultsPlan, mapped: Mapping[str, Any]) -> tuple[int, int]:
     """Set every planned column on its mapped row through the field policies.
 
-    Returns the rows written and how many of them were renumbered. A decision
-    other than a write means a policy disagrees with a plan the staleness check
-    has just passed, which is this module's defect and refuses before the
-    commit.
+    Returns the rows written and how many were renumbered. A decision other than
+    a write is this module's defect and refuses before the commit.
     """
     owner = rb_writer.ROW_DEFAULTS_POLICY.owner
     file_owner = rb_writer.FILE_ID_POLICY.owner
@@ -669,6 +571,19 @@ def _fill(plan: DefaultsPlan, mapped: Mapping[str, Any]) -> tuple[int, int]:
     return written, renumbered
 
 
+def watched_roots(analysis_roots: Iterable[Path | str]) -> list[Path]:
+    """The analysis roots as paths, refused when empty, since a watch over
+    nothing reports every session clean."""
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    return watched
+
+
 def apply_rows(
     cfg: config.Config,
     db: Any,
@@ -678,38 +593,16 @@ def apply_rows(
 ) -> Written:
     """Fill the planned defaults, commit behind the guard, and read them back.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as every database writer here
-    calls it: the three gates with a record kept, a capture the commit happens
-    behind, the analysis watch over the roots named, the commit witness, and
-    the guarded commit.
-
-    THE ROWS ARE CHECKED AGAINST THE PLAN BEFORE THE SESSION IS ENTERED, so a
-    stale plan refuses with no session record, no capture and nothing pending.
-    The policy is registered after that check and before the first field is
-    set, so the guard's writable columns include these for this commit.
-
-    ``analysis_roots`` has no default for the reason the membership writer
-    gives: a watch that watches nothing reports every session clean.
+    The session spine every database writer calls. The rows are checked against
+    the plan before the session is entered, so a stale plan refuses with nothing
+    pending. The file id policy is registered only when the plan renumbers, so
+    a run that fills defaults alone cannot write the column.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
+    watched = watched_roots(analysis_roots)
     content_ids = [item.content_id for item in plan.items]
     assert_rows_as_planned(plan, read_columns(db, content_ids))
     mapped = read_mapped(db, content_ids)
-    # THE EVIDENCE IS READ BEFORE IT IS REPLACED, for the reason ``tag rows``
-    # gives: the fingerprint recorded after the commit must not bless a
-    # database recovered out of band.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
-    # REGISTERED FOR THIS COMMIT AND THEN PUT BACK. The two policies are what
-    # admit these columns, and ``field_policies_for_commit`` is what puts the
-    # registry back whatever happens inside. The file id policy is registered
-    # only when the plan renumbers, so a run that fills defaults alone cannot
-    # write the column.
     policies = [rb_writer.ROW_DEFAULTS_POLICY]
     if plan.renumbers:
         policies.append(rb_writer.FILE_ID_POLICY)
@@ -720,8 +613,7 @@ def apply_rows(
             ) as gates,
             rb_writer.commit_witness(db) as witness,
         ):
-            record, capture = trees.attached_capture(gates, cfg, db)
-
+            record, _capture = trees.attached_capture(gates, cfg, db)
             before = read_columns(db, content_ids)
             written = renumbered = 0
             try:
@@ -729,17 +621,14 @@ def apply_rows(
                 rb_writer.commit_guarded(db)
             except BaseException:
                 trees.rollback_quietly(db)
-                # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
-                # engine's own answer.
+                # An exception is not proof nothing landed; the witness is.
                 if witness.landed:
                     record_commit(record, CHANGE_KEY, written, cfg)
                 raise
             record_commit(record, CHANGE_KEY, written, cfg)
             convergence.record_fingerprint(cfg, db)
-
             after = read_columns(db, content_ids)
             session_id = record.session_id
-
     wrong, moved = judge(plan, before, after)
     return Written(
         session_id=session_id,
@@ -754,10 +643,9 @@ def apply_rows(
 def assert_read_back(written: Written) -> None:
     """Refuse when the database does not say what the plan said it would.
 
-    A COLUMN THAT MOVED IS REPORTED AS THE GUARD'S DEFECT, because the guard
-    holds that before the commit and reaching here means it did not. Either way
-    the write is durable, so the refusal names the session whose capture undoes
-    it.
+    A moved column is the guard's defect, since the guard holds it before the
+    commit. The write is durable either way, so the refusal names the session
+    whose capture undoes it.
     """
     if not written.wrong and not written.moved:
         return
@@ -784,34 +672,9 @@ def assert_read_back(written: Written) -> None:
 
 
 __all__ = [
-    "ABOVE",
-    "APFS",
-    "CHANGE_KEY",
-    "COLUMNS",
-    "FILE_ID",
-    "FILE_MISSING",
-    "ON_ANOTHER_VOLUME",
-    "PATH_UNRESOLVED",
-    "WITHIN",
-    "WORKFLOW",
-    "ZERO",
-    "DefaultsPlan",
-    "InodeBound",
-    "Item",
-    "Unrenumbered",
-    "RowsWritten",
-    "Written",
-    "apply_rows",
-    "assert_read_back",
-    "assert_rows_as_planned",
-    "file_id_state",
-    "filesystem_of",
-    "inode_bound",
-    "judge",
-    "moved_columns",
-    "named",
-    "plan_rows",
-    "read_columns",
-    "read_mapped",
-    "record_commit",
+    "ABOVE", "APFS", "CHANGE_KEY", "COLUMNS", "FILE_ID", "FILE_MISSING", "ON_ANOTHER_VOLUME",
+    "PATH_UNRESOLVED", "WITHIN", "WORKFLOW", "ZERO", "DefaultsPlan", "InodeBound", "Item",
+    "Unrenumbered", "RowsWritten", "Written", "apply_rows", "assert_read_back",
+    "assert_rows_as_planned", "file_id_state", "filesystem_of", "inode_bound", "judge",
+    "moved_columns", "named", "plan_rows", "read_columns", "read_mapped", "record_commit",
 ]

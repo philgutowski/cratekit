@@ -1,30 +1,8 @@
-"""The guarded writer against a REAL database, a real object-mapper session, and
-a real commit.
+"""The guarded writer against a REAL database, a real object-mapper session, and a real commit.
 
-WHY THIS EXISTS ALONGSIDE THE PURE GUARD SUITE. The pure suite proves the
-decisions. It cannot prove the ADAPTER: that the session introspection actually
-reports the table a real mapped object belongs to, that a real pending delete is
-visible before the commit rather than after it, or that a rolled-back session
-really leaves nothing behind. Those are the joints where a ported guard can be
-perfectly correct and still guard nothing, and the source system's equivalents
-were never covered at all outside a manual run against the author's own library.
-
-WHICH DATABASE IT RUNS AGAINST. A disposable one, built here from the binding's
-own schema, in a temporary directory. It is never a copy of anybody's library:
-the live database is off limits, and a test that can reach it is a test that
-eventually does.
-
-Setting ``CRATEKIT_TEST_DB`` to a snapshot copy points the SAME battery at a
-real database instead. The copy is copied again before anything runs, so even a
-supplied file is never written to. That is the fixture-presence gate the
-verification contract asks for, expressed as a substitution rather than as a
-skip: the assertions run either way, and supplying a real snapshot strengthens
-them rather than switching them on.
-
-Two things the synthetic database cannot prove, stated plainly rather than left
-for a reader to discover: it is not encrypted, so the key path is exercised only
-when a real snapshot is supplied, and its column constraints come from the
-binding's declaration rather than from what rekordbox actually created.
+The pure suite proves the decisions, this proves the ADAPTER, on a disposable database built
+from the binding's schema and never a live library. ``CRATEKIT_TEST_DB`` points the same
+battery at a snapshot copy, copied again first, which also exercises the key path.
 """
 
 from __future__ import annotations
@@ -44,28 +22,17 @@ from cratekit.core import rb_writer as W
 from cratekit.core.exit_codes import Remedy
 from tests.test_config import valid_data
 
-#: The pin the tests record and then satisfy. A shape, not anybody's installed
-#: version: what is under test is that an exact comparison is made at all.
+#: The pin the tests record and satisfy, a shape rather than an installed version.
 RECORDED_APP_VERSION = "9.9.9.0001"
 
 
-# ---------------------------------------------------------------------------
 # Building a disposable database
-# ---------------------------------------------------------------------------
 
 
 def _relaxed_schema():
-    """The binding's schema with non-key columns made nullable.
+    """A copy of the binding's schema with non-key columns nullable, as rekordbox's own is looser.
 
-    Copied into a fresh container rather than mutated in place, because the
-    binding's own metadata is shared process-wide and relaxing it there would
-    quietly change what every other test is running against.
-
-    Relaxed because the declared schema is STRICTER than the database rekordbox
-    actually creates: the binding's own playlist-folder helper writes a row that
-    its own declaration rejects. A fixture that is stricter than production fails
-    on the fixture rather than on the code.
-    """
+    Copied because the binding's metadata is shared process wide."""
     from pyrekordbox.db6 import tables
     from sqlalchemy import MetaData
 
@@ -80,12 +47,7 @@ def _relaxed_schema():
 
 
 def _row(model, **values):
-    """One mapped row with every timestamp column filled.
-
-    Not a general default-filler. Only the timestamps are supplied, because the
-    binding's date type raises on a missing value rather than storing null, which
-    makes those columns mandatory in practice whatever the schema says.
-    """
+    """One mapped row with every timestamp filled, since the binding's date type raises on null."""
     from pyrekordbox.db6 import tables
 
     now = datetime.now(timezone.utc)
@@ -96,35 +58,19 @@ def _row(model, **values):
     return obj
 
 
-#: Each worker's built databases, as bytes, keyed by what a build reads: whether
-#: it carries the tag category, and the schema version the pin compares against.
-#: The version is read at every call, as a build always read it, so a test that
-#: configures another pin before it builds still finds that pin in its file.
-#: Bytes rather than a file, so no test can open, write, encrypt or delete the
-#: template: every call writes a private copy of its own (U256).
+#: Each worker's built databases as bytes, keyed by tag category and schema pin, so every
+#: call writes a private copy and no test can touch the template (U256).
 _TEMPLATES: dict[tuple[bool, str], bytes] = {}
 
-#: The files SQLite keeps for a database. A path where any of them is already
-#: present is built from nothing, as every path was before U256, rather than
-#: having a copy written over it or beside it.
+#: The files SQLite keeps for a database, a path holding any is built from nothing (U256).
 _DATABASE_FILES = ("", "-wal", "-shm", "-journal")
 
-#: The mode SQLite creates a database file with, before the umask, its default
-#: ``SQLITE_DEFAULT_FILE_PERMISSIONS``.
+#: SQLite's default database file mode, ``SQLITE_DEFAULT_FILE_PERMISSIONS``.
 _SQLITE_FILE_MODE = 0o644
 
 
 def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True) -> None:
-    """Create a database carrying the minimum the safety chain reads.
-
-    Built from nothing once per process for each variant and schema pin, then
-    copied, because building it took about 120 ms and was asked for 2,694 times
-    in one run of the suite on the Linux container, where a copy takes a
-    fraction of a millisecond (U256). Every call gets a file of its own. The one
-    thing a copy carries that a fresh build would not is the time its rows were
-    stamped: the first build of the variant in this process, not this call. No
-    test reads those stamps as fresh; U256's record says how that was driven.
-    """
+    """A database carrying the minimum the safety chain reads, copied from a template (U256)."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db_version = W.pinned_db_version()
     if any(os.path.lexists(f"{db_path}{suffix}") for suffix in _DATABASE_FILES):
@@ -135,21 +81,14 @@ def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True)
     if template is None:
         template = _template(with_tag_category=with_tag_category, db_version=db_version)
         _TEMPLATES[key] = template
-    # Created exclusively, and with the mode SQLite gives a database it creates,
-    # so a copy is the same file a build would leave under any umask.
+    # Created exclusively with SQLite's own mode, so a copy matches a build under any umask.
     descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(template)
 
 
 def _template(*, with_tag_category: bool, db_version: str) -> bytes:
-    """One database built from nothing in a directory of its own, read as bytes.
-
-    The directory is removed before this returns, so the template exists only
-    in memory. Closing the build's last connection folds the WAL into the main
-    file; anything left beside it would be a part of the database a copy of the
-    one file lost, so that refuses rather than copying half a database.
-    """
+    """One database built from nothing and read as bytes, refusing if any sidecar is left."""
     with tempfile.TemporaryDirectory(prefix="cratekit-fixture-db-") as folder:
         path = Path(folder) / "master.db"
         _build_from_nothing(path, with_tag_category=with_tag_category, db_version=db_version)
@@ -191,8 +130,7 @@ def _build_from_nothing(db_path: Path, *, with_tag_category: bool, db_version: s
         session.commit()
     engine.dispose()
 
-    # WAL mode, because that is the mode the real database runs in and it is the
-    # mode the snapshot pair is built for.
+    # WAL mode, the mode the real database runs in.
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.commit()
@@ -200,19 +138,9 @@ def _build_from_nothing(db_path: Path, *, with_tag_category: bool, db_version: s
 
 
 def _encrypt_in_place(db_path: Path) -> None:
-    """Encrypt a disposable database with the key the binding itself supplies.
+    """Encrypt a disposable database with the binding's own key, as a real library is (R-239).
 
-    THE SHAPE A REAL LIBRARY HAS, built without touching one. Every other
-    database in this suite is plain, so an open that never asks for the key
-    passes against all of them and fails against every real machine, which is
-    R-239. The key is the binding's own default rather than anything read from
-    an installation, so the file opens exactly when the binding is asked to
-    unlock it.
-
-    The plain file is folded out of WAL first so no sidecar of the plaintext is
-    left beside the encrypted copy, then the copy is put back into WAL, the mode
-    the real database runs in.
-    """
+    Folded out of WAL first so no plaintext sidecar is left, then put back into WAL."""
     from pyrekordbox.db6.database import BLOB
     from pyrekordbox.utils import deobfuscate
     from sqlcipher3 import dbapi2
@@ -253,12 +181,7 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def pinned(library, monkeypatch):
-    """Configuration with the application pin RECORDED, and an install that matches.
-
-    Recorded rather than defaulted: an unset pin refuses every write (S2), so a
-    test of the write path has to record one first, which is the same thing the
-    setup wizard makes a user do.
-    """
+    """Configuration with the application pin RECORDED, since an unset pin refuses writes (S2)."""
     cfg = config.from_dict(
         valid_data(
             library,
@@ -275,18 +198,7 @@ def pinned(library, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _rekordbox_closed(monkeypatch):
-    """Whether rekordbox is open on this machine is irrelevant to a temporary database.
-
-    Three probes, patched in three places, and the third one is not optional. The
-    two in ``rb_writer`` are patched where the guards RESOLVE them; patching a
-    module that merely re-exports the names rebinds nothing a guard reads. The
-    third belongs to the binding, whose own commit refuses while rekordbox runs
-    and which bound the probe into its module at import.
-
-    Neutralising them here does not weaken the guard under test. That the guard
-    refuses a running application is proved directly, twice, by driving the same
-    probes the other way.
-    """
+    """Every rekordbox probe patched where it is resolved, the binding's own included."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(W, "rekordbox_running", lambda: False)
@@ -296,11 +208,7 @@ def _rekordbox_closed(monkeypatch):
 
 @pytest.fixture
 def cloud_sync_off(monkeypatch):
-    """Drive the canary's OFF branch through the real settings reader's seam.
-
-    Patched here rather than by writing a settings file, so the test states the
-    marker it depends on instead of encoding a file format rekordbox owns.
-    """
+    """Drive the canary's OFF branch through the settings reader's seam, not a settings file."""
     monkeypatch.setattr(
         W, "read_rekordbox_settings", lambda *args, **kwargs: {W.LIBRARY_SYNC_SETTING: 0}
     )
@@ -308,11 +216,7 @@ def cloud_sync_off(monkeypatch):
 
 @pytest.fixture
 def database(library, tmp_path):
-    """The database under test, and whether it needs the key to open.
-
-    A supplied snapshot wins over the synthetic build, and is COPIED first: the
-    battery writes, and writing to a file somebody handed us is not ours to do.
-    """
+    """The database under test, a supplied snapshot COPIED first since writing to it is not ours."""
     supplied = W.integration_db_path()
     if supplied is not None:
         target = tmp_path / "supplied" / supplied.name
@@ -344,9 +248,7 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-# ---------------------------------------------------------------------------
 # The open-side gate
-# ---------------------------------------------------------------------------
 
 
 def test_a_real_database_opens_through_the_whole_chain(opened):
@@ -374,8 +276,7 @@ def test_a_missing_database_directory_names_the_unmounted_volume(tmp_path):
 
 
 def test_a_missing_database_file_is_its_own_refusal(tmp_path):
-    """Distinct from the directory case: an unmounted volume and a deleted file
-    have nothing in common except that neither can be opened."""
+    """A missing file is its own refusal, distinct from an unmounted volume."""
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.open_db(tmp_path / "master.db")
     assert excinfo.value.cause.reason == "library-database-missing"
@@ -391,11 +292,7 @@ def test_a_file_that_is_not_a_database_refuses_rather_than_returning_a_handle(tm
 
 
 def test_the_binding_pin_refuses_before_anything_is_opened(database, monkeypatch):
-    """Pin 1 has no escape, and it fires on a read as well as on a write.
-
-    A mismatched binding maps table shapes this build was never validated
-    against, and a read that mis-maps a column feeds the write that follows it.
-    """
+    """Pin 1 has no escape and fires on a read too, since a mis-mapped read feeds the write."""
     path, unlock = database
     cfg = config.from_dict(
         valid_data(path.parent.parent, rekordbox={"pinned_pyrekordbox": "0.0.0"})
@@ -425,21 +322,14 @@ def test_the_schema_pin_can_be_forced_for_a_deliberate_revalidation(database, cl
     W.close_db(W.open_db(path, unlock=unlock, cfg=cfg, force_schema=True))
 
 
-# ---------------------------------------------------------------------------
 # R-239: the key is asked of the file, by the opener, for every caller
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("encrypted", [True, False], ids=["encrypted", "plain"])
 def test_an_open_that_names_no_key_opens_either_kind_of_database(
     library, cloud_sync_off, encrypted
 ):
-    """The opener answers the question itself, so no caller can answer it wrong.
-
-    A real library is encrypted and every disposable database is plain. Both
-    constant answers fail one of the two, which is how five verb sites came to
-    pass ``unlock=False`` and fail at the open on every real machine.
-    """
+    """The opener answers the key question itself, so no caller can answer it wrong."""
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     if encrypted:
@@ -452,11 +342,7 @@ def test_an_open_that_names_no_key_opens_either_kind_of_database(
 
 
 def test_an_encrypted_database_does_not_open_with_the_key_withheld(library, cloud_sync_off):
-    """The fixture is what it claims to be: the binding cannot read it without the key.
-
-    Without this, the test above could pass against a file that was never
-    encrypted, and would then say nothing about a real library.
-    """
+    """The fixture is really encrypted: the binding cannot read it without the key."""
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     _encrypt_in_place(path)
@@ -468,12 +354,7 @@ def test_an_encrypted_database_does_not_open_with_the_key_withheld(library, clou
 def test_a_snapshot_check_that_names_no_key_verifies_either_kind(
     library, tmp_path, cloud_sync_off, encrypted
 ):
-    """The same question one call over, where the constant was ``True``.
-
-    ``snapshot`` calls ``integrity_ok`` with no argument, so a plain database
-    failed its capture check and an encrypted one passed; the suite patched the
-    check to ``unlock=False`` in every file that wrote.
-    """
+    """The snapshot check, which once assumed the key, verifies either kind with no argument."""
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     if encrypted:
@@ -483,12 +364,7 @@ def test_a_snapshot_check_that_names_no_key_verifies_either_kind(
 
 
 def _unlock_arguments(tree) -> list[tuple[int, str]]:
-    """Every call in ``tree`` to an opener that passes ``unlock=`` itself.
-
-    Matched on the called name's last attribute, so ``rb_writer.open_db``,
-    ``W.open_db`` and a bare ``open_db`` are all seen. A ``**kwargs`` call counts,
-    because it can carry the argument unseen.
-    """
+    """Every call in ``tree`` to an opener that passes ``unlock=``, ``**kwargs`` included."""
     import ast
 
     found = []
@@ -505,13 +381,7 @@ def _unlock_arguments(tree) -> list[tuple[int, str]]:
 
 
 def _forwarded_lines(tree) -> set[int]:
-    """The lines where ``integrity_ok`` passes its own ``unlock`` to ``open_db``.
-
-    Exactly that shape and nowhere else: a call inside the ``integrity_ok``
-    definition whose ``unlock`` keyword is the bare name ``unlock``. A literal
-    answer typed anywhere in ``rb_writer``, including inside ``integrity_ok``,
-    is not a forward and is refused like any other.
-    """
+    """Where ``integrity_ok`` forwards its bare ``unlock`` to ``open_db``, and no other."""
     import ast
 
     lines: set[int] = set()
@@ -530,12 +400,7 @@ def _forwarded_lines(tree) -> set[int]:
 
 
 def test_no_caller_in_src_answers_the_key_question_for_itself():
-    """R-239's closing condition as a guard: one function answers, every open asks.
-
-    The single exemption is ``integrity_ok`` forwarding its own argument to
-    ``open_db`` inside ``rb_writer``, which is the question passed through rather
-    than answered, and it is matched by shape rather than by file.
-    """
+    """R-239: one function answers the key question, and only ``integrity_ok`` forwards it."""
     import ast
 
     root = Path(W.__file__).resolve().parents[1]
@@ -543,9 +408,12 @@ def test_no_caller_in_src_answers_the_key_question_for_itself():
     scanned = 0
     forwards = 0
     for source in sorted(root.rglob("*.py")):
-        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        text = source.read_text(encoding="utf-8")
         scanned += 1
-        forwarded = _forwarded_lines(tree) if source.name == "rb_writer.py" else set()
+        if "open_db" not in text and "integrity_ok" not in text:
+            continue
+        tree = ast.parse(text, filename=str(source))
+        forwarded = _forwarded_lines(tree) if source.name == "rb_copies.py" else set()
         for line, name in _unlock_arguments(tree):
             if line in forwarded:
                 forwards += 1
@@ -582,8 +450,7 @@ def test_the_forward_exemption_admits_only_integrity_ok_passing_its_own_argument
     ],
 )
 def test_the_key_guard_sees_each_spelling_of_an_answered_question(source):
-    """The guard's own refusals, driven with literal sources, so the scan above
-    cannot be green because the walk stopped recognising a call."""
+    """The key guard's refusals, on literal sources, so the scan cannot pass by seeing nothing."""
     import ast
 
     assert _unlock_arguments(ast.parse(source))
@@ -595,9 +462,7 @@ def test_the_key_guard_accepts_an_open_that_asks():
     assert _unlock_arguments(ast.parse("rb_writer.open_db(cfg=cfg)")) == []
 
 
-# ---------------------------------------------------------------------------
 # The commit-side gate, against a real session
-# ---------------------------------------------------------------------------
 
 
 def test_a_registered_column_write_commits_and_persists(opened, cloud_sync_off):
@@ -611,12 +476,7 @@ def test_a_registered_column_write_commits_and_persists(opened, cloud_sync_off):
 
 
 def test_an_analysis_column_write_is_refused_and_rolled_back(opened, cloud_sync_off):
-    """R17 as a property of a REAL session, not of a hand-built change set.
-
-    The rollback is half the assertion. Leaving the rejected object pending would
-    carry it into whatever commits next, so a refused write would land later
-    under a different operation's name.
-    """
+    """R17 on a REAL session, rolled back so a refused write never lands under a later commit."""
     row = opened.get_content().first()
     row.BPM = 12800
 
@@ -633,13 +493,7 @@ def test_an_analysis_column_write_is_refused_and_rolled_back(opened, cloud_sync_
 def test_an_unregistered_column_is_refused_even_though_it_is_ordinary_metadata(
     opened, cloud_sync_off
 ):
-    """R14 implemented rather than described.
-
-    The source shipped a maximal union of every column any operation might ever
-    want, so on a slim install with no metadata operations enabled four columns
-    were still writable for no reason. Here nothing is writable until an
-    operation registers it.
-    """
+    """R14: nothing is writable until an operation registers it."""
     assert "Rating" not in W.content_writable_columns()
     row = opened.get_content().first()
     row.Rating = 5
@@ -663,12 +517,7 @@ def test_a_registration_widens_the_gate_by_exactly_its_own_fields(opened, cloud_
 
 
 def test_a_real_delete_is_refused_and_rolled_back(opened, cloud_sync_off):
-    """Every delete, from every table, unconditionally, against a real session.
-
-    Additive-only is what makes the snapshot a real safety net: extra rows are
-    visible and removable, and a deletion is the one operation whose damage is
-    invisible until somebody looks for a track that is gone.
-    """
+    """Every delete is refused and rolled back, since a deletion's damage is invisible."""
     row = opened.get_content().first()
     opened.session.delete(row)
 
@@ -709,13 +558,7 @@ def test_the_tree_primitives_are_idempotent(opened, cloud_sync_off):
 def test_the_batch_membership_primitive_reads_presence_once_and_inserts_what_is_absent(
     opened, cloud_sync_off, monkeypatch
 ):
-    """R-10. One presence read per call, whatever the number of tracks.
-
-    The read is counted at the binding, because the cost R-10 recorded was round
-    trips and a correct return value cannot see how many were made. The rows are
-    asserted from the database afterwards, so a primitive that read less by
-    deciding wrongly fails here too.
-    """
+    """R-10: one presence read per call, counted at the binding, whatever the number of tracks."""
     folder = W.ensure_folder(opened, "a folder")
     playlist = W.ensure_playlist(opened, "a playlist", folder)
     W.commit_guarded(opened)
@@ -753,13 +596,7 @@ def test_the_tag_primitives_mirror_an_existing_category(opened, cloud_sync_off):
 def test_a_library_with_no_tag_category_refuses_rather_than_inventing_one(
     library, cloud_sync_off
 ):
-    """One of the reserved refusals, and why it refuses rather than defaulting.
-
-    The binding defines no constants for a tag row's shape, so the alternative to
-    mirroring an existing one is fabricating an attribute value. A fabricated one
-    produces rows rekordbox reads as a different kind of object, which is a
-    corruption that looks exactly like a successful write.
-    """
+    """No tag category refuses, since a fabricated one corrupts while looking like success."""
     path = library / "db" / "master.db"
     _build_disposable_database(path, with_tag_category=False)
     db = W.open_db(path, unlock=False)
@@ -772,11 +609,7 @@ def test_a_library_with_no_tag_category_refuses_rather_than_inventing_one(
 
 
 def test_the_commit_refuses_while_the_agent_is_running(opened, cloud_sync_off, monkeypatch):
-    """Re-checked at commit against a real open session, not only at open.
-
-    A run takes minutes and the user can launch rekordbox during it, so the
-    open-time check is a formality without this one.
-    """
+    """Re-checked at commit, since rekordbox can be launched during a run."""
     row = opened.get_content().first()
     row.ColorID = "4"
     monkeypatch.setattr(W, "rekordbox_agent_running", lambda: True)
@@ -786,12 +619,7 @@ def test_the_commit_refuses_while_the_agent_is_running(opened, cloud_sync_off, m
 
 
 def test_an_unreadable_cloud_state_refuses_a_commit(opened, monkeypatch):
-    """The uncertain case, decided: a state we cannot read is a writer we cannot rule out.
-
-    Deliberately NOT driven through ``cloud_sync_active``, which answers False on
-    an unreadable state so that the falsified row-count predicate can never come
-    back through it. The refusal lives in its own check with its own message.
-    """
+    """An unreadable cloud state is a writer we cannot rule out, so a commit refuses."""
 
     def unreadable(*args, **kwargs):
         raise OSError("no rekordbox settings on this machine")
@@ -799,20 +627,13 @@ def test_an_unreadable_cloud_state_refuses_a_commit(opened, monkeypatch):
     monkeypatch.setattr(W, "read_rekordbox_settings", unreadable)
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.commit_guarded(opened)
-    # Its own reason since the slug split. What this test pins is that an
-    # unreadable state refuses a COMMIT against a real session; which slug it
-    # refuses under was incidental to that, and sharing one with the
-    # genuinely-active case gave two opposite remedies one exit code.
+    # Its own slug since the split, so the two cases do not share opposite remedies.
     assert excinfo.value.cause.reason == "cloud-sync-unreadable"
     assert "could not be read" in str(excinfo.value)
 
 
 def test_an_unreadable_cloud_state_does_not_refuse_a_READ(database, monkeypatch):
-    """Because refusing there would break the machine trying to verify a snapshot.
-
-    A read-only open has to keep working with no rekordbox settings at all, or a
-    user could not reach the step that fixes their own setup.
-    """
+    """A read must still work without rekordbox settings, or a user could not fix their setup."""
 
     def unreadable(*args, **kwargs):
         raise OSError("no rekordbox settings on this machine")
@@ -822,9 +643,7 @@ def test_an_unreadable_cloud_state_does_not_refuse_a_READ(database, monkeypatch)
     W.close_db(W.open_db(path, unlock=unlock))
 
 
-# ---------------------------------------------------------------------------
 # Snapshot, integrity, and the rehearsed restore
-# ---------------------------------------------------------------------------
 
 
 def test_a_good_snapshot_passes_its_integrity_check(database, tmp_path, cloud_sync_off):
@@ -834,8 +653,7 @@ def test_a_good_snapshot_passes_its_integrity_check(database, tmp_path, cloud_sy
 
 
 def test_a_damaged_snapshot_fails_its_integrity_check(database, tmp_path, cloud_sync_off):
-    """The gate U8 puts in front of every commit: no session commits behind a
-    snapshot that has not verified."""
+    """No session commits behind a snapshot that has not verified (U8)."""
     path, unlock = database
     snapshot = W.snapshot_db(path, stamp="s", root=tmp_path / "snaps")
     snapshot.write_bytes(b"truncated beyond recognition")
@@ -845,14 +663,7 @@ def test_a_damaged_snapshot_fails_its_integrity_check(database, tmp_path, cloud_
 def test_a_rehearsed_restore_returns_a_modified_database_to_its_pre_session_state(
     database, tmp_path, cloud_sync_off
 ):
-    """The rehearsal, run rather than asserted.
-
-    Snapshot through the open handle so the checkpoint folds the log into the
-    file, write and commit a real change, restore, and require both the bytes and
-    the row to be back. Comparing only the row would pass against a restore that
-    left a stale log beside the file; comparing only the bytes would pass against
-    a restore that never opened.
-    """
+    """The rehearsal, run: both the bytes and the row must be back, since either alone can lie."""
     path, unlock = database
     db = W.open_db(path, unlock=unlock)
     snapshot = W.snapshot_db(path, stamp="s", root=tmp_path / "snaps", db=db)
@@ -862,9 +673,7 @@ def test_a_rehearsed_restore_returns_a_modified_database_to_its_pre_session_stat
     identifier = row.ID
     row.ColorID = "4"
     W.commit_guarded(db)
-    # The FULL release, not the binding's session close, which leaves a pooled
-    # connection holding the log and the shared-memory index. Restoring under one
-    # produces an input-output error against a database that is actually intact.
+    # The FULL release, since a pooled connection holding the log makes the restore fail.
     W.close_db(db)
 
     W.restore_from_snapshot(snapshot, db_path=path)
@@ -879,37 +688,22 @@ def test_a_rehearsed_restore_returns_a_modified_database_to_its_pre_session_stat
 
 
 def test_the_binding_close_alone_does_not_release_the_database(database, tmp_path):
-    """The gap ``close_db`` exists to cover, asserted so it cannot silently return.
-
-    The binding's close ends the session and leaves the engine's pooled
-    connection open, so the process still holds the log and the shared-memory
-    index. A restore then replaces those files underneath a live connection and
-    the next reader gets an input-output error against a database that is
-    perfectly intact, which reads as a corrupted recovery and is not one.
-    """
+    """The binding's close leaves a pooled connection, which ``close_db`` exists to release."""
     path, unlock = database
     db = W.open_db(path, unlock=unlock)
     W.close_db(db)
 
-    # The proof that the handle really is gone: the sidecars a live connection
-    # keeps open have been cleaned up, and a fresh reader opens cleanly.
+    # The handle is gone: its sidecars are cleaned up and a fresh reader opens cleanly.
     assert not path.with_name(path.name + "-shm").exists()
     reopened = W.open_db(path, unlock=unlock)
     W.close_db(reopened)
 
 
-# ---------------------------------------------------------------------------
 # The lock, held across a real write
-# ---------------------------------------------------------------------------
 
 
 def test_the_write_lock_is_held_across_a_real_commit(opened, library, cloud_sync_off):
-    """The lock and the write together, since the lock exists for this exact shape.
-
-    The membership helper's read-then-insert and the update counter's
-    autoincrement are race-free only under it, so a commit outside it is unsafe
-    for two reasons rather than one.
-    """
+    """The lock and the write together, since the read then insert is race free only under it."""
     lock = library / "write.lock"
     with W.write_session_lock(lock):
         row = opened.get_content().first()
@@ -919,29 +713,17 @@ def test_the_write_lock_is_held_across_a_real_commit(opened, library, cloud_sync
 
 
 def test_the_lock_lands_beside_the_library_not_beside_the_installation(pinned):
-    """KTD17 and R31. Two installations must contend on ONE file.
-
-    In the source system this lock sat under the installation root while the
-    database it protects travelled with the library, so a second install held a
-    lock the first could not see and both opened one database at once.
-    """
+    """KTD17 and R31: two installations contend on ONE lock file, beside the library."""
     assert W.write_lock_path(pinned).is_relative_to(pinned.library.root)
 
 
-# ---------------------------------------------------------------------------
 # The integration seam itself
-# ---------------------------------------------------------------------------
 
 
 def test_the_integration_path_reads_the_environment_and_never_the_live_library(
     monkeypatch, tmp_path
 ):
-    """The seam that lets this battery point at a real snapshot, asserted directly.
-
-    It returns None when unset rather than falling back to the configured
-    library, which is the whole safety property: a test that can silently reach
-    the live database is a test that eventually does.
-    """
+    """The seam returns None when unset, never falling back to the live library."""
     monkeypatch.delenv(W.TEST_DB_ENV, raising=False)
     assert W.integration_db_path() is None
 
@@ -950,12 +732,7 @@ def test_the_integration_path_reads_the_environment_and_never_the_live_library(
 
 
 def test_the_battery_reports_which_database_it_ran_against(database):
-    """A one-line record of whether the strongest half of this gate actually ran.
-
-    The synthetic database proves the adapter and the decisions. It does not
-    prove the key path, because it is not encrypted. Saying so in an assertion
-    rather than in a comment means the claim cannot quietly become false.
-    """
+    """Records whether the strongest half ran, since the synthetic database is not encrypted."""
     path, unlock = database
     supplied = os.environ.get(W.TEST_DB_ENV)
     assert unlock is bool(supplied), (
@@ -964,43 +741,23 @@ def test_the_battery_reports_which_database_it_ran_against(database):
     assert path.exists()
 
 
-# ---------------------------------------------------------------------------
 # Round eight: a permission may never reach "restore from a snapshot"
-# ---------------------------------------------------------------------------
 
 
 def test_a_sealed_database_is_a_grant_rather_than_an_order_to_overwrite_it(
     database, cloud_sync_off
 ):
-    """THE ADVICE WAS DESTRUCTIVE, NOT MERELY WRONG.
+    """THE ADVICE WAS DESTRUCTIVE: a sealed database is a grant, never a restore from snapshot.
 
-    ``canary-read-failed`` sits on the library-unreadable band, whose declared
-    remedy is ``restore-from-snapshot``, and over a ``chmod 000`` that sends the
-    user to overwrite library state they still have. Every earlier finding in this
-    unit was a wrong message; this one destroys data if followed.
-
-    WHY IT WAS UNCLASSIFIED. The binding opens lazily, so a sealed file passes the
-    open and fails at the canary's two reads, and what comes back is an object
-    mapper error wrapping a ``sqlite3.OperationalError``: no errno, no filename,
-    no path anywhere. ``queue.db`` and ``review.db`` are answered correctly
-    because their connection sites record the path; this one did not, so the one
-    thing the classification measures was absent and the destructive default
-    stood.
-
-    The chain is asserted rather than assumed, because the path has to be recorded
-    on the exception two links down that actually carries ``sqlite_errorname``,
-    not on the wrapper a handler can see.
-    """
+    The path is recorded two links down, on the error carrying ``sqlite_errorname``."""
     path, unlock = database
     before = path.stat().st_mode
     path.chmod(0o000)
     try:
         with pytest.raises(W.RekordboxUnavailable) as excinfo:
             W.open_db(path, check_app_version=False, unlock=unlock)
-        # READ WHILE THE FILE IS STILL SEALED, which is when the dispatcher reads
-        # it. The classification MEASURES the path rather than trusting the
-        # driver's sentence, so a condition that has already cleared correctly
-        # claims nothing, and restoring the mode first would test the clearing.
+        # READ WHILE THE FILE IS STILL SEALED, as the dispatcher reads it, since the
+        # classification measures the path.
         error = excinfo.value
         cause = error.cause
     finally:
@@ -1015,12 +772,10 @@ def test_a_sealed_database_is_a_grant_rather_than_an_order_to_overwrite_it(
     assert cause.detail["access"] == "permission"
     assert str(path) in cause.message
 
-    # The site's own reading is kept and is exactly what it was, so the row this
-    # test kills is the recording rather than anything downstream of it.
+    # The site's own reading is kept, so this test kills the recording alone.
     assert error.declared_cause.reason == "canary-read-failed"
 
-    # The shape the recording had to cross: the classifiable error is two links
-    # down the DECLARED chain, under a wrapper that carries none of its fields.
+    # The classifiable error is two links down the DECLARED chain.
     chain = []
     current: BaseException | None = error
     while current is not None:
@@ -1032,18 +787,7 @@ def test_a_sealed_database_is_a_grant_rather_than_an_order_to_overwrite_it(
 
 
 def test_a_sealed_sidecar_beside_the_database_is_the_same_answer(database, cloud_sync_off):
-    """THE OTHER HALF OF THE SAME CONNECTION, and the same destructive default.
-
-    ``database-open-failed`` shares the canary's band and therefore shares
-    ``restore-from-snapshot``. The binding reads rekordbox's own legacy playlist
-    file while it constructs, and that file travels with the database through
-    every snapshot and restore, so a mode on it is a state a real library reaches.
-
-    A sealed sidecar is refused as a ``PermissionError``, which carries its own
-    filename, so this leg needs no hand-off to be classifiable. It is driven
-    anyway because the property being asserted is not "the hand-off works", it is
-    that NO permission reaches an instruction to overwrite the library.
-    """
+    """A sealed playlist sidecar likewise never reaches an instruction to overwrite the library."""
     path, unlock = database
     sidecar = path.parent / W.MASTER_PLAYLIST_XML
     sidecar.write_text("<DJPLAYLISTS/>", encoding="utf-8")

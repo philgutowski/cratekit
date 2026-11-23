@@ -59,7 +59,7 @@ already taken the credits off, so "no credit in it" meant nobody looked.
 ## Where to look
 
 `src/cratekit/intake/cli.py` `_frozen` and `thawed`,
-`src/cratekit/acquire/match.py` `Wanted.uncredited_spellings`, and
+`src/cratekit/acquire/match_list.py` `Wanted.uncredited_spellings`, and
 `test_a_billed_guest_survives_the_freeze_the_worker_resolves_from` in
 `tests/test_intake_missing.py`. Rows B9 and B10 of `docs/mutation/r431-b.md`
 are the two mutations that would have shipped green without it.

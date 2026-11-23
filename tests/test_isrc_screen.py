@@ -1,31 +1,20 @@
 """U207: many ISRCs are screened in a few requests, and a track found is never fetched again.
 
-The catalogue API takes up to twenty ISRCs in one request and answers ONE TRACK
-PER CODE when it is given several (``docs/solutions``, the entry on the multi
-ISRC filter), so a batch never answers a lookup: it says only which codes the
-catalogue files anything under. These claims are the brief's test scenarios,
-each counted through the real pacing gate on a temporary state file, so a
-request count is read off what the gate counted and never off a counter the
-test kept:
+The catalogue API takes up to twenty ISRCs in one request and answers one track per
+code when given several (``docs/solutions``, the multi ISRC filter entry), so a batch
+only says which codes the catalogue files anything under. Each claim is counted
+through the real pacing gate on a temporary state file.
 
-1. **An ISRC with five releases costs one read**, the names read off
-   ``included``, and no track is fetched again.
-2. **Codes the catalogue files nothing under cost a batch, not a request
-   each**: fifty such codes cost three, before and after on one fixture, and a
+1. An ISRC with five releases costs one read, and no track is fetched again.
+2. Codes the catalogue files nothing under cost a batch, not a request each, and a
    held code is still asked alone so every release comes back.
-3. **A code absent from a batch answer is not found and the others are
-   answered.**
-4. **A malformed code, or one not spelled as its own fold, never enters a
-   batch**, and a lone code is never screened.
-5. **A batch that fails marks nothing**: a 5xx falls back to each code's own
-   lookup, where the one bad answer is refused alone; a 429 is counted, marks
-   nothing and stops the screening; a rejected credential stops it; the
-   gate's own park passes through.
-6. **An answer the screen cannot attribute marks nothing absent**: a track
-   with no ISRC, a code nobody asked, a page that says there is more.
-7. **Without the app client nothing is screened**, and every lookup is asked
-   as before.
-8. **``sync pair``, the mirror and ``intake missing`` screen before they ask.**
+3. A code absent from a batch answer is not found and the others are answered.
+4. A malformed code, a non folded spelling or a lone code never enters a batch.
+5. A batch that fails marks nothing: a 5xx falls back to each code's own lookup, a
+   429 is counted and stops the screening, as does a rejected credential.
+6. An answer the screen cannot attribute marks nothing absent.
+7. Without the app client nothing is screened.
+8. ``sync pair``, the mirror and ``intake missing`` screen before they ask.
 """
 
 from __future__ import annotations
@@ -53,11 +42,6 @@ def code(n: int) -> str:
     return f"GBAAA24{n:05d}"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The catalogue API, as its published document says it answers
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 class Answer:
     def __init__(self, status_code: int = 200, body: Any = None) -> None:
         self.status_code = status_code
@@ -70,8 +54,7 @@ class Answer:
 
 def track(track_id: str, isrc: Any, title: str = "Sun Path") -> dict:
     return {
-        "id": track_id,
-        "type": "tracks",
+        "id": track_id, "type": "tracks",
         "attributes": {"title": title, "isrc": isrc, "availability": ["STREAM"]},
         "relationships": {
             "artists": {"data": [{"id": "a1", "type": "artists"}]},
@@ -90,10 +73,8 @@ def included(tracks: list[dict]) -> list[dict]:
 class Api:
     """``openapi.tidal.com/v2`` over a catalogue of ``held`` codes to release ids.
 
-    One code is answered with every release it is filed under, several with ONE
-    release each and no pagination, which is what the platform's document says.
-    ``batch`` and ``single`` replace the answer to a batch, or to one code asked
-    alone, with a status or a body; ``sent`` records every request.
+    One code is answered with every release it is filed under, several with one
+    release each. ``batch`` and ``single`` replace an answer with a status or a body.
     """
 
     def __init__(self, held: dict[str, list[str]]) -> None:
@@ -146,8 +127,7 @@ def gate(tmp_path: Path) -> Gate:
     return Gate(
         GateSettings(min_interval_s=0.0, cooldown_s=900.0),
         path=tmp_path / "gate" / "provider_gate.json",
-        lock_path=tmp_path / "gate" / "provider_gate.lock",
-        sleep=lambda seconds: None,
+        lock_path=tmp_path / "gate" / "provider_gate.lock", sleep=lambda seconds: None,
     )
 
 
@@ -161,8 +141,7 @@ def no_sleep(seconds: float) -> None:
 
 
 class Account:
-    """The account session: every lookup it would answer is a failure here,
-    so a test reading the app's answers proves the account was never asked."""
+    """The account session: any lookup fails, so a pass proves the account was never asked."""
 
     country_code = "GB"
 
@@ -177,9 +156,7 @@ def app_on(gate: Gate, api: Api) -> catalogue_api.AppCatalogue:
 
 
 def adapter(gate: Gate, api: Api) -> tidal_account.TidalAccount:
-    """The account over the app client, with the ISRC cache off (U206): this
-    file counts what the SCREEN saves, and a lookup the cache answered from an
-    earlier pass in the same test would be counted as the screen's saving."""
+    """The account over the app client, with the ISRC cache off (U206) so the saving is counted."""
     return tidal_account.TidalAccount(
         Account(), sleep=no_sleep, catalogue=app_on(gate, api), cache=isrc_cache.Cache(days=0)
     )
@@ -196,29 +173,17 @@ def held_and_lacking(held: int, lacking: int, *, releases: int = 1) -> dict[str,
     return catalogue
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. A track found is never fetched a second time
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_an_isrc_filed_under_five_releases_costs_one_read_and_no_track_is_read_again(gate):
     api = Api({code(1): ["11", "12", "13", "14", "15"]})
     account = adapter(gate, api)
 
     found = account.match_track(identity="row-1", isrc=code(1))
 
-    # Five releases and no row to choose among them by: _among refuses having
-    # been handed every one of them off the one answer.
     assert found is None
     assert "names 5 provider tracks" in account.unmatched_reason("row-1")
     assert app_reads(gate) == 1
     assert api.singles() == [code(1)]
     assert [one["url"] for one in api.reads()] == [catalogue_api.API_ROOT + "tracks"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Codes the catalogue files nothing under cost a batch, not a request each
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def ask_every(account: tidal_account.TidalAccount, codes: list[str]) -> dict[str, str | None]:
@@ -239,7 +204,6 @@ def test_fifty_codes_the_catalogue_files_nothing_under_cost_three_requests_not_f
     after = ask_every(screened, codes)
 
     assert before == after == dict.fromkeys(codes)
-    # Before: one request a code. After: one a batch of twenty, the last of ten.
     assert app_reads(before_gate) == 50
     assert app_reads(after_gate) == made == 3
     assert [len(one) for one in api.batches()] == [20, 20, 10]
@@ -247,7 +211,6 @@ def test_fifty_codes_the_catalogue_files_nothing_under_cost_three_requests_not_f
 
 
 def test_a_held_code_is_still_asked_alone_so_every_release_comes_back(gate):
-    # Five codes held, each filed under three releases; fifteen lacking.
     catalogue = held_and_lacking(5, 15, releases=3)
     codes = list(catalogue)
     account = adapter(gate, api := Api(catalogue))
@@ -255,7 +218,7 @@ def test_a_held_code_is_still_asked_alone_so_every_release_comes_back(gate):
     assert account.screen_isrcs(codes) == 1
     ask_every(account, codes)
 
-    # One batch, then one lookup per held code: six requests where twenty were.
+    # One batch, then one lookup per held code.
     assert app_reads(gate) == 6
     assert api.singles() == codes[:5]
     for one in codes[:5]:
@@ -298,11 +261,6 @@ def test_a_code_already_screened_is_not_sent_again(gate):
     assert api.batches() == [[code(0), code(1)], [code(2), code(3)]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. What never enters a batch
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_malformed_code_or_a_spelling_not_its_own_fold_never_enters_a_batch(gate):
     api = Api(held_and_lacking(0, 3))
     account = adapter(gate, api)
@@ -312,7 +270,7 @@ def test_a_malformed_code_or_a_spelling_not_its_own_fold_never_enters_a_batch(ga
 
     assert made == 1
     assert api.batches() == [[code(0), code(1)]]
-    # The lowercase spelling was never screened, so it is asked as it was given.
+    # The lowercase spelling was never screened.
     account.match_track(identity="x", isrc=lower)
     assert api.singles() == [lower]
 
@@ -325,7 +283,6 @@ def test_a_lone_code_is_never_screened_since_its_own_lookup_costs_the_same(gate)
     assert account.screen_isrcs([code(n) for n in range(1, 22)]) == 1
 
     assert api.batches() == [[code(n) for n in range(1, 21)]]
-    # The one left over after the full batch is asked alone, as is the lone one.
     account.match_track(identity="x", isrc=code(21))
     account.match_track(identity="y", isrc=code(0))
     assert api.singles() == [code(21), code(0)]
@@ -338,11 +295,6 @@ def test_the_app_client_refuses_a_batch_it_was_not_built_to_ask(gate):
                   [code(0), code(1).lower()], [code(0), "not-an-isrc"]):
         with pytest.raises(ValueError):
             app.isrcs_held(wrong)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. A batch that fails marks nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_server_error_on_a_batch_falls_back_to_singles_and_finds_the_one_bad_answer(gate):
@@ -359,7 +311,6 @@ def test_a_server_error_on_a_batch_falls_back_to_singles_and_finds_the_one_bad_a
         account.match_track(identity="c", isrc=code(2))
     assert account.match_track(identity="d", isrc=code(3)) is None
 
-    # Nothing was read as absent: every code was asked alone.
     assert [one for one in api.singles() if one != code(2)] == [code(0), code(1), code(3)]
 
 
@@ -442,19 +393,13 @@ def test_the_gates_own_park_passes_through_the_screen(gate):
     assert raised.value is parked
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. An answer the screen cannot attribute marks nothing absent
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
     "said",
     [
         {"data": [track("1", None)], "included": []},
         {"data": [track("1", "not an isrc")], "included": []},
         {"data": [track("1", code(7))], "included": []},
-        {"data": [], "links": {"next": "/tracks?page[cursor]=abc"}},
-        {"data": ["not a resource"]},
+        {"data": [], "links": {"next": "/tracks?page[cursor]=abc"}}, {"data": ["not a resource"]},
         {"data": "not a list"},
     ],
     ids=["no-isrc", "unreadable-isrc", "a-code-not-asked", "paged", "not-a-resource", "no-list"],
@@ -481,11 +426,6 @@ def test_a_resource_that_is_not_a_track_is_not_read_as_an_answer_about_a_code(ga
 
     ask_every(account, list(catalogue))
     assert api.singles() == [code(0)]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. Without the app client nothing is screened
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Session:
@@ -520,11 +460,6 @@ def test_a_stand_in_for_the_client_is_never_screened_whatever_it_answers():
     assert not screen.absent(code(0))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. The label catalogue's lookup, which intake missing asks
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_catalogue_answers_a_screened_absent_code_as_no_track_with_no_request(gate):
     catalogue = {code(0): ["01", "02"], code(1): [], code(2): []}
     api = Api(catalogue)
@@ -555,11 +490,6 @@ def test_intake_missing_screens_the_codes_it_will_ask_before_asking_any():
     assert fake.isrcs_asked_for == [code(0), code(1)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 8. The mirror screens the rows it will ask, and counts what the screen spent
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def row(n: int, *, isrc: str = "") -> mirror.Row:
     return mirror.Row(content_id=f"c{n}", title=f"Title {n}", artist=f"Artist {n}", isrc=isrc)
 
@@ -573,11 +503,8 @@ def test_the_mirror_screens_only_the_rows_it_would_ask_the_provider_about():
         return mirror.Identity(isrc=one.isrc or (code(9) if one.content_id == "c5" else ""))
 
     matcher = mirror.Matcher(
-        account,
-        {"c1": ("r1", code(1))},
-        identify,
-        misses={"c3": ("no match", (code(3), "Title 3", "Artist 3", "", ""))},
-        known={"c2": "r2"},
+        account, {"c1": ("r1", code(1))}, identify,
+        misses={"c3": ("no match", (code(3), "Title 3", "Artist 3", "", ""))}, known={"c2": "r2"},
         seen={"c6": ("r6", code(6), "")},
     )
     rows = [
@@ -595,7 +522,6 @@ def test_the_mirror_screens_only_the_rows_it_would_ask_the_provider_about():
 
     for one in rows:
         matcher.match(one)
-    # The file's code was read once, for the screen and the match together.
     assert identified.count("c5") == 1
     assert [asked["isrc"] for asked in account.matches] == [code(4), code(9)]
 
@@ -616,9 +542,7 @@ def test_the_mirrors_request_count_holds_what_the_screen_spent_and_no_more():
 
 
 def test_a_provider_track_under_another_emoji_title_does_not_agree():
-    """Two titles of emoji alone fold to one title, so a ``🔥`` track carrying
-    the row's ISRC agreed with a ``💧`` row. The title is read by its identity,
-    the fold for every title that folds to something."""
+    """Emoji-only titles fold alike, so the title is read by its identity."""
     from types import SimpleNamespace
 
     def provider(title: str) -> SimpleNamespace:

@@ -553,7 +553,7 @@ The index and the approximate pass still read the token.
 the tombstone identity.
 
 ### Credited list rule
-The second rule of `LibraryIndex.held` (`acquire/match.py`): a file whose title
+The second rule of `LibraryIndex.held` (`acquire/match_library.py`): a file whose title
 matches by `same_title` and whose comma separated artist tag has the row's
 primary artist as a whole member. Reason `credited-exact`. Asked after the ISRC
 and the recording token.
@@ -562,7 +562,7 @@ and the recording token.
 
 ### Spelled out reading
 A title read with each word of a short curated list of slang and numeral
-spellings (`match._SPELLED_OUT`: `luv` love, `u` you, `4` for, `2` to, `n`
+spellings (`match_library._SPELLED_OUT`: `luv` love, `u` you, `4` for, `2` to, `n`
 and, and the like) spelled out, read only by the approximate pass: `_agree`
 takes two titles one string that way, and `LibraryIndex.spelled_alike` finds
 such a recording by the same artist that the discovery score misses. So `Luv
