@@ -174,7 +174,7 @@ KEBAB_LITERALS = {
         'set-rows-left',
         'tag-set-scope-unknown',
         'tag-set-unwritten',
-        'utf-8',
+        'utf-8-sig',
     ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/suggest_cli.py': [

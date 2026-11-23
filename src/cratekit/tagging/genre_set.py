@@ -35,6 +35,7 @@ from typing import Any
 
 from cratekit.adopt import collection, genre_moves
 from cratekit.adopt import scan as adopt_scan
+from cratekit.adopt.plan import Placements
 from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
@@ -108,6 +109,10 @@ class Item:
     reason: str = ""
     file_writes: bool = False
     row_writes: bool = False
+    #: The genre folder (bucket) the tree files this row in under its old genre,
+    #: which ``adopt move`` takes it out of, or empty when the tree holds it in
+    #: none such: what :mod:`cratekit.adopt.genre_moves` records.
+    leaves: str = ""
 
     def digested(self) -> dict[str, Any]:
         """What the digest covers: the words, what is written, and why a row is
@@ -120,6 +125,7 @@ class Item:
             "reason": self.reason,
             "file_writes": self.file_writes,
             "row_writes": self.row_writes,
+            "leaves": self.leaves,
         }
 
     def to_json(self) -> dict[str, Any]:
@@ -202,12 +208,54 @@ def _scope_refused(message: str, **detail: Any):
     )
 
 
+def _nodes_at(
+    children: Mapping[str, list[Any]], at: str, rest: str, walked: str
+) -> list[tuple[Any, str]]:
+    """Every live node under ``at`` whose name, and its descendants' joined by
+    :data:`PATH_SEPARATOR`, spell ``rest`` exactly, with the path walked to it.
+    A NAME MAY HOLD THE SEPARATOR ITSELF, as a genre folder's often does
+    ("House / Funky House / Disco"), so each child is tried as a whole name
+    and every reading that spells the path is kept."""
+    found: list[tuple[Any, str]] = []
+    for node in children.get(at, ()):
+        name = str(node.Name or "")
+        here = f"{walked}{PATH_SEPARATOR}{name}" if walked else name
+        if rest == name:
+            found.append((node, here))
+        elif name and rest.startswith(name + PATH_SEPARATOR):
+            found.extend(
+                _nodes_at(children, str(node.ID), rest[len(name) + len(PATH_SEPARATOR):], here)
+            )
+    return found
+
+
+def _longest_walked(children: Mapping[str, list[Any]], at: str, rest: str, walked: str) -> str:
+    """The longest stretch of ``rest`` some live nodes spell from ``at``, for a
+    refusal that says how far the path was found."""
+    best = walked
+    for node in children.get(at, ()):
+        name = str(node.Name or "")
+        if name and (rest == name or rest.startswith(name + PATH_SEPARATOR)):
+            here = f"{walked}{PATH_SEPARATOR}{name}" if walked else name
+            deeper = _longest_walked(
+                children, str(node.ID), rest[len(name) + len(PATH_SEPARATOR):], here
+            )
+            best = max(best, deeper, key=len)
+    return best
+
+
 def playlist_members(db: Any, path: str) -> tuple[str, ...]:
     """The live rows one playlist holds, in its order and each once, the playlist
-    found by its path through live nodes. A path that names nothing, names two
-    nodes, or names a folder or a smart playlist refuses: none has members."""
-    names = [part.strip() for part in path.split(PATH_SEPARATOR.strip())]
-    if not path.strip() or not all(names):
+    found by its path through live nodes, a name holding the separator included.
+    A path that names nothing, names two nodes, or names a folder or a smart
+    playlist refuses: none has members."""
+    wanted = path.strip()
+    if (
+        not wanted
+        or wanted.startswith("/")
+        or wanted.endswith("/")
+        or any(not part.strip() for part in wanted.split(PATH_SEPARATOR))
+    ):
         raise _scope_refused(f"{path!r} is not a playlist path", playlist=path)
     live = [node for node in db.get_playlist() if not rb_writer.node_removed(node)]
     children: dict[str, list[Any]] = {}
@@ -216,24 +264,22 @@ def playlist_members(db: Any, path: str) -> tuple[str, ...]:
         if parent in rb_writer.ROOT_PARENT_SENTINELS:
             parent = ""
         children.setdefault(parent, []).append(node)
-    at = ""
-    found: Any = None
-    for depth, name in enumerate(names):
-        matches = [node for node in children.get(at, ()) if str(node.Name or "") == name]
-        where = PATH_SEPARATOR.join(names[: depth + 1])
-        if not matches:
-            raise _scope_refused(
-                f"no playlist or folder is at {where!r}, so {path!r} names no rows",
-                playlist=path,
-            )
-        if len(matches) > 1:
-            raise _scope_refused(
-                f"{len(matches)} nodes are named {where!r}, so {path!r} does not say "
-                f"which rows it means",
-                playlist=path,
-            )
-        found = matches[0]
-        at = str(found.ID)
+    matches = _nodes_at(children, "", wanted, "")
+    if not matches:
+        reached = _longest_walked(children, "", wanted, "")
+        where = f"{reached!r} is found and nothing under it" if reached else "nothing"
+        raise _scope_refused(
+            f"no playlist or folder is at {wanted!r} ({where} continues the path), so "
+            f"it names no rows",
+            playlist=path,
+        )
+    if len(matches) > 1:
+        raise _scope_refused(
+            f"{len(matches)} nodes are at {wanted!r}, so it does not say which rows it "
+            f"means",
+            playlist=path,
+        )
+    ((found, _walked),) = matches
     attribute = int(getattr(found, "Attribute", 0) or 0)
     if attribute != 0:
         kind = "a folder" if attribute == 1 else "a smart playlist"
@@ -276,14 +322,17 @@ def plan_set(
     *,
     playlist: str = "",
     leave: Iterable[str] = (),
+    held: Placements | None = None,
     probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> SetPlan:
     """Read every named row and its file once and give each one outcome.
 
     THE WALK IS ADOPTION'S CENSUS over the named rows alone, so a file's path is
-    the one adoption would file it from. Items keep the order the rows were
-    named in; only values are returned, so the handle may be a read one closed
-    before the gate.
+    the one adoption would file it from. ``held`` is the tree as adoption reads
+    it (:func:`cratekit.adopt.placements.read_placements`), which says the genre
+    folder each written row leaves; with none, or a tree that could not be read,
+    no row leaves one. Items keep the order the rows were named in; only values
+    are returned, so the handle may be a read one closed before the gate.
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
@@ -341,6 +390,7 @@ def plan_set(
             Item(
                 content_id, path, title, row_word, file_word, WRITE,
                 file_writes=file_word != genre, row_writes=row_word != genre,
+                leaves=_leaves(declared, genre, row_word, content_id, held),
             )
         )
     listed = {item.content_id for item in items}
@@ -352,6 +402,22 @@ def plan_set(
         counts=MappingProxyType(counts),
         leave_unmatched=tuple(sorted(held_out - listed)),
     )
+
+
+def _leaves(
+    declared: taxonomy.Taxonomy,
+    genre: str,
+    row_word: str,
+    content_id: str,
+    held: Placements | None,
+) -> str:
+    """The bucket the row's old genre filed it in, when the tree holds it there
+    and the new genre names another; else empty. THE ROW'S WORD, since adoption
+    files by the row's genre and not the file's."""
+    was = named_bucket(declared, row_word)
+    if not was or was == named_bucket(declared, genre) or held is None or not held.read:
+        return ""
+    return was if held.holds(was, content_id) else ""
 
 
 def assert_plan_unchanged(approved: SetPlan, again: SetPlan) -> None:
@@ -460,19 +526,13 @@ def named_bucket(declared: taxonomy.Taxonomy, genre: str) -> str:
     return "" if resolution.match is routing.Match.FALLBACK else resolution.bucket_id
 
 
-def moved_out_of(
-    declared: taxonomy.Taxonomy, genre: str, items: Iterable[Item]
-) -> dict[str, frozenset[str]]:
-    """The bucket each row's old row genre filed it into, where that is another
-    bucket than ``genre``'s: what :mod:`cratekit.adopt.genre_moves` records. THE
-    ROW'S WORD, since adoption files by the row's genre and not the file's."""
-    into = named_bucket(declared, genre)
-    moved: dict[str, frozenset[str]] = {}
-    for item in items:
-        was = named_bucket(declared, item.row)
-        if was and was != into:
-            moved[item.content_id] = frozenset({was})
-    return moved
+def moved_out_of(items: Iterable[Item]) -> dict[str, frozenset[str]]:
+    """The genre folder each written row leaves, none where it leaves none: what
+    :mod:`cratekit.adopt.genre_moves` records. EVERY ROW IS NAMED, so a row
+    given back the genre of a folder it still waits to leave spends that entry,
+    and a row the tree does not hold under its old genre adds nothing a move
+    nobody will plan waits on."""
+    return {item.content_id: frozenset({item.leaves} - {""}) for item in items}
 
 
 def apply_set(
@@ -563,9 +623,7 @@ def _write_rows(
     metadata.assert_within_policy(changes)
     done["written"] = len(metadata.write_plan(changes, mapped).written)
     # AFTER THE CAPTURE AND BEFORE THE COMMIT, so a restore takes it back.
-    genre_moves.record(
-        cfg, moved_out_of(declared, plan.genre, rowed), into=named_bucket(declared, plan.genre)
-    )
+    genre_moves.record(cfg, moved_out_of(rowed), into=named_bucket(declared, plan.genre))
     rb_writer.commit_guarded(db)
 
 

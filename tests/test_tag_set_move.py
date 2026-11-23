@@ -123,6 +123,63 @@ def test_the_moved_track_leaves_its_old_genre_folder_for_the_new_ones_band(filed
     assert _held(filed, "second") == {old, _place(NEW_BUCKET, LOW)}
 
 
+def test_rows_never_filed_are_filed_by_the_step_the_run_names(filed, silence):
+    """A row with no genre given one, filed nowhere: the run names `adopt apply`
+    first, and the two steps file every row (review round one)."""
+    import shutil
+
+    from tests.test_adopt_move import _sql
+
+    music = Path(filed.library.root) / "Music"
+    shutil.copyfile(music / "stays.flac", music / "fresh.flac")
+    assert tags.clear_tags(music / "fresh.flac", ["genre"])
+    _sql(
+        filed,
+        "INSERT INTO djmdContent (ID, FolderPath, Title, GenreID, rb_local_deleted, "
+        "created_at, updated_at) SELECT 'fresh', REPLACE(FolderPath, 'stays', 'fresh'), "
+        "'fresh', NULL, 0, created_at, updated_at FROM djmdContent WHERE ID = 'stays'",
+    )
+    collection.reset_cache()
+    acted = _tag_set("--row", "fresh", "--row", "mover")
+    said = acted["warnings"][1]["message"]
+    assert "run `crate adopt apply`" in said and "then `crate adopt move`, which takes the 1" in said
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, applied = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), applied
+    _move()
+    assert _held(filed, "fresh") == {_place(NEW_BUCKET, HIGH)}
+    assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH)}
+    assert dict(genre_moves.read(filed)) == {}
+
+
+def test_a_genre_given_again_after_the_approval_refuses_the_move_stale(filed):
+    """The folder a move files into is part of what was approved (review round one)."""
+    from tests.test_adopt_move import _sql
+
+    _sql(
+        filed,
+        "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('9990', 'Tech House', 'u', 0, '2026-10-01', '2026-10-01')",
+    )
+    _tag_set("--row", "mover")
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    verb = ["tag", "set", "Tech House", "--row", "mover"]
+    _code, refused = drive(verb)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
+    code, acted = drive(["--run", run_id, *verb])
+    assert code == int(ExitCode.OK) and acted["data"]["totals"]["written"] == 1, acted
+    collection.reset_cache()
+
+    code, resumed = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK)
+    inner = resumed["cause"]["inner"]
+    assert inner["reason"] == "decision-stale"
+    assert inner["detail"]["moved_under"] == {"mover": "its genre names another folder now"}
+    assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH)}
+
+
 def test_a_hand_placed_second_folder_is_never_asked_without_a_genre_move(filed):
     assert _shown()["items"] == []
     assert _held(filed, "second") == {_place(OLD_BUCKET, HIGH), _place(NEW_BUCKET, LOW)}
@@ -150,8 +207,9 @@ def test_a_genre_moved_back_asks_nothing_of_the_old_folder(filed):
     code, acted = drive(["--run", run_id, *verb])
     assert code == int(ExitCode.OK), acted
     collection.reset_cache()
-    # THE OLD BUCKET IS THE ONE THE GENRE NAMES AGAIN, and the new one was never filed.
-    assert dict(genre_moves.read(filed)) == {"mover": frozenset({NEW_BUCKET})}
+    # THE OLD BUCKET IS THE ONE THE GENRE NAMES AGAIN, and the new one was never
+    # filed, so the entry is spent and nothing waits on it.
+    assert dict(genre_moves.read(filed)) == {}
     assert _shown()["items"] == []
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH)}
 

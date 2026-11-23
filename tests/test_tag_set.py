@@ -279,12 +279,57 @@ def test_two_nodes_of_one_name_refuse(machine, silence):
     connection.close()
     with pytest.raises(CratekitError) as refused:
         _plan(machine, DEEP, [], playlist=PICKS)
-    assert "2 nodes are named" in refused.value.cause.message
+    assert "2 nodes are at 'INBOX / Picks'" in refused.value.cause.message
 
 
-def test_the_rows_file_skips_blank_and_comment_lines(tmp_path):
+def _seed_nodes(cfg, *nodes: tuple[str, str, int, str], members: tuple[str, ...] = ()) -> None:
+    """Playlist nodes as (ID, name, attribute, parent ID), the last holding ``members``."""
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{cfg.library.db_path}")
+    with Session(engine) as db_session:
+        for node_id, name, attribute, parent in nodes:
+            db_session.add(_row(tables.DjmdPlaylist, ID=node_id, Seq=1, Name=name,
+                                Attribute=attribute, ParentID=parent, rb_local_deleted=0))
+        for number, content_id in enumerate(members, start=1):
+            db_session.add(_row(tables.DjmdSongPlaylist, ID=f"{nodes[-1][0]}{number:02d}",
+                                PlaylistID=nodes[-1][0], ContentID=content_id,
+                                TrackNo=number, rb_local_deleted=0))
+        db_session.commit()
+    engine.dispose()
+
+
+def test_a_playlist_under_a_folder_whose_name_holds_the_separator_is_found(machine, silence):
+    """The genre folders adoption makes are often named with ' / ' (review round one)."""
+    build(machine, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
+    _seed_nodes(
+        machine,
+        ("710", "BY GENRE + ENERGY", 1, "root"),
+        ("711", "House", 1, "710"),
+        ("712", "House / Funky House / Disco", 1, "710"),
+        ("713", "High", 0, "712"),
+        members=("11", "10"),
+    )
+    _seed_nodes(machine, ("720", "TEE EM DEE 1/7", 0, "root"), members=("10",))
+    path = "BY GENRE + ENERGY / House / Funky House / Disco / High"
+    assert [item.content_id for item in _plan(machine, DEEP, [], playlist=path).items] == [
+        "11", "10"
+    ]
+    assert [i.content_id for i in _plan(machine, DEEP, [], playlist="TEE EM DEE 1/7").items] == [
+        "10"
+    ]
+    with pytest.raises(CratekitError) as refused:
+        _plan(machine, DEEP, [], playlist="BY GENRE + ENERGY / House / Funky House / Disco / Low")
+    assert "'BY GENRE + ENERGY / House / Funky House / Disco' is found" in (
+        refused.value.cause.message
+    )
+
+
+def test_the_rows_file_skips_blank_lines_comments_and_a_byte_order_mark(tmp_path):
     listed = tmp_path / "rows.txt"
-    listed.write_text("# the set\n10\n\n  11  \n#12\n", encoding="utf-8")
+    listed.write_text("\ufeff# the set\n10  # the first\n\n  11  \n#12\n", encoding="utf-8")
     args = SimpleNamespace(rows=["9"], rows_from=str(listed), playlist=None)
     assert genre_set_cli.named_rows(args) == (["9", "10", "11"], "")
 
@@ -360,13 +405,36 @@ def test_the_session_record_keeps_each_written_files_old_genre(acknowledged, sil
     assert record.sources == {gs.CHANGE_KEY: "committed"}
 
 
-def test_the_rows_old_bucket_is_recorded_for_adopt_move(acknowledged, silence):
-    cfg = acknowledged
-    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", "", ""),
-          Track("12", DEEP, MELODIC))
-    _apply(cfg, DEEP, ["10", "11", "12"])
-    # A blank row and a row already carrying the genre leave no bucket behind.
-    assert dict(genre_moves.read(cfg)) == {"10": frozenset({"melodic_house"})}
+def _held_in(*buckets: str) -> SimpleNamespace:
+    """A tree as adoption reads it, holding every row in ``buckets``' high band."""
+    return SimpleNamespace(read=True, holds=lambda bucket, _cid: ("high",) * (bucket in buckets))
+
+
+def test_a_row_leaves_the_folder_its_old_genre_filed_it_in_only_where_the_tree_holds_it(
+    machine, silence
+):
+    build(machine, silence, Track("10", MELODIC, MELODIC), Track("11", "", ""),
+          Track("12", DEEP, MELODIC), Track("13", OLD, OLD))
+    db = rb_writer.open_db(machine.library.db_path, unlock=False, cfg=machine)
+    try:
+        declared = active_taxonomy.load(machine)
+        ids = ["10", "11", "12", "13"]
+        filed = gs.plan_set(machine, db, declared, DEEP, ids, held=_held_in("melodic_house"))
+        unread = gs.plan_set(machine, db, declared, DEEP, ids,
+                             held=SimpleNamespace(read=False, holds=_held_in("x").holds))
+        nowhere = gs.plan_set(machine, db, declared, DEEP, ids, held=_held_in())
+    finally:
+        rb_writer.close_db(db)
+    # A blank row, a row already carrying the genre and a row the tree does not
+    # hold in its old folder leave none; the leaving folder is digested.
+    assert [item.leaves for item in filed.items] == ["melodic_house", "", "", ""]
+    assert [item.leaves for item in unread.items] == ["", "", "", ""]
+    assert [item.leaves for item in nowhere.items] == ["", "", "", ""]
+    assert filed.digest != nowhere.digest
+    assert gs.moved_out_of(filed.items) == {
+        "10": frozenset({"melodic_house"}), "11": frozenset(), "12": frozenset(),
+        "13": frozenset(),
+    }
 
 
 def test_a_second_run_plans_nothing_and_writes_nothing(acknowledged, silence):
@@ -459,7 +527,10 @@ def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silenc
     assert codes == [
         genre_set_cli.GENRE_WRITTEN, genre_set_cli.FILE_NEXT, genre_set_cli.ROWS_LEFT
     ]
-    assert "crate adopt move" in acted["warnings"][1]["message"]
+    # NO TREE IS ADOPTED HERE, so no row leaves a genre folder and only the
+    # filing is named.
+    assert "run `crate adopt apply`" in acted["warnings"][1]["message"]
+    assert "adopt move" not in acted["warnings"][1]["message"]
     assert "(1 already-that-genre)" in acted["warnings"][2]["message"]
 
 
@@ -506,6 +577,22 @@ def test_a_file_changed_between_the_gate_and_the_apply_refuses_stale(acknowledge
     assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] in {"decision-stale", "decision-invalidated"}
     assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == OLD
+
+
+def test_a_file_changed_after_the_gate_refuses_stale_on_the_write_handle(acknowledged, silence):
+    """The stale check in the apply itself, past the gate layer's own (review round one)."""
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    args = SimpleNamespace(rows=["10"], rows_from=None, playlist=None, leave=[])
+    declared = active_taxonomy.load(cfg)
+    approved = genre_set_cli.read_plan(cfg, declared, DEEP, args)
+    assert tags.write_genre(_file(cfg, "10"), OLD)
+    with pytest.raises(CratekitError) as refused:
+        genre_set_cli.apply_plan(cfg, approved, declared, args)
+    assert refused.value.cause.reason == "decision-stale"
+    assert refused.value.cause.detail["moved"] == ["10"]
+    assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == OLD
+    assert [r for r in session.records(cfg) if r.workflow == gs.WORKFLOW] == []
 
 
 def test_a_file_gone_between_the_plan_and_the_apply_writes_nothing(acknowledged, silence):

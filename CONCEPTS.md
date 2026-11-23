@@ -1127,7 +1127,9 @@ adoption plan holds it: `add`, `present`, `under-another-name`, `no-sub`,
 
 ### Move
 `crate adopt move`: one track leaving the competing subs its reading does not
-name for the one it does, within one bucket. The addition commits before the
+name for the one it does, within one bucket, or, for a row `tag set` gave a new
+genre (U339), leaving every sub of the bucket its old genre filed it in for the
+one its new genre names in another. The addition commits before the
 removal (a soft delete of the membership, the only removal the guarded writer
 admits). With no reading it is Left.
 

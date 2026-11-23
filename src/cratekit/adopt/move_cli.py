@@ -340,6 +340,11 @@ def remaining(
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
             continue
+        # THE FOLDER A MOVE FILES INTO IS PART OF WHAT WAS APPROVED (U339): a
+        # genre given again since names another, and nobody was shown that one.
+        if isinstance(now, move_engine.Move) and now.into != move.into:
+            stale[move.content_id] = "its genre names another folder now"
+            continue
         held = set(current.placements.holds(move.bucket, move.content_id)) & competing
         if now is None and move.target_bucket:
             # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET.

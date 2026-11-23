@@ -1348,7 +1348,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="adopt.move",
         summary=(
             "move each track from the energy or style sub it holds to the one "
-            "its own file names, adding before it removes"
+            "its own file names, and a row tag set moved out of its old genre "
+            "folder into the new one, adding before it removes"
         ),
         module="cratekit.adopt.move_cli", builder="build", handler_key="adopt.move",
         feature_rows=(13,), module_id="adoption", argv_builder="adopt_move_argv",

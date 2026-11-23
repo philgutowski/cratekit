@@ -19,6 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from cratekit.adopt import placements
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
@@ -66,14 +67,15 @@ def build(parser, entry) -> None:
         default=None,
         metavar="FILE",
         help="give the genre to every row whose content identifier is a line of "
-        "this file; blank lines and lines starting with # are skipped",
+        "this file; blank lines and anything after a # are skipped",
     )
     parser.add_argument(
         "--playlist",
         default=None,
         metavar="PATH",
         help="give the genre to every row of this playlist, named by its path "
-        "from the top of the tree, each name joined by ' / ', as 'INBOX / Analyze'",
+        "from the top of the tree, each name joined by ' / ', as 'INBOX / Analyze'; "
+        "a name holding ' / ' itself, as a genre folder's often does, is given as it is",
     )
     parser.add_argument(
         "--leave",
@@ -94,7 +96,8 @@ def named_rows(args) -> tuple[list[str], str]:
     source = getattr(args, "rows_from", None)
     if source:
         try:
-            text = Path(source).expanduser().read_text(encoding="utf-8")
+            # A BYTE ORDER MARK a text editor left is not part of the first id.
+            text = Path(source).expanduser().read_text(encoding="utf-8-sig")
         except (OSError, UnicodeDecodeError) as exc:
             raise refuse(
                 "tag-set-scope-unknown",
@@ -105,8 +108,9 @@ def named_rows(args) -> tuple[list[str], str]:
                 detail={"rows_from": str(source)},
             ) from exc
         for line in text.splitlines():
-            word = line.strip()
-            if word and not word.startswith("#"):
+            # WHAT FOLLOWS A # IS A COMMENT, on its own line or after an id.
+            word = line.split("#", 1)[0].strip()
+            if word:
                 found.append(word)
     playlist = str(getattr(args, "playlist", None) or "").strip()
     if not found and not playlist:
@@ -192,11 +196,14 @@ def _advisories(plan: gs.SetPlan) -> list[dict[str, str]]:
 
 
 def _nothing(plan: gs.SetPlan) -> dict[str, str]:
-    return warning(
-        NOTHING_TO_WRITE,
-        f"no genre is to be written: {plan.counts[gs.ALREADY]} of {len(plan.items)} "
-        f"named row(s) already carry {plan.genre!r} on the file and the row",
-    )
+    if not plan.genre_row:
+        said = f"the library has no genre row for {plan.genre!r} (below)"
+    else:
+        said = (
+            f"{plan.counts[gs.ALREADY]} of {len(plan.items)} named row(s) already "
+            f"carry {plan.genre!r} on the file and the row, and the rest are left"
+        )
+    return warning(NOTHING_TO_WRITE, f"no genre is to be written: {said}")
 
 
 def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
@@ -210,12 +217,18 @@ def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
         f"genre, which its record keeps",
     )]
     if written.written:
+        leaving = sum(1 for item in plan.writes if item.leaves)
+        moved = (
+            f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
+            f"filed under their old genre out of that genre folder"
+            if leaving
+            else ""
+        )
         said.append(warning(
             FILE_NEXT,
             f"the rows are not yet filed under {plan.genre!r}: run `crate adopt "
-            f"move`, which adds each to its energy band in that genre's folder and "
-            f"takes it out of the genre folder its old genre named; a track a "
-            f"person put in another genre folder by hand is left where it is",
+            f"apply`, which files each in that genre's folder by its energy "
+            f"band{moved}",
         ))
     return said
 
@@ -261,8 +274,10 @@ def _unwritten_refusal(plan: gs.SetPlan, written: gs.Written):
     )
 
 
-def plan_on(cfg: config.Config, db, declared, genre: str, args) -> gs.SetPlan:
-    """The plan the arguments name, off ``db``."""
+def plan_on(
+    cfg: config.Config, db, declared, genre: str, args, held: placements.Placements
+) -> gs.SetPlan:
+    """The plan the arguments name, off ``db``, with the tree as ``held`` reads it."""
     found, playlist = named_rows(args)
     return gs.plan_set(
         cfg,
@@ -272,22 +287,26 @@ def plan_on(cfg: config.Config, db, declared, genre: str, args) -> gs.SetPlan:
         gs.scoped(db, found, playlist),
         playlist=playlist,
         leave=list(getattr(args, "leave", None) or ()),
+        held=held,
     )
 
 
 def read_plan(cfg: config.Config, declared, genre: str, args) -> gs.SetPlan:
     """The plan over the library as it stands, through a handle opened to read and
     closed before this returns. A library mostly under no prefix rule refuses first."""
+    held = placements.read_placements(cfg, declared)
     with plan_verbs.reading(cfg, _BLOCKED) as db:
-        return plan_on(cfg, db, declared, genre, args)
+        return plan_on(cfg, db, declared, genre, args, held)
 
 
 def apply_plan(cfg: config.Config, approved: gs.SetPlan, declared, args) -> gs.Written:
     """Open the database to write, take the plan again on that handle, refuse if it
     moved, then write the files and the rows and read them back."""
+    # THE TREE IS READ BEFORE THE WRITE HANDLE OPENS, through its own read handle.
+    held = placements.read_placements(cfg, declared)
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
-        again = plan_on(cfg, db, declared, approved.genre, args)
+        again = plan_on(cfg, db, declared, approved.genre, args, held)
         gs.assert_plan_unchanged(approved, again)
         written = gs.apply_set(
             cfg, db, again, declared=declared, analysis_roots=analysis_store.watch_roots(cfg)
