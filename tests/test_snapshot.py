@@ -15,9 +15,9 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, snapshot
-from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests.test_config import valid_data
+from tests.test_restore import _refusal
 
 
 @pytest.fixture
@@ -129,9 +129,8 @@ def test_a_source_that_would_nest_the_store_refuses(cfg, monkeypatch):
     """The runtime half of the schema check, refusing a set that would nest the store."""
     store = snapshot.store_root(cfg)
     monkeypatch.setattr(config, "snapshot_sources", lambda _cfg: (store.parent,))
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.capture(cfg, verifier=_passes)
-    assert "nest" in excinfo.value.cause.message
+    cause = _refusal(snapshot.capture, cfg, verifier=_passes)
+    assert "nest" in cause.message
 
 
 # Permissions, derived by walking (P1, P3)
@@ -177,9 +176,8 @@ def test_a_capture_that_verifies_is_the_only_one_anything_may_commit_behind(cfg)
 
     bad = snapshot.capture(cfg, stamp="unverified", verifier=_fails)
     assert not bad.verified
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.assert_verified(bad)
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    cause = _refusal(snapshot.assert_verified, bad)
+    assert cause.reason == "snapshot-integrity-failed"
 
 
 def test_a_verifier_that_raises_counts_as_not_having_verified(cfg):
@@ -190,8 +188,7 @@ def test_a_verifier_that_raises_counts_as_not_having_verified(cfg):
 
     record = snapshot.capture(cfg, verifier=explodes)
     assert record.integrity_verified is False
-    with pytest.raises(CratekitError):
-        snapshot.assert_verified(record)
+    _refusal(snapshot.assert_verified, record)
 
 
 def test_the_verdict_survives_a_round_trip_through_the_manifest(cfg):
@@ -235,23 +232,20 @@ def test_a_sparse_file_is_charged_the_room_its_copy_will_actually_need(tmp_path)
 
 def test_writing_a_second_capture_into_an_existing_stamp_refuses(cfg):
     snapshot.capture(cfg, stamp="same", verifier=_passes)
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.capture(cfg, stamp="same", verifier=_passes)
-    assert excinfo.value.cause.code is ExitCode.INTERNAL
+    cause = _refusal(snapshot.capture, cfg, stamp="same", verifier=_passes)
+    assert cause.code is ExitCode.INTERNAL
 
 
 def test_a_missing_database_refuses_in_the_library_class_rather_than_crashing(cfg):
     config.state_path("rekordbox_db", cfg).unlink()
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.capture(cfg, verifier=_passes)
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    cause = _refusal(snapshot.capture, cfg, verifier=_passes)
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
 
 
 def test_an_unreadable_manifest_refuses_rather_than_reporting_an_empty_capture(cfg):
     record = snapshot.capture(cfg, verifier=_passes)
     (record.root / snapshot.MANIFEST_NAME).write_text("{not json")
-    with pytest.raises(CratekitError):
-        snapshot.read_manifest(record.root)
+    _refusal(snapshot.read_manifest, record.root)
 
 
 def test_a_manifest_from_a_later_build_is_refused_rather_than_guessed_at(cfg):
@@ -260,8 +254,7 @@ def test_a_manifest_from_a_later_build_is_refused_rather_than_guessed_at(cfg):
     data = json.loads(path.read_text())
     data["schema_version"] = snapshot.MANIFEST_SCHEMA_VERSION + 1
     path.write_text(json.dumps(data))
-    with pytest.raises(CratekitError):
-        snapshot.read_manifest(record.root)
+    _refusal(snapshot.read_manifest, record.root)
 
 
 def test_a_capture_is_a_snapshot_directory_as_far_as_pruning_is_concerned(cfg):
