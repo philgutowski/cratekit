@@ -80,7 +80,7 @@ from cratekit.write import trees
 
 if TYPE_CHECKING:
     from cratekit.label import catalogue
-    from cratekit.sync.removed_kept import KeptReads
+    from cratekit.sync.removed_kept import SyncedReads
 
 #: The three answers a row can get.
 OFFERED = "offered"
@@ -598,7 +598,7 @@ def read_account(
     sightings: Mapping[str, unavailable.Sighting] | None = None,
     moment: datetime | None = None,
     names: Mapping[str, str] | None = None,
-    kept: KeptReads | None = None,
+    kept: SyncedReads | None = None,
 ) -> dict[str, Listing]:
     """Each playlist in ``wanted`` read once, against the account's listing read once.
 

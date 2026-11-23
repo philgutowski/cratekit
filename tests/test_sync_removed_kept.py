@@ -51,6 +51,10 @@ from tests.test_sync_removed import silence as silence  # noqa: PLC0414
 
 NOW = datetime(2026, 11, 23, 20, 0, tzinfo=timezone.utc)
 STAMP = "2026-11-20T09:15:00+00:00"
+#: A write an hour before the run, long settled.
+SETTLED_WRITE = "2026-11-23T19:00:00+00:00"
+#: A write ten minutes before the run, which the provider may not serve yet.
+FRESH_WRITE = "2026-11-23T19:50:00+00:00"
 #: The calls one read of a playlist makes live: the open and one page (R-1716).
 PER_PLAYLIST = 2
 #: The account listing's page, as the adapter walks it.
@@ -78,11 +82,12 @@ class Counted(Account):
         self.command = 0
         self.hour = 0
         self.asked: list[str] = []
+        self.per_playlist = PER_PLAYLIST
         fake = self.fake
         reader, lister, hearts = fake.playlist_for, fake.account_playlists, fake.favourite_tracks
 
         def playlist_for(reference: str):
-            self.tick(PER_PLAYLIST)
+            self.tick(self.per_playlist)
             self.asked.append(reference)
             return reader(reference)
 
@@ -130,7 +135,7 @@ class Counted(Account):
         )
 
     def written(
-        self, playlist_id: str, tracks: list[Listed], *, updated: str = "2026-11-23T20:30:00+00:00"
+        self, playlist_id: str, tracks: list[Listed], *, updated: str = SETTLED_WRITE
     ) -> None:
         """A write to the account: the playlist holds ``tracks`` and the listing says so."""
         self.fake.playlists[playlist_id] = FakePagedPlaylist(tracks, declared=len(tracks))
@@ -191,11 +196,14 @@ def test_a_run_stopped_at_its_ceiling_and_continued_reads_no_playlist_twice(
     assert code == int(ExitCode.REFUSED_BY_POLICY), first
     _stopped(first)
     assert first["cause"]["reason"] == provider_gate.CEILING
-    assert "9 synced playlist(s) read whole on this run are kept" in first["cause"]["message"]
+    assert "9 synced playlist(s) read whole are held, 9 of them read on this run" in first[
+        "cause"
+    ]["message"]
     assert first["cause"]["detail"]["kept"] == 9
     code, second = account.command_run()
     assert code == int(ExitCode.REFUSED_BY_POLICY), second
     _stopped(second)
+    assert second["cause"]["detail"]["kept"] == 18
     account.ceiling = None
 
     answers = _by_title(_run())
@@ -234,26 +242,118 @@ def test_a_playlist_whose_stamp_or_count_moved_is_read_again(five_landed, monkey
     others = _synced(account, 2)
     _run()
     first = Counter(account.asked)
-    listed = {one.playlist_id: one for one in account.fake.account}
-    shown = listed[others[0]]
-    account.fake.account[:] = [
-        (
-            AccountPlaylist(
-                shown.playlist_id,
-                shown.name,
-                shown.tracks if moved == "stamp" else 3,
-                "2026-11-23T20:05:00+00:00" if moved == "stamp" else shown.updated,
-            )
-            if one.playlist_id == others[0]
-            else one
-        )
-        for one in account.fake.account
-    ]
+    if moved == "stamp":
+        account.written(others[0], [track("Other 0"), track("Other 0 B")])
+    else:
+        account.written(others[0], [track("Other 0"), track("Other 0 B"), track("Added")], updated=STAMP)
 
     _run()
 
+    # READ ONCE, then held again under its new mark for the second command.
     again = Counter(account.asked) - first
     assert dict(again) == {others[0]: 1}
+
+
+def test_a_playlist_written_lately_is_read_on_every_run_until_its_stamp_settles(
+    five_landed, monkeypatch
+):
+    """The provider serves old rows for minutes after a write, so a read under a fresh stamp
+    is never held (round one's finding 2)."""
+    clock = Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    others = _synced(account, 2)
+    account.written(others[0], [track("Other 0"), track("Other 0 B")], updated=FRESH_WRITE)
+
+    account.command_run()
+    account.command_run()
+    assert Counter(account.asked)[others[0]] == 2
+    clock.moment = NOW + removed_kept.SETTLED
+    account.command_run()
+    account.command_run()
+
+    assert Counter(account.asked)[others[0]] == 3
+    assert Counter(account.asked)[others[1]] == 1
+
+
+def test_a_read_that_lags_its_listing_is_never_held_and_never_answers_a_later_run(
+    five_landed, monkeypatch
+):
+    """The listing counts New1 added to another synced playlist while the read still serves
+    the old rows: the run reads it as it is served, holds nothing, and the next run, once the
+    provider serves the add, keeps New1 (round one's finding 2)."""
+    Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    others = _synced(account, 2)
+    account.fake.account[:] = [
+        AccountPlaylist(one.playlist_id, one.name, 3, SETTLED_WRITE)
+        if one.playlist_id == others[0]
+        else one
+        for one in account.fake.account
+    ]
+    code, lagging = account.command_run()
+    assert code == int(ExitCode.DECISION_REQUIRED), lagging
+    assert others[0] not in _kept_document(config.load())["reads"]
+    account.fake.playlists[others[0]] = FakePagedPlaylist(
+        [track("Other 0"), track("Other 0 B"), track("New1")], declared=3
+    )
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["action"] == removed.KEPT
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+
+
+def test_a_stop_before_any_read_still_names_what_the_store_holds(five_landed, monkeypatch):
+    """Round one's finding 1: the hour still spent, the next run parks at the listing and says
+    how many reads are held, not none."""
+    Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    _synced(account, 6)
+    account.ceiling = 1 + PER_PLAYLIST + 3 * PER_PLAYLIST
+    assert account.command_run()[0] == int(ExitCode.REFUSED_BY_POLICY)
+    account.ceiling = 0
+
+    code, again = account.command_run()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), again
+    assert again["cause"]["detail"]["kept"] == 4
+    assert "4 synced playlist(s) read whole are held, 0 of them read on this run" in again[
+        "cause"
+    ]["message"]
+
+
+def test_a_stop_whose_reads_could_not_be_held_says_so_and_counts_none(five_landed, monkeypatch):
+    Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    _synced(account, 4)
+    account.ceiling = 1 + PER_PLAYLIST + 2 * PER_PLAYLIST
+
+    def refused(*_args, **_kwargs):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(config, "atomic_write_bytes", refused)
+    code, stopped = account.command_run()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), stopped
+    assert stopped["cause"]["detail"]["kept"] == 0
+    assert "could not be held (OSError: read-only file system)" in stopped["cause"]["message"]
+
+
+def test_the_gate_says_the_plan_took_playlists_from_held_reads(five_landed, monkeypatch):
+    """Round one's finding 3: the person answering the gate is told."""
+    Clock(monkeypatch)
+    account = Counted(monkeypatch)
+    _synced(account, 3)
+    code, fresh = account.command_run()
+    assert code == int(ExitCode.DECISION_REQUIRED), fresh
+    assert "held reads" not in json.dumps(fresh["cause"]["detail"])
+
+    code, held = account.command_run()
+
+    assert code == int(ExitCode.DECISION_REQUIRED), held
+    assert "4 of the 4 synced playlist(s) were taken from a read made whole" in json.dumps(
+        held["cause"]["detail"]
+    )
 
 
 def test_a_stopped_run_offers_nothing_and_a_continuation_with_a_short_playlist_offers_nothing(
@@ -280,23 +380,33 @@ def test_a_stopped_run_offers_nothing_and_a_continuation_with_a_short_playlist_o
     assert Counter(account.asked)[others[3]] == 2
 
 
-def test_six_hundred_synced_playlists_finish_in_the_next_hour_reading_each_once(
-    five_landed, monkeypatch
+@pytest.mark.parametrize(
+    ("synced", "per_playlist", "hours"),
+    [
+        # The card's own fixture: about 600 synced playlists at two calls each.
+        (600, 2, 2),
+        # The measured account: 717 playlists at about 3.25 calls each (cutover, sitting 101).
+        (717, 3, 3),
+    ],
+)
+def test_a_large_account_finishes_in_the_hours_its_calls_need_reading_each_playlist_once(
+    five_landed, monkeypatch, synced, per_playlist, hours
 ):
-    """Each command under the default ceiling, the hour under its read line, and the run
-    that finishes it in the next hour; no playlist is read twice."""
-    Clock(monkeypatch)
+    """Each command under the default ceiling and each hour under its read line, the clock
+    moved an hour at each hour stop; no playlist is read twice."""
+    clock = Clock(monkeypatch)
     account = Counted(monkeypatch)
-    others = _synced(account, 599)
+    account.per_playlist = per_playlist
+    others = _synced(account, synced - 1)
     settings = provider_gate.GateSettings()
     account.ceiling = provider_gate.ceiling(settings)
     account.hour_line = provider_gate.line_for(settings, reserve=False)
     assert (account.ceiling, account.hour_line) == (500, 1125)
 
-    hours, runs = 1, 0
+    spent, runs = 1, 0
     while True:
         runs += 1
-        assert runs <= 10, "the step never finished"
+        assert runs <= 12, "the step never finished"
         code, out = account.command_run()
         if code == int(ExitCode.DECISION_REQUIRED):
             break
@@ -304,13 +414,15 @@ def test_six_hundred_synced_playlists_finish_in_the_next_hour_reading_each_once(
         assert out["cause"]["reason"] in (provider_gate.CEILING, provider_gate.BUDGET), out
         if out["cause"]["reason"] == provider_gate.BUDGET:
             # The hour's calls leave the window: the next hour begins.
-            hours += 1
+            spent += 1
             account.hour = 0
+            clock.moment += timedelta(hours=1)
 
     read = Counter(account.asked)
     assert set(read) == {DOWNLOADED, *others}
     assert max(read.values()) == 1
-    assert hours == 2, (hours, runs)
+    assert spent == hours, (spent, runs)
+    assert spent * timedelta(hours=1) < removed_kept.HELD_FOR
     # THE STEP FINISHED: New1 is offered at the gate.
     assert out["cause"]["detail"]["gate"] == removed_cli.CONFIRM_GATE
 
@@ -326,7 +438,7 @@ def test_a_plan_from_kept_reads_is_the_plan_from_fresh_reads(five_landed, monkey
     )
     assert decided == int(ExitCode.OK)
     # Past the hours a read is kept, so this command reads every playlist again.
-    clock.moment = NOW + removed_kept.KEPT_FOR
+    clock.moment = NOW + removed_kept.HELD_FOR
     code, fresh = drive(["--run", asked["run_id"], *VERB])
     assert code == int(ExitCode.OK), fresh
     assert not any(one["code"] == removed_kept.FROM_KEPT for one in fresh["warnings"])
@@ -354,7 +466,7 @@ def test_a_read_past_its_hours_or_of_a_playlist_with_no_stamp_is_read_again(
     account.command_run()
     assert (Counter(account.asked) - first) == Counter({"acc-unstamped": 1})
 
-    clock.moment = NOW + removed_kept.KEPT_FOR
+    clock.moment = NOW + removed_kept.HELD_FOR
     before = Counter(account.asked)
     account.command_run()
     assert set(Counter(account.asked) - before) == {DOWNLOADED, *others, "acc-unstamped"}
@@ -376,6 +488,12 @@ def test_retire_reads_through_the_same_store(five_landed, monkeypatch):
 
 
 # The store itself
+
+
+@pytest.fixture
+def pinned(monkeypatch) -> Clock:
+    """The clock every store test reads, a read made at NOW unless moved."""
+    return Clock(monkeypatch)
 
 
 def _listing(account: str = "acc-x") -> removed.Listing:
@@ -402,46 +520,71 @@ def test_a_listing_with_no_count_or_no_stamp_marks_nothing(tracks, updated):
     assert removed_kept.mark_of(None) is None
 
 
-def test_a_kept_read_comes_back_whole_and_only_while_the_listing_says_it_stands(native_library):
+def test_a_kept_read_comes_back_whole_and_only_while_the_listing_says_it_stands(
+    native_library, pinned
+):
     cfg, _root = native_library
-    store = removed_kept.KeptReads(cfg, NOW)
+    store = removed_kept.SyncedReads(cfg, NOW)
     store.keep("acc-x", _shown(), _listing())
     store.flush()
-    later = removed_kept.KeptReads(cfg, NOW + removed_kept.KEPT_FOR - timedelta(seconds=1))
+    later = removed_kept.SyncedReads(cfg, NOW + removed_kept.HELD_FOR - timedelta(seconds=1))
 
     assert later.get("acc-x", _shown()) == _listing()
     assert later.get("acc-x", None) is None
     assert later.get("acc-x", _shown(tracks=3)) is None
     assert later.get("acc-x", _shown(updated="2026-11-21T00:00:00+00:00")) is None
     assert later.get("acc-y", _shown("acc-y")) is None
-    assert removed_kept.KeptReads(cfg, NOW + removed_kept.KEPT_FOR).get("acc-x", _shown()) is None
-    assert removed_kept.KeptReads(cfg, NOW - timedelta(seconds=1)).get("acc-x", _shown()) is None
+    assert removed_kept.SyncedReads(cfg, NOW + removed_kept.HELD_FOR).get("acc-x", _shown()) is None
+    assert removed_kept.SyncedReads(cfg, NOW - timedelta(seconds=1)).get("acc-x", _shown()) is None
 
 
-@pytest.mark.parametrize(
-    "state", [removed.SHORT, removed.EMPTY, removed.UNREADABLE, removed.GONE, removed.RETIRED]
-)
-def test_only_a_read_whole_is_kept_and_a_read_not_whole_now_drops_the_kept_one(native_library, state):
+def test_a_read_whose_count_differs_from_the_listing_or_under_a_fresh_stamp_is_not_held(
+    native_library, pinned
+):
     cfg, _root = native_library
-    store = removed_kept.KeptReads(cfg, NOW)
+    store = removed_kept.SyncedReads(cfg, NOW)
+    store.keep("acc-more", _shown("acc-more", tracks=3), _listing("acc-more"))
+    store.keep("acc-fewer", _shown("acc-fewer", tracks=1), _listing("acc-fewer"))
+    store.keep("acc-fresh", _shown("acc-fresh", updated=FRESH_WRITE), _listing("acc-fresh"))
+    at_line = (NOW - removed_kept.SETTLED).isoformat()
+    store.keep("acc-settled", _shown("acc-settled", updated=at_line), _listing("acc-settled"))
+    store.flush()
+
+    assert set(_kept_document(cfg)["reads"]) == {"acc-settled"}
+
+
+#: Every state a listing can be in, read off the module, so a new one joins.
+STATES = sorted(removed.NOT_WHOLE | removed.HOLDING | {removed.RETIRED})
+
+
+def test_the_states_are_every_one_the_reader_answers():
+    assert set(STATES) == {"read", "gone", "unreadable", "short", "empty", "withheld", "retired"}
+
+
+@pytest.mark.parametrize("state", [one for one in STATES if one != removed.READ])
+def test_only_a_read_whole_is_kept_and_a_read_not_whole_now_drops_the_kept_one(
+    native_library, pinned, state
+):
+    cfg, _root = native_library
+    store = removed_kept.SyncedReads(cfg, NOW)
     store.keep("acc-x", _shown(), _listing())
     store.keep("acc-x", _shown(), removed.Listing(account="acc-x", name="X", state=state))
     store.flush()
 
-    assert removed_kept.KeptReads(cfg, NOW).get("acc-x", _shown()) is None
+    assert removed_kept.SyncedReads(cfg, NOW).get("acc-x", _shown()) is None
     assert _kept_document(cfg)["reads"] == {}
 
 
-def test_a_read_made_by_another_reader_is_not_trusted(native_library):
+def test_a_read_made_by_another_reader_is_not_trusted(native_library, pinned):
     cfg, _root = native_library
-    store = removed_kept.KeptReads(cfg, NOW)
+    store = removed_kept.SyncedReads(cfg, NOW)
     store.keep("acc-x", _shown(), _listing())
     store.flush()
     document = _kept_document(cfg)
     document["reads"]["acc-x"]["reader"] = removed_kept.READER + 1
     config.state_path(removed_kept.STATE_KEY, cfg).write_text(json.dumps(document))
 
-    assert removed_kept.KeptReads(cfg, NOW).get("acc-x", _shown()) is None
+    assert removed_kept.SyncedReads(cfg, NOW).get("acc-x", _shown()) is None
 
 
 @pytest.mark.parametrize(
@@ -451,21 +594,21 @@ def test_a_document_that_cannot_be_used_reads_as_nothing_kept_and_says_so(native
     cfg, _root = native_library
     config.state_path(removed_kept.STATE_KEY, cfg).write_text(text)
 
-    store = removed_kept.KeptReads(cfg, NOW)
+    store = removed_kept.SyncedReads(cfg, NOW)
 
     assert store.entries == {}
     assert store.get("acc-x", _shown()) is None
     assert [one["code"] for one in store.warnings()] == [removed_kept.UNREAD]
 
 
-def test_a_refused_write_is_said_and_never_raised(native_library, monkeypatch):
+def test_a_refused_write_is_said_and_never_raised(native_library, pinned, monkeypatch):
     cfg, _root = native_library
 
     def refused(*_args, **_kwargs):
         raise OSError("read-only file system")
 
     monkeypatch.setattr(config, "atomic_write_bytes", refused)
-    store = removed_kept.KeptReads(cfg, NOW)
+    store = removed_kept.SyncedReads(cfg, NOW)
     store.keep("acc-x", _shown(), _listing())
     store.flush()
 
@@ -473,12 +616,16 @@ def test_a_refused_write_is_said_and_never_raised(native_library, monkeypatch):
     assert "read-only file system" in store.unkept
 
 
-def test_the_store_is_written_every_fifty_new_reads_and_drops_reads_past_their_hours(native_library):
+def test_the_store_is_written_every_fifty_new_reads_and_drops_reads_past_their_hours(
+    native_library, pinned
+):
     cfg, _root = native_library
-    old = removed_kept.KeptReads(cfg, NOW - removed_kept.KEPT_FOR)
+    pinned.moment = NOW - removed_kept.HELD_FOR
+    old = removed_kept.SyncedReads(cfg, pinned.moment)
     old.keep("acc-old", _shown("acc-old"), _listing("acc-old"))
     old.flush()
-    store = removed_kept.KeptReads(cfg, NOW)
+    pinned.moment = NOW
+    store = removed_kept.SyncedReads(cfg, NOW)
     for n in range(removed_kept.FLUSH_EVERY - 1):
         store.keep(f"acc-{n}", _shown(f"acc-{n}"), _listing(f"acc-{n}"))
     assert set(_kept_document(cfg)["reads"]) == {"acc-old"}
@@ -519,3 +666,48 @@ def test_the_adapter_lists_the_providers_last_updated_stamp_and_none_when_it_gav
         "pl-blank": None,
         "pl-none": None,
     }
+
+
+def test_two_overlapping_runs_each_keep_what_they_read(native_library, pinned):
+    """Round one's finding 6: the later write merges the earlier, the later read winning."""
+    cfg, _root = native_library
+    first = removed_kept.SyncedReads(cfg, NOW)
+    second = removed_kept.SyncedReads(cfg, NOW)
+    for account in ("acc-1", "acc-2", "acc-3"):
+        first.keep(account, _shown(account), _listing(account))
+    first.flush()
+    pinned.moment = NOW + timedelta(minutes=5)
+    second.keep("acc-3", _shown("acc-3"), _listing("acc-3"))
+    second.keep("acc-4", _shown("acc-4"), _listing("acc-4"))
+    second.flush()
+
+    reads = _kept_document(cfg)["reads"]
+    assert set(reads) == {"acc-1", "acc-2", "acc-3", "acc-4"}
+    assert reads["acc-3"]["read_at"] == (NOW + timedelta(minutes=5)).isoformat()
+
+
+def test_a_playlist_one_run_dropped_stays_dropped_over_an_older_write(native_library, pinned):
+    cfg, _root = native_library
+    older = removed_kept.SyncedReads(cfg, NOW)
+    older.keep("acc-x", _shown(), _listing())
+    older.flush()
+    pinned.moment = NOW + timedelta(minutes=5)
+    dropping = removed_kept.SyncedReads(cfg, pinned.moment)
+    dropping.keep("acc-x", _shown(), removed.Listing(account="acc-x", name="X", state=removed.SHORT))
+    dropping.flush()
+
+    assert _kept_document(cfg)["reads"] == {}
+
+
+def test_a_store_whose_clock_is_behind_keeps_a_newer_read_another_run_wrote(native_library, pinned):
+    cfg, _root = native_library
+    pinned.moment = NOW + timedelta(seconds=2)
+    ahead = removed_kept.SyncedReads(cfg, pinned.moment)
+    ahead.keep("acc-ahead", _shown("acc-ahead"), _listing("acc-ahead"))
+    ahead.flush()
+    pinned.moment = NOW
+    behind = removed_kept.SyncedReads(cfg, NOW)
+    behind.keep("acc-behind", _shown("acc-behind"), _listing("acc-behind"))
+    behind.flush()
+
+    assert set(_kept_document(cfg)["reads"]) == {"acc-ahead", "acc-behind"}

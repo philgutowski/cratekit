@@ -253,11 +253,11 @@ A track a My Tag or another table rekordbox's removal was never measured on
 names is answered kept with that table named, which is the ordinary answer
 for a `vox` or `dyn` track; report it. A plan the copy offers differently, or
 any refusal on the copy, stops this step: report it and answer nothing. A run
-that stops at the call ceiling or the hour's line keeps each synced playlist it
-read whole for three hours, so run `crate --output json sync removed` again,
+that stops at the call ceiling or the hour's line holds each synced playlist it
+read whole for six hours, so run `crate --output json sync removed` again,
 once the hour's calls have left the window when the stop was the hour's, and
 it reads only what is left; report the calls each run spent. The copy's state
-directory, copied from the volume's, carries those kept reads, so the
+directory, copied from the volume's, carries those held reads, so the
 rehearsal reads only what the account shows written since. The files are not touched:
 `crate delete review`, which only Phillip runs, offers them to the Trash.
 
