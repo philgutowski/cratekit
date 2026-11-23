@@ -1,10 +1,9 @@
-"""U245: the Cyanite trial puts what Cyanite hears in a track beside the folder it is filed in.
+"""U245: the Cyanite trial puts what Cyanite hears in a track beside the folder it is
+filed in.
 
-Guarded: nothing is sent without the opt in, a cap, a price and a key, and
-the count and estimate are said first; the key goes only in the API's
-Authorization header; nothing tempo shaped is asked, read or written; the
-trial writes its table and summary and nothing else; and Cyanite's words reach
-a folder only through the resolver. Nothing touches the network or a real key.
+Nothing is sent without the opt in, a cap, a price and a key; the key goes only in the
+Authorization header; nothing tempo shaped is asked, read or written; the trial writes
+only its table and summary; Cyanite's words reach a folder only through the resolver.
 """
 
 from __future__ import annotations
@@ -25,15 +24,13 @@ from tests._containers import tagged_container
 
 KEY = "cy-fixture-key-0123456789abcdef"
 
-#: The shipped send, taken at import, before ``conftest`` detonates it for
-#: each test: the one test that drives it patches ``requests`` underneath.
+#: The shipped send, taken before ``conftest`` detonates it for each test.
 SHIPPED_SEND = cyanite._requests_send
 UPLOAD_HOST = "https://uploads.example.test/"
 
 # A recorded Cyanite, answering the documented flow
 
-#: What Cyanite says about each title: the words, and fields this trial must
-#: never read, a tempo and a key among them.
+#: What Cyanite says per title, with fields the trial must never read (tempo, key).
 SAID = {
     "deep": {"genreTags": ["electronicDance"], "subgenreTags": ["deepHouse"],
              "moodTags": ["chilled", "sexy"], "energyLevel": "medium"},
@@ -50,11 +47,7 @@ NEVER_READ = {"bpm": 124.0, "bpmPrediction": {"value": 124.0}, "key": "aMinor",
 
 
 class Recorded:
-    """A recorded Cyanite: answers each request from the documented flow.
-
-    ``events`` is shared with the run's ``say`` so what was said and what was
-    sent are one ordered list.
-    """
+    """A recorded Cyanite; ``events`` is shared with ``say`` as one ordered list."""
 
     def __init__(self, events=None, *, said=None, processing=1, preflight=None,
                  create_errors=None, upload_status=200, never_start=False,
@@ -156,9 +149,7 @@ def probe_mp3(tmp_path_factory):
 def _track(probe: Path, target: Path, genre: str | None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(probe, target)
-    # AUDIO OF ITS OWN, bytes after the frames, so no two fixtures hold the same
-    # audio: the trial knows a file by its audio and its tags not at all, so
-    # two copies of the probe would be one track.
+    # Audio of its own, so no two fixtures are one track to the trial.
     with target.open("ab") as handle:
         handle.write(target.stem.encode())
     assert tags.write_tags(target, {"title": target.stem})
@@ -516,8 +507,7 @@ def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen
     assert summary["Deep House"]["tracks"] == "2"
     assert summary["Deep House"]["same_folder"] == "1"
     assert summary["Deep House"]["no_folder"] == "1"
-    # A FILE CYANITE PLACED NOWHERE IS NOT A DISAGREEMENT: it is counted as no
-    # folder and left out of the share.
+    # A file Cyanite placed nowhere is no folder, left out of the share.
     assert summary["Deep House"]["agreement"] == "1 of 1"
     assert summary["Jazz"]["different_folder"] == "1"
     assert summary["(all folders)"]["agreement"] == "2 of 3"
@@ -901,8 +891,7 @@ def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, te
 
 
 def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, tmp_path, declared, keyed):
-    """A signal ends the process with no handler run, so what matters is what is
-    on disk when the wait begins: the row, with its library track."""
+    """A signal runs no handler, so the row and its track are on disk before the wait."""
     out = tmp_path / "t.tsv"
     seen: list[dict[str, dict[str, str]]] = []
 

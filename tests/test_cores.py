@@ -1,9 +1,8 @@
 """U241: the core count is read in one place, and used as a ceiling and nothing else.
 
-Sizing a pool from the cores is the kill ``cratekit.core.pool`` prevents, so:
-the count is read by ``cratekit.core.cores`` alone, in every spelling; what it
-answers reaches only ``plan_pool``'s ``ceiling``, checked on every shipped
-module's syntax tree; and memory and both pressure gates still overrule it.
+Only ``cratekit.core.cores`` reads the count, in every spelling; it reaches only
+``plan_pool``'s ``ceiling``, checked on every shipped module; memory and both pressure
+gates still overrule it.
 """
 
 from __future__ import annotations
@@ -200,11 +199,7 @@ def _called(node: ast.AST) -> str | None:
 
 
 def ceilings_used_as_anything_else(source: str) -> list[str]:
-    """Every ``worker_ceiling`` or ``usable_cores`` use that is not the planner's ceiling.
-
-    Only the call written directly as ``plan_pool``'s ``ceiling`` keyword is
-    accepted; a count bound to a name first is refused rather than traced.
-    """
+    """Every core count use other than a direct ``ceiling`` keyword to ``plan_pool``."""
     tree = _parse(source)
     uses = []
     for node in _nodes(source):

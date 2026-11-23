@@ -1,7 +1,7 @@
 """R-837: a set becomes a private playlist on the account, and is archived.
 
-Driven through the real dispatcher with the catalogue and the account faked;
-the set written on a real account is owed to an attended sitting.
+Through the real dispatcher with catalogue and account faked; a real account is
+attended.
 """
 
 from __future__ import annotations
@@ -153,8 +153,7 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
 
 
 def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
-    # Two recordings sharing a recorder's stem are two sets, and the name is
-    # the key each set's playlist is recorded under.
+    # Two recordings sharing a stem are two sets, each keyed by its name.
     assert set_cli.name_of(Path("REC001-aaaaaaaaaaaa.tracklist.txt")) == "REC001-aaaaaaaaaaaa"
     assert set_cli.name_of(Path("REC001-bbbbbbbbbbbb.tracklist.txt")) == "REC001-bbbbbbbbbbbb"
     assert set_cli.name_of(Path("typed set.txt")) == "typed set"
@@ -314,8 +313,7 @@ def test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for(acc
     cfg, fake, held = account
     _built(_tracklist(cfg))
     (playlist,) = held.playlists
-    # A person added the fifth row's track by hand, and the provider's search
-    # now names it: it is on the playlist and this library never wrote it.
+    # The fifth row's track was added by hand: on the playlist, never written here.
     held.playlists[playlist].append("tid-5")
     fake.searches[FIVE] = [Hit("tid-5", *FIVE)]
     held.chunks.clear()

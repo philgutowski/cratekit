@@ -1,11 +1,9 @@
 """U282: a tag sweep asks Discogs first, and Beatport only when Discogs gives no genre.
 
-Guarded: with no token Beatport is asked exactly as before; a Discogs decline
-goes on to Beatport, and beside a Beatport that cannot settle it keeps
-Discogs' word, never ``no-hit`` or an outage; a refused or unread catalogue is
-never a miss; a file Discogs tagged with no picture still gets Beatport's
-cover, and only such a file; a tagged file is never re-tagged. Nothing
-touches the network.
+With no token Beatport is asked as before; a Discogs decline goes on to Beatport and
+keeps Discogs' word beside one that cannot settle; a refused or unread catalogue is
+never a miss; only a Discogs-tagged file with no picture gets Beatport's cover; a tagged
+file is never re-tagged. Nothing touches the network.
 """
 
 from __future__ import annotations
@@ -552,8 +550,7 @@ def test_a_beatport_decline_beside_a_refused_token_is_a_decline_and_never_raises
 
 
 def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propagates():
-    """The asker raises nothing else today; a refusal of another kind is not a
-    token's, and holding it would hide it behind Beatport's answer."""
+    """Only a refused token is held; any other refusal would hide behind Beatport's answer."""
 
     class Broken:
         def ask(self, artist, title, *, track=None):
@@ -571,8 +568,7 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
 def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_labels(
     monkeypatch,
 ):
-    """Discogs is asked first, so with no token it is not-asked on every file
-    searched; only a file whose genre was owed to a catalogue is counted."""
+    """With no token only files whose genre was owed to a catalogue count as not-asked."""
     from cratekit.tagging import artifacts
     from cratekit.tagging import cli as tag_cli
 

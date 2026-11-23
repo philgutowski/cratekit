@@ -1,14 +1,9 @@
 """U2: forward-only config migrations, and the property that makes them safe.
 
-A migration that raises partway leaves the original byte-identical and nothing
-new on disk, because there is never anything to clean up: steps run in memory
-over a deep copy, the result is validated in full, and only then is a byte
-written. (A temp file would still need removing while the system is failing.)
-
-The shipped ladder is empty because Cratekit ships schema version 1; inventing
-versions would make the number a lie. So the engine takes its ladder as a
-parameter, driven here by a synthetic three-version ladder that records its
-order, and the shipped ladder is asserted to have no gaps.
+Steps run in memory over a deep copy and the result is validated before a byte is
+written, so a migration that raises leaves the original byte-identical. The shipped
+ladder is empty (schema version 1), so the engine takes its ladder as a parameter,
+driven by a synthetic three-version ladder.
 """
 
 from __future__ import annotations
@@ -24,11 +19,7 @@ from tests.test_config_update import library as library  # noqa: PLC0414
 
 
 def _ladder(record: list[str], *, fails_at: int | None = None):
-    """A 1 -> 2 -> 3 ladder whose steps append their name to ``record``.
-
-    ``fails_at`` makes that step raise AFTER mutating its copy, so a test cannot
-    pass merely because nothing was changed before the failure.
-    """
+    """A 1 -> 2 -> 3 ladder recording its steps; ``fails_at`` raises after mutating the copy."""
 
     def step(from_version: int):
         def run(data: dict) -> dict:
@@ -98,8 +89,7 @@ def test_migration_never_mutates_the_input(library):
 
 
 def test_a_migration_that_raises_partway_leaves_the_original_untouched(library, tmp_path):
-    """Bytes prove the target was not rewritten; the listing proves no partial
-    artifact was orphaned beside it."""
+    """Bytes prove the target was not rewritten; the listing, that nothing was orphaned."""
     path = _v1_file(library, tmp_path)
     before_bytes = path.read_bytes()
     before_listing = _listing(tmp_path)
@@ -198,10 +188,7 @@ def test_a_current_config_loads_without_a_backup_being_written(library, tmp_path
 
 
 def test_a_migration_that_cannot_take_the_lock_refuses(library, tmp_path, monkeypatch):
-    """The one place a failed lock is NOT tolerated: subprocesses can reach an
-    unmigrated config in one second and half-upgrade it. The listing names the
-    one expected residual, the lock file, opened before it can be taken.
-    """
+    """A failed lock is refused here, since a subprocess could half-upgrade the config."""
     # Imported here so the file still collects on a platform without fcntl.
     import fcntl  # noqa: PLC0415
 
@@ -226,10 +213,7 @@ def test_a_migration_that_cannot_take_the_lock_refuses(library, tmp_path, monkey
 def test_a_second_process_that_migrated_first_does_not_get_its_backup_clobbered(
     library, tmp_path, monkeypatch
 ):
-    """Both read version 1; A migrates and writes ``.v1.bak``; B, never
-    re-reading, would back up version 3 under that name. A is simulated when B
-    takes the lock, the only interleaving that reproduces it without a race.
-    """
+    """B never re-reads, so A's ``.v1.bak`` would be clobbered; A migrates as B takes the lock."""
     path = _v1_file(library, tmp_path)
     v1_bytes = path.read_bytes()
     backup = tmp_path / "config.toml.v1.bak"

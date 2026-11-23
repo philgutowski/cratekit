@@ -1,20 +1,11 @@
 """R-1037: a landed row rekordbox's Remove from Collection deleted outright is offered.
 
-rekordbox 7.2.19 deletes a removed track's rows outright (A178, A185), so the
-soft delete marker the deletion pass partitions on never says the row went,
-and before this card the pass offered only the marked rows and the rows ``crate
-sync removed`` recorded (U288). A native landing now names every row it made
-on its session record, and the pass reads a landed row of this database that
-is neither live nor marked as a removal, numbered by the update count at the
-first run that sees it absent. Everything after that is the pass's own: the
-watermark, the reference set, the inode and size proof, the gate, the Trash
-and the tombstone.
-
-These land real files through the native landing on a disposable library,
-take rows out the way rekordbox does (the row and every membership naming it,
-deleted outright, the update count advanced), and drive ``crate delete
-review`` through the dispatcher. D1 applies: nothing here names a real
-volume, a real person or a real track.
+rekordbox 7.2.19 deletes a removed track's rows outright (A178, A185), so no soft delete
+marker says the row went. A native landing names every row it made on its session
+record, and the pass reads a landed row neither live nor marked, numbered by the update
+count at the first run that sees it absent; the rest is the pass's own. These land real
+files on a disposable library, remove rows as rekordbox does, and drive ``crate delete
+review`` through the dispatcher (D1).
 """
 
 from __future__ import annotations
@@ -49,9 +40,7 @@ from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 GATE = "delete.review.confirm"
 
 
-# ---------------------------------------------------------------------------
-# The library, landed, and a removal as rekordbox makes one
-# ---------------------------------------------------------------------------
+# ═══ The library, landed, and a removal as rekordbox makes one ══════════════
 
 
 def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed batch") -> None:
@@ -178,11 +167,7 @@ def _record_path(cfg: config.Config, session_id: str) -> Path:
 
 
 def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecord:
-    """The one landing record naming ``content_id``: chosen by the row, never by order.
-
-    Two records started in the same second are listed in no stable order, since
-    a session id is the second and random hex (round one's R3).
-    """
+    """The one landing record naming ``content_id``, chosen by the row, never by list order."""
     (landing,) = [
         one
         for one in session.records(cfg)
@@ -192,9 +177,7 @@ def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecor
     return landing
 
 
-# ---------------------------------------------------------------------------
-# The landing names what it made
-# ---------------------------------------------------------------------------
+# ═══ The landing names what it made ════════════════════════════════════════
 
 
 def test_the_landing_record_names_every_row_it_made_as_the_database_holds_it(
@@ -232,9 +215,7 @@ def test_the_key_and_its_columns_are_spelled_the_same_where_they_are_read():
     assert deletion_library.RECORDED_COLUMNS == native.LANDED_COLUMNS == rb_writer.RECORDED_COLUMNS
 
 
-# ---------------------------------------------------------------------------
-# A landed row removed outright is offered once, and trashed with its tombstone
-# ---------------------------------------------------------------------------
+# ═══ A landed row removed outright is offered once, and trashed ════════════
 
 
 def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(
@@ -258,8 +239,7 @@ def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(
     (trashed,) = [one for one in tmp_path.rglob(music.name) if one != music]
     assert "Trash" in str(trashed) and trashed.read_bytes() == before
     assert other.exists()
-    # The tombstone carries the landing's artist and title, which is what
-    # ``label prune`` and ``label playlists`` match a track against (U243).
+    # The tombstone carries the landing's artist and title, for label matching (U243).
     (stone,) = stores.list_tombstones(cfg)
     assert stone.payload["artist"] == "Probe", stone.payload
     assert stone.payload["title"].endswith(" - One"), stone.payload
@@ -306,8 +286,7 @@ def test_a_declined_landed_removal_is_not_offered_again_and_a_trashed_one_is_ret
     code, refused = _review()
     assert _shown(refused)["offered"] == 1
     _trash(refused)
-    # The watermark passed the trashed row, so a second removal after it is
-    # the only one offered.
+    # The watermark passed the trashed row, so only the second removal is offered.
     two, two_file = _row(cfg, "Two")
     _remove_outright(cfg, two)
 
@@ -319,9 +298,7 @@ def test_a_declined_landed_removal_is_not_offered_again_and_a_trashed_one_is_ret
     assert two_file.exists() and not one_file.exists()
 
 
-# ---------------------------------------------------------------------------
-# Never offered
-# ---------------------------------------------------------------------------
+# ═══ Never offered ═════════════════════════════════════════════════════════
 
 
 def test_a_landed_file_a_new_row_now_references_is_never_offered(
@@ -448,8 +425,7 @@ def test_a_landing_a_restore_rolled_back_offers_nothing(
     shutil_copy = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="rolled back batch")
     one, music = _row(cfg, "One")
-    # The database put back as it was before the second landing, the session
-    # record of that landing kept (the log survives a rollback by design).
+    # The database put back before the second landing; its session record kept.
     Path(cfg.library.db_path).write_bytes(shutil_copy)
 
     assert one not in _candidates(cfg)
@@ -459,11 +435,8 @@ def test_a_landing_a_restore_rolled_back_offers_nothing(
 def test_a_landing_into_a_playlist_already_there_put_back_by_hand_is_never_offered(
     native_library, silence, monkeypatch, tmp_path
 ):
-    """Round two's B1 without the bare metal machinery: no restore record, the count past.
-
-    A bare metal recovery from an older snapshot, or a hand copy, puts the
-    database back and writes no record. The landing made no playlist, so
-    nothing tells its rollback from a removal, and it offers nothing.
+    """Round two's B1: a hand restore writes no record, and a landing that made no
+    playlist cannot be told from its rollback, so nothing is offered.
     """
     cfg, _root = native_library
     _land(cfg, silence, "Zero", name="same batch")
@@ -504,9 +477,7 @@ def test_a_landing_into_a_playlist_already_there_names_none_and_its_removal_is_k
     assert music.exists()
 
 
-# ---------------------------------------------------------------------------
-# One row, one candidate
-# ---------------------------------------------------------------------------
+# ═══ One row, one candidate ════════════════════════════════════════════════
 
 
 def test_a_landed_row_marked_soft_deleted_is_one_candidate(
@@ -626,9 +597,7 @@ def test_an_advance_and_a_rebaseline_keep_and_drop_the_sightings_as_their_databa
     assert baselined and mark.absent == {}
 
 
-# ---------------------------------------------------------------------------
-# What the merge bar names: still in the collection, still referenced, a copy
-# ---------------------------------------------------------------------------
+# ═══ What the merge bar names: still in the collection, referenced, a copy ══
 
 
 def _insert_like(cfg: config.Config, content_id: str, **changed) -> None:
@@ -720,9 +689,7 @@ def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(
     assert music.exists()
 
 
-# ---------------------------------------------------------------------------
-# A restore takes a landing's rows away, and leaves its own record (round one's B1)
-# ---------------------------------------------------------------------------
+# ═══ A restore takes a landing's rows away, leaving a record (round one's B1)
 
 
 def _restore(session_id: str) -> None:
@@ -741,10 +708,7 @@ def _restore(session_id: str) -> None:
 def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(
     native_library, silence, monkeypatch, tmp_path
 ):
-    """Round one's B1, as the review drove it: the playlist was there, the count moves past.
-
-    The landing made no playlist, so it names none and offers nothing (round two).
-    """
+    """Round one's B1: the playlist was there, so the landing names none and offers nothing."""
     cfg, _root = native_library
     _land(cfg, silence, "Zero", name="same batch")
     _deletion_on(cfg, monkeypatch, tmp_path)
@@ -756,8 +720,7 @@ def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(
     before = music.read_bytes()
     _restore(landing.session_id)
     assert not _query(cfg, "SELECT ID FROM djmdContent WHERE ID = ?", one)
-    # It made no playlist, and later work moves the count past the landing's
-    # before any review reads the absence.
+    # It made no playlist, and later work moves the count past the landing.
     assert landed["playlists"] == []
     _land(cfg, silence, "Two", "Three", name="next batch")
     assert _counter(cfg) > landed["sequence"]
@@ -805,9 +768,7 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
         assert {key: one.landed for key, one in found.absent.items()} == {"7": 9}
 
 
-# ---------------------------------------------------------------------------
-# The mutation table's two zeros, each given its test
-# ---------------------------------------------------------------------------
+# ═══ The mutation table's two zeros, each given its test ═══════════════════
 
 
 def _edit_landing(cfg: config.Config, content_id: str, change) -> None:
@@ -851,9 +812,7 @@ def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(
     assert music.exists()
 
 
-# ---------------------------------------------------------------------------
-# A playlist deleted by hand is no rollback (R-1844, #926)
-# ---------------------------------------------------------------------------
+# ═══ A playlist deleted by hand is no rollback (R-1844, #926) ═══════════════
 
 
 def _delete_playlist_outright(cfg: config.Config, playlist_id: str) -> None:
@@ -984,8 +943,7 @@ def test_a_landed_row_marked_soft_deleted_still_proves_its_landing(
     _mark_removed(cfg, marked)
     _remove_outright(cfg, gone)
 
-    # The marked row is a candidate of its own (its Analyze membership keeps
-    # its file); the removal beside it is offered on the marked row's proof.
+    # The marked row is its own candidate; the removal beside it rides its proof.
     found = _candidates(cfg)
     assert found[gone] == "deletable" and marked in found, found
 

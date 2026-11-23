@@ -1,8 +1,7 @@
 """U20: the automated precheck that must pass before a tree flips.
 
-Four refusals and one happy path. The flip itself is ``record_cutover`` plus
-this precheck, composed as ``tree_registry.flip``. Live rekordbox validation
-is attended and is not in this file.
+Four refusals and one happy path; the flip is ``tree_registry.flip``. Live rekordbox
+validation is attended and not here.
 """
 
 from __future__ import annotations
@@ -152,8 +151,7 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
 
 
 def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
-    """The intake tree flips on a rebuildable source like any other, since the
-    landing chooses its medium by the tree's mode (R-746)."""
+    """The intake tree flips on a rebuildable source like any other (R-746)."""
     export = _ready(cfg)
     tree_registry.flip(
         cfg,
@@ -197,9 +195,7 @@ def test_a_hand_curated_tree_still_cannot_flip(cfg):
     assert tree_registry.read(cfg).is_on_the_bridge("record_labels")
 
 
-# ---------------------------------------------------------------------------
-# R-235: the precheck as a report, and the guard on the way back
-# ---------------------------------------------------------------------------
+# ═══ R-235: the precheck as a report, and the guard on the way back ═════════
 
 
 def test_the_report_names_every_check_in_the_order_the_assertion_refuses(cfg):
@@ -297,9 +293,7 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
     assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
 
 
-# ---------------------------------------------------------------------------
-# Edge cases of the report and the revert guard
-# ---------------------------------------------------------------------------
+# ═══ Edge cases of the report and the revert guard ══════════════════════════
 
 
 def _unreadable_record(cfg: config.Config) -> Path:
@@ -373,8 +367,7 @@ def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
 @pytest.mark.parametrize(
     "started",
     [
-        # The cutover day itself, and the day before it: a start is universal
-        # time and the cutover day is the machine's own calendar date.
+        # The cutover day and the day before: a start is UTC, the day is the local date.
         "2026-08-01T00:05:00Z",
         "2026-07-31T23:50:00Z",
         # A start nothing can place counts, because it cannot be shown to predate.

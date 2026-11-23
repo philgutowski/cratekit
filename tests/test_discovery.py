@@ -1,7 +1,6 @@
 """U93: one walker for the queued analysis verbs, and the join that checks itself.
 
-The walker's own guards; the verbs' behaviour over a tree is pinned in
-``test_analysis_workers.py`` and ``test_vocals_cli.py``.
+The verbs' behaviour over a tree is pinned in their own suites.
 """
 
 from __future__ import annotations
@@ -23,9 +22,7 @@ def touch(folder: Path, relative: str) -> Path:
 
 # What a scan of a tree holds
 
-#: (files, recursive, expected items). The one level default is what every
-#: existing job and resume assumed; a recursive id is posix, since a later
-#: process reads it back.
+#: (files, recursive, expected items); a recursive id is posix, read back later.
 TREES = {
     "one-level-default-skips-a-subfolder": (
         ["top.flac", "genre/nested.flac"], False, ("top.flac",)

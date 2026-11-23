@@ -1,20 +1,9 @@
 """U174: the crate-sync skill says what the code it drives says.
 
-The skill is the one command sync an attended session runs: preflight, ``crate
-sync land``, the rehearsed landing answered as the session, the rekordbox
-visit by its own skill, the account's marks and filing, and one report. It is
-text, so nothing breaks when it rots. Every value it spells (the gates it
-answers and their options, the JSON fields it branches on, the organize kinds
-it runs and the one it must never run, the doctor checks it reads) is a value
-some module owns, so each is read here from that module and compared with the
-text, and the skill is put through the shipped skills lint, whose rule (g)
-parses every ``crate`` line with the real parser.
-
-The step that answers the landing is DRIVEN, not read: the live plan stopped
-at its gate, the rehearsal, the same run planned again naming the rehearsal as
-equal, and one ``run decide --continue`` as the session landing the rows. That
-the re-plan on the stopped run shows the rehearsal is the claim the skill's
-step 3 rests on, and nothing else in the suite drives it in that order.
+Every value the skill spells (gates and options, JSON fields, organize kinds, doctor
+checks) is read from the module that owns it and compared with the text, and the skill
+passes the shipped skills lint. Step 3 is driven, not read: the stopped landing, the
+rehearsal, the re-plan naming it, and one decide as the session.
 """
 
 from __future__ import annotations
@@ -107,9 +96,7 @@ def test_it_runs_the_steps_the_brief_names_in_order(flat):
 
 def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
     decides = [line for line in _commands(text) if line.startswith("crate run decide")]
-    # TWO SINCE U184: the backup acknowledgment is minted in one command with no
-    # gate (``test_the_acknowledgment_is_minted_in_one_command_as_the_session``).
-    # THREE SINCE U288: the removal from the collection after the marks.
+    # Two since U184 (the acknowledgment needs no gate), three since U288 (the removal).
     assert len(decides) == 3, decides
     for line in decides:
         words = line.split()
@@ -244,10 +231,7 @@ def test_questions_wait_for_the_report(flat):
     assert "The questions no rule answers" in flat
 
 
-# ---------------------------------------------------------------------------
-# Step 3, driven: the stopped landing, the rehearsal, the same run re-planned,
-# and one decide as the session that lands it
-# ---------------------------------------------------------------------------
+# ═══ Step 3, driven: stopped landing, rehearsal, re-plan, and one decide ═════
 
 
 def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(

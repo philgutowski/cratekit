@@ -1,11 +1,9 @@
 """U24: the deletion pass, the proof that gates it, and the watermark that scopes it.
 
-Most assertions are "no file moved, and here is the category that says why": the
-failure of a deletion pass is taking something it should not have. Every fixture
-is synthetic or a disposable copy built from the binding's schema in a temporary
-directory. Layers: the watermark (arithmetic, no library), the Trash (real files,
-real renames), the candidate rules (real inodes and sizes), and the pass (a fake
-binding for the branches, a real disposable database for "nothing in it changes").
+Most assertions are "no file moved, and here is the category that says why". Every
+fixture is synthetic or a disposable copy: the watermark (arithmetic), the Trash (real
+renames), the candidate rules (real inodes and sizes), and the pass (a fake binding, and
+a real disposable database for "nothing in it changes").
 """
 
 from __future__ import annotations
@@ -1603,10 +1601,7 @@ def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(tmp_pat
 
 
 def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_path):
-    """Open 5's remediation in the residual finding
-    "Five findings the U24 review accepted, and the reason each stands",
-    which nothing asserted.
-    """
+    """Open 5's remediation, from the five findings the U24 review accepted (once unasserted)."""
     typo = tmp_path / "not-mounted"
     references = _references(
         cfg, _elsewhere(3), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(typo))]
