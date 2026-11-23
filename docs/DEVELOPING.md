@@ -306,7 +306,8 @@ commands in:
   (`tests/test_cli_contract.py`), which fails on a part nobody assembles, on
   one its list does not name, on a changed order and on a file over the bar;
   and `DOCTOR_HELP_CEILING` in `tests/test_cli_lazy.py` raised by one, since
-  every part loads at every start.
+  every part loads at every start. The table above and each part's "part N of
+  5" line then take the new part too, which no test holds.
 - **A part is a tuple of calls and `ENTRIES` a tuple of starred part names**,
   because two scripts read the table as text and cannot import it:
   `refactor_measure.py` (`verbs_from`) follows each starred name into the
@@ -315,8 +316,11 @@ commands in:
   by a test, so a shape they cannot read fails the battery.
 - **A verb is read through `cli.registry`, never from a part.** A part imports
   `Entry`, `GateSpec` and the shared constants from `cli.registry`, so only
-  the registry imports a part, which the same test holds, and every name a
-  test patches stays there.
+  the registry imports a part, and every name a test patches stays there.
+  `tests/test_import_rules.py` fails on an import of a part from any other
+  source file; it cannot see `importlib.import_module`, a part reached as an
+  attribute of the `cli` package, nor a part's tuple read off `cli.registry`
+  by name, each of which skips a patch of `ENTRIES` as well.
 
 ## CI
 

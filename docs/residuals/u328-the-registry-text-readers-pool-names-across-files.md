@@ -23,7 +23,16 @@ written `registry_wip.py` ended `planned_units` in an uncaught `SyntaxError`,
 as a half written `registry.py` did at the base. The producer of each is a
 file nobody has written.
 
+One file over, and the same at the base: `planned_units` has no refusal for
+a tree with no `cli/registry.py` and returns no unit owed, so `board.py
+closing` would pass a trailer over a register it could not read. The live
+table holds no `planned_in` marker today, so the test that holds that reader
+to the live registry compares empty with empty; U328's fixture test is what
+reads a marker.
+
 **Closes when:** both readers resolve a name in the file that uses it and
 refuse a name two files bind, and `planned_units` reads the parts
-`registry.py` stars and no other file. Each script has under five lines left
-under its 1,500, so it waits on room there. Ledger only.
+`registry.py` stars and no other file and refuses a tree with no registry.
+`refactor_measure.py` has three lines left under its 1,500 and the seventeen
+scripts of #979's bar thirteen under 7,374 (`board.py` 26 under its own
+1,500), so it waits on room there. Ledger only.

@@ -85,6 +85,7 @@ id = "S3_a_part_imported_past_the_registry"
 description = "cli/doctor.py imports a part's tuple directly, so its rows are read past cli.registry, where the suite patches the table"
 file = "src/cratekit/cli/doctor.py"
 surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_cli_lazy.py", "tests/test_doctor.py", "tests/test_import_rules.py"]
 old = '''from cratekit.cli import gates, output, registry, render
 '''
 new = '''from cratekit.cli import gates, output, registry, render
