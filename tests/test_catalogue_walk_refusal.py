@@ -86,9 +86,7 @@ def _asked(machine, search, opinion, rows=8, unasked=frozenset()):
     return kept, answers
 
 
-# ---------------------------------------------------------------------------
 # A. The defect: a refusing Beatport beside a Discogs that answers
-# ---------------------------------------------------------------------------
 
 
 def test_a_discogs_miss_beside_a_refusing_beatport_does_not_stop_the_walk(machine):
@@ -144,9 +142,7 @@ def test_a_deezer_genre_past_a_refusing_beatport_is_the_rows_match(machine):
         )
 
 
-# ---------------------------------------------------------------------------
 # B. The walk's stop, which still holds where every catalogue refused
-# ---------------------------------------------------------------------------
 
 
 def test_every_catalogue_refusing_three_rows_in_a_row_still_stops_the_walk(machine):
@@ -215,9 +211,7 @@ def test_a_catalogue_nobody_asked_neither_counts_nor_resets(machine):
     assert not kept.stopped and table.asked == 4
 
 
-# ---------------------------------------------------------------------------
 # C. What a row's answer carries and is kept with
-# ---------------------------------------------------------------------------
 
 
 def test_the_words_of_a_refusal_by_every_catalogue_are_read_off_its_detail():
@@ -281,9 +275,7 @@ def test_an_answer_kept_before_the_words_is_asked_again_once(machine, said):
         assert kept.answer("1", "a", "t", "") == PARTLY and kept.asked == 0
 
 
-# ---------------------------------------------------------------------------
 # D. The general catalogue's gate, narrowed for the suggest verbs only
-# ---------------------------------------------------------------------------
 
 
 def _hit(*answers: tuple[str, str], unread=()) -> SearchHit:
@@ -347,9 +339,7 @@ def test_the_suggest_binder_is_built_over_the_one_lookup(monkeypatch):
     assert general.asked == [ISRCS[1]]
 
 
-# ---------------------------------------------------------------------------
 # E. What the two verbs say
-# ---------------------------------------------------------------------------
 
 
 def _item(content_id: str, asked: suggest.Asked) -> suggest.Item:
@@ -422,9 +412,7 @@ def test_the_backlogs_catalogue_line_counts_each_catalogues_answers():
     }
 
 
-# ---------------------------------------------------------------------------
 # F. Round one of the review
-# ---------------------------------------------------------------------------
 
 DEEZER_MATCH = _fake(
     {"discogs": "miss", "beatport": "blocked", "deezer": "matched"},

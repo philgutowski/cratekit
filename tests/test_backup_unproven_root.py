@@ -1,23 +1,12 @@
 """R-1761: a backup never treats a root it cannot prove is the library as the library.
 
-THE DEFECT. An empty directory at the configured root, the mount point an
-unmounted or lost drive can leave, was walked as a library with no files, and a
-full check's ``rclone sync`` moved every file on the mirror into the run's dated
-archive; a quick run planned the same as one move. Every test here drives the
-real program between local folders, the way ``tests/test_backup_quick.py``
-does, because the cost is what rclone does to the mirror and a stand in moves
-nothing.
-
-WHAT PROVES THE ROOT, decided at the plan of #893:
-
-- the volume identity, when one is recorded and the platform reads one;
-- a walk that holds files outside the library's own state folder, measured
-  against the census the last completed backup kept in installation state,
-  which a failed run does not remove the way it removes the record.
-
-A refusal is a plan with no command, so nothing on the remote, in the record,
-in the census or in either age moves. ``--library-emptied`` is the one way past
-the second layer; the identity holds whatever it says.
+An empty directory at the root, what an unmounted drive leaves, was walked as a
+library with no files, and a full check moved every mirror file into the dated
+archive. The real program runs between local folders, as in
+``tests/test_backup_quick.py``. The root is proved by the volume identity, where
+recorded and readable, and by a walk holding files outside the state folder
+against the last completed backup's census. A refusal is a plan with no command;
+``--library-emptied`` passes the second layer only.
 """
 
 from __future__ import annotations
@@ -61,15 +50,9 @@ def _nothing_is_running(monkeypatch):
 def _the_machines_own_disk_is_never_read(monkeypatch):
     """U323: no test here asks the disk it runs on what volume it is.
 
-    The identity proof falls back to the platform's provider and the kernel's
-    mount table when a caller passes no seam. On a Mac the provider reads the
-    temporary library's real volume UUID, which is never the fixture's recorded
-    identity, so a backup a test meant as proven refused as foreign and mirrored
-    nothing (A183's battery on 413c6bbd); on Linux it reads nothing and the
-    same test passed. Each test states the identity it means instead, and a
-    fallback reached here fails the test where it was reached. ``pytest.fail``
-    is not an ``Exception``, so the proof's own catch of an unread identity
-    cannot swallow it, and the teardown check holds should anything else.
+    On a Mac the platform provider read the temporary library's real UUID and a
+    proven backup refused as foreign. Each test states its identity, and a
+    fallback reached here fails with ``pytest.fail``, which no catch swallows.
     """
     reached: list[str] = []
 
@@ -207,9 +190,7 @@ def _installation_state() -> dict[str, bytes | None]:
 
 
 def _unmount(cfg, tmp_path) -> Path:
-    """What an unmount leaves: the library moved away, an empty folder in its
-    place. The library's own state folder, and the fact file in it, go with
-    the volume."""
+    """What an unmount leaves: an empty folder where the library and its state were."""
     away = tmp_path / "unplugged"
     cfg.library.root.rename(away)
     cfg.library.root.mkdir()
@@ -227,13 +208,8 @@ def _on_the_recorded_volume(cfg):
 def _first_backup(cfg, tmp_path, **identity):
     """Seed the library and back it up once, completed, onto an empty mirror.
 
-    The identity is the test's to state (U323). A test that takes the real
-    proof back passes the answer it tests, as every one does today; the default,
-    the recorded volume, is for the next one that does not, so its first backup
-    is on the library's own volume rather than on whatever the machine's disk
-    reads. Under the suite's neutralized proof the seams go unread. A first
-    backup that refuses or skips its files fails here, with its reason, rather
-    than leaving a test to read an empty mirror as a history it never had.
+    The identity is the test's to state (U323), the recorded volume by default.
+    A first backup that refuses or skips its files fails here, with its reason.
     """
     _seed(cfg)
     plan, outcome = _backup(cfg, at=MOMENT, **(identity or _on_the_recorded_volume(cfg)))
@@ -244,18 +220,15 @@ def _first_backup(cfg, tmp_path, **identity):
     return outcome
 
 
-# ---------------------------------------------------------------------------
 # The defect, quick and full: an empty root with a backup on record refuses
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("asked", ["quick", "check", "full"])
 def test_an_empty_root_with_a_completed_backup_on_record_refuses_and_moves_nothing(
     cfg, real_rclone, tmp_path, asked
 ):
-    """THE DEFECT. Before the fix a full check moved all 12 mirror files into
-    the dated archive and reset the files age; a quick run planned one move of
-    every path. Now the files portion refuses before any command exists."""
+    """The defect: the files portion refuses before any command exists, where a full
+    check moved all 12 mirror files and a quick run planned one move of every path."""
     _first_backup(cfg, tmp_path)
     remote = _remote_state(tmp_path)
     installation = _installation_state()
@@ -283,9 +256,8 @@ def test_an_empty_root_with_a_completed_backup_on_record_refuses_and_moves_nothi
 def test_an_empty_root_after_a_failed_run_left_no_record_still_refuses(
     cfg, real_rclone, tmp_path
 ):
-    """The record is removed before every transfer and a failed run leaves
-    none, so the census, which no run removes, is what still says the library
-    held files when the volume is then lost."""
+    """A failed run leaves no record, so the census, which no run removes, still says
+    the library held files when the volume is then lost."""
     _first_backup(cfg, tmp_path)
     _write(cfg.library.root / "Music" / "new.flac", b"new")
     _, failed = _backup(
@@ -304,9 +276,8 @@ def test_an_empty_root_after_a_failed_run_left_no_record_still_refuses(
 
 
 def test_an_empty_root_with_only_the_record_on_record_refuses(cfg, real_rclone, tmp_path):
-    """A record kept by a build before the census, and no census: the record's
-    own entries are the history. The root holds a stray state folder, so it is
-    the record and not an empty root that refuses."""
+    """With no census the record's own entries are the history, so the record and not
+    an empty root refuses."""
     _first_backup(cfg, tmp_path)
     backup_record.census_path().unlink()
     remote = _remote_state(tmp_path)
@@ -442,9 +413,7 @@ def test_one_file_under_the_floor_refuses_and_one_at_it_runs(cfg, real_rclone, t
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
-# ---------------------------------------------------------------------------
 # The identity layer
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -498,9 +467,8 @@ def test_the_recorded_volume_at_the_root_backs_up(cfg, real_rclone, tmp_path, re
 def test_an_identity_the_platform_cannot_read_is_left_to_the_content(
     cfg, real_rclone, tmp_path, real_identity
 ):
-    """Every Linux volume reads as no identity; the census holds there. The
-    platform reads none for the first backup as well, which is what kept the
-    census this refusal stands on."""
+    """Every Linux volume reads as no identity; the census holds there, from the first
+    backup on."""
     unread = {"identity_provider": lambda path: None, "mount_enumerator": lambda: ()}
     _first_backup(cfg, tmp_path, **unread)
     _unmount(cfg, tmp_path)
@@ -508,9 +476,7 @@ def test_an_identity_the_platform_cannot_read_is_left_to_the_content(
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
-# ---------------------------------------------------------------------------
 # The two ways a root with no music still backs up
-# ---------------------------------------------------------------------------
 
 
 def test_a_library_emptied_by_its_owner_backs_up_only_with_the_flag(cfg, real_rclone, tmp_path):
@@ -557,9 +523,8 @@ def test_the_first_backup_of_a_new_empty_library_runs(cfg, real_rclone, tmp_path
 def test_a_new_empty_library_over_a_mirror_holding_files_moves_none_of_them(
     cfg, real_rclone, tmp_path
 ):
-    """The no history case is the one the plan cannot tell from a lost volume
-    with a stray state folder on a fresh installation, so rclone itself is
-    told to move nothing, and the portion fails with the flag named."""
+    """The no history case looks like a lost volume with a stray state folder, so
+    rclone is told to move nothing and the portion fails with the flag named."""
     _write(config.library_state_dir(cfg) / "lock.json", b"{}")
     for rel, data in MUSIC.items():
         _write(_remote(tmp_path) / "mirror" / rel, data)
@@ -576,9 +541,7 @@ def test_a_new_empty_library_over_a_mirror_holding_files_moves_none_of_them(
     assert backup_facts.read_facts(cfg).get(FILES) is None
 
 
-# ---------------------------------------------------------------------------
 # Between the plan and the mirror
-# ---------------------------------------------------------------------------
 
 
 def test_a_volume_lost_between_the_plan_and_the_mirror_fails_before_rclone_sync(
@@ -634,9 +597,7 @@ def test_a_root_emptied_on_the_same_volume_between_the_plan_and_the_mirror_fails
     assert _remote_state(tmp_path) == remote
 
 
-# ---------------------------------------------------------------------------
 # Through the verb
-# ---------------------------------------------------------------------------
 
 
 def test_the_verb_refuses_with_the_reserved_remedy_and_leaves_the_ages(
@@ -704,17 +665,14 @@ def test_the_probe_reads_past_an_exclude_the_walk_cannot_translate(tmp_path):
     )
 
 
-# ---------------------------------------------------------------------------
 # Round one's findings, driven
-# ---------------------------------------------------------------------------
 
 
 def test_a_job_frozen_with_the_flag_and_driven_after_the_volume_went_refuses(
     cfg, real_rclone, tmp_path
 ):
-    """Round one's B1: a job queued with the flag was handed to a plain ask
-    and, driven after an unmount, emptied the mirror. The flag now passes only
-    a root that still carries the library's own record of its backups."""
+    """Round one's B1: the flag passes only a root carrying the library's own record,
+    so a queued job driven after an unmount does not empty the mirror."""
     _first_backup(cfg, tmp_path)
     remote = _remote_state(tmp_path)
     _unmount(cfg, tmp_path)
@@ -808,9 +766,7 @@ def test_a_walk_that_refused_is_counted_so_the_floor_still_holds(cfg, real_rclon
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
-# ---------------------------------------------------------------------------
 # Round two's findings, driven
-# ---------------------------------------------------------------------------
 
 
 def _a_database_fact_at_the_root(cfg) -> None:
@@ -828,10 +784,8 @@ def _a_database_fact_at_the_root(cfg) -> None:
 def test_a_census_of_none_still_deletes_nothing_from_a_mirror_holding_files(
     cfg, real_rclone, tmp_path
 ):
-    """Round two's B3: a library first backed up holding nothing, then a mirror
-    that failed part way after its tracks arrived, then the volume lost. The
-    census says none, so nothing refuses, and the full sync must still delete
-    nothing from the mirror it would empty."""
+    """Round two's B3: an empty first backup, a mirror failed part way, the volume
+    lost; nothing refuses, and the full sync must still delete nothing."""
     _write(config.library_state_dir(cfg) / "taxonomy.toml", b"[taxonomy]")
     _, first = _backup(cfg, at=MOMENT)
     assert _portion(first, FILES).ran

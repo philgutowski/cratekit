@@ -80,9 +80,7 @@ def warned(envelope: dict, code: str) -> list[str]:
     return [one["message"] for one in envelope["warnings"] if one["code"] == code]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_plan_names_each_rows_label_and_none_for_a_seller_no_label_names(
@@ -191,9 +189,7 @@ def test_an_unreadable_registry_refuses_the_plan_rather_than_staging_untagged(
     assert account.requests == [], "refused before the account was asked"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The fetch
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_registered_sellers_files_stage_with_the_label_on_every_one(signed_in, account, puls):

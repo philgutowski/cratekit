@@ -36,9 +36,7 @@ def four(**extra) -> list[dict]:
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Listing the collection
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_collection_of_three_pages_ends_on_the_empty_page():
@@ -149,9 +147,7 @@ def test_a_server_failure_is_unavailable_not_rejected():
     assert not isinstance(caught.value, bandcamp.SessionRejected)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The signed page never serializes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_signed_page_stays_out_of_the_json_and_the_repr():
@@ -163,9 +159,7 @@ def test_the_signed_page_stays_out_of_the_json_and_the_repr():
     assert SIGNED not in repr(found)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fetching one release
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_offers_are_read_from_the_pages_data_blob():
@@ -296,9 +290,7 @@ def test_the_real_transport_replaces_an_exception_whose_text_names_the_link(monk
         assert caught.value.__cause__ is None and caught.value.__context__ is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Review round one: each guard driven alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_repeated_token_is_refused_at_once_not_after_every_page_allowed():

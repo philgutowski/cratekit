@@ -242,9 +242,7 @@ def test_the_vocal_pass_decodes_an_m4a_at_the_models_rate(keyed):
     assert np.array_equal(samples, expected)
 
 
-# ---------------------------------------------------------------------------
 # U264: the mono mix is one add, and the samples are the same bits
-# ---------------------------------------------------------------------------
 #
 # ``array_equal`` reads minus zero as equal to plus zero, and a zero's sign is
 # the one thing the ways of mixing two channels differ in, so every claim here

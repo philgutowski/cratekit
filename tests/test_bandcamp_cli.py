@@ -32,9 +32,7 @@ SESSION = str(secrets.Credential.BANDCAMP_SESSION)
 MARKER = "[LOSSY]"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _configure(library: Path, policy: str = "strict") -> config.Config:
@@ -163,9 +161,7 @@ def staged(cfg, batch: str) -> list[str]:
     return sorted(path.name for path in folder.iterdir()) if folder.is_dir() else []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_plan_gives_every_purchase_newest_first_one_disposition(signed_in, account):
@@ -248,9 +244,7 @@ def test_a_hidden_purchase_is_planned_hidden(signed_in, tmp_path, silence, monke
     assert dispositions(envelope) == {"8": "hidden"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The session
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_expired_session_is_auth_failed_naming_the_login_step(signed_in, tmp_path, silence, monkeypatch):
@@ -280,9 +274,7 @@ def test_login_records_the_session_from_a_file(cfg, tmp_path):
     assert IDENTITY not in json.dumps(envelope)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The fetch and the record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_fetch_stages_flat_into_its_batch_folder_and_records_each(signed_in, account):
@@ -443,9 +435,7 @@ def test_a_purchase_the_record_holds_is_done_on_a_resume_and_fetched_nothing_twi
     assert rows(envelope)["4"]["disposition"] == "fetched"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # What is not there is not read as nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_absent_music_folder_refuses_rather_than_planning_everything_new(signed_in, account, library):
@@ -473,9 +463,7 @@ def test_an_unreadable_record_refuses_rather_than_offering_everything_again(sign
     assert account.posted == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The session and the signed links reach nothing that is kept or shown
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _every_file_under(*roots: Path) -> list[Path]:
@@ -516,9 +504,7 @@ def test_no_output_log_or_file_holds_the_identity_or_a_signed_link(
                     assert SIGNED not in json.dumps(one.cause.to_json())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Review round one: each guard driven alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_refused_copy_is_kept_and_named_never_deleted(signed_in, account):

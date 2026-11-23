@@ -1,23 +1,11 @@
 """U317: a backup is skipped when nothing changed and sends only the change otherwise.
 
-THE BRIEF'S SCENARIOS, DRIVEN THROUGH THE REAL PROGRAM. A quick run's claims are
-about what rclone does with ``--files-from-raw -`` and ``--no-traverse``, so the
-transfers run for real between temporary folders, the way
-``tests/test_backup_comparison.py`` drives the full mirror and for its reason: a
-stand in sends nothing, and would prove the argv holds the words and not that a
-change arrives. rclone's configuration is a temporary file declaring each
-remote an alias of a temporary folder, so no account on this machine is read.
-Where a test needs a command to FAIL at a stated point, a runner wraps the real
-one and answers that command itself.
-
-THE FOUR MERGE BLOCKERS each have a test named for them: no skip while anything
-changed, a quick run's remote holding every change it reports, no age after a
-failed or partial run, and no read of the database unless both rekordbox
-processes are confirmed gone.
-
-WHAT THIS CANNOT MEASURE. A local folder answers ``--no-traverse`` lookups as
-fast as a listing, so the speed the card is for is owed at an attended sitting
-on the live remote, as is how a real remote counts a server side move.
+Driven through the real rclone between temporary folders, as
+``tests/test_backup_comparison.py`` does, since a stand in sends nothing; each
+remote is an alias of a temporary folder, so no account is read. The four merge
+blockers each have a test named for them. A local folder answers
+``--no-traverse`` as fast as a listing, so the speed is owed at an attended
+sitting on the live remote.
 """
 
 from __future__ import annotations
@@ -55,11 +43,7 @@ def _nothing_is_running(monkeypatch):
 
 @pytest.fixture
 def real_rclone(monkeypatch, tmp_path) -> str:
-    """The rclone on this machine, ASSERTED present, reading no real account.
-
-    Asserted rather than skipped, for the reason ``tests/test_backup_comparison.py``
-    gives: a skip would report green where none of this was driven.
-    """
+    """The rclone on this machine, asserted present rather than skipped, reading no account."""
     monkeypatch.delenv("CRATEKIT_BIN_RCLONE", raising=False)
     declared = tmp_path / "rclone.conf"
     declared.write_text(f"[remote]\ntype = alias\nremote = {_remote(tmp_path)}\n")
@@ -140,9 +124,7 @@ class Counting:
     def fed(self, label: str, *, fact: bool = False) -> list[str]:
         """The paths one command was fed, the fact file left out unless asked.
 
-        The fact file is written after the first backup's walk, so every quick
-        run after it carries it too; the tests that are not about it read the
-        rest.
+        Every quick run after the first carries the fact file.
         """
         (command,) = [c for c in self.ran if c.label == label]
         paths = (command.feed or "").splitlines()
@@ -193,9 +175,7 @@ def _ages(cfg, at) -> dict[str, timedelta | None]:
     return {str(entry.portion): entry.age for entry in backup_facts.ages(cfg, now=at)}
 
 
-# ---------------------------------------------------------------------------
 # Nothing changed: a skip, and both ages reset
-# ---------------------------------------------------------------------------
 
 
 def test_nothing_changed_is_a_skip_that_sends_nothing_and_resets_both_ages(cfg, real_rclone):
@@ -250,9 +230,7 @@ def test_the_fact_file_alone_changed_is_still_a_skip(cfg, real_rclone, tmp_path)
     )
 
 
-# ---------------------------------------------------------------------------
 # One file added, changed and removed: a quick run of only those
-# ---------------------------------------------------------------------------
 
 
 def test_an_added_a_changed_and_a_removed_file_are_a_quick_run_of_only_those(
@@ -328,9 +306,7 @@ def test_no_skip_while_anything_changed(cfg, real_rclone):
         backup.run_backup(cfg, plan, runner=Counting(), now=at)
 
 
-# ---------------------------------------------------------------------------
 # A database change only: a snapshot only
-# ---------------------------------------------------------------------------
 
 
 def test_a_database_change_only_takes_a_snapshot_and_skips_the_files(
@@ -407,12 +383,10 @@ def test_a_sidecar_that_appeared_is_a_changed_database(cfg, real_rclone):
 def test_no_read_of_the_database_unless_both_processes_are_confirmed_gone(
     cfg, real_rclone, monkeypatch, scan
 ):
-    """THE MERGE BLOCKER. The fingerprint reads the database, so it sits below
-    the process check, and neither a running nor an unconfirmed scan reaches it.
+    """The merge blocker: the fingerprint sits below the process check.
 
-    The fingerprint is replaced by a recorder, and the database file itself is
-    made unreadable to this process's own reads through ``open``, so a read
-    reached by any other path would fail the drive too.
+    Neither a running nor an unconfirmed scan reaches it, and the database is made
+    unreadable through ``open``, so a read by any other path fails too.
     """
     _seed(cfg)
     read: list[object] = []
@@ -441,9 +415,7 @@ def test_no_read_of_the_database_unless_both_processes_are_confirmed_gone(
     )
 
 
-# ---------------------------------------------------------------------------
 # A record missing, damaged or for another backup: a full run
-# ---------------------------------------------------------------------------
 
 
 def _damage(how: str, cfg) -> None:
@@ -501,12 +473,8 @@ def test_a_record_missing_damaged_or_kept_for_another_backup_makes_a_full_run(
 
 
 def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone, tmp_path, monkeypatch):
-    """Round one's B1: the mirror has writers that do not keep this record.
-
-    A second installation backs up after a file was removed, archiving it off
-    the mirror, and the file is then put back. This installation's record still
-    holds it, so trusting the record would skip over a remote that lacks it.
-    """
+    """Round one's B1: a second installation archived a file off the mirror and it
+    was put back; this record still holds it, so trusting it would skip."""
     music = _seed(cfg)
     _backup(cfg, at=MOMENT)
     mine = os.environ["CRATEKIT_STATE_DIR"]
@@ -526,9 +494,8 @@ def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone,
 def test_a_failed_run_by_another_installation_makes_the_next_run_full(
     cfg, real_rclone, tmp_path, monkeypatch
 ):
-    """Round two's finding: the other installation's run sent, then failed, so
-    it published no fact for its token to be missing from. The token is struck
-    from the library's fact when a run removes its own record, before it sends."""
+    """The other installation's run sent then failed, so the token is struck from
+    the library's fact when a run removes its own record, before it sends."""
     music = _seed(cfg)
     _backup(cfg, at=MOMENT)
     mine = os.environ["CRATEKIT_STATE_DIR"]
@@ -628,9 +595,7 @@ def test_the_check_flag_makes_a_full_run_and_a_snapshot_over_an_unchanged_librar
         assert _portion(outcome, DATABASE).kind == backup_facts.KIND_SNAPSHOT, flags
 
 
-# ---------------------------------------------------------------------------
 # A run that fails part way: no age, no record, and the next run full
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("fails", [backup.QUICK_ARCHIVE, backup.QUICK_SEND])
@@ -712,12 +677,10 @@ def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, real_rclone, t
 
 
 def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, real_rclone, tmp_path):
-    """Round one's R1: the rewrite during the transfer put its time back.
+    """Round one's R1: a rewrite during the transfer that put its time back.
 
-    The file was just added, so its time is inside the racy window and both
-    walks hash it; the hashes disagree, and the doubt that leaves must be sent
-    with the times ignored. A file outside the window rewritten this way is
-    invisible to any comparison of size and time, the full sync's included.
+    The file is inside the racy window, both walks hash it, and the doubt is
+    sent with times ignored.
     """
     music = _seed(cfg)
     _backup(cfg, at=MOMENT)
@@ -736,9 +699,7 @@ def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, real_rcl
     assert _mirrored(cfg, tmp_path)["Music/added.flac"] == b"take two"
 
 
-# ---------------------------------------------------------------------------
 # What the walk cannot read is not absence
-# ---------------------------------------------------------------------------
 
 
 def _unlistable(monkeypatch, name: str) -> None:
@@ -881,9 +842,8 @@ def test_a_name_holding_a_line_break_makes_a_full_run(cfg, real_rclone):
 
 
 def test_the_walk_and_the_mirror_agree_on_what_the_library_holds(cfg, real_rclone, tmp_path):
-    """The excludes and the symbolic link rule read the way rclone reads them: a
-    full run over clutter, a link and the database leaves a record a second run
-    finds unchanged, and the mirror holds exactly what the walk counted."""
+    """The excludes and the link rule read as rclone reads them: a second run finds
+    the record unchanged, and the mirror holds exactly what the walk counted."""
     music = _seed(cfg)
     root = cfg.library.root
     _write(root / ".DS_Store", b"x")
@@ -928,9 +888,7 @@ def test_more_changes_than_a_quick_run_is_for_make_a_full_run(cfg, real_rclone, 
     assert "more than the 1" in plan.portion(FILES).why
 
 
-# ---------------------------------------------------------------------------
 # A rehearsal plans the kind and keeps every record as it was
-# ---------------------------------------------------------------------------
 
 
 def test_a_rehearsal_of_a_quick_run_sends_nothing_and_keeps_the_record(cfg, real_rclone, tmp_path):
@@ -950,9 +908,7 @@ def test_a_rehearsal_of_a_quick_run_sends_nothing_and_keeps_the_record(cfg, real
     assert _mirrored(cfg, tmp_path) == mirrored
 
 
-# ---------------------------------------------------------------------------
 # The verb's report and doctor
-# ---------------------------------------------------------------------------
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
@@ -1029,14 +985,9 @@ def test_doctor_names_the_last_run_and_the_next_full_check(cfg, real_rclone):
 
 
 def test_the_record_module_reads_files_and_writes_only_its_three_records():
-    """Read off the source, as ``tests/test_analysis_store.py`` reads the backup
-    module's: the walk hashes files, analysis files among them, and this module
-    may author nothing but its records, through the shared atomic writer: the
-    manifest, the fingerprint and, since R-1761, the census.
-
-    Every ``open`` is a binary read, and no call can create, copy, move or
-    rename a file under the library.
-    """
+    """Read off the source: this module authors nothing but its records, through the
+    shared atomic writer, every ``open`` is a binary read, and no call can create,
+    copy, move or rename a file under the library."""
     import ast
 
     source = Path(backup_record.__file__).read_text()
@@ -1063,9 +1014,8 @@ def test_the_record_module_reads_files_and_writes_only_its_three_records():
 
 
 def test_the_kind_words_are_spelled_once_on_each_side_and_the_seconds_once():
-    """The backup module and the fact file each hold the kind words, so a word
-    added on one side cannot silently fail the other. A run's seconds are
-    spelled by the fact file alone, for the shell and doctor both (U298)."""
+    """The backup module and the fact file hold the same kind words, and a run's
+    seconds are spelled by the fact file alone (U298)."""
     assert backup.KINDS == backup_facts.KINDS
     assert [backup_facts.took(seconds) for seconds in (None, True, 0, 0.4, 1, 41.6, 600)] == [
         "",
@@ -1097,8 +1047,7 @@ def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
 
 @pytest.mark.parametrize("field", ["db_dest_root", "identity", "database"])
 def test_a_fingerprint_taken_for_another_snapshot_is_not_compared(cfg, real_rclone, field):
-    """The mutation table's zero row Q23: a fingerprint of the same database
-    taken for another snapshot root, another library identity or another
+    """Q23: a fingerprint taken for another snapshot root, library identity or
     database path does not make this one unchanged."""
     _seed(cfg)
     _backup(cfg, at=MOMENT)
