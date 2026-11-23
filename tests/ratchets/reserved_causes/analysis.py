@@ -51,6 +51,7 @@ KEBAB_LITERALS = {
         'key-empty',
         'key-not-camelot',
         'no-head',
+        'no-head-unanswered',  # 2026-11-23, U342: a headless title never stamped half.
         'no-path',
         'no-reference',
         'not-analysed',

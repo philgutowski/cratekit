@@ -593,6 +593,48 @@ def _render_head(spec: NameSpec, template: NameTemplate, key_pad: str) -> str:
     return template.head_sep.join(parts) + template.head_term + markers
 
 
+def stamp_head(name: str, *, key: str, bpm: int, template: NameTemplate) -> str | None:
+    """``name`` with a head carrying ``key`` and ``bpm`` set before it, every byte kept (U342).
+
+    For a name that carries no head field, and some text to follow it. The head
+    is the one :func:`render_all` renders, the key padded by the template's ``key_pad``, and the whole name
+    follows it, so a marker only head (R21) comes after the fields exactly where
+    a lossy render places it. Not :func:`build`, which dedupes and shortens the
+    stem to a path budget and so would change bytes of the name.
+
+    None, and nothing to write, when ``name`` already carries a head field at
+    either end, when nothing but a marker would follow the head, when
+    either value cannot be rendered as a head this engine reads, or when the
+    result does not read back as a complete head of exactly those values over
+    the same body: a head that could not be stripped again is never written.
+    """
+    # NOTHING TO FOLLOW, A HEAD AT THE END: a marker alone is no title, and a head
+    # written as a suffix is a head, so neither is given a second one.
+    if (
+        parse_head(name, template=template) is not None
+        or not strip_head(name, template=template).strip()
+        or strip_trailing_head(name, template=template) != name
+    ):
+        return None
+    spec = NameSpec(stem="", suffix="", key=key, bpm=bpm)
+    try:
+        head = _render_head(spec, template, template.key_pad)
+        rendered = {
+            field: _format_field(field, spec, template.key_pad)
+            for field in head_shapes(template)[0]
+        }
+    except ValueError:
+        return None
+    stamped = head + name
+    if (
+        not has_head(stamped, template=template)
+        or parse_head(stamped, template=template) != rendered
+        or strip_head(stamped, template=template) != strip_head(name, template=template)
+    ):
+        return None
+    return stamped
+
+
 def budget_head(spec: NameSpec, *, template: NameTemplate) -> str:
     """The WIDEST head this name will ever carry.
 
