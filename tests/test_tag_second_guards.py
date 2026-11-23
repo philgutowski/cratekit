@@ -124,6 +124,19 @@ def test_a_clear_that_does_not_read_back_is_named_wrong(machine, silence, monkey
     assert _second_of(paths["10"]) == TECH
 
 
+def test_a_write_that_changes_the_genre_beside_it_is_named_wrong(machine, silence, monkeypatch):
+    """The genre half of the read back compare: a write that lands the second
+    genre but leaves another genre on the file is not read back as written."""
+    paths = build(machine, silence, Track("10", file=DEEP))
+    plan = _plan(machine, genre=TECH, chosen=["10"])
+    real = tags.write_tags
+    monkeypatch.setattr(
+        tags, "write_tags", lambda path, values: real(path, {**values, "genre": "Melodic House"})
+    )
+    written = second.apply(plan)
+    assert (written.written, written.read_back, written.wrong) == (1, 0, (str(paths["10"]),))
+
+
 # 2. The digest an approval is bound to
 
 
@@ -170,6 +183,19 @@ def test_a_removed_playlist_is_not_in_the_tree(machine, silence):
     assert "nothing in the tree is at that path" in _refused(machine, "Crates / Gone")
 
 
+def test_a_live_playlist_under_a_removed_folder_is_at_no_path(machine, silence):
+    """Its parent is not in the live tree, so it answers to no path at all,
+    neither its bare name nor one under an empty folder name."""
+    _three(machine, silence)
+    _seed(
+        machine,
+        [*_TREE, ("806", "Attic", 1, "root", 1), ("807", "Box", 0, "806", 0)],
+        [*_MEMBERS, ("856", "807", "12", 0)],
+    )
+    for path in ("Box", " / Box", "Attic / Box"):
+        assert "nothing in the tree is at that path" in _refused(machine, path)
+
+
 def test_two_playlists_at_one_path_refuse_rather_than_choose(machine, silence):
     _three(machine, silence)
     _seed(
@@ -197,8 +223,8 @@ def test_a_parent_cycle_in_the_tree_names_nothing_and_breaks_no_lookup(machine, 
 
 
 def test_the_engine_refuses_a_genre_that_files_nowhere_itself(machine, silence):
-    """``second.plan`` is called directly by more than the verb, so it refuses a
-    genre naming no folder without the verb's own check in front of it."""
+    """``second.plan`` is the engine's public plan, so it refuses a genre naming
+    no folder itself rather than trusting a caller to have checked."""
     build(machine, silence, Track("10", file=DEEP))
     with pytest.raises(CratekitError) as raised:
         _plan(machine, genre=NOWHERE, chosen=["10"])

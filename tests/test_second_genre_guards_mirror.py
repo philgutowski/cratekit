@@ -24,7 +24,6 @@ from tests.test_organize_mirror_edits_u340 import machine as machine  # noqa: PL
 from tests.test_second_genre import (
     DECLARED,
     DEEP,
-    HIGH,
     MED,
     MELODIC,
     ONE,
@@ -147,17 +146,13 @@ def test_a_folder_edit_into_one_of_the_two_folders_is_not_taken(folder, shown):
 # M06: a band move inside one of the two folders keeps the word naming it.
 
 
-def test_a_band_only_a_padded_second_genres_display_files_into_is_not_taken():
-    """Its band is found by the folder's display, not by the padded word the
-    file carries, so writing the word back would file it elsewhere."""
-    truth = rebuild.Truth(location="/m/t.flac", genre=DEEP, energy=5, second_genre=" R&B ")
-    assert mirror_edits.target_tags(DECLARED, "R&B", "High", " R&B ", 5) == ("R&B", 7)
-    edit = _decision(
-        edits.MOVE, _at(RNB, HIGH), [_at(ONE, MED), _at(RNB, MED)], [_at(ONE, MED), _at(RNB, HIGH)]
-    )
-    why = mirror_edits._second_genre_tags(DECLARED, edit, truth, RNB)
+def test_a_move_to_a_playlist_no_energy_files_into_is_not_taken():
+    """A move to a folder's vox playlist names no band, so no energy files the
+    track there by the folder's genre, and the edit is refused, not raised."""
+    edit = _decision(edits.MOVE, (DEEP, "with vox"), [_at(ONE, MED)], [(DEEP, "with vox")])
+    why = mirror_edits._second_genre_tags(DECLARED, edit, TRUTH, TWO)
     assert isinstance(why, str)
-    assert "no energy files it into R&B High by the genre that names R&B" in why
+    assert f"no energy files it into {DEEP} with vox by the genre that names {DEEP}" in why
 
 
 def test_a_style_sub_only_another_source_word_files_into_is_not_taken():

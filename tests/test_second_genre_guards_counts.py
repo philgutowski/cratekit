@@ -105,6 +105,7 @@ def test_the_adopt_steps_tracks_read_is_the_number_of_tracks(monkeypatch):
     assert step.counts == {
         "tracks read": 1, "placeable": 2, "to file": 0, "vocal memberships to add": 0,
     }
+    assert step.detail.startswith("nothing to file: 1 track(s) read, 2 placement(s) already")
 
 
 # C04: the second bucket files by the second genre's own word

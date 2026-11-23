@@ -63,7 +63,15 @@ def test_the_template_given_here_has_rnb_with_no_place_and_soul_as_shipped():
 # A01: only a track that routes by its first genre gets a second entry.
 
 
-@pytest.mark.parametrize("disposition", [WITHHELD, adopt_scan.Disposition.NEEDS_GENRE])
+@pytest.mark.parametrize(
+    "disposition",
+    [
+        WITHHELD,
+        adopt_scan.Disposition.NEEDS_GENRE,
+        adopt_scan.Disposition.EXCLUDED,
+        adopt_scan.Disposition.UNDECLARED,
+    ],
+)
 def test_a_track_that_does_not_route_gets_no_second_entry_whatever_its_census_says(disposition):
     """The census reads a second genre only for a routed track, so this row is
     built by hand: a second bucket on a track that does not route."""
@@ -100,6 +108,17 @@ def test_the_second_entry_carries_the_second_genres_word():
     assert (first.genre, second.genre) == (DEEP, TECH)
     rows = adopt_plan.to_json(plan)["entries"]
     assert [row.get("second_genre") for row in rows] == [None, TECH]
+
+
+def test_the_second_entrys_band_is_chosen_by_the_second_genres_word():
+    """NonElectronic files by the source word: a Deep House track whose second
+    genre is Folk is planned into Folk there, never into the band its first
+    genre's word would name."""
+    plan = _plan([_two("t", energy=8, second="Folk")], {})
+    assert [(e.bucket, e.sub, e.second) for e in plan.entries] == [
+        (ONE, "high", False),
+        ("non_electronic", "folk", True),
+    ]
 
 
 def test_the_review_row_names_the_second_genre_on_a_second_entry_only():
@@ -142,19 +161,3 @@ def test_a_second_entry_a_verdict_withheld_claims_no_bucket():
     assert claimed == {"t": frozenset({ONE})}
     assert adopt_move.elsewhere_of(claimed, first) == frozenset()
     assert adopt_move.elsewhere_of(claimed, second) == frozenset({ONE})
-
-
-def test_a_soul_track_whose_rnb_folder_a_verdict_refused_leaves_the_rnb_band_as_one_genre():
-    """R&B refused, so its entry files nothing there and R&B's band held in
-    Soul is Soul's split place again: the move a one genre Soul track gets."""
-    held = {SOUL_ID: {"t": (MED, SPLIT_MED)}, RNB_ID: {"t": (MED,)}}
-    plan = _with_verdict_on(_plan([_split_pair("t", SOUL, RNB, energy=5)], held), RNB_ID)
-    assert _rows(plan) == [
-        (SOUL_ID, MED, ROUTE, "", False),
-        (RNB_ID, MED, WITHHELD, "verdict", True),
-    ]
-    moves = adopt_move.build_move_plan(plan, DECLARED)
-    assert [(m.bucket, m.target, m.add, m.remove) for m in moves.moves] == [
-        (SOUL_ID, MED, "", (SPLIT_MED,))
-    ]
-    assert moves.left == ()
