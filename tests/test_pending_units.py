@@ -1,38 +1,22 @@
 """The meta-guard: a deferred guard cannot quietly become a permanent one.
 
-U6 ports the safety net before the engine, so some ported guards name a module
-that has not been written yet. Skipping those is correct. Skipping them
-FOREVER is how a safety net acquires a hole that nobody can see, because a
-skipped test is green in every summary anybody reads.
+U6 ported guards that name modules not yet written, and skipping them is
+correct; skipping them FOREVER is a hole nobody sees, since a skip is green in
+every summary. Three assertions make a skip a countdown:
 
-This file closes that. Three assertions, and each one blocks a different way the
-hole opens:
+1. **The declared set is exactly the intended set**, so a new skip is a
+   visible decision in a diff.
+2. **Every pending target is genuinely still absent**, so landing the module
+   turns this red.
+3. **No test skips outside the registry.**
 
-1. **The declared set is exactly the intended set.** Adding a skip without
-   recording it here fails the build. So "just skip it for now" is a visible
-   decision in a diff rather than a one-line edit in a test file.
-2. **Every pending target is genuinely still absent.** The moment a unit lands
-   its module, this goes red. Nobody has to remember; forgetting is what fails.
-3. **No test skips outside the registry.** A bare skip mark anywhere in the suite
-   is rejected, so the registry cannot be routed around.
-
-Together these make a skip a countdown rather than a hiding place.
-
-WHAT MAKING IT GREEN ACTUALLY TAKES, because the obvious edit is the dangerous
-one. A discharge is THREE edits in one commit: the entry in ``_pending.PENDING``,
+A discharge is THREE edits in one commit: the entry in ``_pending.PENDING``,
 the mirrored key in ``EXPECTED_PENDING`` below, and the ``@requires("<key>")``
-decorator on every guard the key gated. Run
-``grep -rn 'requires("<key>")' tests/`` before deleting anything, because a key
-is usually cited from more than one file.
-
-Deleting the entry alone does not arm a guard. ``requires()`` then raises
-KeyError while the decorator is being evaluated, which happens at IMPORT and so
-during COLLECTION, and the gated guard's whole file stops existing rather than
-turning red. The asymmetry is why the wrong half is the likely one: skipping the
-decorator edit breaks collection silently under a subset run, while skipping the
-register edit only leaves this file red, which is completely visible.
+decorator on every guard the key gated (``grep -rn 'requires("<key>")'
+tests/`` first). Deleting the entry alone makes ``requires()`` raise KeyError
+at import, so the gated file drops out of COLLECTION rather than turning red.
 ``docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md``
-carries the procedure and the U16 case where it cost 330 tests.
+has the procedure and the U16 case that cost 330 tests.
 """
 
 from __future__ import annotations
@@ -46,109 +30,40 @@ from tests import _pending
 
 TESTS_DIR = Path(__file__).resolve().parent
 
-# The intended pending set, written out rather than derived. Duplicating the keys
-# is the entire point: a change to the registry must be made in two places, and
-# the second place is a test that a reviewer reads.
-# EMPTY, AND WRITTEN AS ``frozenset()`` RATHER THAN ``frozenset({})``. The second
-# spelling is an empty DICT inside a frozenset call, which is still an empty
-# frozenset at run time and is a different node to anything that parses this file.
-# The duplicate guard below reads the literal through the AST and asked a set
-# literal for its elements, so the braces form crashed it with an attribute error
-# the moment the last key came out. Found by discharging the last entry.
+# The intended pending set, written out rather than derived, so a registry
+# change is made in two places and the second is a test a reviewer reads.
+# Written ``frozenset()``, not ``frozenset({})``, which is an empty DICT node
+# and crashed the duplicate guard's literal reader.
 EXPECTED_PENDING: frozenset[str] = frozenset()
 
-# ``path:skills`` was here and is gone, because U28 landed the twelve shipped
-# skills and the verb that installs them. The mirror in ``tests/_pending.PENDING``
-# went in the same commit, and ONE guard carried a ``@requires`` for the key,
-# ``tests/test_skills_lint.py::test_real_skills_pass_lint``, whose decorator came
-# off in the same commit and which was then run on purpose.
-#
-# THE REGISTER IS NOW EMPTY. That is a first for this file and it is a real state
-# rather than a broken one: every countdown this build opened has been discharged.
-# ``EXPECTED_PENDING`` being empty still asserts something, namely that nobody has
-# added a skip without declaring it, which is the whole point of the duplication.
+# EMPTY since U28 discharged ``path:skills``, the last countdown. It still
+# asserts that nobody added a skip without declaring it.
 
-# ``cratekit.session.restore_cli`` was here and is gone, because U27 landed both
-# restore verbs and the one held session that spans them. The mirror in
-# ``tests/_pending.PENDING`` went in the same commit, and ONE guard carried a
-# ``@requires`` for this key,
-# ``tests/test_restore.py::test_the_restore_verbs_hold_one_session_across_both_halves``.
-# Its decorator came off in the same commit and it was then run on purpose, which
-# is the third edit the header above says is the one people skip.
+# ``cratekit.session.restore_cli`` was discharged by U27, its one guard's
+# decorator removed in the same commit.
 
-# ``cratekit.adopt.apply_cli`` was here and is gone, because U27 landed the shell
-# and, with it, the one destructive session the residual titled "Adoption's tag
-# write takes no destructive session and no library lock" asked for. The mirror in
-# ``tests/_pending.PENDING`` went in the same commit, and no guard carried a
-# ``@requires`` for the key, which was established by grep before the deletion
-# rather than assumed.
+# ``cratekit.adopt.apply_cli`` was discharged by U27; no guard carried it.
 
-# ``cratekit.cli.reports`` was here and is gone, because U27 landed the four
-# report verbs, the coverage engine and the library-statistics engine. The mirror
-# in ``tests/_pending.PENDING`` went in the same commit, and no guard carried a
-# ``@requires`` for the key, which was established by grep before the deletion
-# rather than assumed.
+# ``cratekit.cli.reports`` was discharged by U27; no guard carried it.
 
-# ``cratekit.write.rebuild`` was here and is gone, because U36 landed it on `main`
-# in this session and issue #36 closed. A register entry owed by a closed unit is
-# the contradiction ``scripts/board.py audit`` exits 2 on, and it is owned by
-# nobody. ``tests/_pending.py`` records which half of that entry U36's own suite
-# discharged and which half became an always-armed tripwire in
-# ``tests/test_restore.py``.
+# ``cratekit.write.rebuild`` was discharged by U36; ``tests/_pending.py``
+# records which half became an always-armed tripwire in ``tests/test_restore.py``.
 
-# U27 removed ``cratekit.cli.doctor`` when the health check landed. That UNGATED
-# the two guards waiting on it, and ungating is not arming: as first written,
-# neither of them could fail.
-#
-# The containment report in ``tests/test_config.py`` asked whether any finding
-# contained both "db_path" and "atomic", and the OK branch of the very check
-# under test says "library.db_path sits under library.root, so a snapshot commits
-# atomically with a rename". ``atomic`` is inside ``atomically``, so a check that
-# reported the CONTAINED answer unconditionally passed the guard against a
-# database that is not contained.
-#
-# Conformance assertion 8 in ``tests/test_cli_contract.py`` ran the doctor and
-# required every declared key to come back with an answer, which is identically
-# the existence check it replaced: the keys are derived from the check table and
-# every check returns its own key, so a stub emitting one empty finding per key
-# passed while observing nothing.
-#
-# Both are behaviour now, and each is driven against the evasion that satisfied
-# its first version as well as against correct code. The lesson is the one this
-# file already teaches from the other side: deleting an entry from the register
-# is the moment to read the guard it releases, because until that moment nothing
-# has ever run it.
-#
-# U8's two entries were removed here when ``cratekit.core.snapshot`` and
-# ``cratekit.core.session`` landed, which is the countdown working as designed.
-# ``cratekit.core.session`` appeared TWICE in the literal above. A set makes a
-# duplicate harmless, so nothing failed, and it is the same shape as the
-# duplicate-key defect this repository has already shipped once with the whole
-# suite green: every test over a mapping or a set iterates the RUNTIME object and
-# is blind to an entry that was collapsed at parse time. The test below counts
-# the literal's elements against the runtime length, which is the only check that
-# can see it.
+# U27 removed ``cratekit.cli.doctor`` and U8 its two entries. Ungating is not
+# arming: the two guards released by the doctor could not fail as first written,
+# so a discharge is the moment to read the guard it releases.
 
 
 def test_the_intended_pending_set_has_no_duplicate_element():
-    """A duplicate in the literal is silent, and silence is the whole problem.
-
-    ``EXPECTED_PENDING`` exists to be READ in a diff, so an entry written twice
-    means a reviewer sees one deletion and believes the countdown is finished
-    while the second occurrence is still there. It collapsed harmlessly here
-    because a set deduplicates; the same shape in the reason registry did not.
-    """
+    """A duplicate in the ``EXPECTED_PENDING`` literal is silent at runtime, so it is counted."""
     import ast
     import inspect
 
     literal = None
     for node in ast.walk(ast.parse(inspect.getsource(__import__(__name__, fromlist=["x"])))):
         target = None
-        # BOTH ASSIGNMENT NODES, which the sibling guard over ``cause.REASONS``
-        # in tests/test_cli_contract.py has always done and this one had not.
-        # Annotating the register as ``frozenset[str]`` turns an ``Assign`` into
-        # an ``AnnAssign`` and this walk stopped finding it, reporting the
-        # register as no longer module level when it had simply gained a type.
+        # BOTH ASSIGNMENT NODES, so annotating the register as ``frozenset[str]`` does
+        # not lose it.
         if isinstance(node, ast.AnnAssign):
             target = getattr(node.target, "id", None)
         elif isinstance(node, ast.Assign) and len(node.targets) == 1:
@@ -157,10 +72,8 @@ def test_the_intended_pending_set_has_no_duplicate_element():
             literal = node.value
 
     assert literal is not None, "EXPECTED_PENDING is no longer a module-level assignment"
-    # ``frozenset({...})``: the set is the call's first argument. ``frozenset()``
-    # with no argument is the EMPTY register, which is the state this file reached
-    # when U28 discharged the last countdown, and it has no elements to read
-    # rather than being a failure to read them.
+    # ``frozenset({...})``: the set is the first argument; ``frozenset()`` is the
+    # empty register, with no elements to read.
     if isinstance(literal, ast.Call):
         elements = literal.args[0].elts if literal.args else []
     else:
@@ -170,9 +83,8 @@ def test_the_intended_pending_set_has_no_duplicate_element():
     assert not duplicates, f"written twice and collapsed at parse time: {duplicates}"
     assert len(written) == len(EXPECTED_PENDING)
 
-# Guards that are repository-wide and work against the tree as it stands today.
-# None of these may EVER be gated on a pending unit: they are what makes the
-# units between here and U37 safe to write.
+# Repository-wide guards that work against the tree as it stands. None may EVER
+# be gated on a pending unit.
 ALWAYS_ARMED_MODULES = (
     "test_portability.py",  # R1 literals and the repository-wide secret scan
     "test_layering.py",  # KTD23 import direction, R19 stable identifiers
@@ -192,18 +104,10 @@ def test_the_declared_pending_set_is_exactly_the_intended_set():
 
 
 def test_the_empty_register_is_a_discharged_register_and_not_a_lost_one():
-    """An empty register is reported OUT LOUD rather than as a mystery skip.
+    """An empty register is reported out loud, not as a mystery skip, and both registers agree.
 
-    ``pytest`` skips a parametrized test whose parameter set is empty, so the
-    countdown below became a silent skip the moment U28 discharged the last
-    entry. That is structurally correct, and it is also the exact shape this
-    file's own header warns about: a skip that is fine in August and is still
-    skipping in December with nobody able to see why. This test cannot be skipped
-    and states the condition, so ``pytest -rs`` reads as "the register is empty"
-    rather than as "something got skipped here".
-
-    IT ALSO ASSERTS THE TWO REGISTERS AGREE while both are empty, which the
-    comparison above does vacuously in that state.
+    The countdown below is parametrized over nothing and so skipped; this test
+    cannot be skipped and says why.
     """
     assert _pending.PENDING == {}, (
         f"the register is not empty, so the countdown below is parametrized and "
@@ -214,21 +118,9 @@ def test_the_empty_register_is_a_discharged_register_and_not_a_lost_one():
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_PENDING))
 def test_a_pending_target_that_has_landed_must_be_removed_from_the_registry(key):
-    """The countdown. This test is DESIGNED to fail when a unit lands.
+    """The countdown, DESIGNED to fail when a unit lands; over nothing while the register is empty.
 
-    IT IS CURRENTLY PARAMETRIZED OVER NOTHING, because U28 discharged the last
-    entry, so pytest skips it. The test above is what says so in a run summary.
-    Re-opening any countdown re-arms this one with no edit here.
-
-    When it does, the fix is THREE edits in one commit, not one: the entry in
-    ``_pending.PENDING``, the mirrored key in ``EXPECTED_PENDING`` above, and the
-    ``@requires`` decorator on every guard the key gated. Only the third arms
-    anything. The first two on their own take the gated guard's whole file out of
-    COLLECTION, because ``requires()`` raises KeyError while the decorator is
-    evaluated at import. Run the grep in the message below before deleting.
-
-    The behaviour this buys is still the one we want: the person who lands the
-    module cannot ship it without the guards that govern it turning on.
+    The fix is the three edits the module docstring names, in one commit.
     """
     unit, what = _pending.PENDING[key]
     assert _pending._is_absent(key), (
@@ -257,11 +149,7 @@ def test_every_pending_entry_names_a_unit_and_what_it_guards():
 
 
 def _skip_marks_outside_the_registry(source: str) -> list[str]:
-    """Return every skip construct that does not route through ``_pending``.
-
-    Both decorator forms and the imperative ``pytest.skip(...)`` call are
-    detected, because either one silently removes a guard.
-    """
+    """Every skip that does not route through ``_pending``: both marks and ``pytest.skip``."""
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and node.attr in {"skip", "skipif"}:
@@ -287,12 +175,7 @@ def _skip_marks_outside_the_registry(source: str) -> list[str]:
 
 
 def test_no_test_skips_outside_the_registry():
-    """The registry cannot be routed around.
-
-    ``_pending.py`` is the one file allowed to construct a skip, since that is
-    where the accounting lives. Anywhere else, a skip is a guard being switched
-    off with no record of when it switches back on.
-    """
+    """``_pending.py`` is the one file allowed to construct a skip."""
     offenders: dict[str, list[str]] = {}
     for path in sorted(TESTS_DIR.rglob("*.py")):
         if path.name == "_pending.py" or path.name == Path(__file__).name:
@@ -308,13 +191,7 @@ def test_no_test_skips_outside_the_registry():
 
 @pytest.mark.parametrize("module", ALWAYS_ARMED_MODULES)
 def test_repository_wide_guards_are_never_gated_on_a_pending_unit(module):
-    """The guards that must work TODAY are asserted to have no gate at all.
-
-    Portability, the secret scan, the layering rules, and the packaging rules all
-    run against the tree as it stands. If one of them ever acquired a pending
-    gate, every unit between here and U37 would be written without it, which is
-    the exact failure U6 exists to prevent.
-    """
+    """Portability, secrets, layering and packaging guards have no pending gate at all."""
     source = (TESTS_DIR / module).read_text()
     assert "_pending" not in source, (
         f"{module} is a repository-wide guard and must never be gated on a "
@@ -325,22 +202,14 @@ def test_repository_wide_guards_are_never_gated_on_a_pending_unit(module):
 # ═══════════════════════════════════════════════════════════════════════════
 # The register's own spelling, and the trailer that would close it
 #
-# The countdown above proves an entry EXPIRES. It cannot prove the entry names
-# something that could ever exist. A key naming a module no unit will ever build
-# is absent forever, so `_is_absent` is permanently True, the countdown never
-# fires, and the day the unit closes `board.py contradictions()` returns exit 2
-# for the rest of the project's life, which `sync` deliberately will not repair.
+# The countdown proves an entry EXPIRES, not that it names something that can
+# exist. A key no unit will build is absent forever, and when the unit closes
+# ``board.py contradictions()`` exits 2 for good.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def _board():
-    """Load `scripts/board.py` as a module, without putting scripts on the path.
-
-    It imports nothing but the standard library at module level and does no work
-    on import, so loading it is cheap and side-effect free. Loaded by path rather
-    than installed because it is a script, not part of the distribution, and
-    making it importable by name would be shipping it.
-    """
+    """Load ``scripts/board.py`` by path: it is a script, standard library only, inert on import."""
     import importlib.util
 
     path = TESTS_DIR.parent / "scripts" / "board.py"
@@ -357,39 +226,18 @@ def _registry_modules() -> set[str]:
 
 
 #: Register keys that look like a command-line module and legitimately are not
-#: one, with the reason. EMPTY, and it should stay that way: a key ending in
-#: `.cli` that no verb declares is a key nothing can ever satisfy.
+#: one, with the reason. EMPTY, and it should stay that way.
 CLI_SHAPED_EXEMPTIONS: dict[str, str] = {}
 
 
 def test_a_cli_shaped_register_key_names_a_module_some_verb_declares():
     """RULE A. A verb module in the register must be one the registry asks for.
 
-    The register holds two kinds of key and they are not interchangeable. Most
-    name an engine or a package: `cratekit.core.review`, `cratekit.modules.reports`,
-    `cratekit.adopt`. Those are owed by a unit and nothing else has an opinion
-    about their spelling. A key that ends in `.cli` or `_cli` is different,
-    because it names a command-line surface, and the registry is where command
-    line surfaces are declared. Two records of one fact that nothing compares are
-    two records that drift.
-
-    The drift is not theoretical and it is not cheap. A register key naming a
-    module the registry never asks for cannot be satisfied by anybody: the module
-    is absent forever, so the countdown never fires, and the moment the unit
-    closes the board holds a contradiction that `sync` refuses to repair by
-    design, because repairing it would mean choosing which record to overwrite.
-
-    A key that is genuinely not a verb module goes in the exemption map WITH a
-    reason, rather than the rule being narrowed until it stops firing.
-
-    WHAT THIS DOES NOT REACH, said plainly, because a rule whose scope is
-    implied gets trusted past it. It is a spelling check on ONE THIRD of the
-    surface: register keys that look like verb modules. A non-CLI typo has
-    identical consequences and is invisible here, `cratekit.core.restor` planted
-    for U32 being the obvious one, and a misspelling on the REGISTRY side is
-    structurally beyond it, since the registry is the thing being compared
-    against. Rule B is what catches both of those, at the moment the unit closes,
-    which is why the two ship together rather than either one alone.
+    A key ending ``.cli`` or ``_cli`` names a command-line surface, which the
+    registry declares; one it never asks for is absent forever and leaves a
+    contradiction ``sync`` will not repair. A genuine exception goes in the
+    exemption map with a reason. This is a spelling check on that third of the
+    surface only; Rule B catches the rest when the unit closes.
     """
     registry_modules = _registry_modules()
     unclaimed = sorted(
@@ -408,47 +256,19 @@ def test_a_cli_shaped_register_key_names_a_module_some_verb_declares():
     )
 
 
-#: The one place the two registers disagree about a unit's own package name, and
-#: it is a live defect rather than a style. Written as EXACT membership rather
-#: than as an allowance, so U23 resolving it turns this red and forces the
-#: deletion, exactly like the pending countdown above.
-#:
-#: EMPTY AT THE U59 MERGE, BECAUSE THE COUNTDOWN FIRED AND THIS IS THE DELETION
-#: IT ASKED FOR. The entry read `("U23", "cratekit.adopt", "cratekit.adoption")`,
-#: the register saying one package name and the registry saying another, recorded
-#: rather than picked because only U23 knew which was wrong. U23 answered:
-#: `src/cratekit/adopt/` is the package that shipped, `cratekit.adoption` is
-#: spelled nowhere in the registry any more, and `_pending.PENDING` is empty, so
-#: neither side still disagrees with the other. Deleting the entry is exactly
-#: what the exact-membership shape above was built to force, and leaving it would
-#: have been a permanent red light over a defect that no longer exists.
+#: The places the two registers disagree about a unit's own package name, by
+#: EXACT membership, so a resolution forces the deletion. Emptied at the U59
+#: merge when U23 settled ``cratekit.adopt`` against ``cratekit.adoption``.
 KNOWN_PACKAGE_NAME_DISAGREEMENTS: set[tuple[str, str, str]] = set()
 
 
 def test_no_unit_declares_two_confusingly_similar_package_roots():
-    """A NAME SIMILARITY HEURISTIC, and it is named as one because that is what it is.
+    """A name similarity heuristic: one unit declaring two roots, one prefixing the other.
 
-    NEAR-MISS RATHER THAN DIFFERENCE, deliberately. A unit owning modules in two
-    unrelated packages is ordinary and correct: U32 owes an engine in
-    `cratekit.core` and a command-line surface in `cratekit.session`, and U34 owes
-    `cratekit.modules` and `cratekit.reports`. Flagging those would be a guard
-    firing on correct code, which is how a guard gets switched off.
-
-    THE TEST IS `str.startswith`, NOT A DOTTED-SEGMENT TEST, and that is a real
-    limitation rather than an oversight. The segment-aware form,
-    `longer.startswith(shorter + ".")`, is the one that is always true, and it
-    would stop catching the case this exists for: `cratekit.adoption` is not a
-    package UNDER `cratekit.adopt`, it is a different word that starts the same
-    way. So this is a heuristic on spelling, and it can be wrong. `cratekit.tag`
-    beside `cratekit.tagging` would fire, and `cratekit.tagging` is already a real
-    planned root for U37.
-
-    WHAT MAKES THAT ACCEPTABLE is the second condition, which the shape depends
-    on: both roots must be declared by the SAME UNIT. One unit owing both `tag`
-    and `tagging` is worth a human look whether or not it is a typo. And because
-    membership is pinned exactly, a false positive is a red suite whose cheapest
-    honest answer is to add the pair to the pin with a note, which is a recorded
-    decision in a diff, not a widened allowance that kills the rule.
+    A unit owning unrelated packages is ordinary (U32, U34). ``str.startswith``
+    rather than a dotted segment test, since ``cratekit.adoption`` is not under
+    ``cratekit.adopt``; it can be wrong, so a false positive is answered by adding
+    the pair to the pin with a note.
     """
     per_unit: dict[str, set[str]] = {}
     for key, (unit, _) in _pending.PENDING.items():
@@ -478,21 +298,13 @@ def test_no_unit_declares_two_confusingly_similar_package_roots():
 
 
 def test_the_module_probe_tells_the_two_kinds_of_missing_apart():
-    """RULE A's other half: a countdown that cannot fire looks exactly like one that can.
+    """RULE A's other half: ``find_spec`` returning None and raising are two kinds of missing.
 
-    ``find_spec`` has two failure modes and they were both being read as absence.
-    It returns None when a module is missing from a package that EXISTS, which is
-    a countdown armed and waiting for a file. It RAISES when an ANCESTOR is
-    missing, which cannot be interpreted from the tree at all: nothing here can
-    tell "that package is coming" from "that name is misspelled".
-
-    Recognizing the difference is not the same as forbidding the second, and this
-    file does not forbid it. Seventeen planned verb modules are in that state and
-    almost all of them belong to units that have not started, so an assertion
-    against it would fire on correct pending work. What the distinction buys is
-    that a probe result now carries which case it is, and that a
-    ``ModuleNotFoundError`` raised from INSIDE an ancestor that does exist stops
-    being swallowed as absence.
+    None is a module missing from a package that exists, a countdown armed.
+    Raising means an ancestor is missing, which the tree cannot interpret. It is
+    not forbidden, since planned verbs sit in that state, but the probe now says
+    which case it is, and a ``ModuleNotFoundError`` from inside an existing
+    ancestor is no longer swallowed as absence.
     """
     assert _pending.module_state("cratekit.cli.registry") == _pending.PRESENT
     assert _pending.module_state("cratekit.cli.no_such_module") == _pending.ABSENT
@@ -507,14 +319,7 @@ def test_the_module_probe_tells_the_two_kinds_of_missing_apart():
 
 
 def test_the_registry_s_planned_markers_are_a_register_the_board_now_reads():
-    """Two registers exist, and until now `contradictions()` read one of them.
-
-    ``planned_in`` on a registry entry makes exactly the promise
-    ``tests/_pending.py`` makes: this module does not exist and unit U-n lands it.
-    Reading only the first is how three closed units kept live markers for seven
-    verbs between them with nothing ever saying so, because ``board.py audit``
-    audits units against a register that never mentioned those verbs.
-    """
+    """The registry's ``planned_in`` markers are a register too, and the board reads them."""
     board = _board()
     planned = board.planned_units()
     from cratekit.cli import registry
@@ -536,16 +341,10 @@ def test_the_registry_s_planned_markers_are_a_register_the_board_now_reads():
 
 
 def test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit():
-    """RULE B. The same comparison `audit` makes, moved before the event.
+    """RULE B. ``audit``'s comparison moved before the event, to the closing trailer.
 
-    ``contradictions()`` can only speak about issues that are ALREADY CLOSED. By
-    then the close has cascaded, dependent units have moved to ready, and `sync`
-    will not repair it because repairing means choosing which record to
-    overwrite. The trailer is the moment the close is decided and the last moment
-    refusing costs nothing.
-
-    Driven against a synthetic register rather than the live one, so this test
-    says the same thing next year when every unit here has landed.
+    ``contradictions()`` speaks only after the close has cascaded. Driven against
+    a synthetic register, so it holds after every unit has landed.
     """
     board = _board()
     owed = {36: ["cratekit.write.converge_cli"], 8: ["cratekit.session.cli"]}
@@ -562,15 +361,8 @@ def test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit():
     )
 
 
-#: Every spelling GitHub closes an issue on. WRITTEN OUT rather than generated
-#: from the pattern, because a table generated from the thing it tests passes
-#: whatever the thing does.
-#:
-#: An earlier version of this file asserted that `Fixes #36` does NOT close, and
-#: justified it with "only the trailer this repository's contract uses closes an
-#: issue". That is false about GitHub, and worse than false: it certified the
-#: hole, so the next reader would have found the gap already considered and
-#: settled. A test may not assert a limitation into a fact.
+#: Every spelling GitHub closes an issue on, written out rather than generated
+#: from the pattern, which would pass whatever the pattern did.
 CLOSING_SPELLINGS_GITHUB_ACTS_ON = (
     "Fix #36",
     "Fixes #36",
@@ -588,14 +380,11 @@ CLOSING_SPELLINGS_GITHUB_ACTS_ON = (
     "feat: a thing\n\nCloses #36\n",
     # The other reference form that closes an issue HERE.
     "Closes GH-36",
-    # A revert. It really does close the issue, and the refusal is the point: a
-    # revert un-lands the module, so the register re-owes the unit exactly then.
+    # A revert closes the issue too, and un-lands the module, so it is refused.
     'Revert "feat(write): converge (closes #36)"',
 )
 
-#: Messages that close nothing this repository tracks, and must stay exit 0. A
-#: check that refuses these is a check somebody removes on the first afternoon it
-#: blocks a commit that was fine.
+#: Messages that close nothing this repository tracks, and must stay exit 0.
 MESSAGES_THAT_CLOSE_NOTHING = (
     "Closes #21",
     "see #36",
@@ -603,18 +392,13 @@ MESSAGES_THAT_CLOSE_NOTHING = (
     "look at #36 for why U36 is still open",
     "feat: x\n\nbody\n# Please enter the commit message\n# Closes #36\n",
     "feat: x\n\nCloses #21\n# ------------------------ >8 ------------------------\n+Closes #36\n",
-    # THE SENTENCE THIS CHECK ASKS PEOPLE TO WRITE. A trailer, a blank line, then
-    # an explanation of what stays open. `\s*` in the continuation crossed the
-    # newline and refused both issues, so the code contradicted the contract its
-    # own docstring states.
+    # THE SENTENCE THIS CHECK ASKS PEOPLE TO WRITE: a trailer, a blank line, then
+    # what stays open. ``\s*`` crossing the newline once refused both.
     "feat(write): converge\n\nCloses #21\n\nand #36 stays open until the export CLI lands.\n",
     # A link with a fragment is not a closing reference.
     "see https://example.com/notes/fixes#36 for the reasoning",
-    # CROSS-REPOSITORY references close an issue in the NAMED repository and
-    # nothing here. Matching them refused commits over units they have no
-    # relationship to, and this is the realistic trigger rather than a
-    # hypothetical: this repository vendors pyrekordbox, the owed unit numbers
-    # run from 8 to 38, and upstream numbers collide with them constantly.
+    # CROSS-REPOSITORY references close an issue elsewhere; pyrekordbox's issue
+    # numbers collide with the owed units constantly.
     "fixes numpy/numpy#36",
     "fixes https://github.com/dylanljones/pyrekordbox/issues/36",
     "chore(vendor): bump pyrekordbox\n\nfixes dylanljones/pyrekordbox#36 upstream\n",
@@ -623,18 +407,10 @@ MESSAGES_THAT_CLOSE_NOTHING = (
 
 @pytest.mark.parametrize("message", CLOSING_SPELLINGS_GITHUB_ACTS_ON)
 def test_every_spelling_github_closes_on_is_refused(message):
-    """One spelling out of eleven is a check that reports clean on the other ten.
+    """Every spelling GitHub closes on is refused, not only ``Closes #n`` on a line of its own.
 
-    Each of these closes issue 36 on GitHub and cascades every unit waiting on
-    it. The first version of this check matched `^Closes #n$` anchored to a whole
-    line, on the reasoning that the contract says to write that exact trailer.
-    GitHub does not read the contract.
-
-    The comma continuation is caught deliberately over-inclusively. Whether
-    GitHub closes the second issue in a list has moved with its parser, but the
-    person writing it means to close both, and the costs are not symmetric: a
-    false refusal is one reworded line, a miss is a close that has already
-    cascaded and that `sync` will not repair.
+    The comma continuation is caught over-inclusively: a false refusal is one
+    reworded line, a miss is a cascaded close ``sync`` will not repair.
     """
     board = _board()
     owed = {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]}
@@ -645,13 +421,7 @@ def test_every_spelling_github_closes_on_is_refused(message):
 
 @pytest.mark.parametrize("message", MESSAGES_THAT_CLOSE_NOTHING)
 def test_a_message_that_closes_nothing_owed_is_left_alone(message):
-    """The direction that decides whether a check survives contact.
-
-    Two of these are the ones that would have made it unusable rather than merely
-    wrong: git hands the commit-msg hook the RAW file, so the template comments
-    are in it, and `commit --verbose` puts the entire diff below a scissors line.
-    A keyword anywhere in either would refuse a commit that closes nothing.
-    """
+    """Template comments and a ``commit --verbose`` diff below the scissors close nothing."""
     board = _board()
     owed = {36: ["cratekit.write.converge_cli"], 33: ["cratekit.export.cli"]}
     assert not board.unresolved_closes(message, owed), (
@@ -660,19 +430,11 @@ def test_a_message_that_closes_nothing_owed_is_left_alone(message):
 
 
 def test_the_closing_check_is_wired_where_it_cannot_be_forgotten():
-    """WHERE RULE B LIVES, and why it is not one place.
+    """WHERE RULE B LIVES: a commit-msg hook, a subcommand, and ``audit`` after the close.
 
-    It judges a commit MESSAGE, which exists for one moment before it becomes
-    history, so the only thing that can see it as it is written is a commit-msg
-    hook. That is the copy nobody has to remember. But R-1 is the finding that a
-    hook is absent from a fresh clone until somebody installs it, so a hook alone
-    is a guard that is off exactly where it has never been run.
-
-    So it is also a subcommand anybody can run, and `audit` makes the same
-    comparison against issues that are already closed. The check itself is
-    network-free, which is the property that lets it live in a hook at all: the
-    rest of `audit` needs `gh`, and a hook that fails without a token is a hook
-    that gets uninstalled.
+    A message exists for one moment, so only a hook sees it as written; but R-1
+    found a hook absent from a fresh clone, so it is a subcommand too. The check
+    is network-free, which is what lets it live in a hook.
     """
     config = (TESTS_DIR.parent / ".pre-commit-config.yaml").read_text()
     assert "board.py closing --message-file" in config
@@ -689,17 +451,9 @@ def test_the_closing_check_is_wired_where_it_cannot_be_forgotten():
 
 
 def test_the_ci_step_judges_the_commits_the_push_added():
-    """The step judged an EMPTY range on every push, and said so in its own comment.
+    """CI judges the range from the ref's PREVIOUS TIP, not a merge base, which was always empty.
 
-    It took the merge base with `origin/main`. This repository opens no pull
-    requests and pushes only `main`, so after a push `origin/main` is `HEAD`, the
-    merge base is `HEAD`, and the range holds nothing. The trailer lives in the
-    merge commit the push delivers, which is exactly what the range excluded, so
-    the copy CI calls load-bearing had judged nothing at all.
-
-    Asserted against the workflow text because there is no other way to see it
-    from here. The shape that matters is that the range starts at the ref's
-    PREVIOUS TIP and not at a merge base with the branch being pushed.
+    Asserted against the workflow text, the only way to see it from here.
     """
     workflow = (TESTS_DIR.parent / ".github" / "workflows" / "ci.yml").read_text()
     step = workflow[workflow.index("A unit may not close while a register") :]
@@ -717,25 +471,15 @@ def test_a_closing_reference_is_never_manufactured_across_two_commit_messages(
 ):
     """The reader must not invent a trailer neither commit wrote.
 
-    `git log --format=%B` runs messages together, and the keyword-to-reference
-    gap spans newlines, so a commit whose subject ends with the word "closes"
-    followed by a commit whose body opens with `#36` produced a closing reference
-    that is in neither message. A false refusal a person wrote costs one reworded
-    line. This one costs a rewrite of history, or the deletion of the check,
-    because the commits are already final.
-
-    Driven through `cmd_closing`, since the concatenation is the subcommand's and
-    not the function's, and asserting on `unresolved_closes` would go on passing
-    with the defect fully in place.
+    ``git log --format=%B`` runs messages together, so a subject ending "closes"
+    before a body opening ``#36`` made a reference in neither. Driven through
+    ``cmd_closing``, which does the concatenation.
     """
     board = _board()
     repo = tmp_path / "fixture"
     run, base = _seeded_repo(repo)
-    # OLDEST FIRST HERE, NEWEST FIRST IN THE LOG. `git log` reverses these, so
-    # the message that must END with the keyword is the one committed LAST, and
-    # the message that must OPEN with the reference is committed first. Getting
-    # that backwards produces a fixture that manufactures nothing and a row that
-    # passes while measuring an empty range.
+    # OLDEST FIRST HERE, NEWEST FIRST IN THE LOG: the message that must END with the
+    # keyword is committed LAST, or the fixture manufactures nothing.
     for index, message in enumerate(
         ("#36 is the tracker for this", "docs: explain what this closes")
     ):
@@ -759,14 +503,7 @@ def test_a_closing_reference_is_never_manufactured_across_two_commit_messages(
 
 
 def test_an_issue_number_is_resolved_to_its_unit_when_the_board_says_they_differ():
-    """A trailer names an ISSUE. Both registers name a UNIT. They are not the same.
-
-    U38 is issue #51, and U39 through U61 are issues #57 through #79. Reading the
-    reference as a unit number is wrong in both directions: it misses the unit
-    that is actually owed and refuses over a unit that is not. Twenty four units
-    were mismatched on 2026-09-10, none of them owed a module that day, which is
-    why nothing had surfaced it.
-    """
+    """A trailer names an ISSUE and the registers name a UNIT: U38 is issue #51."""
     board = _board()
     owed = {38: ["cratekit.write.some_cli"]}
     units = {51: 38, 38: 26}
@@ -782,12 +519,7 @@ def test_an_issue_number_is_resolved_to_its_unit_when_the_board_says_they_differ
 
 
 def test_the_network_free_path_says_that_it_guessed_the_unit_number():
-    """The guess is stated rather than worn as a fact.
-
-    Without the board the mapping cannot be resolved, so the reference is read as
-    a unit number. That is right for most units here and not for all, and a
-    refusal that does not say so is a sentence the reader has no reason to doubt.
-    """
+    """Without the board the reference is read as a unit number, and the refusal says it guessed."""
     board = _board()
     refusals = board.unresolved_closes("Closes #38", {38: ["cratekit.write.some_cli"]})
     assert refusals
@@ -802,20 +534,12 @@ def test_the_network_free_path_says_that_it_guessed_the_unit_number():
 
 
 def test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate():
-    """The mapping exists only on GitHub, so it is derived from what the graph has.
+    """The unit to issue map: read off titles, a duplicate dropped, the unit label required.
 
-    A duplicate unit number is a board editing mistake, and letting the later
-    issue win would answer confidently about the wrong one. Dropped instead, so
-    the contradiction check simply says nothing about that unit rather than
-    saying something false.
-
-    THE UNIT LABEL IS PART OF THE ANSWER, AND ITS ABSENCE IS ASSERTED HERE. A
-    unit-shaped TITLE on an issue that carries no `unit` label is not a unit, and
-    excluding it is what makes the label test inside `contradictions` redundant
-    rather than load bearing. That redundancy was measured as a zero death row in
-    `docs/mutation/u81.md`, and this is the assertion that turns the zero into an
-    answer: the term cannot fire because nothing this function returns can name a
-    non-unit issue.
+    A duplicate is dropped rather than letting the later issue answer wrongly.
+    A unit-shaped title without the ``unit`` label is not a unit, which makes the
+    label test inside ``contradictions`` redundant by construction
+    (``docs/mutation/u81.md``).
     """
     board = _board()
     graph = {
@@ -833,19 +557,12 @@ def test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate():
 
 
 def test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be():
-    """`raw` says which side of git's cleanup this text is on, and it is not symmetric.
+    """``raw`` says which side of git's cleanup the text is on.
 
-    A message file handed to the commit-msg hook is PRE-cleanup and carries git's
-    comments and, under `commit --verbose`, the whole diff. Those come out.
-
-    `git log --format=%B` is POST-cleanup and final. It has no comments and no
-    scissors block, so stripping there prevents no false refusal and can only
-    delete a REAL trailer. Both shapes below were verified through the CLI: a
-    body line beginning with `#` survives git's `whitespace` cleanup, which is
-    what `-m` and `-F` use, and a scissors-shaped line typed by a person is
-    removed as a comment while everything below it stays. Stripping was applied
-    to the CI path, which this repository calls its load-bearing wiring, so it
-    was doing its only possible harm exactly where it mattered most.
+    The hook's message file is pre-cleanup, with comments and a ``--verbose``
+    diff, which come out. ``git log --format=%B`` is final: a ``#``-leading body
+    line survives ``whitespace`` cleanup, so stripping there could only delete a
+    real trailer, on the CI path.
     """
     board = _board()
     owed = {36: ["m"], 33: ["n"]}
@@ -879,34 +596,13 @@ def test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be()
 
 
 def test_a_refusal_names_what_the_package_actually_contains():
-    """The diagnosis, put where the refusal is read.
+    """A refusal notes a sibling module the package does contain, as a note, never an assertion.
 
-    A register key can name a module nobody will build, and the loudest symptom
-    is a permanent exit 2 saying only that a module is owed. `cratekit.write.rebuild`
-    absent while `cratekit.write.tree_rebuild` exists is a one-word difference
-    invisible in that message.
-
-    This is deliberately a NOTE rather than an assertion. A rule that asserted
-    the mismatch was measured and rejected: it is a substring heuristic, and
-    `cratekit.core.restore` is U32's live key today, so it would have gone red
-    against a unit that did nothing wrong. And the failure was never silent to
-    begin with, because a register entry keeps its unit owed for as long as the
-    entry sits in the file, so Rule B refuses in either merge order. All the note
-    does is move the diagnosis earlier, which is worth nothing if it costs a
-    false positive and worth having if it costs none.
-
-    RE-AIMED AT THE U59 MERGE, AND THE OLD SHAPE IS WORTH NAMING. It owed
-    `cratekit.write.rebuild` and WROTE `src/cratekit/write/tree_rebuild.py` into
-    the real package to play the sibling. Both halves expired: U36 landed
-    `rebuild.py`, so the owed module now exists and `_near_misses` correctly
-    short-circuits before it ever looks for a sibling, and the test went red
-    holding a green rule. It is re-aimed rather than patched, because a test that
-    creates a file inside `src/` to make its own premise true is one interrupted
-    run away from leaving that file behind, and the merged tree supplies the
-    same shape for free: `cratekit.write.routing` is genuinely absent and
-    `routing_cli` and `routing_pass` are genuinely beside it. Nothing is written
-    anywhere now, and the measurement is taken on the tree rather than on a
-    fixture authored alongside it.
+    A permanent exit 2 naming an owed ``cratekit.write.rebuild`` hid a one-word
+    difference. An assertion was rejected as a substring heuristic that would fire
+    on U32's live ``cratekit.core.restore``. Measured on the merged tree:
+    ``cratekit.write.routing`` is absent beside ``routing_cli`` and
+    ``routing_pass``, so nothing is written into ``src/``.
     """
     board = _board()
     refusals = board.unresolved_closes(
@@ -926,14 +622,7 @@ def test_a_refusal_names_what_the_package_actually_contains():
 
 
 def test_a_near_miss_note_is_skipped_once_the_owed_module_actually_lands():
-    """The short-circuit, driven, because it is what expired the test above.
-
-    `_near_misses` returns nothing for a module that EXISTS, which is right: a
-    landed module needs no diagnosis. It is asserted here rather than left
-    implicit, because the previous version of the test above depended on this
-    branch never being taken and gave no signal when it started being taken.
-    `cratekit.write.rebuild` is the exact module whose landing caused that.
-    """
+    """``_near_misses`` says nothing once the owed module exists."""
     board = _board()
     assert board._near_misses(["cratekit.write.rebuild"]) == [], (
         "a module that has landed must acquire no note; U36 shipped "
@@ -944,35 +633,16 @@ def test_a_near_miss_note_is_skipped_once_the_owed_module_actually_lands():
 
 # ── Rule B's other half: the audit side, over a graph ────────────────────────
 #
-# `unresolved_closes` above is the check moved BEFORE the close. `contradictions`
-# is the same comparison AFTER it, and it is the whole of what makes `board.py
-# audit` exit 2. R-322 recorded that no test in this suite executed it, and it
-# recorded that as a MEASUREMENT rather than an observation: U59 reverted the
-# unit-to-issue indexing and killed zero, then paired that zero with a composite
-# deleting the closure test entirely, which killed zero as well. Two zeros over
-# one function is not a redundant guard, it is a function with no driver.
-#
-# WHERE THE DOUBLE SITS IS THE WHOLE DECISION, and R-322 asks for it out loud.
-# `contradictions` takes the graph, and the graph comes from `gh`, so something
-# has to be hand built. A hand-built GRAPH is the wrong answer: every derived key
-# on a node, `closed`, `unit`, `open_deps`, `reach`, `unblocks`, would then be
-# typed beside the test rather than produced by the code, which is METHOD's
-# fourth defect pattern exactly, a measurement taken on a fixture authored
-# alongside the thing it justifies. Add a key to `build_graph` and a typed graph
-# goes on passing while the real one has moved.
-#
-# So the double is the PAYLOAD, the list of issue dicts `gh issue list --json`
-# returns, and `build_graph` runs on it for real. That puts the fixture at the one
-# boundary a test here genuinely cannot cross and leaves everything downstream of
-# it under measurement. The payload can still drift from what `load_issues` asks
-# for, and that is the one direction this shape does not close by construction,
-# so it is closed by an assertion instead: the field list is read out of
-# `load_issues`'s own source and compared against the fixture's keys.
+# ``contradictions`` is the comparison AFTER the close, and what makes ``board.py
+# audit`` exit 2; R-322 measured that nothing drove it. The double is the
+# PAYLOAD ``gh issue list --json`` returns, and ``build_graph`` runs on it for
+# real, since a hand-built graph would type every derived key beside the test.
+# The one drift this leaves, the payload against ``load_issues``'s field list,
+# is closed by an assertion that reads the field list from its source.
 
 
-#: The `--json` payload for one issue, exactly as `gh issue list` returns it.
-#: Keys are asserted against `load_issues` in the test directly below, so this
-#: cannot quietly fall behind the call it is standing in for.
+#: The ``--json`` payload for one issue, as ``gh issue list`` returns it, its
+#: keys checked against ``load_issues`` below.
 def _issue(number: int, title: str, *, closed: bool, unit: bool, body: str = "") -> dict:
     return {
         "number": number,
@@ -984,24 +654,11 @@ def _issue(number: int, title: str, *, closed: bool, unit: bool, body: str = "")
 
 
 def test_the_graph_double_carries_exactly_the_fields_load_issues_asks_gh_for():
-    """The one way the payload double can drift, closed by reading the producer.
+    """The payload double carries exactly the fields ``load_issues`` asks ``gh`` for.
 
-    Building the double at the network boundary means `build_graph` is measured
-    rather than mimicked, and it leaves precisely one gap: the payload itself
-    could stop resembling what `gh` is asked for. A field added to `load_issues`
-    and not to `_issue` would make every test below run against an issue shape
-    that no longer exists, and they would all still pass, because `build_graph`
-    only reads the keys it reads today.
-
-    So the field list is taken from the call rather than restated, by finding the
-    string that FOLLOWS the `--json` argument in `load_issues`'s own syntax tree.
-    Read structurally rather than by a pattern over the field names, because a
-    pattern has to describe what a field name looks like and would then be
-    asserting its own vocabulary: the first version matched `[a-z,]*`, which
-    cannot express `closedAt` or `stateReason`, so adding one of gh's camelCase
-    fields would have failed this test with a message about the literal no longer
-    being findable rather than about the double having drifted. A wrong diagnosis
-    sends the reader to the wrong file.
+    Read structurally from the string after ``--json`` in its syntax tree, not by
+    a pattern over field names, which could not express ``closedAt`` and would
+    misdiagnose a drift.
     """
     board = _board()
     source = (TESTS_DIR.parent / "scripts" / "board.py").read_text()
@@ -1034,32 +691,13 @@ def test_the_graph_double_carries_exactly_the_fields_load_issues_asks_gh_for():
 
 
 def test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on():
-    """The detector, driven. R-322 is the finding that nothing drove it.
+    """The detector, driven (R-322): a closed unit a register still owes is the exit 2 case.
 
-    Four cases in one graph, because the function's two failure directions are
-    reached by different nodes and a graph holding only the positive case cannot
-    see either of them.
-
-    THE MISMATCHED NUMBER IS THE POINT. A register names a UNIT and the graph is
-    keyed by ISSUE, and here U38 is issue #51 exactly as it is on the real board.
-    Issue #38 is present too and belongs to a different unit that nothing owes, so
-    reading the register's unit number as an issue number reports the wrong unit
-    AND misses the right one, which is what the fixed code stopped doing and what
-    `B5_contradictions_by_number` puts back.
-
-    THE OPEN UNIT IS THE OTHER DIRECTION. U61 is owed a module and its issue is
-    still open, which is not a contradiction at all: a register owing an open unit
-    is the register working. Reporting it would teach a session that exit 2 is
-    noise, which is the failure R-115 already bought a rule for.
-
-    NO NODE HERE IS TITLED LIKE A RESIDUAL, and that is load bearing rather than
-    incidental. `contradictions` composes the register comparison with
-    `repointed_residuals`, which reads the real ledger from a path it computes
-    itself, so a graph carrying an `R-n:` title makes this test's answer depend on
-    a fourteen thousand line document nobody edited for it. The first draft used
-    `R-4` for the non-unit node and picked up a real repoint finding on the second
-    assertion. The attended-chore title exercises the same node shape, a board
-    item that is not a unit, and drags nothing in with it.
+    Four cases in one graph. U38 is issue #51 as on the real board and issue #38
+    belongs to another unit, so reading a unit number as an issue reports the
+    wrong unit and misses the right one. An open owed unit (U61) is no
+    contradiction (R-115). No node is titled like a residual, since
+    ``repointed_residuals`` reads the real ledger.
     """
     board = _board()
     graph = board.build_graph(
@@ -1101,14 +739,9 @@ def test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exit
 
 
 def test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash():
-    """The branch that exists because the mapping can simply be absent.
+    """A register owing a unit with no issue at all is silence, not a crash.
 
-    A unit number in a register need not appear on the board: a title can be
-    edited, an issue can be transferred, and `units_by_issue_number` DROPS a unit
-    two issues both claim, which is a deliberate absence rather than an accident.
-    None of those is a contradiction and none of them may be a traceback either,
-    because `audit` is the command a session runs before it stops and an audit
-    that raises reports nothing about the drift it had already found.
+    Titles change, issues move and duplicates are dropped; ``audit`` must still report.
     """
     board = _board()
     graph = board.build_graph(
@@ -1131,19 +764,9 @@ def test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash():
 
 
 def test_a_repointed_residual_issue_is_reported_through_the_same_call(monkeypatch):
-    """The other half of what `contradictions` returns, and it was undriven too.
+    """A repointed residual issue is reported through the same ``contradictions`` call.
 
-    A residual's number lives in its ISSUE TITLE, which is a surface the
-    repository cannot see, and the composed return is what carries that finding to
-    `audit`. Dropping the second term would leave the function reporting only
-    register contradictions with nothing anywhere saying the residual check had
-    stopped happening.
-
-    The document is supplied rather than read. Its real headings are append only
-    and would serve, but a test that asserts over the live ledger is a test whose
-    premise moves whenever somebody files a finding, and what is in question here
-    is the comparison, not the parse. The parse is pinned separately below,
-    against the real file, where the append-only rule makes that safe.
+    The document is supplied, so the comparison is tested, not the live ledger.
     """
     board = _board()
     graph = board.build_graph(
@@ -1174,16 +797,10 @@ def test_a_repointed_residual_issue_is_reported_through_the_same_call(monkeypatc
 
 
 def test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it(monkeypatch):
-    """The default branch, which every test above routes around by supplying `owed`.
+    """With no ``owed`` supplied the live register is read, the only path ``cmd_audit`` takes.
 
-    Making the register injectable is what lets these tests say the same thing
-    next year, and it opens a hole one call frame up: `cmd_audit` supplies
-    nothing, so the default read is the only path production takes, and a
-    supplied-register driver cannot see it. `owed = owed or {}` in place of the
-    `is None` test keeps the whole battery green while `board.py audit` stops
-    reporting register contradictions entirely and returns 0 where it owes 2.
-    That is R-322's own failure shape, moved up a frame by the fix for it, so the
-    default is driven here rather than assumed.
+    ``owed = owed or {}`` would keep every other test green while ``audit``
+    stopped reporting, R-322's own failure one frame up.
     """
     board = _board()
     graph = board.build_graph(
@@ -1203,24 +820,10 @@ def test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it(monkey
 
 
 def test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1(monkeypatch):
-    """The exit code the whole rule rests on, which nothing asserted.
+    """``audit`` exits 2 on a contradiction and 1 on drift, as ``CLAUDE.md`` tells sessions.
 
-    `CLAUDE.md` tells a session that exit 1 is drift a sync repairs and exit 2 is
-    a contradiction it will not, and every instruction about what to do next
-    branches on which one it got. The number was written down in one place and
-    read in none.
-
-    IT WAS RECORDED AS UNREACHABLE, AND THAT WAS WRONG. This task's first row
-    file dropped the row over this line on the grounds that `cmd_audit` shells
-    out to `gh` for the issue list, so it could not run without a token. Every
-    name it calls is module level, this file already replaces `owed_by_unit` and
-    `residual_titles` the same way, and `_board()` hands back a fresh module per
-    call so nothing leaks. A limitation asserted into a fact is the exact error
-    this file's own closing-spelling table was written to correct.
-
-    NO NODE IS TITLED LIKE A RESIDUAL, for the reason the driver above gives:
-    `repointed_residuals` reads the real ledger and would otherwise decide this
-    test's exit code.
+    Every name ``cmd_audit`` calls is module level and replaced here, so it runs
+    without ``gh``. No node is titled like a residual, as above.
     """
     board = _board()
     payload = [
@@ -1254,16 +857,10 @@ def test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1(monkeyp
 
 
 def test_the_residual_heading_reader_reads_the_document_as_it_is_written():
-    """The parse, pinned on the tree rather than on a double.
+    """The residual heading reader, pinned on the real document.
 
-    `residual_titles` reads `docs/residual-findings.md` from a path it computes
-    itself, so the only way to drive it honestly is against the real document.
-    That is normally the wrong shape, since a test keyed to today's content passes
-    for reasons unrelated to the code. It is the RIGHT shape here for one specific
-    reason: residual numbers are append only by rule, and a renumber is forbidden
-    precisely because issue titles carry these numbers. R-322's heading says the
-    same thing next year as it does today, or a rule this project treats as
-    absolute has been broken and a red test is the correct response.
+    Safe on live content only because residual numbers are append only: R-322's
+    heading reads the same next year, or an absolute rule was broken.
     """
     board = _board()
     titles = board.residual_titles()
@@ -1276,12 +873,7 @@ def test_the_residual_heading_reader_reads_the_document_as_it_is_written():
 
 
 class _ClosingArgs:
-    """The namespace `cmd_closing` reads, built here rather than through argparse.
-
-    Going through `main()` would drive the parser as well, and the parser is not
-    what is in question: what is untested is the GIT READING, which is the whole
-    of the CI path.
-    """
+    """The namespace ``cmd_closing`` reads, built here: the git reading is under test."""
 
     def __init__(self, *, since=None, message_file=None, pull_request_head=None):
         self.since = since
@@ -1292,9 +884,8 @@ class _ClosingArgs:
 def _seeded_repo(root: Path):
     """A throwaway git repository with one commit, and a runner bound to it.
 
-    `--no-verify` throughout, because this repository's own commit-msg hook is
-    the thing under test and a fixture that inherited it through a global hooks
-    path would be measuring the hook rather than the function.
+    ``--no-verify`` throughout, so a global hooks path cannot put the hook under
+    test into the fixture.
     """
     import subprocess
 
@@ -1326,19 +917,11 @@ def _seeded_repo(root: Path):
 def test_every_spelling_is_refused_through_a_real_commit_range(
     message, tmp_path, monkeypatch
 ):
-    """The CI path, driven, and until now it was asserted only as source text.
+    """The CI path, driven through a real commit range with ``raw=False``.
 
-    `test_every_spelling_github_closes_on_is_refused` hands `unresolved_closes` a
-    string. That proves the regular expressions and nothing about the subcommand
-    CI actually runs, which shells out to `git log --format=%B base..HEAD` and
-    passes `raw=False`. Two things live only on this path and were driven
-    nowhere: whether a real commit body survives the round trip through git at
-    all, and the `raw=False` decision, which is the one that must NOT strip, on
-    the grounds that a `#`-leading body line is a real trailer git keeps.
-
-    The owed register is supplied rather than read off this repository. A test
-    keyed to whatever `main` happens to owe today passes for a reason that has
-    nothing to do with the code and fails the day somebody discharges a marker.
+    The string test above proves the patterns only; a real body's round trip
+    through git and the no-strip decision live here. The owed register is
+    supplied, so the test does not depend on what ``main`` owes today.
     """
     board = _board()
     repo = tmp_path / "fixture"
@@ -1361,14 +944,7 @@ def test_every_spelling_is_refused_through_a_real_commit_range(
 
 
 def test_a_hash_leading_body_line_survives_the_range_check(tmp_path, monkeypatch):
-    """The asymmetry that made `raw` a parameter, driven on the path it protects.
-
-    Git's `whitespace` cleanup, which `-F` and `-m` use, KEEPS a body line
-    beginning with `#`. So a real trailer can reach history on such a line, and
-    stripping comments on the range path would delete it and report clean. That
-    is the CI path, the copy this repository calls the load-bearing one, so the
-    strip would have done its only possible harm in the place it mattered most.
-    """
+    """A ``#``-leading body line is a real trailer git keeps, and the range check reads it."""
     board = _board()
     repo = tmp_path / "fixture"
     run, base = _seeded_repo(repo)
@@ -1401,13 +977,7 @@ def test_a_hash_leading_body_line_survives_the_range_check(tmp_path, monkeypatch
 def test_an_unreadable_commit_range_is_nothing_to_judge_rather_than_a_refusal(
     tmp_path, monkeypatch
 ):
-    """A check that fails where it cannot read is a check somebody deletes.
-
-    CI fetches to a fixed depth and takes the merge base, and on a shallow clone
-    that ref may simply not be there. Exit 0 with a sentence is the designed
-    answer, and it is asserted here so that turning it into a refusal, or into a
-    traceback, fails a row.
-    """
+    """An unreadable range, as on a shallow clone, exits 0 with a sentence."""
     board = _board()
     empty = tmp_path / "not-a-repo"
     empty.mkdir()
@@ -1416,23 +986,13 @@ def test_an_unreadable_commit_range_is_nothing_to_judge_rather_than_a_refusal(
 
 
 def test_a_missing_message_file_refuses_with_a_sentence_not_a_traceback(tmp_path):
-    """The hook path's bad invocation, which surfaces in place of the editor.
-
-    An unhandled exception inside a commit-msg hook reads to the person running
-    it as the tool being broken rather than the invocation being wrong, and the
-    remedy they reach for is uninstalling the hook.
-    """
+    """A missing message file refuses with a sentence, since a hook traceback gets uninstalled."""
     board = _board()
     assert board.cmd_closing(_ClosingArgs(message_file=str(tmp_path / "nope"))) == 1
 
 
 def test_the_message_file_path_reads_the_file_and_refuses_on_it(tmp_path, monkeypatch):
-    """The hook path end to end, including the pre-cleanup strip it owes.
-
-    The template comment and the scissors block are what the hook sees and CI
-    never does, so this is the one path where stripping is correct. Both are in
-    the fixture, and the real trailer sits above them.
-    """
+    """The hook path end to end, stripping the template comment and scissors block it owes."""
     board = _board()
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text(
@@ -1479,13 +1039,7 @@ def _branch_commit(tmp_path):
 
 
 def test_a_pull_request_range_closing_a_unit_still_owed_is_refused(tmp_path, monkeypatch):
-    """The trailer a merge will write is in no commit, so the head branch names it.
-
-    Units reach main through a pull request since U158, and the merge commit
-    that carries the closing trailer is written by the merge, after CI has
-    answered. A check that read only the range would pass every such pull
-    request, so the card its `cloud/N-slug` head names is judged as closed.
-    """
+    """The merge writes the trailer after CI, so the card a ``cloud/N-slug`` head names is judged."""
     board = _board()
     repo, base = _branch_commit(tmp_path)
     _owed_36(board, monkeypatch)
