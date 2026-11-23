@@ -194,6 +194,26 @@ def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypat
     assert order == ["warmed", "decoded"]
 
 
+def test_the_energy_measure_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
+    """U344, closing R-1491: the restamp's and calibrate's measure is warmed as a head is."""
+    import types
+
+    from cratekit.analysis import energy
+
+    order: list[str] = []
+    stand_in = types.ModuleType("librosa")
+
+    def load(*args, **kwargs):
+        order.append("decoded")
+        raise RuntimeError("no such file")
+
+    stand_in.load = load
+    monkeypatch.setitem(sys.modules, "librosa", stand_in)
+    monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
+    assert energy.features_from_path(tmp_path / "missing.flac") is None
+    assert order == ["warmed", "decoded"]
+
+
 def _audio(folder: Path) -> list[Path]:
     """A stinger, a drum track, a pad with no pulse, and one long enough for windows."""
     np = pytest.importorskip("numpy")
@@ -250,6 +270,8 @@ calibration = energy.calibrate(
 for path in sys.argv[1:]:
     for key in detect.KEY_METHODS:
         detect.analyse_file(Path(path), calibration=calibration, key=key)
+    # The restamp's and calibrate's measure, which the head now scores through (U344).
+    energy.features_from_path(Path(path))
     vocal.decode(path)
 """
 

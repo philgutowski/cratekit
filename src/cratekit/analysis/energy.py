@@ -241,8 +241,14 @@ def features_from_path(path: Path) -> dict[str, float] | None:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
-    from cratekit.analysis import decode
+    from cratekit.analysis import decode, warm
 
+    # THE PROCESS'S KERNELS ARE WARMED FIRST, as before every head (U344): a
+    # numba kernel keeps the code it was first compiled to, and the slice's
+    # beat concentration differed in its last bits between a process that
+    # measured a head first and one that measured energy first, so a run
+    # scored in a worker and a restamp in the driver could disagree.
+    warm.kernels()
     # THROUGH THE ONE DECODER (U263).
     try:
         offset = 0.0
