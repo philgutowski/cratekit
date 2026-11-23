@@ -73,11 +73,8 @@ def test_the_skill_passes_the_shipped_skills_lint(tmp_path):
 
 
 def test_every_crate_command_it_names_parses(text):
-    """Anti vacuity for the lint, whose parse reads only fenced and indented lines.
-
-    Each inline crate span goes through the lint's own parse, so a renamed verb
-    or flag under it fails.
-    """
+    """Anti vacuity for the lint: each inline crate span goes through its parse, so
+    a renamed verb or flag fails."""
     spans = _spans(text)
     worker = _spans(WORKER.read_text())
     assert {

@@ -46,11 +46,8 @@ class _Response:
 
 
 def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
-    """The shipped fetch over a getter answering Beatport and Discogs by URL.
-
-    ``beatport`` is one reply or a list, one per request; ``discogs`` is a miss
-    when not given.
-    """
+    """The shipped fetch over a getter answering by URL: ``beatport`` one reply or a
+    list, one per request; ``discogs`` a miss when not given."""
     replies = list(beatport) if isinstance(beatport, list) else None
     search = discogs if discogs is not None else _Response(200, results())
 

@@ -1026,10 +1026,7 @@ def test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open(
 def test_a_scenario_file_that_collected_nothing_keeps_the_capture_open(
     tmp_path, monkeypatch, capsys
 ):
-    """A scenario file skipped as it was imported collects nothing, and is caught.
-
-    Every scenario file the run was handed must have left a record.
-    """
+    """A scenario file skipped as it was imported collects nothing, and is caught."""
     out = tmp_path / "out"
     monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
     checkout = _checkout(tmp_path, "write.py", "analysis.py")
@@ -1128,11 +1125,8 @@ def test_a_checkout_with_no_scenario_files_is_refused(tmp_path, capsys, no_run):
 def test_a_run_that_failed_with_every_record_written_is_not_a_capture(
     tmp_path, monkeypatch, capsys
 ):
-    """Every scenario recorded and listed, and the run still exited 1.
-
-    A fixture failing at teardown does this, so the run's exit code alone says
-    a scenario went wrong (U297's mutation table found nothing held it).
-    """
+    """Every scenario recorded, and the run still exited 1, as a fixture failing at
+    teardown does: the exit code alone says it (U297)."""
     out = tmp_path / "out"
     passing = _passing_run(out, tmp_path, ["write/route"])
 
@@ -1314,10 +1308,8 @@ def test_fails_after_a_command(stage):
 
 
 def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
-    """The stage's fixtures around a scratch scenario file, in a run of their own.
-
-    The file lives outside the repository, so both conftests load as plugins.
-    """
+    """The stage's fixtures around a scratch scenario file outside the repository,
+    in a run of their own with both conftests as plugins."""
     scenarios = tmp_path / "scenarios"
     scenarios.mkdir(exist_ok=True)
     (scenarios / "wired.py").write_text(WIRED_SCENARIOS, encoding="utf-8")
@@ -1447,10 +1439,8 @@ def test_the_pins_hold_the_clock_and_count_the_ids_and_come_off_again():
 
 
 def test_a_reference_that_outlives_the_pins_is_the_real_thing_again():
-    """A default argument bound while pinned does not keep the pinned clock.
-
-    Each pinned name asks whether the pins are on every time it is called.
-    """
+    """A default argument bound while pinned does not keep the pinned clock: each
+    pinned name asks whether the pins are on every call."""
     with pytest.MonkeyPatch.context() as patch:
         unpin = behaviour.pin(patch)
 
@@ -1533,11 +1523,8 @@ def test_the_process_is_known_by_its_id_and_its_start_as_the_product_spells_them
 
 
 def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
-    """Every shipped scenario, run twice by the script itself, in two processes.
-
-    Under one root and against the working tree both times, so a capture depends
-    on nothing but the tree it ran; red when a scenario prints something unpinned.
-    """
+    """Every shipped scenario, run twice by the script in two processes under one
+    root: a capture depends on nothing but the tree it ran."""
     root = tmp_path / "root"
     captures = []
     for name in ("first", "second"):

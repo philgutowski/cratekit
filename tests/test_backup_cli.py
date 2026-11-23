@@ -941,11 +941,8 @@ def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
 
 
 def test_a_queued_real_backup_runs_every_portion_and_reports_what_it_did(cfg, rclone):
-    """One queued real backup, driven through the real resume end to end (R-198).
-
-    Every portion runs and publishes its age (R9, R15), ``job show`` names the
-    argv (R-349), and no warning word appears, which the warning drives rely on.
-    """
+    """One queued real backup through the real resume (R-198): every age published
+    (R9, R15), ``job show`` names the argv (R-349), and no warning word appears."""
     code, queued = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), queued
     job_id = queued["data"]["job_id"]
@@ -1220,11 +1217,8 @@ def test_the_ages_reported_are_the_ones_this_job_published(
 
 
 class _ArchiveRemote:
-    """A runner that holds the dated archive folders, the way a remote does.
-
-    A mirror writes the folder its ``--backup-dir`` names, a listing reads the
-    set back and a purge removes from it, which the stand-in cannot show.
-    """
+    """A runner that holds the dated archive folders the way a remote does, which
+    the stand-in cannot show."""
 
     def __init__(self, *folders: str) -> None:
         self.folders = set(folders)
@@ -1761,11 +1755,8 @@ def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch
 
 
 def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
-    """The flag lives on ``BackupOutcome``, read off the outcome the engine returned.
-
-    The engine couples ``dry_run`` to publishing, so the outcome records the run
-    that happened, and no renderer needs the flag handed to it separately.
-    """
+    """The flag lives on ``BackupOutcome``, read off what the engine returned, so it
+    records the run that happened."""
     plan = backup.plan_backup(cfg, now=MOMENT)
     rehearsed = backup.run_backup(
         cfg, plan, runner=_answering(0), now=MOMENT, dry_run=True

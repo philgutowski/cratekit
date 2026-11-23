@@ -210,11 +210,8 @@ def test_both_adopt_keys_resolve_to_a_worker():
 
 
 def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine, monkeypatch):
-    """Pending to done through the real resume argv, counted from the artifacts.
-
-    The worker gets the frozen configuration (KTD9), and the active taxonomy is
-    parsed once however many rows the census drives (U247).
-    """
+    """Pending to done through the real resume argv, counted from the artifacts, on the
+    frozen configuration (KTD9), the taxonomy parsed once per census (U247)."""
     text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
     _active_copy(machine, text)
     parses = counted(monkeypatch)
@@ -361,9 +358,8 @@ def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
 def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monkeypatch):
     """The happy path, read back from the database rather than from the report.
 
-    No tag and every file's bytes kept (R16), the actor in the payload (R34), one
-    capture per job (KTD6); a second run adds no row, and a taxonomy with no
-    favourites class names the Favorites step's refusal (U132).
+    No tag and every byte kept (R16), the actor in the payload (R34), one capture
+    per job (KTD6), a second run adds no row, and no favourites class refuses (U132).
     """
     from cratekit.core import active_taxonomy
     from cratekit.write import genre_favorites, trees

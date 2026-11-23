@@ -99,11 +99,8 @@ def _name_of(node: ast.AST) -> str | None:
 
 
 def test_no_shipped_caller_of_the_detector_names_a_key_method():
-    """Every module of the package reads the key the default's way, read from source.
-
-    Only the detector, passing its own argument on, and the measuring scripts'
-    ``--key`` name a method.
-    """
+    """Every module reads the key the default's way, read from source; only the
+    detector and the measuring scripts' ``--key`` name a method."""
     package = REPO_ROOT / "src" / "cratekit"
     named: list[str] = []
     seen = 0
@@ -327,10 +324,8 @@ def test_the_default_profile_is_the_plain_chroma_bit_for_bit():
 
 
 def test_nothing_but_the_key_moves_for_a_track_both_methods_key(tmp_path):
-    """For a track both methods key, tempo, drift, its verdict, energy and its status agree.
-
-    Whether a track is keyed can move, as a click file keyless under whole.
-    """
+    """For a track both methods key, tempo, drift, its verdict, energy and its status
+    agree; whether a track is keyed can move."""
     np, soundfile = _extra()
     from cratekit.analysis import energy
 

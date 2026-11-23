@@ -148,10 +148,8 @@ def test_the_energy_pass_reads_its_percussive_share_from_the_same_pair():
 
 @pytest.mark.parametrize("scale", [1e-40, 1e-41])
 def test_a_signal_at_the_bottom_of_single_precision_is_split_as_librosa_splits_it(scale):
-    """Where both medians fall under the smallest normal number, the pair is halved, not dropped.
-
-    Digital silence cannot tell a half from a zero, so this signal is what holds it.
-    """
+    """Where both medians fall under the smallest normal, the pair is halved, not
+    dropped, which digital silence cannot show."""
     rng = np.random.default_rng(7)
     faint = (scale * rng.standard_normal(RATE * 2)).astype(np.float32)
     assert np.count_nonzero(faint) > faint.size // 2

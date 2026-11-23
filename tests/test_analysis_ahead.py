@@ -38,10 +38,8 @@ DRIVER = "CRATEKIT_AHEAD_DRIVER"
 
 
 def fake_head(path: Path) -> dict | None:
-    """A head read off the file's name, marked with who read it.
-
-    ``slow``, ``dies``, ``raises``, ``keyless`` and ``broken`` act as they say.
-    """
+    """A head read off the file's name, marked with who read it; ``slow``, ``dies``,
+    ``raises``, ``keyless`` and ``broken`` act as they say."""
     name = path.name
     in_a_worker = str(os.getpid()) != os.environ.get(DRIVER, "")
     marks = os.environ.get(SEEN)
@@ -883,10 +881,8 @@ def test_each_measured_mac_peak_is_under_what_its_length_declares(seconds, peak)
 
 
 def test_the_declared_line_keeps_the_linux_margin_over_the_macs_measured_line():
-    """A ninth over the steeper measured slope, an eighth over the higher intercept.
-
-    Linux measured 1.35 MB a second and an intercept of 284; declared 1.5 and 320.
-    """
+    """A ninth over the steeper measured slope (1.35 MB a second, declared 1.5), an
+    eighth over the higher intercept (284, declared 320)."""
     lines = _line_through(MAC_PEAKS)
     slope = max(s for s, _ in lines)
     intercept = max(i for _, i in lines)

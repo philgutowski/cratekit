@@ -72,11 +72,8 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def configured(library, monkeypatch):
-    """A set up machine, so a verb reaches its own logic.
-
-    The disposable database is the R-13 substitute; volume identity and the two
-    process refusal are satisfied, since ``delete.review`` asserts both.
-    """
+    """A set up machine on the R-13 disposable database, so a verb reaches its own
+    logic; volume identity and the two process refusal are satisfied."""
     from cratekit.core import preflight, rb_writer
     from tests.test_rb_writer_db import _build_disposable_database
 
@@ -292,10 +289,8 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
 def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs(
     remedy, forbidden
 ):
-    """U97, R-411: both provider session tokens name three acts, not a dead end login.
-
-    Pinned against literal text, since a renderer compared to itself proves nothing.
-    """
+    """U97, R-411: both provider session tokens name three acts, not a dead end login,
+    pinned as literal text since a renderer compared to itself proves nothing."""
     line = render.remediation_line(
         Cause(
             reason="credential-missing",
@@ -370,10 +365,8 @@ def test_an_unrecorded_application_pin_refuses_rather_than_adopting_what_is_inst
 
 
 def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
-    """An unreadable cloud state and an active one are different failures (S4).
-
-    One is switched off elsewhere; the other needs a person to decide.
-    """
+    """An unreadable cloud state and an active one are different failures (S4): one
+    is switched off elsewhere, the other needs a person to decide."""
     unreadable, active = REASONS["cloud-sync-unreadable"], REASONS["cloud-sync-active"]
     assert unreadable is not active
     assert meaning_of(unreadable).remedy is not meaning_of(active).remedy
@@ -854,10 +847,8 @@ def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
 
 
 def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
-    """The unreadable cloud sync override is a declared gate a user can answer.
-
-    Looked up through the registry, since a spec built in the test proves nothing.
-    """
+    """The unreadable cloud sync override is a declared gate a user can answer,
+    looked up through the registry."""
     owner, spec = registry.gate("write.cloudsync.unreadable")
     assert spec.explicit, (
         "R34 forbids a blanket answer for this class: proceeding past a guard "
@@ -892,10 +883,8 @@ def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
 
 
 def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
-    """D2: the core writer and its parts (R-1890) name no verb, gate or flag.
-
-    The override crosses into the writer as a boolean; naming it is the CLI's.
-    """
+    """D2: the core writer and its parts (R-1890) name no verb, gate or flag; the
+    override crosses in as a boolean."""
     from tests._split_modules import source_of
 
     source = source_of("cratekit.core.rb_writer")
@@ -1114,10 +1103,8 @@ def test_the_registry_is_the_source_of_the_verb_names_the_layering_guard_reads()
 
 
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
-    """A planned verb whose module has landed must lose its ``planned_in`` marker.
-
-    Walked rather than parametrized, so an empty set is a valid population (P3).
-    """
+    """A planned verb whose module has landed loses its ``planned_in`` marker, walked
+    so an empty set is a valid population (P3)."""
     import importlib.util
 
     leftover = []
@@ -1145,8 +1132,8 @@ EXPECTED_COMPARED: frozenset[str] = frozenset()
 def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
     """``Entry.planned_in`` and ``tests/_pending.PENDING`` name the same unit.
 
-    They drifted once, leaving an obligation on a closed unit. Compared over the
-    intersection; the anti vacuity guard reads the list the comparison reads.
+    They drifted once. Compared over the intersection; the anti vacuity guard
+    reads the list the comparison reads.
     """
     from tests import _pending  # noqa: PLC0415
 
@@ -1182,11 +1169,8 @@ LANDED = [e for e in ALL_ENTRIES if e.landed]
 
 
 def test_a_handler_key_resolves_without_importing_the_module():
-    """KTD26: a handler key resolves without importing its module.
-
-    Measured in a fresh interpreter that imported only the registry, the state the
-    supervisor is in; here the feature modules are already imported.
-    """
+    """KTD26: a handler key resolves without importing its module, measured in a
+    fresh interpreter that imported only the registry, as the supervisor has."""
     result = _import_probe.run_probe(
         """
         import json, sys
@@ -1595,10 +1579,8 @@ def _run_retire_over_one_old_gate() -> list[str]:
 
 
 def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
-    """A named local recording, so U129's account gate fires before recognition.
-
-    tests/test_u129_set_account_playlist.py drives the writing path.
-    """
+    """A named local recording, so U129's account gate fires before recognition;
+    tests/test_u129_set_account_playlist.py drives the writing path."""
     from cratekit.core import secrets
     from cratekit.intake import acrcloud
     from cratekit.label import catalogue
@@ -2408,10 +2390,8 @@ def _require_every_gate(ctx):
 def test_conformance_3_admits_a_verb_carrying_two_gates(
     explicit_first, configured, monkeypatch
 ):
-    """Assertion 3 admits a verb carrying two gates, in both orderings.
-
-    Only the handler is synthetic; the rest of the path is shipped.
-    """
+    """Assertion 3 admits a verb carrying two gates, in both orderings; only the
+    handler is synthetic."""
     base = registry.entry("profile.set")
     first = replace(base.gates[0], explicit=explicit_first)
     promoted = replace(base, gates=(first, _SECOND_GATE))
@@ -3180,10 +3160,8 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """The exempt gates are exactly the intended set; another is a decision.
-
-    Each is driven in its own suite; self expiry is proved by the tests above.
-    """
+    """The exempt gates are exactly the intended set; another is a decision, and
+    each is driven in its own suite."""
     assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
         f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file "
         f"declares {sorted(EXPECTED_UNREACHABLE_GATES)}. Every entry here is a "

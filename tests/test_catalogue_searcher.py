@@ -54,10 +54,8 @@ def _source_genre_for(*, sub: bool) -> str:
 
 
 def _source_genre_aliasing_to_the_fallback() -> str:
-    """A vendor string the template aliases onto the fallback bucket's display.
-
-    Read out of the alias table, so it cannot outlive the template (AE5).
-    """
+    """A vendor string aliased onto the fallback bucket's display, read out of the
+    alias table so it cannot outlive the template (AE5)."""
     fallback = TAXONOMY.fallback.bucket
     for key, (bucket_id, _sub_id) in TAXONOMY._tagging_alias.items():  # noqa: SLF001
         if bucket_id != fallback:
@@ -403,10 +401,8 @@ def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, wr
 
 
 def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
-    """One file gets one disposition, and a decline outranks the flag.
-
-    The producer is a different taxonomy, one a person editing the template can make.
-    """
+    """One file gets one disposition, and a decline outranks the flag, under a
+    taxonomy a person can make."""
     template = (
         Path(__file__).parent / "taxonomies" / "second.toml"
     ).read_text(encoding="utf-8")
@@ -575,11 +571,8 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 
 
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
-    """A cover from a different row is the wrong cover, the hazard the brief names.
-
-    The first row has a picture and no genre; the third loses and is scanned last,
-    so a picture read off the loop's final row shows here.
-    """
+    """A cover from a different row is the wrong cover: the third row loses and is
+    scanned last, so a picture read off the final row shows."""
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
     loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)

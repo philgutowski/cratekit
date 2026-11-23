@@ -276,11 +276,8 @@ def _bits(values) -> list[str]:
 
 @pytest.mark.parametrize("zero_after", [False, True], ids=["0.10-0.11", "1.0"])
 def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
-    """Every value that is not a zero is the correctly rounded half sum.
-
-    The expectation is taken in float64 and rounded once, which the code under
-    test does not compute; overflow, the one place float64 differs, is pinned below.
-    """
+    """Every value that is not a zero is the correctly rounded half sum, taken in
+    float64 and rounded once; overflow, where float64 differs, is pinned below."""
     rng = np.random.default_rng(264)
     frames = 200_003  # odd, so no length is a power of two
     raw = np.frombuffer(rng.integers(0, 2**32, 2 * frames, dtype=np.uint32).tobytes(), "<f4")
@@ -324,11 +321,8 @@ def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
     ],
 )
 def test_a_zero_takes_the_sign_each_measured_release_gives_it(left, right, before_1_0, on_1_0):
-    """The sign of a zero and an overflow are where the ways of mixing differ.
-
-    The expected bits were read from ``librosa.to_mono`` before 1.0 and on 1.0.0;
-    the librosa half checks the installed release against its own.
-    """
+    """The sign of a zero and an overflow are where mixes differ; the bits were read
+    from ``librosa.to_mono`` before 1.0 and on 1.0.0."""
     stereo = np.array([[left], [right]], dtype=np.float32)
     assert _bits(decode._mean_of_two(stereo, zero_after=False)) == [before_1_0]
     assert _bits(decode._mean_of_two(stereo, zero_after=True)) == [on_1_0]

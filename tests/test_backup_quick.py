@@ -122,10 +122,7 @@ class Counting:
         return [command.label for command in self.ran]
 
     def fed(self, label: str, *, fact: bool = False) -> list[str]:
-        """The paths one command was fed, the fact file left out unless asked.
-
-        Every quick run after the first carries the fact file.
-        """
+        """The paths one command was fed, the fact file left out unless asked."""
         (command,) = [c for c in self.ran if c.label == label]
         paths = (command.feed or "").splitlines()
         return paths if fact else [p for p in paths if not p.endswith("backup_facts.json")]
@@ -383,11 +380,8 @@ def test_a_sidecar_that_appeared_is_a_changed_database(cfg, real_rclone):
 def test_no_read_of_the_database_unless_both_processes_are_confirmed_gone(
     cfg, real_rclone, monkeypatch, scan
 ):
-    """The merge blocker: the fingerprint sits below the process check.
-
-    Neither a running nor an unconfirmed scan reaches it, and the database is made
-    unreadable through ``open``, so a read by any other path fails too.
-    """
+    """The merge blocker: no running or unconfirmed scan reaches the fingerprint,
+    and the database is unreadable through ``open`` so any other read fails."""
     _seed(cfg)
     read: list[object] = []
     monkeypatch.setattr(
@@ -677,11 +671,8 @@ def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, real_rclone, t
 
 
 def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, real_rclone, tmp_path):
-    """Round one's R1: a rewrite during the transfer that put its time back.
-
-    The file is inside the racy window, both walks hash it, and the doubt is
-    sent with times ignored.
-    """
+    """Round one's R1: a rewrite during the transfer that put its time back is sent
+    with times ignored, since both walks hashed it."""
     music = _seed(cfg)
     _backup(cfg, at=MOMENT)
     fresh = datetime.fromtimestamp(time.time(), tz=timezone.utc)

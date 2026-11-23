@@ -43,10 +43,8 @@ class _Response:
 
 
 class Host:
-    """A fake image host: per address its answers in order, the last repeated.
-
-    An answer is 200 bytes, an int status or an exception; ``asked`` is every request.
-    """
+    """A fake image host: per address its answers (bytes, a status or an exception) in
+    order, the last repeated; ``asked`` is every request."""
 
     def __init__(self, answers: dict[str, list]) -> None:
         self.answers = {url: list(given) for url, given in answers.items()}

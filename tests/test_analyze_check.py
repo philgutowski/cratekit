@@ -53,10 +53,8 @@ def _tag(kind: bytes, header: bytes, body: bytes = b"") -> bytes:
 
 
 def anlz(tempos: list[int] | None, *, before: bytes = b"") -> bytes:
-    """An analysis file whose beat grid has one tick per tempo, in hundredths.
-
-    ``None`` writes no grid tag; ``before`` is a tag the walk must step over.
-    """
+    """An analysis file whose grid has one tick per tempo, in hundredths; ``None``
+    writes no grid tag, ``before`` is a tag the walk must step over."""
     tags = before
     if tempos is not None:
         ticks = b"".join(

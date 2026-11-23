@@ -393,10 +393,8 @@ def kill_after_the_rename(monkeypatch):
 def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     cfg, folder, silence, monkeypatch
 ):
-    """The kill window between the rename and the row flipping to done.
-
-    The stem is one the template rewrites, so stripping heads would miss it.
-    """
+    """The kill between the rename and the row flipping to done, on a stem the
+    template rewrites, so stripping heads would miss it."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     bind_scoring(monkeypatch)
     job = queued("run", folder)
@@ -899,10 +897,8 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
 
 
 def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
-    """The partial carries a path and never samples, under any key.
-
-    Reading ``result.get("wav")`` scored every track zero with a model loaded.
-    """
+    """The partial carries a path and never samples, under any key; reading
+    ``result.get("wav")`` scored every track zero."""
     tree = ast.parse(VOCALS_SOURCE.read_text(encoding="utf-8"))
     literals = {
         node.value
@@ -1019,10 +1015,8 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
 
 
 def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
-    """``unscored_warning`` counts only the reason an install would mend.
-
-    ``missing_requirement`` is stubbed to keep ``panns_inference`` unimported.
-    """
+    """``unscored_warning`` counts only the reason an install would mend, with
+    ``panns_inference`` kept unimported."""
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
     monkeypatch.setattr(vocals, "missing_requirement", lambda: "the extra is not here")
@@ -1039,10 +1033,8 @@ def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch)
 def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     cfg, folder, silence, monkeypatch
 ):
-    """End to end through the verb, with the cap lowered to a byte.
-
-    The light pass is faked, so this proves the vocal half only (R-583).
-    """
+    """Through the verb with the cap at a byte; the light pass is faked, so this
+    proves the vocal half only (R-583)."""
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)

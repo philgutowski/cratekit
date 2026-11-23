@@ -23,10 +23,8 @@ def _touch_audio(folder: Path, name: str) -> Path:
 
 
 class _FakeModel:
-    """Deterministic stand-in: frame count tracks input length, values track mean.
-
-    Its label table names the targets, since the scorer resolves by name (R-370).
-    """
+    """Deterministic stand-in: frames track input length, values track mean, and its
+    label table names the targets, since the scorer resolves by name (R-370)."""
 
     labels = ("Singing", "Male singing", "Female singing")
 

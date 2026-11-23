@@ -48,11 +48,10 @@ def _nothing_is_running(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _the_machines_own_disk_is_never_read(monkeypatch):
-    """U323: no test here asks the disk it runs on what volume it is.
+    """U323: no test asks the disk it runs on what volume it is.
 
-    On a Mac the platform provider read the temporary library's real UUID and a
-    proven backup refused as foreign. Each test states its identity, and a
-    fallback reached here fails with ``pytest.fail``, which no catch swallows.
+    On a Mac the real UUID made a proven backup refuse as foreign, so each test
+    states its identity, and a fallback fails with ``pytest.fail``.
     """
     reached: list[str] = []
 
@@ -206,11 +205,8 @@ def _on_the_recorded_volume(cfg):
 
 
 def _first_backup(cfg, tmp_path, **identity):
-    """Seed the library and back it up once, completed, onto an empty mirror.
-
-    The identity is the test's to state (U323), the recorded volume by default.
-    A first backup that refuses or skips its files fails here, with its reason.
-    """
+    """Seed the library and back it up once onto an empty mirror, on the test's
+    identity (U323); a first backup that refuses fails here, with its reason."""
     _seed(cfg)
     plan, outcome = _backup(cfg, at=MOMENT, **(identity or _on_the_recorded_volume(cfg)))
     assert outcome.ok, outcome
