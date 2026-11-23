@@ -3,14 +3,14 @@
   "pass_kind": "replay",
   "branch": "HEAD",
   "head": "539638eb",
-  "when": "2026-11-22 21:20 UTC",
+  "when": "2026-11-22 23:21 UTC",
   "valid": true,
   "invalid_reason": "in progress",
   "baseline_collected": 22663,
   "baseline_exit": 1,
-  "pytest_runs": 23,
+  "pytest_runs": 13,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
-  "reused_rows": 8,
+  "reused_rows": 24,
   "known_failures": 251,
   "known_source": ".cloud-battery/baseline.txt",
   "temp_place": "disk",
@@ -833,6 +833,166 @@
       "source": {
         "table": "r368.json",
         "id": "G9_target_beside_a_capture_rollback_is_allowed"
+      }
+    },
+    {
+      "id": "r592-b.B1_step_on_every_failure",
+      "description": "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "83379ecaa5579801",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if not dry_run and half == DATABASE_HALF:",
+      "new": "    if not dry_run:",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B1_step_on_every_failure"
+      }
+    },
+    {
+      "id": "r592-b.B2_step_on_the_wrong_half",
+      "description": "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "07943d8571c8811c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if not dry_run and half == DATABASE_HALF:",
+      "new": "    if not dry_run and half == MIRROR_HALF:",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B2_step_on_the_wrong_half"
+      }
+    },
+    {
+      "id": "r592-b.B4_step_names_the_wrong_directory",
+      "description": "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c411fba0cfdffcd3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        f\"companion of it in {database_target.parent} if one is there, because a \"",
+      "new": "        f\"companion of it in {database_target.parent.parent} if one is there, because a \"",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B4_step_names_the_wrong_directory"
+      }
+    },
+    {
+      "id": "r592-b.B5_step_names_no_file",
+      "description": "rerun_step: say the database rather than its file name, so the step does not say which file to remove",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ed2455aa7e8f73c6",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"before running the recovery again, remove {database_target.name} and any \"",
+      "new": "        f\"before running the recovery again, remove the database and any \"",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B5_step_names_no_file"
+      }
+    },
+    {
+      "id": "r592-b.B7_sample_halves_split",
+      "description": "SAMPLE, existing guard: _halves hands the whole plan to the mirror half, so a failed mirror lands the database behind it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9696d68a5f6db67c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)",
+      "new": "    mirror = tuple(decided.commands)",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B7_sample_halves_split"
       }
     }
   ],
