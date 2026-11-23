@@ -1307,7 +1307,12 @@ crate inbox rotate
 - `route resort` shows every addition at `route.resort.apply` and files only
   the routing tree; the old membership stays and is named. `crate adopt move`
   moves a track from the sub it holds to the one its file names, adding
-  before removing.
+  before removing. After `tag set` it also takes each row that run gave a new
+  genre out of the genre folder the tree filed it in under its old genre, and
+  into the new genre folder's energy band when `adopt apply` has not filed it
+  there yet; a `with vox` or Favorites membership in the old folder stays. Only
+  that folder is asked, and only for rows `tag set` changed, so
+  a track you put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`.
 - Audits and reports are read only. `audit duplicates` never deletes and
@@ -1334,12 +1339,43 @@ writes their genre tags.
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
 | `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
+
+**Giving chosen tracks another genre.** `tag set GENRE` is for tracks you
+decide belong in another genre folder, whatever genre they carry now. Name the
+rows by content identifier (`--row`, repeatable), by a file of identifiers one
+a line (`--rows-from`, blank lines and anything after a `#` skipped), or by a
+playlist's path from the top of the tree, each name joined by ` / `
+(`--playlist "INBOX / Picks"`); a folder whose own name holds ` / `, as a genre
+folder's often does, is written as it is (`--playlist "BY GENRE + ENERGY /
+House / Funky House / Disco / High"`). A path that names no plain playlist, or
+two nodes, refuses. The genre must be one the taxonomy
+declares as a genre folder files by, and is refused before anything is read
+otherwise. It reads the backup acknowledgment, then shows every named row with
+its genre on the row and the file, what changes, and the genre folder it leaves
+(the one the tree files it in under its old genre) at an explicit gate
+(`tag.set.confirm`); a row is left and named when it has left the collection,
+its file is missing or unreadable, its file holds several genres, it already
+carries the genre on both, or `--leave CONTENT_ID` holds it. The run that
+applies takes the plan again and refuses `decision-stale` if anything moved.
+It writes the file's genre tag and then the row's genre and nothing else.
+When the library has no genre row for the word yet, it writes nothing on any
+file or row and says so (`set-genre-has-no-row`): give one track that genre in
+rekordbox, which makes the row, then run it again. A file that will not
+take the genre keeps its row's old genre and the run ends refused under
+`tag-set-unwritten` after the rest landed. A restore of the run's session puts
+the rows back and each file's old genre. Then run `crate adopt apply`, which
+files each row in the new genre folder by its energy band, and, where the gate
+showed a row leaving a genre folder, `crate adopt move`, which takes it out of
+that folder's energy band; the run's answer names what applies. A `with vox`
+or Favorites membership the row holds in the old folder stays, and the answer
+says so: remove it in rekordbox.
 
 **A second genre folder.** A track can sit in a second genre folder of BY
 GENRE + ENERGY beside the one its genre names, with its energy band in each.
@@ -1634,8 +1670,8 @@ it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 
 **Restore** puts the database and its coupled state back to a recorded write
 session. It does not undo values written into audio files, with one
-exception: the title tag and key tag an `analyze adopt` session kept are put
-back, for that session and for every session after it, committed or not, the
+exception: the title tag and key tag an `analyze adopt` session kept, and the
+genre a `tag set` session kept, are put back, for that session and for every session after it, committed or not, the
 earliest kept value winning, before the restore says it finished. A file that
 does not take its old tags back is named and the restore ends refused under
 `restore-tags-unwritten`; run the same restore again once it can be written.
@@ -1711,6 +1747,7 @@ without one.
 | `analyze.adopt.confirm` | apply | `analyze adopt` |
 | `tag.remap.confirm` | apply | `tag remap` |
 | `tag.suggest.confirm` | apply | `tag suggest` |
+| `tag.set.confirm` | apply | `tag set` |
 | `tag.second.confirm` | apply | `tag second` |
 | `tag.campaign.approve` | apply | `tag campaign` |
 | `taxonomy.upgrade.apply` | approve | `taxonomy upgrade` |
