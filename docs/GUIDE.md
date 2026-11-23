@@ -1389,9 +1389,14 @@ moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
 band there, never a place `adopt move` takes it out of. A track with one
 genre is filed exactly as before. A cleared second genre leaves the track in
-that folder until it is taken out there, and until then `converge` names it as
-a membership no genre files (`differing`, `unexpected:` that folder and band),
-whatever else that playlist holds; `route resort` lists it as left behind.
+that folder until it is taken out there. Until then `converge` says
+`differing` and lists it among the tree's differences as
+`unexpected:BUCKET/BAND:ROW`, by the folder's and band's stable identifiers
+and the track's row, whether or not anything else is filed into that playlist
+and even under a folder renamed in rekordbox (the line shows the first 20
+differences); `route resort` lists it as left behind. Take it out by hand in
+rekordbox: `rebuild`, the remedy `converge` names, adds and never removes. A
+Candy playlist, which a person fills by hand, is never compared this way.
 The one exception is a Soul track's cleared R&B: its R&B band is Soul's split
 place again, which `adopt move` takes it out of.
 On the account, an edit inside one of the two folders leaves the other

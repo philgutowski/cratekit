@@ -43,7 +43,8 @@ FILES_FOLLOW = (
     "cleared here stays in that folder until it is taken out there (a Soul "
     "track's cleared R&B is the one exception, which `crate adopt move` "
     "takes it out of, as for any Soul track in an R&B band), and until "
-    "then `crate converge` names it as a membership no genre files"
+    "then `crate converge` says differing, listing it as unexpected in "
+    "that folder"
 )
 
 
