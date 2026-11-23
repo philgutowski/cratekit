@@ -81,14 +81,21 @@ def test_the_verb_writes_only_the_account_behind_one_explicit_gate():
 
 
 def test_nothing_on_the_heard_path_reaches_rekordbox_a_grid_a_tempo_or_a_rating():
-    """Neither module imports a rekordbox or tag writer, or names a grid, tempo or rating."""
-    banned = ("cratekit.core.rb_writer", "cratekit.write", "cratekit.core.tags")
+    """Neither module imports a rekordbox or tag writer, or names a grid, tempo or rating.
+
+    The guarded writer is banned with its parts (R-1890): ``cratekit.core.rb_nodes``
+    writes playlists and does not start with ``cratekit.core.rb_writer``.
+    """
+    from tests._split_modules import names_of
+
+    banned = (*names_of("cratekit.core.rb_writer"), "cratekit.write", "cratekit.core.tags")
     for module in (heard, heard_cli):
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
         imported = {
-            node.module or ""
+            name
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom)
+            for name in (node.module or "", *(f"{node.module}.{a.name}" for a in node.names))
         } | {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
         assert not {one for one in imported if one.startswith(banned)}, (module.__name__, imported)
         names = {

@@ -778,9 +778,11 @@ def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     guards backed by behavioural coverage elsewhere is an acceptable arrangement;
     two text guards presented as proof of behaviour would not be.
     """
-    import cratekit.core.restore as restore  # noqa: PLC0415
+    # The restore and its parts (R-1890): the replacement moved to
+    # ``restore_perform``, so a suffix typed there is the same regression.
+    from tests._split_modules import source_of  # noqa: PLC0415
 
-    source = Path(restore.__file__).read_text()
+    source = source_of("cratekit.core.restore")
     assert "sidecar_paths" in source or "snapshot_sources" in source, (
         "the restore unit does not resolve its targets through the inventory"
     )
