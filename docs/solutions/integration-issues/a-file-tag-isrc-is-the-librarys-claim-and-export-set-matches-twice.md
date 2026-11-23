@@ -2,7 +2,7 @@
 title: A file's ISRC is the library's claim, not the provider's, and export set matches every row twice
 date: 2026-10-03
 category: integration-issues
-module: src/cratekit/export/set_cli.py
+module: src/cratekit/export/set_match.py
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -19,7 +19,7 @@ applies_when:
 
 R-879 matched a typed tracklist row through its library file's ISRC before any search. The
 first shape handed that code straight to the account's `match_track` in
-`modules/outbound/tidal_account.py`. A second trap sat beside it, and neither is visible in
+`modules/outbound/tidal_reads.py`. A second trap sat beside it, and neither is visible in
 the code that triggers them.
 
 ## Cause

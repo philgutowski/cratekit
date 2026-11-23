@@ -1,9 +1,7 @@
 """Where one outbound item's report is staged, and where it lands.
 
-The base is :class:`cratekit.core.jobs.Artifacts`, which says why an item has a
-report at all, why it sits under the queue and why the configuration is passed
-in. What is the outbound module's own is the two directory names and how
-:func:`committed` orders what it reads.
+:class:`cratekit.core.jobs.Artifacts` is the base and says why; the outbound
+module's own are the two directory names and :func:`committed`'s order.
 
 Layer: modules.
 """
@@ -17,14 +15,11 @@ from cratekit.core import config, jobs
 #: The directory under the queue root that holds committed item reports.
 ARTIFACTS_DIRNAME = "outbound-artifacts"
 
-#: Where an attempt writes before the engine commits it. A SIBLING of the final
-#: directory rather than a temp directory, because ``jobs.commit_artifact`` is an
-#: ``os.replace`` and that is atomic only within one filesystem.
+#: Where an attempt writes before the engine commits it: a sibling of the final
+#: directory, since the commit is an ``os.replace``, atomic within one filesystem.
 STAGING_DIRNAME = "outbound-staging"
 
-
-#: The four names every caller here uses, bound to this feature's two
-#: directories on the one base ``core.jobs`` holds (U298).
+#: The four names every caller uses, bound to this feature's directories (U298).
 _REPORTS = jobs.Artifacts(final=ARTIFACTS_DIRNAME, staging=STAGING_DIRNAME)
 final_path, staged_path, produced, write = (
     _REPORTS.final_path,
@@ -40,11 +35,6 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
 
 
 __all__ = [
-    "ARTIFACTS_DIRNAME",
-    "STAGING_DIRNAME",
-    "committed",
-    "final_path",
-    "produced",
-    "staged_path",
-    "write",
+    "ARTIFACTS_DIRNAME", "STAGING_DIRNAME", "committed", "final_path", "produced",
+    "staged_path", "write",
 ]

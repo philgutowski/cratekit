@@ -1,50 +1,49 @@
 """U118: Soul and Hip-Hop are folders of their own, and their tracks move in.
 
-Soul was filed in R&B's energy bands as one folder, and those bands stay
-R&B's, so Soul declares them as SPLIT PLACES: a track whose genre names Soul
-leaves the R&B band for the Soul band its reading names, and a track whose
-genre names R&B is never touched. Hip-Hop was a style sub of the non
-electronic folder and is promoted the way R&B was, through a former place.
-
-Held here: where the words route and tag, what the shipped template declares,
-what competes, what the placement reader finds, what adoption withholds, what
-the move plans and lists, what the worker checks, and then the verb through
-the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations,
-except the genre words, which are the author's decision and are named.
+R&B's bands stay R&B's, so Soul declares them as SPLIT PLACES: a track whose
+genre names Soul leaves the R&B band for the Soul band its reading names, and
+an R&B track is never touched. Hip-Hop is promoted the way R&B was, through a
+former place. Held here: where the words route and tag, the declaration, what
+competes and is read, adoption, the move plan, the worker's check, and the verb
+against a disposable library with real tags. Identifiers are derived from the
+shipped declarations, except the genre words, which are the author's.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import replace
 from datetime import date
-from pathlib import Path
 
 import pytest
 
 from cratekit.adopt import apply_cli, artifacts, collection, move_cli
 from cratekit.adopt import move as adopt_move
 from cratekit.adopt import placements as adopt_placements
-from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import rb_writer, routing, taxonomy, tree_registry
+from cratekit.core import routing
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
-from tests import adopt_fixtures
 from tests.test_adopt_move import (  # noqa: F401
-    GATE,
+    DECLARED,
+    HIGH,
+    LOW,
+    MED,
+    SINK,
     VERB,
+    _adoption,
     _approve_and_run,
     _live,
+    _moves,
+    _refused_over,
     _removed,
     _rows,
     _shown,
+    seed_library,
 )
+from tests.test_adopt_move import classified as _scanned
 from tests.test_adopt_workers import (  # noqa: F401
     _platform_seams,
     _reader_cache,
@@ -53,9 +52,6 @@ from tests.test_adopt_workers import (  # noqa: F401
     machine,
     silence,
 )
-
-DECLARED = taxonomy.default_taxonomy()
-TREE_ID = DECLARED.tree.id
 
 #: The bucket split out of another, found by what makes it one.
 (SOUL,) = [bucket for bucket in DECLARED.buckets if bucket.split_from]
@@ -73,37 +69,6 @@ OLD_HIPHOP = (NONELEC.display, HH_FORMER.display)
 VOX = next(entry for entry in DECLARED.sub_classes if entry.id == "with_vox")
 
 
-def _band(level: int) -> str:
-    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
-
-
-LOW, MED, HIGH = _band(1), _band(5), _band(9)
-SINK = DECLARED.energy.no_energy_sub.id
-
-
-def _scanned(
-    content_id: str,
-    *,
-    energy: int | None,
-    genre: str,
-    disposition: adopt_scan.Disposition = adopt_scan.Disposition.ROUTE,
-) -> adopt_scan.ScannedTrack:
-    verdict, bucket, _match = adopt_scan.classify_genre(DECLARED, genre)
-    routed = disposition is adopt_scan.Disposition.ROUTE
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac" if routed else None,
-        readability=(
-            adopt_scan.Readability.READABLE if routed else adopt_scan.Readability.MISSING
-        ),
-        disposition=verdict if routed else disposition,
-        genre=genre,
-        bucket=bucket if routed else "",
-        energy=energy,
-    )
-
-
 def _in_rnb(content_id: str, *bands: str, soul: tuple[str, ...] = ()) -> dict:
     """What the placement reader answers for a track in R&B's bands.
 
@@ -114,15 +79,6 @@ def _in_rnb(content_id: str, *bands: str, soul: tuple[str, ...] = ()) -> dict:
         RNB.id: {content_id: tuple(bands)},
         SOUL.id: {content_id: (*(SPLIT[band].id for band in bands), *soul)},
     }
-
-
-def _adoption(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_plan.AdoptionPlan:
-    placements = adopt_plan.Placements(read=True, held=held, unnamed=unnamed or {})
-    return adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID, placements=placements)
-
-
-def _moves(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_move.MovePlan:
-    return adopt_move.build_move_plan(_adoption(tracks, held, unnamed=unnamed), DECLARED)
 
 
 # ── where the words go, as the author decided ──────────────────────────────
@@ -210,7 +166,8 @@ def test_soul_is_split_out_of_every_r_and_b_band_and_r_and_bs_old_playlist():
     for sub in bands:
         assert destination(DECLARED, RNB.id, sub) == (RNB.display, SPLIT[sub].display)
     assert (SPLIT[RNB_FORMER.id].display, OLD_SOUL_RNB) == (
-        RNB_FORMER.display, ("NonElectronic", "Soul / R&B")
+        RNB_FORMER.display,
+        ("NonElectronic", "Soul / R&B"),
     )
 
 
@@ -249,11 +206,10 @@ def test_a_split_place_is_found_as_the_r_and_b_place_it_is():
             adopt_placements.recorded_under(DECLARED, RNB.id, sub)
         )
     assert adopt_placements.named_place(DECLARED, SOUL.id, SPLIT[MED].id) == (RNB.display, "Med")
-    assert adopt_placements.named_place(
-        DECLARED, SOUL.id, SPLIT[RNB_FORMER.id].id
-    ) == OLD_SOUL_RNB
+    assert adopt_placements.named_place(DECLARED, SOUL.id, SPLIT[RNB_FORMER.id].id) == OLD_SOUL_RNB
     assert adopt_placements.recorded_under(DECLARED, SOUL.id, SPLIT[RNB_FORMER.id].id) == (
-        RNB_FORMER.bucket, RNB_FORMER.sub
+        RNB_FORMER.bucket,
+        RNB_FORMER.sub,
     )
     assert adopt_placements.named_place(DECLARED, SOUL.id, MED) == (SOUL.display, "Med")
 
@@ -312,7 +268,10 @@ def test_a_soul_track_in_r_and_b_med_moves_to_the_soul_band_its_reading_names(ge
     plan = _moves([_scanned("t", energy=level, genre=genre)], _in_rnb("t", MED))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove) == (
-        SOUL.id, band, band, (SPLIT[MED].id,)
+        SOUL.id,
+        band,
+        band,
+        (SPLIT[MED].id,),
     )
     assert (move.kind, move.decided_by) == ("band", adopt_move.DECIDED_BY_ENERGY)
     assert plan.left == ()
@@ -325,7 +284,11 @@ def test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted():
     plan = _moves([_scanned("t", energy=None, genre="Soul")], _in_rnb("t", MED))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
-        SOUL.id, SINK, SINK, (SPLIT[MED].id,), None
+        SOUL.id,
+        SINK,
+        SINK,
+        (SPLIT[MED].id,),
+        None,
     )
     assert move.decided_by == adopt_move.DECIDED_BY_GENRE
     assert plan.left == ()
@@ -345,7 +308,9 @@ def test_a_soul_track_in_two_r_and_b_bands_leaves_both_in_one_move_and_r_and_b_p
     plan = _moves([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", MED, HIGH))
     (move,) = plan.moves
     assert (move.bucket, move.add, set(move.remove)) == (
-        SOUL.id, HIGH, {SPLIT[MED].id, SPLIT[HIGH].id}
+        SOUL.id,
+        HIGH,
+        {SPLIT[MED].id, SPLIT[HIGH].id},
     )
     assert plan.left == ()
 
@@ -376,56 +341,45 @@ def test_a_soul_track_in_a_renamed_r_and_b_band_is_left_since_the_writer_cannot_
     assert plan.moves == ()
     (left,) = plan.left
     assert (left.bucket, left.reason, left.holds_unnamed) == (
-        SOUL.id, adopt_move.LEFT_UNNAMED, (SPLIT[MED].id,)
+        SOUL.id,
+        adopt_move.LEFT_UNNAMED,
+        (SPLIT[MED].id,),
     )
 
 
 def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved():
-    """Found by the review: it was in no row, so the split could not be seen to
-    be unfinished before its declaration was deleted."""
-    excluded = _scanned(
-        "t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED
-    )
-    plan = _moves([excluded], _in_rnb("t", MED))
+    """Listed so the split can be seen to be unfinished before its declaration
+    is deleted, under the renamed playlist where it sits in one."""
+    excluded = _scanned("t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED)
+    held = _in_rnb("t", MED)
+    plan = _moves([excluded], held)
     assert plan.moves == ()
     (left,) = plan.left
     assert (left.bucket, left.reason, left.target, left.holds) == (
-        SOUL.id, adopt_move.LEFT_NO_READING, "", (SPLIT[MED].id,)
+        SOUL.id,
+        adopt_move.LEFT_NO_READING,
+        "",
+        (SPLIT[MED].id,),
     )
-
-
-def test_an_unreadable_soul_file_in_a_renamed_r_and_b_band_is_listed_under_the_name():
-    excluded = _scanned(
-        "t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED
-    )
-    held = _in_rnb("t", MED)
     (left,) = _moves([excluded], held, unnamed=held).left
     assert (left.bucket, left.reason, left.holds_unnamed) == (
-        SOUL.id, adopt_move.LEFT_UNNAMED, (SPLIT[MED].id,)
+        SOUL.id,
+        adopt_move.LEFT_UNNAMED,
+        (SPLIT[MED].id,),
     )
 
 
 def test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing():
-    """Found by the review: R&B's own tree path moved it between R&B's bands,
-    a folder its genre does not name, because no entry claimed Soul."""
-    current = _adoption([_scanned("t", energy=9, genre="Soul")], {})
-    refused = replace(
-        current,
-        entries=tuple(
-            replace(
-                entry,
-                disposition=adopt_scan.Disposition.WITHHELD,
-                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-            )
-            for entry in current.entries
-        ),
-        placements=adopt_plan.Placements(read=True, held=_in_rnb("t", LOW, HIGH)),
-    )
+    """R&B's own tree path must not move it between R&B's bands, a folder its
+    genre does not name, though no entry claims Soul."""
+    refused = _refused_over([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", LOW, HIGH))
     plan = adopt_move.build_move_plan(refused, DECLARED)
     assert plan.moves == ()
     (left,) = plan.left
     assert (left.bucket, left.reason, set(left.holds)) == (
-        SOUL.id, adopt_move.LEFT_VERDICT, {SPLIT[LOW].id, SPLIT[HIGH].id}
+        SOUL.id,
+        adopt_move.LEFT_VERDICT,
+        {SPLIT[LOW].id, SPLIT[HIGH].id},
     )
 
 
@@ -461,9 +415,7 @@ def test_an_r_and_b_track_in_the_old_soul_r_and_b_playlist_still_moves_to_r_and_
 
 def test_an_entry_naming_a_split_place_as_its_sub_is_never_a_move():
     current = _adoption([_scanned("t", energy=5, genre="Soul")], _in_rnb("t", MED))
-    forged = replace(
-        current, entries=tuple(replace(e, sub=SPLIT[MED].id) for e in current.entries)
-    )
+    forged = replace(current, entries=tuple(replace(e, sub=SPLIT[MED].id) for e in current.entries))
     assert adopt_move.build_move_plan(forged, DECLARED).moves == ()
 
 
@@ -473,7 +425,10 @@ def test_a_hip_hop_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(g
     plan = _moves([_scanned("t", energy=5, genre=genre)], held)
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove) == (
-        HIPHOP.id, MED, MED, (HH_FORMER.id,)
+        HIPHOP.id,
+        MED,
+        MED,
+        (HH_FORMER.id,),
     )
     assert plan.left == ()
 
@@ -498,9 +453,7 @@ def test_the_worker_finds_a_finished_soul_move_done():
 
 
 def test_the_worker_narrows_a_soul_move_whose_band_landed_to_the_removal_alone():
-    current = _adoption(
-        [_scanned("t", energy=5, genre="Soul")], _in_rnb("t", MED, soul=(MED,))
-    )
+    current = _adoption([_scanned("t", energy=5, genre="Soul")], _in_rnb("t", MED, soul=(MED,)))
     todo, gone = move_cli.remaining([_approved()], current, DECLARED)
     assert ([(move.add, move.remove) for move in todo], gone) == ([("", (SPLIT[MED].id,))], ())
 
@@ -513,9 +466,7 @@ def test_a_track_retagged_out_of_soul_since_the_approval_is_a_stale_decision(gen
     assert raised.value.cause.reason == "decision-stale"
 
 
-# ---------------------------------------------------------------------------
 # The verb, against a disposable library filed under the shape before U118
-# ---------------------------------------------------------------------------
 
 #: Content identifier, genre, energy tag, and the places seeded: ``old`` is the
 #: Hip-Hop playlist of the non electronic folder, ``vox`` R&B's vocal sub, and
@@ -532,8 +483,7 @@ _SEEDED = (
     ("s-old", "Soul", "5", ("soul-rnb",)),
     ("r-old", "R&B", "2", ("soul-rnb",)),
 )
-#: Where each moved track ends among the competing places: Soul's or
-#: Hip-Hop's band, or the no reading sub.
+#: Where each moved track ends: Soul's or Hip-Hop's band, or the no reading sub.
 _ENDS = {
     "s-med": (SOUL, MED),
     "s-combined": (SOUL, HIGH),
@@ -562,44 +512,13 @@ def _seeded_place(place: str) -> tuple[str, str]:
 def split(machine, silence):  # noqa: F811
     """A library whose Soul tracks sit in R&B's bands and whose Hip-Hop tracks
     sit in the non electronic folder's Hip-Hop playlist, as on 2026-10-08."""
-    from cratekit.core import tags
-
-    adopt_fixtures.build(
-        machine,
-        tuple(
-            adopt_fixtures.Track(content_id, f"{content_id}.flac", genre)
-            for content_id, genre, _tag, _held in _SEEDED
-        ),
-    )
-    collection.reset_cache()
-
-    music = Path(machine.library.root) / "Music"
-    for content_id, _genre, tag, _held in _SEEDED:
-        path = music / f"{content_id}.flac"
-        shutil.copyfile(silence, path)
-        if tag is not None:
-            assert tags.write_tags(path, {"energylevel": tag}) is True
-
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
-    try:
-        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        for content_id, _genre, _tag, held in _SEEDED:
-            for place in held:
-                folder_display, sub_display = _seeded_place(place)
-                folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
-                playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-                rb_writer.add_memberships(handle, playlist, [content_id])
-        handle.session.commit()
-        root_id = str(root.ID)
-    finally:
-        rb_writer.close_db(handle)
-    tree_registry.record_cutover(
-        machine,
-        TREE_ID,
-        root_id=root_id,
-        on=date(2026, 10, 1),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+    tracks = [(content_id, genre, tag) for content_id, genre, tag, _held in _SEEDED]
+    places = [
+        (*_seeded_place(place), content_id)
+        for content_id, _genre, _tag, held in _SEEDED
+        for place in held
+    ]
+    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1))
     return machine
 
 
@@ -631,8 +550,7 @@ def test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_an
         kept = {_seeded_place(place) for place in seeded if place == "vox"}
         assert after[content_id] == {destination(DECLARED, bucket.id, sub), *kept}, content_id
         assert removed[content_id] == left, content_id
-    # THE VOCAL SUB IS KEPT: a Soul track leaves R&B / Med and stays in R&B's
-    # "with vox", which is a sub class and never a place a move removes.
+    # The vocal sub is kept: a sub class is never a place a move removes.
     assert RNB_VOX in after["s-med"]
     # R&B and MPB tracks are where they were, and nothing of theirs removed.
     for content_id in _STAYING:
@@ -654,10 +572,7 @@ def test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_an
     assert sorted(report["moved"]) == sorted(_ENDS)
     assert report["in_both"] == report["untouched"] == report["neither"] == []
 
-
-def test_adoption_after_the_move_files_none_of_them_a_second_time(split):
-    _job_id, code, resumed = _approve_and_run()
-    assert code == int(ExitCode.OK), resumed
+    # Adoption after the move files none of them a second time.
     collection.reset_cache()
     rows = _rows(split)
 

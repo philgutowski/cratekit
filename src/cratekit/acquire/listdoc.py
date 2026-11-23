@@ -1,42 +1,11 @@
-"""The one writer of the list document ``acquire download`` reads.
+"""The one writer of the list document ``acquire download`` reads (R-400).
 
-R-400: every acquisition entrance in this product resolves work and then stops,
-because nothing wrote the file the download verb reads. The only writer of the
-format was a test helper. This module is the writer, and there is ONE of it on
-purpose: the reader, :func:`cratekit.acquire.match_cli.read_list`, is a single
-closed and versioned format, so a document per source would be five writers
-drifting from one reader, and a fix round would repair one of them and leave
-the other four.
-
-WHAT IT WRITES, and why the two files are two.
-
-``<name>.list.json`` is the list document, ``{"list": 1, "origin": "tidal",
-"tracks": [...]}``, and carries nothing the reader does not read. The reader
-refuses an unknown top level key, so provenance cannot ride along in it.
-
-``<name>.manifest.json`` is the provenance sidecar: which source, playlist,
-label and year each listed id came from. Nothing reads it to acquire, which is
-the point: it answers "why is this in the list" without the list's closed format
-having to know the question exists.
-
-THE EMITTER IS STRICTER THAN THE READER, NEVER LOOSER. The reader refuses the
-WHOLE document over one row it cannot recognise, so a row this module let
-through would cost every other row in the list. Every listed row is therefore
-read back through the reader's own row recognition before anything is written,
-and refused here by position if the reader would refuse it there.
-
-A row without a provider identifier is not written to the provider document at
-all. It comes back in ``unlisted``, because the download verb refuses a list
-holding one such row, and a list that quietly dropped it would report every
-item done over a list it did not finish.
-
-``<name>.unlisted.json`` is the third file, written only for the rows a caller
-hands on (U78): a TEXT origin list document of ``Artist - Title`` lines, each
-under a ``#`` row saying why the provider could not name it exactly. The text
-reader skips the ``#`` rows, so ``match run`` reads the file as it stands.
-
-The emitter writes a file and stops. Nothing here composes ``acquire download``,
-so nothing here can spend a download.
+One writer, since :func:`cratekit.acquire.match_cli.read_list` reads one closed
+format. ``<name>.list.json`` carries only what the reader reads,
+``<name>.manifest.json`` the provenance per id, and ``<name>.unlisted.json`` the
+rows handed on as a text list (U78). Every row is read back through the reader
+before anything is written, since the reader refuses a whole document over one
+row; a row without a provider id comes back in ``unlisted``.
 """
 
 from __future__ import annotations
@@ -57,20 +26,14 @@ MANIFEST_SUFFIX = ".manifest.json"
 #: The third, the text list of the rows the provider cannot name exactly (U78).
 UNLISTED_SUFFIX = ".unlisted.json"
 
-#: The version of the provenance sidecar. :func:`read_manifest` refuses any
-#: other, whole, the way ``read_list`` refuses the list's own. So a bump here
-#: stops every manifest already on disk from being read, and the landing verb
-#: with it: raise it only with a reader for the version it leaves behind.
+#: The provenance sidecar version. :func:`read_manifest` refuses any other, so
+#: raise it only with a reader for the version it leaves behind.
 MANIFEST_VERSION = 1
 
 
 class ListDocRefused(ValueError):
-    """A list this module will not write, and nothing was written.
-
-    A plain exception rather than a structured cause, for the reason
-    :class:`match.UnreadableList` gives: the verb that calls this converts it,
-    in the one place allowed to know what a remediation looks like.
-    """
+    """A list this module will not write, and nothing was written. The calling
+    verb converts it to a cause."""
 
     def __init__(self, message: str, *, position: int | None = None) -> None:
         super().__init__(message)
@@ -81,10 +44,8 @@ class ListDocRefused(ValueError):
 class Row:
     """One track a source resolved, in the shape the provider's own rows use.
 
-    ``title`` is the title AS THE SOURCE SPELLED IT, a version embedded in it or
-    not, and ``version`` is a version the source declared in its own field. The
-    reader reads both conventions, and writing what the source said rather than
-    something recomposed is what keeps the re-read identical.
+    ``title`` is as the source spelled it and ``version`` is the source's own
+    field, so the re-read is identical.
     """
 
     ref: str
@@ -99,17 +60,9 @@ class Row:
 class Provenance:
     """Where a listed id came from. None of it is read to acquire anything.
 
-    ``source_ref`` is the reference the listed row was taken from, and
-    ``source_refs`` is every reference that asked for the same id, in order. A
-    list built from several jobs writes one row per id, first source wins, and
-    without the second field the other playlists that wanted the track would
-    vanish from the record. Left empty, it is ``source_ref`` alone.
-
-    THE MANIFEST CARRIES ``source_refs`` ONLY WHEN THERE IS MORE THAN ONE. A
-    manifest this module wrote before the field existed is compared byte for
-    byte on the next identical write, and a key added to every entry would
-    turn that harmless repeat into a refusal. An entry without the key came
-    from its ``source_ref`` alone.
+    ``source_refs`` is every reference that asked for the id, in order; empty
+    means ``source_ref`` alone. The manifest writes it only when there is more
+    than one, so an older manifest still compares byte for byte.
     """
 
     source: str
@@ -123,12 +76,8 @@ class Provenance:
 
 @dataclass(frozen=True, slots=True)
 class HandedOn:
-    """A row the provider cannot name exactly, and the sentence that says why.
-
-    U78. It is written to the TEXT list beside the provider document, never
-    into it, so a person or ``match run`` can take it further by hand. The
-    reason travels as a ``#`` row above the track, which the text reader skips.
-    """
+    """A row the provider cannot name exactly, and why (U78). Written to the
+    text list, the reason as a ``#`` row above it."""
 
     row: Row
     reason: str
@@ -136,13 +85,8 @@ class HandedOn:
 
 @dataclass(frozen=True, slots=True)
 class Written:
-    """What :func:`write` did.
-
-    Both paths are ``None`` when nothing was listable and nothing was written,
-    which is how an empty result says so rather than leaving an empty document
-    somebody would read as a list that was all owned. ``unlisted_path`` is the
-    text list of the rows handed on, ``None`` when none was.
-    """
+    """What :func:`write` did. A path is ``None`` when its file was not written,
+    so an empty result leaves no empty document."""
 
     list_path: Path | None
     manifest_path: Path | None
@@ -159,20 +103,12 @@ class Written:
 def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
     """Whether a row spelled this way re-reads to ``wanted``'s version.
 
-    THE VERSION TOKEN IS THE ONLY THING COMPARED, and that is measured rather
-    than assumed. Both spellings :func:`_spellings` offers re-read to the same
-    matching title and the same addressed title by construction: the source's
-    own spelling read with no declared version is its own address, and the raw
-    title read with the declared version recomposes to exactly ``spelled``.
-    Mutation rows W3 and W5 removed a title and an address comparison here and
-    neither killed a test in the full suite, see ``docs/mutation/u68-notes.md``.
-    What CAN differ is the version: a raw title that carried its own bracketed
-    version beside a declared one re-reads, spelled together, as both.
+    Only the version is compared: both spellings re-read to the same title by
+    construction (``docs/mutation/u68-notes.md``).
     """
     try:
         again = match.read_row(
-            {"title": title, "version": version, "artist": wanted.artist},
-            origin=match.TIDAL,
+            {"title": title, "version": version, "artist": wanted.artist}, origin=match.TIDAL,
             position=1,
         )
     except match.UnreadableList:
@@ -183,12 +119,8 @@ def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
 def _spellings(wanted: match.Wanted) -> list[tuple[str, str]]:
     """The (title, version) pairs that might re-read to ``wanted``, best first.
 
-    The source's own spelling, version embedded. Then, for a row that declared
-    its version in its own field, the row's raw title and that version: the
-    reader composed ``spelled`` as ``<raw> (<version>)``, so the suffix comes
-    off and the pair re-reads to the same composition. Writing the ALREADY
-    SPLIT title instead drops every other bracketed part and every featured
-    credit the raw title carried, which is what this module did first.
+    The source's own spelling, then the raw title and declared version, never
+    the split title, which loses brackets and featured credits.
     """
     found: list[tuple[str, str]] = []
     if wanted.spelled:
@@ -200,50 +132,31 @@ def _spellings(wanted: match.Wanted) -> list[tuple[str, str]]:
 
 
 def _row_of_wanted(wanted: match.Wanted) -> Row:
-    # ONLY THE PROVIDER'S OWN IDENTIFIER IS A PROVIDER IDENTIFIER. A row from
-    # another service carries that service's id in ``ref``, and written into a
-    # provider document it would ask the provider for a different track, or for
-    # none. Such a row is returned with no ref, so it lands in ``unlisted``.
+    # Another service's id is not a provider id, so such a row lands in unlisted.
     ref = wanted.ref if wanted.origin == match.TIDAL else ""
-    # The first spelling that re-reads to the same addressed track. A ``Wanted``
-    # built by hand carries no spelling, and then its title and version are all
-    # there is to write.
+    # The first spelling that re-reads to the same track, else title and version.
     title, version = next(
         (pair for pair in _spellings(wanted) if _reads_back(*pair, wanted)),
         (wanted.title, wanted.version),
     )
     return Row(
-        ref=ref,
-        artist=wanted.artist,
-        title=title,
-        version=version,
-        isrc=wanted.isrc,
+        ref=ref, artist=wanted.artist, title=title, version=version, isrc=wanted.isrc,
         key=wanted.key,
     )
 
 
-def rows_of(
-    source: Iterable[match.Wanted] | Mapping[str, Mapping[str, Any]],
-) -> tuple[Row, ...]:
-    """Rows from what the product already holds: read tracks, or frozen ones.
+def rows_of(source: Iterable[match.Wanted] | Mapping[str, Mapping[str, Any]]) -> tuple[Row, ...]:
+    """Rows from read ``Wanted`` tracks, or from a frozen mapping.
 
-    A MAPPING is :func:`cratekit.acquire.cli.frozen_tracks`'s output, keyed by
-    the provider identifier and carrying artist, title and isrc. Anything else
-    is read as ``Wanted`` tracks, in order.
-
-    A FROZEN MAPPING IS A DOWNLOAD LIST AND NOTHING MORE. The freeze kept the
-    split title and dropped the version, the key and the source's spelling, so a
-    list written from it freezes back identically and re-reads to the PLAIN
-    record for anything that matches or tombstones by title. Write from the
-    ``Wanted`` tracks whenever they are still held.
+    A mapping is :func:`cratekit.acquire.cli.frozen_tracks`'s output and lost the
+    version and spelling, so it serves only as a download list; prefer the
+    ``Wanted`` tracks when held.
     """
     if isinstance(source, Mapping):
         return tuple(
             Row(
-                ref=str(ref),
-                artist=str(fields.get("artist") or ""),
-                title=str(fields.get("title") or ""),
-                isrc=fields.get("isrc") or None,
+                ref=str(ref), artist=str(fields.get("artist") or ""),
+                title=str(fields.get("title") or ""), isrc=fields.get("isrc") or None,
             )
             for ref, fields in source.items()
         )
@@ -267,27 +180,19 @@ def _track(row: Row, ref: str) -> dict[str, Any]:
 
 
 def _checked(track: dict[str, Any], position: int) -> None:
-    """Refuse a track the reader would refuse, by the reader's own rule.
-
-    The reader's rule and not a copy of it: a title of ``(Extended)`` is not
-    empty, and the reader still refuses it, because what is left once the
-    version comes off is. A copied check would pass that row and cost the list.
-    """
+    """Refuse a track the reader would refuse, by the reader's own rule, not a copy."""
     try:
         match.read_row(track, origin=match.TIDAL, position=position)
     except match.UnreadableList as exc:
         raise ListDocRefused(
-            f"row {position} would make the whole list unreadable: {exc}",
-            position=position,
+            f"row {position} would make the whole list unreadable: {exc}", position=position,
         ) from exc
 
 
 def document(rows: Iterable[Row]) -> tuple[dict[str, Any], tuple[str, ...], tuple[Row, ...]]:
     """The list document, the ids it lists in order, and the rows it could not.
 
-    THE SAME IDENTIFIER TWICE IS WRITTEN ONCE, first occurrence wins, which is
-    what :func:`cratekit.acquire.cli.frozen_tracks` does on the way back in. An
-    identifier is compared stripped, because the reader strips it.
+    An id is written once, first wins, compared stripped as the reader strips it.
     """
     tracks: list[dict[str, Any]] = []
     listed: list[str] = []
@@ -309,8 +214,7 @@ def document(rows: Iterable[Row]) -> tuple[dict[str, Any], tuple[str, ...], tupl
     return body, tuple(listed), tuple(unlisted)
 
 
-#: What a text line puts between the artist and the title, the separator the
-#: text reader splits on.
+#: The separator the text reader splits a line on.
 _SEPARATOR = " - "
 
 
@@ -324,18 +228,13 @@ def _line(row: Row) -> str:
 def text_line(row: Row) -> str:
     """The ``Artist - Title`` line for one row, or a refusal if it re-reads wrong.
 
-    EVERY LINE IS READ BACK BY THE TEXT READER, on this module's rule that the
-    emitter is stricter than the reader. A line is ``Artist - Title``, so an
-    artist spelled with that separator inside it, a leading ordinal, or a
-    leading ``#`` reads back as a different track or as none. The reader would
-    not refuse that, it would match the wrong thing, so it is refused here, and
-    a caller can ask before it writes, one row at a time.
+    Read back by the text reader, since a separator in the artist, a leading
+    ordinal or a leading ``#`` would match the wrong track rather than refuse.
     """
     line = _line(row)
     try:
         wanted = match.read_row(
-            {"artist": row.artist, "title": row.title, "version": row.version},
-            origin=match.TIDAL,
+            {"artist": row.artist, "title": row.title, "version": row.version}, origin=match.TIDAL,
             position=1,
         )
         again = match.read_text_rows([line])
@@ -350,12 +249,9 @@ def text_line(row: Row) -> str:
 
 
 def text_document(handed_on: Iterable[HandedOn]) -> dict[str, Any]:
-    """The TEXT list document for the rows handed on, reasons as ``#`` rows.
+    """The text list document for the rows handed on, reasons as ``#`` rows.
 
-    THE SAME LINE TWICE IS WRITTEN ONCE, first reason wins, because a set plays
-    one track twice and ``match run`` would ask about it twice. A row
-    :func:`text_line` refuses is refused here by position, so a caller that did
-    not ask first writes nothing rather than a line that matches another track.
+    A line is written once, first reason wins; a refused row refuses by position.
     """
     tracks: list[str] = []
     seen: set[str] = set()
@@ -377,8 +273,7 @@ def text_document(handed_on: Iterable[HandedOn]) -> dict[str, Any]:
 
 
 def _encoded(body: Mapping[str, Any]) -> bytes:
-    # Deterministic, so writing the same list twice is the same bytes twice and
-    # the second write is recognised as a no-op rather than refused.
+    # Deterministic, so an identical second write is a no-op rather than refused.
     return (json.dumps(body, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
@@ -397,9 +292,7 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _provenance_for(
-    provenance: Provenance | Mapping[str, Provenance], ref: str
-) -> Provenance:
+def _provenance_for(provenance: Provenance | Mapping[str, Provenance], ref: str) -> Provenance:
     found = provenance if isinstance(provenance, Provenance) else provenance.get(ref)
     if found is None:
         raise ListDocRefused(f"no provenance was given for listed id {ref!r}")
@@ -409,9 +302,7 @@ def _provenance_for(
 
 
 def manifest(
-    list_name: str,
-    body: Mapping[str, Any],
-    provenance: Provenance | Mapping[str, Provenance],
+    list_name: str, body: Mapping[str, Any], provenance: Provenance | Mapping[str, Provenance],
 ) -> dict[str, Any]:
     """The provenance sidecar for a list document, one entry per listed id."""
     entries: dict[str, dict[str, Any]] = {}
@@ -436,11 +327,7 @@ def manifest(
 
 def _unchanged(path: Path, payload: bytes) -> bool:
     """True when ``path`` already holds ``payload``, False when it is absent.
-
-    A file holding anything else is refused: a list of the same name somebody
-    else wrote, or this product wrote from different work, is not this module's
-    to replace.
-    """
+    Anything else is refused, not replaced."""
     try:
         present = path.read_bytes()
     except FileNotFoundError:
@@ -448,30 +335,19 @@ def _unchanged(path: Path, payload: bytes) -> bool:
     except OSError as exc:
         raise ListDocRefused(f"{path} exists and could not be read: {exc.strerror}") from exc
     if present != payload:
-        raise ListDocRefused(
-            f"{path} already exists and holds something else; it is left as it is"
-        )
+        raise ListDocRefused(f"{path} already exists and holds something else; it is left as it is")
     return True
 
 
 def write(
-    directory: Path,
-    name: str,
-    rows: Iterable[Row],
-    provenance: Provenance | Mapping[str, Provenance],
-    *,
-    handed_on: Iterable[HandedOn] = (),
+    directory: Path, name: str, rows: Iterable[Row],
+    provenance: Provenance | Mapping[str, Provenance], *, handed_on: Iterable[HandedOn] = (),
 ) -> Written:
     """Write ``<name>.list.json`` and its manifest into ``directory``, or nothing.
 
-    EVERY CHECK BEFORE ANY WRITE. A refused row, a missing provenance and an
-    existing file holding something else all refuse with nothing written, so a
-    refusal never leaves one half of the pair behind. The manifest is written
-    first, so a list on disk always has its provenance beside it; a crash
-    between the two leaves a manifest the next identical write completes.
-
-    ``handed_on`` rows go to ``<name>.unlisted.json``, a text list, and are held
-    to the same rule: that file is checked with the other two and written last.
+    Every check runs before any write. The manifest is written first, so a list
+    always has its provenance beside it; ``handed_on`` rows go last, to
+    ``<name>.unlisted.json``.
     """
     name = _checked_name(name)
     body, listed, unlisted = document(rows)
@@ -499,12 +375,8 @@ def write(
 
 @dataclass(frozen=True, slots=True)
 class ManifestRow:
-    """One manifest entry, as it was written: the listed id and where it came from.
-
-    ``track`` is the row in the list document's own shape, so a reader that
-    wants a :class:`match.Wanted` hands it to :func:`match.read_row` and gets
-    the identity the list itself would have given, not one recomposed here.
-    """
+    """One manifest entry: the listed id, its provenance, and ``track`` in the
+    list document's shape for :func:`match.read_row`."""
 
     ref: str
     provenance: Provenance
@@ -531,16 +403,14 @@ def _manifest_row(ref: str, entry: object) -> ManifestRow:
     if year is not None and (isinstance(year, bool) or not isinstance(year, int)):
         raise ListDocRefused(f"manifest entry {ref!r} carries a year that is not a number")
     track: dict[str, Any] = {
-        "id": ref,
-        "artist": _text_or_none(entry, "artist", ref) or "",
+        "id": ref, "artist": _text_or_none(entry, "artist", ref) or "",
         "title": _text_or_none(entry, "title", ref) or "",
         "version": _text_or_none(entry, "version", ref) or "",
     }
     isrc = _text_or_none(entry, "isrc", ref)
     if isrc:
         track["isrc"] = isrc
-    # Present only when more than one source asked for the id, which is the
-    # writer's rule, and read back as written so no asker is lost on the way.
+    # Present only when more than one source asked, read back as written.
     asked = entry.get("source_refs", [])
     if not isinstance(asked, list) or not all(isinstance(one, str) for one in asked):
         raise ListDocRefused(f"manifest entry {ref!r} carries source_refs that are not text")
@@ -562,11 +432,7 @@ def _manifest_row(ref: str, entry: object) -> ManifestRow:
 def read_manifest(path: Path) -> tuple[ManifestRow, ...]:
     """Every entry of a provenance sidecar, in the order it was written.
 
-    REFUSES THE WAY ``read_list`` REFUSES THE LIST'S OWN, which is what the
-    comment on :data:`MANIFEST_VERSION` asked of the first reader: a version
-    this build did not write is refused whole and never read on the hope that
-    the keys still mean what they meant. A file that is not a manifest at all,
-    a list document passed by mistake included, is refused by name.
+    Another version, or a file that is not a manifest, is refused whole.
     """
     try:
         raw = Path(path).read_bytes()
@@ -578,12 +444,8 @@ def read_manifest(path: Path) -> tuple[ManifestRow, ...]:
 
 
 def manifest_rows(raw: bytes, path: Path | str) -> tuple[ManifestRow, ...]:
-    """:func:`read_manifest` over bytes somebody already holds.
-
-    For a caller that fingerprinted the bytes and must parse THOSE bytes, since
-    a second read of the path is a second file if it was rewritten in between.
-    ``path`` is only what the refusals call the file.
-    """
+    """:func:`read_manifest` over bytes already held, for a caller that
+    fingerprinted them. ``path`` only names the file in refusals."""
     try:
         body = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:

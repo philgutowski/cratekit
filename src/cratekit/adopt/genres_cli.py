@@ -1,25 +1,14 @@
 """``crate report genres``: name every genre that has outgrown having no folder.
 
-WHAT IT ANSWERS (R-797). Which genres hold fifty or more tracks while no top
-level folder answers for them. Rock at 109 under the non electronic folder is
-the case it was written for. It names them with their counts and stops there.
+Which genres hold fifty or more tracks while no top level folder answers for
+them (R-797), named with their counts.
 
-IT CREATES NOTHING, AND THAT IS THE WHOLE OF ITS CONTRACT. It opens the
-database without write intent, through the collection reader adoption uses,
-takes no session, queues no job, files no review item and writes no state
-file. A folder is added by a person editing the taxonomy and by nothing else.
-
-WHY IT READS THE DATABASE AND NOT AN EXPORT, unlike the four verbs of
-``cratekit.cli.reports``. Those are held to an import allowlist that admits no
-database module and no router, on purpose, and this count needs both: the
-genre each row carries and where routing files it. It also has no reason to
-make a person export a collection first to be told what the collection holds.
-So it sits beside the adoption readers and is switched with them, which is to
-say it is always available.
-
-WHY IT DOES NOT READ ``genre_gaps.json``. That file is declared as a count of
-genre strings as they ARRIVE, nothing writes it, and a count of what the
-library holds is never stale when it is taken on each run.
+IT CREATES NOTHING: it opens the database without write intent through the
+adoption collection reader, takes no session, queues no job, files no review
+item and writes no state file. It reads the database, not an export, because it
+needs the genre of each row and the router, which the ``cratekit.cli.reports``
+allowlist admits neither of. It does not read ``genre_gaps.json``, a count of
+genres as they arrive that nothing writes.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.scan_cli`` gives.
@@ -35,9 +24,12 @@ from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy
 from cratekit.core.cause import Outcome
 
-#: The status every row here carries. A genre without a folder is worth
-#: knowing and is nothing to fix, which is what doctor's INFO means.
+#: The status every row carries: worth knowing, nothing to fix (doctor's INFO).
 _INFO = "info"
+
+
+#: The report's counts, in the order the summary carries them.
+_COUNTED = ("threshold", "tracks", "with_folder", "without_folder", "no_genre", "too_coarse")
 
 
 def build(parser, entry) -> None:
@@ -46,19 +38,20 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=report_genres)
 
 
+def _row(key: str, title: str, detail: str) -> dict[str, Any]:
+    """One row of the diagnostic surface, at INFO and with no remedy."""
+    return {"key": key, "title": title, "status": _INFO, "detail": detail, "remedy": None}
+
+
 def _check(genre: genres_engine.GenreCount, threshold: int) -> dict[str, Any]:
     """One named genre as a row of the diagnostic surface."""
-    return {
-        "key": f"genre.{genre.name}",
-        "title": genre.name,
-        "status": _INFO,
-        "detail": (
-            f"{genre.tracks} tracks and no top level folder of its own, "
-            f"{genres_engine.where(genre)}; at or over {threshold}, so a folder "
-            f"is worth deciding on, and none is made until the taxonomy declares one"
-        ),
-        "remedy": None,
-    }
+    return _row(
+        f"genre.{genre.name}",
+        genre.name,
+        f"{genre.tracks} tracks and no top level folder of its own, "
+        f"{genres_engine.where(genre)}; at or over {threshold}, so a folder "
+        f"is worth deciding on, and none is made until the taxonomy declares one",
+    )
 
 
 def report_genres(ctx) -> Envelope:
@@ -70,32 +63,20 @@ def report_genres(ctx) -> Envelope:
     checks = [_check(genre, report.threshold) for genre in report.named]
     if not checks:
         checks.append(
-            {
-                "key": "genre.none",
-                "title": "no genre without a folder has reached the threshold",
-                "status": _INFO,
-                "detail": (
-                    f"{len(report.genres)} genre(s) have no top level folder of "
-                    f"their own and none holds {report.threshold} tracks or more"
-                ),
-                "remedy": None,
-            }
+            _row(
+                "genre.none",
+                "no genre without a folder has reached the threshold",
+                f"{len(report.genres)} genre(s) have no top level folder of "
+                f"their own and none holds {report.threshold} tracks or more",
+            )
         )
     data = {
         "checks": checks,
         "summary": {
-            "threshold": report.threshold,
-            "tracks": report.tracks,
-            "with_folder": report.with_folder,
-            "without_folder": report.without_folder,
-            "no_genre": report.no_genre,
-            "too_coarse": report.too_coarse,
+            **{key: getattr(report, key) for key in _COUNTED},
             "named": len(report.named),
             "genres": [genres_engine.row_json(genre) for genre in report.genres],
             "library": str(cfg.library.root),
         },
     }
     return ctx.envelope(data=data, outcome=Outcome.OK if report.tracks else Outcome.NO_OP)
-
-
-__all__ = ["build", "report_genres"]
