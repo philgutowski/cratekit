@@ -413,10 +413,16 @@ def _leaves(
 ) -> str:
     """The bucket the row's old genre filed it in, when the tree holds it there
     and the new genre names another; else empty. THE ROW'S WORD, since adoption
-    files by the row's genre and not the file's."""
+    files by the row's genre and not the file's.
+
+    A TREE THAT COULD NOT BE READ IS NOT A TREE THAT HOLDS NOTHING (review round
+    two): the bucket is recorded, and ``adopt move`` asks it only where the tree
+    it reads then holds the row."""
     was = named_bucket(declared, row_word)
-    if not was or was == named_bucket(declared, genre) or held is None or not held.read:
+    if not was or was == named_bucket(declared, genre):
         return ""
+    if held is None or not held.read:
+        return was
     return was if held.holds(was, content_id) else ""
 
 

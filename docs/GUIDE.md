@@ -1285,7 +1285,8 @@ crate inbox rotate
   before removing. After `tag set` it also takes each row that run gave a new
   genre out of the genre folder the tree filed it in under its old genre, and
   into the new genre folder's energy band when `adopt apply` has not filed it
-  there yet. Only that folder is asked, and only for rows `tag set` changed, so
+  there yet; a `with vox` or Favorites membership in the old folder stays. Only
+  that folder is asked, and only for rows `tag set` changed, so
   a track you put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`.
@@ -1313,7 +1314,7 @@ writes their genre tags.
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
-| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply` and `adopt move`. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
@@ -1344,9 +1345,11 @@ rekordbox, which makes the row, then run it again. A file that will not
 take the genre keeps its row's old genre and the run ends refused under
 `tag-set-unwritten` after the rest landed. A restore of the run's session puts
 the rows back and each file's old genre. Then run `crate adopt apply`, which
-files each row in the new genre folder by its energy band, and `crate adopt
-move`, which takes each row the tree filed under its old genre out of that
-folder; the run's answer names both.
+files each row in the new genre folder by its energy band, and, where the gate
+showed a row leaving a genre folder, `crate adopt move`, which takes it out of
+that folder's energy band; the run's answer names what applies. A `with vox`
+or Favorites membership the row holds in the old folder stays, and the answer
+says so: remove it in rekordbox.
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),

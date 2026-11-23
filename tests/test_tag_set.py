@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.adopt import genre_moves
-from cratekit.core import active_taxonomy, rb_writer, restore_tags, session, tags
+from cratekit.core import active_taxonomy, rb_writer, restore_tags, session, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import genre_set as gs
@@ -327,6 +327,23 @@ def test_a_playlist_under_a_folder_whose_name_holds_the_separator_is_found(machi
     )
 
 
+def test_a_genre_naming_the_folder_the_row_is_filed_in_leaves_none():
+    declared = taxonomy.default_taxonomy()
+    filed = _held_in("house_funky_disco")
+    assert gs._leaves(declared, "Disco", "Funky House", "10", filed) == ""
+    assert gs._leaves(declared, DEEP, "Funky House", "10", filed) == "house_funky_disco"
+    assert gs._leaves(declared, DEEP, "", "10", filed) == ""
+
+
+@pytest.mark.parametrize("path", ["INBOX / Picks /", "INBOX /  / Picks", "/ INBOX / Picks"])
+def test_a_path_with_an_empty_name_is_not_a_playlist_path(machine, silence, path):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    _seed_picks(machine, "10")
+    with pytest.raises(CratekitError) as refused:
+        _plan(machine, DEEP, [], playlist=path)
+    assert "is not a playlist path" in refused.value.cause.message
+
+
 def test_the_rows_file_skips_blank_lines_comments_and_a_byte_order_mark(tmp_path):
     listed = tmp_path / "rows.txt"
     listed.write_text("\ufeff# the set\n10  # the first\n\n  11  \n#12\n", encoding="utf-8")
@@ -421,14 +438,16 @@ def test_a_row_leaves_the_folder_its_old_genre_filed_it_in_only_where_the_tree_h
         ids = ["10", "11", "12", "13"]
         filed = gs.plan_set(machine, db, declared, DEEP, ids, held=_held_in("melodic_house"))
         unread = gs.plan_set(machine, db, declared, DEEP, ids,
-                             held=SimpleNamespace(read=False, holds=_held_in("x").holds))
+                             held=SimpleNamespace(read=False, holds=_held_in().holds))
         nowhere = gs.plan_set(machine, db, declared, DEEP, ids, held=_held_in())
     finally:
         rb_writer.close_db(db)
     # A blank row, a row already carrying the genre and a row the tree does not
     # hold in its old folder leave none; the leaving folder is digested.
     assert [item.leaves for item in filed.items] == ["melodic_house", "", "", ""]
-    assert [item.leaves for item in unread.items] == ["", "", "", ""]
+    # A TREE THAT COULD NOT BE READ records the old folder, which the move asks
+    # only where the tree it reads then holds the row (review round two).
+    assert [item.leaves for item in unread.items] == ["melodic_house", "", "", ""]
     assert [item.leaves for item in nowhere.items] == ["", "", "", ""]
     assert filed.digest != nowhere.digest
     assert gs.moved_out_of(filed.items) == {
@@ -527,10 +546,11 @@ def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silenc
     assert codes == [
         genre_set_cli.GENRE_WRITTEN, genre_set_cli.FILE_NEXT, genre_set_cli.ROWS_LEFT
     ]
-    # NO TREE IS ADOPTED HERE, so no row leaves a genre folder and only the
-    # filing is named.
+    # NO TREE IS READ HERE, so the row's old folder is recorded for the move to
+    # ask, and both steps are named.
     assert "run `crate adopt apply`" in acted["warnings"][1]["message"]
-    assert "adopt move" not in acted["warnings"][1]["message"]
+    assert "then `crate adopt move`, which takes the 1 row(s)" in acted["warnings"][1]["message"]
+    assert "`with vox` or Favorites membership" in acted["warnings"][1]["message"]
     assert "(1 already-that-genre)" in acted["warnings"][2]["message"]
 
 
@@ -544,7 +564,19 @@ def test_a_genre_the_library_has_no_row_for_writes_nothing_and_names_the_act(
     assert refused["cause"]["detail"]["shown"]["genre_row"] == gs.NO_ROW
     codes = [warning["code"] for warning in acted["warnings"]]
     assert codes[:2] == [genre_set_cli.NOTHING_TO_WRITE, genre_set_cli.GENRE_NO_ROW]
+    assert "no genre row for 'Afro House'" in acted["warnings"][0]["message"]
     assert "give one track that genre in rekordbox" in acted["warnings"][1]["message"]
+
+
+def test_a_plan_of_gone_rows_alone_names_no_missing_genre_row(acknowledged, silence):
+    """The reason given is the true one (review round two)."""
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    code, acted, _refused = _two_acts(_verb(AFRO, "--row", "404"))
+    assert code == int(ExitCode.OK) and acted["outcome"] == "no_op"
+    said = [warning["message"] for warning in acted["warnings"]]
+    assert "no genre row" not in said[0] and "0 of 1 named row(s)" in said[0]
+    assert "(1 row-gone)" in said[1]
     assert _genre_rows(cfg, AFRO) == []
     assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == MELODIC
 

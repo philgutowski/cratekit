@@ -7,7 +7,8 @@ gate; the explicit gate over the digest, taking no inline answer, AN EMPTY PLAN
 STILL ASKS; only ``apply`` over a plan that writes opens the database to write,
 takes the plan again on that handle and refuses ``decision-stale`` if it moved.
 ``--leave`` holds a row out, in the plan and its digest. A run that wrote names
-``adopt move``, which files the rows under the new genre's folder.
+``adopt apply``, which files the rows under the new genre's folder, and
+``adopt move`` where a row leaves the genre folder its old genre filed it in.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -196,7 +197,7 @@ def _advisories(plan: gs.SetPlan) -> list[dict[str, str]]:
 
 
 def _nothing(plan: gs.SetPlan) -> dict[str, str]:
-    if not plan.genre_row:
+    if not plan.genre_row and plan.counts[gs.GENRE_UNKNOWN]:
         said = f"the library has no genre row for {plan.genre!r} (below)"
     else:
         said = (
@@ -220,15 +221,17 @@ def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
         leaving = sum(1 for item in plan.writes if item.leaves)
         moved = (
             f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
-            f"filed under their old genre out of that genre folder"
+            f"filed under their old genre out of that genre folder's energy band; "
+            f"a `with vox` or Favorites membership a row holds there stays, for "
+            f"you to remove in rekordbox"
             if leaving
             else ""
         )
         said.append(warning(
             FILE_NEXT,
-            f"the rows are not yet filed under {plan.genre!r}: run `crate adopt "
-            f"apply`, which files each in that genre's folder by its energy "
-            f"band{moved}",
+            f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
+            f"files by its energy band each one the tree does not hold in that "
+            f"genre's folder yet{moved}",
         ))
     return said
 

@@ -510,14 +510,12 @@ def handle(job, item, cfg) -> jobs.Produced:
     found = read_back(cfg, declared, approved, gone)
     # A GENRE MOVE READ BACK OUT OF ITS OLD BUCKET IS SPENT (U339), so the
     # bucket is never asked again for a track a person later puts there by hand.
-    genre_moves.discharge(
-        cfg,
-        {
-            move.content_id: {move.bucket}
-            for move in approved
-            if move.target_bucket and move.content_id in found["moved"]
-        },
-    )
+    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included.
+    left: dict[str, set[str]] = {}
+    for move in approved:
+        if move.target_bucket and move.content_id in found["moved"]:
+            left.setdefault(move.content_id, set()).add(move.bucket)
+    genre_moves.discharge(cfg, left)
     produced = artifacts.produced(
         cfg,
         job,

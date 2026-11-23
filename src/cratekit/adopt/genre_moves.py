@@ -7,10 +7,12 @@ track a person put in a second genre folder by hand (U340). So the verb that
 changed the genre says where from, and :mod:`cratekit.adopt.move` asks THAT
 bucket for THAT row and no other.
 
-ONE ENTRY PER ROW: the buckets its old genre named, newest run winning. An
-entry is spent when ``adopt move`` reads the row back out of every one of
-them, and it means nothing once the row's genre names the bucket again, which
-the move plan asks before it removes anything.
+ONE ENTRY PER ROW: the buckets the tree filed it in under a genre ``tag set``
+replaced, each run's added to the last's, less the bucket its new genre names.
+A bucket is taken off the entry when an ``adopt move`` job reads the row back
+out of it, and the entry is spent when none is left; a bucket means nothing
+once the row's genre names it again, which the move plan asks before it
+removes anything.
 
 COUPLED with the database (:mod:`cratekit.core.state_files`): written inside the
 session that changes the genre, after its capture, so a restore of that session

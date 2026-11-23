@@ -180,6 +180,34 @@ def test_a_genre_given_again_after_the_approval_refuses_the_move_stale(filed):
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH)}
 
 
+def test_a_track_leaving_two_folders_in_one_job_spends_both(filed):
+    """Two moves of one track in one job each spend their folder (review round two)."""
+    from tests.test_adopt_move import _sql
+
+    _sql(
+        filed,
+        "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('9990', 'Tech House', 'u', 0, '2026-10-01', '2026-10-01')",
+    )
+    _tag_set("--row", "mover")
+    for _ in range(2):
+        _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+        assert drive(_resume(job_id))[0] == int(ExitCode.OK)
+        collection.reset_cache()
+        if _ == 0:
+            verb = ["tag", "set", "Tech House", "--row", "mover"]
+            _code, refused = drive(verb)
+            run_id = refused["run_id"]
+            drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply",
+                   "--actor", "a-person"])
+            assert drive(["--run", run_id, *verb])[0] == int(ExitCode.OK)
+            collection.reset_cache()
+    assert dict(genre_moves.read(filed)) == {"mover": frozenset({OLD_BUCKET, NEW_BUCKET})}
+    _move()
+    assert _held(filed, "mover") == {_place("tech_house", HIGH)}
+    assert dict(genre_moves.read(filed)) == {}
+
+
 def test_a_hand_placed_second_folder_is_never_asked_without_a_genre_move(filed):
     assert _shown()["items"] == []
     assert _held(filed, "second") == {_place(OLD_BUCKET, HIGH), _place(NEW_BUCKET, LOW)}
