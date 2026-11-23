@@ -102,9 +102,7 @@ def _set_over_url(monkeypatch, fake) -> tuple[int, dict]:
     return drive(["intake", "set", URL])
 
 
-# ---------------------------------------------------------------------------
 # The brief's four scenarios
-# ---------------------------------------------------------------------------
 
 
 def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
@@ -268,9 +266,7 @@ def test_a_path_that_names_nothing_is_still_refused_before_the_gate(cfg, library
     assert "is not a file on this machine" in envelope["cause"]["message"]
 
 
-# ---------------------------------------------------------------------------
 # Order, and the hazard
-# ---------------------------------------------------------------------------
 
 
 def test_the_gate_refuses_before_anything_is_fetched(cfg, library, fetcher):
@@ -438,9 +434,7 @@ def test_the_scratch_entry_is_declared_under_the_installation_root():
     assert fetch.scratch_for(URL) != fetch.scratch_for(URL + "-two")
 
 
-# ---------------------------------------------------------------------------
 # intake identify takes the address the same way
-# ---------------------------------------------------------------------------
 
 
 def test_identify_over_a_url_writes_a_tracklist_named_for_the_address(
@@ -499,9 +493,7 @@ def test_a_tracklist_stem_is_the_last_segment_reduced_to_a_safe_name(url, stem):
     assert len(got) <= fetch.STEM_MAX_CHARS
 
 
-# ---------------------------------------------------------------------------
 # The shipped fetcher, over a fake run
-# ---------------------------------------------------------------------------
 
 
 def _shipped(run, **kwargs) -> fetch.YtDlpSetFetcher:
@@ -578,9 +570,7 @@ def test_the_suite_cannot_reach_the_shipped_fetcher():
         fetch.fetcher()
 
 
-# ---------------------------------------------------------------------------
 # U121: the page the mix came from rides on the job
-# ---------------------------------------------------------------------------
 
 
 class PageWritingFetcher(FakeFetcher):
