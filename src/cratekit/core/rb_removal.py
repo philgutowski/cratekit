@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping
 
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.rb_call_time import writer as _writer
 from cratekit.core.rb_tables import (
     COLLECTION_REMOVAL_TABLES,
     CONTENT_REFERENCE_COLUMN,
@@ -24,13 +25,6 @@ from cratekit.core.rb_tables import (
     TARGET_REFERENCE_COLUMN,
     TRACK_NUMBER_COLUMN,
 )
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def _tables(session: Any) -> tuple[str, ...]:
