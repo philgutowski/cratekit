@@ -195,3 +195,25 @@ def _writer():
 
     return rb_writer
 '''
+
+[[rows]]
+id = "P13_convergence_fallback_filter_in_restore_perform"
+description = "restore_perform, where the tree shortness handoff now lives, filters the unconverged tree kind core.convergence owns, the fallback the build must have deleted"
+file = "src/cratekit/core/restore_perform.py"
+surface = "maintainer"
+tests = ["tests/test_restore.py"]
+old = '''def _restore():
+    """``restore`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import restore
+
+    return restore
+'''
+new = '''def _restore():
+    """``restore`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import restore
+
+    return restore
+
+
+_SKIPPED = ("Kind.UNCONVERGED_TREE",)
+'''
