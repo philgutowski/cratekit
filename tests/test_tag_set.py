@@ -752,7 +752,7 @@ def test_a_genre_with_no_lookup_row_is_planned_to_be_made_and_a_tombstone_is_not
     ]
     assert genre_set_cli._payload(plan)["totals"]["genre_row"] == gs.MINT
     assert genre_set_cli._facts(plan)["genre_row"] == gs.MINT
-    # THE MINT IS DIGESTED: the same rows with the row made are another plan.
+    # THE ROW SHOWN IS DIGESTED: the same rows with the row made are another plan.
     _activate(machine, AFRO)
     found = _plan(machine, AFRO, ["10", "11", "404"])
     assert found.genre_row == "901" and not found.mint and found.digest != plan.digest
@@ -785,7 +785,7 @@ def test_one_row_is_made_for_many_rows_beside_a_tombstone_and_the_commit_names_t
     assert [_genre_of(cfg, cid) for cid in ("10", "11", "12", "13")] == [AFRO, AFRO, AFRO, OLD]
     linked = _query(cfg, "SELECT ID, GenreID FROM djmdContent WHERE ID IN ('10','11','12')")
     assert {genre_id for _cid, genre_id in linked} == {made}
-    # THE ROW IS MADE AS THE LANDING MAKES ONE: text id, the name, a UUID.
+    # THE ROW IS MADE AS THE LANDING MAKES ONE: an unused id, the name, a UUID.
     ((name, uuid),) = _query(cfg, "SELECT Name, UUID FROM djmdGenre WHERE ID = ?", made)
     assert name == AFRO and len(uuid) == 36 and uuid != "u"
     after = _content(cfg)

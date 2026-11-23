@@ -1390,8 +1390,8 @@ carries the genre on both, or `--leave CONTENT_ID` holds it. The run that
 applies takes the plan again and refuses `decision-stale` if anything moved.
 It writes the file's genre tag and then the row's genre and nothing else.
 When the library has no genre row for the word yet, as for a genre folder you
-have just added to the taxonomy, the gate shows `genre_row` as `mint` and says
-so (`set-genre-row-to-make`), and the apply makes the one genre row on the
+have just added to the taxonomy, the gate shows `genre_row` as `mint`, a run whose gate was declined says so
+(`set-genre-row-to-make`), and the apply makes the one genre row on the
 commit that links the first rows to it, and only if a row is written; nothing
 in rekordbox needs doing first, and a restore of the run's session takes the
 row back with the rows. A file that will not

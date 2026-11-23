@@ -694,7 +694,8 @@ def _mint_genre(db: Any, genre: str) -> str:
         ID=str(db.generate_unused_id(tables.DjmdGenre)), Name=genre, UUID=str(uuid4())
     )
     db.add(made)
-    # FLUSHED, so the resolution that links the rows finds it on this handle.
+    # FLUSHED AT ONCE, as the landing's mint is, so the row is pending on this
+    # handle before the resolution that links the rows reads it.
     db.flush()
     return str(made.ID)
 
