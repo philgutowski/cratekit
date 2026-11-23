@@ -421,6 +421,7 @@ def _said(tmp_path: Path, items, took) -> list[str]:
         written=len(took),
         read_back=len(took),
         session_id="s",
+        minted="",
     )
     return [one["message"] for one in genre_set_cli._written(plan, written, tmp_path / "library")]
 
