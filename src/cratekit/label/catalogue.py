@@ -101,12 +101,16 @@ class AccountPlaylist:
 
     ``playlist_id`` is the identity (D5). ``name`` is read only for naming
     conventions and never stored. ``tracks`` is the reported count, ``None``
-    when none was reported, which is unknown rather than empty.
+    when none was reported, which is unknown rather than empty. ``updated`` is
+    the provider's own last updated stamp as it listed it, ``None`` when none
+    was reported; ``sync removed`` reuses a kept read only while it and the
+    count stand (R-1716).
     """
 
     playlist_id: str
     name: str
     tracks: int | None = None
+    updated: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

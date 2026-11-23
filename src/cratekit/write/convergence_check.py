@@ -1,8 +1,8 @@
 """Where a governed tree's declared destinations land, and whether the tree matches (U36).
 
 The destination planning and the read-only check :mod:`cratekit.write.rebuild`
-runs around its write, and a diagnostic runs alone; every name is also
-reachable from that module. A destination resolves through the recorded node
+runs around its write, and a diagnostic runs alone; every name the rebuild
+uses is also reachable from that module. A destination resolves through the recorded node
 identifiers first and by display name only when nothing was recorded, so a
 rename is written into rather than doubled.
 
@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any, Callable, Iterable, Sequence
 
-from cratekit.core import config, convergence, locations, taxonomy, tree_registry
+from cratekit.core import config, convergence, locations, routing, taxonomy, tree_registry
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import genre_favorites, routing_pass, trees
@@ -321,6 +321,10 @@ def _under_recorded_folders(
 # The convergence check
 # ---------------------------------------------------------------------------
 
+#: The dimension name a derivation with no vocal calibration reports as not
+#: compared (D7); the ``with vox`` classes are not judged on such a run.
+VOCAL_DIMENSION = "vocal"
+
 
 class Direction(StrEnum):
     """Which way a difference points. Both are reported; only one is repairable."""
@@ -361,7 +365,10 @@ class ConvergenceReport:
     Two sets are reported and are NOT differences: ``unmatched``, every declared
     file that reached no single active row, which no playlist can hold, and
     ``foreign``, every node under the governed root no declared destination
-    resolves to. THE ACTIVE-ROW RULE APPLIES TO BOTH DIRECTIONS.
+    resolves to and that :func:`namesakes` does not compare (R-1949): one
+    whose names declare nothing, a manual class such as Candy, one rekordbox
+    removed, or one in a dimension this run did not compare. THE ACTIVE-ROW
+    RULE APPLIES TO BOTH DIRECTIONS.
     """
 
     tree_id: str
@@ -424,6 +431,102 @@ def _uncompared_playlist_subs(
     }
 
 
+def _additive_ids(declared: taxonomy.Taxonomy, signal: str) -> set[str]:
+    """The additive sub class ids the declaration derives from ``signal``."""
+    return {
+        entry.id for entry in declared.sub_classes if entry.additive and entry.signal == signal
+    }
+
+
+def _uncompared_subs(declared: taxonomy.Taxonomy, not_compared: Sequence[str]) -> set[str]:
+    """The sub class ids whose dimension a run named as not compared."""
+    skipped = _uncompared_playlist_subs(declared, not_compared)
+    if VOCAL_DIMENSION in tuple(not_compared):
+        skipped |= _additive_ids(declared, taxonomy.SIGNAL_VOX)
+    return skipped
+
+
+def declared_names(declared: taxonomy.Taxonomy) -> dict[tuple[str, str], tuple[str, str]]:
+    """The destinations a derivation files into, keyed on their two display names.
+
+    Per bucket, the places a track competes for, its genre subs and every sub
+    class automation derives, each named as
+    :func:`cratekit.write.routing_pass.destination` names it. A manual class
+    (the shipped Candy) is a person's to fill, so its names are no evidence of
+    anything and it is left out. A former or split place is named only by its
+    holder's own band, so it is not a destination of its own here. A pair two
+    destinations share keeps the first in sorted order, so the answer never
+    depends on declaration order.
+    """
+    classes = {
+        entry.id
+        for entry in declared.sub_classes
+        if entry.policy is not taxonomy.SubPolicy.MANUAL
+    }
+    found: dict[tuple[str, str], tuple[str, str]] = {}
+    for bucket in sorted(declared.buckets, key=lambda entry: entry.id):
+        _kind, competing = routing.competing_subs(declared, bucket.id)
+        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes
+        for sub in sorted(subs):
+            try:
+                names = routing_pass.destination(declared, bucket.id, sub)
+            except KeyError:
+                continue
+            found.setdefault(names, (bucket.id, sub))
+    return found
+
+
+def namesakes(
+    declared: taxonomy.Taxonomy,
+    nodes: Sequence[TreeNode],
+    destinations: Sequence[Destination],
+    not_compared: Sequence[str],
+    record: convergence.TreeConvergence | None = None,
+) -> tuple[Destination, ...]:
+    """The playlists under the root no destination resolved to that bear a declared one's names.
+
+    THE PLAYLIST A TRACK WAS LEFT IN IS COMPARED THOUGH NOTHING DERIVES INTO IT
+    (R-1949): a cleared second genre leaves its track in that genre's folder,
+    and while no other track is filed there the playlist was read as a
+    person's own, so a check called the tree matching over a membership no
+    genre files. Each is compared with nothing declared there. A destination
+    this run derived or a record names already has its node, so a second node
+    with its names is left as it was; so is a dimension this run did not
+    compare, whose absence is not evidence (U119), and a playlist rekordbox
+    removed, which nobody sees. A folder a previous write recorded, whose name
+    now declares no bucket, is read by its bucket's declared name, so a folder
+    renamed in rekordbox is still compared once a write has recorded it; a
+    folder that bears a declared bucket's name is read by that name.
+    """
+    covered = {(entry.bucket, entry.sub) for entry in destinations}
+    resolved = {
+        (entry.node.folder_id, entry.node.playlist_id)
+        for entry in destinations
+        if entry.node is not None
+    }
+    skipped = _uncompared_subs(declared, not_compared)
+    names = declared_names(declared)
+    known = set(declared.bucket_ids())
+    bucket_names = {declared.bucket(bucket_id).display for bucket_id in known}
+    recorded_folder = {
+        entry.folder_id: declared.bucket(entry.bucket).display
+        for entry in (() if record is None else record.nodes)
+        if entry.bucket in known
+    }
+    out: list[Destination] = []
+    for node in nodes:
+        if node.removed or (node.folder_id, node.playlist_id) in resolved:
+            continue
+        folder = node.folder_display
+        if folder not in bucket_names:
+            folder = recorded_folder.get(node.folder_id, folder)
+        place = names.get((folder, node.playlist_display))
+        if place is None or place in covered or place[1] in skipped:
+            continue
+        out.append(Destination(*place, node.folder_display, node.playlist_display, node))
+    return tuple(out)
+
+
 def check(
     cfg: config.Config,
     db: Any,
@@ -479,7 +582,10 @@ def check(
 
     governed = {
         (entry.node.folder_id, entry.node.playlist_id): entry
-        for entry in destinations
+        for entry in (
+            *destinations,
+            *namesakes(declared, nodes, destinations, not_compared, record),
+        )
         if entry.node is not None
     }
     # Only active rows count on this side too: a membership on a soft-deleted

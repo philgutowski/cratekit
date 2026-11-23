@@ -16,8 +16,9 @@ link here is load-bearing. In firing order:
    names its table: a membership soft delete (R-758, :data:`REMOVABLE_TABLES`), a
    content row carrying only file facts with every analysis column asserted
    empty (R-746, :data:`ADMITTABLE_ROW_TABLES`), and Remove from Collection,
-   proven from SQL to reach nothing but the renumbered ``TrackNo`` after it
-   (U288, R-1830, :data:`DELETABLE_TABLES`, :func:`renumbered_positions`).
+   proven from SQL to reach nothing but the renumbered ``TrackNo`` after it,
+   stamped with the removal's update count and time as rekordbox stamps it
+   (U288, R-1830, U955, :data:`DELETABLE_TABLES`, :func:`renumbered_positions`).
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 Every path is a late-bound accessor, an unset application pin refuses (S2),
@@ -105,6 +106,7 @@ from cratekit.core.rb_probes import rekordbox_agent_running as rekordbox_agent_r
 from cratekit.core.rb_probes import rekordbox_running as rekordbox_running
 from cratekit.core.rb_removal import (
     DatabaseReading,
+    RenumberingStamp,
     _mapped,
     assert_collection_removal_confined,
     collection_removal_violations,
@@ -113,10 +115,14 @@ from cratekit.core.rb_removal import (
     database_reading,
     recorded_columns,
     removal_renumbering,
+    removal_stamp,
     remove_from_collection,
     renumber_memberships,
 )
+from cratekit.core.rb_removal import counter_at_commit as counter_at_commit
 from cratekit.core.rb_removal import renumbered_positions as renumbered_positions
+from cratekit.core.rb_removal import stamp_moment as stamp_moment
+from cratekit.core.rb_removal import stamp_time as stamp_time
 from cratekit.core.rb_tables import _REGISTERED as _REGISTERED
 from cratekit.core.rb_tables import ADMITTABLE_ROW_TABLES as ADMITTABLE_ROW_TABLES
 from cratekit.core.rb_tables import ALBUM_TABLE as ALBUM_TABLE
@@ -1210,6 +1216,8 @@ class CollectionRemoval:
         self.renumbered: dict[str, tuple[str, int, int]] = dict(renumbered or {})
         #: Rows deleted, by table, once :meth:`commit` has made them.
         self.deleted: dict[str, int] = {}
+        #: What :meth:`commit` stamped the renumbered rows with (U955), None before it.
+        self.stamp: RenumberingStamp | None = None
 
     @classmethod
     def prepare(cls, db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
@@ -1258,12 +1266,19 @@ class CollectionRemoval:
         return removal_renumbering(db, content_ids)
 
     def commit(self, *, force_cloud_canary: bool = False) -> None:
-        """Delete every planned row, renumber what follows it, prove both confined, and commit through the guard."""
+        """Delete every planned row, renumber and stamp what follows it, prove both confined, and commit through the guard.
+
+        The stamp is made after the deletes, when the count the commit will
+        leave can be read off the binding's buffer (U955).
+        """
         for content_id in self.content_ids:
             for table, rows in remove_from_collection(self.db, content_id).items():
                 self.deleted[table] = self.deleted.get(table, 0) + len(rows)
-        renumber_memberships(self.db, self.renumbered)
-        assert_collection_removal_confined(self.db, self.before, removed=self.content_ids)
+        self.stamp = removal_stamp(self.db)
+        renumber_memberships(self.db, self.renumbered, stamp=self.stamp)
+        assert_collection_removal_confined(
+            self.db, self.before, removed=self.content_ids, stamp=self.stamp
+        )
         commit_guarded(
             self.db, force_cloud_canary=force_cloud_canary, deletions=DELETABLE_TABLES
         )
@@ -1271,7 +1286,11 @@ class CollectionRemoval:
     def read_back(self) -> list[str]:
         """Every difference the committed database shows that the removal does not explain."""
         return collection_removal_violations(
-            self.before, database_reading(self.db), removed=self.content_ids, committed=True
+            self.before,
+            database_reading(self.db),
+            removed=self.content_ids,
+            committed=True,
+            stamp=self.stamp,
         )
 
     def write_into(

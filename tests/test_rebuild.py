@@ -1157,6 +1157,30 @@ def test_a_rebuild_that_derived_nothing_refuses_instead_of_reporting_converged(
     assert convergence.read(cfg).tree(TREE_ID).blocking, "the flag was cleared"
 
 
+def test_readings_that_place_nothing_refuse_at_the_derivation_the_check_reads_through(
+    cfg, declared
+):
+    """Readings a caller supplies never meet the walk's own refusal, and the read only
+    check has no write plan to refuse, so the derivation's refusal is the one there."""
+    with pytest.raises(CratekitError) as excinfo:
+        rebuild.declared_membership(
+            cfg,
+            declared,
+            tree_id=TREE_ID,
+            source=tree_registry.DerivationSource.TAXONOMY,
+            vocal_threshold=None,
+            truth=[],
+        )
+    assert excinfo.value.cause.reason == "rebuild-derivation-empty"
+
+
+def test_a_report_over_a_derivation_that_placed_nothing_is_never_converged():
+    """The last layer: zero placements and zero differences is not a match."""
+    empty = rebuild.ConvergenceReport(tree_id=TREE_ID, root_id=ADOPTED_ROOT, derived=0)
+    assert not empty.converged
+    assert replace(empty, derived=1).converged
+
+
 def test_a_music_directory_that_is_not_there_refuses_rather_than_walking_nothing(
     cfg, gates_pass, db, adopted_root, declared
 ):
