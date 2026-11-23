@@ -12,8 +12,11 @@ sits in, never by its tag.
 The plan digests the target state, not the adds, so a stopped run re-plans to
 the same digest (R-788). Additions and removals are two commits, the second
 admitting the membership table alone, so a run stopped between them has taken
-nothing out. Only the refresh verb removes; an adoption's end runs the additive
-half. Layer: write; names no verb.
+nothing out. Of the playlist alone, only the refresh verb removes; an
+adoption's end runs the additive half, and the move a genre given by ``tag
+set`` plans takes a track out of every place of its old folder, this one
+included where nothing else holds it there (R-1965). Layer: write; names no
+verb.
 """
 
 from __future__ import annotations

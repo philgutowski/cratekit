@@ -9,6 +9,10 @@ The rules are :mod:`cratekit.sync.removed`'s; this is the order a person meets t
 * the account is asked only when something was downloaded, and the other
   synced playlists and hearts only once a removal is found; the record is
   then written once;
+* each synced playlist read whole is kept (R-1716, :mod:`cratekit.sync.removed_kept`),
+  so a run the call ceiling or the hour's line stops is continued by running
+  it again, which reads only what is left and any playlist the account's
+  listing shows written since;
 * a plan that offers nothing ends there, writing nothing;
 * otherwise the backup acknowledgment, then the gate ``sync.removed.confirm``
   over the digested plan (U288, R-1830);
@@ -16,9 +20,10 @@ The rules are :mod:`cratekit.sync.removed`'s; this is the order a person meets t
   refuses ``decision-stale`` on any change. No file is touched; ``crate delete
   review`` offers them later from the session record.
 
-``--retire`` (U320) reads every synced playlist, lists each unlisted one whose
-id answered not found at the gate ``sync.removed.retire``, and writes the
-record only on ``retire``. It makes no removal plan.
+``--retire`` (U320) reads every synced playlist the held reads do not hold,
+lists each unlisted one whose id answered not found at the gate
+``sync.removed.retire``, and writes the not found record only on ``retire``;
+the held reads are written as it reads. It makes no removal plan.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -26,13 +31,14 @@ command-line layer, for the reason ``adopt.apply_cli`` gives.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import active_taxonomy, analysis_store, rb_writer, session, tree_registry
-from cratekit.core.cause import Outcome
+from cratekit.core import active_taxonomy, analysis_store, jobs, rb_writer, session, tree_registry
+from cratekit.core.cause import Cause, Outcome
 from cratekit.sync import cli as sync_cli
-from cratekit.sync import removed, unavailable
+from cratekit.sync import removed, removed_kept, unavailable
 
 #: Nothing is offered, since a synced playlist was not read whole.
 PARTIAL = "sync-removed-partial"
@@ -64,8 +70,9 @@ RETIRE_GATE = "sync.removed.retire"
 #: What ``--retire`` retired.
 RETIRED_NOW = "sync-removed-retired-now"
 
-#: The command that retires them now. It costs about two calls per synced
-#: playlist, so it needs raised ceilings on a large account (R-1716).
+#: The command that retires them now. It reads every synced playlist the
+#: held reads do not hold, two calls or more each, so a first one on a large
+#: account needs raised ceilings, or runs again until it finishes (R-1716).
 RETIRE_COMMAND = "crate --calls N --calls-per-hour M sync removed --retire"
 
 
@@ -75,10 +82,11 @@ def build_removed(parser, entry) -> None:
         "--retire",
         action="store_true",
         help=(
-            "read every synced playlist, list each one the account no longer lists "
-            "whose id answered not found, and retire them behind the explicit gate "
-            "sync.removed.retire, so they stop holding back every removal; writes "
-            "Cratekit's own record only, never the account or the database"
+            "read every synced playlist the held reads do not hold, list each one the "
+            "account no longer lists whose id answered not found, and retire them behind "
+            "the explicit gate sync.removed.retire, so they stop holding back every "
+            "removal; writes Cratekit's own records only, the held reads as it reads, "
+            "never the account or the database"
         ),
     )
     parser.set_defaults(_handler=sync_removed)
@@ -205,9 +213,21 @@ def warnings_of(plan: removed.RemovedPlan) -> list[dict[str, str]]:
     return found
 
 
-def facts(plan: removed.RemovedPlan) -> dict[str, Any]:
-    """What the gate puts in front of the items: each offered row, then what is written."""
+def facts(
+    plan: removed.RemovedPlan,
+    kept: removed_kept.SyncedReads | None = None,
+    synced: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """What the gate puts in front of the items: each offered row, then what is written.
+
+    A plan that took any synced playlist from held reads says so (R-1716), so
+    the person answering knows how old what it rests on may be.
+    """
+    held = (
+        {"held reads": kept.from_held(synced)} if kept is not None and kept.used else {}
+    )
     return {
+        **held,
         "offered": [
             f"{one.artist} - {one.title}, taken off {', '.join(one.removed_from)}: {one.file}"
             for one in plan.offered
@@ -233,26 +253,75 @@ def _gate(entry, name: str = CONFIRM_GATE) -> Any:
     raise LookupError(f"{entry.name} declares no {name} gate")
 
 
+def _stopped(cause: Cause, kept: removed_kept.SyncedReads) -> Cause:
+    """A park met while reading, said with how many synced playlists the store now holds (R-1716).
+
+    COUNTED FROM THE STORE, whatever run read them, so a park before any read
+    still says what the next run will not read again. The reason stands, so
+    the dispatcher still reads it as the ceiling's or the hour's and names the
+    command that continues.
+    """
+    standing = 0 if kept.unkept else kept.standing()
+    if kept.unkept:
+        said = (
+            f"; the {len(kept.kept)} synced playlist(s) read whole on this run could not "
+            f"be held ({kept.unkept}), so running it again reads them again"
+        )
+    else:
+        said = (
+            f"; {standing} synced playlist(s) read whole are held, {len(kept.kept)} of them "
+            f"read on this run, each for {removed_kept.hours(removed_kept.HELD_FOR)} after "
+            f"its read while the account lists it unchanged, so running crate sync "
+            f"removed again, with or without a higher ceiling, reads only the rest; "
+            f"nothing is offered from a run stopped part way"
+        )
+    return dataclasses.replace(
+        cause, message=f"{cause.message}{said}", detail={**dict(cause.detail or {}), "kept": standing}
+    )
+
+
 def _read_synced(
     cfg, found, *, every: bool, record_now: bool = True
-) -> dict[str, removed.Listing]:
-    """The account's reads, recorded in the not found record (U320).
+) -> tuple[dict[str, removed.Listing], removed_kept.SyncedReads | None]:
+    """The account's reads, recorded in the not found record (U320), and the held reads.
 
     The downloaded playlists first; the rest and the hearts only once a removal
     is found, or with ``every``. The record is read before any call, so an
     unreadable one costs none, and written once after, unless ``record_now`` is
-    false, so that ``--retire``'s abort writes nothing.
+    false, so that ``--retire``'s abort writes nothing to it. Each playlist read
+    whole is kept as it goes (R-1716), and the store is written on the way out
+    whatever stops the run.
     """
     record = unavailable.UnavailableRecord(cfg)
     sightings = record.read()
     moment = unavailable.now()
     reads: dict[str, removed.Listing] = {}
     if not found and not every:
-        return reads
+        return reads, None
     from cratekit.label import catalogue
-    from cratekit.modules.outbound import pairs
 
     account = catalogue.resolve(cfg)
+    kept = removed_kept.SyncedReads(cfg, moment)
+    try:
+        reads = _read_through(
+            cfg, account, found, every=every, kept=kept, sightings=sightings, moment=moment
+        )
+    except jobs.Parked as exc:
+        kept.flush()
+        raise jobs.Parked(_stopped(exc.cause, kept)) from exc
+    finally:
+        kept.flush()
+    if record_now:
+        record.update(removed.noted(reads))
+    return reads, kept
+
+
+def _read_through(
+    cfg, account, found, *, every: bool, kept: removed_kept.SyncedReads, sightings, moment
+) -> dict[str, removed.Listing]:
+    """:func:`_read_synced`'s reads, each playlist through ``kept``."""
+    from cratekit.modules.outbound import pairs
+
     listed = removed.account_listing(account)
     recorded = removed.recorded_contents(cfg)
     # WHAT CRATEKIT CALLS EACH ONE, so an unlisted playlist is still named;
@@ -264,6 +333,7 @@ def _read_synced(
         "listed": listed,
         "recorded": recorded,
         "names": names,
+        "kept": kept,
     }
     reads = removed.read_account(account, [one.account for one in found], **asked)
     if every or removed.removals(found, reads):
@@ -285,9 +355,16 @@ def _read_synced(
         reads.update(removed.read_account(account, others, **asked))
         if not every:
             reads[removed.HEARTS] = removed.read_hearts(account)
-    if record_now:
-        record.update(removed.noted(reads))
     return reads
+
+
+def _kept_warnings(
+    kept: removed_kept.SyncedReads | None, reads: dict[str, removed.Listing]
+) -> list[dict[str, str]]:
+    """What the held reads say, over the synced playlists this run answered (R-1716)."""
+    if kept is None:
+        return []
+    return kept.warnings(account for account in reads if account != removed.HEARTS)
 
 
 def retirable(reads: dict[str, removed.Listing]) -> list[removed.Listing]:
@@ -305,12 +382,14 @@ def retirable(reads: dict[str, removed.Listing]) -> list[removed.Listing]:
 def retire(ctx, cfg) -> Envelope:
     """``--retire``: retire behind the explicit gate each playlist :func:`retirable` names (U320).
 
-    Records nothing until the gate answers ``retire``, then every read and each
-    named playlist as retired by a person. It writes Cratekit's record only.
+    Records nothing in the not found record until the gate answers
+    ``retire``, then every read and each named playlist as retired by a
+    person. The held reads (R-1716) are written as it reads, abort or not.
+    It writes Cratekit's records only.
     """
     records, _unreadable = session.scan_log(cfg)
     found = removed.downloaded(cfg, records)
-    reads = _read_synced(cfg, found, every=True, record_now=False)
+    reads, kept = _read_synced(cfg, found, every=True, record_now=False)
     named = retirable(reads)
     items = [
         {
@@ -342,7 +421,7 @@ def retire(ctx, cfg) -> Envelope:
         for one in reads.values()
         if (one.state in removed.NOT_WHOLE or one.state == removed.GONE) and not one.not_found
     ]
-    warnings = (
+    warnings = _kept_warnings(kept, reads) + (
         [
             {
                 "code": PARTIAL,
@@ -410,7 +489,7 @@ def sync_removed(ctx) -> Envelope:
     records, unreadable = session.scan_log(cfg)
     found = removed.downloaded(cfg, records)
     with rb_writer.read_only_copy(rb_writer.live_db_path(cfg), cfg=cfg) as db:
-        reads = _read_synced(cfg, found, every=False)
+        reads, kept = _read_synced(cfg, found, every=False)
         plan = removed.plan_removed(
             cfg,
             db,
@@ -422,7 +501,7 @@ def sync_removed(ctx) -> Envelope:
             unreadable=len(unreadable),
         )
     data = payload(plan)
-    warnings = warnings_of(plan)
+    warnings = warnings_of(plan) + _kept_warnings(kept, reads)
     if not plan.offered:
         return ctx.envelope(
             data=data,
@@ -431,7 +510,11 @@ def sync_removed(ctx) -> Envelope:
         )
     # BEFORE THE GATE (R-733), and only once something is offered.
     session.assert_backup_acknowledged(cfg)
-    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(plan)) != "apply":
+    synced = tuple(account for account in reads if account != removed.HEARTS)
+    if (
+        ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(plan, kept, synced))
+        != "apply"
+    ):
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     done = written(
         cfg,

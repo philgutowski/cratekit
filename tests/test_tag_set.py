@@ -537,7 +537,8 @@ def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silenc
     # ask, and both steps are named.
     assert "run `crate adopt apply`" in acted["warnings"][1]["message"]
     assert "then `crate adopt move`, which takes the 1 row(s)" in acted["warnings"][1]["message"]
-    assert "`with vox` or Favorites membership" in acted["warnings"][1]["message"]
+    assert "band, `with vox`, genre sub and Favorites;" in acted["warnings"][1]["message"]
+    assert "in rekordbox" not in acted["warnings"][1]["message"]
     assert "(1 already-that-genre)" in acted["warnings"][2]["message"]
 
 

@@ -330,7 +330,14 @@ def remaining(
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
         _kind, into = routing.competing_subs(declared, move.into)
-        if move.target not in into or not set(move.remove) <= competing:
+        # A MOVE ACROSS BUCKETS LEAVES THE OLD FOLDER'S PLACES BESIDE THE BAND
+        # TOO (R-1965), and no other move ever names one.
+        leavable = competing | (
+            set(plan_engine.alongside_places(declared, move.bucket))
+            if move.target_bucket
+            else set()
+        )
+        if move.target not in into or not set(move.remove) <= leavable:
             stale[move.content_id] = "a sub it names no longer competes"
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
@@ -353,9 +360,10 @@ def remaining(
             )
         )
         if now is None and move.target_bucket:
-            # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET.
+            # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET,
+            # its places beside the band included (R-1965).
             arrived = move.target in current.placements.holds(move.into, move.content_id)
-            if arrived and not held:
+            if arrived and not still_to_leave(current.placements, declared, move, held):
                 continue
             stale[move.content_id] = "the plan as it stands does not move it"
             continue
@@ -383,6 +391,28 @@ def remaining(
     if stale:
         raise _stale(approved, stale)
     return tuple(todo), tuple(sorted(gone))
+
+
+def still_to_leave(
+    placements_now: plan_engine.Placements,
+    declared: taxonomy.Taxonomy,
+    move: move_engine.Move,
+    held: frozenset[str] | set[str],
+) -> set[str]:
+    """What a move across buckets approved to leave and the tree still holds there.
+
+    ``held`` is the competing subs the track holds in the bucket left. A band
+    another bucket's move settles is that move's to read back, so only what
+    THIS move was approved to remove counts (R-1965), and a place beside the
+    band only while :func:`cratekit.adopt.move.alongside_left` still names it
+    over the tree as it is now: a Favorites a playlist added since keeps is no
+    longer to leave, and the writer kept it. ONE BODY for the worker's done
+    check and its read back (review round two).
+    """
+    beside = move_engine.alongside_left(
+        placements_now, declared, move.bucket, move.content_id, leaving=move.remove
+    )
+    return (set(held) | set(beside)) & set(move.remove)
 
 
 def membership_moves(
@@ -433,7 +463,9 @@ def read_back(
     account of itself. ``moved`` holds its target and no other competing sub,
     ``in_both`` its target and another, ``untouched`` not its target, and
     ``neither`` no competing sub at all, which no path can produce and is
-    listed so it would be seen. Each move is read back in its own bucket and
+    listed so it would be seen. A move across buckets is read for what it was
+    approved to remove, a place beside the band included (R-1965). Each move is
+    read back in its own bucket and
     each list names a track once, so a track whose two moves (R-780) ended
     differently is in two lists.
 
@@ -454,7 +486,8 @@ def read_back(
         )
         if move.target_bucket:
             # ACROSS BUCKETS (U339): the target is read in the bucket it files
-            # into, and every sub of the bucket left must be gone.
+            # into, and what the move still has to leave there, :func:`still_to_leave`.
+            held = still_to_leave(held_now, declared, move, held)
             arrived = move.target in held_now.holds(move.into, move.content_id)
             name = (
                 ("in_both" if held else "moved")
@@ -524,11 +557,16 @@ def handle(job, item, cfg) -> jobs.Produced:
     )
     # A GENRE MOVE READ BACK OUT OF ITS OLD BUCKET IS SPENT (U339), so the
     # bucket is never asked again for a track a person later puts there by hand.
-    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included.
+    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included, and
+    # only for a track EVERY move of which finished: the lists are per track,
+    # so one move read back moved beside another that did not would otherwise
+    # spend the entry a resume needs (review round one of R-1965).
+    unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
     left: dict[str, set[str]] = {}
     for move in approved:
         if move.target_bucket and move.content_id in found["moved"]:
-            left.setdefault(move.content_id, set()).add(move.bucket)
+            if move.content_id not in unfinished:
+                left.setdefault(move.content_id, set()).add(move.bucket)
     genre_moves.discharge(cfg, left)
     produced = artifacts.produced(
         cfg,
@@ -547,7 +585,6 @@ def handle(job, item, cfg) -> jobs.Produced:
             "interrupted": interrupted is not None or refused is not None,
         },
     )
-    unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
     failed = refused is not None or interrupted is not None or unfinished
     if failed and produced.staged is not None and produced.final is not None:
         jobs.commit_artifact(produced.staged, produced.final)

@@ -35,7 +35,15 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from cratekit.adopt.plan import NO_VOCALS, UNREAD, Placements, Vocals, vocal_sub
+from cratekit.adopt.plan import (
+    NO_VOCALS,
+    UNREAD,
+    Placements,
+    Vocals,
+    alongside_places,
+    in_own_folder,
+    vocal_sub,
+)
 from cratekit.core import config, convergence, rb_writer, routing, taxonomy, tree_registry
 from cratekit.write import metadata_cli, rebuild
 from cratekit.write.routing_pass import destination
@@ -102,32 +110,89 @@ def placements_from(
     SPLIT PLACE under both too (U118): every track in the holder's band holds
     the split place in the declarer, whatever its genre, and which it leaves
     is the move's question.
+
+    THE PLACES BESIDE THE BAND AND THE FOLDER'S OTHER PLAYLISTS ARE READ WITH
+    THEM (R-1965), from the same nodes: the move across genre folders leaves a
+    folder's ``with vox``, Favorites and genre sub with its band, and a track
+    another playlist of that folder still holds keeps the Favorites there. The folder
+    is the one the bucket's own places answer from, by identifier, so a
+    renamed folder is still the bucket's.
     """
     by_ids, by_display = _indexed(nodes)
+    by_folder: dict[str, list[rebuild.TreeNode]] = {}
+    for node in by_ids.values():
+        by_folder.setdefault(node.folder_id, []).append(node)
 
     held: dict[str, dict[str, set[str]]] = {}
     unnamed: dict[str, dict[str, set[str]]] = {}
     doubled: dict[str, dict[str, set[str]]] = {}
+    alongside: dict[str, dict[str, set[str]]] = {}
+    alongside_unnamed: dict[str, dict[str, set[str]]] = {}
+    others: dict[str, dict[str, set[str]]] = {}
     for bucket in declared.buckets:
         _kind, competing = routing.competing_subs(declared, bucket.id)
+        known: set[tuple[str, str]] = set()
+        folders: set[str] = set()
         for sub_id in sorted(competing):
-            under = recorded_under(declared, bucket.id, sub_id)
-            recorded = None if record is None else record.node(*under)
-            answering, under_the_name, under_another = _answering(
-                by_display, by_ids, named_place(declared, bucket.id, sub_id), recorded
+            answering = _read_place(
+                declared, bucket.id, sub_id, by_display, by_ids, record, held, unnamed
             )
-            for content_id in under_the_name | under_another:
-                held.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
-            for content_id in under_another:
-                unnamed.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
             # A pair two rows hold in one node is a double (R-781); a track in
             # two nodes that both answer for one sub is two playlists, not one.
             for content_id in {cid for node in answering for cid in node.doubled}:
                 doubled.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
+            known.update((node.folder_id, node.playlist_id) for node in answering)
+            if in_own_folder(declared, bucket.id, sub_id):
+                folders.update(node.folder_id for node in answering)
+        for sub_id in alongside_places(declared, bucket.id):
+            answering = _read_place(
+                declared, bucket.id, sub_id, by_display, by_ids, record, alongside,
+                alongside_unnamed,
+            )
+            known.update((node.folder_id, node.playlist_id) for node in answering)
+            folders.update(node.folder_id for node in answering)
+        for folder_id in folders:
+            for node in by_folder.get(folder_id, ()):
+                if (node.folder_id, node.playlist_id) in known:
+                    continue
+                for content_id in node.content_ids:
+                    found = others.setdefault(bucket.id, {}).setdefault(content_id, set())
+                    found.add(node.playlist_display)
 
     return Placements(
-        read=True, held=_frozen(held), unnamed=_frozen(unnamed), doubled=_frozen(doubled)
+        read=True,
+        held=_frozen(held),
+        unnamed=_frozen(unnamed),
+        doubled=_frozen(doubled),
+        alongside=_frozen(alongside),
+        alongside_unnamed=_frozen(alongside_unnamed),
+        others=_frozen(others),
     )
+
+
+def _read_place(
+    declared: taxonomy.Taxonomy,
+    bucket_id: str,
+    sub_id: str,
+    by_display: Mapping[tuple[str, str], Sequence[rebuild.TreeNode]],
+    by_ids: Mapping[tuple[str, str], rebuild.TreeNode],
+    record: convergence.TreeConvergence | None,
+    held: dict[str, dict[str, set[str]]],
+    unnamed: dict[str, dict[str, set[str]]],
+) -> list[rebuild.TreeNode]:
+    """Who one place of a bucket holds, into ``held``, and under another name
+    only, into ``unnamed``; returns the nodes answering for it. ONE BODY for a
+    competing sub and a place beside the band, so both find a renamed playlist alike."""
+    under = recorded_under(declared, bucket_id, sub_id)
+    recorded = None if record is None else record.node(*under)
+    answering, under_the_name, under_another = _answering(
+        by_display, by_ids, named_place(declared, bucket_id, sub_id), recorded
+    )
+    for content_id in under_the_name | under_another:
+        held.setdefault(bucket_id, {}).setdefault(content_id, set()).add(sub_id)
+    for content_id in under_another:
+        unnamed.setdefault(bucket_id, {}).setdefault(content_id, set()).add(sub_id)
+    return answering
 
 
 def _indexed(
