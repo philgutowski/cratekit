@@ -18,7 +18,7 @@ from cratekit.organize import mirror_downloads
 from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
-from tests.test_sync_all import _playlist, _tracks, bind_playlists
+from tests.test_sync_all import _playlist, _tracks, _warmup_and_peak, bind_playlists
 from tests.test_sync_land import (
     _account,
     _all_jobs,
@@ -169,11 +169,7 @@ def test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken(
     _account(monkeypatch, script, "101")
     by_hand = exited(drive(["intake", "playlist", "pl-a"]))
     script.landings["201"] = Landing()
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
 
     code, envelope = drive(["sync", "land"])
 

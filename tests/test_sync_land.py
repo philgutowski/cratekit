@@ -33,6 +33,7 @@ from tests.test_sync_all import (
     _hearts,
     _playlist,
     _tracks,
+    _warmup_and_peak,
     bind_hearts,
     bind_playlists,
 )
@@ -1000,11 +1001,7 @@ def test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on(
     earlier = exited(drive(["sync", "all"]))
     (held,) = _by_key("intake.playlist")
     script.landings["201"] = Landing()
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
 
     envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert _summary(envelope)["pass_run"] != earlier["run_id"]
@@ -1235,11 +1232,7 @@ def test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest(
     cfg, script = machine
     script.landings["101"] = Landing()
     script.landings["201"] = Landing()
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
     passed = exited(drive(["sync", "all"]))
     first, second = _by_key("intake.playlist")
     with jobs.open_store() as store:

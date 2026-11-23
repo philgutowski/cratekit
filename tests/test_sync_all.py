@@ -493,6 +493,11 @@ def _tracks(*ids: str) -> list[Track]:
     return [Track(track_id, f"Artist {track_id}", f"Title {track_id}") for track_id in ids]
 
 
+def _warmup_and_peak() -> tuple[tuple[AccountPlaylist, list[Track]], ...]:
+    """``pl-a`` Warmup holding 101 and ``pl-b`` Peak holding 201, made fresh."""
+    return (_playlist("pl-a", "Warmup"), _tracks("101")), (_playlist("pl-b", "Peak"), _tracks("201"))
+
+
 def _playlist_jobs() -> list[jobs.Job]:
     return [job for job in _jobs() if job.handler_key == INTAKE_PLAYLIST]
 
@@ -939,11 +944,7 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
     slim, monkeypatch
 ):
     del slim
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
     real = intake_cli.queue_playlist
 
     def second_refuses(store, cfg, **kwargs):
@@ -1165,20 +1166,12 @@ def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
 ):
     """Each rename is its own remote write; a caller naming what reached the account passes a list, as ``queue`` does."""
     cfg = slim
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
     exited(drive(["sync", "all"]))
     for job in _playlist_jobs():
         code, resumed = drive(cli_jobs.argv_for(job))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
-    fake = bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    fake = bind_playlists(monkeypatch, *_warmup_and_peak())
     with jobs.open_store() as store:
         sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
     assert sorted(sweep.recorded) == ["pl-a", "pl-b"]
@@ -1274,11 +1267,7 @@ def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb
     slim, monkeypatch
 ):
     del slim
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _tracks("101")),
-        (_playlist("pl-b", "Peak"), _tracks("201")),
-    )
+    bind_playlists(monkeypatch, *_warmup_and_peak())
     text = exited(_run_human(["sync", "all"]))
     (run_id,) = {job.payload["run_id"] for job in _playlist_jobs()}
     (line,) = [row for row in text.splitlines() if "sync.next:" in row]
