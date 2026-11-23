@@ -4361,3 +4361,129 @@ producer upstream of staging was driven.
 
 **Closes when:** the refusal reads a trailing head only in the spaced form the
 engine writes, or names its own reason so the row says why. Ledger only.
+
+---
+
+## R-1990. A playlist rekordbox removed is still compared when a rebuild recorded it, while one nothing recorded is not
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** R-1949's fix leaves a playlist rekordbox removed out of
+the playlists the check compares through their names (`node.removed`), but a
+destination a rebuild recorded resolves to its node by identifier whether or
+not that node is removed, so a removed recorded playlist with live
+memberships still reads `unexpected`. The two paths answer differently for
+one state.
+
+**Measured cost.** Driven at round two: a rebuild recorded playlist marked
+removed with its memberships live read `unexpected:tech_house/high:1` on the
+branch and on the base; with its memberships marked removed too it read
+converged on both. The repository's own measurement (the solutions note on
+the first removal being a soft delete) found removed memberships inside
+removed playlists, so the live state may be the second shape; the first was
+not produced by rekordbox here.
+
+**Closes when:** the check treats a removed node the same on both paths, or a
+measurement on the live library shows rekordbox never leaves live
+memberships in a removed playlist. Ledger only: unmeasured reachability, and
+the base's behaviour.
+
+---
+
+## R-1991. A cleared second genre left under a folder renamed in rekordbox reads as matching when no rebuild or resort ever recorded that folder
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check reads a playlist that nothing
+derives into by its folder's declared name, or, when the folder's name
+declares no bucket, by the bucket a previous write recorded for it. Adoption's
+writer (`trees.write_tree_membership` under `adopt apply`) records no node, so
+a tree filed only by adoption has no record. A genre folder renamed in
+rekordbox there declares no bucket and has none recorded, so a cleared second
+genre's track left alone in a playlist under it falls into `foreign`, and
+`converge` says `matching`: R-1949's own state, under a rename.
+
+**Measured cost.** Driven at round two with the folder renamed by a row
+write standing in for rekordbox: the verb said `matching`, "1 declared
+placement(s) all present", left behind empty, `foreign: Loud! Room/High`.
+Once a rebuild or resort recorded a playlist in that folder it said
+`differing` and named the leftover. The rename itself was not made in
+rekordbox, which no cloud session may open.
+
+**Closes when:** the check can tell which bucket an unrecorded renamed folder
+under the governed root is (for instance by a record adoption writes, or the
+bucket its declared playlists' tracks derive into) and compares its playlists,
+or names such a folder as not compared rather than reading matching. An issue:
+a clean report over a membership no genre files (the bar's b).
+
+---
+
+## R-1992. A track whose file the walk did not read is unexpected in the band it sits in alone, now that a playlist nothing derives into is compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check compares every playlist under the
+governed root that bears a declared destination's names (R-1949), with
+nothing declared there when no track derives into it. A track the
+derivation placed nowhere, because the walk of the music directory did not
+read its file (a file outside the music directory, or one that would not
+open), reads `unexpected` there. The base already read it so once the same
+playlist held one derived track; the branch widens the class to a playlist
+holding only such tracks.
+
+**Measured cost.** Driven at round one: track 2 with no reading, alone in
+Tech House / High, `check` said `unexpected:tech_house/high:2` where the
+base said `foreign`. No producer on a real library was driven, so how often
+a genre playlist holds only unread files is unmeasured. `converge` says
+`differing` over a membership whose file it did not read.
+
+**Closes when:** the check knows which active rows the walk read and leaves a
+membership whose file it did not read out of `unexpected` (or names it apart),
+in both the populated and the newly compared playlists. Ledger only: the
+report is not clean, and the class is the base's.
+
+---
+
+## R-1993. converge offers rebuild-tree as the remedy for an unexpected membership, which a rebuild adds around and never removes
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `crate converge` gives every `differing` tree the remedy
+`rebuild-tree`. A rebuild adds and never removes, so for a tree whose only
+differences are `unexpected` memberships (a cleared second genre's track
+left in that folder, R-1949) the remedy changes nothing and the tree reads
+`differing` after it. The base does the same for any unexpected membership;
+R-1949's fix makes converge name more of them.
+
+**Measured cost.** Driven at round one: the card's own scenario through the
+verb, `differing`, `unexpected:tech_house/high:1`, remedy `rebuild-tree`.
+The guide now says to take such a track out by hand in rekordbox; the
+verb's remedy still names the rebuild.
+
+**Closes when:** converge names a remedy per direction, the rebuild for a
+missing membership and the removal by hand (or `route resort`'s left behind
+list) for an unexpected one. Ledger only: a remedy wording, which the guide
+already corrects.
+
+---
+
+## R-1994. A Favorites playlist is compared on a governed tree whose derivation neither files favourites nor names their dimension as not compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `rebuild.with_favorites` derives the genre Favorites
+only for the routing tree, and names the dimension as not compared only
+there. On any other tree id the check now compares a playlist bearing a
+declared Favorites name with nothing declared there, so its members read
+`unexpected` though nothing was derived for them.
+
+**Measured cost.** Driven at round one on the test tree id: a Favorites
+playlist by hand read `unexpected:deep_house/favorites:1` with no gap
+named. One candidate producer was driven and does not reach it:
+`cutover.derivation_source` refuses any tree but the two cutover trees, and
+the inbox tree refuses at `assert_derivable`, so no shipped verb checks
+another tree. Reachability is unmeasured beyond that one candidate.
+
+**Closes when:** the check leaves a playlist signal class out of the newly
+compared playlists on any tree `with_favorites` does not derive. Ledger only:
+no producer reached.
