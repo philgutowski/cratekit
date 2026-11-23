@@ -152,9 +152,7 @@ def _decided(argv: list[str]) -> dict:
     return refused
 
 
-# ---------------------------------------------------------------------------
 # The scenarios the brief names
-# ---------------------------------------------------------------------------
 
 
 def test_two_swept_playlists_land_as_two_inbox_playlists_under_their_exact_names(
@@ -236,9 +234,7 @@ def test_a_label_landing_keeps_the_name_u110_gives_it(cfg, silence, export, tmp_
     assert not _written(envelope)
 
 
-# ---------------------------------------------------------------------------
 # What stays as it was, and what the batch playlist keeps
-# ---------------------------------------------------------------------------
 
 
 def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(cfg, silence, export):
@@ -295,9 +291,7 @@ def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silenc
     assert account_playlists.NO_ROW in warning["message"]
 
 
-# ---------------------------------------------------------------------------
 # U128: the INBOX playlist mirrors the whole account playlist
-# ---------------------------------------------------------------------------
 
 
 def _owned_export(cfg, silence, export: Path, titles: tuple[str, ...]) -> Path:
@@ -382,9 +376,7 @@ def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export
     assert _held(envelope) == {BATCH: ["One"], "Sunset Warmup 2026-10-03": ["Two"]}
 
 
-# ---------------------------------------------------------------------------
 # The gate, the digest and the record
-# ---------------------------------------------------------------------------
 
 
 def test_the_gate_screen_names_each_playlist_before_anything_moves(cfg, silence, export):
@@ -457,9 +449,7 @@ def test_a_name_the_export_came_to_hold_after_the_gate_is_refused_and_moves_noth
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
 
 
-# ---------------------------------------------------------------------------
 # The sweep records the name, and the naming rule
-# ---------------------------------------------------------------------------
 
 
 def test_sync_all_records_the_name_the_account_listed_on_each_playlist_job(slim, monkeypatch):

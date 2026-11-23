@@ -80,9 +80,7 @@ class ScriptedClock:
         assert not leftover, f"{len(leftover)} scripted clock readings were never consumed"
 
 
-# ---------------------------------------------------------------------------
 # Timing arithmetic, no hardware and no sleeping.
-# ---------------------------------------------------------------------------
 
 
 def test_pass_rate_counts_only_runs_under_threshold() -> None:
@@ -140,9 +138,7 @@ def test_a_record_whose_count_disagrees_with_its_evidence_is_refused() -> None:
         TimingTable(repeats=0, threshold_seconds=1.0, durations=())
 
 
-# ---------------------------------------------------------------------------
 # Calibration: stored whole, loaded guarded, thresholds are multiples.
-# ---------------------------------------------------------------------------
 
 
 def test_calibration_round_trips_and_threshold_is_a_multiple(tmp_path: Path) -> None:
@@ -217,9 +213,7 @@ def test_committed_calibration_loads() -> None:
     assert cal.captured
 
 
-# ---------------------------------------------------------------------------
 # Volumes: real images, real mounts, real teardown.
-# ---------------------------------------------------------------------------
 
 
 def test_fat_volume_refuses_sizes_fat32_cannot_hold() -> None:

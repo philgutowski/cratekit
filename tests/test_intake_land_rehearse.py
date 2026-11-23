@@ -1,10 +1,8 @@
 """U162: ``crate intake land --rehearse`` plans and applies the landing on its own scratch area.
 
-Driven through the real dispatcher over real FLAC containers, against the
-disposable database ``tests/test_intake_land_native.py`` builds: a rehearsal
-leaves staging, the music folder and the live database as they were, digests
-as the live plan, keeps every area apart and names the area it leaves when it
-fails, and the live gate names it. D1 applies.
+A rehearsal leaves staging, the music folder and the live database as they were,
+digests as the live plan, keeps every area apart and names the area it leaves
+when it fails. D1 applies.
 """
 
 from __future__ import annotations
@@ -183,9 +181,7 @@ def test_a_rehearsal_on_the_bridge_is_refused(acknowledged, silence):
 
 
 def test_a_scratch_plan_not_the_live_plan_applies_nothing(cfg, monkeypatch):
-    """The area's plan, mapped back, must read as the live plan. Mapping nothing
-    back leaves every scratch path in it, so the rehearsal refuses before the
-    apply and names the lines."""
+    """The area's plan, mapped back, must read as the live plan, or it refuses."""
     monkeypatch.setattr(rehearsal, "mapped", lambda value, _pairs: value)
     code, refused = _rehearse()
     assert refused["cause"]["reason"] == "decision-stale", refused
@@ -339,9 +335,8 @@ def test_a_clone_is_never_a_hard_link_and_the_plan_lines_name_every_leaf(tmp_pat
 
 
 def test_a_name_the_live_folder_holds_is_refused_at_the_area(native_library, silence):
-    """Occupancy is asked at the move, not in the plan, so the area holds the
-    live folder's names too and the rehearsal refuses the file the live landing
-    will refuse, rather than reporting it landed."""
+    """The area holds the live folder's names, so the rehearsal refuses what the live
+    landing will."""
     cfg, _root = native_library
     # A batch landed into again by its own name goes back to its filed folder
     # (U164), so an earlier landing makes it, and a name in it is then held.
@@ -380,9 +375,7 @@ def test_a_rehearsal_that_touched_the_live_library_is_refused(cfg, monkeypatch):
 
 
 def test_a_rehearsal_that_touched_another_year_s_batch_is_refused(cfg, silence, monkeypatch):
-    """A batch landed into again by its own name goes back to its recorded
-    folder (U164), which may sit under another year than today's, and the
-    rehearsal watches that folder too."""
+    """A batch landed into again goes back to its recorded folder (U164), watched too."""
     monkeypatch.setattr(batch_name, "today", lambda: date(2025, 12, 31))
     verb = ["intake", "land", "--name", "Friday warmup"]
     code, first, _refused = _two_acts(verb)
@@ -425,12 +418,7 @@ def test_a_landed_row_the_read_back_refuses_is_refused(cfg, monkeypatch, check, 
 
 
 def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) -> str:
-    """Record the database as made on a drive this machine no longer mounts.
-
-    rekordbox stores every ``FolderPath`` under the drive the database was
-    made on, so the stored spelling differs from the mounted one in its
-    prefix. Answers the base drive.
-    """
+    """Record the database as made on a drive no longer mounted; answers the base drive."""
     base = base or str(tmp_path.parent / "old-drive")
     conn = sqlite3.connect(cfg.library.db_path)
     conn.execute(
@@ -443,10 +431,8 @@ def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) 
 
 
 def test_a_base_drive_not_the_mount_rehearses_equal(native_library, silence, tmp_path):
-    """Every row's FolderPath differed only by the area's prefix under the base
-    drive, which no mounted pair can reach. The batch is named with an accent:
-    every line is a JSON value, and an escaped accent is a spelling no mapped
-    pair holds, so it refused on every path in it while the plans were the same."""
+    """FolderPaths differ only by the area's prefix under the base drive, and the
+    accented batch name is escaped in JSON, which no mapped pair holds."""
     cfg, _root = native_library
     base = _renamed_drive(cfg, tmp_path)
     name = "2026-09-29_café"
@@ -465,9 +451,7 @@ def test_a_base_drive_not_the_mount_rehearses_equal(native_library, silence, tmp
 
 
 def test_on_a_renamed_drive_a_differing_name_still_refuses(cfg, tmp_path, monkeypatch):
-    """The stored pair maps the prefix and nothing else: a FolderPath that
-    differs past it is a real difference, refused and named with the spellings
-    the comparison mapped, and the area is kept."""
+    """The stored pair maps the prefix alone, so a difference past it is refused."""
     base = _renamed_drive(cfg, tmp_path)
     real = rehearsal.mapped
 
@@ -520,9 +504,7 @@ def test_on_a_drive_recorded_as_its_mount_it_is_as_it_was(cfg, tmp_path):
 
 
 def test_mapped_applies_the_longest_spelling_first_and_the_refusal_names_each_field_once():
-    """A pair whose scratch spelling holds another's must not be half mapped by
-    the shorter one, whichever order the caller gave them in, and an empty one
-    is ignored. The refusal strips every index."""
+    """A longer pair is never half mapped by a shorter one, and an empty one is ignored."""
     short = ("/drive/area", "/drive/live")
     long = ("/old/drive/area", "/old/stored")
     value = {"a": "/old/drive/area/Music/a.flac", "b": ["/drive/area/Music/b.flac"]}

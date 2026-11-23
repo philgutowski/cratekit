@@ -65,9 +65,7 @@ def _answer_aged(run_id: str, age: timedelta) -> str:
     return stamp
 
 
-# ---------------------------------------------------------------------------
 # The plan at its gate
-# ---------------------------------------------------------------------------
 
 
 def test_with_no_other_run_the_gate_says_nothing_of_one(native_library):
@@ -183,9 +181,7 @@ def test_a_verb_that_writes_no_database_is_outside_the_warning():
     assert gates.writes_the_database("no.such.verb") is False
 
 
-# ---------------------------------------------------------------------------
 # crate run decide
-# ---------------------------------------------------------------------------
 
 
 def test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_plan(
@@ -262,9 +258,7 @@ def test_decide_continue_carries_the_warning_on_the_verbs_own_envelope(native_li
     assert len(found) == 1 and first in found[0]
 
 
-# ---------------------------------------------------------------------------
 # crate doctor
-# ---------------------------------------------------------------------------
 
 
 def _blocked(run_id: str, verb: str, gate: str, age: timedelta, now: datetime) -> None:
@@ -343,9 +337,7 @@ def test_the_run_record_carries_the_sibling_warning_nowhere(native_library):
     assert gates.SIBLING_RUN not in json.dumps(record)
 
 
-# ---------------------------------------------------------------------------
 # Edge cases of the warning's scope
-# ---------------------------------------------------------------------------
 
 
 def _old_open(run_id: str, age: timedelta) -> None:

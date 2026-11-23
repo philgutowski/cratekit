@@ -54,9 +54,7 @@ def pinned_day(monkeypatch):
     monkeypatch.setattr(batch_name, "today", lambda: DAY)
 
 
-# ---------------------------------------------------------------------------
 # The native landing suite's machine, its database built once and copied after
-# ---------------------------------------------------------------------------
 
 #: What a key's first build left in the database file, and what it answered.
 _BUILT: dict[str, tuple[bytes, str | None]] = {}
@@ -256,9 +254,7 @@ def _actions(plan: rotate.RotationPlan) -> dict[str, str]:
     return {b.name: b.action for b in (*plan.moves, *plan.removals, *plan.kept)}
 
 
-# ---------------------------------------------------------------------------
 # The scenarios the brief names, on this medium
-# ---------------------------------------------------------------------------
 
 
 def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
@@ -351,9 +347,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     assert list(_inbox(cfg, root_id)) == ["Sunset Warmup 2026-10-03"]
 
 
-# ---------------------------------------------------------------------------
 # The record, and the rotation ageing what the landing wrote
-# ---------------------------------------------------------------------------
 
 
 def test_the_record_names_each_account_playlist_by_identifier(native_library, silence):
@@ -456,9 +450,7 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(nativ
     assert _members(cfg, gone_id) == []
 
 
-# ---------------------------------------------------------------------------
 # U128: the INBOX playlist mirrors the whole account playlist, owned rows too
-# ---------------------------------------------------------------------------
 
 
 def _owned(cfg: config.Config, silence: Path, titles: tuple[str, ...]) -> None:

@@ -1,10 +1,8 @@
 """U46: the job handler registry, and the one site that drives a queued job.
 
-``tests/test_jobs.py`` proves ``jobs.drive`` directly; this file guards the
-binding. A handler key resolves to a real function, resolving it imports no
-feature module, a queued verb without a handler fails here, and a handler gets
-the frozen configuration. Every population is derived from ``registry.ENTRIES``
-or the tables, never listed (Part 5, P3).
+A handler key resolves to a real function without importing a feature module,
+a queued verb without a handler fails here, and a handler gets the frozen
+configuration. Populations come from ``registry.ENTRIES`` (Part 5, P3).
 """
 
 from __future__ import annotations
@@ -61,9 +59,7 @@ def queue(tmp_path):
         yield store, root
 
 
-# ---------------------------------------------------------------------------
 # The declaration tables
-# ---------------------------------------------------------------------------
 
 
 def test_the_declared_population_is_not_empty():
@@ -116,9 +112,7 @@ def test_is_known_answers_for_a_declared_key_and_an_invented_one():
     assert not handlers.is_known("no.such.handler")
 
 
-# ---------------------------------------------------------------------------
 # Resolution refuses before it imports
-# ---------------------------------------------------------------------------
 
 
 def test_an_undeclared_key_refuses_by_name():
@@ -147,11 +141,8 @@ def test_a_broken_declaration_refuses_rather_than_returning_something(
 
 
 def test_resolving_a_handler_key_imports_nothing_a_supervisor_does_not_need():
-    """KTD26: answering ``is_known`` imports no feature module.
-
-    Measured per call in a fresh interpreter, because in this process every feature
-    module is already imported, so an in-process delta is empty whatever the code does.
-    """
+    """KTD26: answering ``is_known`` imports no feature module, measured in a fresh
+    interpreter."""
     measured = _import_probe.run_probe(
         """
         import json, sys
@@ -177,9 +168,7 @@ def test_resolving_a_handler_key_imports_nothing_a_supervisor_does_not_need():
     _import_probe.assert_no_leak(measured, what="answering whether a handler key is known")
 
 
-# ---------------------------------------------------------------------------
 # The one call site
-# ---------------------------------------------------------------------------
 
 
 def _drive_calls(tree: ast.AST) -> int:
@@ -313,9 +302,7 @@ def json_roundtrip(cfg: config.Config) -> dict:
     return tomllib.loads(cfg.to_toml_bytes().decode("utf-8"))
 
 
-# ---------------------------------------------------------------------------
 # A handler may not reload the configuration it was handed
-# ---------------------------------------------------------------------------
 
 
 #: Every spelling of "load the configuration fresh" this guard recognises. The
@@ -324,11 +311,8 @@ _RELOAD_ATTRS = frozenset({"load", "load_from_path"})
 
 
 def _reload_calls(tree: ast.AST, *, aliases: frozenset[str]) -> list[str]:
-    """Calls in ``tree`` that reload configuration, by any spelling this knows.
-
-    Three node shapes: ``config.load()``, the same under an alias in ``aliases``, and
-    a bare ``load()`` imported from ``cratekit.core.config``.
-    """
+    """Calls in ``tree`` that reload configuration: ``config.load()``, under an alias,
+    or a bare imported ``load()``."""
     found: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -365,12 +349,8 @@ def _config_aliases(tree: ast.AST) -> frozenset[str]:
 
 
 def test_no_declared_handler_loads_a_fresh_configuration():
-    """No handler, or the batch form it names, reloads configuration (KTD9).
-
-    The three argument signature removes the need, not the ability. This checker
-    models its target's grammar, so it knows only the spellings in ``_reload_calls``,
-    and it cannot see a reload hidden behind a helper the handler calls.
-    """
+    """No handler, or its batch form, reloads configuration (KTD9), by the spellings
+    ``_reload_calls`` knows."""
     problems: list[str] = []
     for key, declaration in handlers.HANDLERS.items():
         dotted, _, attribute = declaration.partition(":")
@@ -431,9 +411,7 @@ def test_the_fresh_configuration_guard_does_not_fire_on_a_handler_that_behaves()
     assert not _reload_calls(tree, aliases=_config_aliases(tree))
 
 
-# ---------------------------------------------------------------------------
 # U270: a worker that names a batch form of itself is driven in batches
-# ---------------------------------------------------------------------------
 
 
 def _worker_with_batch(seen: list, size: int):
