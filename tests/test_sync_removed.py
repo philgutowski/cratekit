@@ -1028,6 +1028,7 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     size = music.stat().st_size
 
     code, acted, refused = _apply()
+    finished = datetime.now(timezone.utc)
 
     assert code == int(ExitCode.OK), acted
     # The screen the person approved names the offered row and its file.
@@ -1045,6 +1046,7 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     # left, and the removal's time in rekordbox's form (U955).
     stamp = _stamp_read(cfg, before)
     assert _not_before(stamp[1], planned), stamp
+    assert rb_writer.stamp_moment(stamp[1]) <= finished, stamp
     expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
     # Read from SQL: the offered row and every row naming it are gone, later
     # members are numbered down and stamped with no other column moved
@@ -1677,6 +1679,7 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     planned = datetime.now(timezone.utc)
 
     removal = _remove(cfg, "New1")
+    finished = datetime.now(timezone.utc)
 
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
     # The renumbered row moves three columns, as rekordbox moved them (A202):
@@ -1691,6 +1694,7 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     assert now[columns.index("rb_local_usn")] != third[columns.index("rb_local_usn")]
     assert now[columns.index("updated_at")] == removal.stamp.at
     assert _STAMP_FORM.fullmatch(removal.stamp.at) and _not_before(removal.stamp.at, planned)
+    assert rb_writer.stamp_moment(removal.stamp.at) <= finished
     assert [v for i, v in enumerate(now) if i not in moving] == [v for i, v in enumerate(third) if i not in moving]
     assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", first[0]) == [first]
     after = _every_table(cfg)

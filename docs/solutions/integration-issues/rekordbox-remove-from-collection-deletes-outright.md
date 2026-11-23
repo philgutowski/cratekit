@@ -139,11 +139,16 @@ it to the deletes. A row marked `rb_local_deleted` is
 neither counted nor moved: this product's own membership writers leave a
 marked row at a number a live row also holds, and counting it put two live
 rows on one place (review round one). The binding's `remove_from_playlist`
-has the same numbering rule but is not reused: it commits by itself and
-stamps `updated_at` and `rb_local_usn` on every row it moves, and an ORM
-write of `TrackNo` adds `updated_at` through the binding's `onupdate`.
+has the same numbering rule but is not reused: it commits by itself, a
+delete, a commit and then the moves, so the moves are not under the
+confinement, and its count and time are the binding's own rather than the
+removal's final count; an ORM write of `TrackNo` also adds `updated_at`
+through the binding's `onupdate`.
 **Still unmeasured:** a history list holding other tracks (left numbered as it
 was), a playlist already holding a gap or a row marked removed below the
 renumbered one (the rule is applied there unmeasured), why rekordbox's count
-steps 13 where this product's steps one per row it deletes, label rows, and My Tag and
+steps 13 where this product's steps one per row it deletes, whether rekordbox
+gives every moved row the one final count when several rows move in several
+playlists or several tracks go at once (A202 read one row in one playlist),
+label rows, and My Tag and
 sampler rows.

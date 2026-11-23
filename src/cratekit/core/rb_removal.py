@@ -59,29 +59,22 @@ def stamp_time(moment: datetime) -> str:
     return f"{utc:%Y-%m-%d %H:%M:%S}.{utc.microsecond // 1000:03d} +00:00"
 
 
-#: A time as a library holds it: date and time, then an offset or ``Z``, then
-#: anything (a zone's name follows the offset in some libraries). The seconds
-#: may be missing, since the binding's ``datetime_to_str`` cuts them off a
-#: moment whose microseconds are zero (``2026-11-21 12:00 +00:00``).
-_TIME_FORM = re.compile(
-    r"\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?)\s*([+-]\d{2}:\d{2}|Z)(?:\s.*)?\s*"
-)
+#: The one form :func:`stamp_time` writes, the only form read back here. A
+#: row's own old ``updated_at`` is never parsed: it may come from another clock.
+_STAMP_FORM = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \+00:00")
 
 
 def stamp_moment(text: Any) -> datetime | None:
-    """A time a row holds, as an aware moment, or None when it carries no readable offset.
+    """A time :func:`stamp_time` wrote, as an aware moment in UTC, or None for any other text.
 
     Read here, not through the binding's ``string_to_datetime``, which returns
     the machine's local time with its zone dropped.
     """
-    if not isinstance(text, str):
-        return None
-    found = _TIME_FORM.fullmatch(text)
+    found = _STAMP_FORM.fullmatch(text) if isinstance(text, str) else None
     if found is None:
         return None
-    clock, offset = found.groups()
     try:
-        return datetime.fromisoformat(f"{clock}{'+00:00' if offset == 'Z' else offset}")
+        return datetime.fromisoformat(f"{found.group(1)}+00:00")
     except ValueError:
         return None
 
@@ -116,7 +109,7 @@ def counter_at_commit(db: Any) -> int:
 
 def removal_stamp(db: Any) -> RenumberingStamp:
     """The stamp for this removal's renumbered rows: the count its commit will leave, and now."""
-    return RenumberingStamp(counter_at_commit(db), stamp_time(_now()))
+    return RenumberingStamp(_writer().counter_at_commit(db), stamp_time(_now()))
 
 
 def _writer():
@@ -555,15 +548,13 @@ def _renumbering_violations(
         return [f"the {MEMBERSHIP_TABLE} row {key!r} could not be read for its renumbering"]
     found: list[str] = []
     moving = (
-        TRACK_NUMBER_COLUMN
+        f"{TRACK_NUMBER_COLUMN}, and a renumbering with no stamp moves that column alone"
         if stamp is None
-        else f"{TRACK_NUMBER_COLUMN}, {USN_STAMP_COLUMN} and {TIME_STAMP_COLUMN}"
+        else f"{TRACK_NUMBER_COLUMN}, {USN_STAMP_COLUMN} and {TIME_STAMP_COLUMN}, and a "
+        f"renumbering moves those alone"
     )
     if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than "
-            f"{moving}, and a renumbering moves those alone"
-        )
+        found.append(f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than {moving}")
     if now[2] != wanted:
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be renumbered from {was} to "
@@ -574,8 +565,9 @@ def _renumbering_violations(
     if stamp is None:
         if new != old:
             found.append(
-                f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than "
-                f"{moving}, and a renumbering moves those alone"
+                f"the {MEMBERSHIP_TABLE} row {key!r} had its {USN_STAMP_COLUMN} or "
+                f"{TIME_STAMP_COLUMN} moved, and a renumbering with no stamp planned "
+                f"moves {TRACK_NUMBER_COLUMN} alone"
             )
         return found
     found.extend(_stamp_violations(key, old, new, stamp))
@@ -642,7 +634,7 @@ def assert_collection_removal_confined(
         before, database_reading(db), removed=removed, stamp=stamp
     )
     if stamp is not None:
-        reaching = counter_at_commit(db)
+        reaching = _writer().counter_at_commit(db)
         if reaching != stamp.counter:
             violations.append(
                 f"the commit would leave {LOCAL_UPDATE_COUNT} at {reaching}, and the "

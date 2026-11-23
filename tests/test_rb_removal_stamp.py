@@ -150,11 +150,13 @@ def test_a_plan_with_no_readable_time_cannot_say_forward_and_refuses(read_at):
 
 @pytest.mark.parametrize(
     "text",
-    ["2026-11-20 09:00:00.000 -05:00 (Eastern Standard Time)", "2026-11-20T14:00:00Z", "2026-11-20 14:00 +00:00"],
-    ids=["named-zone", "zulu", "whole-minute"],
+    ["2026-11-20 09:00:00.000 -05:00", "2026-11-20T14:00:00.000Z", "2026-11-20 14:00 +00:00", "2026-13-20 14:00:00.000 +00:00"],
+    ids=["another-offset", "zulu", "whole-minute", "no-such-month"],
 )
-def test_a_time_in_the_forms_a_library_holds_reads_as_one_moment(text):
-    assert rb_removal.stamp_moment(text) == datetime(2026, 11, 20, 14, 0, tzinfo=timezone.utc)
+def test_only_the_stamp_s_own_form_is_read_back(text):
+    """The reader reads what :func:`stamp_time` wrote and nothing a row might hold."""
+    assert rb_removal.stamp_moment(text) is None
+    assert rb_removal.stamp_moment("2026-11-20 14:00:00.000 +00:00") == datetime(2026, 11, 20, 14, tzinfo=timezone.utc)
 
 
 def test_a_reading_carries_the_time_it_was_read(monkeypatch):
@@ -178,7 +180,12 @@ def test_without_a_stamp_the_planned_row_moves_trackno_alone():
     assert _violations(_reading(ROWS, moved={"p3": 2}), stamp=None) == []
     stamped = _reading(ROWS, moved={"p3": 2}, stamps={"p3": (STAMP.counter, STAMP.at)})
     violations = _violations(stamped, stamp=None)
-    assert any("other than TrackNo, and a renumbering" in line for line in violations), violations
+    assert any("moves TrackNo alone" in line for line in violations), violations
+    # A fourth column moving with no stamp is named once, as that column alone.
+    fourth = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED, rest={"p3": "UUID moved"})
+    lines = _violations(fourth, stamp=None)
+    assert len(lines) == len(set(lines)) == 2, lines
+    assert any("other than TrackNo, and a renumbering with no stamp moves that column alone" in line for line in lines)
 
 
 def test_a_read_back_refuses_a_count_other_than_the_stamp():
@@ -244,3 +251,46 @@ def test_a_count_that_cannot_be_read_refuses_and_rolls_back(monkeypatch):
     with pytest.raises(rb_writer.RekordboxUnavailable, match="cannot be said"):
         rb_removal.counter_at_commit(Handle())
     assert rolled == [True]
+
+
+def test_a_count_already_at_the_stamp_is_refused_as_unmoved():
+    """The row held the stamp's count before the removal: the count did not move."""
+    before = _reading(ROWS, gone=None, read_at=PLANNED)
+    before = rb_writer.DatabaseReading(
+        before.rows, before.named, before.counter, before.positions,
+        {**before.stamps, "p3": (STAMP.counter, OLD[1])}, PLANNED,
+    )
+    after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
+    violations = rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP)
+    assert any("from 3047665 and holds 3047665" in line for line in violations), violations
+
+
+def test_a_removal_that_renumbers_nothing_is_not_held_to_the_plan_s_time():
+    """No row was stamped, so a plan read after the stamp's time refuses nothing."""
+    lone = [("q1", "q", "a", 1), ("q2", "q", "x", 2)]
+    before = _reading(lone, gone=None, read_at="2026-11-24 00:00:00.000 +00:00")
+    assert rb_writer.collection_removal_violations(before, _reading(lone), removed=["x"], stamp=STAMP) == []
+
+
+def test_a_buffer_that_is_not_a_list_refuses_and_rolls_back(monkeypatch):
+    from pyrekordbox.db6.registry import RekordboxAgentRegistry
+
+    rolled: list[bool] = []
+
+    class Handle:
+        def get_local_usn(self):
+            return 7
+
+        def rollback(self):
+            rolled.append(True)
+
+    monkeypatch.setattr(RekordboxAgentRegistry, "__update_sequence__", ())
+    with pytest.raises(rb_writer.RekordboxUnavailable, match="cannot be said"):
+        rb_removal.counter_at_commit(Handle())
+    assert rolled == [True]
+
+
+def test_the_count_is_read_through_the_writer_so_a_patch_there_bites(monkeypatch):
+    """rb_removal reads every seam through rb_writer at call time (U300)."""
+    monkeypatch.setattr(rb_writer, "counter_at_commit", lambda _db: 31337)
+    assert rb_removal.removal_stamp(object()).counter == 31337
