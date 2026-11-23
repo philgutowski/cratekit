@@ -1,11 +1,7 @@
 """U176: the Bandcamp client reads the account's purchases and fetches one release.
 
-The account is :class:`tests.bandcamp_fakes.FakeAccount`, which answers the
-three requests in the shapes sitting 46 measured. NO TEST REACHES BANDCAMP: the
-shipped transport is never built here, and the suite's autouse guard refuses it
-everywhere else.
-
-D1 applies. No real person, seller or release is named.
+The account is :class:`tests.bandcamp_fakes.FakeAccount`, in the shapes sitting
+46 measured; no test reaches Bandcamp. D1 applies.
 """
 
 from __future__ import annotations
@@ -446,9 +442,7 @@ def test_a_page_listing_no_formats_is_unavailable_not_an_empty_offer():
 
 
 def test_an_empty_page_ends_the_listing_even_when_it_says_more_is_available():
-    """The empty page is what ends a listing, whatever ``more_available`` says,
-    so the more flag is never the only thing standing between the last page and
-    a request past it (mutation row C5 of U176)."""
+    """The empty page ends a listing, whatever ``more_available`` says (U176 C5)."""
 
     class Optimistic(FakeAccount):
         def _page(self, items, end, *, more):

@@ -1,19 +1,10 @@
 """U177: a Bandcamp seller maps to a registered label, so a purchase stages tagged with it.
 
-Sitting 46 found the label of every release it fetched empty, the files with
-no label tag, and the label itself named only in the address the releases
-were sold from. These drive the two Bandcamp verbs with a label registered for
-that address, through the real dispatcher, over the account U176's suite
-serves: the plan names each row's label and every seller no label names, the
-fetch writes the label's display name into the label tag of every file it
-stages, and ``--seller`` takes the label's name as its account.
-
-EVERYTHING BUT THE TRANSPORT IS REAL, as in ``tests/test_bandcamp_cli.py``,
-whose fixtures these are. The registry is written through its own store, the
-one ``crate label registry`` writes through.
-
-D1 applies. No real person, seller or release is named; ``pulsromania`` and
-``otherlabel`` are the fake account's sellers.
+Sitting 46 found every release's label empty and named only in the seller's
+address. Through the real dispatcher over U176's fake account: the plan names
+each row's label and every unnamed seller, the fetch writes the label's display
+name into every file, and ``--seller`` takes the label's name. D1 applies;
+``pulsromania`` and ``otherlabel`` are the fake account's sellers.
 """
 
 from __future__ import annotations

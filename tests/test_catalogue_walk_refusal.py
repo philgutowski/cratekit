@@ -1,16 +1,8 @@
 """U322: a refusing catalogue no longer stops tag suggest and tag backlog asking the ones that answer.
 
-Measured at sitting 102 on 2026-11-21: ``crate tag backlog --catalogue`` on a
-copy of the library asked the catalogues about 10 of 675 rows and stopped.
-Discogs matched three of them and read no genre on the other seven, while
-Beatport answered every lookup with Cloudflare's challenge. ``suggest`` read a
-row as unread when only Beatport refused it, so three such rows in a row
-stopped the walk, and 665 rows were never sent to Discogs or Deezer. U281's
-own stop, which passes Beatport over after three refusals, never got the
-chance to take effect.
-
-The walk here is the shipped searcher over recorded pages, Discogs' empty
-result set and Beatport's 403 carrying ``Cf-Mitigated: challenge``, and a
+At sitting 102 a backlog asked about 10 of 675 rows and stopped: Beatport
+answered every lookup with a challenge, and a row only Beatport refused read
+as unread. The walk here is the shipped searcher over recorded pages and a
 general catalogue that records what it was asked. Nothing touches the network.
 """
 

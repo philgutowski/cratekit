@@ -1,12 +1,8 @@
 """U1: the catalogue searcher, its network seam, and the two refusals it owes.
 
-The cost guarded is a source that could not be read reported as one that had
-nothing, so a folder swept in an outage completes clean. So what is tested is
-the distinction between an answer, an absence and a silence, and that only an
-absence may decline. The resolver's failure paths are driven too, since this
-is its first caller: an exact refusal, an alias onto the fallback bucket, and an
-alias that resolves to a SUB. Nothing here opens a socket, and the fixtures read
-their genres off ``default_taxonomy()`` so a template edit moves them.
+A source that could not be read must not report nothing, so what is tested is
+an answer, an absence and a silence, and that only an absence may decline. No
+socket is opened, and genres come from ``default_taxonomy()``.
 """
 
 from __future__ import annotations
@@ -45,11 +41,7 @@ REFUSED = sorted(
 
 
 def _source_genre_for(*, sub: bool) -> str:
-    """A vendor genre string the taxonomy resolves, to a sub or to a bucket.
-
-    Asking the resolver which way it lands keeps the fixture honest when the
-    template moves a genre between the two levels.
-    """
+    """A vendor genre string the taxonomy resolves, to a sub or to a bucket, as asked."""
     for bucket in TAXONOMY.buckets:
         entries = bucket.subs if sub else (bucket,)
         for entry in entries:
@@ -64,9 +56,7 @@ def _source_genre_for(*, sub: bool) -> str:
 def _source_genre_aliasing_to_the_fallback() -> str:
     """A vendor string the template aliases onto the fallback bucket's display.
 
-    Read out of the alias table, the only place that fact lives, so the fixture
-    cannot outlive the template. It guards AE5, where writing the resolver's own
-    answer would launder a catch-all onto a file.
+    Read out of the alias table, so it cannot outlive the template (AE5).
     """
     fallback = TAXONOMY.fallback.bucket
     for key, (bucket_id, _sub_id) in TAXONOMY._tagging_alias.items():  # noqa: SLF001
@@ -87,11 +77,7 @@ TITLE = "Sunrise Mood"
 
 
 class _Response:
-    """The attributes this module reads off an HTTP response, and no more.
-
-    The module's whole contract with a getter is these fields: ``text`` for a
-    page and ``content`` for a picture.
-    """
+    """The attributes this module reads off an HTTP response: ``text`` and ``content``."""
 
     def __init__(self, status_code: int, text: str = "", *, content: bytes = b"") -> None:
         self.status_code = status_code
@@ -288,11 +274,7 @@ def test_a_bandcamp_listing_genre_costs_one_fetch_and_its_picture_is_the_origina
 
 
 def test_a_bandcamp_listing_with_no_genre_spends_a_second_fetch_on_the_track_page():
-    """Bandcamp's genre often lives on the track page rather than in the listing.
-
-    Each touch is paced, so the schedule grows by one wait rather than the
-    second fetch slipping past the pacer.
-    """
+    """The genre on the track page costs one more paced wait, never an unpaced fetch."""
     naps: list[float] = []
     seen: list[str] = []
     hit = _hit(
@@ -351,9 +333,8 @@ def test_one_source_that_answered_holds_back_the_refusal():
     ids=["beatport payload missing", "traxsource rows unread"],
 )
 def test_a_page_that_parsed_to_nothing_recognizable_raises_its_own_refusal(pages, source):
-    """AE6. A markup change is a defect here, a permanent state that must not wear
-    the network's transient remedy; a shop row parser claims it only when rows
-    are present and none read."""
+    """AE6. A markup change is a permanent defect, not the network's transient remedy;
+    a shop row parser claims it only when rows are present and none read."""
     with pytest.raises(CratekitError) as raised:
         _hit(**{"traxsource": UNREACHABLE, "bandcamp": UNREACHABLE, **pages})
     cause = raised.value.cause
@@ -387,9 +368,8 @@ def test_a_source_genre_that_aliases_to_a_sub_resolves_to_the_subs_display():
 
 @pytest.mark.parametrize("word", [*REFUSED, FALLBACK_GENRE])
 def test_a_genre_refused_outright_or_aliased_to_the_fallback_declines_naming_it(word: str):
-    """A catch-all accepted as a final tag is the blanket genre bug (AE5: the
-    fallback's display would bounce the file between the verbs), and the decline
-    still names the source and the raw string (AE1)."""
+    """A catch-all accepted as a final tag is the blanket genre bug (AE5); the decline
+    names the source and the raw string (AE1)."""
     hit = _hit(beatport=_row(word))
     assert hit is not None
     assert hit.genre is None
@@ -423,12 +403,9 @@ def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, wr
 
 
 def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
-    """One file gets ONE disposition, and a decline outranks the flag.
+    """One file gets one disposition, and a decline outranks the flag.
 
-    No shipped template string reaches the last tier and is also too coarse, so
-    the producer is a different taxonomy, which a person editing the template
-    can make. The hit stays the decline, with no flag about a word it will not
-    write.
+    The producer is a different taxonomy, one a person editing the template can make.
     """
     template = (
         Path(__file__).parent / "taxonomies" / "second.toml"
@@ -598,12 +575,10 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 
 
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
-    """The hazard the brief names: a cover from a different row is the wrong cover.
+    """A cover from a different row is the wrong cover, the hazard the brief names.
 
-    The first row is an exact title with a picture and NO genre, not a candidate,
-    so it must not lend its picture. The second wins with both fields its own.
-    The third loses on title and is scanned LAST, so a picture read off the
-    loop's final row shows here.
+    The first row has a picture and no genre; the third loses and is scanned last,
+    so a picture read off the loop's final row shows here.
     """
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
@@ -691,10 +666,9 @@ def test_an_image_fetch_that_meets_a_rate_limit_backs_off_like_a_search():
     assert waits == [searchers.RATE_LIMIT_BASE_WAIT_S]
 
 
-# R-791. A bot challenge is its own answer, and no-hit needs every source's MISS
-#
-# The pages are the two measured on 2026-10-01, reduced to what the check reads,
-# served through the shipped ``default_fetch`` so the status is the transport's.
+# R-791. A bot challenge is its own answer, and no-hit needs every source's MISS.
+# The pages are the two measured on 2026-10-01, reduced, served through the
+# shipped ``default_fetch``.
 
 CLOUDFLARE_INTERSTITIAL = (
     '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>'

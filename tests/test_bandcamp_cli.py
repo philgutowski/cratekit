@@ -1,12 +1,8 @@
 """U176: ``crate acquire bandcamp`` plans, ``crate acquire bandcamp-fetch`` stages.
 
-EVERYTHING BUT THE TRANSPORT IS REAL. The keychain is the suite's isolated
-one, and the library index, the matcher, the job queue and its driver, the
-codec probe and the record all run as shipped. The transport is
-:class:`tests.bandcamp_fakes.FakeAccount`, bound where the verbs look it up.
-The releases it serves are real FLAC containers, tagged, inside real archives.
-
-D1 applies. No real person, seller or release is named.
+Everything but the transport is real; the transport is
+:class:`tests.bandcamp_fakes.FakeAccount`, serving real tagged FLAC inside real
+archives. D1 applies.
 """
 
 from __future__ import annotations
@@ -94,9 +90,8 @@ def bind(monkeypatch, account: FakeAccount) -> FakeAccount:
     return account
 
 
-#: The account sitting 46's shapes stand for: a new release, a release the
-#: library owns, a compilation holding one owned track, a release from another
-#: seller, and a preorder.
+#: Sitting 46's shapes: a new release, an owned one, a compilation holding one
+#: owned track, another seller's release, and a preorder.
 def collection(tmp_path: Path, silence: bytes, **account) -> FakeAccount:
     items = [
         item("1", seller="pulsromania", artist="Aurora Bloom", title="Sun Path",

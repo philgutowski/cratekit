@@ -1,13 +1,9 @@
 """U205: catalogue lookups go under Cratekit's own app credentials, not the account session.
 
-Each claim is driven through the real pacing gate on a temporary state file, so "counted per
-identity" is read off the file the gate wrote. With both app values recorded, an ISRC lookup
-makes no account call; with one or none, every lookup goes to the account as before. A not
-found is the one absence, while a server error, a rejected token and a transport failure
-whose text carries the digits of a not found are not. A rate limit on the app trips the one
-gate. The label crawl stays on the account, no write reaches the app client, an older state
-file still loads, doctor names the credentials and both counts, and the app client is built
-at one site."""
+Driven through the real pacing gate on a temporary state file, so "counted per
+identity" is read off the file. With both app values an ISRC lookup makes no
+account call; a not found is the one absence; a rate limit on the app trips the
+one gate; the label crawl and every write stay on the account."""
 
 from __future__ import annotations
 
