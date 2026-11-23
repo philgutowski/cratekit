@@ -2449,3 +2449,101 @@ it reads.
 **Closes when:** the writer's refusal scan reads every `CratekitError` a part
 constructs, or the parts are held to raising through the two factories.
 Ledger only.
+
+---
+
+## R-1903. The composed path lint's accessor coverage reads only config.__all__, so an accessor left out of it escapes both checks
+
+**Found:** at the review of #856, U299, 2026-11-22, round two.
+
+**The mechanism.** `tests/test_config.py` holds the composed path lint to
+`_STATE_ROOT_ACCESSORS` and checks that set against the `*_dir` names in
+`config.__all__`. A new directory accessor that is not listed in `__all__`
+escapes the coverage test, and a module composing a path under it then
+escapes the lint as well. The review drove it with a planted
+`library_scratch_dir` and a consumer composing under it: both checks stayed
+green on the branch (accessor in `core/state_files.py`) and equally on `main`
+at `c919209` (accessor in `core/config.py`, left out of `__all__`). The miss
+predates U299.
+
+**Measured cost.** None to a user today: no such accessor exists. It is a
+guard that checks a declared list rather than the definitions.
+
+**Closes when:** the coverage test reads every public function returning a
+directory from config and its parts (U299's `config_parts()` in the same file),
+not `__all__`. Ledger only.
+
+---
+
+## R-1904. A refusal raised behind a function level import is unseen by the reserved causes named cause scan
+
+**Found:** at the build of #856, U299, 2026-11-22.
+
+**The mechanism.** U299 moved `Config` to `core/config_schema.py`, and
+`Config.assert_rekordbox_pin_recorded` imports `ConfigInvalid` and `Remedy`
+from `core.config` inside the method, since `config` imports the schema. The
+reserved causes suite's named cause scan resolves names through module level
+imports, so `core/config_schema.py` holds no named cause by its reading and
+`record-rekordbox-pin` left `core/config.py`'s pinned population without
+joining another module's. The pins were measured again on the tree, as their
+file says.
+
+**Measured cost.** None today: `ConfigError` and its subclasses are excluded
+from the derivation by name (`CONVERTED_ELSEWHERE`), so the refusal is held
+by the command line boundary either way. A refusal of a type that is not
+excluded, raised behind a local import, would be missed by the scan.
+
+**Closes when:** the scan also reads function level imports, or a test pins
+that no module in the package raises a structured refusal behind one. Ledger
+only.
+
+---
+
+## R-1905. config.Remedy repeats six tokens of exit_codes.Remedy, and the reserved causes guard needs them written as literals
+
+**Found:** at the build of #856, U299, 2026-11-22.
+
+**The mechanism.** `core/config.py`'s `Remedy` declares six tokens that
+`core/exit_codes.py`'s `Remedy` also declares, the one copied block of six
+logical lines left inside U299's area (two windows of one block). Writing
+config's members as `exit_codes.Remedy.X.value` removes the copy and keeps
+every value, and was driven: `tests/test_reserved_causes.py`'s
+`test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package`
+then fails, because its static rule reads a cause shaped enum's values only
+from string literals in the class body, and two pinned populations move. The
+change was reverted, since that suite is another card's file.
+
+**Measured cost.** None to a user. It leaves the area's duplication allowance
+with this one block, against the card's target of none.
+
+**Closes when:** the static enum rule resolves a member written as another
+enum's value, after which config's six members read from exit_codes and the
+allowance line goes; or the area keeps the copy as the declared subset it is.
+Ledger only.
+
+---
+
+## R-1906. A mutant that lifts the test root guard leaves the suite's outside sentinel on the machine, and every later run there fails eight tests and reads false kills
+
+**Found:** at the kill set replay of #856, U299, 2026-11-22.
+
+**The mechanism.** `tests/test_config_test_root.py` points its writes at
+`OUTSIDE`, `/cratekit-r926-outside-every-test-root`, and asserts the refusal
+left nothing there. A row that disables the guard in `core/config.py`
+(`r926.G1_never_checks` is one) lets the write land, so the directory is left
+holding `config.toml`, its migrate lock, `ledger.json` and `session.lock`.
+`scripts/mutate.py` guards the two state roots under the home directory and
+nothing else, so the directory outlives the row. On U299's replay, slice 3
+met it twice: every later row whose subset held that file read eight extra
+deaths from it (`u254.C2_append_one_write`, whose own recorded killer still
+died), and the after pass's baseline refused, eight tests red, until the
+directory was removed by hand.
+
+**Measured cost.** None to a user. To a replay, a row after the culprit that
+lost its real kill can still read killed from the eight sentinel tests, and
+the next batch on the same container refuses at its baseline. U299's check
+read each affected row's kills by name.
+
+**Closes when:** the driver includes the sentinel in what it guards and
+restores (or the test removes what an escaped write left, in a finalizer),
+so no row's verdict depends on the rows before it. Ledger only.
