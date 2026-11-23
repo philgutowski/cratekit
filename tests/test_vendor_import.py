@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -117,6 +118,20 @@ def test_no_dependency_specifier_names_the_vendored_project(pyproject):
     )
 
 
+def _files_outside_dot_directories(root: Path):
+    """Every file under ``root`` with no dot-named part, never entering a dot-directory.
+
+    Pruned while walking, so .venv, .git and the .claude worktrees, whole extra
+    checkouts, are never read and never reported. Links are not followed.
+    """
+    for directory, subdirectories, files in os.walk(root):
+        subdirectories[:] = [name for name in subdirectories if not name.startswith(".")]
+        for name in files:
+            path = Path(directory, name)
+            if not name.startswith(".") and path.is_file():
+                yield path
+
+
 def test_nothing_in_the_repository_declares_it_as_a_requirement():
     """No requirements file, CI step or install line anywhere names it either."""
     patterns = re.compile(
@@ -124,21 +139,17 @@ def test_nothing_in_the_repository_declares_it_as_a_requirement():
         r"(?:tidal[-_]dl[-_]ng)",
         re.IGNORECASE,
     )
+    # Every match holds the name, and finding the name alone is the cheap search.
+    named = re.compile(r"tidal[-_]dl[-_]ng", re.IGNORECASE)
     offenders: list[str] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        # Every dot-directory is skipped, including .venv and .worktrees, whose extra
-        # checkouts would be slow to walk and report another checkout's files.
-        if any(part.startswith(".") for part in path.relative_to(REPO_ROOT).parts):
-            continue
+    for path in _files_outside_dot_directories(REPO_ROOT):
         if VENDOR_ROOT in path.parents or path.suffix in {".pyc", ".gz"}:
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if patterns.search(text):
+        if named.search(text) and patterns.search(text):
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, (
         "these files tell an installer to fetch the vendored project from an "
