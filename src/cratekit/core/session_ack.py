@@ -1,6 +1,6 @@
 """The backup acknowledgment a destructive session requires, recorded and consulted (R34).
 
-Part of :mod:`cratekit.core.session`, which re-exports every name here; read them there. A
+Part of :mod:`cratekit.core.session`, which re-exports every name its callers read; read them there. A
 name of the session outside this file, and every seam a test patches, is read through
 ``session`` at call time so a patch on the session bites here too (U300).
 """
@@ -12,13 +12,14 @@ import logging
 import os
 import socket
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.core import backup_facts, config
 from cratekit.core.cause import (
+    CratekitError,
     Scope,
     refuse,
 )
@@ -33,6 +34,11 @@ def _session():
     from cratekit.core import session
 
     return session
+
+
+def _defect(message: str, **refusal: Any) -> CratekitError:
+    """An ``internal-error`` refusal, whose remedy is to report the defect."""
+    return refuse("internal-error", message, remedy=Remedy.REPORT_DEFECT, **refusal)
 
 
 #: The library-scoped state entry this acknowledgment is written to.
@@ -67,12 +73,7 @@ class ShownAge:
     completed_at: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "portion": self.portion,
-            "state": self.state,
-            "age_seconds": self.age_seconds,
-            "completed_at": self.completed_at,
-        }
+        return asdict(self)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> ShownAge:
@@ -117,11 +118,9 @@ class Acknowledgment:
     def from_json(cls, data: Mapping[str, Any]) -> Acknowledgment:
         version = data.get("schema_version")
         if version != ACK_SCHEMA_VERSION:
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"the backup acknowledgment declares schema {version!r} and this "
                 f"build understands {ACK_SCHEMA_VERSION}",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"schema_version": version},
             )
         return cls(
@@ -307,20 +306,16 @@ def read_acknowledgment(cfg: config.Config) -> Acknowledgment | None:
         return None
     except OSError as exc:
         # A read that did not happen, which establishes nothing about presence.
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the backup acknowledgment could not be read, and whether it is "
             f"even there was not established: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(ack_path(cfg))},
         ) from exc
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the backup acknowledgment is not readable as JSON: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"path": str(ack_path(cfg))},
         ) from exc
     return Acknowledgment.from_json(data)

@@ -7,6 +7,7 @@ battery at a snapshot copy, copied again first, which also exercises the key pat
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import shutil
@@ -21,6 +22,7 @@ from cratekit.core import config
 from cratekit.core import rb_writer as W
 from cratekit.core.exit_codes import Remedy
 from tests.test_config import valid_data
+from tests.test_restore import _raised
 
 #: The pin the tests record and satisfy, a shape rather than an installed version.
 RECORDED_APP_VERSION = "9.9.9.0001"
@@ -270,25 +272,22 @@ def test_a_write_intent_open_passes_the_process_refusal_and_the_recorded_pin(
 
 
 def test_a_missing_database_directory_names_the_unmounted_volume(tmp_path):
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.open_db(tmp_path / "gone" / "master.db")
-    assert excinfo.value.cause.reason == "library-directory-missing"
+    error = _raised(W.RekordboxUnavailable, W.open_db, tmp_path / "gone" / "master.db")
+    assert error.cause.reason == "library-directory-missing"
 
 
 def test_a_missing_database_file_is_its_own_refusal(tmp_path):
     """A missing file is its own refusal, distinct from an unmounted volume."""
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.open_db(tmp_path / "master.db")
-    assert excinfo.value.cause.reason == "library-database-missing"
+    error = _raised(W.RekordboxUnavailable, W.open_db, tmp_path / "master.db")
+    assert error.cause.reason == "library-database-missing"
 
 
 def test_a_file_that_is_not_a_database_refuses_rather_than_returning_a_handle(tmp_path):
     """Existence is not readability, which is why the canary exists at all."""
     impostor = tmp_path / "master.db"
     impostor.write_bytes(b"this is not a database")
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.open_db(impostor, unlock=False)
-    assert excinfo.value.cause.reason in {"database-open-failed", "canary-read-failed"}
+    error = _raised(W.RekordboxUnavailable, W.open_db, impostor, unlock=False)
+    assert error.cause.reason in {"database-open-failed", "canary-read-failed"}
 
 
 def test_the_binding_pin_refuses_before_anything_is_opened(database, monkeypatch):
@@ -297,9 +296,8 @@ def test_the_binding_pin_refuses_before_anything_is_opened(database, monkeypatch
     cfg = config.from_dict(
         valid_data(path.parent.parent, rekordbox={"pinned_pyrekordbox": "0.0.0"})
     )
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.open_db(path, unlock=unlock, cfg=cfg)
-    assert excinfo.value.cause.reason == "pyrekordbox-pin-drift"
+    error = _raised(W.RekordboxUnavailable, W.open_db, path, unlock=unlock, cfg=cfg)
+    assert error.cause.reason == "pyrekordbox-pin-drift"
 
 
 def test_the_schema_pin_refuses_on_a_drifted_database(database, cloud_sync_off):
@@ -308,9 +306,8 @@ def test_the_schema_pin_refuses_on_a_drifted_database(database, cloud_sync_off):
     cfg = config.from_dict(
         valid_data(path.parent.parent, rekordbox={"pinned_db_version": "5999"})
     )
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.open_db(path, unlock=unlock, cfg=cfg)
-    assert excinfo.value.cause.reason == "db-schema-pin-drift"
+    error = _raised(W.RekordboxUnavailable, W.open_db, path, unlock=unlock, cfg=cfg)
+    assert error.cause.reason == "db-schema-pin-drift"
 
 
 def test_the_schema_pin_can_be_forced_for_a_deliberate_revalidation(database, cloud_sync_off):
@@ -346,8 +343,7 @@ def test_an_encrypted_database_does_not_open_with_the_key_withheld(library, clou
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     _encrypt_in_place(path)
-    with pytest.raises(W.RekordboxUnavailable):
-        W.close_db(W.open_db(path, unlock=False))
+    _raised(W.RekordboxUnavailable, lambda: W.close_db(W.open_db(path, unlock=False)))
 
 
 @pytest.mark.parametrize("encrypted", [True, False], ids=["encrypted", "plain"])
@@ -365,8 +361,6 @@ def test_a_snapshot_check_that_names_no_key_verifies_either_kind(
 
 def _unlock_arguments(tree) -> list[tuple[int, str]]:
     """Every call in ``tree`` to an opener that passes ``unlock=``, ``**kwargs`` included."""
-    import ast
-
     found = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -382,8 +376,6 @@ def _unlock_arguments(tree) -> list[tuple[int, str]]:
 
 def _forwarded_lines(tree) -> set[int]:
     """Where ``integrity_ok`` forwards its bare ``unlock`` to ``open_db``, and no other."""
-    import ast
-
     lines: set[int] = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.FunctionDef) and node.name == "integrity_ok"):
@@ -401,8 +393,6 @@ def _forwarded_lines(tree) -> set[int]:
 
 def test_no_caller_in_src_answers_the_key_question_for_itself():
     """R-239: one function answers the key question, and only ``integrity_ok`` forwards it."""
-    import ast
-
     root = Path(W.__file__).resolve().parents[1]
     problems = []
     scanned = 0
@@ -433,8 +423,6 @@ def test_no_caller_in_src_answers_the_key_question_for_itself():
     ids=["literal-inside-integrity-ok", "forward-outside-integrity-ok"],
 )
 def test_the_forward_exemption_admits_only_integrity_ok_passing_its_own_argument(source):
-    import ast
-
     tree = ast.parse(source)
     assert _unlock_arguments(tree)
     assert _forwarded_lines(tree) == set()
@@ -451,14 +439,10 @@ def test_the_forward_exemption_admits_only_integrity_ok_passing_its_own_argument
 )
 def test_the_key_guard_sees_each_spelling_of_an_answered_question(source):
     """The key guard's refusals, on literal sources, so the scan cannot pass by seeing nothing."""
-    import ast
-
     assert _unlock_arguments(ast.parse(source))
 
 
 def test_the_key_guard_accepts_an_open_that_asks():
-    import ast
-
     assert _unlock_arguments(ast.parse("rb_writer.open_db(cfg=cfg)")) == []
 
 
@@ -480,10 +464,9 @@ def test_an_analysis_column_write_is_refused_and_rolled_back(opened, cloud_sync_
     row = opened.get_content().first()
     row.BPM = 12800
 
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.commit_guarded(opened)
-    assert excinfo.value.cause.reason == "whitelist-violation"
-    assert "BPM" in str(excinfo.value)
+    error = _raised(W.RekordboxUnavailable, W.commit_guarded, opened)
+    assert error.cause.reason == "whitelist-violation"
+    assert "BPM" in str(error)
 
     assert not opened.session.dirty, "the refused session was left pending"
     opened.session.expire_all()
@@ -497,8 +480,7 @@ def test_an_unregistered_column_is_refused_even_though_it_is_ordinary_metadata(
     assert "Rating" not in W.content_writable_columns()
     row = opened.get_content().first()
     row.Rating = 5
-    with pytest.raises(W.RekordboxUnavailable):
-        W.commit_guarded(opened)
+    _raised(W.RekordboxUnavailable, W.commit_guarded, opened)
 
 
 def test_a_registration_widens_the_gate_by_exactly_its_own_fields(opened, cloud_sync_off):
@@ -521,9 +503,8 @@ def test_a_real_delete_is_refused_and_rolled_back(opened, cloud_sync_off):
     row = opened.get_content().first()
     opened.session.delete(row)
 
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.commit_guarded(opened)
-    assert "additive-only" in str(excinfo.value)
+    error = _raised(W.RekordboxUnavailable, W.commit_guarded, opened)
+    assert "additive-only" in str(error)
 
     opened.session.expire_all()
     assert opened.get_content().first() is not None
@@ -613,9 +594,8 @@ def test_the_commit_refuses_while_the_agent_is_running(opened, cloud_sync_off, m
     row = opened.get_content().first()
     row.ColorID = "4"
     monkeypatch.setattr(W, "rekordbox_agent_running", lambda: True)
-    with pytest.raises(W.RekordboxRunning) as excinfo:
-        W.commit_guarded(opened)
-    assert excinfo.value.cause.reason == "rekordbox-running"
+    error = _raised(W.RekordboxRunning, W.commit_guarded, opened)
+    assert error.cause.reason == "rekordbox-running"
 
 
 def test_an_unreadable_cloud_state_refuses_a_commit(opened, monkeypatch):
@@ -625,11 +605,10 @@ def test_an_unreadable_cloud_state_refuses_a_commit(opened, monkeypatch):
         raise OSError("no rekordbox settings on this machine")
 
     monkeypatch.setattr(W, "read_rekordbox_settings", unreadable)
-    with pytest.raises(W.RekordboxUnavailable) as excinfo:
-        W.commit_guarded(opened)
+    error = _raised(W.RekordboxUnavailable, W.commit_guarded, opened)
     # Its own slug since the split, so the two cases do not share opposite remedies.
-    assert excinfo.value.cause.reason == "cloud-sync-unreadable"
-    assert "could not be read" in str(excinfo.value)
+    assert error.cause.reason == "cloud-sync-unreadable"
+    assert "could not be read" in str(error)
 
 
 def test_an_unreadable_cloud_state_does_not_refuse_a_READ(database, monkeypatch):

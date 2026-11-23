@@ -3,8 +3,8 @@
 The scans that read a split module through the helper trust its glob, so the
 glob is held here against three independent lists of the parts: the module
 table in ``docs/DEVELOPING.md``, which is what a person is told; the import
-graph, since ``DEVELOPING.md`` says a part is re-exported by its module and
-imported from nowhere else; and the call time accessor most parts hold back
+graph, since ``DEVELOPING.md`` says a part is imported only by its module and
+that module's other parts; and the call time accessor most parts hold back
 to their module. A part named off the convention fails here when it is in the
 table, when only its module and its parts import it by an absolute import, or
 when it holds an accessor in the spelling the parts use. One that escapes all

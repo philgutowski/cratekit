@@ -1,9 +1,10 @@
 """Performing a restore plan: staging companions aside and replacing files and directories.
 
-Part of :mod:`cratekit.core.restore`, which re-exports every name here; read them there. A
-name of restore outside this file, every seam a test patches, and ``os`` and ``shutil``,
-which a test patches on restore to sample the disk, are read through ``restore`` at call
-time so a patch on restore bites here too (U300).
+Part of :mod:`cratekit.core.restore`, which re-exports every name its callers read; read
+them there. A name of restore outside this file, every seam a test patches, and ``os`` and
+``shutil``, which a test patches on restore to sample the disk, are read through ``restore``
+at call time so a patch on restore bites here too (U300). The other two parts read restore
+through this part's :func:`_restore` and log through its logger.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from cratekit.core import (
     reconcile,
     session,
 )
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 
 if TYPE_CHECKING:
@@ -83,19 +84,14 @@ def _perform(
             _remove(step.target)
             return ()
         if step.source is None:  # pragma: no cover - a replacement always has a source
-            raise refuse(
-                "internal-error",
-                f"the step {step.act} on {step.target} carries no source",
-                remedy=Remedy.REPORT_DEFECT,
-                detail={"act": str(step.act), "target": str(step.target)},
-            )
+            raise _restore()._no_source(step)
         if step.act is _restore().Act.REPLACE_TREE:
             _replace_directory(step.source, step.target)
         else:
             _restore()._replace_file(step.source, step.target)
     except OSError as exc:
         # A raw OSError carries no reason or remedy. The latch stays standing.
-        raise refuse(
+        raise _restore()._refuse_run(
             "restore-step-failed",
             f"the restore could not {step.act} at {step.target}: {exc}. The "
             f"in-flight latch stays recorded, so this library refuses ordinary "
@@ -106,8 +102,6 @@ def _perform(
                 f"the live storage-engine companion files this restore moved out "
                 f"of the way are under {decided.pre_restore_root}",
             ),
-            scope=Scope.RUN,
-            origin=("restore",),
             detail={
                 "act": str(step.act),
                 "target": str(step.target),
@@ -179,7 +173,7 @@ def _assert_staging_is_free(target: Path, staging: Path) -> None:
     if not _restore().os.path.lexists(resting):
         return
     occupied = _staged_names(staging)
-    raise refuse(
+    raise _restore()._refuse_run(
         "restore-staging-occupied",
         f"the staging directory {staging} already holds "
         f"{', '.join(occupied) or resting.name}, and this restore would move the "
@@ -191,8 +185,6 @@ def _assert_staging_is_free(target: Path, staging: Path) -> None:
             f"the live storage-engine companion files already moved out of the "
             f"way are under {staging}",
         ),
-        scope=Scope.RUN,
-        origin=("restore",),
         retryable=True,
         detail={
             "target": str(target),

@@ -355,9 +355,7 @@ def latest(*, verb: str, key: Mapping[str, str]) -> dict[str, Any] | None:
             and isinstance(body.get("plan"), list)
         ):
             found.append(body)
-    if not found:
-        return None
-    return max(found, key=lambda body: str(body.get("at") or ""))
+    return max(found, key=lambda body: str(body.get("at") or ""), default=None)
 
 
 def mapped(value: Any, replacements: Iterable[tuple[str, str]]) -> Any:
