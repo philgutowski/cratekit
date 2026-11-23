@@ -4231,3 +4231,133 @@ would hold the restamp as long.
 
 **Closes when:** the warm up lock is taken with a bound, after which a
 process measures unwarmed and says so. Ledger only.
+
+---
+
+## R-1985. analyze adopt stamps a headless row only when its title tag equals the row's title byte for byte, so three near misses are left as title-tag-differs
+
+**Found:** at review round one of #994, U342, 2026-11-23.
+
+**The mechanism.** `analysis/head_adopt.py`, `_tag_after`: a title with no
+head is stamped only when the file's title tag reads exactly as the row's
+title, or already as the stamped title. Anything else is `title-tag-differs`.
+
+**Measured cost.** Driven at review round one, through the landing and the
+plan on the suite's disposable library: a file with no title tag lands as
+Title `Lima` and is left `title-tag-differs` naming an empty tag; a tag
+`[MP3]Tango` lands as Title `[MP3] Tango`, since `intake/ingest.py` renders
+the marker again, and is left the same; a stamp stopped after the files and
+before the rows (a `KeyboardInterrupt` at the row write) is continued while
+rekordbox's answer stands, and left on every later run once the BPM column
+moves, where a corrected head would splice the tag's own. Each row is named
+and nothing is written or lost; the row keeps having no head until a person
+fixes the tag. No producer of a tagless or off spaced marker file upstream of
+staging was driven, and the stopped stamp needs a reanalysis between two runs.
+
+**Closes when:** a stamped row compares the tag by its body as a corrected
+head does, with a tagless file given the row's title. The trap: a blank
+before title tag makes `core/restore_tags.py` `kept_by` refuse the session's
+record, so a tagless file must keep a non blank before value or the restore
+must learn to clear it. Ledger only.
+
+---
+
+## R-1986. A title that is or holds a head the parser does not read as leading, 13A - 124 - Alpha, 06A - 124 alone, or one behind the marker, is stamped as a title with no head and carries two
+
+**Found:** at review round one of #994, U342, 2026-11-23.
+
+**The mechanism.** `core/naming.py`, `stamp_head`: the head parser reads a key
+only on the wheel, 1A to 12B, so `13A - 124 - Alpha` has no head to it and
+is given one, `06A - 124 - 13A - 124 - Alpha`. A title that is a head and
+nothing else, `06A - 124`, has no terminator after its tempo, so it is no head
+either and becomes `06A - 124 - 06A - 124`; a head behind the lossy marker,
+`[MP3] 8A - 125 - Alpha`, becomes `06A - 124 - [MP3] 8A - 125 - Alpha`. A
+head at the end of a title is refused since review round one
+(`strip_trailing_head`), these are not.
+
+**Measured cost.** Driven at review round two through the landing and the
+verb: a title tag `13A - 124 - Alpha` lands unchanged and adopt writes
+`06A - 124 - 13A - 124 - Alpha` to the row, the tag and the key tag; `06A -
+124` lands and is written `06A - 124 - 06A - 124`, and a second run agrees.
+Every byte is kept and the session record restores it. The marker case was
+driven on the pure function; the landing turns that tag into `08A - 125 -
+[MP3] Alpha`, which is then left. No producer of any of these tags upstream
+of staging was driven: every writer of a head renders through the same
+engine.
+
+**Closes when:** a producer is found, then `stamp_head` refuses a title that
+begins, after any marker, with a shape of key and tempo whatever the key's
+number or what follows. Ledger only.
+
+---
+
+## R-1987. analyze run pointed at a file analyze adopt stamped measures and names it again, putting its own key over rekordbox's
+
+**Found:** while building #994, U342, 2026-11-23.
+
+**The mechanism.** `analyze adopt` gives a title with no head one built from
+rekordbox's key and tempo, in the row's title, the title tag and
+`initialkey`, and never renames the file, so the file name keeps having no
+head. `analyze run`'s resume marker (`analysis/run.py`, `already_analyzed`,
+and `analysis/cli.py`, `carries_head`) reads the head off the file name only,
+so the stamped file reads as never analysed.
+
+**Measured cost.** Driven on the workers suite's fixtures with a fixed
+detector: a file `Sierra.flac` whose title tag is `06A - 124 - Sierra` and
+`initialkey` `06A`, put through `crate analyze run` over its folder, came out
+as `08A - 124 - Sierra.flac`, title tag `08A - 124 - Sierra`, `initialkey`
+`08A`: rekordbox's key replaced by Cratekit's, and the file renamed. A file
+in the collection renamed by `analyze run` is a separate, older exposure of
+any headless library file. The producer is a person pointing `analyze run` at
+a library folder after the visit; today's landings carry a head from
+`analyze run` before they land, so a stamped file is rare until U343, and the
+reachability on a real library was not measured.
+
+`analyze vocals --unscored` keys on the same file name head (`vocals/cli.py`);
+driven at review round two, a stamped file with no `voxlevel` is never picked
+by it, since the selector takes only a file whose name carries a head, so the
+rescore misses it rather than taking it again.
+
+**Closes when:** U343 (#995) lands, which removes the key stage, the head,
+the `initialkey` write and the rename from `analyze run` and resumes it by a
+tag the run writes. Ledger only: the card that closes it is already queued.
+
+---
+
+## R-1988. analyze adopt's half read warning counts the notes of rows it left beside the rows that took half an answer
+
+**Found:** at review round one of #994, U342, 2026-11-23, on code the branch did not change.
+
+**The mechanism.** `analysis/head_adopt_cli.py`, `_half`: the warning names
+only rows that took half of rekordbox's answer, but its bracket prints
+`plan.notes`, the notes of every row, left ones included.
+
+**Measured cost.** Driven at review round one: a mixed plan said `1 row(s)
+took only half of rekordbox's answer (3 key-empty, 1 tempo-zero)`, the two
+extra notes from rows left as `no-head-unanswered`; a copy of the base gives
+the same sentence with a `no-head` and a `no-reference` row. A count in a
+warning that overstates; nothing is written or lost.
+
+**Closes when:** the bracket counts the notes of the rows it names. Ledger only.
+
+---
+
+## R-1989. analyze adopt leaves a headless title that only ends like a head, Type-2B-10, as no-head with no cause named
+
+**Found:** at review round two of #994, U342, 2026-11-23.
+
+**The mechanism.** Review round one made `core/naming.py`, `stamp_head`,
+refuse a title carrying a head at its end, by `strip_trailing_head`, whose
+pattern takes any ending of a hyphen, a wheel key, a hyphen and one to three
+digits, spaced or not. A title that only ends that way, `Type-2B-10`,
+`Symphony No. 5 - 3B - 7` or `Area 51 - 9B - 140`, is refused with it, and
+`plan_row` names the row `no-head`, the word for a head it could not build.
+
+**Measured cost.** Driven at review round two: a title tag `Type-2B-10`
+landed and was left `no-head` on two runs, where round one's code stamped it
+`06A - 124 - Type-2B-10`. The row is named and nothing is written or lost; it
+keeps having no head. No real title of the shape was measured, and no
+producer upstream of staging was driven.
+
+**Closes when:** the refusal reads a trailing head only in the spaced form the
+engine writes, or names its own reason so the row says why. Ledger only.

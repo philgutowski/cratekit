@@ -486,8 +486,9 @@ LATER_VERBS: tuple[Entry, ...] = (
         name="analyze.adopt",
         summary=(
             "after the rekordbox visit, give each landed title whose key or tempo "
-            "differs rekordbox's, in the row's title, the file's title tag and its "
-            "key tag; never a key column, a tempo field or a file name"
+            "differs rekordbox's, and each with no head one built from them, in the "
+            "row's title, the file's title tag and its key tag; never a key column, a "
+            "tempo field or a file name"
         ),
         module="cratekit.analysis.head_adopt_cli", builder="build",
         handler_key="analyze.adopt",

@@ -181,7 +181,8 @@ Analysis path when the launch dialog shows them or else by Analyze Tracks, the
 wait counted in analysis files, the Dynamic run for rows marked `dyn` placed
 so the visit's last run is Normal whenever a row lacks it, the quit, `crate analyze check`, `crate
 analyze adopt` giving every title whose key or tempo differs rekordbox's, and
-the clear with `crate inbox analyzed`. It is the one procedure for the visit,
+every title with no head one built from them, and the clear with `crate inbox
+analyzed`. It is the one procedure for the visit,
 and nothing it says is repeated here. Its verdict is this pass's: a check that
 ends waiting or suspect stops the pass there, and the report says what it
 named. A title that differs from rekordbox's never makes the check suspect;
