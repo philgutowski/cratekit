@@ -20,9 +20,10 @@ from cratekit.adopt import move as adopt_move
 from cratekit.adopt import move_cli
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import routing, tags, taxonomy
+from cratekit.cli import converge as converge_cli
+from cratekit.core import rb_writer, routing, tags, taxonomy, tree_registry
 from cratekit.organize import mirror_edits
-from cratekit.write import rebuild, trees
+from cratekit.write import rebuild, routing_pass, trees
 from tests import test_rebuild as _rebuild_suite
 from tests.test_adopt_move import _scanned
 
@@ -166,6 +167,174 @@ def test_rebuild_files_both_and_a_cleared_second_genre_reads_as_that_folder_alon
     assert [(one.content_id, one.bucket, one.sub) for one in report.unexpected] == [
         ("1", TWO, HIGH)
     ]
+
+
+# R-1949: a cleared second genre leaves its track in that folder, and the
+# check names the membership whatever else the playlist holds. The tree is
+# made by hand, as adoption makes it, so no rebuild has recorded a node.
+
+
+def _by_hand(db, adopted_root, members) -> dict:
+    """Each ``(bucket, sub)`` playlist under the root holding ``members``' rows, its node id kept."""
+    made = {}
+    for (bucket, sub), ids in members.items():
+        folder_name, playlist_name = routing_pass.destination(DECLARED, bucket, sub)
+        folder = rb_writer.ensure_folder(db, folder_name, parent=adopted_root)
+        playlist = rb_writer.ensure_playlist(db, playlist_name, folder)
+        for content_id in ids:
+            rb_writer.add_membership(db, playlist, content_id)
+        made[(bucket, sub)] = str(playlist.ID)
+    db.session.commit()
+    return made
+
+
+def _derived(*truths):
+    placements, _gaps = rebuild.derive_from_taxonomy(DECLARED, list(truths), vocal_threshold=None)
+    return placements
+
+
+def _left(report) -> list[tuple[str | None, str, str]]:
+    return [(one.content_id, one.bucket, one.sub) for one in report.unexpected]
+
+
+def test_a_cleared_second_genre_alone_in_its_folder_is_named_by_the_check(
+    cfg, gates_pass, db, adopted_root
+):
+    """THE RESIDUAL: alone in Tech House / High, the track read as a person's own playlist."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=TECH)
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    check = _rebuild_suite._check
+    # THE CONTROL: before the clear the tree matches, both folders declared.
+    assert check(cfg, db, adopted_root, DECLARED, _derived(track)).converged
+
+    report = check(
+        cfg, db, adopted_root, DECLARED, _derived(replace(track, second_genre=None))
+    )
+    assert not report.converged
+    assert report.missing == ()
+    assert _left(report) == [("1", TWO, HIGH)]
+    (leftover,) = report.unexpected
+    assert leftover.location is not None and leftover.location.endswith(_rebuild_suite.COMPOSED)
+    assert (leftover.folder, leftover.playlist) == routing_pass.destination(DECLARED, TWO, HIGH)
+    assert report.foreign == ()
+
+
+def test_a_cleared_second_genre_beside_another_track_of_that_folder_is_named_as_before(
+    cfg, gates_pass, db, adopted_root
+):
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    other = replace(
+        track, location=music(cfg, _rebuild_suite.PLAIN), genre=TECH, second_genre=None
+    )
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1", "2")})
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track, other))
+    assert _left(report) == [("1", TWO, HIGH)]
+    assert report.missing == ()
+
+
+def test_a_one_genre_tree_still_matches_and_a_playlist_named_by_nothing_stays_foreign(
+    cfg, gates_pass, db, adopted_root
+):
+    """P7 still holds: only a playlist bearing a declared destination's names is compared."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",)})
+    folder_name, _playlist = routing_pass.destination(DECLARED, TWO, HIGH)
+    folder = rb_writer.ensure_folder(db, folder_name, parent=adopted_root)
+    own = rb_writer.ensure_playlist(db, _rebuild_suite.CURATED_PLAYLIST, folder)
+    rb_writer.add_membership(db, own, "1")
+    db.session.commit()
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert report.converged
+    assert report.unexpected == ()
+    assert report.foreign == (f"{folder_name}/{_rebuild_suite.CURATED_PLAYLIST}",)
+
+
+def test_a_soul_tracks_cleared_rnb_alone_in_the_rnb_band_is_named_too(
+    cfg, gates_pass, db, adopted_root
+):
+    """The band is Soul's split place again, which ``adopt move`` takes it out of
+    (``test_a_one_genre_soul_track_still_leaves_the_rnb_band``); until it does,
+    the check names it."""
+    soul, rnb = (DECLARED.bucket_for_display(word) for word in (SOUL, RNB))
+    music = _rebuild_suite._music
+    track = rebuild.Truth(
+        location=music(cfg, _rebuild_suite.COMPOSED), genre=SOUL, energy=5, voxlevel=None,
+        second_genre=RNB,
+    )
+    _by_hand(db, adopted_root, {(soul, MED): ("1",), (rnb, MED): ("1",)})
+    check = _rebuild_suite._check
+    assert check(cfg, db, adopted_root, DECLARED, _derived(track)).converged
+
+    report = check(cfg, db, adopted_root, DECLARED, _derived(replace(track, second_genre=None)))
+    assert _left(report) == [("1", rnb, MED)]
+
+
+def test_a_vocal_playlist_the_run_did_not_compare_is_not_named_through_its_names(
+    cfg, gates_pass, db, adopted_root
+):
+    """With no vocal calibration nothing was derived into ``with vox``, which is not evidence."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _by_hand(
+        db,
+        adopted_root,
+        {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",), (TWO, trees.VOX_SUB_CLASS): ("1",)},
+    )
+    check = _rebuild_suite._check
+    placements = _derived(track)
+    unjudged = check(
+        cfg, db, adopted_root, DECLARED, placements, not_compared=(rebuild.VOCAL_DIMENSION,)
+    )
+    assert _left(unjudged) == [("1", TWO, HIGH)]
+    vox_display = routing_pass.destination(DECLARED, TWO, trees.VOX_SUB_CLASS)
+    assert unjudged.foreign == ("/".join(vox_display),)
+
+    # Compared, the vocal playlist is a leftover too.
+    judged = check(cfg, db, adopted_root, DECLARED, placements)
+    assert sorted(_left(judged)) == sorted([("1", TWO, HIGH), ("1", TWO, trees.VOX_SUB_CLASS)])
+
+
+def test_a_namesake_of_a_destination_already_resolved_elsewhere_is_left_as_it_was(
+    cfg, gates_pass, db, adopted_root
+):
+    """A renamed folder keeps its destination; a fresh folder bearing the old names stays foreign."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[track])
+    (built,) = rebuild.read_tree(db, str(adopted_root.ID))
+    renamed = db.get_playlist(ID=built.folder_id)
+    renamed.Name = _rebuild_suite.RENAMED_FOLDER
+    db.session.commit()
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("2",)})
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert report.unexpected == ()
+    assert report.foreign == ("/".join(routing_pass.destination(DECLARED, ONE, HIGH)),)
+
+
+def test_the_converge_verb_says_differing_over_a_cleared_second_genre(
+    cfg, db, adopted_root, monkeypatch
+):
+    """The verb a DJ runs, driven: matching before the clear, differing after, naming the track."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=TECH)
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    tree_registry.write(cfg, _rebuild_suite._registry(str(adopted_root.ID)))
+    readings = [track]
+    monkeypatch.setattr(rebuild, "library_truth", lambda *_args, **_kwargs: list(readings))
+
+    (before,) = _rebuild_suite._converge()["data"]["checks"]
+    assert before["status"] == converge_cli.MATCHING, before
+
+    readings[:] = [replace(track, second_genre=None)]
+    (after,) = _rebuild_suite._converge()["data"]["checks"]
+    assert after["status"] == converge_cli.DIFFERING, after
+    assert f"unexpected:{TWO}/{HIGH}:1" in after["detail"]
+    assert after["remedy"] is not None
 
 
 # 3. Adoption's census and plan
