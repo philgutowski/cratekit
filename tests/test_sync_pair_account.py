@@ -138,9 +138,7 @@ def test_a_playlist_made_by_the_product_still_takes_the_order(installed):
     assert _adapter(installed, store).order_tracks("set", ("a", "b")) == ("a", "b")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The pairs record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_one_account_playlist_pairs_with_one_rekordbox_playlist(installed):

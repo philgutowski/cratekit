@@ -1,11 +1,8 @@
 """One new PULS release and one owned release land one batch filed under ``Record Labels / PULS`` (U179).
 
-``crate sync bandcamp`` plans and fetches over the fake account through the
-real dispatcher; the tail stands in at the chain's seam, since analysis needs
-an extra and a real collection; the rehearsal and the landing run for real on
-the disposable native database. The session's two acts answer and apply the
-gate, and SQL reads the batch back. D1 applies; ``pulsromania`` is the fake
-account's seller.
+Only the tail stands in; the plan, fetch, rehearsal and landing are real on the
+disposable native database, read back by SQL. D1 applies; ``pulsromania`` is
+the fake account's seller.
 """
 
 from __future__ import annotations
@@ -22,6 +19,7 @@ from cratekit.core import config, jobs, secrets, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name
 from cratekit.label import registry as labels
+from tests._sync_builders import exited
 from tests.bandcamp_fakes import COOKIE, FakeAccount, archive, item
 from tests.cli_drive import drive
 from tests.test_intake_land_labels_native import _filed
@@ -125,11 +123,8 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     assert apply_argv == [
         "crate", "--run", run_id, "intake", "land", str(folder), "--name", NAME, "--label-from-tags",
     ]
-    decided, answered = drive(decide_argv[1:])
-    assert decided == int(ExitCode.OK), answered
-    code, applied = drive(apply_argv[1:])
-
-    assert code == int(ExitCode.OK), applied
+    exited(drive(decide_argv[1:]))
+    exited(drive(apply_argv[1:]))
     assert _filed(cfg) == {"PULS": {"PULS 2026": ["Sun Path", "Tide"]}}
     (batch,) = _query(
         cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0", NAME

@@ -1,10 +1,7 @@
 """U49: the two session verbs, driven through the dispatcher rather than the API.
 
-Every property goes through ``cli.run``: an acknowledgment is minted by driving
-``crate session ack`` and answering its gate, never by calling
-``record_acknowledgment``, and the end to end test spends it on a real
-destructive verb. Every fixture is a temporary directory, shared with
-``tests/test_restore.py`` by assignment.
+An acknowledgment is minted by answering ``crate session ack``'s gate, never by
+``record_acknowledgment``, and spent end to end on a real destructive verb.
 """
 
 from __future__ import annotations
@@ -25,6 +22,7 @@ from cratekit import cli
 from cratekit.core import backup_facts, config, preflight, rb_writer, session
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import test_restore as restore_suite
+from tests._sync_builders import exited
 from tests.test_restore import completed_session
 from tests.test_session_log_unlisted import _refuse_listing
 from tests.test_write_session import _lock_recording
@@ -87,14 +85,12 @@ def _human(argv: list[str]) -> tuple[int, str]:
 
 def _answer(run_id: str, gate: str, option: str) -> None:
     """R34's second act: the decision, recorded against the run, with its actor."""
-    code, envelope = _drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), envelope
+    exited(_drive(["run", "decide", run_id, gate, option, "--actor", "a-person"]))
 
 
 def _through_the_gate(verb: str, gate: str, option: str) -> tuple[int, dict, dict]:
     """Drive ``crate session VERB`` through its explicit gate, and return both halves."""
-    code, refused = _drive(["session", verb])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(_drive(["session", verb]), ExitCode.DECISION_REQUIRED)
     _answer(refused["run_id"], gate, option)
     code, envelope = _drive(["--run", refused["run_id"], "session", verb])
     return code, refused, envelope
@@ -111,11 +107,7 @@ def _release(option: str = "release") -> tuple[int, dict, dict]:
 
 
 def _a_process_that_is_gone() -> session.Holder:
-    """A holder naming a process this boot really started and that really exited.
-
-    A real finished process, since ``holder_alive`` fails towards alive on a
-    fabricated pid.
-    """
+    """A holder naming a real exited process: ``holder_alive`` reads a made up pid as alive."""
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
@@ -125,9 +117,7 @@ def _a_process_that_is_gone() -> session.Holder:
     return gone
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session ack
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_cli_mints_an_acknowledgment_a_real_destructive_verb_then_spends(installed):
@@ -147,14 +137,12 @@ def test_the_cli_mints_an_acknowledgment_a_real_destructive_verb_then_spends(ins
     assert code == int(ExitCode.OK), minted
     assert minted["data"]["summary"]["recorded"] is True
 
-    code, envelope = restore_run()
-    assert code == int(ExitCode.OK), envelope
+    exited(restore_run())
 
 
 def test_the_refusal_before_acknowledging_names_the_ages_it_consulted(installed):
     """An absent fact file shows every portion as never recorded; it does not refuse."""
-    code, refused = _drive(["session", "ack"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["ages"], "the question was asked over nothing"
     assert {entry["portion"] for entry in shown["ages"]} == {
@@ -165,8 +153,7 @@ def test_the_refusal_before_acknowledging_names_the_ages_it_consulted(installed)
 
 def test_a_person_at_a_terminal_reads_the_ages_and_not_only_a_json_consumer(installed):
     """The default output mode renders the ages beside the question."""
-    code, text = _human(["session", "ack"])
-    assert code == int(ExitCode.DECISION_REQUIRED), text
+    text = exited(_human(["session", "ack"]), ExitCode.DECISION_REQUIRED)
     assert "Database and music files are backed up" in text
     assert "portion=database" in text
     assert "state=never-recorded" in text
@@ -264,14 +251,12 @@ def test_an_inline_answer_cannot_overturn_a_recorded_abort(installed):
     assert envelope["cause"]["detail"]["explicit"] is True
 
     # Refusing the flag must not mark the answered gate open again.
-    code, shown = _drive(["run", "show", run_id])
-    assert code == int(ExitCode.OK), shown
+    shown = exited(_drive(["run", "show", run_id]))
     assert shown["data"]["summary"]["open_gate"] is None, shown
     assert not [row for row in shown["data"]["checks"] if row.get("status") == "open"], shown
 
     # And the recorded answer still stands on its own.
-    code, envelope = _drive(["--run", run_id, "session", "ack"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(["--run", run_id, "session", "ack"]))
     assert envelope["outcome"] == "no_op"
     assert session.read_acknowledgment(installed) is None
 
@@ -289,8 +274,7 @@ def test_the_answering_invocation_refuses_when_nobody_is_there(installed, monkey
     assert session.read_acknowledgment(installed) is None
 
     monkeypatch.setattr(session, "has_controlling_terminal", lambda: True)
-    code, envelope = _drive(["--run", run_id, "session", "ack"])
-    assert code == int(ExitCode.OK), envelope
+    exited(_drive(["--run", run_id, "session", "ack"]))
     assert session.read_acknowledgment(installed) is not None
 
 
@@ -318,9 +302,7 @@ def test_a_second_mint_replaces_the_record_and_moves_the_window(installed):
     assert second["data"]["summary"]["shown"], "the mint reported no ages"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session release
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_dead_holders_claim_is_cleared_and_the_refusal_named_it_first(installed):
@@ -414,17 +396,11 @@ def test_aborting_the_release_clears_nothing(installed):
     assert session.read_lock_holder(path) == gone
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session release, and the open records a hard killed write left (R-598)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _hard_killed_gated_write(cfg) -> str:
-    """Enter the gates keeping a record, in a child, and SIGKILL it inside the body.
-
-    A real kill in a forked child, so the kernel drops the child's lock and the
-    record names a dead holder. Every failure in the child ends in ``os._exit``.
-    """
+    """Enter the gates keeping a record in a forked child, and SIGKILL it inside the body."""
     reader, writer = os.pipe()
     child = os.fork()
     if child == 0:  # pragma: no cover - measured by the parent's assertions
@@ -483,8 +459,7 @@ def test_a_cut_off_gated_write_blocks_cutover_until_release_abandons_it(
 ):
     """R-598 and R-647: the open record refuses cutover until the release ends it.
 
-    A SIGKILL is reproduced in a child; a restart cannot be staged, so its lock
-    record and open record from the previous boot are written directly.
+    A restart cannot be staged, so the previous boot's records are written directly.
     """
     from cratekit.core import tree_registry
     from cratekit.core.cause import CratekitError
@@ -604,9 +579,7 @@ def test_a_release_that_only_abandons_is_a_change_and_passes_the_contract(instal
     assert output.envelope_problems(envelope) == [], envelope
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registry, and what landing the module turned on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_both_verbs_are_reachable_from_the_command_line(installed):
@@ -657,9 +630,7 @@ def test_the_check_rows_a_person_reads_name_the_portion(installed):
     _mint_through_the_cli()
     code, refused = _drive(["session", "ack"])
     _answer(refused["run_id"], ACK_GATE, "acknowledged")
-    code, text = _human(["--run", refused["run_id"], "session", "ack"])
-
-    assert code == int(ExitCode.OK), text
+    text = exited(_human(["--run", refused["run_id"], "session", "ack"]))
     assert "backup.age.database" in text
     assert "] ?:" not in text, (
         "a check row rendered as a question mark, so the row is keyed by a "
@@ -695,17 +666,14 @@ def test_a_spent_acknowledgment_decision_cannot_be_replayed(installed):
     code, refused = _drive(["session", "ack"])
     run_id = refused["run_id"]
     _answer(run_id, ACK_GATE, "acknowledged")
-    code, envelope = _drive(["--run", run_id, "session", "ack"])
-    assert code == int(ExitCode.OK), envelope
+    exited(_drive(["--run", run_id, "session", "ack"]))
     first = session.read_acknowledgment(installed).expires_at
 
-    code, envelope = _drive(["--run", run_id, "session", "ack"])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    exited(_drive(["--run", run_id, "session", "ack"]), ExitCode.DECISION_REQUIRED)
     assert session.read_acknowledgment(installed).expires_at == first
 
     _answer(run_id, ACK_GATE, "acknowledged")
-    code, envelope = _drive(["--run", run_id, "session", "ack"])
-    assert code == int(ExitCode.OK), envelope
+    exited(_drive(["--run", run_id, "session", "ack"]))
 
 
 def test_a_gate_the_entry_does_not_declare_is_an_internal_error_by_name(installed):

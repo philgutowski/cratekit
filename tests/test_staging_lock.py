@@ -1,10 +1,8 @@
 """U293: one pass stages at a time.
 
-The staging lock is the driver lock's rules over the one staging folder:
-liveness is the kernel's, the file is never unlinked, and a process that holds
-it holds it again by count, since ``crate sync night`` runs ``crate sync
-land`` in its own process. A second descriptor stands in for a second
-process, which is how an advisory lock sees one.
+The driver lock's rules over the staging folder: the kernel's liveness, a file
+never unlinked, and a holder holding again by count. A second descriptor stands
+in for a second process.
 """
 
 from __future__ import annotations

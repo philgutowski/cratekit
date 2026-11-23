@@ -1,9 +1,7 @@
 """U202, ``crate sync pair`` with no argument, the other way: a playlist made on the account comes to rekordbox.
 
-An account playlist made in a synced root folder is made in the matching
-rekordbox folder and paired. Where a track was added on one side and taken off
-the other since the last sync, the later change wins, and an unknown moment
-keeps the track and names the call.
+It is made in the matching rekordbox folder and paired. A track added on one
+side and taken off the other goes by the later change; an unknown moment keeps it.
 """
 
 from __future__ import annotations
@@ -16,6 +14,7 @@ from cratekit.core import rb_writer
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover, pair_merge, pair_reverse
+from tests._sync_builders import exited, failed
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -72,8 +71,7 @@ def gig(world):
     world.playlist("Opener", "1", under=folder)
     for track in ("t1", "t2", "t3", "t4", "t5", "t6"):
         world.dates[track] = LONG_AGO
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     return folder
 
 
@@ -84,8 +82,7 @@ def test_a_playlist_made_on_the_account_in_gig_ready_lands_in_its_folder_and_is_
     world, cfg, gig
 ):
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4", "t2", "t5")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     inside = in_rekordbox(world, gig)
     assert set(inside) == {"Opener", "Closer"}
     assert world.held(inside["Closer"]) == ["4", "2", "5"]
@@ -102,8 +99,7 @@ def test_a_second_run_plans_nothing(world, gig):
     on_account(world, "GIG READY Closer", "GIG READY", "t4", "t5")
     assert sync()[0] == int(ExitCode.OK)
     before = in_rekordbox(world, gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert envelope["outcome"] == "no_op"
     assert in_rekordbox(world, gig) == before
 
@@ -123,8 +119,7 @@ def test_a_playlist_in_playlists_lands_at_the_rekordbox_root(world, cfg):
     world.dates["t1"] = LONG_AGO
     assert sync()[0] == int(ExitCode.OK)
     late = on_account(world, "Playlists Late", "Playlists", "t3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     root = in_rekordbox(world, None)
     assert "Late" in root and world.held(root["Late"]) == ["3"]
     assert pairs.PairStore(cfg).get(late).rekordbox_id == root["Late"]
@@ -145,8 +140,7 @@ def test_a_released_account_playlist_is_never_made_again(world, cfg, gig):
     world.delete_rekordbox(opener)
     assert sync()[0] == int(ExitCode.OK)
     assert account_id in pairs.PairStore(cfg).released().account
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert "Opener" not in in_rekordbox(world, gig)
     (left,) = _items(envelope["data"], "account-discovery", pair_discover.RELEASED)
     assert left["account_id"] == account_id
@@ -171,8 +165,7 @@ def test_two_account_playlists_of_one_rekordbox_name_refuse_that_name_only(world
     first = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     second = on_account(world, "GIG READY Closer", "GIG READY", "t5")
     other = on_account(world, "GIG READY Other", "GIG READY", "t6")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     inside = in_rekordbox(world, gig)
     assert "Closer" not in inside and "Other" in inside
     twice = _items(envelope["data"], "account-discovery", pair_discover.TWICE)
@@ -185,8 +178,7 @@ def test_two_account_playlists_of_one_rekordbox_name_refuse_that_name_only(world
 def test_a_rekordbox_playlist_of_the_name_no_pair_holds_is_left_and_named(world, gig):
     world.playlist("Closer", "6", under=gig)
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     rows = [r for r in world.sql("SELECT ID FROM djmdPlaylist WHERE Name = 'Closer'")]
     assert len(rows) == 1
     (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
@@ -197,20 +189,17 @@ def test_a_rekordbox_playlist_of_the_name_no_pair_holds_is_left_and_named(world,
 def test_a_missing_track_is_queued_once_and_then_awaits(world, gig):
     world.codes["tx"] = "USZZZ2600099"
     on_account(world, "GIG READY Closer", "GIG READY", "t4", "tx")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert len(envelope["data"]["totals"]["queued_jobs"]) == 1
     assert world.held(in_rekordbox(world, gig)["Closer"]) == ["4"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert pair_cli.AWAITING in _codes(envelope)
 
 
 def test_skipping_the_rekordbox_gate_makes_nothing_and_the_next_sync_makes_it(world, cfg, gig):
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
-    code, _envelope = sync(rekordbox="skip")
-    assert code == int(ExitCode.OK)
+    exited(sync(rekordbox="skip"))
     assert "Closer" not in in_rekordbox(world, gig)
     assert pairs.PairStore(cfg).get(closer) is None
     assert sync()[0] == int(ExitCode.OK)
@@ -229,8 +218,7 @@ def test_skipping_the_account_gate_makes_the_rekordbox_side_and_no_snapshot(worl
 def test_a_sync_naming_one_pair_brings_nothing_over(world, cfg, gig):
     on_account(world, "GIG READY Closer", "GIG READY", "t4")
     opener = world.titled("GIG READY Opener")
-    code, envelope = sync([*pair_cli_verb(), opener])
-    assert code == int(ExitCode.OK), envelope
+    exited(sync([*pair_cli_verb(), opener]))
     assert "Closer" not in in_rekordbox(world, gig)
 
 
@@ -353,8 +341,7 @@ def test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_bo
     _rekordbox_removed(world, playlist, "5", soon(1))
     world.account.playlists[account_id] = ["t4", "t5"]
     world.dates["t5"] = soon(2)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(playlist) == ["4", "5"]
     assert world.account.playlists[account_id] == ["t4", "t5"]
     (call,) = _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)
@@ -368,8 +355,7 @@ def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off
     playlist, account_id = _paired_on_both(world, gig)
     world.dates["t5"] = soon(1)
     _rekordbox_removed(world, playlist, "5", soon(2))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(playlist) == ["4"]
     assert world.account.playlists[account_id] == ["t4"]
     assert _items(envelope["data"], "merge", pair_merge.REMOVAL_LATER)
@@ -382,8 +368,7 @@ def test_without_its_added_date_the_account_reads_as_unchanged_and_the_removal_a
     """R-990: no later date on the account, so rekordbox's removal is applied."""
     playlist, account_id = _paired_on_both(world, gig)
     _rekordbox_removed(world, playlist, "5", soon(1))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == ["t4"]
     assert not _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
 
@@ -394,8 +379,7 @@ def test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_ca
         "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", playlist, "5"
     )
     world.dates["t5"] = soon(1)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(playlist) == ["4", "5"]
     assert world.account.playlists[account_id] == ["t4", "t5"]
     (call,) = _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
@@ -407,8 +391,7 @@ def test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment(world, gig
     playlist, account_id = _paired_on_both(world, gig)
     _rekordbox_removed(world, playlist, "5", None)
     world.dates["t5"] = soon(1)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == ["t4", "t5"]
     assert pair_cli.TIME_UNKNOWN in _codes(envelope)
 
@@ -420,8 +403,7 @@ def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_i
     world.account.playlists[account_id] = ["t4"]
     _rekordbox_removed(world, playlist, "5", None)
     world.rekordbox_add(playlist, "5")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == ["t4", "t5"]
     (call,) = _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
     assert call["added_on"] == "rekordbox" and call["added_at"]
@@ -440,16 +422,14 @@ def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gi
         raise OSError("the fingerprint could not be recorded")
 
     monkeypatch.setattr(convergence, "record_fingerprint", broken)
-    code, envelope = sync()
-    assert code != int(ExitCode.OK)
+    envelope = failed(sync())
     # The failure that happened is the one reported, raised once the pair is.
     assert "the fingerprint could not be recorded" in envelope["cause"]["message"]
     made = in_rekordbox(world, gig)["Closer"]
     held = pairs.PairStore(cfg).get(closer)
     assert held is not None and held.rekordbox_id == made and held.made
     monkeypatch.setattr(convergence, "record_fingerprint", real)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert list(in_rekordbox(world, gig)).count("Closer") == 1
     assert pairs.PairStore(cfg).get(closer).account == ("t4",)
 
@@ -465,8 +445,7 @@ def test_one_account_playlist_the_provider_cannot_list_is_named_and_the_rest_syn
         return real(reference)
 
     world.catalogue.playlist_for = playlist_for
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     inside = in_rekordbox(world, gig)
     assert "Closer" in inside and "Broken" not in inside
     (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
@@ -480,8 +459,7 @@ def test_a_playlist_a_pair_may_not_hold_is_named_and_the_rest_sync(world, gig, m
     built = on_account(world, "GIG READY Set 1", "GIG READY", "t4")
     on_account(world, "GIG READY Closer", "GIG READY", "t5")
     monkeypatch.setattr(ledger, "set_playlist_ids", lambda cfg: frozenset({built}))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     inside = in_rekordbox(world, gig)
     assert "Closer" in inside and "Set 1" not in inside
     (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
@@ -499,8 +477,7 @@ def test_a_root_folder_gone_from_the_account_brings_nothing_back(world, gig):
 
 def test_the_gate_line_for_a_playlist_made_in_rekordbox_names_where(world, gig):
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
-    code, envelope = sync(rekordbox="skip", account="skip")
-    assert code == int(ExitCode.OK)
+    exited(sync(rekordbox="skip", account="skip"))
     code, envelope = pair_cli_gate_context()
     del code
     line = envelope.get(f"pair {closer}", "")
@@ -523,8 +500,7 @@ def test_a_put_back_dated_before_the_last_sync_is_no_put_back(world, gig):
     playlist, account_id = _paired_on_both(world, gig)
     world.dates["t5"] = LONG_AGO + timedelta(days=30)
     _rekordbox_removed(world, playlist, "5", soon(1))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == ["t4"]
     assert not _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
     assert not _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)
@@ -569,15 +545,13 @@ def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg
         raise IsADirectoryError("the legacy playlist file could not be saved")
 
     monkeypatch.setattr(rb_writer, "commit_guarded", lands_then_raises)
-    code, envelope = sync()
-    assert code != int(ExitCode.OK)
+    envelope = failed(sync())
     assert "legacy playlist file" in envelope["cause"]["message"]
     made = in_rekordbox(world, gig)["Closer"]
     held = pairs.PairStore(cfg).get(closer)
     assert held is not None and held.rekordbox_id == made and held.made
     monkeypatch.setattr(rb_writer, "commit_guarded", real)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert list(in_rekordbox(world, gig)).count("Closer") == 1
     assert not _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
     assert not _items(envelope["data"], "discovery", pair_discover.TAKEN)
@@ -593,8 +567,7 @@ def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig,
     built = on_account(world, "GIG READY Closer", "GIG READY", "t6")
     mine = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     monkeypatch.setattr(ledger, "set_playlist_ids", lambda cfg: frozenset({built}))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(in_rekordbox(world, gig)["Closer"]) == ["4"]
     assert not _items(envelope["data"], "account-discovery", pair_discover.TWICE)
     (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
@@ -610,8 +583,7 @@ def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_come
     assert sync()[0] == int(ExitCode.OK)
     assert not pairs.PairStore(cfg).all()
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     made = in_rekordbox(world, gig)["Closer"]
     assert world.held(made) == ["4"]
     assert pairs.PairStore(cfg).get(closer).rekordbox_id == made
@@ -632,8 +604,7 @@ def test_a_write_outside_the_playlist_made_is_refused_with_nothing_written(
         return added
 
     monkeypatch.setattr(rb_writer, "add_memberships", strays)
-    code, _envelope = sync()
-    assert code != int(ExitCode.OK)
+    failed(sync())
     names = {name for (name,) in world.sql("SELECT Name FROM djmdPlaylist")}
     assert "Stray" not in names and "Closer" not in names
     assert pairs.PairStore(cfg).get(closer) is None
@@ -666,9 +637,7 @@ def test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was(world
     _rekordbox_removed(world, playlist, "5", soon(1))
     world.dates["t5b"] = soon(2)
 
-    code, envelope = sync()
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(playlist) == ["4", "5"]
     assert world.account.playlists[account_id] == ["t4", "t5", "t5b"]
     (call,) = _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)

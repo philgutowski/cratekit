@@ -15,6 +15,7 @@ from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import naming_cli
+from tests._sync_builders import exited
 from tests.intake.test_repair_apply import LONG, SHORT, _accept, _answer, _names
 from tests.intake.test_repair_apply import configured as repair_configured  # noqa: F401
 from tests.intake.test_repair_apply import drive as repair_drive
@@ -27,11 +28,7 @@ ELSEWHERE = "elsewhere"
 
 @pytest.fixture
 def standing_elsewhere(tmp_path, monkeypatch) -> Path:
-    """The shell's directory, holding a folder of the same name as the library's.
-
-    The old reading would have walked this folder, so its presence is what lets
-    a test tell the two readings apart rather than only the missing case.
-    """
+    """The shell's directory, holding a folder named as the library's, so the readings differ."""
     here = tmp_path / ELSEWHERE
     (here / "Music" / "wave").mkdir(parents=True)
     monkeypatch.chdir(here)
@@ -130,8 +127,7 @@ def test_name_apply_reads_a_relative_root_inside_the_library(
     folder = Path(name_configured.library.root) / "Music" / "wave"
     folder.mkdir(parents=True)
     _track(folder, "Song - Artist - Song.flac", title="Song", key="4A")
-    code, envelope = _plan("--root", "Music/wave")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_plan("--root", "Music/wave"))
     paths = [item["path"] for item in envelope["data"]["items"]]
     assert paths and all(path.startswith(str(folder)) for path in paths), paths
 
@@ -139,8 +135,7 @@ def test_name_apply_reads_a_relative_root_inside_the_library(
 def test_name_apply_refuses_a_relative_root_with_no_folder_in_the_library(
     name_configured, standing_elsewhere  # noqa: F811
 ):
-    code, envelope = _plan("--root", "Downloads")
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(_plan("--root", "Downloads"), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "root-folder-missing"
     tried = str(Path(name_configured.library.root) / "Downloads")
     assert tried in envelope["cause"]["message"]
@@ -176,7 +171,6 @@ def test_repair_apply_reads_a_relative_root_against_the_library_root(
     path.write_bytes(b"fLaC")
     repair_drive(["--output", "json", "repair", "paths", "--root", str(folder)])
     _accept(repair_configured, path)
-    code, envelope = _answer("apply", "--root", "Music/wave")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_answer("apply", "--root", "Music/wave"))
     assert envelope["data"]["totals"]["outside_root"] == 0
     assert _names(folder) == {SHORT}

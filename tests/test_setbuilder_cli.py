@@ -1,9 +1,7 @@
 """U43: ``crate setbuild``, the shell over the set building engine.
 
-The pure half drives :func:`cratekit.setbuilder.cli.plan_for` over a frozen
-index; the disk half tags a small real library through the product's own writer
-and drives the dispatcher. Fixture tempos live in the title tag, never a tempo
-tag, because nothing in this product writes one (R17).
+The pure half drives ``plan_for`` over a frozen index, the disk half a small
+tagged library. Fixture tempos live in the title tag, never a tempo tag (R17).
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import setbuilder
 from cratekit.setbuilder import cli as setbuild_cli
 from tests._containers import synth_container
+from tests._sync_builders import exited
 
 TAXONOMY = taxonomy.default_taxonomy()
 
@@ -572,9 +571,7 @@ def test_the_verb_produces_a_compatible_sequence_over_a_real_library(configured,
     place("Gum", "Wrong Key", "03B", 124, energy=5)
     place("Hazel", "Right Key Wrong Tempo", "08A", 100, energy=5)
 
-    code, document = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.OK)
+    document = exited(envelope_of(["setbuild", str(anchor)]))
     assert document["outcome"] == "ok"
     data = document["data"]
     assert data["totals"]["anchor"]["owned"] is True
@@ -596,9 +593,7 @@ def test_the_verb_produces_a_compatible_sequence_over_a_real_library(configured,
 def test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure(configured, place):
     """Empty is an answer. The verb must not read "nothing mixes" as a fault."""
     anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    code, document = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.OK)
+    document = exited(envelope_of(["setbuild", str(anchor)]))
     data = document["data"]
     assert data["items"] == []
     assert data["totals"] == {
@@ -629,9 +624,7 @@ def test_the_verb_writes_its_declared_cache_and_nothing_of_the_librarys(configur
     before = material(configured)
     assert not cache.exists()
 
-    code, _ = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.OK)
+    exited(envelope_of(["setbuild", str(anchor)]))
     assert material(configured) == before, "the verb touched the library"
     state = config.library_state_dir(configured)
     assert [p for p in state.rglob("*") if p.is_file()] == [cache]
@@ -682,8 +675,7 @@ def test_the_first_run_opens_each_file_once_and_the_second_none(configured, plac
 
     monkeypatch.setattr(mutagen, "File", counting)
 
-    code, first = envelope_of(["setbuild", str(anchor)])
-    assert code == int(ExitCode.OK)
+    first = exited(envelope_of(["setbuild", str(anchor)]))
     assert first["data"], "the cold run built no set to compare"
     assert sorted(opens) == sorted([anchor, other, third]), "a cold run opens each file once"
     opens.clear()
@@ -700,9 +692,7 @@ def test_a_cache_that_cannot_be_written_does_not_cost_the_set(configured, place)
     blocker = config.library_state_dir(configured)
     blocker.write_text("not a directory", encoding="utf-8")
 
-    code, document = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.OK)
+    document = exited(envelope_of(["setbuild", str(anchor)]))
     assert [item["title"] for item in document["data"]["items"]] == ["Same Key Lower"]
     assert blocker.read_text(encoding="utf-8") == "not a directory"
 
@@ -713,9 +703,7 @@ def test_an_anchor_with_no_camelot_key_is_not_indexed(configured, library, silen
     shutil.copy2(silence, path)
     assert tags.write_tags(path, {"title": "Unanalyzed", "artist": "Alder", "genre": GENRE})
 
-    code, document = envelope_of(["setbuild", str(path)])
-
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", str(path)]), ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "setbuild-anchor-not-indexed"
 
 
@@ -724,9 +712,7 @@ def test_an_anchor_outside_the_library_refuses_before_any_scan(configured, tmp_p
     outside.parent.mkdir(parents=True)
     outside.touch()
 
-    code, document = envelope_of(["setbuild", str(outside)])
-
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", str(outside)]), ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "setbuild-anchor-outside-library"
 
 
@@ -737,9 +723,7 @@ def test_an_unreachable_library_refuses_rather_than_reporting_an_unindexed_ancho
     anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
     shutil.rmtree(configured.library.root)
 
-    code, document = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
+    document = exited(envelope_of(["setbuild", str(anchor)]), ExitCode.LIBRARY_UNAVAILABLE)
     assert document["cause"]["reason"] == "library-root-absent"
 
 
@@ -802,9 +786,7 @@ def test_a_refused_invocation_is_a_precondition_with_its_own_reason(configured, 
     argv = [str(anchor) if a == "ANCHOR" else str(library / a) if a.startswith("Music/") else a
             for a in argv]
 
-    code, document = envelope_of(["setbuild", *argv])
-
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", *argv]), ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == reason
     assert document["cause"]["remediation"]["steps"], "a refusal with no next step"
     if case == "named-not-indexed":
@@ -844,9 +826,7 @@ def test_a_path_anchor_is_unchanged_by_the_unowned_form(configured, place):
     anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
     place("Birch", "Same Key Lower", "08A", 124, energy=4)
 
-    code, document = envelope_of(["setbuild", str(anchor)])
-
-    assert code == int(ExitCode.OK)
+    document = exited(envelope_of(["setbuild", str(anchor)]))
     assert document["data"]["totals"]["anchor"]["owned"] is True
     assert document["data"]["totals"]["anchor"]["key_needs_confirming"] is False
     assert {item["title"] for item in document["data"]["items"]} == {"Same Key Lower"}
@@ -872,9 +852,7 @@ def test_an_ambiguous_name_refuses_through_the_dispatcher_and_lists_the_paths(co
     original = place("Alder", "Anchor Work", "08A", 124, energy=6)
     extended = place("Alder", "Anchor Work (Extended Mix)", "08A", 124, energy=6)
 
-    code, document = envelope_of(["setbuild", "--named", "Anchor Work"])
-
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", "--named", "Anchor Work"]), ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "setbuild-anchor-ambiguous"
     candidates = document["cause"]["detail"]["candidates"]
     assert {c["path"] for c in candidates} == {str(original), str(extended)}
@@ -885,8 +863,7 @@ def test_an_ambiguous_name_refuses_through_the_dispatcher_and_lists_the_paths(co
 def test_an_empty_name_refuses_before_any_scan(configured, place):
     """Measured by the cache, which every scan writes and this run must not."""
     place("Alder", "Anchor Work", "08A", 124, energy=6)
-    code, document = envelope_of(["setbuild", "--named", " - "])
-    assert code == int(ExitCode.PRECONDITION)
+    document = exited(envelope_of(["setbuild", "--named", " - "]), ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "setbuild-anchor-unknown"
     assert not config.state_path("setbuilder_index_cache", configured).exists()
 

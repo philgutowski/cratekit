@@ -1,11 +1,7 @@
 """U210: a sync pair write's expected calls, held to the real account adapter.
 
-``sync/pair_calls.py`` estimates provider calls from the adapter's shape, for
-the gate's forecast and a stopped run's ``--calls``. The shipped
-``TidalAccount`` runs over a fake client that counts every request, and each
-estimate is held to the count.
-
-D1 applies. Nothing here names a real account, person or track.
+Each estimate of ``sync/pair_calls.py`` is held to the requests the shipped
+``TidalAccount`` makes over a counting fake client. D1 applies.
 """
 
 from __future__ import annotations
