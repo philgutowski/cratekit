@@ -25,9 +25,10 @@ from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
 from cratekit.cli.output import load_config
-from cratekit.core import config, drift, jobs, profiles, tags
+from cratekit.core import config, jobs, profiles, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.intake import drift
 from cratekit.modules import foreground
 
 #: The tail's steps and the landing, in their one order. Each is a check key on

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of, load_config
-from cratekit.core import active_taxonomy, config, rb_writer, taxonomy
+from cratekit.core import active_taxonomy, config, rb_writer, taxonomy, taxonomy_word
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.tagging import guess, suggest
 from cratekit.tagging.plan_verbs import named, warning
@@ -219,9 +219,9 @@ def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = Non
                     f"{len(found.off_taxonomy)} genre(s) on these files have no place "
                     f"of their own in the taxonomy: {'; '.join(words)}. For each, "
                     f"either save it as an alias of one of your genres and retag "
-                    f"its files, with {active_taxonomy.ALIAS_VERB} WORD GENRE, or make "
-                    f"it a genre folder of its own, with {active_taxonomy.FOLDER_VERB} WORD"
-                    + active_taxonomy.own_names(declared, found.off_taxonomy)
+                    f"its files, with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make "
+                    f"it a genre folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
+                    + taxonomy_word.own_names(declared, found.off_taxonomy)
                 ),
             )
         )

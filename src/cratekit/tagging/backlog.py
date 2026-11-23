@@ -25,8 +25,8 @@ from cratekit.adopt import collection
 from cratekit.adopt import genres as genres_report
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
-from cratekit.core import active_taxonomy as word_edit
 from cratekit.core import config, taxonomy
+from cratekit.core import taxonomy_word as word_edit
 from cratekit.tagging import rows, suggest
 from cratekit.write import metadata, trees
 

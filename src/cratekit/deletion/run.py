@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from cratekit.cli.output import timestamp
-from cratekit.core import config, locations, preflight, rb_writer, review, session, tombstone
+from cratekit.core import config, locations, rb_writer, review, session, tombstone
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import candidates as candidate_rules
@@ -139,7 +139,7 @@ def _assert_library_is_still(
     db: Any,
     *,
     rules: Sequence[locations.PrefixRule],
-    **seams: preflight.IdentityProvider | preflight.MountEnumerator | None,
+    **seams: session.IdentityProvider | session.MountEnumerator | None,
 ) -> None:
     """Volume identity first, then rekordbox closed, then the cloud canary.
 
@@ -183,8 +183,8 @@ def plan(
     *,
     actor: str,
     prefix_map: Sequence[locations.PrefixRule] | None = None,
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    identity_provider: session.IdentityProvider | None = None,
+    mount_enumerator: session.MountEnumerator | None = None,
     stat: candidate_rules.Stat = os.stat,
     now: datetime | None = None,
 ) -> Plan:
@@ -499,7 +499,7 @@ def _assert_the_volume_this_file_is_on(
     cfg: config.Config,
     answered: Candidate,
     rules: Sequence[locations.PrefixRule],
-    **seams: preflight.IdentityProvider | preflight.MountEnumerator | None,
+    **seams: session.IdentityProvider | session.MountEnumerator | None,
 ) -> None:
     """Re-assert the volume under one answer before anything permanent rests on it.
 
@@ -525,8 +525,8 @@ def apply(
     *,
     actor: str,
     prefix_map: Sequence[locations.PrefixRule] | None = None,
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    identity_provider: session.IdentityProvider | None = None,
+    mount_enumerator: session.MountEnumerator | None = None,
     analysis_roots: Iterable[Path | str] = (),
     stat: candidate_rules.Stat = os.stat,
     home: Path | None = None,

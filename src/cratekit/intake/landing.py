@@ -58,7 +58,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import CratekitError
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
-from cratekit.core.preflight import device_of as _device_of
+from cratekit.core.session import device_of as _device_of
 from cratekit.intake import collection_xml, ingest, native
 from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees

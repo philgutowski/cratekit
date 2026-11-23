@@ -14,11 +14,12 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, jobs, rb_writer, session, tags
+from cratekit.core import analysis_store, config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.intake import (
     account_playlists,
     batch_name,
+    drift,
     filing,
     ingest,
     label_filing,
@@ -178,7 +179,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
             # U127: the score each added row was read at and whether it is tagged.
             entry.update(voxlevel=row.voxlevel, vox=row.vox)
-        if row.action == native.ADD and row.drift_verdict not in ("", tags.DRIFT_UNSCORED):
+        if row.action == native.ADD and row.drift_verdict not in ("", drift.UNSCORED):
             # U157: the drift reading, its verdict and dyn tag; a file with no
             # reading is the fact line's to count.
             entry.update(drift=row.drift, drift_verdict=row.drift_verdict, dyn=row.dyn)
@@ -594,7 +595,7 @@ AUTO_ANALYSIS_STEP = (
     "on its Auto Analysis dialog only when it shows every one of those Normal "
     "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
     "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {tags.DRIFT_DYNAMIC_SETTINGS}"
+    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
 )
 
 
@@ -611,8 +612,8 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     normal = len(collection.added) - dyned
     selections = (
         f"run Analyze Tracks on the {normal} row(s) without the dyn My Tag with "
-        f"{tags.DRIFT_NORMAL_SETTINGS}, and on the {dyned} row(s) carrying it with "
-        f"{tags.DRIFT_DYNAMIC_SETTINGS}"
+        f"{drift.NORMAL_SETTINGS}, and on the {dyned} row(s) carrying it with "
+        f"{drift.DYNAMIC_SETTINGS}"
     )
     return [
         {
@@ -657,7 +658,7 @@ def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
             DYN_NOT_WRITTEN,
             f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
             f"so select them by name and run Analyze Tracks on them with "
-            f"{tags.DRIFT_DYNAMIC_SETTINGS}: {names}; {why}",
+            f"{drift.DYNAMIC_SETTINGS}: {names}; {why}",
         )
     ]
 

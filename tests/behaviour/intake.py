@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from cratekit.core import drift, rb_writer
+from cratekit.core import rb_writer
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import shelve_cli
+from cratekit.intake import drift, shelve_cli
 from tests.test_intake_land_dyn_native import _read
 from tests.test_intake_land_dyn_native import writable as writable  # noqa: PLC0414
 from tests.test_intake_land_labels_native import _dated, _manifest

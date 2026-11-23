@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
-from cratekit.core import foreign_tree, rb_writer, taxonomy
+from cratekit.core import rb_writer, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import colour, placeholders, spine
 from cratekit.write import genre_favorites
@@ -100,7 +100,7 @@ def resolve_home(db: Any, name: str) -> Home:
     removed playlist of the name is not it.
     """
     # A playlist another app pushed into its own folder is not the home (U185).
-    live = foreign_tree.outside(
+    live = tree_registry.outside_foreign(
         _live_plain(list(db.get_playlist(Name=name))), list(db.get_playlist())
     )
     if len(live) != 1:

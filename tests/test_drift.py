@@ -13,8 +13,9 @@ import pytest
 
 from cratekit.analysis import artifacts, light, vocals
 from cratekit.analysis import cli as analysis_cli
-from cratekit.core import config, drift, tags
+from cratekit.core import config, tags
 from cratekit.core.exit_codes import ExitCode
+from cratekit.intake import drift
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_analysis import _FakeModel

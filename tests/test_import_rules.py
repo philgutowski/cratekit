@@ -8,11 +8,10 @@ that only shrinks:
 
 1. **No private name crosses a package.**
 2. **A feature package imports from core only the named interface** below.
-   A listed module answers for the names it defines and for the names of its
-   parts, re-exported or given in the literal table ``core.parts`` reads,
-   each one a counted core name. It never hands over a module: one reached
-   as an attribute of another, or imported from it, is read as a reach of
-   that module itself (U331).
+   A listed module answers for the names it defines and the names it
+   re-exports from a core module off the list, each one a counted core name.
+   It never hands over a module: one reached as an attribute of another, or
+   imported from it, is read as a reach of that module itself (U331).
 3. **An always on package never imports a toggleable one at module top
    level**; under a function it may.
 4. **With each toggle off, every remaining verb still builds**, read
@@ -47,17 +46,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: measured them, but for two. The list is capped below and is not a place to
 #: park a reach: a module joins only when it replaces one that leaves.
 #:
-#: U331 MADE THE TWO SWAPS. ``restore`` joined as ``snapshot`` left, whose two
-#: names a landing's check reads now come through ``session``, which opens
-#: every capture. ``art`` joined as ``profiles`` left, ``config`` answering
-#: for the membership it resolves: art needs ``tags`` at import, so ``tags``
-#: cannot re-export it, and it borrows the two private container helpers the
-#: beat grid rule depends on, so it cannot leave core. Every other module the
-#: survey found off the list is a part of a listed one, which answers for the
-#: names a feature package uses: ``discovery``, ``pool`` and ``cores`` of
-#: ``jobs``, ``processes`` of ``session``, ``drift`` of ``tags`` and
-#: ``taxonomy_word`` of ``active_taxonomy``, loaded when first read wherever
-#: loading it with its module would cost every command (``core.parts``).
+#: U331 MADE FOUR SWAPS, each for a module a feature package must import
+#: itself: ``art`` needs ``tags`` at import and borrows the two private
+#: container helpers the beat grid rule depends on; ``pool`` is the module the
+#: sizing guards of ``tests/test_pool_sizing.py`` are keyed on, and loads the
+#: process pool's machinery; ``restore`` and ``taxonomy_word`` import the
+#: modules that would have to answer for them. The four that left are each
+#: re-exported by a listed module that imported it already, or that the reports
+#: audit already admits beside it: ``profiles`` by ``config``, ``preflight``
+#: and ``snapshot`` by ``session``, ``foreign_tree`` by ``tree_registry``.
+#: ``session`` answers for ``processes`` the same way, and ``jobs`` for
+#: ``discovery`` and ``cores``.
+#:
+#: A RE-EXPORT IS NEVER FREE, which is why the list is not emptied into it:
+#: the listed module imports the other with every command that imports it, a
+#: guard that follows imports follows it there, and a test that patches the
+#: name patches it where the caller reads it. Loading it on demand instead
+#: hides it from those guards (``tests/modules/test_reports.py`` refuses a
+#: computed import), so it is not done.
 CORE_INTERFACE = (
     "active_taxonomy",
     "analysis_store",
@@ -68,11 +74,10 @@ CORE_INTERFACE = (
     "config",
     "convergence",
     "exit_codes",
-    "foreign_tree",
     "jobs",
     "locations",
     "naming",
-    "preflight",
+    "pool",
     "provider_gate",
     "rb_writer",
     "restore",
@@ -82,6 +87,7 @@ CORE_INTERFACE = (
     "session",
     "tags",
     "taxonomy",
+    "taxonomy_word",
     "tombstone",
     "tree_registry",
 )
@@ -144,12 +150,12 @@ TOGGLE_HOMES = {
 #: config.mkdir_private, preflight.names_one_path) each replaced the private
 #: spelling of itself and moved nothing.
 #:
-#: U331 lowered it from 452 to 440, the count measured once every reach went
+#: U331 lowered it from 452 to the count measured once every reach went
 #: through the list: a name re-exported by a listed module replaced the one it
 #: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
-#: names of the two engines that moved to the feature that alone used them
-#: (``held_plan`` to sync, ``rehearsal`` to intake) are core names no longer.
-CORE_NAMES_CEILING = 440
+#: names of the modules that moved to the feature that used them (``held_plan``
+#: to sync, ``rehearsal`` and ``drift`` to intake) are core names no longer.
+CORE_NAMES_CEILING = 433
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────
@@ -349,54 +355,6 @@ def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
     )
     assert measure.off_interface(tree, ["jobs"]) == {}
     assert measure.core_names(tree) == {"analysis": {"cratekit.core.jobs.plan_pool"}}
-
-
-def test_a_part_named_in_a_listed_modules_table_is_reached_through_the_list():
-    """The table ``core.parts.answering`` is given holds the names, and only those."""
-    tree = _tree(
-        core__pool="def plan_pool(): ...\ndef map_workers(): ...\n",
-        core__jobs=(
-            "from cratekit.core import parts\n\ndef claim(): ...\n"
-            '__getattr__ = parts.answering(__name__, {"pool": ("plan_pool",)})\n'
-        ),
-        core__parts="def answering(module, table): ...\n",
-        analysis__light=(
-            "from cratekit.core import jobs\n\n"
-            "def run(jobs_given):\n"
-            "    jobs.plan_pool()\n    jobs.claim()\n    jobs.map_workers()\n"
-        ),
-    )
-    assert measure.off_interface(tree, ["jobs"]) == {}
-    assert measure.core_names(tree) == {
-        "analysis": {"cratekit.core.jobs.claim", "cratekit.core.jobs.plan_pool"}
-    }
-
-
-def test_a_part_whose_names_are_offered_under_others_is_counted_by_the_names_offered():
-    tree = _tree(
-        core__drift="VARIABLE = 1\n",
-        core__tags='__getattr__ = answering(__name__, {"drift": {"DRIFT_VARIABLE": "VARIABLE"}})\n',
-        intake__native=(
-            "from cratekit.core import tags\n\n"
-            "tags.DRIFT_VARIABLE\ntags.VARIABLE\n"
-        ),
-    )
-    assert measure.off_interface(tree, ["tags"]) == {}
-    assert measure.core_names(tree) == {"intake": {"cratekit.core.tags.DRIFT_VARIABLE"}}
-
-
-def test_a_getattr_given_no_literal_table_still_answers_for_any_name():
-    """Two tables, or names that are not literals, are not a list the rule can read."""
-    for bound in (
-        '__getattr__ = answering(__name__, {"pool": names})\n',
-        '__getattr__ = answering({"pool": ("a",)}, {"cores": ("b",)})\n',
-        "__getattr__ = some_function\n",
-    ):
-        tree = _tree(
-            core__jobs=bound,
-            sync__run="from cratekit.core import jobs\n\njobs.anything()\n",
-        )
-        assert measure.core_names(tree) == {"sync": {"cratekit.core.jobs.anything"}}, bound
 
 
 def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():

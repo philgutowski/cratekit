@@ -180,7 +180,7 @@ DEFAULT_TEMPO_CEILING = 160
 
 #: The drift at or above which a track reads as variable and its landed row is
 #: marked ``dyn`` for rekordbox's Dynamic analysis (U157), as a percent tempo
-#: spread (``core.drift``). Set above every synthetic steady reading (0.0 to 0.3)
+#: spread (``intake.drift``). Set above every synthetic steady reading (0.0 to 0.3)
 #: and leaning toward Normal, since a steady track sent to Dynamic gets a
 #: wobbling grid. Not yet calibrated on a real library; the card owes that.
 DEFAULT_DRIFT_CUT = 1.5

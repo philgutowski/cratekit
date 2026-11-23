@@ -36,7 +36,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import new_run_id, timestamp
-from cratekit.core import config, parts
+from cratekit.core import config
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -45,6 +45,15 @@ from cratekit.core.cause import (
     Remediation,
     Scope,
     refuse,
+)
+from cratekit.core.cores import worker_ceiling
+from cratekit.core.discovery import (
+    Scan,
+    frozen_walk,
+    item_path,
+    scan_audio,
+    walk_warnings,
+    warnings_of,
 )
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.private_store import PrivateStore
@@ -1269,22 +1278,13 @@ for _moved in (Batching, Declined, DriveResult, Interrupt, Parked, decline_item,
     _moved.__module__ = __name__
 del _moved
 
-#: A feature package reaches a job's item list (``core.discovery``) and its
-#: workers (``core.pool``, ``core.cores``) through this module, their one
-#: listed home (U331), each loaded when first read: the pool's machinery is
-#: not every command's to import. Core, write and the shell import the parts.
-__getattr__ = parts.answering(__name__, {
-    "cores": ("worker_ceiling",),
-    "discovery": (
-        "Scan", "frozen_walk", "item_path", "scan_audio", "walk_warnings", "warnings_of",
-    ),
-    "pool": (
-        "DEFAULT_MEMORY_RESERVE_BYTES", "Bound", "PoolPlan", "StreamBroken", "WorkStream",
-        "map_workers", "plan_pool", "stream_workers",
-    ),
-})
-
+# A feature package reaches a job's item list (``core.discovery``) and the
+# ceiling its workers take from the cores (``core.cores``) through this module,
+# their one listed home (U331). The pool that runs them is listed itself:
+# importing it here would load its machinery with every command's queue.
 __all__ = [
+    "Scan", "frozen_walk", "item_path", "scan_audio", "walk_warnings", "warnings_of",
+    "worker_ceiling",
     "ENTRY_MODULE", "GATE_RUN_KEY", "QUEUE_FILENAME", "SCHEMA_VERSION", "TERMINAL_STATES",
     "Artifacts", "BatchHandler", "Batching", "DriveResult", "assert_free", "DriverHeld", "Handler",
     "Interrupt", "Item", "ItemState", "Job", "Declined", "Parked", "JobState", "JobStore",

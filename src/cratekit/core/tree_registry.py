@@ -26,6 +26,14 @@ from cratekit.core import config, session, snapshot
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
+# A feature package tells another app's nodes from the tree this registry
+# records (``core.foreign_tree``) through this module, their one listed home
+# (U331), each name carrying the part's.
+from cratekit.core.foreign_tree import LEFT_AS_IT_IS as FOREIGN_LEFT_AS_IT_IS  # noqa: F401
+from cratekit.core.foreign_tree import OWNER as FOREIGN_OWNER  # noqa: F401
+from cratekit.core.foreign_tree import outside as outside_foreign  # noqa: F401
+from cratekit.core.foreign_tree import roots_in as foreign_roots_in  # noqa: F401
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from cratekit.core.taxonomy import Taxonomy
 

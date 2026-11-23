@@ -471,13 +471,9 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
 
     None when the module can answer for any name, by a ``__getattr__`` of its
     own or a star import, so that nothing is ruled out on a list that is not
-    the whole of it. A ``__getattr__`` bound to a call given a literal table of
-    names, ``{part: (its names)}`` or ``{part: {offered: held}}``, answers for
-    those names and no others (U331, ``cratekit.core.parts``), so they are
-    added and the list is whole.
+    the whole of it.
     """
     names: set[str] = set()
-    answered: frozenset[str] | None = None
     pending: list[ast.AST] = list(tree.body)
     while pending:
         node = pending.pop()
@@ -489,10 +485,6 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
                 names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
-            if isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "__getattr__" for target in targets
-            ):
-                answered = _table_names(node.value)
         else:
             pending.extend(
                 child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt)
@@ -500,29 +492,7 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
             pending.extend(
                 inner for handler in getattr(node, "handlers", ()) for inner in handler.body
             )
-    if "*" in names or ("__getattr__" in names and answered is None):
-        return None
-    return frozenset(names | (answered or frozenset()))
-
-
-def _table_names(value: ast.expr | None) -> frozenset[str] | None:
-    """The names offered by the literal table a call is given, or None when it is not one."""
-    tables = [arg for arg in getattr(value, "args", ()) if isinstance(arg, ast.Dict)]
-    if not isinstance(value, ast.Call) or len(tables) != 1:
-        return None
-    found: set[str] = set()
-    for held in tables[0].values:
-        entries = (
-            held.keys if isinstance(held, ast.Dict)
-            else held.elts if isinstance(held, (ast.Tuple, ast.List))
-            else None
-        )
-        if entries is None or not all(
-            isinstance(one, ast.Constant) and isinstance(one.value, str) for one in entries
-        ):
-            return None
-        found.update(one.value for one in entries)
-    return frozenset(found)
+    return None if names & {"__getattr__", "*"} else frozenset(names)
 
 
 class Tree:

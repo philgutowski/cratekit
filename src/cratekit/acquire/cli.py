@@ -34,7 +34,7 @@ from cratekit.acquire.adapter import (
     TrackResult,
 )
 from cratekit.cli.output import Envelope, load_config, no_job
-from cratekit.core import config, jobs, naming, preflight
+from cratekit.core import config, jobs, naming, session
 from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -182,7 +182,7 @@ def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
         given = Path(named).expanduser().absolute()
     except RuntimeError:
         given = Path(named).absolute()
-    if preflight.names_one_path(given, Path(frozen)):
+    if session.names_one_path(given, Path(frozen)):
         return
     raise _unusable(
         f"job {job.job_id} acquires the list it froze, {frozen}, and this command "

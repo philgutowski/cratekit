@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
-from cratekit.core import config, parts, preflight, rb_writer, reconcile
+from cratekit.core import config, preflight, rb_writer, reconcile
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -51,6 +51,21 @@ from cratekit.core.cause import (
     widest_scope,
 )
 from cratekit.core.exit_codes import Remedy
+
+# A feature package asks the questions a guarded write is gated on through this
+# module, their one listed home (U331): which volume this is and what is
+# mounted (``core.preflight``), whether rekordbox is gone (``core.processes``),
+# and whether a check's copy has room (``core.snapshot``).
+from cratekit.core.preflight import IdentityProvider as IdentityProvider
+from cratekit.core.preflight import MountEnumerator as MountEnumerator
+from cratekit.core.preflight import device_of as device_of
+from cratekit.core.preflight import names_one_path as names_one_path
+from cratekit.core.preflight import normalize_identity as normalize_identity
+from cratekit.core.processes import REKORDBOX_PROCESSES as REKORDBOX_PROCESSES
+from cratekit.core.processes import AbsenceUnconfirmed as AbsenceUnconfirmed
+from cratekit.core.processes import ProcessLister as ProcessLister
+from cratekit.core.processes import rekordbox_processes_running as rekordbox_processes_running
+from cratekit.core.processes import running_process_names as running_process_names
 from cratekit.core.session_ack import ACK_SCHEMA_VERSION as ACK_SCHEMA_VERSION
 from cratekit.core.session_ack import RULE_SESSION_AGES as RULE_SESSION_AGES
 from cratekit.core.session_ack import SESSION_ACTOR as SESSION_ACTOR
@@ -90,17 +105,8 @@ from cratekit.core.session_volumes import (
 )
 from cratekit.core.session_volumes import assert_volume_identity
 from cratekit.core.session_volumes import expected_rule_identity as expected_rule_identity
-
-#: A feature package asks whether rekordbox is gone (``core.processes``) and
-#: for the room a check's copy needs (``core.snapshot``) through this module,
-#: their one listed home (U331), each loaded when first read.
-__getattr__ = parts.answering(__name__, {
-    "processes": (
-        "REKORDBOX_PROCESSES", "AbsenceUnconfirmed", "ProcessLister",
-        "rekordbox_processes_running", "running_process_names",
-    ),
-    "snapshot": ("assert_room_for_check", "check_had_no_room"),
-})
+from cratekit.core.snapshot import assert_room_for_check as assert_room_for_check
+from cratekit.core.snapshot import check_had_no_room as check_had_no_room
 
 logger = logging.getLogger(__name__)
 

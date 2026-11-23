@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.analysis import energy, light
-from cratekit.core import jobs
+from cratekit.core import pool
 
 #: Why a run measured every head in this process, for a run nobody planned a
 #: pool for. A planned run says its own reason through the plan.
@@ -124,9 +124,9 @@ class Session:
 
     job_id: str
     settings: Settings | None
-    plan: jobs.PoolPlan | None
+    plan: pool.PoolPlan | None
     items: int
-    stream: jobs.WorkStream[str, Any] | None = None
+    stream: pool.WorkStream[str, Any] | None = None
     positions: dict[str, int] = field(default_factory=dict)
     why: str | None = None
     #: Heads the workers measured and the driver used.
@@ -157,7 +157,7 @@ def open_session(
     paths: Sequence[str],
     settings: Settings,
     *,
-    reserve_bytes: int = jobs.DEFAULT_MEMORY_RESERVE_BYTES,
+    reserve_bytes: int = pool.DEFAULT_MEMORY_RESERVE_BYTES,
     reserved_cores: int = light.LIGHT_RESERVED_CORES,
 ) -> Session:
     """Plan the light pool over ``paths`` and stand ready to measure them ahead.
@@ -179,7 +179,7 @@ def open_session(
             bind_shipped,
             (settings.calibration, settings.tempo_window, settings.drift_cut),
         )
-        session.stream = jobs.stream_workers(
+        session.stream = pool.stream_workers(
             plan, measure, ordered, initializer=initializer, initargs=initargs
         )
         session.positions = {path: position for position, path in enumerate(ordered)}
@@ -234,7 +234,7 @@ def _from_the_pool(
         return None
     try:
         measured_identity, found = stream.result(position)
-    except jobs.StreamBroken as broken:
+    except pool.StreamBroken as broken:
         session.stop(str(broken))
         return None
     except Exception:  # noqa: BLE001 - the serial line decides what this file raises
@@ -291,7 +291,7 @@ def report(session: Session | None) -> dict[str, Any]:
         detail += f" and {session.here} measured here"
     if session.stopped is not None:
         detail += f"; the pool was stopped early: {session.stopped}"
-    full = plan.bound in (jobs.Bound.CEILING, jobs.Bound.WORK_ITEMS)
+    full = plan.bound in (pool.Bound.CEILING, pool.Bound.WORK_ITEMS)
     record["status"] = "ok" if full and session.stopped is None else "info"
     record["detail"] = detail
     return record

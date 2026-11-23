@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 from cratekit.cli.output import digest_of
 from cratekit.core import config, locations, rb_writer, session, tags, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.intake import ingest, label_filing, native, set_playlist
+from cratekit.intake import drift, ingest, label_filing, native, set_playlist
 from cratekit.intake.native import (
     _ORIGIN,
     ADD,
@@ -309,15 +309,15 @@ def _dyn_plan(
 
     def judged(row: RowPlan) -> RowPlan:
         values = tags.read_tags(row.source, _DRIFT_TAGS)
-        score, verdict = tags.drift_reading(values["driftlevel"], values["drift"], cut)
+        score, verdict = drift.reading(values["driftlevel"], values["drift"], cut)
         return replace(row, drift=score, drift_verdict=verdict)
 
     read = [judged(row) if row.action == ADD else row for row in rows]
-    if not any(row.drift_verdict == tags.DRIFT_VARIABLE for row in read):
+    if not any(row.drift_verdict == drift.VARIABLE for row in read):
         return read, cut, ""
     if not rb_writer.my_tag_writable(db):
         return read, cut, DYN_NO_CATEGORY
-    return [replace(row, dyn=row.drift_verdict == tags.DRIFT_VARIABLE) for row in read], cut, ""
+    return [replace(row, dyn=row.drift_verdict == drift.VARIABLE) for row in read], cut, ""
 
 
 def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:

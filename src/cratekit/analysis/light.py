@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from cratekit.core import jobs, tags
+from cratekit.core import jobs, pool, tags
 
 #: What a light worker holds before it reads a sample. Measured at 284
 #: megabytes on Linux (U241) and 336 on the Mac (A121, U275); declared an
@@ -149,15 +149,15 @@ def plan(
     paths: Sequence[str | Path],
     *,
     cost: int | None = None,
-    reserve_bytes: int = jobs.DEFAULT_MEMORY_RESERVE_BYTES,
+    reserve_bytes: int = pool.DEFAULT_MEMORY_RESERVE_BYTES,
     reserved_cores: int = LIGHT_RESERVED_CORES,
-) -> jobs.PoolPlan:
+) -> pool.PoolPlan:
     """The light pool for these files: as wide as memory affords, up to the cores less two.
 
     ``cost`` None is the batch's costliest track. ``reserve_bytes`` is raised
     by a caller that scores vocals in the driver.
     """
-    return jobs.plan_pool(
+    return pool.plan_pool(
         worker_bytes=costliest(paths) if cost is None else cost,
         items=len(paths),
         ceiling=jobs.worker_ceiling(reserved=reserved_cores),
@@ -166,4 +166,4 @@ def plan(
 
 
 def run(paths: list[str], cost: int | None = None) -> list[dict[str, Any]]:
-    return jobs.map_workers(plan(paths, cost=cost), analyse, paths)
+    return pool.map_workers(plan(paths, cost=cost), analyse, paths)

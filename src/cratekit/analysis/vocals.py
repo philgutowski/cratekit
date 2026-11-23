@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Mapping, MutableMapping
 
-from cratekit.core import jobs
+from cratekit.core import pool
 from cratekit.modules import extras
 
 VOCAL_WORKER_BYTES = 1024 ** 3
@@ -317,7 +317,7 @@ def analyse(
 def run(
     partials: list[dict[str, Any]], cost: int = VOCAL_WORKER_BYTES
 ) -> list[dict[str, Any]]:
-    plan = jobs.plan_pool(
+    plan = pool.plan_pool(
         worker_bytes=cost, items=len(partials), ceiling=VOCAL_CEILING
     )
-    return jobs.map_workers(plan, analyse, partials)
+    return pool.map_workers(plan, analyse, partials)

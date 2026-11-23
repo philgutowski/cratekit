@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, drift, rb_writer, session, tags
+from cratekit.core import config, rb_writer, session, tags
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import land_cli, native, rekordbox_check
+from cratekit.intake import drift, land_cli, native, rekordbox_check
 from tests.test_intake_land_native import _asked, _execute, _land, _query, _stage, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (

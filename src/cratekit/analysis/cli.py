@@ -38,10 +38,11 @@ from typing import Any, Iterator, Mapping
 
 from cratekit.analysis import ahead, artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
-from cratekit.core import config, jobs, naming, tags
+from cratekit.core import config, jobs, naming, pool, tags
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import NameBudget, NameSpec, NameTemplate
+from cratekit.intake import drift as drift_words
 from cratekit.modules import extras, foreground
 
 _ORIGIN = ("analysis", "cli")
@@ -299,7 +300,7 @@ def _open_ahead(cfg: config.Config, store, job) -> ahead.Session:
     except CratekitError:
         # AN UNREADABLE CALIBRATION IS EACH ITEM'S TO REFUSE, by name.
         return ahead.note_unopened(job.job_id, "the energy calibration could not be read")
-    reserve = jobs.DEFAULT_MEMORY_RESERVE_BYTES
+    reserve = pool.DEFAULT_MEMORY_RESERVE_BYTES
     if waiting and (vocals.loader_bound() or vocals.missing_requirement() is None):
         # THE DRIVER WILL HOLD A VOCAL MODEL while the workers run, not yet
         # loaded at planning, so its declared cost is kept back here.
@@ -701,7 +702,7 @@ def _drift_level(measured: Any) -> str | None:
     """A measured drift as its tag spells it, or None for no measurement (U157)."""
     if measured is None:
         return None
-    return tags.drift_shown(float(measured))
+    return drift_words.shown(float(measured))
 
 
 def handle_run(job, item, cfg) -> jobs.Produced:

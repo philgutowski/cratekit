@@ -44,24 +44,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from cratekit.core import parts
-
 log = logging.getLogger(__name__)
-
-#: A feature package reads the two drift tags' vocabulary (``core.drift``)
-#: through this module, whose table holds them, each name carrying the part's
-#: (U331) and read when first asked for; core and the shell import ``drift``.
-__getattr__ = parts.answering(__name__, {
-    "drift": {
-        "DRIFT_DYNAMIC_SETTINGS": "DYNAMIC_SETTINGS",
-        "DRIFT_NORMAL_SETTINGS": "NORMAL_SETTINGS",
-        "DRIFT_UNSCORED": "UNSCORED",
-        "DRIFT_VARIABLE": "VARIABLE",
-        "drift_reading": "reading",
-        "drift_shown": "shown",
-        "drift_verdict": "verdict",
-    },
-})
 
 
 _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
@@ -134,7 +117,7 @@ FIELDS: dict[str, TagSpec] = {
     # U240, the keys the vendored downloader writes. Nothing in Cratekit writes it.
     "copyright": TagSpec("copyright", "TCOP", "cprt"),
     # U157, the tempo's spread over the track and its verdict word. NEITHER IS A
-    # TEMPO, so the table still has no tempo entry; ``core.drift`` says what each is.
+    # TEMPO, so the table still has no tempo entry; ``intake.drift`` says what each is.
     "driftlevel": TagSpec("driftlevel", "TXXX:DriftLevel", "----:com.apple.iTunes:DriftLevel"),
     "drift": TagSpec("drift", "TXXX:Drift", "----:com.apple.iTunes:Drift"),
     # U340, the second genre folder a track is filed into beside the one its
