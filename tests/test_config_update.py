@@ -1,9 +1,8 @@
 """The configuration read-modify-write goes through one locked cycle (R-116).
 
-``crate setup`` and ``crate profile set`` each once wrote back the WHOLE document
-it had read, so the second of two erased the first. Pinned: no answers lost; a
-value both changed is a refusal; the lock is NOT held while a person is asked;
-the re-read is under the lock; nothing under ``src/`` writes any other way.
+Two writers of the whole document erased each other, so: no answers lost; a value both
+changed is a refusal; no lock while a person is asked; the re-read is under the lock;
+nothing under ``src/`` writes any other way.
 """
 
 from __future__ import annotations
@@ -93,8 +92,7 @@ def on_disk() -> dict:
 
 
 def lock_is_free() -> bool:
-    """Whether another holder could take the write lock now, asked through a
-    SECOND open file description, which ``flock`` excludes even in one process."""
+    """Whether the write lock is free, asked through a second open file description."""
     import fcntl  # noqa: PLC0415
 
     path = config.config_path()
@@ -113,8 +111,7 @@ def lock_is_free() -> bool:
 
 
 def once(act):
-    """``act`` the first time only: some seams between a verb's read and write are
-    crossed AGAIN under the lock, where a second write would wait on itself."""
+    """``act`` the first time only, since some seams are crossed again under the lock."""
     fired = []
 
     def fire():
@@ -155,8 +152,7 @@ def _between_setup_read_and_write(monkeypatch, act) -> None:
 def test_a_profile_change_made_while_the_wizard_was_deciding_survives_the_wizard(
     configured, monkeypatch, tmp_path
 ):
-    """THE COST IN R-116: another command adopts slim while the wizard decides.
-    The wizard never asked about the profile, so it may not write one."""
+    """R-116's cost: the wizard never asked about the profile, so it may not write one."""
     elsewhere = str(tmp_path / "elsewhere")
     _between_setup_read_and_write(
         monkeypatch, lambda: config.update(lambda document: profiles.apply(document, "slim"))
@@ -212,8 +208,7 @@ def test_two_wizards_answering_one_key_differently_refuse_and_write_nothing(
 def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
     configured, monkeypatch
 ):
-    """The answer is to the delta shown; a module toggled between the answer and
-    the write once applied under a decision nobody gave."""
+    """A module toggled between the answer and the write makes the decision stale."""
     full, slim = profiles.resolve("full", {}), profiles.resolve("slim", {})
     toggled = sorted(full.modules - slim.modules)[0]
 
@@ -240,8 +235,7 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
 
 
 def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypatch, tmp_path):
-    """One lock from first read to final write blocks every command on someone
-    typing. So the question is reached with the lock FREE, seen from the prompt."""
+    """The question is reached with the lock free, so no command waits on someone typing."""
     monkeypatch.setattr(doctor, "Probes", lambda: doctor_machines.green())
     observed: list[bool] = []
 
@@ -407,9 +401,7 @@ _WORKER = textwrap.dedent(
 
 
 def test_three_real_processes_writing_at_once_all_keep_their_answers(configured, tmp_path):
-    """The exclusion between processes: each reads, waits for the others to read,
-    and writes one toggle, so unlocked only the last survives. A polled file
-    releases them together, so start-up skew does not separate them."""
+    """Three processes each read, wait for the others, and write one toggle; all survive."""
     import time  # noqa: PLC0415
 
     modules = list(profiles.MODULES[:3])
@@ -514,8 +506,7 @@ def test_a_conflict_carries_the_setup_remedy_as_a_token():
 
 
 def _calls_config_save(tree: ast.AST) -> list[int]:
-    """Line numbers of calls resolving to ``cratekit.core.config.save``, read
-    through the module's imports so an alias or a bare ``save`` is found too."""
+    """Lines calling ``cratekit.core.config.save``, through the module's imports and aliases."""
     module_names: set[str] = set()
     function_names: set[str] = set()
     for node in ast.walk(tree):
@@ -557,13 +548,10 @@ def test_the_guard_below_can_see_every_spelling_of_the_call():
 
 
 def test_nothing_under_src_writes_the_whole_document_after_reading_it():
-    """Every shipped writer goes through ``config.update``: a verb calling
-    ``config.save`` writes what it READ, the R-116 cycle again. The vendored
-    downloader has a ``save`` of its own and never imports this module.
+    """Every shipped writer goes through ``config.update``, never ``config.save``
+    (R-116).
 
-    Both ways of reaching the call import or attribute the name ``save``, so a
-    file whose text, read as Python reads identifiers (NFKC), never spells it is
-    not parsed; that skips most of the tree and finds what a full parse would.
+    A file that never spells ``save`` as Python reads identifiers (NFKC) is not parsed.
     """
     offenders = {}
     for path in sorted(SRC.rglob("*.py")):

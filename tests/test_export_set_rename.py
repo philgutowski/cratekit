@@ -1,7 +1,8 @@
-"""U140: a set's account playlist follows the library's rename, ledger and frozen name with it.
+"""U140: a set's account playlist follows the library's rename, ledger and frozen name
+with it.
 
-The account is faked and the INSPIRATION row stood in for; that read is driven on
-the disposable database in tests/test_set_inspiration_playlist.py.
+The account is faked and the INSPIRATION row stood in for (its read is driven in
+``tests/test_set_inspiration_playlist.py``).
 """
 
 from __future__ import annotations
@@ -29,8 +30,7 @@ from tests.test_u129_set_account_playlist import recognised as recognised  # noq
 try:
     from cratekit.export import set_rename
 except ImportError:
-    # Before U309 the rename lived in ``set_cli``; the behaviour comparison
-    # runs the scenarios that borrow this file against such a base.
+    # Before U309 the rename lived in ``set_cli``, which the behaviour comparison runs.
     set_rename = set_cli
 
 
@@ -380,8 +380,7 @@ def test_refreeze_refuses_a_job_that_is_not_in_the_queue(account):
 
 # ── R-1017: the name the landing recorded ───────────────────────────────────
 
-#: The name a landing wrote the INSPIRATION playlist under, and a backfill the
-#: account playlist under, which none of the job's page words spell today.
+#: The names a landing and a backfill wrote the playlists under, no page word today.
 LANDED = "10_10_26 Public Service NYC Live at Signal 2-26"
 
 

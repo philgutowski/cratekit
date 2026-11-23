@@ -1,31 +1,13 @@
-"""U318: a remix takes a Discogs release and its genre only when that release carries its version.
+"""U318: a remix takes a Discogs release and its genre only when that release carries
+its version.
 
-Measured at sitting 101's tag sweep for A181: two remixes took a Discogs
-release that does not carry their version, and with it a genre their
-recording was never given. "Two Months Off (Tim Green Remix)" took release
-8532080, which holds four other mixes and no Tim Green mix, and "As You Fly
-(Mita Gami Extended Mix)" took the 16BL remix single, release 28513768. The
-Discogs match read a title past its version: a file's title is known by its
-core, the words before the bracket groups it ends with, so any track or
-release title of the same core met it, whatever its mix.
-
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* A FILE WHOSE TITLE NAMES A VERSION TAKES ONLY A RELEASE THAT WRITES IT,
-  on a track or, for a single, on the release's own title or a track that
-  is the version alone. The two sitting releases, hand built here in the
-  shape Discogs serves them, refuse their files.
-* A FILE THAT MATCHED BEFORE STILL MATCHES unless it names a version the
-  release does not write: a title with no version, and one whose version is
-  version words alone ("Extended Mix", "Original Mix"), the noise the shared
-  reader already sheds, are matched exactly as before.
-* THE MISS SAYS WHY in the file's record, in words a person reads, and the
-  file goes on to the next source as any miss does.
-* NOTHING BUT DISCOGS CHANGES. Beatport, Traxsource and Bandcamp read the
-  same rows the same way.
-
-Nothing here touches the network, and the token is a fixture word. The
-artist is a fixture name; the titles are the sitting's.
+At sitting 101 "Two Months Off (Tim Green Remix)" took release 8532080 and "As You Fly
+(Mita Gami Extended Mix)" the 16BL remix single, 28513768, since the match read a title
+by its core alone. Guarded: a file naming a version takes only a release that writes it,
+on a track or, for a single, its own title or a track that is the version alone; a file
+that matched before still does unless it names an unwritten version ("Extended Mix" and
+"Original Mix" are noise); the miss says why; Beatport, Traxsource and Bandcamp are
+unchanged. Offline; the titles are the sitting's, the artist a fixture.
 """
 
 from __future__ import annotations
@@ -44,9 +26,7 @@ from tests.test_discogs_searcher import discogs_answer, release, results, routed
 #: The fixture artist every release and file here is credited to.
 ARTIST = "Fixture Artist"
 
-#: The sitting's two releases, as hand built payloads at the producer's
-#: boundary: the release read Discogs serves, its tracklist the mixes the
-#: sitting's record named, none of them the file's.
+#: The sitting's two releases as hand built payloads, none holding the file's mix.
 TWO_MONTHS_OFF = 8532080
 TWO_MONTHS_OFF_TRACKS = (
     "Two Months Off",
@@ -66,8 +46,7 @@ def listed(*titles_: str) -> list[dict]:
 
 
 def asked(title: str, number: int, *, release_title: str = "An EP", tracks: tuple[str, ...]):
-    """Discogs' answer for a file titled ``title`` by :data:`ARTIST`, whose
-    search names one release, ``number``, holding ``tracks``."""
+    """Discogs' answer for ``title`` by :data:`ARTIST`, naming release ``number`` of ``tracks``."""
     fetch = routed(
         search=results(number),
         releases={
@@ -86,9 +65,7 @@ def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
-# ---------------------------------------------------------------------------
-# A. The sitting's two files
-# ---------------------------------------------------------------------------
+# ═══ A. The sitting's two files ════════════════════════════════════════════
 
 
 def test_the_tim_green_remix_refuses_a_release_of_four_other_mixes():
@@ -231,9 +208,7 @@ def test_an_unread_release_beside_a_version_refusal_is_unread_not_a_miss():
     assert said.answer not in ("miss", "matched")
 
 
-# ---------------------------------------------------------------------------
-# B. The brief's scenarios
-# ---------------------------------------------------------------------------
+# ═══ B. The brief's scenarios ══════════════════════════════════════════════
 
 
 def test_a_remix_takes_nothing_from_a_release_of_the_plain_title_and_another_remix():
@@ -255,9 +230,7 @@ def test_a_title_with_no_version_matches_a_release_of_remixes_only_as_before():
 
 
 def test_the_extended_and_original_noise_follows_the_reader():
-    """The reader sheds a version of version words alone, "Extended Mix" and
-    "Original Mix", as it always did, so such a file names no other mix and
-    matches the release of "X (Original Mix)" and of "X" as before."""
+    """A version of version words alone names no other mix and matches as before."""
     assert matched("X (Extended Mix)", tracks=("X (Original Mix)",))
     assert matched("X (Extended Mix)", tracks=("X",))
     assert matched("X (Original Mix)", tracks=("X (Extended Mix)",))
@@ -280,8 +253,7 @@ def test_the_extended_and_original_noise_follows_the_reader():
     ],
 )
 def test_a_mix_that_names_no_one_still_takes_the_plain_title(title):
-    """A description of a mix, "Main", "Vocal", "Album", "12 Inch", names no
-    other mix (``titles.MIX_DESCRIPTIONS``), so it matches as it did."""
+    """A mix description (``titles.MIX_DESCRIPTIONS``) names no other mix."""
     assert matched(title, tracks=("X",))
 
 
@@ -352,14 +324,11 @@ def test_an_artist_that_does_not_match_still_refuses_a_track_that_writes_the_ver
     assert discogs_answer(searcher(fetch)(ARTIST, "X (A Remix)")).answer == "miss"
 
 
-# ---------------------------------------------------------------------------
-# C. Nothing but Discogs changes
-# ---------------------------------------------------------------------------
+# ═══ C. Nothing but Discogs changes ════════════════════════════════════════
 
 
 def test_the_shared_matcher_still_reads_a_remix_as_its_title():
-    """The seam is Discogs': ``titles.matches`` is unchanged for every caller,
-    so Beatport, Traxsource and Bandcamp read the row as they did."""
+    """``titles.matches`` is unchanged, so the other sources read the row as they did."""
     assert searchers._title_matches(
         "Two Months Off (Tim Green Remix)", "Two Months Off", artist=ARTIST
     )
@@ -379,9 +348,7 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
     assert hit.genre == BUCKET_GENRE
 
 
-# ---------------------------------------------------------------------------
-# D. The two readers
-# ---------------------------------------------------------------------------
+# ═══ D. The two readers ════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -412,8 +379,7 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         ("Two Months Off (Part 1)", set()),
         ("Two Months Off (feat. Someone)", set()),
         ("Two Months Off - Original Mix", set()),
-        # A title of brackets alone is its own title, never its version, and
-        # a title part that names nothing is no title for one to follow.
+        # Brackets alone are a title, never a version; a title naming nothing has none.
         ("(Sunrise Mood Extended Mix)", set()),
         ("(Kerri Chandler Remix) - Original Mix", set()),
         ("(Intro) (Tide Remix)", {("tide",)}),
@@ -439,15 +405,13 @@ def test_a_files_named_versions(title, named):
 @pytest.mark.parametrize(
     ("row", "titled", "alone"),
     [
-        # A row whose title is the file's writes the mix wherever its
-        # structure puts it; read alone, only a row that is the mix does.
+        # A row titled as the file writes the mix anywhere; alone, only the mix row does.
         ("Two Months Off (Tim Green Remix)", True, False),
         ("Two Months Off [Tim Green Remix]", True, False),
         ("Two Months Off - Tim Green Remix", True, False),
         ("Two Months Off - Tim Green Remix - Part 2", True, False),
         ("Two Months Off (Tim Green Remix) - 2014 Remaster", True, False),
-        # A group ending a dash part before a tail that is no version, which
-        # only the reading of each dash prefix finds (the table's T19).
+        # A group ending a dash part before a non-version tail (the table's T19).
         ("Two Months Off (Tim Green Remix) - Part 2", True, False),
         ("Two Months Off (Tim Green Remix) (Extended)", True, False),
         ("Two Months Off (Tim Green Dub)", True, False),
@@ -480,15 +444,11 @@ def test_no_named_version_is_written_by_any_row():
     assert not titles.writes_version("Two Months Off (Tim Green Remix)", frozenset(), titled=True)
 
 
-# ---------------------------------------------------------------------------
-# E. Review round one: what names no one, folding, and the guards
-# ---------------------------------------------------------------------------
+# ═══ E. Review round one: what names no one, folding, and the guards ═══════
 
 
 def test_the_mix_descriptions_are_exactly_these():
-    """Pinned word for word, as the domain's version words are: a word taken
-    out reads as a maker's name and loses the plain release (round one's
-    BLOCKING finding), and a word put in can fold a maker away."""
+    """Pinned word for word: a word out reads as a maker's name, a word in folds one away."""
     assert titles.MIX_DESCRIPTIONS == frozenset(
         {
             "album", "bonus", "beats", "beatless", "full", "length", "long", "main",
@@ -506,8 +466,7 @@ def test_the_mix_descriptions_are_exactly_these():
     )  # fmt: skip
 
 
-#: Mixes of the plain title's own recording, the 147 labels round one drove,
-#: each matched against the album's plain track on main.
+#: Mixes of the plain title's own recording, the 147 labels round one drove.
 SAME_RECORDING = (
     "LP Version|Album Version|Album Mix|Digital Remaster|2009 Digital Remaster|"
     "2009 Remastered Version|Remastered Version|Remastered 2009|2009 Remaster|"
@@ -544,8 +503,7 @@ def test_a_mix_of_the_same_recording_still_takes_the_album_track(label):
 
 
 def test_a_mix_named_by_a_word_no_list_holds_is_read_as_its_makers():
-    """The recorded cost (a residual): a style word both lists lack reads as a
-    maker's name, so such a file misses the plain track rather than guess."""
+    """The recorded cost: a style word both lists lack reads as a maker, so the file misses."""
     assert not matched("Sunrise Mood (Juno Mix)", tracks=("Sunrise Mood",))
 
 
@@ -566,8 +524,7 @@ def test_a_maker_is_folded_as_a_name_is(title, row):
 
 
 def test_the_single_fallback_reads_no_other_track_of_the_release_as_the_mix():
-    """Round one's finding 6: "Sun Path (Tide Remix)" is Tide's remix of
-    another title, never evidence that a single of "Sunrise Mood" holds one."""
+    """Round one's finding 6: another title's remix is no evidence the single holds one."""
     assert not matched(
         "Sunrise Mood (Tide Remix)",
         release_title="Sunrise Mood",
@@ -641,8 +598,7 @@ def test_a_title_naming_two_mixes_lists_them_in_order_in_the_note():
     ["feat. Tom Tom Club", "feat. Culture Club", "ft. Amp Live", "with Bombay Bicycle Club"],
 )
 def test_a_credit_group_ending_in_a_version_word_is_no_version(group):
-    """Review round two's row 7: a feature credit is a credit, never a mix,
-    so the album's plain track is still the file's, as on main."""
+    """Round two's row 7: a feature credit is never a mix, so the plain track matches."""
     assert titles.named_versions(titles.read_file(f"Song ({group})", ARTIST)) == frozenset()
     assert matched(f"Song ({group})", tracks=("Opener", "Song"))
 
@@ -657,18 +613,14 @@ def test_an_article_is_folded_out_of_a_makers_name_on_both_sides():
     assert not matched("Sunrise Mood (The Black Madonna Remix)", tracks=("Sunrise Mood",))
 
 
-# ---------------------------------------------------------------------------
-# U324. A maker spelled with a letter accent stripping leaves alone
-# ---------------------------------------------------------------------------
+# ═══ U324. A maker spelled with a letter accent stripping leaves alone ═════
 
-#: Sitting 102's file, by its own artist, and the three releases its sweep
-#: named, each carrying the mix spelled with ø.
+#: Sitting 102's file and the three releases its sweep named, each mix spelled with ø.
 ROYKSOPP = "Röyksopp"
 WHAT_ELSE = "What Else Is There? (Trentemoller Remix)"
 WHAT_ELSE_RELEASES = (2667673, 589586, 641256)
 
-#: Each letter the fold takes, both cases where a case is written, and what
-#: it is read as: every pair below is one maker's name spelled two ways.
+#: Each letter the fold takes and its plain reading: one maker spelled two ways.
 ONE_MAKER = (
     ("Trentemøller", "Trentemoller"),
     ("TRENTEMØLLER", "Trentemoller"),
@@ -762,8 +714,7 @@ def test_another_maker_is_still_a_version_miss_with_the_note():
 @pytest.mark.parametrize(
     ("mine", "theirs"),
     [
-        # The fold reads a letter as its plain spelling, never as another
-        # letter's: "o" is not "oe", "a" not "ae", "s" not "ss".
+        # The fold reads a letter as its plain spelling, never another letter's.
         ("Trentemøller", "Trentemoeller"),
         ("Æther", "Ather"),
         ("Straße", "Strase"),
@@ -783,8 +734,7 @@ def test_a_plain_title_naming_no_mix_matches_as_before():
 
 
 def test_the_fold_takes_exactly_the_letters_nfkd_leaves_alone():
-    """The table's membership, each entry read alone: deleting one makes its
-    letter a different maker again."""
+    """Each table entry read alone: deleting one makes its letter a different maker."""
     assert {letter: titles._folded(letter) for letter in "øØæÆœŒßđĐłŁþÞ"} == {
         "ø": "o", "Ø": "o", "æ": "ae", "Æ": "ae", "œ": "oe", "Œ": "oe", "ß": "ss",
         "đ": "d", "Đ": "d", "ł": "l", "Ł": "l", "þ": "th", "Þ": "th",
@@ -792,7 +742,6 @@ def test_the_fold_takes_exactly_the_letters_nfkd_leaves_alone():
 
 
 def test_a_letter_that_also_carries_an_accent_is_read_plain():
-    """The table is read after the accents come off, so "ǿ" and "ǽ", which
-    NFKD splits into "ø" or "æ" and a mark, are "o" and "ae" as well."""
+    """The table is read after accents come off, so "ǿ" and "ǽ" are "o" and "ae"."""
     assert (titles._folded("ǿ"), titles._folded("ǽ")) == ("o", "ae")
     assert matched("Sunrise Mood (Trentemoller Remix)", tracks=("Sunrise Mood (Trentemǿller Remix)",))

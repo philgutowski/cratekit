@@ -1,19 +1,9 @@
 """U2: the config schema, the two state roots, profiles, and credentials.
 
-Four things are proved here, each failing a different way:
-
-1. **Validation names every missing key**, not the first, so a first run
-   wizard costs one round trip rather than one per missing value.
-2. **Every state file has exactly one root, and the right one.** The inventory
-   is audited whole, because a file on the wrong root fails only on a second
-   install, a reinstall or the migration overlap.
-3. **Nothing snapshots config at import time.** The lint makes the source
-   system's import time path binding impossible to introduce.
-4. **A credential failure says which of three things went wrong**, since a
-   missing credential and a rejected one need opposite remediations.
-
-The checkers follow ``test_layering.py``: pure functions over source text,
-fixture tests proving each rule bites, then one run over the real package.
+Validation names every missing key, not the first; every state file has exactly one
+root, the right one; nothing snapshots config at import time; and a credential failure
+says which of three things went wrong. The checkers follow ``test_layering.py``: pure
+functions over source, fixture tests proving each rule bites, then the real package.
 """
 
 from __future__ import annotations
@@ -290,8 +280,7 @@ def split_installation_dirs(monkeypatch, tmp_path):
     return tmp_path
 
 
-#: Inventory entries that also have a named accessor, where two pieces of code
-#: can disagree about one path.
+#: Inventory entries that also have a named accessor, which could disagree on a path.
 _NAMED_ACCESSORS = {
     "config": lambda: config.config_path(),
     "credential_index": lambda: secrets._index_path(),
@@ -326,8 +315,7 @@ def test_every_installation_entry_resolves_under_a_directory_the_module_names(
         )
 
 
-#: Every config function handing out a directory under a state root. Must be
-#: complete, kept so by the export test below.
+#: Every config function handing out a directory under a state root, kept complete below.
 _STATE_ROOT_ACCESSORS = {
     "config_dir",
     "installation_state_dir",
@@ -565,8 +553,7 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
 
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     """A text search only; ``tests/test_restore.py`` drives whether the derivation is used."""
-    # The restore and its parts (R-1890): the replacement moved to
-    # ``restore_perform``, so a suffix typed there is the same regression.
+    # The restore's replacement moved to ``restore_perform`` (R-1890).
     from tests._split_modules import source_of  # noqa: PLC0415
 
     source = source_of("cratekit.core.restore")
@@ -1103,10 +1090,7 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
     ],
 )
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):
-    """One case per section, so a section left out of serialization is caught.
-
-    Merged into the section rather than replacing it, which would drop required keys.
-    """
+    """One case per section, merged in, so a section left out of serialization is caught."""
     base_data = valid_data(library)
     changed_data = valid_data(library)
     changed_data.setdefault(section, {})[key] = value
@@ -1156,11 +1140,7 @@ def test_importing_the_config_module_creates_nothing(tmp_path):
 
 
 def config_parts() -> tuple:
-    """config and the parts split from it (U299), every one read by the two guards below.
-
-    Imported here rather than at the top, so the behaviour scenarios that borrow
-    this file's fixtures still import against a tree from before the split.
-    """
+    """config and its parts split off (U299), imported late for the behaviour scenarios."""
     from cratekit.core import config_base, config_schema, config_validate, state_files
 
     return (config, config_base, config_schema, config_validate, state_files)
@@ -1265,11 +1245,7 @@ def test_the_snapshot_lint_allows_reading_config_inside_a_function():
 
 
 def test_no_module_composes_its_own_path_under_a_state_root():
-    """Every path under a state root comes from ``state_path``, so it is declared.
-
-    Only a source naming an accessor can hold a hit (identifiers compared after
-    the NFKC folding the parser applies), so the rest are not parsed.
-    """
+    """Every path under a state root comes from ``state_path``; only accessor names are parsed."""
     offenders: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if path.relative_to(SRC_ROOT).as_posix() in INVENTORY_MODULES:
@@ -1550,15 +1526,11 @@ def test_the_presence_index_records_names_and_never_values():
     assert "value-from-the-user" not in json.dumps(payload)
 
 
-# Item 4 of the five places residual: the index reader tells missing from
-# unreadable from damaged. The doctor half is in ``tests/test_doctor.py``.
+# The index reader tells missing from unreadable from damaged; doctor's half is there.
 
 
 def _unreadable_index(monkeypatch, path: Path):
-    """One file answers EACCES (chmod is vacuous under root); returns a disarm.
-
-    Disarm rather than ``monkeypatch.undo``, which also undoes the autouse isolation.
-    """
+    """One file answers EACCES (vacuous under root); returns a disarm, not ``monkeypatch.undo``."""
     real = Path.read_text
     armed = True
 

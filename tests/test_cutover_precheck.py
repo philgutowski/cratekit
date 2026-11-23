@@ -1,8 +1,7 @@
 """U20: the automated precheck that must pass before a tree flips.
 
-Four refusals and one happy path. The flip itself is ``record_cutover`` plus
-this precheck, composed as ``tree_registry.flip``. Live rekordbox validation
-is attended and is not in this file.
+Four refusals and one happy path; the flip is ``tree_registry.flip``. Live rekordbox
+validation is attended and not here.
 """
 
 from __future__ import annotations
@@ -63,6 +62,15 @@ def _ready(cfg: config.Config) -> Path:
     return _export(cfg)
 
 
+def _flip_refusal(cfg: config.Config, export: Path):
+    """The cause the flip of ``TREE_ID`` onto ``root-1`` refuses with."""
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.flip(
+            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
+        )
+    return excinfo.value.cause
+
+
 def test_a_ready_library_flips_one_tree_and_leaves_the_rest_on_the_bridge(cfg):
     export = _ready(cfg)
     after = tree_registry.flip(
@@ -92,11 +100,7 @@ def test_an_open_run_blocks_the_flip(cfg):
         ),
         cfg,
     )
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-open-run"
+    assert _flip_refusal(cfg, export).reason == "cutover-open-run"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
@@ -105,36 +109,20 @@ def test_a_pending_intake_xml_blocks_the_flip(cfg):
     staging = Path(cfg.paths.download_staging)
     staging.mkdir(parents=True)
     (staging / "run-1_synced.xml").write_text("<DJ_PLAYLISTS/>\n", encoding="utf-8")
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-xml-pending"
+    assert _flip_refusal(cfg, export).reason == "cutover-xml-pending"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
 def test_a_missing_export_blocks_the_flip(cfg):
     _snapshot(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg,
-            TREE_ID,
-            root_id="root-1",
-            on=CUTOVER_ON,
-            source=DERIVATION,
-            export=Path(cfg.library.root) / "nope.xml",
-        )
-    assert excinfo.value.cause.reason == "cutover-export-missing"
+    export = Path(cfg.library.root) / "nope.xml"
+    assert _flip_refusal(cfg, export).reason == "cutover-export-missing"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
 def test_a_missing_snapshot_blocks_the_flip(cfg):
     export = _export(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-snapshot-missing"
+    assert _flip_refusal(cfg, export).reason == "cutover-snapshot-missing"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
@@ -144,16 +132,11 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
     fake.mkdir(parents=True)
     (fake / snapshot.MANIFEST_NAME).write_text("{}\n", encoding="utf-8")
     export = _export(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-snapshot-missing"
+    assert _flip_refusal(cfg, export).reason == "cutover-snapshot-missing"
 
 
 def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
-    """The intake tree flips on a rebuildable source like any other, since the
-    landing chooses its medium by the tree's mode (R-746)."""
+    """The intake tree flips on a rebuildable source like any other (R-746)."""
     export = _ready(cfg)
     tree_registry.flip(
         cfg,
@@ -197,9 +180,7 @@ def test_a_hand_curated_tree_still_cannot_flip(cfg):
     assert tree_registry.read(cfg).is_on_the_bridge("record_labels")
 
 
-# ---------------------------------------------------------------------------
-# R-235: the precheck as a report, and the guard on the way back
-# ---------------------------------------------------------------------------
+# ═══ R-235: the precheck as a report, and the guard on the way back ═════════
 
 
 def test_the_report_names_every_check_in_the_order_the_assertion_refuses(cfg):
@@ -297,9 +278,7 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
     assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
 
 
-# ---------------------------------------------------------------------------
-# Edge cases of the report and the revert guard
-# ---------------------------------------------------------------------------
+# ═══ Edge cases of the report and the revert guard ══════════════════════════
 
 
 def _unreadable_record(cfg: config.Config) -> Path:
@@ -323,11 +302,7 @@ def test_a_record_nobody_can_read_refuses_the_revert_rather_than_reading_as_no_w
 def test_a_record_nobody_can_read_refuses_the_flip_rather_than_reading_as_no_open_run(cfg):
     export = _ready(cfg)
     torn = _unreadable_record(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.detail["unreadable"] == [str(torn)]
+    assert _flip_refusal(cfg, export).detail["unreadable"] == [str(torn)]
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
@@ -373,8 +348,7 @@ def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
 @pytest.mark.parametrize(
     "started",
     [
-        # The cutover day itself, and the day before it: a start is universal
-        # time and the cutover day is the machine's own calendar date.
+        # The cutover day and the day before: a start is UTC, the day is the local date.
         "2026-08-01T00:05:00Z",
         "2026-07-31T23:50:00Z",
         # A start nothing can place counts, because it cannot be shown to predate.

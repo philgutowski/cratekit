@@ -1,8 +1,7 @@
 """``crate export collection`` and every verb that reads what it writes (R-745).
 
-The file is never judged by the module that wrote it: a real XML parser, the
-strict reader and each verb taking an export read it back, against literals
-beside the hand seeded rows. D1: nothing here names a real volume, person or track.
+The file is read back by a real XML parser, the strict reader and each verb taking an
+export, never by its writer, against literals beside the seeded rows (D1).
 """
 
 from __future__ import annotations
@@ -163,8 +162,7 @@ def _forget_libraries():
 
 
 def _machine(tmp_path, monkeypatch, *, moved: bool = False, rule: bool = True) -> config.Config:
-    """A set-up machine, every module on, holding the seeded library; ``moved`` records the rows
-    under the base drive, and ``rule`` the prefix rule setup offers for it."""
+    """A set-up machine on every module with the seeded library; ``moved`` and ``rule`` as setup."""
     root = tmp_path / "library"
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
@@ -270,8 +268,7 @@ def _content(cfg: config.Config, rows) -> None:
     engine.dispose()
 
 
-#: Each worker's seeded database per layout and schema pin, with the folder it was seeded
-#: under; a copy with those paths moved is the same library (U256).
+#: Each worker's seeded database per layout and pin, with its seed folder (U256).
 _SEEDED: dict[tuple[bool, str], tuple[str, bytes]] = {}
 
 
@@ -511,8 +508,7 @@ def test_a_folder_with_nothing_in_it_has_a_body_a_landing_could_insert_into(mach
     assert content[hollow.close_start :].startswith(b"</NODE>\r\n")
 
 
-#: Every attribute a collection row of a rekordbox export carries, as the byte
-#: fixtures cut from one spell them, in order.
+#: Every attribute a collection row of an export carries, in the fixtures' order.
 REKORDBOX_TRACK_ATTRIBUTES = (
     "TrackID", "Name", "Artist", "Composer", "Album", "Grouping", "Genre", "Kind",
     "Size", "TotalTime", "DiscNumber", "TrackNumber", "Year", "AverageBpm",
@@ -857,8 +853,7 @@ def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
 
 
 def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(either, silence):
-    """The import, simulated by its one row per file, is proved off a second export, on a
-    moved library too, with no edit between the verbs (R-773)."""
+    """The import is proved off a second export, moved library too, with no edit between (R-773)."""
     machine = either
     cutover_fixtures.verified_snapshot(machine)
     first = _export(machine, "before-landing.xml")

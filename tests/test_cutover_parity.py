@@ -1,12 +1,8 @@
 """U29's parity table: every Feature Inventory row, and the landed verb that covers it.
 
-The cutover is attended, but the table derives from the registry and touches
-nothing, so it is mechanised here. Unlike ``tests/test_cli_contract.py``, which
-counts a declared verb as a claim, everything here turns on ``entry.landed``,
-because a declared verb replaces nothing a person can run. The inventory is read
-from ``registry.FEATURES`` and never copied, so the plan has one transcription.
-``core``, ``module`` and ``reshaped`` rows are owed, so a missing verb is backlog;
-``cut`` and ``defer`` rows are decisions and never backlog.
+Everything turns on ``entry.landed``, since a declared verb replaces nothing. The
+inventory is read from ``registry.FEATURES``; ``core``, ``module`` and ``reshaped`` rows
+are owed, ``cut`` and ``defer`` rows are decisions and never backlog.
 """
 
 from __future__ import annotations
@@ -18,12 +14,10 @@ from cratekit.cli import registry
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: Dispositions under which the product owes this row a verb. The complement,
-#: ``cut`` and ``defer``, is a decision rather than a debt.
+#: Dispositions owing this row a verb; ``cut`` and ``defer`` are decisions.
 OWED = frozenset({"core", "module", "reshaped"})
 
-#: Where the plan lives when the sibling repository is checked out beside this
-#: one. Only the drift check reads it, and asserts nothing when it is absent.
+#: The plan in the sibling repository; the drift check asserts nothing without it.
 PLAN = (
     REPO_ROOT.parent
     / "DJ_tools"
@@ -47,11 +41,7 @@ def titles() -> dict[int, str]:
 
 
 def plan_dispositions() -> dict[int, str] | None:
-    """The plan's own dispositions, or None when the sibling repository is absent.
-
-    Normalised to the first word of the prose column, so "Module, off by default"
-    is ``module``; the toggle default is the contract suite's business.
-    """
+    """The plan's dispositions by first word of the prose column, or None without the sibling."""
     if not PLAN.is_file():
         return None
     text = PLAN.read_text()
@@ -63,12 +53,7 @@ def plan_dispositions() -> dict[int, str] | None:
 
 
 def test_the_transcribed_dispositions_match_the_plan_when_it_is_reachable():
-    """The transcribed dispositions and row numbers match the plan.
-
-    Titles are not compared, because the registry retitles rows on purpose. With the
-    sibling repository absent it asserts nothing rather than skipping, since a skip
-    outside the pending register is a guard switched off with no record.
-    """
+    """Dispositions and row numbers match the plan; without the sibling nothing is asserted."""
     original = plan_dispositions()
     if original is None:
         return
@@ -82,11 +67,7 @@ def test_the_transcribed_dispositions_match_the_plan_when_it_is_reachable():
 
 
 def covering_verbs() -> dict[int, list[str]]:
-    """Feature row to the LANDED verbs that cover it.
-
-    A declared verb covers nothing a person can run, so counting it would report a
-    cutover as possible with no replacement in place.
-    """
+    """Feature row to the LANDED verbs that cover it."""
     found: dict[int, list[str]] = {}
     for entry in registry.entries():
         if not entry.landed:
@@ -146,11 +127,7 @@ def test_every_covered_row_names_a_real_inventory_row():
 
 
 def test_a_row_cited_by_nothing_is_a_decision_and_not_an_oversight():
-    """A row cited by no verb, landed or declared, must be cut or deferred.
-
-    An owed row nobody has declared a verb for is an oversight nothing else reports,
-    so it is kept apart from a decision.
-    """
+    """A row cited by no verb must be cut or deferred, or it is an unreported oversight."""
     cited = set(citing_verbs())
     rows = dispositions()
     unclaimed = sorted(row for row in rows if row not in cited)
@@ -183,13 +160,7 @@ def test_the_backlog_is_every_owed_row_without_a_landed_verb():
 
 
 def test_the_cutover_is_mechanically_possible_and_says_what_is_left():
-    """Every owed row has a landed verb, so the cutover is mechanically possible (U45).
-
-    A broken derivation also yields an empty backlog, so the emptiness is asserted
-    beside the owed and covered populations, neither of which may be empty.
-    Mechanically possible is not done: U29 stays attended, as ``docs/METHOD.md``
-    argues.
-    """
+    """Every owed row has a landed verb (U45), over non-empty owed and covered populations."""
     owed = {row for row, disposition in dispositions().items() if disposition in OWED}
     covered = covering_verbs()
     assert owed, (
@@ -223,8 +194,7 @@ def test_the_parity_table_renders_for_a_person():
         lines.append(f"{number:3d}  {disposition[number]:9}  {rows[number][:40]:40}  {state}")
     rendered = "\n".join(lines)
     assert rendered.count("\n") + 1 == len(rows)
-    # AWAITING is a declared but unlanded verb and NO COVERING VERB a row nothing
-    # declares, two different failures, so each is asserted on its own.
+    # AWAITING (declared, unlanded) and NO COVERING VERB are asserted apart.
     assert "AWAITING" not in rendered, (
         "an owed row's verb is declared and not landed, so the cutover backlog is "
         "no longer empty; see the test above"

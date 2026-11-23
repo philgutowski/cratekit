@@ -1,7 +1,6 @@
 """U93: one walker for the queued analysis verbs, and the join that checks itself.
 
-The walker's own guards; the verbs' behaviour over a tree is pinned in
-``test_analysis_workers.py`` and ``test_vocals_cli.py``.
+The verbs' behaviour over a tree is pinned in their own suites.
 """
 
 from __future__ import annotations
@@ -23,9 +22,7 @@ def touch(folder: Path, relative: str) -> Path:
 
 # What a scan of a tree holds
 
-#: (files, recursive, expected items). The one level default is what every
-#: existing job and resume assumed; a recursive id is posix, since a later
-#: process reads it back.
+#: (files, recursive, expected items); a recursive id is posix, read back later.
 TREES = {
     "one-level-default-skips-a-subfolder": (
         ["top.flac", "genre/nested.flac"], False, ("top.flac",)
@@ -253,13 +250,12 @@ def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_rais
 # The join, which is a guard because an id may now carry separators
 
 
-def test_a_relative_id_joins_under_the_folder(tmp_path):
-    assert discovery.item_path(tmp_path, "house/track.flac") == tmp_path / "house/track.flac"
-
-
-def test_a_bare_filename_still_joins(tmp_path):
-    """``analyze run`` never gets the flag, so its ids stay one segment."""
-    assert discovery.item_path(tmp_path, "track.flac") == tmp_path / "track.flac"
+@pytest.mark.parametrize(
+    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"]
+)
+def test_an_id_joins_under_the_folder(tmp_path, item):
+    """A bare filename too: ``analyze run`` never gets the flag, so its ids stay one segment."""
+    assert discovery.item_path(tmp_path, item) == tmp_path / item
 
 
 def test_an_absolute_id_is_refused_rather_than_discarding_the_folder(tmp_path):
