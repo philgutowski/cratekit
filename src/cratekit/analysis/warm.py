@@ -10,9 +10,15 @@ lock no other process of this user holds at the same time. The warm up must
 reach every kernel a real head reaches, which ``tests/test_analysis_warm.py``
 holds.
 
-NOT COVERED: the restamp and calibrate energy path compiles a kernel of its
-own, so two of those started together are not held apart, and a platform
-with no ``fcntl`` takes no lock. A WAIT ON THE LOCK IS NOT BOUNDED: a holder
+THE ENERGY MEASURE ASKS FOR IT TOO (U344, closing R-1491): every head,
+restamp and calibrate scores energy through ``energy.features_from_path``,
+which warms first, and the warm up measures energy from its file as well as
+from samples, since on an empty cache that path wrote a second
+specialisation of ``utils._cabs2`` that a warmed cache did not hold
+(R-1491's measurement, under the librosa of its day). A kernel keeps the code it was first compiled to, so warming first in every
+process also gives a head in a worker and a restamp in the driver the same
+features to the last bit. NOT COVERED: a platform with no ``fcntl`` takes no
+lock. A WAIT ON THE LOCK IS NOT BOUNDED: a holder
 suspended with Ctrl-Z holds every later run (U241's residual).
 
 Writes one small audio file in a temporary directory and removes it; no tag,
@@ -101,7 +107,8 @@ def _measure_one_head() -> None:
     """One whole head, decode included, over audio made here.
 
     The same calls on the same types, since a kernel is compiled per type. The
-    energy is measured directly, as the detector skips it uncalibrated.
+    energy is measured directly, from the file and from samples, as the
+    detector skips it uncalibrated.
     """
     import numpy as np
 
@@ -119,6 +126,8 @@ def _measure_one_head() -> None:
         detect.analyse_file(
             path, tempo_window=(DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING)
         )
+        # The energy measure every verb scores through (U344), from the file.
+        energy.features_from_path(path)
     energy.features_from_samples(_signal(energy.MEASURE_RATE, WARM_SECONDS), energy.MEASURE_RATE)
 
 
