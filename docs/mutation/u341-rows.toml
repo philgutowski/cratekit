@@ -137,7 +137,7 @@ description = "_walk: the run stopped with quit is told to run label sync again 
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    again = "label sync" if named is None else f"label sync --genre {shlex.quote(named)}"'''
+old = '''    again = "label sync" if named is None else f"label sync {_genre_flag(named)}"'''
 new = '''    again = "label sync"'''
 
 [[rows]]
@@ -187,12 +187,12 @@ new = '''    standing = entry.genre is not None'''
 
 [[rows]]
 id = "G21_hint_quoted_as_repr"
-description = "_walk: quote the genre in the resume hint as Python repr, which a shell cannot read for an apostrophe"
+description = "_genre_flag: quote the genre in a hint as Python repr, which a shell cannot read for an apostrophe"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    again = "label sync" if named is None else f"label sync --genre {shlex.quote(named)}"'''
-new = '''    again = "label sync" if named is None else f"label sync --genre {named!r}"'''
+old = '''    return shlex.join(["--genre", genre])'''
+new = '''    return f"--genre {genre!r}"'''
 
 [[rows]]
 id = "G22_empty_registry_step"

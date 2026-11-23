@@ -959,6 +959,11 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
     )
 
 
+def _genre_flag(genre: str) -> str:
+    """``--genre GENRE`` quoted as a shell reads it, for a command a hint prints (U341)."""
+    return shlex.join(["--genre", genre])
+
+
 def _which(genre: str | None) -> str:
     """The labels a walk covers, in words: every followed label, or one genre's (U341)."""
     return "the followed labels" if genre is None else f"the labels of genre {genre!r}"
@@ -1170,8 +1175,7 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
     # ONLY WHILE THE GROUP STANDS: a ``stop`` on its last label dissolved it.
     standing = entry.genre is not None and labels.RegistryStore().load().of_genre(entry.genre)
     group = "" if not standing else (
-        f", or within this label's genre: crate label sync --next --genre "
-        f"{shlex.quote(str(entry.genre))}"
+        f", or within this label's genre: crate label sync --next {_genre_flag(str(entry.genre))}"
     )
     return review_common.ended(ctx, [
         _answer_check(answered),
@@ -1235,7 +1239,7 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
 def _unanswerable(
     entry: labels.LabelEntry, answered: Sequence[Answered], exc, genre: str | None = None
 ) -> CratekitError:
-    again = "label sync" if genre is None else f"label sync --genre {shlex.quote(genre)}"
+    again = "label sync" if genre is None else f"label sync {_genre_flag(genre)}"
     return _refusal(
         "label-sync-unanswerable",
         f"the question about {entry.name!r} could not be answered at this "
@@ -1292,7 +1296,7 @@ def _walk(
             answered.append(result)
             seen.append({"label_id": entry.label_id, "state": "answered"})
             checks.append(_answer_check(result))
-    again = "label sync" if named is None else f"label sync --genre {shlex.quote(named)}"
+    again = "label sync" if named is None else f"label sync {_genre_flag(named)}"
     went = f"; stopped at {stopped_at}, run {again} again to go on" if stopped_at else (
         "; every label is answered" if named is None
         else f"; every label of genre {named!r} is answered"
