@@ -1,15 +1,8 @@
 """One synthesizer for a real audio container, shared by every suite that needs one.
 
-A second synthesizer would be a second opinion about what a valid file is, and
-the tag suite's opinion is the one the tag reader is proven against. So there is
-one, and it lives here rather than inside a test module.
-
-WHY NOT ``from tests.test_tags import _synth``. That binding reached across test
-modules for a private name, which is a coupling nothing declares, and importing a
-test module runs its top-level code as a side effect of an unrelated suite. The
-tag suite's top level builds a container table and a field table; none of that is
-wrong, and none of it is any business of the match suite. A helper module has no
-top level worth running and no tests to collect.
+One opinion about what a valid file is, the one the tag reader is proven
+against, held in a helper module so no suite imports another test module's
+private name and runs its top level.
 """
 
 from __future__ import annotations
@@ -51,12 +44,7 @@ def synth_container(tmp_path: Path, suffix: str) -> Path:
 
 
 def tagged_container(tmp_path: Path, target: Path, **fields: str) -> Path:
-    """A real container at ``target`` carrying ``fields`` as its tags.
-
-    One synthesizer, one tag writer, one copy. Three tests had written this
-    sequence by hand with three signatures, and the point of this module is that
-    there is one opinion about what a valid file is.
-    """
+    """A real container at ``target`` carrying ``fields`` as its tags."""
     from cratekit.core import tags
 
     probe = synth_container(tmp_path, target.suffix)

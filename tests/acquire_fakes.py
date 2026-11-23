@@ -1,17 +1,10 @@
 """A fake acquisition adapter the worker's suite owns, and the audio it lands.
 
-The acquisition worker constructs its adapter through ``cratekit.acquire.build``
-by the name the frozen configuration holds, so the fake is REGISTERED under a
-name rather than patched over the call: a test that replaced ``build`` would be
-a test of nothing this unit added. Registering it drives ``load`` and ``build``
-for real, and every network touch in the suite lands here instead.
-
-What the fake lands is REAL AUDIO by container, because the worker checks the
-landed file's codec through mutagen and a file of junk bytes reads as
-unreadable, which is a different answer from lossy. ``wav_bytes`` is a valid
-RIFF WAVE the standard library writes, which mutagen reads as lossless;
-``mp3_bytes`` is four valid MPEG-1 layer III frame headers, which it reads as
-lossy. Both were measured through ``vendored.codec_of`` before this was written.
+The fake is REGISTERED by name, so ``load`` and ``build`` run for real and
+every network touch lands here. It lands REAL AUDIO, since the worker reads
+the codec through mutagen: ``wav_bytes`` is a stdlib RIFF WAVE (lossless),
+``mp3_bytes`` four MPEG-1 layer III frame headers (lossy), both measured
+through ``vendored.codec_of``.
 
 Not a test module: pytest does not collect it.
 """
@@ -81,11 +74,8 @@ class Landing:
     #: ``fetch_raises_times`` bounds it, so a rate limit can be made to clear.
     fetch_raises: BaseException | None = None
     fetch_raises_times: int | None = None
-    #: SKIP RATHER THAN WRITE when a file is already at the landing name, which
-    #: is what the wrapped tool does: it reports a skip as a successful call
-    #: carrying a path, the shape the vendoring notes are written about. A fake
-    #: that always writes overwrites whatever a killed attempt left behind, and
-    #: a test over stale staging then passes whether or not anything cleared it.
+    #: SKIP RATHER THAN WRITE when a file is at the landing name, as the wrapped
+    #: tool does, so stale staging a killed attempt left is never overwritten.
     skips_when_present: bool = False
 
 

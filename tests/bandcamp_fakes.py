@@ -1,11 +1,8 @@
 """A Bandcamp account in memory, answering the client's three requests (U176).
 
-Every address the fake serves is shaped like the real one, and every signed
-part of it carries ``SIGNED`` so a test can look for it anywhere it must not
-be. The session is ``COOKIE``, whose identity value carries ``IDENTITYVALUE``
-for the same reason. NOTHING HERE REACHES A NETWORK.
-
-D1 applies. No real person, seller or release is named.
+Addresses are shaped like the real ones; signed parts carry ``SIGNED`` and
+the session ``COOKIE`` with ``IDENTITYVALUE``, so a test can look for them
+where they must not be. Nothing reaches a network, and D1 applies.
 """
 
 from __future__ import annotations
@@ -85,9 +82,8 @@ def archive(files: Mapping[str, bytes]) -> bytes:
 class FakeAccount:
     """The account: a collection, hidden purchases, and one archive per release.
 
-    ``page_size`` splits the collection into pages the way the endpoint does, so
-    a collection of four purchases at two a page is three requests, the last
-    one answering an empty page.
+    ``page_size`` pages the collection as the endpoint does: four purchases at
+    two a page is three requests, the last empty.
     """
 
     def __init__(

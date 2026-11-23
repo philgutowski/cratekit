@@ -1,28 +1,16 @@
 """A throwaway suite in which a test queued behind a busy worker has to move.
 
-U251 runs the suite with ``--dist worksteal``: a worker that runs out of tests
-takes half of the queue of the busiest one. The mutation driver and the Linux
-battery both read a run's failures and counts, so each has to read a run in
-which tests really moved between workers, and a fixture of fast tests may
-finish before any worker goes idle and so never steals at all.
+U251 runs the suite with ``--dist worksteal``, and the mutation driver and
+the Linux battery must read a run where tests really moved. Here
+``tests/test_first.py`` opens with a test that holds its worker until a test
+queued behind it in the same file has run on the other worker, which only a
+steal can do; it gives up after a minute and fails, so a run with no move is
+red. A steal takes the queue's TAIL, and the last queued test fails on
+purpose, so the failure to report ran on a worker it was not first given.
 
-This suite cannot finish without a move. ``tests/test_first.py`` opens with a
-test that holds its worker until one of the tests queued behind it in the same
-file has run on another worker. Work stealing hands each of two workers half of
-the collection in order, so all of ``test_first.py`` starts on one worker, and
-the only way one of its queued tests reaches the other is a steal; the holding
-test gives up after a minute and fails, so a run that never moved anything is
-red rather than slow and green. A steal takes the TAIL of the busy worker's
-queue, and the last queued test fails on purpose, so the one failure a reader
-must report is a test that ran on a worker it was not first given to.
-
-The suite's ``addopts`` are the repository's own with the worker count set to
-two, so it runs under whatever distribution ``pyproject.toml`` names. Every
-test records the worker it ran on in the directory ``LOG_VARIABLE`` names.
-
-Under xdist's default distribution a queued test usually moves too, but not
-every time, so a run of this suite does not tell the two distributions apart;
-the two pins in ``tests/test_suite_distribution.py`` are what hold the option.
+``addopts`` are the repository's own with two workers; every test records its
+worker in the directory ``LOG_VARIABLE`` names. The default distribution
+usually moves a test too, so ``tests/test_suite_distribution.py`` pins the option.
 """
 
 from __future__ import annotations
@@ -133,12 +121,7 @@ def repository_addopts(root: Path = REPO_ROOT) -> list[str]:
 
 
 def two_worker_addopts() -> list[str]:
-    """The repository's ``addopts`` with its worker count set to two.
-
-    Two, not ``auto``: the split this suite relies on is halves, and a run of
-    sixteen tests across every core of a large machine would spend its time
-    starting workers.
-    """
+    """The repository's ``addopts`` with two workers, the halves this suite relies on."""
     tokens = repository_addopts()
     for index, token in enumerate(tokens):
         if token in ("-n", "--numprocesses") and index + 1 < len(tokens):
