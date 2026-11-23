@@ -10,9 +10,11 @@ from __future__ import annotations
 import dataclasses
 import functools
 import hashlib
+import re
 import shutil
 import socket
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -909,10 +911,21 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
     return kept
 
 
-def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[str, list[tuple]], gone: set[str]) -> dict:
-    """``tables`` with each removed membership's playlist renumbered 1 to N (R-1830, A197)."""
+def _closed_up(
+    tables: dict[str, list[tuple]],
+    cfg: config.Config,
+    before: dict[str, list[tuple]],
+    gone: set[str],
+    stamp: tuple[int, str],
+) -> dict:
+    """``tables`` with each removed membership's playlist renumbered 1 to N (R-1830, A197).
+
+    Each row that moves is stamped with ``stamp``, the update count and the time,
+    as rekordbox stamps it (U955, A202); a row that keeps its place is untouched.
+    """
     columns = _columns_of(cfg, "djmdSongPlaylist")
     pid, cid, number = (columns.index(name) for name in ("PlaylistID", "ContentID", "TrackNo"))
+    usn, at = columns.index("rb_local_usn"), columns.index("updated_at")
     by_playlist: dict[str, list[tuple]] = {}
     for row in before["djmdSongPlaylist"]:
         by_playlist.setdefault(str(row[pid]), []).append(row)
@@ -923,8 +936,10 @@ def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[
     for key, rows in by_playlist.items():
         survivors = sorted((row for row in rows if str(row[cid]) not in gone), key=lambda row: int(row[number]))
         for place, row in enumerate(survivors, start=1):
-            if key in touched:
-                row = (*row[:number], place, *row[number + 1 :])
+            if key in touched and int(row[number]) != place:
+                moved = list(row)
+                moved[number], moved[usn], moved[at] = place, stamp[0], stamp[1]
+                row = tuple(moved)
             kept.append(row)
     return {**tables, "djmdSongPlaylist": sorted(kept, key=repr)}
 
@@ -932,6 +947,34 @@ def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[
 def _counter(cfg: config.Config) -> int:
     ((value,),) = _query(cfg, "SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount'")
     return int(value)
+
+
+#: rekordbox's own text form of a time, which a renumbered row's ``updated_at`` takes (U955).
+_STAMP_FORM = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \+00:00")
+
+
+def _stamp_read(cfg: config.Config, before: dict[str, list[tuple]]) -> tuple[int, str]:
+    """The stamp a removal put on the rows it renumbered, read from SQL: one count, one time."""
+    columns = _columns_of(cfg, "djmdSongPlaylist")
+    key, number = columns.index("ID"), columns.index("TrackNo")
+    was = {row[key]: row[number] for row in before["djmdSongPlaylist"]}
+    stamps = {
+        (row[columns.index("rb_local_usn")], row[columns.index("updated_at")])
+        for row in _every_table(cfg)["djmdSongPlaylist"]
+        if row[key] in was and row[number] != was[row[key]]
+    }
+    assert len(stamps) == 1, stamps
+    ((counter, at),) = stamps
+    assert counter == _counter(cfg), (counter, _counter(cfg))
+    assert _STAMP_FORM.fullmatch(at), at
+    return int(counter), str(at)
+
+
+def _not_before(at: str, moment: datetime) -> bool:
+    """Whether the stamp ``at`` is no earlier than ``moment`` cut to rekordbox's milliseconds."""
+    stamped = rb_writer.stamp_moment(at)
+    assert stamped is not None, at
+    return stamped >= moment.replace(microsecond=moment.microsecond // 1000 * 1000)
 
 
 def _apply() -> tuple[int, dict, dict]:
@@ -980,6 +1023,7 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     playlists = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
     before = _every_table(cfg)
     counted = _counter(cfg)
+    planned = datetime.now(timezone.utc)
     music = Path(_query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", offered)[0][0])
     size = music.stat().st_size
 
@@ -997,10 +1041,14 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     (applied,) = [one for one in acted["warnings"] if one["code"] == removed_cli.APPLIED]
     assert "7 playlist membership(s) after them renumbered" in applied["message"], applied
     after = _every_table(cfg)
-    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
+    # One count and one time on every renumbered row: the count the commit
+    # left, and the removal's time in rekordbox's form (U955).
+    stamp = _stamp_read(cfg, before)
+    assert _not_before(stamp[1], planned), stamp
+    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
     # Read from SQL: the offered row and every row naming it are gone, later
-    # members are numbered down with no other column moved (R-1830), and only
-    # the update count moved besides.
+    # members are numbered down and stamped with no other column moved
+    # (R-1830, U955), and only the update count moved besides.
     registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
     for name in sorted(set(expected) | set(after)):
         if name == "agentRegistry":
@@ -1622,24 +1670,33 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     offered = _row(cfg, "New1")
     before = _every_table(cfg)
-    (third,) = _query(
-        cfg,
-        "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = 3",
-        mine,
+    first, third = (
+        _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = ?", mine, place)[0]
+        for place in (1, 3)
     )
+    planned = datetime.now(timezone.utc)
 
     removal = _remove(cfg, "New1")
 
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
-    # The renumbered row keeps every column but TrackNo, no updated_at or
-    # rb_local_usn, as rekordbox left it.
+    # The renumbered row moves three columns, as rekordbox moved them (A202):
+    # TrackNo, rb_local_usn to the count the commit left, and updated_at to the
+    # removal's time. Every other column stays, and the row before it moves
+    # in none.
     columns = _columns_of(cfg, "djmdSongPlaylist")
     (now,) = _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", third[0])
-    at = columns.index("TrackNo")
-    assert now[at] == 2
-    assert now[:at] + now[at + 1 :] == third[:at] + third[at + 1 :]
+    moving = {columns.index(name) for name in ("TrackNo", "rb_local_usn", "updated_at")}
+    assert now[columns.index("TrackNo")] == 2
+    assert now[columns.index("rb_local_usn")] == _counter(cfg) == removal.stamp.counter
+    assert now[columns.index("rb_local_usn")] != third[columns.index("rb_local_usn")]
+    assert now[columns.index("updated_at")] == removal.stamp.at
+    assert _STAMP_FORM.fullmatch(removal.stamp.at) and _not_before(removal.stamp.at, planned)
+    assert [v for i, v in enumerate(now) if i not in moving] == [v for i, v in enumerate(third) if i not in moving]
+    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", first[0]) == [first]
     after = _every_table(cfg)
-    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
+    stamp = (removal.stamp.counter, removal.stamp.at)
+    assert _stamp_read(cfg, before) == stamp
+    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
     registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
     for name in sorted(set(expected) | set(after)):
         if name == "agentRegistry":
@@ -1726,8 +1783,8 @@ def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_w
     before = _every_table(cfg)
     real = rb_writer.renumber_memberships
 
-    def and_another(db, moved):
-        real(db, moved)
+    def and_another(db, moved, **kwargs):
+        real(db, moved, **kwargs)
         from sqlalchemy import text
 
         db.session.execute(
@@ -1831,16 +1888,23 @@ def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_member
     assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", mine) == kept
 
 
-def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(one_offered):
+def test_renumbering_writes_the_three_columns_and_a_held_row_reads_them(one_offered):
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "Held2")
     handle = _handle(cfg)
     try:
         held = [song for song in handle.get_playlist_songs(PlaylistID=mine) if int(song.TrackNo) == 2]
         (song,) = held
-        rb_writer.renumber_memberships(handle, {str(song.ID): (mine, 2, 1)})
-        # The mapped object the session held reads the number SQL now holds.
+        stamp = rb_writer.RenumberingStamp(4242, "2031-01-02 03:04:05.006 +00:00")
+        rb_writer.renumber_memberships(handle, {str(song.ID): (mine, 2, 1)}, stamp=stamp)
+        # The mapped object the session held reads what SQL now holds.
         assert int(song.TrackNo) == 1
+        assert int(song.rb_local_usn) == 4242
+        from sqlalchemy import text
+
+        assert handle.session.execute(
+            text("SELECT updated_at FROM djmdSongPlaylist WHERE ID = :key"), {"key": str(song.ID)}
+        ).scalar() == stamp.at
         handle.rollback()
     finally:
         rb_writer.close_db(handle)
@@ -1872,3 +1936,134 @@ def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_wri
     finally:
         rb_writer.close_db(handle)
     assert _every_table(cfg) == before
+
+
+# The stamp on each renumbered row, as rekordbox's own removal writes it (U955, A202)
+
+
+def _left_unstamped(cfg: config.Config, monkeypatch, statement: str, *params) -> dict:
+    """The renumbering made, then ``statement`` run on the same handle; returns the tables before."""
+    real = rb_writer.renumber_memberships
+
+    def and_then(db, moved, **kwargs):
+        real(db, moved, **kwargs)
+        from sqlalchemy import text
+
+        db.session.execute(text(statement), _named(params))
+
+    monkeypatch.setattr(rb_writer, "renumber_memberships", and_then)
+    return _every_table(cfg)
+
+
+def _named(params: tuple) -> dict:
+    return {f"p{at}": value for at, value in enumerate(params)}
+
+
+def _refused_with_nothing_written(cfg: config.Config, before: dict, title: str, match: str) -> None:
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, title)])
+        with pytest.raises(rb_writer.RekordboxUnavailable, match=match):
+            removal.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _every_table(cfg) == before
+
+
+@pytest.mark.parametrize(
+    ("statement", "match"),
+    [
+        # rb_local_usn put back as it was: unmoved, refused.
+        (
+            "UPDATE djmdSongPlaylist SET rb_local_usn = :p1 WHERE ID = :p0",
+            "was to be stamped rb_local_usn",
+        ),
+        # updated_at put back as it was: unmoved, refused.
+        (
+            "UPDATE djmdSongPlaylist SET updated_at = :p2 WHERE ID = :p0",
+            "was to be stamped updated_at",
+        ),
+        # A fourth column moving on the renumbered row, refused.
+        (
+            "UPDATE djmdSongPlaylist SET UUID = 'moved-' || UUID WHERE ID = :p0",
+            "other than TrackNo, rb_local_usn and updated_at",
+        ),
+    ],
+    ids=["usn-unmoved", "time-unmoved", "uuid-moved"],
+)
+def test_a_renumbered_row_not_stamped_as_rekordbox_stamps_it_is_refused_and_rolled_back(
+    one_offered, monkeypatch, statement, match
+):
+    cfg = one_offered
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    (third,) = _query(
+        cfg, "SELECT ID, rb_local_usn, updated_at FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = 3", mine
+    )
+    before = _left_unstamped(cfg, monkeypatch, statement, *third)
+    _refused_with_nothing_written(cfg, before, "New1", match)
+
+
+def test_an_unplanned_membership_whose_count_moves_is_refused(one_offered, monkeypatch):
+    """The members before a removed one, and every other playlist, move in no column."""
+    cfg = one_offered
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    (first,) = _query(cfg, "SELECT ID FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = 1", mine)
+    before = _left_unstamped(
+        cfg, monkeypatch, "UPDATE djmdSongPlaylist SET rb_local_usn = 1 + coalesce(rb_local_usn, 0) WHERE ID = :p0", first[0]
+    )
+    _refused_with_nothing_written(cfg, before, "New1", f"{first[0]}' changed")
+
+
+def test_two_removed_before_a_survivor_move_it_two_places_stamped_once(one_offered):
+    cfg = one_offered
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "New2", "Held2")
+    (last,) = _query(cfg, "SELECT ID FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = 4", mine)
+
+    removal = _remove(cfg, "New1", "New2")
+
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
+    assert removal.renumbered[str(last[0])] == (mine, 4, 2)
+    # One UPDATE, one stamp: the count the whole removal's commit left.
+    assert _query(cfg, "SELECT rb_local_usn, updated_at FROM djmdSongPlaylist WHERE ID = ?", last[0]) == [
+        (_counter(cfg), removal.stamp.at)
+    ]
+
+
+def test_the_stamp_is_the_count_the_binding_s_commit_leaves(one_offered):
+    """Read off the binding's buffer before the commit, and equal to the count after it."""
+    cfg = one_offered
+    _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    counted = _counter(cfg)
+    removal = _remove(cfg, "New1")
+    assert removal.stamp.counter == _counter(cfg) > counted
+    # One step per row the binding deleted, and none for the renumbering's SQL.
+    assert removal.stamp.counter - counted == sum(removal.deleted.values())
+
+
+def test_a_buffer_grown_after_the_stamp_is_refused_before_the_commit(one_offered, monkeypatch):
+    """The confinement reads the count the commit would leave again, and refuses a different one."""
+    cfg = one_offered
+    _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    real = rb_writer.renumber_memberships
+
+    def and_one_more(db, moved, **kwargs):
+        real(db, moved, **kwargs)
+        db.registry.on_move([])
+
+    monkeypatch.setattr(rb_writer, "renumber_memberships", and_one_more)
+    before = _every_table(cfg)
+    _refused_with_nothing_written(cfg, before, "New1", "the commit would leave localUpdateCount")
+
+
+def test_a_read_back_refuses_a_count_the_stamp_does_not_name(one_offered, monkeypatch):
+    cfg = one_offered
+    _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
+        removal.commit()
+        assert removal.read_back() == []
+        removal.stamp = dataclasses.replace(removal.stamp, counter=removal.stamp.counter - 1)
+        assert any("after the commit" in line for line in removal.read_back())
+    finally:
+        rb_writer.close_db(handle)
