@@ -1535,17 +1535,19 @@ def test_a_disposition_is_not_lost_under_concurrency(cfg):
 def test_every_coupled_entry_declares_what_leaves_the_coupled_set(cfg):
     """P4: the literal is parsed, since a default makes "decided nothing" and
     "nobody decided" identical at run time."""
-    source = Path(config.__file__).read_text()
+    # The module that defines the inventory, wherever it lives (U299 moved it
+    # out of config.py), and the entry constructor it is written with.
+    source = Path(inspect.getsourcefile(config.coupled_state_files)).read_text()
     tree = ast.parse(source)
     coupled = {entry.key for entry in config.coupled_state_files()}
     declared: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if not (isinstance(node.func, ast.Name) and node.func.id == "StateFile"):
+        if not (isinstance(node.func, ast.Name) and node.func.id in ("StateFile", "_library")):
             continue
         fields = {keyword.arg: keyword.value for keyword in node.keywords}
-        key = fields.get("key")
+        key = fields.get("key") or (node.args[0] if node.args else None)
         if not isinstance(key, ast.Constant) or key.value not in coupled:
             continue
         assert "rollback_effects" in fields, (

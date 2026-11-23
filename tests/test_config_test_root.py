@@ -1,22 +1,14 @@
 """R-926: under pytest, a state writer refuses a path outside the test root.
 
-On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote a pytest
-library into the real ``config.toml``. The conftest that redirects HOME, the
-XDG variables and ``CRATEKIT_CONFIG_DIR`` never loaded for it, so the
-environment said "the real machine" and the writer believed it. The guard these
-tests pin reads no environment variable: it asks whether pytest is loaded and
-whether the resolved target sits under the root the isolation registered.
+On 2026-10-08 a probe run from outside ``tests/`` wrote a pytest library into
+the real ``config.toml``: the redirecting conftest never loaded. The guard reads
+no environment variable; it asks whether pytest is loaded and whether the
+resolved target sits under the root the isolation registered.
 
-Removing the isolation is simulated by clearing ``config._TEST_WRITE_ROOT``,
-which is the one thing the conftest's absence leaves behind that the guard
-reads. The redirected environment stays in place, so a refusal here can only
-come from the guard and never from a write that happened to land somewhere
-harmless.
-
-The configuration document is held to the test root alone. The two primitives
-every other state writer uses, ``atomic_write_bytes`` and ``exclusive_lock``,
-also accept the system temporary directory, where shipped code keeps scratch
-files of its own, and nothing else.
+Removing the isolation is simulated by clearing ``config._TEST_WRITE_ROOT`` with
+the redirected environment left in place, so a refusal can only come from the
+guard. The configuration is held to the test root alone; ``atomic_write_bytes``
+and ``exclusive_lock`` also accept the system temporary directory.
 """
 
 from __future__ import annotations
@@ -32,17 +24,10 @@ import tomli_w
 
 from cratekit.core import config
 from tests.test_config_update import document_for
+from tests.test_config_update import library as library  # noqa: PLC0414
 
 #: A path no machine running this suite has, outside every temporary root.
 OUTSIDE = Path(os.sep, "cratekit-r926-outside-every-test-root")
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
 
 
 @pytest.fixture
@@ -134,41 +119,31 @@ def test_a_path_resolution_that_leaves_the_root_is_refused(library, monkeypatch)
     assert not OUTSIDE.exists()
 
 
-def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated):
+#: The state writers besides the configuration. U254's synced append never
+#: creates a file, so a refusal from ``os.open`` would be a FileNotFoundError
+#: and say nothing about the guard.
+STATE_WRITERS = pytest.mark.parametrize(
+    "write",
+    [lambda target: config.atomic_write_bytes(b"{}", target),
+     lambda target: config.append_durable_bytes(b"{}\n", target)],
+    ids=["atomic-write", "durable-append"],
+)
+
+
+@STATE_WRITERS
+def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated, write):
     target = OUTSIDE / "ledger.json"
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.atomic_write_bytes(b"{}", target)
+        write(target)
     assert str(target) in str(refused.value)
     assert "no test root is registered" in str(refused.value)
     assert not OUTSIDE.exists()
 
 
-def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place():
-    target = OUTSIDE / "ledger.json"
+@STATE_WRITERS
+def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place(write):
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.atomic_write_bytes(b"{}", target)
-    assert "outside the test root" in str(refused.value)
-    assert not OUTSIDE.exists()
-
-
-def test_an_append_outside_every_temporary_folder_is_refused(unisolated):
-    """U254's synced append is a state writer like the other two, and refuses alike.
-
-    Refused by the guard, not by the missing file: the append never creates a
-    file, so a refusal that came from ``os.open`` would be a ``FileNotFoundError``
-    and would say nothing about the guard.
-    """
-    target = OUTSIDE / "ledger.json"
-    with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.append_durable_bytes(b"{}\n", target)
-    assert str(target) in str(refused.value)
-    assert "no test root is registered" in str(refused.value)
-    assert not OUTSIDE.exists()
-
-
-def test_an_append_outside_the_root_is_refused_with_the_isolation_in_place():
-    with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.append_durable_bytes(b"{}\n", OUTSIDE / "ledger.json")
+        write(OUTSIDE / "ledger.json")
     assert "outside the test root" in str(refused.value)
     assert not OUTSIDE.exists()
 
@@ -216,11 +191,8 @@ def test_the_configuration_is_not_allowed_the_system_temporary_folder(library):
 
 
 def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path):
-    """The guard is inert for the shipped tool, which never imports pytest.
-
-    The child saves a real configuration with no root registered, so a check
-    that ran anyway, in the guard or anywhere on the write path, fails it.
-    """
+    """The guard is inert for the shipped tool, which never imports pytest: the
+    child saves with no root registered, so a check that ran anyway fails it."""
     target = tmp_path / "shipped" / "config.toml"
     probe = (
         "import sys\n"

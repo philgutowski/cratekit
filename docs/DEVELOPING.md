@@ -207,6 +207,23 @@ already had, through the config and writer suites that drove them before.
 | undo pending work on a handle after a failed write, never masking its cause | `write.trees.rollback_quietly(db)` |
 | the commit a content row write records | `write.row_defaults.record_commit` |
 
+## Config and the taxonomy, in parts
+
+`core.config` and `core.taxonomy` are each split into parts (U299), and every
+name a caller used stays importable from the module it always came from, which
+is the one to import from. `core.config_base` holds the schema version, the
+volume and template keys, the environment variables and the two installation
+directories;
+`core.state_files` the state inventory and its resolvers, so a new state entry
+is declared there; `core.config_schema` the section classes and `Config`; and
+`core.config_validate` validation and the environment overrides. `core.config`
+keeps the failure types, `from_dict`, migration, loading, saving and the
+durable write and lock helpers, because the suite patches those on `config`
+and they call each other. `core.taxonomy_model` holds the taxonomy's classes,
+`core.taxonomy_build` the build and its checks, and `core.taxonomy` the shipped
+templates and the loader. A test that patches a name patches it in the module
+whose code calls it.
+
 ## The guarded writer, the session and the restore, in parts
 
 `core/rb_writer.py`, `core/session.py` and `core/restore.py` are each split

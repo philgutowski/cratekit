@@ -2,7 +2,7 @@
 title: "A suppression rule must ask the question that decides the outcome, not the one that sounds equivalent"
 date: 2026-09-21
 category: workflow-issues
-module: "core/routing.py suggest_tag, core/taxonomy.py bucket_for_display, tagging/cli.py"
+module: "core/routing.py suggest_tag, core/taxonomy_model.py bucket_for_display, tagging/cli.py"
 problem_type: workflow_issue
 component: core_logic
 severity: medium

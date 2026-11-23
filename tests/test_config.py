@@ -1,30 +1,25 @@
 """U2: the config schema, the two state roots, profiles, and credentials.
 
-Four things are being proved here, and they fail in four different ways:
+Four things are proved here, each failing a different way:
 
-1. **Validation names every missing key**, not the first. The failure this
-   prevents is a first-run wizard that costs one round trip per missing value.
-2. **Every state file has exactly one root, and the right one.** This is the
-   heart of the unit. The tests below audit the whole inventory rather than
-   spot-checking it, because a state file assigned to the wrong root fails only
-   on a second install, a reinstall, or during the migration overlap: three
-   situations nobody is in while they are writing the code.
-3. **Nothing snapshots config at import time.** The source system has seventeen
-   modules that bind a state path at their own import, so half the package tracks
-   a reload and half does not, silently, forever. The lint here makes that shape
-   impossible to introduce rather than something to remember.
-4. **A credential failure says which of three things went wrong.** A missing
-   credential and a rejected one need opposite remediations.
+1. **Validation names every missing key**, not the first, so a first run
+   wizard costs one round trip rather than one per missing value.
+2. **Every state file has exactly one root, and the right one.** The inventory
+   is audited whole, because a file on the wrong root fails only on a second
+   install, a reinstall or the migration overlap.
+3. **Nothing snapshots config at import time.** The lint makes the source
+   system's import time path binding impossible to introduce.
+4. **A credential failure says which of three things went wrong**, since a
+   missing credential and a rejected one need opposite remediations.
 
-The checkers follow the house style set by ``test_layering.py``: pure functions
-over source text, fixture tests proving each rule bites against a synthetic
-input, then one test running the checker over the real package. That order
-matters most when the package is small, which it still is.
+The checkers follow ``test_layering.py``: pure functions over source text,
+fixture tests proving each rule bites, then one run over the real package.
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import json
 import os
 import re
@@ -32,6 +27,8 @@ import stat
 import subprocess
 import sys
 import tomllib
+import unicodedata
+from collections import deque
 from pathlib import Path
 
 import keyring
@@ -48,20 +45,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+@functools.cache
+def parsed(source: str) -> ast.Module:
+    """``ast.parse``, once per text in a process: guards here walk the whole package."""
+    return ast.parse(source)
 
 
 @pytest.fixture
 def library(tmp_path, monkeypatch):
-    """A synthetic library root, aligned with the suite's isolation fixture.
-
-    ``tests/conftest.py`` already points ``CRATEKIT_LIBRARY_ROOT`` at a temp
-    directory for every test. This re-points it at a per-test one and returns it,
-    so a test can write a config naming the same root the override will apply and
-    the two do not silently disagree.
-    """
+    """A per test library root, with the conftest override re-pointed at it to agree."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -89,18 +81,11 @@ def cfg(library):
     return config.from_dict(valid_data(library))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Scenario 1: validation names EVERY missing key
-# ═══════════════════════════════════════════════════════════════════════════
+# Validation names EVERY missing key.
 
 
 def test_a_config_missing_required_keys_names_each_one():
-    """The plan's first scenario. Note the assertion is on ALL of them.
-
-    Stopping at the first missing key turns one setup session into one round
-    trip per missing value, and a user who has to run the same command five times
-    to learn five facts stops reading the fifth message.
-    """
+    """All of them, not the first: one round trip per missing value loses the user."""
     with pytest.raises(config.ConfigInvalid) as excinfo:
         config.from_dict({})
 
@@ -131,24 +116,15 @@ def test_an_empty_string_counts_as_missing(library):
 
 
 def test_the_required_list_is_exactly_six_keys():
-    """Short by design: every other key is a decision the product can make.
-
-    Asserted rather than merely documented because "required" grows silently.
-    Each addition is one more question between a new user and a working install,
-    so it should be a decision somebody made in a diff.
-    """
+    """Asserted because "required" grows silently; each addition should be a diff."""
     assert len(config.REQUIRED_KEYS) == 6
 
 
-# ── R38: the volume identity key and its validation ──────────────────────────
+# R38: the volume identity key and its validation.
 
 
 def test_a_volume_identity_that_is_a_mount_path_is_rejected(library):
-    """R38 identifies a volume by RECORDED IDENTITY, never by where it mounts.
-
-    Recording the mount path passes the assertion for whatever drive happens to
-    mount there next, which is the exact failure the requirement names.
-    """
+    """R38 identifies a volume by recorded identity, never by where it mounts."""
     data = valid_data(library)
     data["library"]["volume_id"] = str(library)
     problems = config.validate(data)
@@ -156,21 +132,14 @@ def test_a_volume_identity_that_is_a_mount_path_is_rejected(library):
 
 
 def test_the_volume_identity_key_is_published_for_the_assertion_to_read():
-    """U31 implements the assertion; it must not spell the key itself.
-
-    A guard that hardcodes the name of the thing it guards stops guarding the day
-    that thing is renamed, and nothing fails to say so.
-    """
+    """U31 reads the key from here, so a rename cannot leave its guard behind."""
     assert config.VOLUME_IDENTITY_KEY == "library.volume_id"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Scenario 2: profiles toggle module membership and nothing else (D6)
-# ═══════════════════════════════════════════════════════════════════════════
+# Profiles toggle module membership and nothing else (D6).
 
 
 def test_a_profile_change_toggles_membership_without_touching_unrelated_keys(library):
-    """The plan's fourth scenario, asserted on the whole rest of the document."""
     data = valid_data(
         library,
         naming={"lossy_marker": "[LOSSY]"},
@@ -190,7 +159,6 @@ def test_a_profile_change_toggles_membership_without_touching_unrelated_keys(lib
 
 
 def test_an_explicit_toggle_overrides_the_profile_in_both_directions():
-    """Precedence is stated, not emergent: the explicit toggle wins."""
     added = profiles.resolve("slim", {"analysis": True})
     assert "analysis" in added.modules
     assert added.overridden == frozenset({"analysis"})
@@ -201,11 +169,7 @@ def test_an_explicit_toggle_overrides_the_profile_in_both_directions():
 
 
 def test_switching_profiles_preserves_the_users_own_toggles(library):
-    """A profile is a preset, not a reset.
-
-    Somebody who turned one module off meant it. Clearing overrides on a profile
-    switch would undo a decision the user made without ever saying so.
-    """
+    """A profile is a preset, not a reset: a module the user turned off stays off."""
     data = valid_data(library, modules={"desktop": False})
     after = profiles.apply(data, "full")
     assert after["modules"] == {"desktop": False}
@@ -213,13 +177,7 @@ def test_switching_profiles_preserves_the_users_own_toggles(library):
 
 
 def test_a_profile_change_returns_a_copy_the_caller_cannot_edit_backwards(library):
-    """"Touches module membership and nothing else" has to be true of the nested tables too.
-
-    A shallow copy hands back the caller's own sub-dictionaries, so the claim
-    holds for the returned document and breaks the moment anybody writes into one
-    of them: the input is edited at the same time, invisibly. The existing D6
-    scenario test compares for equality, which aliasing passes.
-    """
+    """A shallow copy aliases the nested tables, which an equality check passes."""
     data = valid_data(library, backup={"remote": "somewhere"})
 
     after = profiles.apply(data, "full")
@@ -251,12 +209,7 @@ def test_config_validation_rejects_an_unknown_module_toggle(library):
 
 
 def test_every_extras_group_names_a_real_module(library):
-    """KTD7: extras are named one-to-one with modules.
-
-    Read from ``pyproject.toml`` rather than mirrored by hand, for the reason the
-    CI dependency list already taught this repository: a hand-mirrored list is a
-    list that drifts, and the drift shows up as a guard that stopped guarding.
-    """
+    """KTD7: extras are one to one with modules, read from ``pyproject.toml`` so it cannot drift."""
     with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
         extras = tomllib.load(handle)["project"]["optional-dependencies"]
     declared = set(extras) - {"all", "dev"}
@@ -270,13 +223,10 @@ def test_a_module_without_a_heavy_dependency_reports_no_extras_group():
     assert profiles.install_command("favorites") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The two state roots (KTD21). The heart of the unit.
-# ═══════════════════════════════════════════════════════════════════════════
+# The two state roots (KTD21).
 
 
 def test_there_are_exactly_two_state_roots():
-    """Two, not three, not "and also this one place". KTD21 is a closed set."""
     assert set(config.StateRoot) == {config.StateRoot.INSTALLATION, config.StateRoot.LIBRARY}
 
 
@@ -296,11 +246,7 @@ def test_state_keys_are_unique():
 
 
 def test_no_two_state_entries_resolve_to_the_same_path(cfg):
-    """The structural form of "nothing straddles".
-
-    Two entries at one path is the same defect as one entry at two roots: one
-    writer silently overwrites the other, and which one wins depends on order.
-    """
+    """Two entries at one path is one writer silently overwriting the other."""
     seen: dict[Path, str] = {}
     for entry in config.STATE_FILES:
         if entry.medium is config.Medium.KEYCHAIN:
@@ -311,7 +257,6 @@ def test_no_two_state_entries_resolve_to_the_same_path(cfg):
 
 
 def test_installation_state_never_lands_under_the_library(cfg, library):
-    """The audit that makes "nothing straddles" checkable rather than asserted."""
     for entry in config.state_files_for(config.StateRoot.INSTALLATION):
         if entry.medium is config.Medium.KEYCHAIN:
             continue
@@ -333,31 +278,20 @@ def test_library_state_never_lands_under_the_installation_root(cfg):
         )
 
 
-# ── The audit the two tests above could not make: an entry must resolve where ──
-# ── the code that reads and writes it actually looks. ────────────────────────
+# An entry must resolve where the code that reads and writes it looks.
 
 
 @pytest.fixture
 def split_installation_dirs(monkeypatch, tmp_path):
-    """Force the two installation directories apart, and prove they are apart.
-
-    This fixture is the whole reason the audits below can see anything. On macOS
-    platformdirs returns ONE directory for both ``user_config_dir`` and
-    ``user_state_dir``, so an entry declared under the state directory while its
-    loader reads the config directory agrees by accident on the author's machine
-    and diverges on Linux. An audit run with the two coincident is an audit that
-    certifies the defect.
-    """
+    """Force the two installation directories apart; macOS platformdirs makes them one."""
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "installation-config"))
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "installation-state"))
     assert config.config_dir() != config.installation_state_dir()
     return tmp_path
 
 
-#: Every inventory entry that ALSO has a named accessor somewhere in the package,
-#: mapped to that accessor. An entry in this table is one where two pieces of code
-#: can disagree about a path, which is the only way "declared here, written there"
-#: can happen. The lint below keeps the table honest.
+#: Inventory entries that also have a named accessor, where two pieces of code
+#: can disagree about one path.
 _NAMED_ACCESSORS = {
     "config": lambda: config.config_path(),
     "credential_index": lambda: secrets._index_path(),
@@ -367,12 +301,7 @@ _NAMED_ACCESSORS = {
 def test_every_entry_with_a_named_accessor_resolves_to_the_same_path(
     split_installation_dirs,
 ):
-    """The audit that catches a declared root nothing writes to.
-
-    The two existing root audits only check that an installation entry does not
-    land under the library. Neither can see an entry that lands under the wrong
-    INSTALLATION directory, because both of those are outside the library.
-    """
+    """Catches an entry under the wrong installation directory, which the root audits cannot."""
     for key, accessor in _NAMED_ACCESSORS.items():
         assert config.state_path(key) == accessor(), (
             f"{key} is declared at {config.state_path(key)} but the code that "
@@ -384,14 +313,8 @@ def test_every_entry_with_a_named_accessor_resolves_to_the_same_path(
 def test_every_installation_entry_resolves_under_a_directory_the_module_names(
     split_installation_dirs,
 ):
-    """No installation entry may resolve outside the two directories that exist.
-
-    Stated positively rather than as "not under the library", so a third
-    directory invented by a future entry fails here instead of resolving to
-    somewhere nothing enumerates.
-    """
-    # The provider gate's own directory (U278) is the third, named by the
-    # module as ``provider_gate_dir`` and resolved by the inventory itself.
+    """Stated positively, so an invented directory fails here."""
+    # The provider gate's own directory (U278) is the third the module names.
     known = (config.config_dir(), config.installation_state_dir(), config.provider_gate_dir())
     for entry in config.state_files_for(config.StateRoot.INSTALLATION):
         if entry.medium is config.Medium.KEYCHAIN:
@@ -403,14 +326,8 @@ def test_every_installation_entry_resolves_under_a_directory_the_module_names(
         )
 
 
-#: Every function in the config module that hands out a directory under a state
-#: root. The lint below refuses a path composed onto any of them, so this set has
-#: to be COMPLETE: the first consumer of a new accessor is the first code the
-#: guard cannot see, and the library reorganization proved that by adding three
-#: accessors that the lint went on ignoring.
-#:
-#: Kept honest by ``test_the_composed_path_lint_covers_every_directory_accessor``
-#: rather than by remembering.
+#: Every config function handing out a directory under a state root. Must be
+#: complete, kept so by the export test below.
 _STATE_ROOT_ACCESSORS = {
     "config_dir",
     "installation_state_dir",
@@ -423,15 +340,9 @@ _STATE_ROOT_ACCESSORS = {
 
 
 def _paths_composed_from_a_state_root(source: str) -> list[str]:
-    """Return every expression that builds a path under a state root directly.
-
-    A module that composes ``installation_state_dir() / "something.json"`` for
-    itself has invented a state file the inventory does not know about, which is
-    the same defect as declaring one under the wrong root: nothing that walks
-    ``STATE_FILES`` will find it, back it up, or clear it.
-    """
+    """Every path built under a state root directly: a state file the inventory misses."""
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(parsed(source)):
         if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Div):
             continue
         left = node.left
@@ -440,32 +351,23 @@ def _paths_composed_from_a_state_root(source: str) -> list[str]:
     return found
 
 
-def test_the_composed_path_lint_catches_a_module_inventing_its_own_state_file():
-    source = 'from cratekit.core.config import installation_state_dir\n\ndef p():\n    return installation_state_dir() / "mine.json"\n'
-    assert _paths_composed_from_a_state_root(source)
-
-
 @pytest.mark.parametrize(
-    "accessor", ["library_coupled_dir", "library_history_dir", "library_local_dir"]
+    "source",
+    [
+        'from cratekit.core.config import installation_state_dir\n\ndef p():\n    return installation_state_dir() / "mine.json"\n',
+        'def p(cfg):\n    return library_coupled_dir(cfg) / "mine.json"\n',
+        'def p(cfg):\n    return library_history_dir(cfg) / "mine.json"\n',
+        'def p(cfg):\n    return library_local_dir(cfg) / "mine.json"\n',
+    ],
+    ids=["installation-state-dir", "library-coupled-dir", "library-history-dir", "library-local-dir"],
 )
-def test_the_composed_path_lint_catches_the_accessors_the_reorganization_added(accessor):
-    """The three the guard could not see, asserted one at a time.
-
-    These are documented as the handle the snapshot and restore units should
-    hold, which makes them the accessors most likely to have a path composed onto
-    them, and they were the ones the lint's name set left out.
-    """
-    source = f'def p(cfg):\n    return {accessor}(cfg) / "mine.json"\n'
+def test_the_composed_path_lint_catches_a_module_inventing_its_own_state_file(source):
+    """The last three are the accessors the reorganization added and the lint first missed."""
     assert _paths_composed_from_a_state_root(source)
 
 
 def test_the_composed_path_lint_covers_every_directory_accessor_the_module_exports():
-    """The guard's name set cannot fall behind the module it guards.
-
-    Widening the set by hand once fixes today. This makes the NEXT accessor fail
-    the build the moment it is exported, which is the difference between a guard
-    that was correct and a guard that stays correct.
-    """
+    """The next exported accessor fails the build rather than escaping the guard."""
     exported = {name for name in config.__all__ if name.endswith("_dir")}
     missing = exported - _STATE_ROOT_ACCESSORS
     assert not missing, (
@@ -475,24 +377,8 @@ def test_the_composed_path_lint_covers_every_directory_accessor_the_module_expor
     )
 
 
-def test_no_module_composes_its_own_path_under_a_state_root():
-    """Every path under a state root comes from ``state_path``, so it is declared.
-
-    ``config.py`` is excluded because it is the module that DEFINES the roots and
-    resolves the inventory; everywhere else, composing a root path by hand is how
-    a file ends up outside the audit.
-    """
-    offenders: list[str] = []
-    for path in sorted(SRC_ROOT.rglob("*.py")):
-        if path.relative_to(SRC_ROOT).as_posix() == "cratekit/core/config.py":
-            continue
-        for hit in _paths_composed_from_a_state_root(path.read_text()):
-            offenders.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
-    assert not offenders, (
-        "paths composed under a state root outside the inventory:\n"
-        + "\n".join(offenders)
-        + "\nDeclare the entry in config.STATE_FILES and resolve it with state_path()."
-    )
+#: The modules that define the roots and resolve the inventory over them.
+INVENTORY_MODULES = frozenset({"cratekit/core/config.py", "cratekit/core/state_files.py"})
 
 
 @pytest.mark.parametrize(
@@ -500,66 +386,33 @@ def test_no_module_composes_its_own_path_under_a_state_root():
     ["write_lock", "session_lock", "session_log", "snapshots", "favorites_state"],
 )
 def test_the_locks_the_log_and_the_snapshots_live_with_the_library(key, cfg, library):
-    """KTD17, R31, KTD21b, and the KTD21 headline, one assertion each.
-
-    Concretely: two installations means two lock files means zero mutual
-    exclusion against one database, and a restore that lives per installation
-    cannot roll back a write another machine made.
-    """
+    """KTD17, R31, KTD21b and KTD21: two installs must not mean two locks on one database."""
     assert config.state_file(key).root is config.StateRoot.LIBRARY
     assert library in config.state_path(key, cfg).parents
 
 
 def test_the_job_queue_stays_with_the_installation(cfg):
-    """KTD21 names it, and a detached job does belong to the machine running it.
-
-    The consequence is recorded on the entry itself: because the queue is per
-    install and the library is per config, a job record has to NAME the library
-    it targets, or a queue drained after the user reconfigures runs against the
-    wrong volume.
-    """
+    """A detached job belongs to the machine running it, so its record names its library."""
     entry = config.state_file("job_queue")
     assert entry.root is config.StateRoot.INSTALLATION
     assert "library it targets" in entry.why
-    # Resolvable with no config at all, which is what lets the queue be read on a
-    # machine whose library is not mounted.
+    # Resolvable with no config, so the queue reads with the library unmounted.
     assert config.state_path("job_queue") == config.installation_state_dir() / "jobs"
 
 
 def test_the_per_set_workspaces_resolve_from_configured_directory_names(cfg, library):
-    """The one entry composed from config values rather than a fixed relative path.
-
-    It is already correct by accident of location in the source system: the stage
-    artifacts sit beside the audio they describe. What must not survive the port
-    is the literal, since both directory names are user-configurable.
-
-    It resolves to a Cratekit-owned directory INSIDE the sets directory, never to
-    the sets directory itself. The sets directory holds the user's own recordings,
-    and an entry that names it puts hundreds of gigabytes of audio into every
-    generic pass over the inventory: the snapshot would try to copy it, a state
-    report would list the user's music as Cratekit state, and any future "clear
-    this library's state" built off the inventory would target user content.
-    """
+    """Inside the sets directory, never it: it holds the user's own recordings."""
     resolved = config.state_path("set_workspaces", cfg)
     sets_dir = library / cfg.library.music_dir / cfg.library.sets_dir
     assert resolved.parent == sets_dir
     assert resolved != sets_dir
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# KTD21b: the snapshot boundary is declared in the schema, not kept as a list
-# ═══════════════════════════════════════════════════════════════════════════
+# KTD21b: the snapshot boundary is declared in the schema, not kept as a list.
 
 
 def test_every_state_entry_declares_a_snapshot_role():
-    """The plan's top-ranked risk is the registry rolling back while the database does not.
-
-    Without a declared role per entry, U8 and U32 have to hand-maintain an
-    exclusion list against a flat directory. This repository already refuses that
-    shape for its CI dependency list and its extras table, for the same reason: a
-    hand-mirrored list drifts, and the drift shows up as a guard that stopped
-    guarding.
-    """
+    """Without a role per entry, U8 and U32 would hand keep an exclusion list that drifts."""
     for entry in config.STATE_FILES:
         assert entry.snapshot in config.SnapshotRole, (
             f"{entry.key} does not say whether a restore rolls it back"
@@ -567,14 +420,7 @@ def test_every_state_entry_declares_a_snapshot_role():
 
 
 def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
-    """Two failures, one assertion each, both silent.
-
-    A restore that replaces the directory holding a lock swaps the inode a live
-    advisory lock is held on, so mutual exclusion disappears mid-session with
-    nothing raised. A restore that replaces the snapshot store destroys the record
-    of which sessions are restorable, and capturing it nests every prior snapshot
-    inside the new one.
-    """
+    """A restored lock swaps the inode a live lock holds; a restored store nests snapshots."""
     coupled = {entry.key for entry in config.coupled_state_files()}
     for key in (
         "write_lock",
@@ -584,9 +430,7 @@ def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
         "session_log",
     ):
         assert key not in coupled, f"{key} must not roll back with the database"
-    # DERIVED as well as named (P3). The list above is the set that existed when
-    # this was written, and the inode argument applies to every lock this product
-    # ever adds, including the ones nobody has thought of yet.
+    # Derived as well as named (P3), so a lock added later is covered too.
     for entry in config.STATE_FILES:
         if any(part.startswith("lock") for part in entry.key.split("_")):
             assert entry.key not in coupled, (
@@ -596,46 +440,38 @@ def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
             )
 
 
-def test_the_snapshot_store_and_the_session_log_survive_a_rollback():
-    for key in ("snapshots", "session_log"):
-        assert config.state_file(key).snapshot is config.SnapshotRole.SURVIVES_ROLLBACK
+_SURVIVES = config.SnapshotRole.SURVIVES_ROLLBACK
+_NEVER = config.SnapshotRole.NEVER_RESTORED
+_COUPLED = config.SnapshotRole.COUPLED
 
 
-def test_the_undo_logs_are_never_rolled_back():
-    """Their own ``why`` says it: they hold the ONLY copy of an overwritten value.
-
-    The values they record were written to the user's files on disk. A database
-    restore does not roll those writes back, so rolling the log back discards the
-    only record of how to undo them. That is not a stale record, it is data loss.
-    """
-    for key in ("energy_undo_log", "genre_tag_undo_log"):
-        assert config.state_file(key).snapshot is config.SnapshotRole.NEVER_RESTORED
-
-
-def test_the_coupled_state_named_by_the_plan_rolls_back_with_the_database():
-    """R30 names these by name: registry, watermarks, tombstones, declines."""
-    for key in (
-        "tree_registry",
-        "label_watermarks",
-        "source_watermarks",
-        "deletion_watermark",
-        "tombstones",
-        "declines",
-        "taxonomy_active",
-        "favorites_state",
-        "rekordbox_db",
-    ):
-        assert config.state_file(key).snapshot is config.SnapshotRole.COUPLED, key
+@pytest.mark.parametrize(
+    "key, role",
+    [
+        ("snapshots", _SURVIVES),
+        ("session_log", _SURVIVES),
+        # The undo logs hold the only copy of a value overwritten on disk.
+        ("energy_undo_log", _NEVER),
+        ("genre_tag_undo_log", _NEVER),
+        # R30 names the coupled state by name.
+        ("tree_registry", _COUPLED),
+        ("label_watermarks", _COUPLED),
+        ("source_watermarks", _COUPLED),
+        ("deletion_watermark", _COUPLED),
+        ("tombstones", _COUPLED),
+        ("declines", _COUPLED),
+        ("taxonomy_active", _COUPLED),
+        ("favorites_state", _COUPLED),
+        ("rekordbox_db", _COUPLED),
+    ],
+    ids=lambda value: value if isinstance(value, str) else value.name.lower(),
+)
+def test_each_named_entry_carries_its_declared_snapshot_role(key, role):
+    assert config.state_file(key).snapshot is role, key
 
 
 def test_the_coupled_set_is_a_directory_boundary_rather_than_a_list(cfg):
-    """A snapshot is one directory plus the database, derived from the schema.
-
-    Both halves are asserted. Every coupled entry must sit inside a declared
-    snapshot source, and nothing that is NOT coupled may sit inside the coupled
-    directory, or a restore that replaces that directory would roll back an entry
-    the schema says must not roll back.
-    """
+    """Every coupled entry sits in a snapshot source, and nothing else sits in the coupled directory."""
     sources = config.snapshot_sources(cfg)
     coupled_dir = config.library_coupled_dir(cfg)
 
@@ -665,19 +501,11 @@ def test_the_snapshot_store_does_not_nest_inside_what_it_snapshots(cfg):
         assert source != store and source not in store.parents
 
 
-# ── The capture set is WAL-aware, because a database is not one file ─────────
+# The capture set is WAL aware, because a database is not one file.
 
 
 def test_the_capture_set_includes_the_databases_sqlite_sidecars(cfg):
-    """A U8 implementer who copies exactly these paths must not get a torn database.
-
-    SQLite in WAL mode keeps committed-but-uncheckpointed transactions in
-    ``<db>-wal``. A capture set naming only ``<db>`` produces a copy that opens
-    cleanly and is silently missing them, which is the worst shape a backup can
-    take. The source system captures the database and both sidecars as one
-    matched set; deriving that here is what stops U8 from re-deriving it as a
-    hand-kept companion list, which is the drift this schema exists to abolish.
-    """
+    """A capture of ``<db>`` alone opens cleanly and silently lacks the uncheckpointed ``-wal``."""
     sources = config.snapshot_sources(cfg)
     db = cfg.library.db_path
 
@@ -691,26 +519,17 @@ def test_the_capture_set_includes_the_databases_sqlite_sidecars(cfg):
 
 
 def test_the_sidecars_are_declared_on_the_entry_rather_than_listed_by_a_consumer():
-    """The set is derived, so it cannot drift from the entry it belongs to."""
     entry = config.state_file("rekordbox_db")
     assert entry.sidecars == config.SQLITE_SIDECARS
     assert [s.suffix for s in entry.sidecars] == ["-wal", "-shm"]
-    # Every other entry is a single file, and says so rather than defaulting into
-    # a shape nobody decided.
+    # Every other entry is a single file, and says so.
     for other in config.STATE_FILES:
         if other.key != "rekordbox_db":
             assert other.sidecars == ()
 
 
 def test_a_restore_writes_back_the_log_and_never_the_shared_memory_index(cfg):
-    """The source system's asymmetry, carried across as a declaration.
-
-    Its restore clears BOTH live sidecars first, so the engine cannot replay a
-    log belonging to the database that was just replaced, then copies the
-    snapshot's ``-wal`` and never its ``-shm``. The shared-memory index is
-    derived from the log, so putting a stale one back beside a fresh log hands
-    SQLite two disagreeing views of one database.
-    """
+    """A stale ``-shm`` beside a fresh log gives SQLite two views of one database."""
     db = cfg.library.db_path
     everything = config.sidecar_paths("rekordbox_db", cfg)
     restored = config.sidecar_paths("rekordbox_db", cfg, restored_only=True)
@@ -726,23 +545,11 @@ def test_an_entry_with_no_sidecars_resolves_to_no_sidecar_paths(cfg):
     assert config.sidecar_paths("tree_registry", cfg) == ()
 
 
-# ── Nothing yet holds the consumers to the derivation, so the register does ──
+# The consumers are held to the derivation by text guards.
 
 
 def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
-    """``snapshot_sources`` being correct is worth nothing if U8 ignores it.
-
-    ``coupled_state_files`` and ``snapshot_sources`` both assert in their own
-    docstrings that U8 and U32 never maintain a second copy of the set. Until
-    this guard is armed, nothing makes that true: U8 could land with a hand-typed
-    path list including or omitting the sidecars, and the build would stay green.
-    That is the same softening the application pin's own countdown already
-    closes, so it is closed the same way here.
-
-    Both halves are asserted. The module must REACH FOR the derivation, and it
-    must not carry a sidecar suffix of its own, because a literal ``-wal`` in the
-    capture unit is precisely the companion list this schema replaced.
-    """
+    """U8 must reach for ``snapshot_sources`` and type no sidecar suffix of its own."""
     import cratekit.core.snapshot as snapshot  # noqa: PLC0415
 
     source = Path(snapshot.__file__).read_text()
@@ -757,27 +564,7 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
 
 
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
-    """The symmetric half, and the one the plan's top-ranked risk turns on.
-
-    A restore that replaces a set even slightly different from the captured one
-    is how the registry rolls back while the database does not. It must derive
-    the set, and it must get the sidecar asymmetry from the declaration rather
-    than from a suffix it typed.
-
-    WHAT THIS ACTUALLY PROVES, STATED SO NOBODY OVER-READS IT. It is a text search
-    over a source file, and both assertions are satisfied by a module whose entire
-    body is a docstring mentioning ``sidecar_paths`` and a ``run()`` that raises
-    ``NotImplementedError``. What it can see is a literal companion suffix typed
-    into this module, which is the specific regression it was written for and is
-    the one a reviewer reading a diff is most likely to miss. What it cannot see
-    is whether the derivation is USED, and nothing in this file can: that is
-    behaviour, and it is covered behaviourally in ``tests/test_restore.py``, where
-    a real restore is driven and the set it touches is compared against the
-    inventory by fingerprinting the whole library tree. The symmetric
-    ``core.snapshot`` guard above has the same form and the same limit. Two text
-    guards backed by behavioural coverage elsewhere is an acceptable arrangement;
-    two text guards presented as proof of behaviour would not be.
-    """
+    """A text search only; ``tests/test_restore.py`` drives whether the derivation is used."""
     # The restore and its parts (R-1890): the replacement moved to
     # ``restore_perform``, so a suffix typed there is the same regression.
     from tests._split_modules import source_of  # noqa: PLC0415
@@ -793,26 +580,15 @@ def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
 
 
 def test_a_library_scoped_entry_never_declares_an_installation_area():
-    """The field is read only for installation entries, so it must stay unset elsewhere.
-
-    A field that is set but unread is the shape that made ``at_library_root``
-    factually wrong on one entry and dead at the same time.
-    """
+    """The field is read only for installation entries, so it stays unset elsewhere."""
     for entry in config.state_files_for(config.StateRoot.LIBRARY):
         assert entry.installation_area is config.InstallationArea.STATE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The database is state too, and KTD21b needs it beside its coupled state
-# ═══════════════════════════════════════════════════════════════════════════
+# The database is state too, and KTD21b needs it beside its coupled state.
 
 
 def test_the_rekordbox_database_is_declared_library_scoped_state(cfg):
-    """It is the single most important piece of library-scoped state in the product.
-
-    An inventory that omits it looks complete while the thing every other entry
-    describes has no row.
-    """
     entry = config.state_file("rekordbox_db")
     assert entry.root is config.StateRoot.LIBRARY
     assert config.state_path("rekordbox_db", cfg) == cfg.library.db_path
@@ -821,14 +597,7 @@ def test_the_rekordbox_database_is_declared_library_scoped_state(cfg):
 def test_a_database_outside_the_library_root_refuses_until_it_is_acknowledged(
     library, tmp_path
 ):
-    """The default rekordbox install puts the database in the user's home directory.
-
-    The coupled state then sits on the music volume while the database sits on the
-    boot disk, so the atomic commit KTD21b requires spans two filesystems, where
-    no rename-based atomic commit exists. The plan's stated premise for the
-    decision, that the coupled state is a handful of small files beside the
-    database, is simply false for that install.
-    """
+    """A database on another filesystem has no rename based atomic commit with its coupled state."""
     data = valid_data(library)
     data["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
 
@@ -840,11 +609,7 @@ def test_a_database_outside_the_library_root_refuses_until_it_is_acknowledged(
 def test_an_acknowledged_database_outside_the_library_root_loads_and_says_so(
     library, tmp_path
 ):
-    """Permitted, but only as a recorded decision with the consequence attached.
-
-    The failure has to be visible at setup, when the user can still move the
-    database, rather than at the first snapshot, when they cannot.
-    """
+    """Permitted only as a recorded decision, visible at setup."""
     data = valid_data(library)
     data["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
     data["library"]["db_outside_root_acknowledged_on"] = "2026-08-01"
@@ -862,18 +627,7 @@ def test_a_database_beside_the_library_needs_no_acknowledgment(cfg):
 
 @pytest.mark.parametrize("value", ["no", "true", "yes", "1", "2026-13-99", "01-08-2026", "20260801"])
 def test_a_non_date_acknowledgment_does_not_switch_the_refusal_off(library, tmp_path, value):
-    """Accepting any non-empty string made ``no`` disable the rule it reads as enforcing.
-
-    The escape hatch records WHEN the non-atomic-snapshot consequence was
-    accepted, so the value has to be a real calendar date. Its sibling in the
-    same validator, ``library.volume_id``, is shape-checked for exactly this
-    reason: a merely truthy value passes a truthiness test while meaning nothing,
-    and here it silently disables a refusal.
-
-    Both problems are asserted. The shape is named, AND the containment refusal
-    still fires, because an acknowledgment nobody can parse is not an
-    acknowledgment.
-    """
+    """The acknowledgment records WHEN, so ``no`` must not disable the rule it reads as enforcing."""
     data = valid_data(library)
     data["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
     data["library"]["db_outside_root_acknowledged_on"] = value
@@ -885,34 +639,14 @@ def test_a_non_date_acknowledgment_does_not_switch_the_refusal_off(library, tmp_
 
 
 def test_a_malformed_acknowledgment_is_named_even_when_the_database_is_contained(cfg, library):
-    """A bad date is a defect in the file whether or not it is load-bearing today.
-
-    Naming it only when the database happens to sit elsewhere would hide it until
-    the day the user moves the database, which is the day they can least afford a
-    second surprise.
-    """
+    """A bad date is a defect whether or not it is load bearing today."""
     data = valid_data(library)
     data["library"]["db_outside_root_acknowledged_on"] = "someday"
     assert any(config.ACKNOWLEDGMENT_KEY in p for p in config.validate(data))
 
 
-# ── The layout of the library state directory, and what does NOT migrate it ──
-
-
 def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_another_one():
-    """A deferral recorded in code, with a countdown attached.
-
-    Library entries used to resolve into one flat directory and now resolve into
-    role subdirectories. Nothing reconciles an existing directory, and nothing
-    here can: ``MIGRATIONS`` is dict-to-dict by construction, which is what makes
-    "a failed migration leaves the original untouched" true rather than hoped
-    for, and that same purity makes it structurally unable to move a file.
-
-    At layout version 1 there is nothing to reconcile, because the subdirectories
-    were introduced before this package had any write path at all, so no build
-    has ever written another shape. The version constant is what makes that a
-    decision rather than an omission: bumping it without a mechanism fails here.
-    """
+    """A deferral with a countdown: dict to dict migrations cannot move a file."""
     assert config.LIBRARY_STATE_LAYOUT_VERSION == 1, (
         "the library state layout changed. Config migrations are dict-to-dict "
         "and cannot move a file, so the unit that changed it owns a one-time "
@@ -925,25 +659,7 @@ def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_ano
 def test_doctor_reports_a_database_that_sits_outside_the_library_root(
     library, tmp_path, monkeypatch
 ):
-    """ARMED by U27. The other half of the containment rule.
-
-    Refusing at load makes the consequence visible at setup, which is when the
-    user can still move the database. It does nothing about the install where
-    somebody accepted the consequence eighteen months ago and has since forgotten
-    that their snapshots are copies across two filesystems rather than atomic
-    commits. Doctor is the run that has to keep saying so, and it was registered
-    against U27 in the pending register rather than left as a hope in a docstring.
-
-    WRITTEN AS THE EVASION FAILED IT. The first version of this guard asked
-    whether any finding contained both "db_path" and "atomic", and the OK branch
-    of the very check under test says "library.db_path sits under library.root,
-    so a snapshot commits atomically with a rename": ``atomic`` is inside
-    ``atomically``, so a check that reported the CONTAINED answer unconditionally
-    passed this test against a database that is not contained. The assertion is
-    now on the finding for the key, on the status that means "outside", and on
-    the two paths and the acceptance date, none of which the OK branch can
-    produce.
-    """
+    """ARMED by U27. Asserted on what the OK branch cannot produce, not on "atomic"."""
     from cratekit.cli import doctor
 
     outside = tmp_path / "elsewhere" / "master.db"
@@ -971,6 +687,12 @@ def test_credentials_are_not_a_file_at_all(cfg):
             config.state_path(key, cfg)
 
 
+@pytest.mark.parametrize("key", ["job_queue", "held_plans", "session_log", "snapshots"])
+def test_a_directory_entry_is_declared_a_directory_under_either_root(key):
+    """The medium each entry constructor passes through (U299), one per root and two each."""
+    assert config.state_file(key).medium is config.Medium.DIRECTORY
+
+
 def test_resolving_a_library_scoped_entry_without_a_config_refuses():
     """No silent fallback to the installation root. That fallback IS the bug."""
     with pytest.raises(ValueError, match="library-scoped"):
@@ -980,9 +702,6 @@ def test_resolving_a_library_scoped_entry_without_a_config_refuses():
 def test_an_undeclared_state_key_raises_with_the_declared_list():
     with pytest.raises(KeyError, match="not a declared state entry"):
         config.state_file("some_new_ledger")
-
-
-# ── D4: the two straddling entries became two files each ─────────────────────
 
 
 @pytest.mark.parametrize(
@@ -995,13 +714,7 @@ def test_an_undeclared_state_key_raises_with_the_declared_list():
 def test_a_previously_straddling_entry_is_two_files_with_distinct_names(
     install_key, library_key
 ):
-    """D4. One file with two owners is not a resolution, it is the problem named.
-
-    The registry case is concrete: in the source system the whole file is
-    committed to git, so cloning hands every friend one person's label list AND
-    their sweep watermarks. Splitting makes the intent half shareable on purpose
-    and leaves the watermarks with the library they describe.
-    """
+    """D4: one file with two owners is the problem, so each half has its own root."""
     install = config.state_file(install_key)
     library_side = config.state_file(library_key)
     assert install.root is config.StateRoot.INSTALLATION
@@ -1009,7 +722,7 @@ def test_a_previously_straddling_entry_is_two_files_with_distinct_names(
     assert install.relative != library_side.relative
 
 
-# ── D5: no persisted record is keyed by a display name ───────────────────────
+# D5: no persisted record is keyed by a display name.
 
 
 def test_the_one_ported_shape_keyed_by_a_display_name_is_flagged_for_rekeying():
@@ -1028,28 +741,17 @@ def test_rekeying_maps_records_onto_stable_identifiers():
 
 
 def test_rekeying_reports_records_it_could_not_resolve_rather_than_dropping_them():
-    """An unresolvable record IS the orphan the rule exists to surface.
-
-    Dropping it silently would make the one-time migration look clean while
-    losing exactly the history the rename orphaned.
-    """
+    """An unresolvable record is the orphan the rule exists to surface."""
     migrated, unresolved = config.rekey_records({"Gone": {}}, lambda _: None)
     assert migrated == {}
     assert unresolved == ("Gone",)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Seam decisions that live in this schema
-# ═══════════════════════════════════════════════════════════════════════════
+# Seam decisions that live in this schema.
 
 
 def test_the_prefix_map_is_ordered_and_first_match_wins(library):
-    """S1. Order is load-bearing: one prefix can be another's prefix.
-
-    An unordered map resolves those two differently on different runs, and the
-    symptom is a resolver that works today and silently mis-resolves after an
-    unrelated change to iteration order.
-    """
+    """S1. Order is load bearing: one prefix can be another's prefix."""
     data = valid_data(library)
     data["library"]["location_prefix_map"] = [
         {"from": "/mnt/volume/deep", "to": "{library.root}/deep"},
@@ -1063,7 +765,6 @@ def test_the_prefix_map_is_ordered_and_first_match_wins(library):
 
 
 def test_the_prefix_map_survives_a_remount_because_it_interpolates(library, tmp_path, monkeypatch):
-    """The stored map is written once and keeps working when the drive moves."""
     data = valid_data(library)
     data["library"]["location_prefix_map"] = [{"from": "/mnt/volume", "to": "{library.root}"}]
 
@@ -1074,25 +775,22 @@ def test_the_prefix_map_survives_a_remount_because_it_interpolates(library, tmp_
     assert config.from_dict(data).resolved_prefix_map() == (("/mnt/volume", str(moved)),)
 
 
-def test_an_unsupported_interpolation_in_the_prefix_map_is_named(library):
+@pytest.mark.parametrize(
+    "rule, expected",
+    [
+        ({"from": "/mnt/volume", "to": "{home}"}, "unsupported interpolation"),
+        ({"from": "/mnt/volume"}, "location_prefix_map[0].to"),
+    ],
+    ids=["unsupported-interpolation", "malformed-entry-named-by-index"],
+)
+def test_a_bad_prefix_rule_is_named(library, rule, expected):
     data = valid_data(library)
-    data["library"]["location_prefix_map"] = [{"from": "/mnt/volume", "to": "{home}"}]
-    assert any("unsupported interpolation" in p for p in config.validate(data))
-
-
-def test_a_malformed_prefix_entry_is_named_by_index(library):
-    data = valid_data(library)
-    data["library"]["location_prefix_map"] = [{"from": "/mnt/volume"}]
-    assert any("location_prefix_map[0].to" in p for p in config.validate(data))
+    data["library"]["location_prefix_map"] = [rule]
+    assert any(expected in p for p in config.validate(data))
 
 
 def test_a_prefix_rule_carries_the_identity_of_the_volume_it_points_at(library):
-    """The config shape the deletion pass needs before it may follow a rule.
-
-    A rule onto another disk has to say WHICH disk, in the shape the library's
-    own ``volume_id`` has. It survives a round trip through the serialized form,
-    in order, beside a rule that records none.
-    """
+    """A rule onto another disk says WHICH disk, and keeps it through a round trip."""
     data = valid_data(library)
     data["library"]["location_prefix_map"] = [
         {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": "AAAA-1111"},
@@ -1110,12 +808,7 @@ def test_a_prefix_rule_carries_the_identity_of_the_volume_it_points_at(library):
 
 
 def test_a_rule_with_no_identity_serializes_to_the_bytes_it_always_did(library):
-    """KTD9. An optional key written as an empty value would move every fingerprint.
-
-    The expected mapping is spelled out here rather than read back from the
-    serializer, so a writer that starts emitting the key for every rule fails
-    against what a configuration looked like before the key existed.
-    """
+    """KTD9. Spelled out, so a writer emitting an empty key for every rule fails."""
     data = valid_data(library)
     data["library"]["location_prefix_map"] = [{"from": "/mnt/volume", "to": "{library.root}"}]
     written = config.from_dict(data).to_toml_dict()["library"]["location_prefix_map"]
@@ -1129,13 +822,7 @@ def test_a_rule_with_no_identity_serializes_to_the_bytes_it_always_did(library):
     ids=["posix-path", "unc-path", "drive-path", "empty", "blank", "number", "null"],
 )
 def test_a_rule_identity_that_is_a_path_or_is_unusable_is_named_by_index(library, identity):
-    """R38, per rule: a mount path is what an identity exists to replace.
-
-    And a key that is PRESENT and unusable is a problem rather than an absence.
-    Reading a blank as "none recorded" would send a rule inside the library root
-    down the library's own identity, which is a check passing on a value the
-    person typed wrong.
-    """
+    """R38 per rule. A present but unusable key is a problem, never "none recorded"."""
     data = valid_data(library)
     data["library"]["location_prefix_map"] = [
         {"from": "/mnt/volume", "to": "{library.root}"},
@@ -1147,19 +834,15 @@ def test_a_rule_identity_that_is_a_path_or_is_unusable_is_named_by_index(library
     assert not [p for p in problems if "location_prefix_map[0]" in p], problems
 
 
-def test_an_unset_rekordbox_pin_refuses_to_write(cfg):
-    """S2. Unset REFUSES, and is never auto-recorded from the running install.
-
-    A pin the software copies from whatever happens to be installed refuses
-    nothing, forever, which is the entire property the pin exists to provide.
-    """
+def test_an_unset_rekordbox_pin_refuses_to_write_with_its_own_remedy(cfg):
+    """S2. Unset refuses and is never auto recorded; the remedy is "record this one thing"."""
     assert cfg.rekordbox.pinned_app_version is None
-    with pytest.raises(config.ConfigInvalid, match="pinned_app_version"):
+    with pytest.raises(config.ConfigInvalid, match="pinned_app_version") as excinfo:
         cfg.assert_rekordbox_pin_recorded()
+    assert excinfo.value.remedy is config.Remedy.RECORD_REKORDBOX_PIN
 
 
 def test_a_recorded_pin_permits_the_write_and_carries_its_validation_date(library):
-    """The pin is only meaningful with the date somebody verified it."""
     data = valid_data(
         library,
         rekordbox={
@@ -1175,13 +858,7 @@ def test_a_recorded_pin_permits_the_write_and_carries_its_validation_date(librar
 
 
 def test_config_owns_the_naming_values(cfg):
-    """S3. U2 owns the VALUES; the naming engine owns the mechanism.
-
-    The engine takes these as parameters and imports no config, because a
-    function that reads global configuration cannot be exercised against two
-    taxonomies in one process, and proving a second template works needs exactly
-    that.
-    """
+    """S3. U2 owns the values; the naming engine takes them as parameters."""
     assert cfg.naming.lossy_marker
     assert cfg.naming.path_budget_bytes == 250
     assert cfg.naming.filename_max_bytes == 255
@@ -1189,10 +866,7 @@ def test_config_owns_the_naming_values(cfg):
 
 
 def test_there_is_no_configuration_in_which_lossy_goes_unmarked(library):
-    """S3 and R21. Two values, and neither one is 'allow lossy, skip marking'.
-
-    Unrepresentable beats validated-away: there is no toggle to set wrong.
-    """
+    """S3 and R21. Unrepresentable beats validated away."""
     assert config.from_dict(valid_data(library)).acquisition.lossless_policy == "strict"
 
     permitted = valid_data(library, acquisition={"lossless_policy": "allow_lossy_marked"})
@@ -1208,10 +882,7 @@ def test_the_vendored_adapter_is_the_default_under_its_neutral_name(library):
 
 
 def test_a_file_naming_the_retired_adapter_key_reads_back_as_the_current_one(library, tmp_path):
-    """U197. The vendored downloader's key was its upstream project's name, and a
-    file written before the rename still says it. It selects the same adapter,
-    read through the file the way an installation reads it, and every reader
-    downstream sees the current key."""
+    """U197. A file written before the rename selects the same adapter, read as an install reads it."""
     path = tmp_path / "config.toml"
     written = valid_data(library, acquisition={"adapter": "tidal_dl_ng", "quality": "lossless"})
     path.write_bytes(tomli_w.dumps(written).encode("utf-8"))
@@ -1222,9 +893,7 @@ def test_a_file_naming_the_retired_adapter_key_reads_back_as_the_current_one(lib
 
 
 def test_only_a_retired_adapter_key_is_folded(library):
-    """The fold is a mapping of retired names, never a fallback: any other name,
-    an unknown one included, reaches the registry as written, where an unknown
-    one is refused rather than silently switched."""
+    """A mapping of retired names, never a fallback: any other name passes as written."""
     assert dict(config.RETIRED_ADAPTER_NAMES) == {"tidal_dl_ng": "vendored"}
     for name in ("streamrip", "vendored", "not-a-real-adapter", "Tidal_DL_NG"):
         cfg = config.from_dict(valid_data(library, acquisition={"adapter": name}))
@@ -1232,32 +901,25 @@ def test_only_a_retired_adapter_key_is_folded(library):
 
 
 def test_config_carries_only_the_taxonomy_selection(cfg):
-    """S6. The active template is library-scoped state, not a config value."""
+    """S6. The active template is library scoped state, not a config value."""
     field_names = {f for f in type(cfg.taxonomy).__dataclass_fields__}
     assert field_names == {"template"}
     assert config.state_file("taxonomy_active").root is config.StateRoot.LIBRARY
 
 
 def test_analysis_worker_count_defaults_to_probing(cfg):
-    """KTD10: worker counts come from a memory probe, never from a CPU count.
-
-    Absent means probe. A shipped numeric default would be a guess about
-    somebody else's machine, permanently.
-    """
+    """KTD10: absent means probe a memory budget, never a shipped guess."""
     assert cfg.analysis.jobs is None
 
 
 def test_no_backup_destination_ships_with_a_default(cfg):
-    """Every one of these is a hardcoded literal naming one person's remote."""
     assert cfg.backup.remote is None
     assert cfg.backup.dest is None
     assert cfg.backup.archive_root is None
     assert cfg.backup.db_dest_root is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Backup destinations name an rclone remote (R-345)
-# ═══════════════════════════════════════════════════════════════════════════
+# Backup destinations name an rclone remote (R-345).
 
 
 REMOTE_DESTINATIONS = {
@@ -1268,8 +930,7 @@ REMOTE_DESTINATIONS = {
 
 
 def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
-    """The brief's first scenario: ``gdrive:bucket/path`` loads, and the remote
-    is derived from it rather than typed a second time."""
+    """The remote is derived from the destinations rather than typed again."""
     data = valid_data(library, backup=dict(REMOTE_DESTINATIONS))
     assert config.validate(data) == []
     cfg = config.from_dict(data)
@@ -1281,29 +942,20 @@ def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
 @pytest.mark.parametrize(
     "typed",
     [
-        # A bare folder name: rclone reads it as a path beside the worker's cwd.
+        # A bare folder name, read as a path beside the worker's cwd.
         "MusicBackup",
-        # An on the fly backend with no configured remote before the colon.
+        # An on the fly backend with no configured remote.
         ":local:/tmp/backups",
-        # A Windows drive, which rclone special cases back to a local path,
-        # whichever way the slash leans.
+        # A Windows drive, which rclone treats as local either slash.
         "C:\\Backups",
         "C:/Backups",
-        # Names rclone's own configuration cannot hold: a leading hyphen, and
-        # a trailing space before the colon.
+        # Names rclone cannot hold: a leading hyphen, a trailing space.
         "-gdrive:bucket",
         "gdrive :bucket",
     ],
 )
 def test_a_backup_destination_naming_no_remote_is_refused(library, key, typed):
-    """The brief's second scenario, and the producer of R-345 driven end to end.
-
-    The dry run of the attended sitting succeeded in four seconds against a bare
-    folder name because listing a folder that does not exist is instant. A real
-    run would have copied the library beside the detached worker's working
-    directory and published a backup age for the copy. The refusal names the
-    key and the value, so a hand edited file says which line to fix.
-    """
+    """R-345: a bare folder copied the library beside the worker. The refusal names key and value."""
     backup = dict(REMOTE_DESTINATIONS)
     backup[key] = typed
     data = valid_data(library, backup=backup)
@@ -1318,14 +970,7 @@ def test_a_backup_destination_naming_no_remote_is_refused(library, key, typed):
 
 
 def test_the_backup_destination_check_reads_the_effective_mapping(library, monkeypatch):
-    """The brief's third scenario, P2: what the check sees is what rclone gets.
-
-    No environment override relocates a backup destination today, so the
-    scenario is driven at the seam every override passes through. An override
-    step that rewrites the bare name into ``remote:path`` is what the check
-    judges, and the same file without that step is refused. A check that read
-    the raw file would refuse both.
-    """
+    """P2: the check judges what rclone gets, driven at the override seam."""
     backup = dict(REMOTE_DESTINATIONS)
     backup["dest"] = "MusicBackup"
     data = valid_data(library, backup=backup)
@@ -1338,13 +983,16 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
         effective["backup"]["dest"] = "gdrive:" + effective["backup"]["dest"]
         return effective
 
+    # The seam is named in both modules that pass through it (U299).
     monkeypatch.setattr(config, "_apply_env_overrides", relocating)
+    from cratekit.core import config_validate
+
+    monkeypatch.setattr(config_validate, "_apply_env_overrides", relocating)
     assert config.validate(data) == []
     assert config.from_dict(data).backup.dest == "gdrive:MusicBackup"
 
 
 def test_the_backup_destinations_must_name_one_remote(library):
-    """The mirror, the archive and the snapshots are read back together."""
     backup = dict(REMOTE_DESTINATIONS)
     backup["db_dest_root"] = "other:bucket/db"
     problems = config.validate(valid_data(library, backup=backup))
@@ -1355,8 +1003,7 @@ def test_the_backup_destinations_must_name_one_remote(library):
 
 @pytest.mark.parametrize("spelled", ["gdrive", "gdrive:", "gdrive:bucket"])
 def test_a_spelled_backup_remote_that_matches_the_destinations_is_kept(library, spelled):
-    """``remote`` may be spelled bare or with a path; the NAME is what must agree,
-    and a file that spells it keeps its own spelling."""
+    """The NAME must agree, and the file keeps its own spelling."""
     backup = dict(REMOTE_DESTINATIONS, remote=spelled)
     data = valid_data(library, backup=backup)
     assert config.validate(data) == []
@@ -1364,10 +1011,7 @@ def test_a_spelled_backup_remote_that_matches_the_destinations_is_kept(library, 
 
 
 def test_a_spelled_backup_remote_that_names_another_remote_is_refused(library):
-    """Doctor checks the remote it is told; the transfers use the destinations.
-
-    The two must be one remote or doctor reports on a remote nothing writes to.
-    """
+    """Otherwise doctor checks a remote nothing writes to."""
     backup = dict(REMOTE_DESTINATIONS, remote="elsewhere")
     problems = config.validate(valid_data(library, backup=backup))
     assert len(problems) == 1, problems
@@ -1377,13 +1021,7 @@ def test_a_spelled_backup_remote_that_names_another_remote_is_refused(library):
 
 @pytest.mark.parametrize("profile", ["slim", "full"])
 def test_an_unset_backup_destination_stays_allowed(library, profile):
-    """Absence is not the defect, whether the module is on or off.
-
-    The full preset turns backup on for everybody, so refusing an unset
-    destination at load would lock every fresh full install out of its own
-    configuration (P7). The backup verb refuses on its own missing destination
-    and doctor reports the unset remote, which is where absence belongs.
-    """
+    """P7: refusing absence at load would lock every fresh full install out of its config."""
     data = valid_data(library, profile={"name": profile})
     assert config.validate(data) == []
     cfg = config.from_dict(data)
@@ -1399,10 +1037,7 @@ def test_an_unset_backup_destination_stays_allowed(library, profile):
     ["me@gdrive", "work+home", "my drive", "gdrive-2.old", "Sicherung_ü", "b2"],
 )
 def test_every_name_rclone_can_store_is_accepted_as_a_remote(library, name):
-    """rclone's own rule since 1.61: letters and digits in any script, and
-    ``_ . + @ - space``, not starting with a hyphen or a space and not ending
-    with a space. A stricter rule here locks a correctly configured install
-    out of its own file, which is a guard firing on a correct setup (P7)."""
+    """rclone 1.61's rule; anything stricter fires on a correct setup (P7)."""
     backup = {key.split(".")[1]: f"{name}:library/{key}" for key in config.BACKUP_DESTINATION_KEYS}
     data = valid_data(library, backup=backup)
     assert config.validate(data) == []
@@ -1410,7 +1045,6 @@ def test_every_name_rclone_can_store_is_accepted_as_a_remote(library, name):
 
 
 def test_the_destination_keys_are_published_for_the_wizard_and_the_verb():
-    """The validator, the wizard and the backup verb name the same three keys."""
     assert config.BACKUP_DESTINATION_KEYS == (
         "backup.dest",
         "backup.archive_root",
@@ -1423,9 +1057,7 @@ def test_the_destination_keys_are_published_for_the_wizard_and_the_verb():
     assert config.derived_backup_remote({"backup": {"remote": "x", "dest": "gdrive:m"}}) is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The fingerprint (KTD9)
-# ═══════════════════════════════════════════════════════════════════════════
+# The fingerprint (KTD9).
 
 
 def test_the_fingerprint_survives_a_round_trip_through_disk(cfg, tmp_path):
@@ -1442,11 +1074,7 @@ def test_the_fingerprint_is_stable_across_repeated_serialization(cfg):
 
 
 def test_the_fingerprint_does_not_depend_on_key_order(library):
-    """Two files that mean the same thing must hash the same.
-
-    Otherwise every hand edit that reorders a section reports as drift, and users
-    learn to ignore drift reports.
-    """
+    """Otherwise every reordering hand edit reports as drift."""
     first = config.from_dict(valid_data(library, taxonomy={"template": "default"}))
     reordered = valid_data(library)
     reordered["taxonomy"] = {"template": "default"}
@@ -1475,16 +1103,9 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
     ],
 )
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):
-    """One case per top-level section, so a section left out of serialization is caught.
+    """One case per section, so a section left out of serialization is caught.
 
-    Every section is covered, including ``modules``, which is the one a user is
-    most likely to change and the one nothing else reaches: a job queued with
-    analysis on and run after the user turned it off would report no drift.
-
-    The change is MERGED into the section rather than replacing it, because
-    ``library`` and ``paths`` carry required keys that a replacement would drop,
-    and the config would then fail validation instead of fingerprinting
-    differently.
+    Merged into the section rather than replacing it, which would drop required keys.
     """
     base_data = valid_data(library)
     changed_data = valid_data(library)
@@ -1496,24 +1117,16 @@ def test_the_fingerprint_changes_when_any_value_changes(library, section, key, v
 
 
 def test_a_default_valued_section_and_an_absent_one_fingerprint_alike(library):
-    """An all-default section is the same configuration as no section at all."""
     absent = config.from_dict(valid_data(library))
     explicit = config.from_dict(valid_data(library, naming={"lossy_marker": "[MP3]"}))
     assert explicit.fingerprint() == absent.fingerprint()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Lazy resolution: no import-time side effects, no module-level snapshots
-# ═══════════════════════════════════════════════════════════════════════════
+# Lazy resolution: no import time side effects, no module level snapshots.
 
 
 def test_importing_the_config_module_creates_nothing(tmp_path):
-    """Rule 1, proved in a real interpreter rather than by reading the source.
-
-    This is what lets doctor and help run on a machine that has never been set
-    up. A unit test that only called the functions would miss an import-time
-    mkdir entirely, which is the exact side effect being forbidden.
-    """
+    """Proved in a real interpreter, which an import time mkdir cannot hide from."""
     home = tmp_path / "home"
     home.mkdir()
     env = dict(os.environ)
@@ -1542,19 +1155,27 @@ def test_importing_the_config_module_creates_nothing(tmp_path):
     assert list(home.iterdir()) == []
 
 
-def test_config_exposes_no_module_level_location_constant():
-    """There is nothing to snapshot, which is why snapshotting cannot happen.
+def config_parts() -> tuple:
+    """config and the parts split from it (U299), every one read by the two guards below.
 
-    Removing the constant is stronger than forbidding its use: the source system
-    forbade nothing and seventeen modules bound a path at their own import time.
+    Imported here rather than at the top, so the behaviour scenarios that borrow
+    this file's fixtures still import against a tree from before the split.
     """
+    from cratekit.core import config_base, config_schema, config_validate, state_files
+
+    return (config, config_base, config_schema, config_validate, state_files)
+
+
+def test_config_exposes_no_module_level_location_constant():
+    """With nothing to snapshot, snapshotting cannot happen, in config or any of its parts."""
     offenders = [
-        name
-        for name, value in vars(config).items()
+        f"{part.__name__}.{name}"
+        for part in config_parts()
+        for name, value in vars(part).items()
         if not name.startswith("_") and isinstance(value, Path)
     ]
     assert not offenders, (
-        f"cratekit.core.config exposes module-level Path constants {offenders}. "
+        f"configuration exposes module-level Path constants {offenders}. "
         f"Every location is a function so that a caller cannot bind one at its "
         f"own import time and stop tracking later changes."
     )
@@ -1563,8 +1184,7 @@ def test_config_exposes_no_module_level_location_constant():
 #: Names a module is likely to bind the config module to.
 _CONFIG_MODULE_ALIASES = frozenset({"config", "cfg", "_config"})
 
-#: Functions that RESOLVE a location. Calling one at import time freezes the
-#: answer, which is the same defect as reading an attribute, in different clothes.
+#: Functions that resolve a location; calling one at import freezes the answer.
 _CONFIG_RESOLVERS = frozenset(
     {
         "load",
@@ -1572,9 +1192,6 @@ _CONFIG_RESOLVERS = frozenset(
         "config_path",
         "installation_state_dir",
         "library_state_dir",
-        # The three the library reorganization added. ``library_state_dir`` was
-        # already here, so leaving its three siblings out would have made the
-        # rule depend on which of four equivalent accessors somebody reached for.
         "library_coupled_dir",
         "library_history_dir",
         "library_local_dir",
@@ -1591,46 +1208,23 @@ def _called_name(func: ast.expr) -> str | None:
     return None
 
 
-def _deferred_nodes(tree: ast.AST) -> set[int]:
-    """Ids of every node that only runs when something CALLS it.
-
-    A read inside a function body or a lambda is not a snapshot: it happens at
-    call time, with whatever config is current. Excluding them is what keeps the
-    rule about binding at import rather than about mentioning config at all,
-    which is the difference between a guard people obey and a guard people mute.
-    """
-    deferred: set[int] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            for child in ast.walk(node):
-                if child is not node:
-                    deferred.add(id(child))
-    return deferred
+def _eager_walk(root: ast.AST):
+    """``ast.walk`` that never enters a function or lambda body, which runs at call time."""
+    todo = deque([root])
+    while todo:
+        node = todo.popleft()
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            todo.extend(ast.iter_child_nodes(node))
+        yield node
 
 
 def module_level_config_snapshots(source: str, module: str) -> list[str]:
-    """Return one message per module-level binding of a config-derived value.
-
-    The rule: outside the config module itself, no assignment evaluated AT IMPORT
-    may read a config attribute or call a config resolver. Class bodies count,
-    because a class attribute is evaluated at import too.
-
-    Detected as data flow rather than by name, because the failure has two shapes
-    that look nothing alike: ``STATE = config.load().library.root`` and
-    ``STATE = installation_state_dir()`` freeze the same value.
-    """
+    """One message per binding evaluated at import (class bodies too) that reads config."""
     problems: list[str] = []
-    tree = ast.parse(source)
-    deferred = _deferred_nodes(tree)
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign | ast.AnnAssign):
+    for node in _eager_walk(parsed(source)):
+        if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
             continue
-        if id(node) in deferred or node.value is None:
-            continue
-        for sub in ast.walk(node.value):
-            if id(sub) in deferred:
-                continue
+        for sub in _eager_walk(node.value):
             if (
                 isinstance(sub, ast.Attribute)
                 and isinstance(sub.value, ast.Name)
@@ -1648,30 +1242,49 @@ def module_level_config_snapshots(source: str, module: str) -> list[str]:
     return problems
 
 
-def test_the_snapshot_lint_catches_an_attribute_binding():
-    source = "from cratekit.core import config\nLIBRARY = config.load().library.root\n"
-    assert module_level_config_snapshots(source, "cratekit.label.sweep")
-
-
-def test_the_snapshot_lint_catches_a_resolver_call():
-    source = "from cratekit.core.config import installation_state_dir\nSTATE = installation_state_dir()\n"
-    assert module_level_config_snapshots(source, "cratekit.web.jobs")
-
-
-def test_the_snapshot_lint_catches_a_class_attribute():
-    """A class body runs at import, so a class attribute is the same snapshot."""
-    source = "from cratekit.core import config\n\nclass Sweep:\n    root = config.load().library.root\n"
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from cratekit.core import config\nLIBRARY = config.load().library.root\n",
+        "from cratekit.core.config import installation_state_dir\nSTATE = installation_state_dir()\n",
+        "from cratekit.core import config\n\nclass Sweep:\n    root = config.load().library.root\n",
+    ],
+    ids=["attribute-binding", "resolver-call", "class-attribute"],
+)
+def test_the_snapshot_lint_catches_a_binding_evaluated_at_import(source):
     assert module_level_config_snapshots(source, "cratekit.label.sweep")
 
 
 def test_the_snapshot_lint_allows_reading_config_inside_a_function():
-    """What correct code looks like, asserted so the guard cannot forbid it."""
     source = (
         "from cratekit.core import config\n\n"
         "def sweep():\n"
         "    return config.load().library.root\n"
     )
     assert module_level_config_snapshots(source, "cratekit.label.sweep") == []
+
+
+def test_no_module_composes_its_own_path_under_a_state_root():
+    """Every path under a state root comes from ``state_path``, so it is declared.
+
+    Only a source naming an accessor can hold a hit (identifiers compared after
+    the NFKC folding the parser applies), so the rest are not parsed.
+    """
+    offenders: list[str] = []
+    for path in sorted(SRC_ROOT.rglob("*.py")):
+        if path.relative_to(SRC_ROOT).as_posix() in INVENTORY_MODULES:
+            continue
+        source = path.read_text()
+        folded = unicodedata.normalize("NFKC", source)
+        if not any(name in folded for name in _STATE_ROOT_ACCESSORS):
+            continue
+        for hit in _paths_composed_from_a_state_root(source):
+            offenders.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
+    assert not offenders, (
+        "paths composed under a state root outside the inventory:\n"
+        + "\n".join(offenders)
+        + "\nDeclare the entry in STATE_FILES (core/state_files.py) and resolve it with state_path()."
+    )
 
 
 def test_no_module_in_the_package_snapshots_config_at_import_time():
@@ -1688,49 +1301,21 @@ def test_no_module_in_the_package_snapshots_config_at_import_time():
     assert not problems, "module-level config snapshots:\n" + "\n".join(problems)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Environment overrides relocate; they never supply
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_an_override_relocates_a_configured_value(library, tmp_path, monkeypatch):
-    moved = tmp_path / "moved"
-    moved.mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(moved))
-    assert config.from_dict(valid_data(library)).library.root == moved
+# Environment overrides relocate; they never supply.
 
 
 def test_an_override_never_supplies_a_value_the_file_omitted(library, monkeypatch):
-    """The distinction the whole override design rests on.
-
-    An override that can SUPPLY a library root lets a machine with no setup at
-    all resolve one from the environment and start writing to it, which is the
-    "runs against the wrong volume" failure R38 exists to prevent.
-    """
+    """A supplied root lets an unset machine write to whatever the environment names (R38)."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
     data = valid_data(library)
     del data["library"]["root"]
     assert any("library.root" in p for p in config.validate(data))
 
 
-# ── The containment rule is decided where it LIVES: against the effective root ─
-
-
 def test_a_containment_violation_created_by_the_override_is_not_validated_clean(
     library, tmp_path, monkeypatch
 ):
-    """The rule used to be decided against one root and enforced against another.
-
-    ``validate`` dug ``library.root`` out of the raw file mapping while the
-    builder applied ``CRATEKIT_LIBRARY_ROOT``, so a file whose database sat under
-    the root it NAMED validated clean while the running process read a different
-    root entirely. Reproduced before the fix: validate returned no problems and
-    ``db_is_inside_library_root()`` returned False on the very same config.
-
-    The environment variable is set for real rather than simulated, because a
-    synthetic root passed as an argument exercises the arithmetic and not the
-    path where the two answers actually diverged.
-    """
+    """Containment is decided against the effective root, set through the real variable."""
     relocated = tmp_path / "relocated"
     relocated.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(relocated))
@@ -1738,26 +1323,13 @@ def test_a_containment_violation_created_by_the_override_is_not_validated_clean(
     data = valid_data(library)  # names the stale root, database under it
     cfg = config.from_dict(data)
 
-    # Whatever validate says, it must be saying it about the values the process
-    # will actually use. The two answers can no longer differ.
     assert (config.validate(data) == []) is cfg.db_is_inside_library_root()
 
 
 def test_a_relocated_root_carries_the_database_that_sat_under_it(
     library, tmp_path, monkeypatch
 ):
-    """What "relocate" has to mean when the two values are related.
-
-    The file records where the database sits RELATIVE to the library. Moving the
-    library and leaving the database aims it into a tree that is no longer the
-    library, and makes a legitimate remount fail the containment rule with
-    nothing the user can act on.
-
-    It is also a safety property this suite has been relying on without stating
-    it: redirecting the library root is the whole mechanism keeping tests off the
-    real rekordbox database, and before this the redirect moved the root while
-    the database path stayed exactly where the file pointed it.
-    """
+    """The database is recorded relative to the library, and the redirect keeps tests off the real one."""
     relocated = tmp_path / "relocated"
     relocated.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(relocated))
@@ -1772,12 +1344,7 @@ def test_a_relocated_root_carries_the_database_that_sat_under_it(
 def test_a_relocation_leaves_a_database_that_was_never_under_the_root_alone(
     library, tmp_path, monkeypatch
 ):
-    """The other half, and the one that keeps the acknowledgment meaningful.
-
-    A database outside the library was never expressed relative to it, so there
-    is nothing to re-base. Dragging it along would silently move a path the user
-    chose, and would quietly retire the recorded decision that goes with it.
-    """
+    """Dragging it along would move a path the user chose and retire its acknowledgment."""
     outside = tmp_path / "elsewhere" / "master.db"
     relocated = tmp_path / "relocated"
     relocated.mkdir()
@@ -1795,13 +1362,7 @@ def test_a_relocation_leaves_a_database_that_was_never_under_the_root_alone(
 def test_a_save_under_a_relocation_writes_a_file_that_loads_again(
     library, tmp_path, monkeypatch
 ):
-    """The lockout, driven end to end through the real environment path.
-
-    Before the fix this sequence produced a file the module refused to load:
-    ``save`` serialized the relocated root beside the db_path the override had
-    not touched, and the next load raised ConfigInvalid naming a containment
-    violation on a file the user had never edited. Observed exactly that.
-    """
+    """Before the fix, save under a relocation wrote a file the next load refused."""
     relocated = tmp_path / "relocated"
     relocated.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(relocated))
@@ -1818,14 +1379,7 @@ def test_a_save_under_a_relocation_writes_a_file_that_loads_again(
 
 
 def test_saving_refuses_to_write_a_file_this_module_would_refuse_to_load(cfg, tmp_path):
-    """The general guarantee, not the one instance of it.
-
-    Re-basing makes the relocation case consistent, but the CLASS of failure is
-    not about those two fields: any pair of values a validation rule relates can
-    drift apart in memory, and a write is the moment a runtime inconsistency
-    becomes a permanent one. Constructed straight through the dataclass, which is
-    the only way to reach an invalid Config now that ``from_dict`` refuses one.
-    """
+    """The general guarantee. Built through the dataclass, the only way to an invalid Config."""
     from dataclasses import replace  # noqa: PLC0415
 
     broken = replace(
@@ -1838,7 +1392,7 @@ def test_saving_refuses_to_write_a_file_this_module_would_refuse_to_load(cfg, tm
 
 
 def test_the_config_directory_resolves_through_the_platform_library(monkeypatch, tmp_path):
-    """KTD6, and R1's portability half: no hardcoded per-platform path."""
+    """KTD6 and R1: no hardcoded per platform path."""
     monkeypatch.delenv(config.ENV_CONFIG_DIR, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
@@ -1847,15 +1401,14 @@ def test_the_config_directory_resolves_through_the_platform_library(monkeypatch,
     assert tmp_path in resolved.parents
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Loading, saving, memoization
-# ═══════════════════════════════════════════════════════════════════════════
+# Loading, saving, memoization.
 
 
-def test_a_missing_config_says_so_rather_than_returning_defaults(tmp_path):
-    """Defaults for a config that was never written would silently invent a library."""
-    with pytest.raises(config.ConfigMissing):
+def test_a_missing_config_says_so_and_carries_the_setup_remedy(tmp_path):
+    """Defaults for a config never written would silently invent a library."""
+    with pytest.raises(config.ConfigMissing) as excinfo:
         config.load(tmp_path / "nothing.toml")
+    assert excinfo.value.remedy is config.Remedy.RUN_SETUP
 
 
 def test_unparseable_toml_names_the_file(tmp_path):
@@ -1866,20 +1419,12 @@ def test_unparseable_toml_names_the_file(tmp_path):
 
 
 def test_a_rewritten_config_is_not_served_from_the_memo(cfg, library, tmp_path):
-    """Memoization is keyed on file identity, and every write mints a new inode.
-
-    That is what makes it safe for callers to call ``load()`` wherever they need
-    a value instead of binding one at their own import time. Removing the reason
-    to snapshot is the only thing that actually stops the snapshotting.
-    """
+    """The memo is keyed on file identity, so callers can ``load()`` where they need a value."""
     path = tmp_path / "config.toml"
     config.save(cfg, path)
     assert config.load(path).taxonomy.template == "default"
 
-    # Replaced the way any external writer would, WITHOUT going through save(),
-    # so the memo is not politely cleared for us. This is the case the cache key
-    # has to survive on its own: another process, or a hand edit, swapped the
-    # file under a long-lived reader.
+    # Replaced the way an external writer would, without save() clearing the memo.
     changed = config.from_dict(valid_data(library, taxonomy={"template": "second"}))
     staging = tmp_path / "staged.toml"
     staging.write_bytes(changed.to_toml_bytes())
@@ -1889,11 +1434,7 @@ def test_a_rewritten_config_is_not_served_from_the_memo(cfg, library, tmp_path):
 
 
 def test_the_default_location_round_trips_end_to_end(cfg):
-    """Save with no path, load with no path. The path everything else will use.
-
-    Worth its own test because every other test here names a file explicitly, and
-    the default resolution is the one code path a user actually exercises.
-    """
+    """Save with no path, load with no path: the path a user actually exercises."""
     written = config.save(cfg)
     assert written == config.config_path()
     assert config.load().fingerprint() == cfg.fingerprint()
@@ -1907,12 +1448,7 @@ def test_saving_creates_the_directory_only_when_it_writes(cfg, tmp_path):
 
 
 def test_a_failed_write_leaves_no_temporary_file_behind(cfg, tmp_path, monkeypatch):
-    """The atomic-write contract, tested at its failure edge.
-
-    The temp file is created in the TARGET's directory so ``os.replace`` is a
-    same-filesystem rename. If the replace never happens, the temp file must not
-    survive, or every failed save leaves litter that looks like a real config.
-    """
+    """If the replace never happens, the temp file beside the target must not survive."""
     target = tmp_path / "config.toml"
     config.save(cfg, target)
     before = sorted(p.name for p in tmp_path.iterdir())
@@ -1927,19 +1463,11 @@ def test_a_failed_write_leaves_no_temporary_file_behind(cfg, tmp_path, monkeypat
     assert sorted(p.name for p in tmp_path.iterdir()) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Credentials (R4)
-# ═══════════════════════════════════════════════════════════════════════════
+# Credentials (R4).
 
 
-def test_a_read_with_no_keychain_backend_raises_rather_than_returning_nothing(monkeypatch):
-    """The plan's fifth scenario.
-
-    Returning None here is how a caller ends up sending a request with no
-    credential at all and reading the 401 back as the service being down. The
-    remediation is to install a backend, which is not the same advice as either
-    of the other two failures.
-    """
+def test_a_read_with_no_keychain_backend_raises_and_names_the_opt_in(monkeypatch):
+    """Never None, which reads a 401 as an outage; it names the opt in, never takes it."""
 
     def no_backend(*args, **kwargs):
         raise keyring.errors.NoKeyringError("no backend")
@@ -1949,6 +1477,7 @@ def test_a_read_with_no_keychain_backend_raises_rather_than_returning_nothing(mo
     with pytest.raises(secrets.CredentialBackendUnavailable) as excinfo:
         secrets.get(secrets.Credential.IDENTIFY_KEY)
     assert excinfo.value.remedy is secrets.Remedy.INSTALL_KEYCHAIN_BACKEND
+    assert secrets.ENV_ALLOW_ENV_CREDENTIALS in str(excinfo.value)
 
 
 def test_an_absent_credential_is_a_different_failure_from_a_broken_backend():
@@ -1958,11 +1487,7 @@ def test_an_absent_credential_is_a_different_failure_from_a_broken_backend():
 
 
 def test_the_three_credential_failures_carry_three_different_remedies():
-    """A missing credential and a rejected one need OPPOSITE remediations.
-
-    Collapsing them into one error forces every caller to parse a message string
-    to decide what to tell the user, which is precisely the failure KTD25 names.
-    """
+    """KTD25: collapsing them forces callers to parse messages."""
     remedies = {
         secrets.CredentialBackendUnavailable.remedy,
         secrets.CredentialMissing.remedy,
@@ -1971,13 +1496,12 @@ def test_the_three_credential_failures_carry_three_different_remedies():
     assert len(remedies) == 3
 
 
-def test_a_remedy_is_a_token_and_not_the_command_a_user_types():
-    """D2: no foundation module contains a verb string.
-
-    The CLI renders a token into a command, because the command depends on the
-    interface the user is sitting in front of and this layer does not know which.
-    """
-    for remedy in secrets.Remedy:
+@pytest.mark.parametrize(
+    "vocabulary", [secrets.Remedy, config.Remedy], ids=["secrets-remedy", "config-remedy"]
+)
+def test_a_remedy_is_a_token_and_not_the_command_a_user_types(vocabulary):
+    """D2: the CLI renders a token into a command; this layer knows no interface."""
+    for remedy in vocabulary:
         assert " " not in remedy.value
         assert "crate " not in remedy.value
 
@@ -1988,11 +1512,7 @@ def test_recording_and_reading_a_credential_round_trips():
 
 
 def test_a_multi_field_credential_is_stored_as_one_blob():
-    """Several entries can be updated apart; one blob cannot.
-
-    A half-refreshed session authenticates once and then fails in a way that
-    looks like the service being down.
-    """
+    """Separate entries can be half refreshed; one blob cannot."""
     payload = {"token": "NOT-A-REAL-1", "refresh": "NOT-A-REAL-2", "kind": "pkce"}
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, payload)
     assert secrets.get_json(secrets.Credential.PROVIDER_SESSION) == payload
@@ -2004,12 +1524,7 @@ def test_an_empty_credential_is_refused_rather_than_stored():
 
 
 def test_presence_is_answered_without_retrieving_the_value(monkeypatch):
-    """Doctor asks this on every run and must not raise the keychain's prompt.
-
-    On macOS, retrieving a value from a process the user has not authorized
-    raises an interactive dialog. In an unattended health check that means the
-    run hangs rather than reports.
-    """
+    """Doctor asks on every run; a retrieval on macOS raises a prompt that hangs it."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
 
     def must_not_be_called(*args, **kwargs):
@@ -2029,36 +1544,20 @@ def test_deleting_a_credential_clears_it_from_the_presence_index():
 
 
 def test_the_presence_index_records_names_and_never_values():
-    """The index is installation-scoped state. It must be safe to read."""
     secrets.set(secrets.Credential.IDENTIFY_SIGNING_KEY, "value-from-the-user")
     payload = json.loads(config.state_path("credential_index").read_text())
     assert payload["recorded"] == [secrets.Credential.IDENTIFY_SIGNING_KEY.value]
     assert "value-from-the-user" not in json.dumps(payload)
 
 
-# ── Item 4 of the five-places residual finding. Three states, not one ───────
-#
-# ``_index_read`` caught ``OSError`` and ``ValueError`` alike and answered with an
-# empty set, so an index this account could not open read as "nothing recorded".
-# The ledger's closing condition is two halves: the reader tells a missing index
-# from an unreadable one, and doctor says which it saw. The doctor half is in
-# ``tests/test_doctor.py``; this is the reader half.
+# Item 4 of the five places residual: the index reader tells missing from
+# unreadable from damaged. The doctor half is in ``tests/test_doctor.py``.
 
 
 def _unreadable_index(monkeypatch, path: Path):
-    """Make exactly one file answer EACCES to a read, and nothing else.
+    """One file answers EACCES (chmod is vacuous under root); returns a disarm.
 
-    Through ``Path.read_text`` rather than ``chmod`` 000 on purpose. A chmod test
-    is vacuous for a runner with an override on the filesystem, root being the
-    obvious one, and the failure shape it would hide is the whole finding: the
-    test would pass by answering "nothing recorded" without ever refusing.
-
-    RETURNS A DISARM CALLABLE, and a test that needs to read the index afterwards
-    calls that rather than ``monkeypatch.undo``. ``undo`` rolls back EVERY patch
-    on the shared fixture, which here includes the autouse conftest fixtures that
-    point installation state at a temp tree and stand a fake keyring up, so the
-    assertions after it ran against this machine's real state directory and real
-    keychain and compared a fixture value against a live one.
+    Disarm rather than ``monkeypatch.undo``, which also undoes the autouse isolation.
     """
     real = Path.read_text
     armed = True
@@ -2080,14 +1579,7 @@ def _unreadable_index(monkeypatch, path: Path):
 def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded(
     monkeypatch,
 ):
-    """Item 4 of the five-places residual finding, its cost reproduced.
-
-    ``exists`` answering False here is what made doctor report a stored credential
-    as not recorded with "record it" beside it, and made three verbs refuse
-    ``credential-missing`` over a keychain that was holding the value. Recording it
-    again does not move the index, so that remedy never completes: the loop R-116
-    measured, reached from a permission rather than from a race.
-    """
+    """Answering False sent doctor and three verbs to "record it", a loop that never ends (R-116)."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     index = config.state_path("credential_index")
     _unreadable_index(monkeypatch, index)
@@ -2097,10 +1589,7 @@ def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded
 
     cause = excinfo.value.cause
     assert str(index) in cause.message, "the refusal must name the file it could not read"
-    # The remedy follows the KIND of refusal the operating system made rather than
-    # the one this site declared, which is the classification that residual's
-    # third item bought.
-    # A permission is granted, not repaired.
+    # The remedy follows the kind of refusal the OS made: a permission is granted.
     assert cause.remediation.remedy is not Remedy.SET_CREDENTIAL
     assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
     assert cause.reason == "path-permission-denied"
@@ -2108,12 +1597,7 @@ def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded
 
 
 def test_an_absent_presence_index_still_answers_nothing_recorded():
-    """The one state that DOES mean nothing recorded, and the reason the fix is a
-    distinction rather than a blanket refusal.
-
-    A fresh installation has no index. Refusing here would mean the product could
-    not be set up at all, which is a worse failure than the one being fixed.
-    """
+    """A fresh install has no index; refusing here would block setup."""
     index = config.state_path("credential_index")
     assert not index.exists()
     assert secrets.exists(secrets.Credential.IDENTIFY_KEY) is False
@@ -2121,20 +1605,7 @@ def test_an_absent_presence_index_still_answers_nothing_recorded():
 
 
 def test_an_index_refused_for_something_other_than_a_permission_keeps_its_own_act():
-    """THE DECLARED ACT, on the one arrangement where it is observable.
-
-    ``cause.classified`` replaces the slug and the remedy whenever the declared
-    chain carries a permission, which is right and is what the permission test
-    above asserts. It also means the act this site writes for itself is invisible
-    there, and a mutation table found exactly that: substituting
-    ``set-credential`` on that branch killed nothing, because every test reaching
-    it was reaching it through EACCES.
-
-    A directory where the index should be raises EISDIR, which no classification
-    claims, so the site's own answer is what a person reads. Driven on a real
-    filesystem rather than through a patched reader, since the arrangement is one
-    a filesystem can actually be in.
-    """
+    """EISDIR, which no classification claims, shows the site's own declared act."""
     index = config.state_path("credential_index")
     index.parent.mkdir(parents=True, exist_ok=True)
     index.mkdir()
@@ -2147,16 +1618,12 @@ def test_an_index_refused_for_something_other_than_a_permission_keeps_its_own_ac
     assert cause.remediation.remedy is Remedy.REPAIR_CREDENTIAL_STORE
     assert cause.detail["index"] == "unreadable"
     assert str(index) in cause.message
-    # The reserved code the slug maps to. A precondition the person can repair,
-    # never a defect for them to report.
+    # A precondition the person can repair, never a defect to report.
     assert cause.code is ExitCode.PRECONDITION
 
 
 def test_a_damaged_presence_index_refuses_and_says_it_was_read(monkeypatch):
-    """The second half of the old blanket. ``ValueError`` was caught with
-    ``OSError`` and answered the same way, and it is a different act to repair:
-    the bytes were read and do not say what is recorded.
-    """
+    """Bytes read that do not say what is recorded are a different repair from a refusal."""
     index = config.state_path("credential_index")
     index.parent.mkdir(parents=True, exist_ok=True)
     index.write_text("{not json at all")
@@ -2173,9 +1640,6 @@ def test_a_damaged_presence_index_refuses_and_says_it_was_read(monkeypatch):
 
 
 def test_a_presence_index_without_a_list_of_names_refuses_rather_than_answering():
-    """Valid JSON whose ``recorded`` key is not a list of names is the same fact as
-    unparseable bytes, and it used to take the same silent empty answer.
-    """
     index = config.state_path("credential_index")
     index.parent.mkdir(parents=True, exist_ok=True)
     index.write_text(json.dumps({"recorded": "identify-key"}))
@@ -2188,13 +1652,7 @@ def test_a_presence_index_without_a_list_of_names_refuses_rather_than_answering(
 def test_recording_a_credential_does_not_truncate_an_index_it_could_not_read(
     monkeypatch,
 ):
-    """The write half, which is where the old answer cost the MOST.
-
-    ``_record_name`` reads the existing names and writes them back with one added.
-    An empty answer from a read that failed made that a rewrite of the whole index
-    down to a single name, so one unreadable read turned into a permanent false
-    report about the credentials nobody had asked about.
-    """
+    """An empty answer from a failed read made ``_record_name`` rewrite the index to one name."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     index = config.state_path("credential_index")
     before = index.read_text()
@@ -2211,14 +1669,7 @@ def test_recording_a_credential_does_not_truncate_an_index_it_could_not_read(
 def test_a_refusal_from_the_record_half_says_the_value_reached_the_keychain(
     monkeypatch,
 ):
-    """The reader is reached from three places that leave two stores in three
-    states, and one sentence for all three was wrong twice.
-
-    ``_record_name`` runs only after the keychain write and its read back have
-    both succeeded, so a refusal there is raised over a value that LANDED. Told
-    "nothing was stored", the person records it again, which succeeds at the
-    keychain, refuses at the same file, and leaves them exactly where they were.
-    """
+    """``_record_name`` runs after the keychain write landed, so the refusal must say so."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     index = config.state_path("credential_index")
     disarm = _unreadable_index(monkeypatch, index)
@@ -2228,19 +1679,14 @@ def test_a_refusal_from_the_record_half_says_the_value_reached_the_keychain(
     message = excinfo.value.cause.message
 
     disarm()
-    # DRIVEN rather than argued. The keychain is asked what it holds, and the
-    # refusal's own sentence is checked against that answer.
+    # Driven: the keychain is asked what it holds.
     assert secrets.get(secrets.Credential.IDENTIFY_SIGNING_KEY) == "another-value"
     assert "THE VALUE IS IN THE KEYCHAIN" in message
     assert "Nothing was stored" not in message
 
 
 def test_a_refusal_from_the_remove_half_says_neither_store_was_touched(monkeypatch):
-    """The other end of the same distinction. ``delete`` clears the index entry
-    first, so a refusal from the read at the start of that cycle has touched
-    neither store, and saying so is what stops a person re-running a removal they
-    believe half happened.
-    """
+    """``delete`` reads the index first, so a refusal there touched neither store."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     index = config.state_path("credential_index")
     disarm = _unreadable_index(monkeypatch, index)
@@ -2258,13 +1704,7 @@ def test_a_refusal_from_the_remove_half_says_neither_store_was_touched(monkeypat
 def test_removing_a_credential_does_not_truncate_an_index_it_could_not_read(
     monkeypatch,
 ):
-    """The other half of the cycle, and the order matters here.
-
-    ``delete`` clears the index entry BEFORE the keychain entry, so a read that
-    answered empty would have written an empty index and then removed one value,
-    leaving every other recorded name unrecorded. The refusal happens before
-    either store is touched.
-    """
+    """``delete`` clears the index before the keychain, so the refusal must come first."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     secrets.set(secrets.Credential.IDENTIFY_SIGNING_KEY, "another-value")
     index = config.state_path("credential_index")
@@ -2282,12 +1722,7 @@ def test_removing_a_credential_does_not_truncate_an_index_it_could_not_read(
 def test_the_environment_fallback_answers_presence_without_reading_the_index(
     monkeypatch,
 ):
-    """The opted-in fallback is checked FIRST, so a machine supplying credentials
-    through the environment is not blocked by a sidecar it never writes.
-
-    Asserted because the refusal above is new and a refusal that fires ahead of
-    the fallback would break the one configuration that has no index by design.
-    """
+    """The opted in fallback is checked first; it has no index by design."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv("CRATEKIT_CREDENTIAL_IDENTIFY_KEY", "value-from-the-env")
     index = config.state_path("credential_index")
@@ -2298,12 +1733,7 @@ def test_the_environment_fallback_answers_presence_without_reading_the_index(
 
 
 def test_the_environment_fallback_is_opt_in_and_never_silent(monkeypatch):
-    """No silent fallbacks: not to a file, not to an empty string, not to the environment.
-
-    The failure being avoided is an unauthenticated request that looks like a
-    service outage. An override the user did not ask for is the same failure with
-    a different cause.
-    """
+    """An override the user did not ask for is an unauthenticated request in disguise."""
     monkeypatch.setenv("CRATEKIT_CREDENTIAL_IDENTIFY_KEY", "value-from-the-env")
     monkeypatch.delenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, raising=False)
 
@@ -2315,38 +1745,12 @@ def test_the_environment_fallback_is_opt_in_and_never_silent(monkeypatch):
     assert secrets.get(secrets.Credential.IDENTIFY_KEY) == "value-from-the-env"
 
 
-def test_the_backend_refusal_names_the_opt_in_rather_than_taking_it(monkeypatch):
-    def no_backend(*args, **kwargs):
-        raise keyring.errors.NoKeyringError("no backend")
-
-    monkeypatch.setattr(keyring, "get_password", no_backend)
-    with pytest.raises(secrets.CredentialBackendUnavailable) as excinfo:
-        secrets.get(secrets.Credential.IDENTIFY_KEY)
-    assert secrets.ENV_ALLOW_ENV_CREDENTIALS in str(excinfo.value)
-
-
 def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
-    """MEASURED before it was fixed: two processes, one credential each, and the
-    keychain held both while ``exists`` reported one, in 23 of 25 trials.
-
-    The read and the write are a cycle, and an unlocked cycle over a shared
-    document loses whatever the other writer put there between them. What makes
-    this one worse than the two cycles left in the residual is that the loss
-    makes a REPORT lie: ``exists`` is what doctor asks, so a name that never
-    landed reads as ``not recorded`` for a credential the keychain holds, and the
-    remedy sends the user to record it again.
-
-    A second lock attempt inside the cycle stands in for the second process.
-    ``flock`` is held per open file description, so a fresh descriptor from this
-    process contends exactly as another process's would, which is the same
-    substitution the destructive-session conformance drive makes.
-    """
+    """Unlocked, two processes lost a name in 23 of 25 trials; a fresh descriptor contends."""
     import fcntl
 
     lock_path = config.state_path("credential_index_lock")
-    # Created here so that a build which never takes the lock fails on the
-    # CONTENTION assertion rather than on a missing file, which reads as a
-    # fixture problem and hides what is being asserted.
+    # Created so a build that never locks fails on contention, not a missing file.
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path.touch()
     contended: list[bool] = []
@@ -2370,17 +1774,13 @@ def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
         secrets._index_write = real_write
 
     assert contended == [True, True], "the read then write cycle ran unlocked"
-    # And the lock is not held afterwards, or the next writer would block on a
-    # descriptor nobody closed.
+    # And the lock is released afterwards.
     with open(lock_path, "a+") as after:
         fcntl.flock(after, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(after, fcntl.LOCK_UN)
 
 
 def test_the_presence_index_lock_lives_beside_the_file_it_guards(cfg):
-    """A lock under a different root than the file it protects is a lock two
-    processes can each hold while both edit that file.
-    """
     entry = config.state_file("credential_index_lock")
     assert entry.root is config.state_file("credential_index").root
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
@@ -2392,14 +1792,7 @@ def test_the_presence_index_lock_lives_beside_the_file_it_guards(cfg):
 def test_a_credential_index_that_cannot_be_locked_refuses_rather_than_writing(
     monkeypatch,
 ):
-    """Proceeding unlocked IS the defect, so it is not the degradation.
-
-    ``core/review`` made the same decision for the same reason: degrading to the
-    broken behaviour on the platform where the fix cannot be applied leaves
-    exactly the defect, reachable by anybody on that platform. The refusal is its
-    own type because its remediation is neither "install a backend" nor "record
-    the credential": this installation's own sidecar is what needs repairing.
-    """
+    """Proceeding unlocked IS the defect, so it is not the degradation."""
     real_open = os.open
 
     def refuse(path, *args, **kwargs):
@@ -2416,14 +1809,7 @@ def test_a_credential_index_that_cannot_be_locked_refuses_rather_than_writing(
 
 
 def test_a_backend_message_never_reaches_the_refusal_a_user_reads(monkeypatch):
-    """Hardening. The refusal is interpolated into a check table, into standard
-    error and into the JSON envelope, and a keychain backend is third-party code
-    whose exception text is not ours to bound.
-
-    Demonstrated with a backend that raises with the value it was handed, which
-    put the secret into all three. Only the exception TYPE is named now, which is
-    what tells the failures apart; the message is what could carry a secret.
-    """
+    """Third party exception text may carry the secret; only its type is named."""
 
     def leaky(_service, _name, password):
         raise RuntimeError(f"could not store {password}")
@@ -2437,25 +1823,16 @@ def test_a_backend_message_never_reaches_the_refusal_a_user_reads(monkeypatch):
 
 
 def test_the_keychain_service_is_not_namespaced_per_library():
-    """A credential is an account fact, not a library fact (KTD21).
-
-    Namespacing by library would make one account's token get re-entered once per
-    library the user owns.
-    """
+    """A credential is an account fact, not a library fact (KTD21)."""
     assert secrets.SERVICE == "cratekit"
 
 
-# ── Permissions do not depend on the user's umask ────────────────────────────
+# Permissions do not depend on the user's umask.
 
 
 @pytest.fixture
 def permissive_umask():
-    """Run the body under umask 000, then put the process back.
-
-    A test that does not manipulate the umask cannot see this defect at all: on
-    the author's machine the umask is 022 and a plain write lands 0644, which
-    looks fine until somebody with a laxer umask runs the same code.
-    """
+    """Run the body under umask 000, where a mode left to the umask shows."""
     previous = os.umask(0o000)
     try:
         yield
@@ -2464,24 +1841,14 @@ def permissive_umask():
 
 
 def _drive_every_write_path(cfg) -> list[Path]:
-    """Exercise every way this unit puts something on disk. Returns the roots.
-
-    Listed as OPERATIONS, not as files. That is the point: the audit below walks
-    whatever these produce, so a future writer is covered by adding its operation
-    here rather than by remembering to add its filename to an assertion.
-    """
-    # A credential, which creates the installation STATE directory and the
-    # presence index inside it.
+    """Exercise every way this unit writes, as operations; returns the roots to audit."""
+    # A credential: the installation state directory and the presence index.
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
-    # The config file, which creates the installation CONFIG directory.
+    # The config file: the installation config directory.
     config.save(cfg)
-    # A library-scoped write, which creates the library state directory AND a
-    # role subdirectory under it: two levels, so an intermediate directory
-    # created at the default mode shows up.
+    # A library write two levels deep, so an intermediate directory shows.
     config.atomic_write_bytes(b"{}\n", config.state_path("tree_registry", cfg))
-    # A migration, which creates the lock file and a versioned backup beside the
-    # config. The lock is the writer the hand-enumerated version of this test
-    # missed entirely.
+    # A migration: its lock file and a versioned backup beside the config.
     migrating = config.config_dir() / "migrating.toml"
     data = valid_data(cfg.library.root)
     data["schema_version"] = 1
@@ -2498,29 +1865,7 @@ def _drive_every_write_path(cfg) -> list[Path]:
 def test_every_file_and_directory_this_unit_creates_is_private_under_any_umask(
     permissive_umask, cfg
 ):
-    """The defect class this whole module was chartered to end, audited rather than listed.
-
-    The source system's credential files are 0600 because of the author's umask
-    rather than because of any code, so on a machine with a laxer umask they land
-    world readable. The presence index carries no credential VALUES, but under
-    umask 000 a plain write lands world WRITABLE, and that is enough: any other
-    local account can add a name, making doctor report a credential is set when
-    the keychain has nothing, or remove one, making a working install report as
-    unconfigured.
-
-    THE DIRECTORY IS PART OF THE FILE'S MODE, which the first version of this
-    test could not see. Unlink and rename are governed by the DIRECTORY's
-    permissions, so a 0600 file inside a 0777 directory can still be deleted and
-    replaced by any local account: the file's mode is intact and the property it
-    was supposed to provide is gone. Both were observed at 0o777.
-
-    IT WALKS RATHER THAN ENUMERATES, and that is the difference that matters. The
-    version this replaces hand-listed two files, so its name was false the moment
-    a third writer appeared, and one had: the migration lock file landed 0666 and
-    the suite stayed green with it sitting there. A test that enumerates is a test
-    that misses the next writer, so this one drives the write paths and then
-    audits whatever turned up.
-    """
+    """Walked, not enumerated, directories included; the migration lock is named as well."""
     roots = _drive_every_write_path(cfg)
 
     offenders: list[str] = []
@@ -2543,25 +1888,11 @@ def test_every_file_and_directory_this_unit_creates_is_private_under_any_umask(
         "created under umask 000 at a mode that depends on the umask:\n"
         + "\n".join(offenders)
     )
-    # The walk has to have found something, or a green result would only mean the
-    # write paths above quietly stopped writing.
+    # A green walk over nothing would only mean the write paths stopped writing.
     assert seen_files >= 4 and seen_dirs >= 4, (
         f"the audit only saw {seen_files} files and {seen_dirs} directories, "
         f"which is too few for the write paths it drove"
     )
-
-
-def test_the_migration_lock_file_is_one_of_the_files_that_audit_covers(
-    permissive_umask, cfg
-):
-    """Named explicitly, because it is the writer the enumerated test missed.
-
-    It also persists after a successful migration, on purpose: unlinking a lock
-    file lets a second process create a new inode at the same name and take a
-    second lock on it, so both processes believe they hold the only one. The mode
-    is what makes persisting harmless, so the mode is what is asserted.
-    """
-    _drive_every_write_path(cfg)
 
     locks = sorted(config.config_dir().rglob("*.migrate.lock"))
     assert locks, "the migration never took a lock, so this asserts nothing"
@@ -2570,14 +1901,8 @@ def test_the_migration_lock_file_is_one_of_the_files_that_audit_covers(
 
 
 def _bare_mkdir_calls(source: str) -> list[str]:
-    """Return every ``.mkdir(...)`` that is not the one inside the private helper.
-
-    A directory created straight through ``Path.mkdir`` takes its mode from the
-    umask, and with ``parents=True`` its intermediate levels take 0o777 no matter
-    what mode was asked for. So the rule is that every creation in this module
-    goes through one function, and this is what keeps that true.
-    """
-    tree = ast.parse(source)
+    """Every ``.mkdir(...)`` outside ``mkdir_private``; ``parents=True`` makes 0o777 levels."""
+    tree = parsed(source)
     inside_helper: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "mkdir_private":
@@ -2599,17 +1924,13 @@ def test_the_bare_mkdir_lint_catches_a_creation_that_skips_the_helper():
 
 
 def test_every_directory_the_config_module_creates_goes_through_the_private_helper():
-    """One creator, so one place decides the mode. Also keeps the docstrings true.
-
-    ``save`` used to claim it was "the one function in the module that creates a
-    directory". Two others did by then, both added in the previous fix round, and
-    in a module whose docstrings carry the rules an inaccurate claim about
-    directory creation is not cosmetic: it is the sentence a reader trusts instead
-    of checking. Routing every creation through one helper makes the claim
-    checkable, and this is the check.
-    """
+    """One creator decides the mode, and keeps ``save``'s docstring from claiming to be it."""
     source = (SRC_ROOT / "cratekit" / "core" / "config.py").read_text()
-    offenders = _bare_mkdir_calls(source)
+    offenders = [
+        hit
+        for part in config_parts()
+        for hit in _bare_mkdir_calls(Path(part.__file__).read_text())
+    ]
     assert not offenders, (
         "directories created outside mkdir_private:\n"
         + "\n".join(offenders)
@@ -2625,13 +1946,7 @@ def test_every_directory_the_config_module_creates_goes_through_the_private_help
 def test_a_migration_backup_gets_the_same_mode_as_the_file_it_copies(
     permissive_umask, library, tmp_path
 ):
-    """A migration must not produce a laxer-permissioned duplicate of the config.
-
-    Config carries no credentials today, so the exposure is library paths and
-    backup destinations. It is still the same function being careful about
-    atomicity and careless about mode, and it matters the moment anything
-    sensitive joins the schema.
-    """
+    """A migration must not leave a laxer duplicate of the config."""
     path = tmp_path / "config.toml"
     data = valid_data(library)
     data["schema_version"] = 1
@@ -2643,18 +1958,11 @@ def test_a_migration_backup_gets_the_same_mode_as_the_file_it_copies(
     assert stat.S_IMODE(backup.stat().st_mode) == 0o600
 
 
-# ── The keychain is an external system, so its failures are not a closed set ──
+# The keychain is an external system, so its failures are not a closed set.
 
 
 def test_a_backend_that_fails_with_an_unexpected_type_still_refuses_typed(monkeypatch):
-    """Not hypothetical on the second platform R1 cares about.
-
-    keyring's SecretService backend calls into D-Bus outside its own try block, so
-    a headless machine with no session bus raises an exception that is not a
-    KeyringError, and its ``priority`` classproperty raises a bare RuntimeError.
-    Either escapes an ``except KeyringError`` handler untyped and with no remedy,
-    and the CLI's CredentialError handler never sees it.
-    """
+    """SecretService on a headless machine raises outside KeyringError."""
 
     def dead_session_bus(*args, **kwargs):
         raise RuntimeError("Unable to initialize SecretService: no session bus")
@@ -2671,13 +1979,7 @@ def test_a_backend_that_fails_with_an_unexpected_type_still_refuses_typed(monkey
 
 
 def test_the_doctor_probe_reports_false_rather_than_raising(monkeypatch):
-    """Doctor is the command a user runs precisely when the keychain is broken.
-
-    keyring's backends define ``priority`` as a classproperty that raises when the
-    backend is not viable on this machine. Reading it outside the try turns a
-    health check into an unhandled traceback on exactly the machine it exists to
-    diagnose.
-    """
+    """A backend's ``priority`` raises where it is not viable, the machine doctor diagnoses."""
 
     class _NotViableHere:
         @property
@@ -2689,14 +1991,7 @@ def test_the_doctor_probe_reports_false_rather_than_raising(monkeypatch):
 
 
 def test_a_backend_that_accepts_a_write_and_stores_nothing_refuses(monkeypatch):
-    """The null backend is the documented way to disable keyring on a headless box.
-
-    Its ``set_password`` is a no-op that raises nothing, so the module's own
-    argument that "the exception is an observation" has no observation to make.
-    Without a read-back the credential is silently discarded, the presence index
-    records it anyway, and the user loops forever: doctor says the credential is
-    present, every read says it is missing, and re-recording it changes nothing.
-    """
+    """The null backend's no-op write needs a read back, or the user loops forever."""
     backend = keyring.backends.null.Keyring()
     monkeypatch.setattr(keyring, "set_password", backend.set_password)
     monkeypatch.setattr(keyring, "get_password", backend.get_password)
@@ -2708,16 +2003,11 @@ def test_a_backend_that_accepts_a_write_and_stores_nothing_refuses(monkeypatch):
     assert secrets.Credential.IDENTIFY_KEY not in secrets.recorded()
 
 
-# ── D2: a foundation module carries a remedy token, never a command line ─────
+# D2: a foundation module carries a remedy token, never a command line.
 
 
 def test_every_config_failure_carries_a_structured_remedy():
-    """KTD25 again, in the module that raises the most types.
-
-    A caller deciding between "run setup", "upgrade Cratekit", and "fix these
-    values" by string-matching a message is exactly the failure the typed
-    vocabulary exists to prevent.
-    """
+    """KTD25, in the module that raises the most types."""
     for kind in (
         config.ConfigMissing,
         config.ConfigCorrupt,
@@ -2737,65 +2027,26 @@ def test_every_config_failure_carries_a_structured_remedy():
     assert len(remedies) == 5, "collapsed remedies force callers back to string matching"
 
 
-def test_a_config_remedy_is_a_token_and_not_the_command_a_user_types():
-    for remedy in config.Remedy:
-        assert " " not in remedy.value
-        assert "crate " not in remedy.value
-
-
-def test_the_unset_pin_refusal_carries_its_own_remedy(cfg):
-    """Its remediation is not "fix these values", it is "record this one thing"."""
-    with pytest.raises(config.ConfigInvalid) as excinfo:
-        cfg.assert_rekordbox_pin_recorded()
-    assert excinfo.value.remedy is config.Remedy.RECORD_REKORDBOX_PIN
-
-
-def test_a_missing_config_carries_the_setup_remedy_rather_than_prose(tmp_path):
-    with pytest.raises(config.ConfigMissing) as excinfo:
-        config.load(tmp_path / "nothing.toml")
-    assert excinfo.value.remedy is config.Remedy.RUN_SETUP
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Values the file supplies, and the ones it must be type-checked on
-# ═══════════════════════════════════════════════════════════════════════════
+# Values the file supplies, and the ones it must be type checked on.
 
 
 def test_the_library_root_is_read_from_the_file_when_nothing_relocates_it(
     library, monkeypatch
 ):
-    """The suite's autouse isolation sets the relocation override for every test.
-
-    So the file's own value is never exercised anywhere else, and a regression
-    that ignored ``library.root`` from the file entirely would pass the whole
-    suite. Deleting the variable inside the test is the seam; the conftest fixture
-    is not this file's to change.
-    """
+    """The autouse isolation always relocates, so the file's own value is tested only here."""
     monkeypatch.delenv(config.ENV_LIBRARY_ROOT, raising=False)
     assert config.from_dict(valid_data(library)).library.root == library
 
 
 @pytest.mark.parametrize("key", ["path_budget_bytes", "filename_max_bytes"])
 def test_a_naming_budget_that_is_not_an_integer_is_named_at_load(library, key):
-    """S3 hands these to a pure engine as parameters.
-
-    A string budget therefore surfaces as a TypeError deep inside a rename rather
-    than as a named problem while the user is still looking at their config.
-    """
+    """Else a string budget surfaces as a TypeError deep inside a rename."""
     problems = config.validate(valid_data(library, naming={key: "250"}))
     assert any(key in p for p in problems), problems
 
 
 def test_the_overlap_contract_names_are_pinned_while_the_old_system_reads_them():
-    """U30 taught the old system to open this system's lock and registry by path.
-
-    DJ_tools cannot import this package, so it spells ".cratekit", "local" and
-    "coupled" as constants of its own. Renaming any of them here before the old
-    system retires would send its overlap guard at paths this system no longer
-    uses, and the ratchet would disarm silently: the old system refuses only on
-    a registry it can find. The pin is mechanical rather than documented because
-    a documented contract is a thing somebody has to remember to check.
-    """
+    """U30: DJ_tools spells these paths itself, so a rename would silently disarm its guard."""
     default = config.LibraryConfig.__dataclass_fields__["state_dirname"].default
     assert default == ".cratekit"
     assert config._LIBRARY_SUBDIR_BY_ROLE[config.SnapshotRole.NEVER_RESTORED] == "local"
@@ -2813,17 +2064,14 @@ def test_the_export_staleness_default_is_seven_days_and_a_file_can_move_it(libra
 
 @pytest.mark.parametrize("value", [0, -3, "seven", 2.5, True])
 def test_an_export_staleness_that_is_not_a_positive_day_count_is_refused(library, value):
-    """``True`` by name: it is an ``int`` to ``isinstance``, and read as one day
-    it would warn on nearly every export while looking like a switch."""
+    """``True`` by name: an ``int`` to ``isinstance`` that would read as one day."""
     problems = config.validate(valid_data(library, outbound={"export_stale_days": value}))
     assert [p for p in problems if "outbound.export_stale_days" in p], problems
     assert all("positive whole number" in p for p in problems), problems
 
 
 def test_an_export_staleness_nobody_could_mean_is_refused_with_its_ceiling(library):
-    """Found by the built in review. Ten billion days, a guess at switching the
-    warning off, passed validation and then overflowed the duration it was
-    compared against, which crashed all three verbs at the gate."""
+    """Ten billion days overflowed the duration and crashed all three verbs at the gate."""
     ceiling = config.MAX_EXPORT_STALE_DAYS
     assert config.validate(valid_data(library, outbound={"export_stale_days": ceiling})) == []
     problems = config.validate(
@@ -2831,11 +2079,6 @@ def test_an_export_staleness_nobody_could_mean_is_refused_with_its_ceiling(libra
     )
     assert len(problems) == 1 and "outbound.export_stale_days" in problems[0]
     assert str(ceiling) in problems[0]
-
-
-def test_an_absent_export_staleness_is_not_a_problem(library):
-    assert config.validate(valid_data(library)) == []
-    assert config.validate(valid_data(library, outbound={})) == []
 
 
 # R-301: the recognition host and the monthly bound are the user's.
@@ -2868,8 +2111,7 @@ def test_the_recognition_section_round_trips_through_the_file(library):
 
 @pytest.mark.parametrize("value", [0, -3, "many", 2.5, True])
 def test_a_monthly_bound_that_is_not_a_positive_call_count_is_refused(library, value):
-    """``True`` by name, since it is an ``int`` to ``isinstance``; zero because
-    there is no value that switches the bound off."""
+    """``True`` is an ``int`` to ``isinstance``; zero, since nothing switches the bound off."""
     problems = config.validate(valid_data(library, recognition={"monthly_calls": value}))
     assert len(problems) == 1, problems
     assert "recognition.monthly_calls" in problems[0]
@@ -2893,15 +2135,21 @@ def test_a_monthly_bound_that_is_not_a_positive_call_count_is_refused(library, v
     ],
 )
 def test_a_host_that_is_not_a_bare_name_under_the_service_is_refused(library, value):
-    """The access key and its signature travel to this host, so a value that
-    names another domain, or builds an address nobody meant, is refused."""
+    """The access key and its signature travel to this host."""
     problems = config.validate(valid_data(library, recognition={"host": value}))
     assert len(problems) == 1, problems
     assert "recognition.host" in problems[0]
 
 
-def test_an_absent_recognition_section_is_not_a_problem(library):
-    assert config.validate(valid_data(library, recognition={})) == []
-    assert config.validate(
-        valid_data(library, recognition={"host": "identify-eu-west-1.acrcloud.com"})
-    ) == []
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"outbound": {}},
+        {"recognition": {}},
+        {"recognition": {"host": "identify-eu-west-1.acrcloud.com"}},
+    ],
+    ids=["no-sections", "empty-outbound", "empty-recognition", "recognition-host-only"],
+)
+def test_an_absent_optional_section_or_key_is_not_a_problem(library, overrides):
+    assert config.validate(valid_data(library, **overrides)) == []

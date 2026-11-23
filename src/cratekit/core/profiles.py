@@ -1,29 +1,12 @@
-"""Profiles: named presets of module membership, and nothing else.
+"""Profiles: named presets of module membership, and nothing else (D6).
 
-A profile is the answer to one question, asked once at setup: which feature
-modules should be on. It is not a bundle of settings, not a personality, and not
-a place to hide a default that belongs in the config schema. Every time a
-"profile" in a piece of software starts carrying unrelated values, changing the
-profile starts changing things the user did not ask about, and the only safe
-move becomes never changing it.
+A profile carries no other setting, so changing it never changes what the user
+did not ask about. An explicit per-module toggle overrides the profile, decided
+in ``resolve`` alone. Changing a profile touches membership and nothing else,
+which ``apply`` makes true by construction. Library adoption is not a module and
+stays available in every profile (R5).
 
-So the contract here is narrow on purpose (D6):
-
-1. A profile is a named preset of module membership.
-2. An explicit per-module toggle OVERRIDES the profile. The precedence is stated
-   here, in one function, not left to emerge from whichever code path ran last.
-3. Changing a profile touches module membership and nothing else. That is this
-   unit's own test scenario, and the module is shaped so that it is true by
-   construction: ``apply`` returns a copy with two keys replaced and every other
-   key carried through untouched.
-4. Library adoption stays available in EVERY profile, including the slimmest
-   one (R5). It is not a module and has no toggle, because a user who installed
-   the slim profile is exactly the user most likely to need to adopt an existing
-   library, and a toggle they have to find first is a toggle that blocks them.
-
-This module reads no configuration and imports nothing from Cratekit. It takes
-values and returns values, which is what lets one process resolve two different
-profiles without reloading anything.
+Pure: reads no configuration and imports nothing from Cratekit.
 """
 
 from __future__ import annotations
@@ -32,17 +15,9 @@ import copy
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-#: Every toggleable feature module, named one-to-one with the extras groups that
-#: carry its heavy dependencies (KTD7). A module with no heavy dependency has no
-#: extras group, which is why this list is longer than the extras table; the
-#: reverse must never be true, and ``tests/test_config.py`` asserts it.
-#:
-#: The list tracks the Feature Inventory's Module rows. A row that ships as a
-#: module and is MISSING here is not merely undocumented: ``resolve`` raises
-#: ``UnknownModule`` for any toggle it does not recognise, so the user cannot
-#: turn that feature off, and ``PROFILES["full"]`` is derived from this tuple, so
-#: the slim profile cannot exclude it either. In other words an omission here
-#: makes a module row behave like a core row, silently.
+#: Every toggleable feature module, one per Feature Inventory Module row, named
+#: like its extras group where it has one (KTD7). A module missing here cannot
+#: be toggled or left out of slim, so it silently behaves as core.
 MODULES: tuple[str, ...] = (
     "analysis",
     "vocals",
@@ -51,14 +26,8 @@ MODULES: tuple[str, ...] = (
     "deletion",
     "web",
     "desktop",
-    # Added by U5 when the verb registry made the gap visible. R5 says profile
-    # membership FOLLOWS the Feature Inventory, and nine of its Module rows had
-    # no toggle to follow: a verb for one of them would have had to ship as core,
-    # on in the slim profile, which is the opposite of what the inventory says.
-    # Each name below is the module gating one or more Module rows, and
-    # tests/test_cli_contract.py asserts the correspondence in both directions,
-    # so a future Module row without a toggle fails the build rather than
-    # quietly becoming core.
+    # U5: each name below gates one or more Module rows (R5);
+    # tests/test_cli_contract.py asserts the correspondence both ways.
     "identify",  # rows 1, 2, 5: recognition and tracklist intake
     "repair",  # row 17: filename and path repair
     "duplicates",  # row 15: the review-gated duplicate audit
@@ -69,30 +38,20 @@ MODULES: tuple[str, ...] = (
     "backup",  # row 31: library backup, which feeds the backup-age warning
     "skills",  # row 33: the operator skill layer
 
-    # A note U35 established while porting the three utility rows above:
-    # setbuilder, mastering and backup carry no heavy PYTHON dependency, so none
-    # of them appears in EXTRAS_BACKED. What they need is an external BINARY,
-    # which pip cannot install and an extras group therefore cannot promise. A
-    # missing binary is doctor's to report, not packaging's, and conflating the
-    # two would send a user to run an install command that cannot fix their
-    # problem.
+    # setbuilder, mastering and backup need an external binary, not a Python
+    # dependency, so they have no extras group; doctor reports the binary (U35).
 )
 
-#: Modules whose dependencies are heavy enough to live behind an extras group.
-#: Kept beside ``MODULES`` rather than derived from packaging metadata at runtime,
-#: because resolving installed metadata is I/O and this layer does none.
-#: ``tests/test_config.py`` asserts this set matches the extras actually declared,
-#: so the two cannot drift apart the way a hand-mirrored list normally does.
+#: Modules whose heavy dependencies live behind an extras group. Hand kept,
+#: since reading packaging metadata is I/O; ``tests/test_config.py`` asserts it
+#: matches the declared extras.
 EXTRAS_BACKED: frozenset[str] = frozenset({"analysis", "vocals", "web", "desktop"})
 
-#: Capabilities no profile may switch off. R5 names library adoption explicitly:
-#: "Module rows are opt-in, except library adoption, which stays available on
-#: demand in every profile."
+#: Capabilities no profile may switch off (R5).
 ALWAYS_AVAILABLE: frozenset[str] = frozenset({"adoption"})
 
-#: The presets. ``custom`` is the empty preset rather than a special case in the
-#: resolver: under ``custom`` every module's state comes from its explicit
-#: toggle, which is exactly what "the empty preset plus overrides" already means.
+#: The presets. ``custom`` is the empty preset, so every module's state comes
+#: from its explicit toggle with no special case in the resolver.
 PROFILES: Mapping[str, frozenset[str]] = {
     "slim": frozenset(),
     "full": frozenset(MODULES),
@@ -112,12 +71,9 @@ class UnknownModule(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Membership:
-    """The resolved answer, with the reasoning kept rather than discarded.
+    """The resolved membership, keeping which modules a toggle overrode.
 
-    ``overridden`` exists so the CLI can tell a user "analysis is on because you
-    turned it on, not because your profile says so". Without it, a user who
-    switches profiles and sees no change has no way to discover that their own
-    old toggle is the reason.
+    ``overridden`` lets the CLI explain why switching profiles changed nothing.
     """
 
     profile: str
@@ -131,17 +87,11 @@ class Membership:
 
 
 def resolve(profile: str, explicit: Mapping[str, bool] | None = None) -> Membership:
-    """Apply the profile preset, then the explicit toggles. Pure.
+    """Apply the profile preset, then the explicit toggles, which win. Pure.
 
-    Precedence, stated once: **the explicit toggle wins.** A module absent from
-    ``explicit`` takes the profile's answer. A module present takes its own,
-    whether that is on or off, so a user can subtract from ``full`` as well as
-    add to ``slim``.
-
-    This is why ``explicit`` must carry only what the config file actually set.
-    A fully defaulted mapping would make every module "explicitly off", the
-    profile would never apply to anything, and choosing a profile would silently
-    do nothing.
+    ``explicit`` must carry only what the config file actually set: a fully
+    defaulted mapping would turn every module explicitly off and the profile
+    would never apply.
     """
     if profile not in PROFILES:
         raise UnknownProfile(
@@ -174,22 +124,12 @@ def resolve(profile: str, explicit: Mapping[str, bool] | None = None) -> Members
 
 
 def apply(data: Mapping, profile: str) -> dict:
-    """Return a copy of raw config data with the profile changed and nothing else.
+    """Return a deep copy of raw config data with the profile changed and nothing else.
 
-    "Nothing else" is the point, and it is why this works on the RAW mapping
-    rather than on a typed config: rebuilding a typed object would re-serialize
-    every field, and any default that had drifted between versions would be
-    silently rewritten into the user's file as though they had chosen it.
-
-    Explicit module toggles are DELIBERATELY preserved. Switching profiles is a
-    change to the preset, not a reset of the user's own decisions; a user who
-    turned one module off and then moved from slim to full still means it off.
-    Clearing overrides is a separate, explicitly named action.
-
-    The copy is DEEP. A shallow one hands back the caller's own nested tables, so
-    "changing a profile touches module membership and nothing else" would be true
-    of the returned document and false of the object the caller then edits: a
-    later write to ``result["library"]`` would silently rewrite the input too.
+    Works on the raw mapping because a typed config would re-serialize every
+    field and write drifted defaults into the user's file. Explicit toggles are
+    kept, since switching a preset does not reset the user's own decisions. The
+    copy is deep so a later edit to a nested table cannot rewrite the input.
     """
     if profile not in PROFILES:
         raise UnknownProfile(
@@ -204,11 +144,8 @@ def apply(data: Mapping, profile: str) -> dict:
 def install_command(module: str) -> str | None:
     """The extras group that carries ``module``'s heavy dependencies, or None.
 
-    Returns the extras NAME, not a command line. R5 requires that a module
-    enabled without its extras fails with the exact command that fixes it, and
-    rendering that command is the CLI's job: this layer must not contain the text
-    a user types (D2). Modules with no heavy dependency return None, which is not
-    a failure, it is the answer.
+    Returns the extras name, not a command line: the CLI renders the command
+    (R5, D2). None means the module has no heavy dependency, not a failure.
     """
     if module not in MODULES:
         raise UnknownModule(f"{module!r} is not a module. Known: {', '.join(MODULES)}.")
