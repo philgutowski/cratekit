@@ -384,6 +384,8 @@ def test_a_variable_grid_on_a_row_not_marked_dyn_is_suspect_and_exits_27(native_
 
     assert code == int(ExitCode.LIBRARY_PREREQUISITE), envelope
     assert envelope["cause"]["reason"] == "analysis-suspect"
+    # The origin an envelope prints kept its name when the verb moved to intake (U331).
+    assert envelope["cause"]["origin"] == ["analysis.check_cli", "cli"]
     assert "1 row(s) have variable grids" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["verdict"] == rc.SUSPECT
     charlie = _items(envelope)["Charlie"]
@@ -498,6 +500,7 @@ def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(native_lib
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
+    assert envelope["cause"]["origin"] == ["analysis.rekordbox_check", "cli"]
     # No landing recorded, said as that: it shares a slug with a landing whose rows went.
     assert "no closed landing is recorded" in envelope["cause"]["message"]
 
