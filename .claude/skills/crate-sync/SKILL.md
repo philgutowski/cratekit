@@ -179,7 +179,7 @@ Follow the project's `rekordbox-visit` skill step by step: its preflight, the
 analysis of INBOX / Analyze on Phillip's standard settings, by its Auto
 Analysis path when the launch dialog shows them or else by Analyze Tracks, the
 wait counted in analysis files, the Dynamic run for rows marked `dyn` placed
-so the visit's last run is Normal, the quit, `crate analyze check`, `crate
+so the visit's last run is Normal whenever a row lacks it, the quit, `crate analyze check`, `crate
 analyze adopt` giving every title whose key or tempo differs rekordbox's, and
 the clear with `crate inbox analyzed`. It is the one procedure for the visit,
 and nothing it says is repeated here. Its verdict is this pass's: a check that

@@ -271,7 +271,8 @@ otherwise, and it analyses every row waiting with no selection; otherwise,
 Cancel it and select as above. Auto Analysis runs on its preference's own
 mode, so rows with `dyn` still take Analyze Tracks with Dynamic, and after
 them one row without `dyn` takes Analyze Tracks with Normal again, so the
-visit ends on Normal. Cratekit never turns Auto Analysis on or off.
+visit ends on Normal; a batch whose every row has `dyn` ends on Dynamic, and
+the next launch's dialog is cancelled. Cratekit never turns Auto Analysis on or off.
 rekordbox's Auto Analysis analyses every track it finds unanalysed, however it
 came in, so whether it is on is yours to choose.
 

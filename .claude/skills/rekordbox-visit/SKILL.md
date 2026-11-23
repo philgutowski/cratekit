@@ -24,8 +24,8 @@ in step 2. With Auto Analysis off, or with that dialog not showing every
 field of Phillip's standard, or showing any field set otherwise, the visit is
 the Analyze Tracks path: select INBOX / Analyze and set every field by hand.
 Both wait the same way, run rows marked `dyn` with Dynamic, end with the
-shared Analysis Mode on Normal (step 5), quit the same way and end on the
-same check and clear.
+shared Analysis Mode on Normal whenever a row lacks `dyn` (step 5), quit the
+same way and end on the same check and clear.
 
 **The two dialogs share one Analysis Mode** (U954). Sitting 104 (A190)
 measured it: the launch's Auto Analysis dialog read Dynamic, every other
@@ -121,7 +121,8 @@ Every one of these holds, or the visit does not start.
 it.** It never turns Auto Analysis on or off and never opens rekordbox's
 Analysis preference; it reads the fields only through the dialog below. The
 one field a visit moves is the Analysis Mode, which each run's OK writes
-(the head of this skill), and its last OK leaves it on Normal.
+(the head of this skill), and its last OK leaves it on Normal whenever the
+batch holds a row without `dyn`.
 Auto Analysis analyses every track rekordbox finds not analysed, by any
 route, which is why it is his to choose.
 
@@ -132,8 +133,9 @@ starting.", showing the analysis fields with OK and Cancel, and OK analysed
 every row waiting, before anything was selected, on the preference's own
 fields, its mode Normal among them. The preference itself was read back as
 nine fields: high precision off, Normal, BPM range 78 to 155, BPM / Grid, KEY
-and Phrase on, Vocal off, Cloud Analysis off, Radar Analysis on. It holds no
-CUE field. Sitting 103 recorded the launch dialog's own fields: BPM / Grid
+and Phrase on, Vocal off, Cloud Analysis off, Radar Analysis on, with no CUE
+field; sitting 102's read back showed CUE's "Set CUE during analysis" off.
+Sitting 103 recorded the launch dialog's own fields: BPM / Grid
 on (dimmed), High precision off, Analysis Mode Normal, BPM Range 78-155, KEY
 on, Phrase on, Vocal off, CUE(Manual) off.
 
@@ -177,7 +179,7 @@ on, Phrase on, Vocal off, CUE(Manual) off.
      rows is this cause: that visit's last OK was its Dynamic run, which left
      the shared mode on Dynamic (U954, the note at the head of this skill).
      It is not equal: cancel it as above, and the Analyze Tracks path then
-     sets every field, its last OK on Normal.
+     sets every field, its last OK on Normal whenever a row lacks `dyn`.
 
    Record the dialog's fields as it showed them, its Analysis Mode among
    them, and which button was pressed, either way.
@@ -292,7 +294,8 @@ Tag value named `dyn`, which a native landing writes for a track whose tempo
 moves (U157).
 
 Its place in the visit is set by the shared Analysis Mode (the note at the
-head of this skill), so the visit's last OK is Normal:
+head of this skill), so the visit's last OK is Normal whenever a row lacks
+`dyn`:
 
 - **On the Analyze Tracks path it comes first**, at that path's step 2,
   steps 5.1 to 5.4 only; the Normal run on the rows without `dyn` follows
@@ -301,9 +304,9 @@ head of this skill), so the visit's last OK is Normal:
   analysed every waiting row on Normal before anything was selected, and
   step 5.5, the closing Normal run, follows it.
 
-1. In INBOX / Analyze, show only the rows carrying the My Tag `dyn` (the
-   track list's My Tag filter), and select all; a click and Command clicks
-   on each such row serve as well. On the Auto Analysis path nothing is open
+1. In INBOX / Analyze, select the rows carrying the My Tag `dyn`: a click on
+   one and Command clicks on each other, since the track list's filter
+   offers no My Tag (sitting 104). On the Auto Analysis path nothing is open
    yet: open the playlist as the Analyze Tracks path's first step says. The
    count equals the `dyn` count from step 1.5, or stop and report both.
 2. Analyze Tracks with every field as the table in step 3 says except
@@ -311,7 +314,7 @@ head of this skill), so the visit's last OK is Normal:
    back.
 3. Write a new marker just before OK and wait as step 4 says, with `expected`
    the `dyn` count.
-4. Clear the filter.
+4. Click one row to end the selection, so the next run starts from none.
 5. **The closing Normal run, on the Auto Analysis path only**, the step
    that leaves Normal set. Click one row of INBOX / Analyze without the My
    Tag `dyn`, and open Analyze Tracks on it with every

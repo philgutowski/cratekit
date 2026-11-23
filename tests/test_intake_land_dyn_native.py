@@ -192,10 +192,10 @@ def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writabl
     assert len(_marked(cfg)) == 2
     message = _warning(acted, land_cli.AWAITING_ANALYSIS)
     assert (
-        "run Analyze Tracks on its 2 row(s), every one carrying the dyn My Tag, with "
-        "Analysis Mode Dynamic, high precision off, BPM/Grid, Phrase and KEY on; with no "
-        "row left to run Normal last, the next launch's Auto Analysis dialog reads "
-        "Dynamic and is cancelled"
+        "run Analyze Tracks on its 2 row(s), every one carrying the dyn My Tag, with the "
+        f"Normal settings, {drift.NORMAL_SETTINGS}, but Analysis Mode Dynamic; with no row "
+        "left to run Normal last, the visit ends on Dynamic and the visit after it cancels "
+        "its launch dialog; or, with Auto Analysis on"
     ) in message, message
     assert "then last on" not in message and "the mode the next launch reads is Normal" not in message
 
@@ -247,6 +247,14 @@ def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
     message = _warning(acted, land_cli.DYN_NOT_WRITTEN)
     assert "Live.flac" in message and "Straight.flac" not in message
     assert drift.DYNAMIC_SETTINGS in message and native.DYN_NO_CATEGORY in message
+    # U954: the by name Dynamic run keeps its place in the order, said literally.
+    assert (
+        f"{drift.DYNAMIC_SETTINGS}, before any Normal run and left out of it, and with no "
+        "other row to run Normal the visit ends on Dynamic: Live.flac" in message
+    ), message
+    assert native.DYN_NO_CATEGORY.endswith(
+        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it"
+    )
 
 
 def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(native_library, silence):

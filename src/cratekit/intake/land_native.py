@@ -624,10 +624,9 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
         # No row to end on Normal (U954): the visit ends on Dynamic, said so.
         selections = (
             f"run Analyze Tracks on its {dyned} row(s), every one carrying the dyn "
-            f"My Tag, with Analysis Mode Dynamic, "
-            f"{drift.NORMAL_SETTINGS.removeprefix('Analysis Mode Normal, ')}; with no "
-            f"row left to run Normal last, the next launch's Auto Analysis dialog "
-            f"reads Dynamic and is cancelled"
+            f"My Tag, with the Normal settings, {drift.NORMAL_SETTINGS}, but Analysis "
+            f"Mode Dynamic; with no row left to run Normal last, the visit ends on "
+            f"Dynamic and the visit after it cancels its launch dialog"
         )
     else:
         selections = (
@@ -679,8 +678,9 @@ def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
             DYN_NOT_WRITTEN,
             f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
             f"so select them by name and run Analyze Tracks on them with "
-            f"{drift.DYNAMIC_SETTINGS}, before the Normal run and left out of it, "
-            f"so its OK is still the last: {names}; {why}",
+            f"{drift.DYNAMIC_SETTINGS}, before any Normal run and left out of it, "
+            f"and with no other row to run Normal the visit ends on Dynamic: "
+            f"{names}; {why}",
         )
     ]
 

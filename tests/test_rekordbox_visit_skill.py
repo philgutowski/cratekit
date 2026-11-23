@@ -314,7 +314,14 @@ def test_the_dialog_is_read_against_the_one_table_with_no_field_left_unread(text
     # The preference as sitting 101 read it back, the same values and no CUE.
     assert (
         "high precision off, Normal, BPM range 78 to 155, BPM / Grid, KEY and Phrase on, "
-        "Vocal off, Cloud Analysis off, Radar Analysis on. It holds no CUE field."
+        "Vocal off, Cloud Analysis off, Radar Analysis on, with no CUE field; sitting 102's "
+        "read back showed CUE's \"Set CUE during analysis\" off."
+    ) in auto
+    # Sitting 103's launch dialog, as docs/cutover.md records it.
+    assert (
+        "Sitting 103 recorded the launch dialog's own fields: BPM / Grid on (dimmed), High "
+        "precision off, Analysis Mode Normal, BPM Range 78-155, KEY on, Phrase on, Vocal off, "
+        "CUE(Manual) off."
     ) in auto
     assert "The Auto Analysis dialog of step 2 is only read against it, never set." in flat
     # The table both paths read is still Phillip's standard, whole.
@@ -416,7 +423,9 @@ def test_the_head_names_the_shared_mode_and_the_measurement(text):
         "A batch whose every row is `dyn`, or a visit that stops between its Dynamic OK and "
         "its last Normal one, ends on Dynamic: record it"
     ) in head
-    assert "end with the shared Analysis Mode on Normal (step 5)" in head
+    assert "end with the shared Analysis Mode on Normal whenever a row lacks `dyn` (step 5)" in head
+    assert "the next launch's dialog is cancelled by step 2's rule" in head
+    assert "only if Phillip turned it off since sitting 102" in _flat(text)
     assert "run the same second run" not in head
 
 
@@ -458,7 +467,8 @@ def test_the_auto_analysis_path_names_the_step_that_leaves_normal_set(text):
     steps = [_flat(part) for part in re.split(r"^\d+\. ", five, flags=re.M)[1:]]
     assert "The count equals the `dyn` count from step 1.5, or stop and report both." in steps[0]
     assert "wait as step 4 says, with `expected` the `dyn` count" in steps[2]
-    assert steps[3].startswith("Clear the filter.")
+    assert "since the track list's filter offers no My Tag (sitting 104)" in steps[0]
+    assert steps[3].startswith("Click one row to end the selection")
     closing = steps[4]
     assert closing.startswith(
         "**The closing Normal run, on the Auto Analysis path only**, the step that leaves Normal set."
@@ -468,6 +478,15 @@ def test_the_auto_analysis_path_names_the_step_that_leaves_normal_set(text):
     assert "with `expected` 1" in closing
     assert "this OK, the visit's last, leaves the shared mode on Normal" in closing
     assert "With every row of the batch marked `dyn` there is no row for it" in closing
+    assert "record that the visit ended on Dynamic" in closing
+    # Every line that says the visit ends on Normal carries its exception (round two).
+    flat = _flat(text)
+    for line in (
+        "its last OK leaves it on Normal whenever the batch holds a row without `dyn`",
+        "its last OK on Normal whenever a row lacks `dyn`",
+        "so the visit's last OK is Normal whenever a row lacks `dyn`:",
+    ):
+        assert line in flat, line
     assert "step 5.5, the closing Normal run, follows it" in _flat(five)
 
 
@@ -518,6 +537,10 @@ def test_the_docs_that_name_the_visit_say_both_paths():
     orchestrator = _flat((skills / "attended-orchestrator" / "SKILL.md").read_text())
     assert "in place of its first analysis, by either of its paths" in orchestrator
     # U954: the order that leaves the mode Normal, wherever the visit is told.
-    assert "the Dynamic run for rows marked `dyn` placed so the visit's last run is Normal" in sync
+    assert (
+        "the Dynamic run for rows marked `dyn` placed so the visit's last run is Normal "
+        "whenever a row lacks it"
+    ) in sync
+    assert "a batch whose every row has `dyn` ends on Dynamic, and the next launch's dialog is cancelled" in guide
     assert "rows with the `dyn` My Tag first, with Analysis Mode Dynamic; then rows without `dyn` last" in guide
     assert "one row without `dyn` takes Analyze Tracks with Normal again, so the visit ends on Normal" in guide
