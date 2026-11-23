@@ -69,7 +69,8 @@ _PARSERS: dict = {}
 def _less_work(monkeypatch):
     """No syncs and one cached command tree per membership; neither is under test here.
 
-    The cached tree binds each handler when first built, so a test patching one must not use this.
+    The cached tree binds each handler and registry entry when first built, so a test
+    patching either must not use this.
     """
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
     opened = private_store.PrivateStore.__init__

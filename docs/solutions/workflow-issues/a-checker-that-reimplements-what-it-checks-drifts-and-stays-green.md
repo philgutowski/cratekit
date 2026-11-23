@@ -165,12 +165,12 @@ prose, so a prompt marker is stripped, everything from a shell operator onward i
 dropped as belonging to another program, and quoting is resolved by `shlex`
 rather than by `split()`. Second, deciding which of the target's verdicts count:
 here exit 0 is `--help` and `--version`, which are real answers rather than
-failures, at `tests/test_skills_lint.py:162`. Third, handling the target's state.
-`real_parser` at `:76` builds a FRESH parser per call, and its docstring says
-why: "argparse keeps state on a parser after a failed parse." A shared instance
+failures, at `tests/test_skills_lint.py:136`. Third, handling the target's state.
+`real_parser` at `:66` builds a FRESH parser per call, and its docstring says
+why: "fresh, since a failed parse leaves state." A shared instance
 made one skill's bad command affect the next skill's verdict, which is the shape
 of a test that passes or fails depending on ordering. (Its longer docstring, cut
-to that rule by U311, is at `c9192091`.)
+to that rule by U311 and again by U312, is at `c9192091`.)
 
 **Say which configuration of the real thing you are checking against, and pin the
 other question separately.** `real_parser` deliberately builds the FULL

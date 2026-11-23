@@ -68,14 +68,12 @@ def _isolate_state_roots(tmp_path_factory):
     """Redirect installation-scoped state to a temp tree for every test.
 
     The CRATEKIT_* overrides are set too, so the explicit override path is
-    exercised as well as the derived one. The library root is made here as a
-    sibling of the state roots, one temp directory per test rather than two.
+    exercised as well as the derived one.
     """
     root = tmp_path_factory.mktemp("state_roots")
     with _own_patch() as monkeypatch:
         home = root / "home"
         home.mkdir()
-        (root / "library").mkdir()
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("USERPROFILE", str(home))  # Windows equivalent
         for var, sub in (
@@ -327,15 +325,17 @@ def _forget_library_reads():
 
 
 @pytest.fixture(autouse=True)
-def _block_real_library_paths(request, _isolate_state_roots):
+def _block_real_library_paths(request, tmp_path_factory):
     """Point the library root at a temp directory and disarm the mount check.
 
-    The root is a sibling of the state roots, never inside ``tmp_path``, so a
-    test that walks its own tree never finds it. The preflight tests are
-    excluded by exact module name, since a substring would exempt any future
-    file containing it.
+    The root gets its own temp directory, never inside ``tmp_path``, so a test
+    that walks its own tree never finds it; moving it beside the state roots
+    moves where the filesystem places every test's directory (the U326 entry in
+    ``docs/solutions/`` says what that cost). The preflight tests are excluded
+    by exact module name, since a substring would exempt any future file
+    containing it.
     """
-    library = _isolate_state_roots / "library"
+    library = tmp_path_factory.mktemp("library")
     with _own_patch() as monkeypatch:
         monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))
 
