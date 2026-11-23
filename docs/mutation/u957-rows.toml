@@ -1,0 +1,184 @@
+name = "u957"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_declared_wins"
+description = "machine_identity_tokens: relax a detected ordinary word even when it is also declared"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''        if is_ordinary_word(token) and token.lower() not in declared_folded
+'''
+new = '''        if is_ordinary_word(token)
+'''
+
+[[rows]]
+id = "M2_shape_only_ignored"
+description = "portability_violations: never take the shape only branch, so a detected word matches bare again"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''        if token in shape_only:
+'''
+new = '''        if False:
+'''
+
+[[rows]]
+id = "M3_segment_check_dropped"
+description = "_names_the_machine: drop the home and mount segment check, so a path naming the machine passes"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    if token.lower() in segments:
+        return True
+    return re.search(_host_forms'''
+new = '''    return re.search(_host_forms'''
+
+[[rows]]
+id = "M4_segment_case_exact"
+description = "_names_the_machine: compare the token to the segments case exact"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    if token.lower() in segments:
+'''
+new = '''    if token in segments:
+'''
+
+[[rows]]
+id = "M5_home_segments_not_collected"
+description = "portability_violations: collect no home directory segment"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+        segments.add(segment.lower())
+'''
+new = '''    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+'''
+
+[[rows]]
+id = "M6_placeholder_segments_collected"
+description = "portability_violations: collect a stand in mount segment, so /Volumes/Music names a machine called Music"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    for match in _MOUNT.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+        segments.add(segment.lower())
+'''
+new = '''    for match in _MOUNT.finditer(text):
+        segment = match.group(1)
+        segments.add(segment.lower())
+        if _is_placeholder_segment(segment):
+            continue
+'''
+
+[[rows]]
+id = "M7_inner_capital_ignored"
+description = "is_ordinary_word: treat a mixed case token like AirPort as the word"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    if token[1:] != token[1:].lower() and not token.isupper():
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M8_list_case_exact"
+description = "is_ordinary_word: look the token up case exact, so a capitalised hostname is never ordinary"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    return token.lower() in ordinary_words()
+'''
+new = '''    return token in ordinary_words()
+'''
+
+[[rows]]
+id = "M9_lan_suffix_dropped"
+description = "_HOST_SUFFIXES: drop lan"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''_HOST_SUFFIXES = r"(?:local|lan|localdomain|home|home\.arpa|internal)"'''
+new = '''_HOST_SUFFIXES = r"(?:local|localdomain|home|home\.arpa|internal)"'''
+
+[[rows]]
+id = "M10_host_lookbehind_hyphen"
+description = "_host_forms: let a hyphenated neighbour stand before the host name"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}'''
+new = '''rf"(?<![A-Za-z0-9_]){name}\.{_HOST_SUFFIXES}'''
+
+[[rows]]
+id = "M11_user_at_host_dropped"
+description = "_host_forms: drop the user@host form"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''        rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
+'''
+new = ''''''
+
+[[rows]]
+id = "M12_user_at_host_any"
+description = "_host_forms: take any @ before the name, so a decorator reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''rf"(?<=[A-Za-z0-9._%+-]@){name}'''
+new = '''rf"(?<=@){name}'''
+
+[[rows]]
+id = "M13_scp_form_loose"
+description = "_host_forms: take the name followed by any colon, so a mapping key reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''{name}:[~/]",'''
+new = '''{name}:",'''
+
+[[rows]]
+id = "M14_list_exemption_off"
+description = "scan_tree: look for a declared listed word in the list itself again"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''        if relative == ORDINARY_WORDS_PATH:
+'''
+new = '''        if False:
+'''
+
+[[rows]]
+id = "M15_list_exemption_wide"
+description = "scan_tree: skip every token in the list file, so a planted name passes"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''                (token for token in identity if token.lower() not in listed),
+'''
+new = '''                (),
+'''
+
+[[rows]]
+id = "M16_cloud_relaxes_declared"
+description = "machine_identity_tokens: under the cloud exemption mark the declared tokens shape only"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''        return IdentityTokens(declared)
+'''
+new = '''        return IdentityTokens(declared, declared)
+'''
