@@ -7,6 +7,7 @@ account, so a write is what the next listing serves.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -21,7 +22,7 @@ from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import ledger, pairs
 from cratekit.sync import pair_cli
 from tests import outbound_fakes
-from tests._sync_builders import exited
+from tests._sync_builders import exited, silent_flac
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_rb_writer_db import _build_disposable_database
@@ -568,10 +569,14 @@ def test_the_pairs_document_names_both_identifiers_and_no_path(world, cfg):
 
 def _untagged_row(cfg, content_id: str, tmp_path: Path, *, file_isrc: str) -> None:
     """Give a row no ISRC of its own and a real audio file carrying ``file_isrc``."""
-    from tests._containers import tagged_container
+    from cratekit.core import tags
 
+    probe = tmp_path / "probe.flac"
+    probe.write_bytes(silent_flac())
+    assert tags.write_tags(probe, {"isrc": file_isrc})
     target = Path(cfg.library.root) / "Music" / f"{content_id}.flac"
-    tagged_container(tmp_path, target, isrc=file_isrc)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(probe, target)
     conn = sqlite3.connect(cfg.library.db_path)
     try:
         conn.execute("UPDATE djmdContent SET ISRC = '' WHERE ID = ?", (content_id,))

@@ -1,12 +1,16 @@
 """Helpers shared by the sync, session and routing tests of one slice (U312).
 
-A test module asserts here through ``exited``; this module is not rewritten by
-pytest, so the message carries the code itself.
+pytest does not rewrite this module's asserts, so each message carries the code.
 """
 
 from __future__ import annotations
 
+import functools
+import tempfile
+from pathlib import Path
+
 from cratekit.core.exit_codes import ExitCode
+from tests._containers import synth_container
 
 
 def exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
@@ -21,3 +25,10 @@ def failed(result: tuple[int, dict]) -> dict:
     code, envelope = result
     assert code != int(ExitCode.OK), f"exited OK: {envelope!r}"
     return envelope
+
+
+@functools.cache
+def silent_flac() -> bytes:
+    """One second of silence from the one synthesizer, made once per process and copied."""
+    with tempfile.TemporaryDirectory() as folder:
+        return synth_container(Path(folder), ".flac").read_bytes()
