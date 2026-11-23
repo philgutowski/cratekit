@@ -1353,7 +1353,12 @@ crate inbox rotate
 
 **Adopting an existing library.** `crate adopt scan` queues a census; `crate
 adopt apply` shows the plan at `adopt.apply.approve` and files tracks and
-writes their genre tags.
+writes their genre tags. A row whose file resolves outside `library.root`,
+such as rekordbox's own sampler presets made readable by a
+`location_prefix_map` rule, is counted `outside-root`, excluded, and named
+under `outside_root` at the gate; adoption, `adopt move` and the genre moves
+leave it alone, and the tag verbs still read it. A row inside the root that
+cannot be placed still fails the whole pass.
 
 **Genres.**
 
