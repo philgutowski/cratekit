@@ -1,0 +1,735 @@
+name = "u303-replay-merged5"
+pass_kind = "replay"
+
+[[rows]]
+id = "r787.D1_doctor_own_list"
+description = "doctor's _declared_trees keeps a list of its own, the routing tree alone, instead of asking cutover_trees"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_backup_comparison.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_config_update.py",
+    "tests/test_cutover_cli.py",
+    "tests/test_doctor.py",
+    "tests/test_incremental_sync.py",
+    "tests/test_intake_imported.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_paths_resolved.py",
+    "tests/test_routing_workers.py",
+]
+old = "    return tuple(named), tree_registry.cutover_trees(declared), None"
+new = "    return tuple(named), frozenset({declared.tree.id}), None"
+
+[rows.source]
+table = "r787.json"
+id = "D1_doctor_own_list"
+
+[[rows]]
+id = "r787.D2_set_guard_removed"
+description = "doctor stops judging a native record by the set, so a native catalogue tree reads ok"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_backup_comparison.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_config_update.py",
+    "tests/test_cutover_cli.py",
+    "tests/test_doctor.py",
+    "tests/test_incremental_sync.py",
+    "tests/test_intake_imported.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_paths_resolved.py",
+    "tests/test_routing_workers.py",
+]
+old = "            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE"
+new = "            record.source not in tree_registry.REBUILDABLE"
+
+[rows.source]
+table = "r787.json"
+id = "D2_set_guard_removed"
+
+[[rows]]
+id = "r787.D3_source_guard_removed"
+description = "doctor stops judging a native record by its source, so a native inbox from a catalogue crawl reads ok"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_backup_comparison.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_config_update.py",
+    "tests/test_cutover_cli.py",
+    "tests/test_doctor.py",
+    "tests/test_incremental_sync.py",
+    "tests/test_intake_imported.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_paths_resolved.py",
+    "tests/test_routing_workers.py",
+]
+old = "            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE"
+new = "            tree_id not in may_cut_over"
+
+[rows.source]
+table = "r787.json"
+id = "D3_source_guard_removed"
+
+[[rows]]
+id = "u132.D1_doctor_behind"
+description = "Doctor reads a copy behind the shipped schema as OK"
+file = "src/cratekit/cli/doctor_library.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_backup_comparison.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_config_update.py",
+    "tests/test_cutover_cli.py",
+    "tests/test_doctor.py",
+    "tests/test_incremental_sync.py",
+    "tests/test_intake_imported.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_paths_resolved.py",
+    "tests/test_routing_workers.py",
+]
+old = "    if not found.behind:\n"
+new = "    if found.behind:\n"
+
+[rows.source]
+table = "u132.json"
+id = "D1_doctor_behind"
+
+[[rows]]
+id = "u132.D2_doctor_defect"
+description = "Doctor reports a shipped template defect as the copy not compared"
+file = "src/cratekit/cli/doctor_library.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_backup_comparison.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_config_update.py",
+    "tests/test_cutover_cli.py",
+    "tests/test_doctor.py",
+    "tests/test_incremental_sync.py",
+    "tests/test_intake_imported.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_paths_resolved.py",
+    "tests/test_routing_workers.py",
+]
+old = "        if exc.cause.reason == \"internal-error\":\n"
+new = "        if False:\n"
+
+[rows.source]
+table = "u132.json"
+id = "D2_doctor_defect"
+
+[[rows]]
+id = "u206.M24_doctor_set_aside_unnamed"
+description = "_check_isrc_cache: leave the set aside files out of the note"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
+tests = [
+    "tests/test_isrc_cache.py",
+    "tests/test_sync_pair.py",
+    "tests/test_intake_missing_isrc.py",
+    "tests/test_outbound_tidal_account.py",
+    "tests/test_label_tidal_catalogue.py",
+    "tests/test_organize_mirror_tie.py",
+    "tests/test_intake_land_rehearse.py",
+    "tests/test_doctor.py",
+    "tests/test_config.py",
+]
+old = "    aside = cache.set_aside()\n    if aside:"
+new = "    aside = cache.set_aside()\n    if False:"
+
+[rows.source]
+table = "u206.json"
+id = "M24_doctor_set_aside_unnamed"
+
+[[rows]]
+id = "r185-r246-author.D2_cloud_gate_restored"
+description = "Declare the cloud sync decision on a verb that opens no database, the half the contract suite calls spurious"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = [
+    "tests/intake/test_workers.py",
+    "tests/modules/test_reports.py",
+    "tests/modules/test_tools.py",
+    "tests/test_acquire_cli.py",
+    "tests/test_acquire_fallback_fetch.py",
+    "tests/test_acquire_workers.py",
+    "tests/test_adopt_apply_cli.py",
+    "tests/test_adopt_workers.py",
+    "tests/test_adoption.py",
+    "tests/test_analysis.py",
+    "tests/test_analysis_workers.py",
+    "tests/test_backup_cli.py",
+    "tests/test_cli_contract.py",
+    "tests/test_cutover_parity.py",
+    "tests/test_deferred_routing.py",
+    "tests/test_doctor.py",
+    "tests/test_genre_retag.py",
+    "tests/test_handlers.py",
+    "tests/test_intake_imported.py",
+    "tests/test_intake_land.py",
+    "tests/test_intake_missing.py",
+    "tests/test_intake_missing_search.py",
+    "tests/test_jobs.py",
+    "tests/test_label_approved.py",
+    "tests/test_label_workers.py",
+    "tests/test_layering.py",
+    "tests/test_master_cli.py",
+    "tests/test_match_states.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_pending_units.py",
+    "tests/test_queued_resume_contract.py",
+    "tests/test_rebuild.py",
+    "tests/test_reports_cli.py",
+    "tests/test_restore.py",
+    "tests/test_restore_cli.py",
+    "tests/test_routing_workers.py",
+    "tests/test_session_cli.py",
+    "tests/test_setbuilder_cli.py",
+    "tests/test_sync_all.py",
+    "tests/test_sync_mark.py",
+    "tests/test_tag_workers.py",
+    "tests/test_vocals_cli.py",
+    "tests/test_write_session.py",
+]
+old = "                explicit=True, digest_source=\"plan\",\n            ),\n        ),\n    ),\n    Entry(\n        name=\"name.apply\","
+new = "                explicit=True, digest_source=\"plan\",\n            ),\n            CLOUD_SYNC_UNREADABLE_GATE,\n        ),\n    ),\n    Entry(\n        name=\"name.apply\","
+moved = "U303 laid the registry out a keyword run per line and shortened its comments; the cloud sync gate is added to tag.retag's gates, the entry before name.apply, as before"
+
+[rows.source]
+table = "r185-r246-author.json"
+id = "D2_cloud_gate_restored"
+
+[[rows]]
+id = "r312.R1_summary_promises_a_replace"
+description = "Put the registry summary back to the promise the verb does not keep"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = [
+    "tests/intake/test_workers.py",
+    "tests/modules/test_reports.py",
+    "tests/modules/test_tools.py",
+    "tests/test_acquire_cli.py",
+    "tests/test_acquire_fallback_fetch.py",
+    "tests/test_acquire_workers.py",
+    "tests/test_adopt_apply_cli.py",
+    "tests/test_adopt_workers.py",
+    "tests/test_adoption.py",
+    "tests/test_analysis.py",
+    "tests/test_analysis_workers.py",
+    "tests/test_backup_cli.py",
+    "tests/test_cli_contract.py",
+    "tests/test_cutover_parity.py",
+    "tests/test_deferred_routing.py",
+    "tests/test_doctor.py",
+    "tests/test_genre_retag.py",
+    "tests/test_handlers.py",
+    "tests/test_intake_imported.py",
+    "tests/test_intake_land.py",
+    "tests/test_intake_missing.py",
+    "tests/test_intake_missing_search.py",
+    "tests/test_jobs.py",
+    "tests/test_label_approved.py",
+    "tests/test_label_workers.py",
+    "tests/test_layering.py",
+    "tests/test_master_cli.py",
+    "tests/test_match_states.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_pending_units.py",
+    "tests/test_queued_resume_contract.py",
+    "tests/test_rebuild.py",
+    "tests/test_reports_cli.py",
+    "tests/test_restore.py",
+    "tests/test_restore_cli.py",
+    "tests/test_routing_workers.py",
+    "tests/test_session_cli.py",
+    "tests/test_setbuilder_cli.py",
+    "tests/test_sync_all.py",
+    "tests/test_sync_mark.py",
+    "tests/test_tag_workers.py",
+    "tests/test_vocals_cli.py",
+    "tests/test_write_session.py",
+]
+old = "        summary=(\n            \"add already-routed tracks to their new place after a genre or energy \"\n            \"change, additive, the old membership stays and is named\"\n        ),"
+new = "        summary=\"re-place already-routed tracks after a genre or energy change\","
+moved = "U303 laid the registry out a keyword run per line and shortened its comments; route.resort's summary is the same string, now in parentheses, replaced by the same text"
+
+[rows.source]
+table = "r312.json"
+id = "R1_summary_promises_a_replace"
+
+[[rows]]
+id = "u112.G1_part_unverified"
+description = "hand_off carries any digest a caller names as the part, whatever the answer was given over"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = [
+    "tests/test_organize.py",
+    "tests/test_sync_all.py",
+]
+old = "            if output.digest_of(document) != recorded.digest or digest not in _strings(document):"
+new = "            if False:"
+
+[rows.source]
+table = "u112.json"
+id = "G1_part_unverified"
+
+[[rows]]
+id = "r290-author.D1_dispatcher_ignores_the_type"
+description = "Make the dispatcher blind to JobBlocked, so a parked job exits non zero and says failed"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = [
+    "tests/intake/test_workers.py",
+    "tests/modules/test_reports.py",
+    "tests/modules/test_tools.py",
+    "tests/test_acquire_cli.py",
+    "tests/test_acquire_fallback_fetch.py",
+    "tests/test_acquire_workers.py",
+    "tests/test_adopt_apply_cli.py",
+    "tests/test_adopt_workers.py",
+    "tests/test_adoption.py",
+    "tests/test_analysis.py",
+    "tests/test_analysis_workers.py",
+    "tests/test_backup_cli.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_cutover_parity.py",
+    "tests/test_cutover_precheck.py",
+    "tests/test_deferred_routing.py",
+    "tests/test_deletion.py",
+    "tests/test_doctor.py",
+    "tests/test_genre_retag.py",
+    "tests/test_handlers.py",
+    "tests/test_intake_imported.py",
+    "tests/test_intake_land.py",
+    "tests/test_intake_missing.py",
+    "tests/test_intake_missing_isrc.py",
+    "tests/test_intake_missing_search.py",
+    "tests/test_job_outcome.py",
+    "tests/test_job_seam.py",
+    "tests/test_jobs.py",
+    "tests/test_label_approved.py",
+    "tests/test_label_registry_adopt.py",
+    "tests/test_label_workers.py",
+    "tests/test_layering.py",
+    "tests/test_master_cli.py",
+    "tests/test_match_states.py",
+    "tests/test_naming_apply_cli.py",
+    "tests/test_outbound_tidal_account.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_pending_units.py",
+    "tests/test_queued_resume_contract.py",
+    "tests/test_rebuild.py",
+    "tests/test_reports_cli.py",
+    "tests/test_reserved_causes.py",
+    "tests/test_restore.py",
+    "tests/test_restore_cli.py",
+    "tests/test_review_queue.py",
+    "tests/test_routing_workers.py",
+    "tests/test_session_cli.py",
+    "tests/test_setbuilder_cli.py",
+    "tests/test_skills_install.py",
+    "tests/test_skills_lint.py",
+    "tests/test_sync_all.py",
+    "tests/test_sync_mark.py",
+    "tests/test_tag_workers.py",
+    "tests/test_vocals_cli.py",
+    "tests/test_write_session.py",
+]
+old = "        parked = isinstance(exc, JobBlocked)"
+new = "        parked = False"
+
+[rows.source]
+table = "r290-author.json"
+id = "D1_dispatcher_ignores_the_type"
+
+[[rows]]
+id = "r290-author.D2_parked_marked_resumable"
+description = "Mark a parked job's envelope resumable, which sends a wrapper to crate run for work only the verb can continue"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = [
+    "tests/intake/test_workers.py",
+    "tests/modules/test_reports.py",
+    "tests/modules/test_tools.py",
+    "tests/test_acquire_cli.py",
+    "tests/test_acquire_fallback_fetch.py",
+    "tests/test_acquire_workers.py",
+    "tests/test_adopt_apply_cli.py",
+    "tests/test_adopt_workers.py",
+    "tests/test_adoption.py",
+    "tests/test_analysis.py",
+    "tests/test_analysis_workers.py",
+    "tests/test_backup_cli.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_cutover_parity.py",
+    "tests/test_cutover_precheck.py",
+    "tests/test_deferred_routing.py",
+    "tests/test_deletion.py",
+    "tests/test_doctor.py",
+    "tests/test_genre_retag.py",
+    "tests/test_handlers.py",
+    "tests/test_intake_imported.py",
+    "tests/test_intake_land.py",
+    "tests/test_intake_missing.py",
+    "tests/test_intake_missing_isrc.py",
+    "tests/test_intake_missing_search.py",
+    "tests/test_job_outcome.py",
+    "tests/test_job_seam.py",
+    "tests/test_jobs.py",
+    "tests/test_label_approved.py",
+    "tests/test_label_registry_adopt.py",
+    "tests/test_label_workers.py",
+    "tests/test_layering.py",
+    "tests/test_master_cli.py",
+    "tests/test_match_states.py",
+    "tests/test_naming_apply_cli.py",
+    "tests/test_outbound_tidal_account.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_pending_units.py",
+    "tests/test_queued_resume_contract.py",
+    "tests/test_rebuild.py",
+    "tests/test_reports_cli.py",
+    "tests/test_reserved_causes.py",
+    "tests/test_restore.py",
+    "tests/test_restore_cli.py",
+    "tests/test_review_queue.py",
+    "tests/test_routing_workers.py",
+    "tests/test_session_cli.py",
+    "tests/test_setbuilder_cli.py",
+    "tests/test_skills_install.py",
+    "tests/test_skills_lint.py",
+    "tests/test_sync_all.py",
+    "tests/test_sync_mark.py",
+    "tests/test_tag_workers.py",
+    "tests/test_vocals_cli.py",
+    "tests/test_write_session.py",
+]
+old = "            resumable=resumable,\n            outcome=outcome,"
+new = "            resumable=resumable or parked,\n            outcome=outcome,"
+
+[rows.source]
+table = "r290-author.json"
+id = "D2_parked_marked_resumable"
+
+[[rows]]
+id = "r290-author.D4_cancelled_reads_failed"
+description = "Read the cancelled type as the failed outcome, which is what the dispatcher said before Outcome.CANCELLED had a producer"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = [
+    "tests/intake/test_workers.py",
+    "tests/modules/test_reports.py",
+    "tests/modules/test_tools.py",
+    "tests/test_acquire_cli.py",
+    "tests/test_acquire_fallback_fetch.py",
+    "tests/test_acquire_workers.py",
+    "tests/test_adopt_apply_cli.py",
+    "tests/test_adopt_workers.py",
+    "tests/test_adoption.py",
+    "tests/test_analysis.py",
+    "tests/test_analysis_workers.py",
+    "tests/test_backup_cli.py",
+    "tests/test_cli_contract.py",
+    "tests/test_config.py",
+    "tests/test_cutover_parity.py",
+    "tests/test_cutover_precheck.py",
+    "tests/test_deferred_routing.py",
+    "tests/test_deletion.py",
+    "tests/test_doctor.py",
+    "tests/test_genre_retag.py",
+    "tests/test_handlers.py",
+    "tests/test_intake_imported.py",
+    "tests/test_intake_land.py",
+    "tests/test_intake_missing.py",
+    "tests/test_intake_missing_isrc.py",
+    "tests/test_intake_missing_search.py",
+    "tests/test_job_outcome.py",
+    "tests/test_job_seam.py",
+    "tests/test_jobs.py",
+    "tests/test_label_approved.py",
+    "tests/test_label_registry_adopt.py",
+    "tests/test_label_workers.py",
+    "tests/test_layering.py",
+    "tests/test_master_cli.py",
+    "tests/test_match_states.py",
+    "tests/test_naming_apply_cli.py",
+    "tests/test_outbound_tidal_account.py",
+    "tests/test_outbound_workers.py",
+    "tests/test_packaging.py",
+    "tests/test_pending_units.py",
+    "tests/test_queued_resume_contract.py",
+    "tests/test_rebuild.py",
+    "tests/test_reports_cli.py",
+    "tests/test_reserved_causes.py",
+    "tests/test_restore.py",
+    "tests/test_restore_cli.py",
+    "tests/test_review_queue.py",
+    "tests/test_routing_workers.py",
+    "tests/test_session_cli.py",
+    "tests/test_setbuilder_cli.py",
+    "tests/test_skills_install.py",
+    "tests/test_skills_lint.py",
+    "tests/test_sync_all.py",
+    "tests/test_sync_mark.py",
+    "tests/test_tag_workers.py",
+    "tests/test_vocals_cli.py",
+    "tests/test_write_session.py",
+]
+old = "            outcome = Outcome.CANCELLED"
+new = "            outcome = Outcome.FAILED"
+
+[rows.source]
+table = "r290-author.json"
+id = "D4_cancelled_reads_failed"
+
+[[rows]]
+id = "u206.M23_lookup_line_dropped"
+description = "_with_isrc_lookups: never add the isrc-lookups line"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = [
+    "tests/test_isrc_cache.py",
+    "tests/test_sync_pair.py",
+    "tests/test_intake_missing_isrc.py",
+    "tests/test_outbound_tidal_account.py",
+    "tests/test_label_tidal_catalogue.py",
+    "tests/test_organize_mirror_tie.py",
+    "tests/test_intake_land_rehearse.py",
+    "tests/test_doctor.py",
+    "tests/test_config.py",
+]
+old = "    if remembered == 0 and asked == 0:\n        return envelope"
+new = "    if True:\n        return envelope"
+
+[rows.source]
+table = "u206.json"
+id = "M23_lookup_line_dropped"
+
+[[rows]]
+id = "u210.R24_continue_run"
+description = "continue_command: never add the run a cause names"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = [
+    "tests/test_provider_gate.py",
+    "tests/test_sync_pair_resume.py",
+]
+old = "    run = [\"--run\", str(run_id)] if run_id and not named else []"
+new = "    run = []"
+
+[rows.source]
+table = "u210.json"
+id = "R24_continue_run"
+
+[[rows]]
+id = "u152.R14_download_list_match"
+description = "_download_job: drop the list match, so another list's download job is read as the pass's"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "            and str((job.payload or {}).get(acquire_cli.LIST) or \"\") == wanted\n"
+new = ""
+
+[rows.source]
+table = "u152.json"
+id = "R14_download_list_match"
+
+[[rows]]
+id = "u152.R15_download_newest"
+description = "_download_job: read the oldest job over the list, the round two defect"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "    for job in jobs.list_jobs(store):\n        if (\n            job.handler_key == key"
+new = "    for job in reversed(jobs.list_jobs(store)):\n        if (\n            job.handler_key == key"
+
+[rows.source]
+table = "u152.json"
+id = "R15_download_newest"
+
+[[rows]]
+id = "u152.R16_download_cancelled"
+description = "_download_job: read a cancelled download as the pass's claim on the list"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "            and job.state is not jobs.JobState.CANCELLED\n"
+new = ""
+
+[rows.source]
+table = "u152.json"
+id = "R16_download_cancelled"
+
+[[rows]]
+id = "u152.R17_download_retry"
+description = "_download: never retry a download that failed transiently, so a continued pass reads it as settled"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "            job = jobs.retry(store, job.job_id)"
+new = "            pass"
+
+[rows.source]
+table = "u152.json"
+id = "R17_download_retry"
+
+[[rows]]
+id = "u152.R20_nothing_downloaded"
+description = "_download: go on to the tail when the download landed nothing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "    if not done:\n        report.check("
+new = "    if False:\n        report.check("
+
+[rows.source]
+table = "u152.json"
+id = "R20_nothing_downloaded"
+
+[[rows]]
+id = "u152.R2_preflight_backup"
+description = "_preflight: drop the backup driver check, so a pass runs beside a live backup"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "        try:\n            jobs.assert_free(job.job_id)\n        except jobs.DriverHeld as exc:"
+new = "        try:\n            pass\n        except jobs.DriverHeld as exc:"
+
+[rows.source]
+table = "u152.json"
+id = "R2_preflight_backup"
+
+[[rows]]
+id = "u152.R6_lift_failed_checks"
+description = "_lift_failed_checks: carry no step's failing row, so the withheld hearts and the unnameable tracks are said nowhere"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "        if check.get(\"key\") in held:\n            continue\n        report.checks.append(dict(check))"
+new = "        if check.get(\"key\") in held:\n            continue"
+
+[rows.source]
+table = "u152.json"
+id = "R6_lift_failed_checks"
+
+[[rows]]
+id = "u152.R7_outbound_held"
+description = "_lift_failed_checks: lift the unasked outbound write's refusal as a FAIL row on every pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "        if check.get(\"key\") in held:\n            continue\n"
+new = ""
+
+[rows.source]
+table = "u152.json"
+id = "R7_outbound_held"
+
+[[rows]]
+id = "u152.R8_continue_open_pass"
+description = "_sync: never continue the one earlier pass sync all left out, so a hand typed pass ends no_op"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "        if len(earlier) == 1:"
+new = "        if False:"
+
+[rows.source]
+table = "u152.json"
+id = "R8_continue_open_pass"
+
+[[rows]]
+id = "u152.R9_open_passes_library"
+description = "_open_intake: drop the library filter, so another library's open pass is continued"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "            if job.handler_key in intake_cli.INTAKE_KEYS\n            and job.library_id == cfg.library.volume_id\n        ]\n\n\ndef _run_of"
+new = "            if job.handler_key in intake_cli.INTAKE_KEYS\n        ]\n\n\ndef _run_of"
+
+[rows.source]
+table = "u152.json"
+id = "R9_open_passes_library"
+
+[[rows]]
+id = "u152.R13_missing_lift"
+description = "_missing: carry none of the listing's failing rows"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = [
+    "tests/test_sync_land.py",
+    "tests/test_sync_all.py",
+    "tests/test_cli_contract.py",
+]
+old = "    # The listing's failing rows ride through, so an unnameable track is said.\n    _lift_failed_checks(report, envelope)\n"
+new = "    # The listing's failing rows ride through, so an unnameable track is said.\n"
+moved = "U303 shortened the comment above the call to one line; the lift of the listing's failing rows in _missing, the guard this row removes, is unchanged in the same place"
+
+[rows.source]
+table = "u152.json"
+id = "R13_missing_lift"
