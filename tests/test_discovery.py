@@ -250,13 +250,12 @@ def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_rais
 # The join, which is a guard because an id may now carry separators
 
 
-def test_a_relative_id_joins_under_the_folder(tmp_path):
-    assert discovery.item_path(tmp_path, "house/track.flac") == tmp_path / "house/track.flac"
-
-
-def test_a_bare_filename_still_joins(tmp_path):
-    """``analyze run`` never gets the flag, so its ids stay one segment."""
-    assert discovery.item_path(tmp_path, "track.flac") == tmp_path / "track.flac"
+@pytest.mark.parametrize(
+    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"]
+)
+def test_an_id_joins_under_the_folder(tmp_path, item):
+    """A bare filename too: ``analyze run`` never gets the flag, so its ids stay one segment."""
+    assert discovery.item_path(tmp_path, item) == tmp_path / item
 
 
 def test_an_absolute_id_is_refused_rather_than_discarding_the_folder(tmp_path):

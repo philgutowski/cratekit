@@ -6691,18 +6691,18 @@ def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_n
     assert str(tmp_path / "deadca7" / doctor_backup.DEADCA7_BACKUPS) in finding.detail
 
 
-def test_the_bundle_in_the_accounts_own_applications_folder_reads_installed(configured, tmp_path):
-    places = _installed_places(tmp_path, "user")
+@pytest.mark.parametrize(
+    ("present", "named"),
+    [("user", 1), ("state", 2)],
+    ids=["the-accounts-own-applications-folder", "the-state-folder-alone"],
+)
+def test_one_installed_place_alone_reads_installed_with_no_push(
+    configured, tmp_path, present, named
+):
+    places = _installed_places(tmp_path, present)
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
     assert "installed here and has recorded no push" in finding.detail
-    assert str(places[1]) in finding.detail
-
-
-def test_the_deadcatalog_state_folder_alone_reads_installed_with_no_push(configured, tmp_path):
-    places = _installed_places(tmp_path, "state")
-    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
-    assert "installed here and has recorded no push" in finding.detail
-    assert str(places[2]) in finding.detail
+    assert str(places[named]) in finding.detail
 
 
 def test_nothing_present_still_reads_not_installed(configured, tmp_path):
@@ -6993,7 +6993,12 @@ def test_the_extras_row_never_fails_setup():
         assert not _extras_finding(missing).failed
 
 
-def test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track():
+@pytest.mark.parametrize(
+    ("scored", "command"),
+    [(True, 'pipx install --force "cratekit[analysis,vocals]'), (False, '"cratekit[analysis]')],
+    ids=["scored-adds-vocals", "never-scored-adds-nothing"],
+)
+def test_an_upgrade_keeps_the_extras_and_adds_vocals_only_for_a_scored_library(scored, command):
     """A copy that lost the extra would otherwise upgrade without it again."""
     inputs = doctor._Inputs(
         None,
@@ -7001,28 +7006,11 @@ def test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track():
         probes(
             install_origin=lambda: _vcs("0.2.0", ("analysis",)),
             release_tags=lambda _url: ("v0.3.0",),
-            vocals_scored=lambda _cfg: True,
+            vocals_scored=lambda _cfg: scored,
         ),
     )
     finding = doctor._check_release(inputs)
-    assert (
-        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
-        in finding.detail
-    )
-
-
-def test_an_upgrade_keeps_the_extras_and_adds_nothing_for_a_library_never_scored():
-    inputs = doctor._Inputs(
-        None,
-        None,
-        probes(
-            install_origin=lambda: _vcs("0.2.0", ("analysis",)),
-            release_tags=lambda _url: ("v0.3.0",),
-            vocals_scored=lambda _cfg: False,
-        ),
-    )
-    finding = doctor._check_release(inputs)
-    assert f'"cratekit[analysis] @ git+{_REPO_URL}@v0.3.0"' in finding.detail
+    assert f'{command} @ git+{_REPO_URL}@v0.3.0"' in finding.detail
 
 
 def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
