@@ -468,84 +468,6 @@ new = '''
         return _calibrate_refusal('''
 
 [[rows]]
-id = "r744-b.E7_no_prior"
-source = { table = "r744-b.json", id = "E7_no_prior" }
-description = "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)'
-new = '    score = np.where(inside, strength, -np.inf)'
-
-[[rows]]
-id = "r744.E1_no_floor"
-source = { table = "r744.json", id = "E1_no_floor" }
-description = "the window's floor is not applied, so a pulse below it is named at its own level rather than by the level inside the window"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
-new = '    inside = (frequencies > 0) & (frequencies <= ceiling)'
-
-[[rows]]
-id = "r744.E2_no_ceiling"
-source = { table = "r744.json", id = "E2_no_ceiling" }
-description = "the window's ceiling is not applied, so a 166 pulse is named 166 under the shipped window instead of 83"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
-new = '    inside = (frequencies >= floor) & (frequencies <= 10 * ceiling)'
-
-[[rows]]
-id = "r744.E3_no_interpolation"
-source = { table = "r744.json", id = "E3_no_interpolation" }
-description = "the strongest bin alone is named, which is the six beat bin width R-744 recorded as off by one to three"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '''
-    lag = _interpolated_peak(strength, index)
-    if lag <= 0.0:'''
-new = '''
-    lag = float(index)
-    if lag <= 0.0:'''
-
-[[rows]]
-id = "r744.E4_offset_not_held"
-source = { table = "r744.json", id = "E4_offset_not_held" }
-description = "the parabola's offset is not held to half a bin, so a stronger raw neighbour pulls the vertex past the midpoint toward a bin the score did not choose"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '    return index + max(-0.5, min(0.5, offset))'
-new = '    return index + offset'
-
-[[rows]]
-id = "r744.E5_answer_not_held_in_window"
-source = { table = "r744.json", id = "E5_answer_not_held_in_window" }
-description = "the interpolated answer is not held inside the window, so an edge bin's parabola can name a tempo below the floor"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '    return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))'
-new = '    return 60.0 * rate / (hop * lag)'
-
-[[rows]]
-id = "r744.E6_flat_run_divides"
-source = { table = "r744.json", id = "E6_flat_run_divides" }
-description = "a flat run of three equal bins is fitted anyway, dividing by a zero curvature"
-file = "src/cratekit/analysis/detect.py"
-surface = "user"
-tests = ["tests/test_analysis_tempo.py"]
-old = '''
-    if curvature >= 0.0:
-        return float(index)'''
-new = '''
-    if curvature > 0.0:
-        return float(index)'''
-
-[[rows]]
 id = "r744.E8_record_applies_to_every_window"
 source = { table = "r744.json", id = "E8_record_applies_to_every_window" }
 description = "the recorded agreement says it applies whatever window the run bound, so a DJ who raised theirs is shown a rate nobody measured for it"
@@ -1981,3 +1903,38 @@ old = '''
         fetch_image=searchers.for_images(),
 '''
 new = ''
+
+[[dropped]]
+id = "r744-b.E7_no_prior"
+description = "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E1_no_floor"
+description = "the window's floor is not applied, so a pulse below it is named at its own level rather than by the level inside the window"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E2_no_ceiling"
+description = "the window's ceiling is not applied, so a 166 pulse is named 166 under the shipped window instead of 83"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E3_no_interpolation"
+description = "the strongest bin alone is named, which is the six beat bin width R-744 recorded as off by one to three"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E4_offset_not_held"
+description = "the parabola's offset is not held to half a bin, so a stronger raw neighbour pulls the vertex past the midpoint toward a bin the score did not choose"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E5_answer_not_held_in_window"
+description = "the interpolated answer is not held inside the window, so an edge bin's parabola can name a tempo below the floor"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
+
+[[dropped]]
+id = "r744.E6_flat_run_divides"
+description = "a flat run of three equal bins is fitted anyway, dividing by a zero curvature"
+reason = "owed to the macOS battery, not measured: every test file its subset names skips whole on a cloud container, which has no audio libraries, so the subset collects nothing and the driver refuses it (U306 left the same row out for the same reason)"
