@@ -2,7 +2,7 @@
 title: "The provider client raises InvalidISRC for an outage too, so it is not a no match"
 date: 2026-09-19
 category: integration-issues
-module: "src/cratekit/label/tidal_catalogue.py, src/cratekit/modules/outbound/tidal_account.py"
+module: "src/cratekit/label/tidal_catalogue.py, src/cratekit/modules/outbound/tidal_reads.py"
 problem_type: integration_issue
 component: tooling
 severity: medium

@@ -1597,9 +1597,29 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "core_facts/pool_gate_preflight_and_tags_answers",
         "core_jobs/jobs_driven_to_each_end_and_read_back",
         "core_review/review_queue_offered_resolved_withheld_exported_and_imported",
+        "export/a_rename_onto_a_name_the_ledger_already_holds_is_refused",
+        "export/a_renamed_inspiration_playlist_renames_the_sets_account_playlist",
+        "export/a_set_archived_into_its_years_downloaded_sets_folder",
+        "export/a_set_made_on_the_account_with_its_unmatched_row_named",
+        "export/a_set_with_no_stored_account_session_is_refused",
+        "export/the_archive_backfill_files_every_set_its_intake_file_proves",
+        "export/the_set_backfill_makes_a_playlist_for_each_inspiration_set",
         "favorites/favorites_put_in_order_behind_the_gate",
         "intake/rehearsal_and_the_gate_it_feeds",
         "label/registry_document_written_read_back_and_refused",
+        "organize/a_genre_two_root_folders_on_the_account_carry_is_refused_by_the_mirror",
+        "organize/a_mirror_pass_after_a_full_apply_and_a_rerun_that_plans_nothing",
+        "organize/an_account_with_no_stored_session_refuses_the_account_steps",
+        "organize/the_account_side_makes_the_label_folder_and_archives_the_set",
+        "organize/the_filing_step_alone_files_a_marked_playlist_in_its_year",
+        "organize/the_rekordbox_side_files_the_tracks_and_rotates_the_batch",
+        "organize/the_root_step_alone_removes_debris_and_then_the_emptied_legacy_folder",
+        "organize/with_the_export_module_off_organize_plans_and_says_what_it_left_out",
+        "organize_mirror_edits/a_track_moved_on_the_account_is_retagged_and_refiled_in_the_library",
+        "outbound/a_label_year_pruned_of_a_held_release",
+        "outbound/a_playlist_exported_through_its_confirm_and_the_jobs_resume",
+        "outbound/a_prune_whose_removal_the_accounts_window_lags_is_refused",
+        "outbound/an_exported_playlist_pruned_of_the_track_its_library_playlist_lost",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
@@ -1627,7 +1647,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "29 scenarios" in summary and "no difference" in summary
+    assert "49 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
