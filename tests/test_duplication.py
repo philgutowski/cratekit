@@ -2,7 +2,7 @@
 
 U290 point 3: removed duplication cannot grow back. A package's copied
 blocks must be on its allowance under ``tests/ratchets/duplication/``, which
-only shrinks.
+only shrinks, and since U329 every allowance is empty.
 
 Exact copies only. A logical line is one statement's tokens joined by single
 spaces, with comments, blank lines, lone strings and imports dropped, so a
@@ -377,9 +377,8 @@ def test_every_duplication_allowance_is_empty():
     files = sorted(directory.glob("*.txt"))
     assert len(files) > 10, f"read {len(files)} allowance files, too few to be the packages"
     held = {
-        path.name: lines
+        path.name: sorted(lines)
         for path in files
-        if (lines := [line for line in path.read_text(encoding="utf-8").splitlines()
-                      if line.strip() and not line.startswith("#")])
+        if (lines := measure.parse_allowance(path.read_text(encoding="utf-8")))
     }
     assert not held, f"an allowance holds a line again, give the copy one home: {held}"

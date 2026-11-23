@@ -48,7 +48,8 @@ U300 met three shapes of it on one split:
   families each have one accessor in a part of its own (`rb_call_time.writer`,
   `session_call_time.session`), which every part binds as `_writer` or
   `_session` rather than copying; the restore's is `_restore` in
-  `restore_perform`, which its two other parts import. Import the part's leaf data directly.
+  `restore_perform`, which `restore_retention` and `restore_recovery` import
+  (`restore_tags`, its fourth part, reads none). Import the part's leaf data directly.
 - Read module objects a test patches (`os`, `shutil`, `tempfile`) through the
   module as well, and keep them imported on it.
 - After the split, check every attribute anything reads off the module still

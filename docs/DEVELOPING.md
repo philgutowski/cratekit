@@ -112,7 +112,8 @@ interface, seam crossing, toggle home and dangling verb.
   `TOGGLE_HOMES` live in that file; a toggle added to `core.profiles.MODULES`
   must be given its homes there.
 - An allowance line is removed by the card that removes its finding, by hand
-  or with `prune`. A stale line fails nothing.
+  or with `prune`. A stale import allowance line fails nothing; a duplication
+  allowance line of any kind fails, since every one is empty (U329).
 - When a module is split or added, three registers are per package or per
   line, so no other package's card edits the same lines: the reserved cause
   pins in `tests/ratchets/reserved_causes/<package>.py` (read by
@@ -242,7 +243,7 @@ parts.
 |---|---|
 | `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_call_time` (the one call time accessor the other parts share), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof) |
 | `core.session` | `session_call_time` (the one call time accessor the other parts share), `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
-| `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery` |
+| `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery`, `restore_tags` |
 
 Four rules keep the split invisible:
 

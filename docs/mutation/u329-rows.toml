@@ -7,6 +7,12 @@ pass_kind = "light"
 # accessor's new home, and the identical body check. Each row puts back the
 # shape the change replaced or a realistic slip in it. The guards the change
 # moved unchanged are held by the kill set replay under u329-replay/.
+#
+# W1 and W2 leave tests/test_repair_rows.py out of their subsets: its inode
+# bound test fails alone on this container's disk 4 of 4 on the base, every
+# temporary directory here giving inodes under its bound, so the subset
+# baseline is red (the solutions entry on the inode bound test). The rotate
+# suite holds both rows.
 
 [[rows]]
 id = "P1_rb_changes_wrong_family"
@@ -157,7 +163,7 @@ id = "W1_empty_watch_accepted"
 description = "watched_roots no longer refuses an empty root list, so a write's analysis watch watches nothing and reports clean"
 file = "src/cratekit/write/row_defaults.py"
 surface = "user"
-tests = ["tests/test_inbox_rotate.py", "tests/test_repair_rows.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
+tests = ["tests/test_inbox_rotate.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
 old = '''
     watched = [Path(root) for root in analysis_roots]
     if not watched:'''
@@ -170,7 +176,7 @@ id = "W2_watch_drops_roots"
 description = "watched_roots keeps only the first root, so a grid written under a second root goes unwatched"
 file = "src/cratekit/write/row_defaults.py"
 surface = "user"
-tests = ["tests/test_inbox_rotate.py", "tests/test_repair_rows.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
+tests = ["tests/test_inbox_rotate.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
 old = '''
     watched = [Path(root) for root in analysis_roots]
 '''
