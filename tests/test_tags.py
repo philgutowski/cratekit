@@ -56,6 +56,7 @@ ALL_FIELDS = {
     "driftlevel": "4.4",
     "drift": "variable",
     "secondgenre": "Probe Second Genre",
+    "analyzed": "1",
 }
 
 

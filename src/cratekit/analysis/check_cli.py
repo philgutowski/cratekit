@@ -162,19 +162,14 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
         )
     )
     counts = found.key_counts
-    floor = summary["key_equal_floor"]
     compared = found.key_compared
     agreement = (
         f"{counts[rc.KEY_EQUAL]} of {compared} title key(s) equal rekordbox's, "
         f"{counts[rc.KEY_ONE_STEP]} one Camelot step away, {counts[rc.KEY_FAR]} far, "
         f"{counts[rc.KEY_UNKEYED]} not compared"
     )
-    if floor is not None:
-        agreement += (
-            f"; the recorded agreement puts the floor for {compared} at "
-            f"{100 * floor:.1f}% equal"
-        )
     differing = found.differing
+    headless = found.headless
     tempos = summary["tempo_differs"]
     agreement += f"; {tempos} title tempo(s) more than {rc.TEMPO_TOLERANCE} beat from rekordbox's"
     if differing:
@@ -183,7 +178,16 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
             f"found, and {ADOPT_VERB} gives them rekordbox's: "
             + _named(list(differing), _title)
         )
-    checks.append(_check("check.key_agreement", "info" if differing else "ok", agreement))
+    if headless:
+        # EVERY ROW A RUN SINCE U343 LANDED carries no head until the visit's
+        # adopt stamps rekordbox's (U342), so the line names the verb for them too.
+        agreement += (
+            f"; {len(headless)} title(s) carry no head, and {ADOPT_VERB} stamps "
+            f"rekordbox's key and tempo onto them: " + _named(list(headless), _title)
+        )
+    checks.append(
+        _check("check.key_agreement", "info" if differing or headless else "ok", agreement)
+    )
     return checks
 
 

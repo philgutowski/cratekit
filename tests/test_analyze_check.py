@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import builtins
 import contextlib
+import dataclasses
 import io
 import os
 import sqlite3
@@ -180,12 +181,12 @@ def test_the_title_key_is_equal_one_step_or_far_from_rekordbox_s(head, reference
     assert rc.key_relation(head, reference) == relation
 
 
-def test_the_key_floor_is_the_recorded_rate_less_three_standard_errors():
-    recorded = 158 / 299
-    assert rc.key_floor(0) is None
-    assert rc.key_floor(100) == pytest.approx(recorded - 3 * (recorded * (1 - recorded) / 100) ** 0.5)
-    # A handful of rows can never read as suspect: the floor is below zero.
-    assert rc.key_floor(5) < 0
+def test_the_key_floor_is_gone_with_the_key_the_run_measured():
+    """U343: the floor measured the detector's key against rekordbox's; the run
+    measures no key, so nothing is held to it."""
+    assert not hasattr(rc, "key_floor") and not hasattr(rc, "KEY_AGREEMENT_SIGMAS")
+    summary = rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="s", content_ids=()), rows=()).summary()
+    assert not {"key_suspect", "key_equal_floor"} & set(summary)
 
 
 def _row(
@@ -195,6 +196,7 @@ def _row(
     relation: str = rc.KEY_EQUAL,
     dyn: bool = False,
     key: str | None = "08A",
+    headed: bool = True,
 ) -> rc.Row:
     return rc.Row(
         content_id="c",
@@ -203,7 +205,7 @@ def _row(
         grid=rc.Grid(state=grid if state == rc.ANALYSED else rc.NOT_READ),
         key=key,
         relation=relation,
-        headed=True,
+        headed=headed,
         dyn=dyn,
     )
 
@@ -237,21 +239,36 @@ def test_suspect_outranks_waiting():
     assert _verdict(_row(state=rc.NOT_ANALYSED), _row(grid=rc.VARIABLE)) == rc.SUSPECT
 
 
-def test_keys_far_below_the_recorded_agreement_are_reported_and_never_suspect():
+def test_keys_that_differ_are_reported_and_never_suspect():
     """U327: rekordbox's key is the one kept, so a title key that differs is a row for
-    ``analyze adopt``, never a visit done wrong. The floor is still measured."""
+    ``analyze adopt``, never a visit done wrong."""
     far = [_row(relation=rc.KEY_FAR) for _ in range(60)]
     low = rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
                    rows=(*far, *[_row() for _ in range(20)]))
-    # 20 equal in 80 is 25 percent, far below the floor for 80 (about 36).
-    assert low.key_suspect is True and low.verdict == rc.DONE
+    assert low.verdict == rc.DONE
     assert low.summary()["differs"] == 60
+    assert low.summary()["key_agreement"][rc.KEY_FAR] == 60
     # 40 equal in 80 is 50 percent, inside the floor.
     assert _verdict(*far[:40], *[_row() for _ in range(40)]) == rc.DONE
     # One step and unkeyed rows count as compared and as not compared.
     steps = [_row(relation=rc.KEY_ONE_STEP) for _ in range(40)]
     unkeyed = [_row(relation=rc.KEY_UNKEYED, key=None) for _ in range(500)]
     assert _verdict(*steps, *[_row() for _ in range(40)], *unkeyed) == rc.DONE
+
+
+def test_an_analysed_row_with_no_head_in_its_title_is_counted_for_adopt_and_never_suspect():
+    """U343: every row a run lands carries no head until the visit's adopt stamps one."""
+    bare = _row(relation=rc.KEY_UNKEYED, headed=False)
+    named = dataclasses.replace(bare, head_key="01A", head_tempo=124)
+    found = rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
+                     rows=(bare, named, _row(), _row(state=rc.NOT_ANALYSED, headed=False)))
+    assert found.headless == (bare,), (
+        "a row not analysed is not yet adopt's, and one whose file name has a head adopt leaves"
+    )
+    summary = found.summary()
+    assert summary["headless"] == 1 and summary["differs"] == 0
+    assert summary["key_agreement"][rc.KEY_UNKEYED] == 2, "the bare row and the one named by its file name"
+    assert _verdict(bare, _row()) == rc.DONE
 
 
 def test_no_row_or_only_gone_rows_is_nothing():

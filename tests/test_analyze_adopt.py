@@ -964,7 +964,8 @@ def test_the_old_values_are_on_disk_before_the_first_file_is_written(
 
 def test_the_check_counts_only_a_title_whose_own_head_differs(native_library, silence):
     """Review round one, R4: a bare title beside a headed file name is not one
-    ``analyze adopt`` corrects, so the check does not name the verb for it."""
+    ``analyze adopt`` corrects or stamps (it leaves it, its title tag differing), so
+    the check does not name the verb for it, nor count it among the bare titles (U343)."""
     cfg, _root = native_library
     _land_headed(cfg, silence, "2026-11-22_bare", {"Romeo": "01A - 124"})
     _visit(cfg, "Romeo", scale="7B", bpm=9000)
@@ -978,6 +979,7 @@ def test_the_check_counts_only_a_title_whose_own_head_differs(native_library, si
     assert checked["data"]["summary"]["differs"] == 0
     detail = [c for c in checked["data"]["checks"] if c["key"] == "check.key_agreement"][0]
     assert check_cli.ADOPT_VERB not in detail["detail"]
+    assert checked["data"]["summary"]["headless"] == 0, "adopt leaves it, so it is not counted"
 
 
 def test_a_commit_that_lands_and_then_raises_is_still_recorded(native_library, silence, monkeypatch):
@@ -1101,6 +1103,36 @@ def test_a_title_with_no_head_is_stamped_and_keeps_every_byte(title, key, tempo,
     if stamped is not None:
         assert stamped.endswith(title)
         assert parse_head(stamped, template=TEMPLATE) == {"key": stamped[:3], "bpm": str(tempo)}
+
+
+def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(
+    native_library, silence
+):
+    """U343: a run writes no head, so every landed title is bare after the visit, and
+    the check counts each and names the verb that stamps it; none reads as suspect."""
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+
+    code, checked = drive(["analyze", "check"])
+
+    assert code == int(ExitCode.OK), checked
+    summary = checked["data"]["summary"]
+    assert summary["verdict"] == rc.DONE and summary["differs"] == 0
+    assert summary["headless"] == len(BARE)
+    assert summary["key_agreement"][rc.KEY_UNKEYED] == len(BARE)
+    (line,) = [c for c in checked["data"]["checks"] if c["key"] == "check.key_agreement"]
+    assert line["status"] == "info"
+    assert (
+        f"; {len(BARE)} title(s) carry no head, and {check_cli.ADOPT_VERB} stamps "
+        f"rekordbox's key and tempo onto them: "
+    ) in line["detail"]
+    for title in BARE.values():
+        assert title in line["detail"], title
+
+    drive(VERB)
+    with plan_handle(cfg) as found:
+        stamped = {item.title for item in found.items if item.action == ha.STAMPED}
+    assert stamped == set(BARE.values()), "the rows the check names are the rows adopt stamps"
 
 
 def test_a_headless_title_is_planned_stamped_apart_from_the_corrected_rows(

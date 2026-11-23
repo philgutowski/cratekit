@@ -1,8 +1,9 @@
 """``crate analyze``: queue the heavy passes as jobs, and drive them.
 
 Long work is a job (KTD26, R22). The shell freezes the folder and the item
-list, and a killed driver resumes by trusting DONE rows and the Camelot
-prefixed names they left. Run by hand, ``analyze run`` and ``analyze
+list, and a killed driver resumes by trusting DONE rows and the mark
+``analyze run`` leaves on each file it measured (U343), or the head on the
+name a run before U343 left. Run by hand, ``analyze run`` and ``analyze
 restamp`` drive the job they queue in this process (U192), through
 :func:`cratekit.modules.foreground.settle`; ``--queue-only`` leaves the drive
 to a caller such as ``crate sync land``.
@@ -14,8 +15,7 @@ item job would do the same work.
 THE ITEM IS A PATH RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS FROZEN
 ABSOLUTE, because ``jobs.spawn`` starts the resume child in the resuming
 process's working directory. ``analyze restamp --recursive`` (U93) makes the
-path more than one segment. ``analyze run`` takes no such flag: its resume
-marker is the head on the NAME, which a tree walk would not survive.
+path more than one segment. ``analyze run`` takes no such flag.
 
 THE SEAMS ARE BOUND AT CALL TIME: the detector, the vocal model loader, the
 decoder and the feature extractor are module state looked up when a worker
@@ -36,13 +36,13 @@ import functools
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
-from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, vocals
+from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, run, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
-from cratekit.core import config, discovery, jobs, naming, pool, tags
+from cratekit.core import config, discovery, jobs, pool, tags
 from cratekit.core import drift as drift_words
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import NameBudget, NameSpec, NameTemplate
+from cratekit.core.naming import NameTemplate
 from cratekit.modules import extras, foreground
 
 _ORIGIN = ("analysis", "cli")
@@ -299,7 +299,7 @@ def _may_measure_ahead() -> str | None:
 
 
 def _waiting(cfg: config.Config, store, job) -> list[str]:
-    """The files this drive will measure: unsettled items, present, with no head yet.
+    """The files this drive will measure: unsettled items, present, not yet measured.
 
     The driver's own three tests, asked ahead of it, so no worker reads a file
     the driver would skip.
@@ -314,7 +314,7 @@ def _waiting(cfg: config.Config, store, job) -> list[str]:
         except CratekitError:
             # An identifier the folder rule refuses is refused by its own item.
             continue
-        if path.is_file() and not carries_head(path, cfg):
+        if path.is_file() and not already_measured(path, cfg):
             found.append(str(path))
     return found
 
@@ -441,7 +441,7 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
             if isinstance(why, str):
                 warnings = (*warnings, left_out_nothing(why))
         else:
-            # THE HEAD IS A MEASUREMENT WITH A KNOWN ERROR (R-744): rekordbox
+            # THE TEMPO IS A MEASUREMENT WITH A KNOWN ERROR (R-744): rekordbox
             # will not always agree, so the answer carries the measured rate.
             summary["head_agreement"] = detect.head_agreement(
                 window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)
@@ -492,13 +492,14 @@ def _template(cfg: config.Config) -> NameTemplate:
     return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
-def carries_head(path: Path, cfg: config.Config) -> bool:
-    """Whether ``path``'s name carries the head, ``analyze run``'s resume marker.
+def already_measured(path: Path, cfg: config.Config) -> bool:
+    """Whether ``analyze run`` measured ``path`` already, its resume marker.
 
-    Named so ``crate analyze vocals --unscored`` picks exactly the files a run
-    will never score again (U181, R-277).
+    The mark the run writes (U343), or a head on the name, which a run before
+    U343 left. Named so ``crate analyze vocals --unscored`` picks exactly the
+    files a run will never score again (U181, R-277).
     """
-    return naming.has_head(path.name, template=_template(cfg))
+    return run.already_analyzed(path, template=_template(cfg))
 
 
 def _refuse_missing(item, folder: Path, path: Path, what: str) -> CratekitError:
@@ -535,8 +536,9 @@ def _item_path(job, item, what: str) -> Path:
 def _finalized_twin(cfg: config.Config, job, item) -> Path | None:
     """The file this item became, if a finalize renamed it before its row moved.
 
-    A kill between the rename and the row flipping to done leaves a finished
-    file under its head and a pending row under its old name. The answer
+    ONLY A BUILD BEFORE U343 RENAMED, so this recovers a job such a build left
+    half done. A kill between the rename and the row flipping to done leaves a
+    finished file under its head and a pending row under its old name. The answer
     comes from this item's own rename intent, never a scan of the folder,
     which matched unrelated twins. With the intent gone, from the item's own
     staged report (U223).
@@ -553,7 +555,7 @@ def _staged_twin(cfg: config.Config, job, item) -> Path | None:
     """The renamed file an uncommitted staged report of this item names, if any.
 
     Only a report that says it renamed, naming a path in the item's own
-    folder, where ``_finalize`` renames to.
+    folder, where a build before U343 renamed to.
     """
     report = artifacts.staged_report(cfg, job, item)
     if report is None:
@@ -578,7 +580,7 @@ def _require_heavy(seam_bound: bool, what: str) -> None:
     """Refuse the item when the extra is absent HERE and no fake is bound.
 
     The detector answers a missing extra with None, so without this a job
-    with no librosa would skip every file as keyless and report done. The
+    with no librosa would settle every file ``skipped-no-key`` and report done. The
     remedy is the parser stub's for the same slug.
     """
     if seam_bound or detect.heavy_available():
@@ -665,72 +667,25 @@ def _write_or_refuse(path: Path, fields: dict[str, Any], *, untouched: str) -> N
         )
 
 
-def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, Any]) -> Path:
-    """Write the analysed values onto the file and rename it to its head.
+def _finalize(path: Path, scored: Mapping[str, Any]) -> None:
+    """Write the measured values onto the file, with the mark, in one write.
 
-    TAGS FIRST, THEN THE RENAME: a kill between leaves the head in the title,
-    which ``naming.normalize_spec`` heals on the next pass. The intent is
-    recorded before the file moves. An absent level or vocal score writes no
-    tag, which routing reads as unscored. The drift level only when measured,
-    its verdict whenever given (U157).
+    NO HEAD, NO TITLE, NO KEY AND NO RENAME (U343): the head comes from
+    rekordbox after the visit, through ``analyze adopt``. The mark rides the
+    same write, so a file is marked exactly when its values landed. An absent
+    level or vocal score writes no tag, which routing reads as unscored. The
+    drift level only when measured, its verdict whenever given (U157).
     """
-    template = _template(cfg)
-    camelot = str(scored["camelot"])
-    key = naming.pad_camelot(camelot)
-    # ``rate`` is the shipped detector's key and ``bpm`` the older fakes'.
-    tempo = scored.get("rate", scored.get("bpm"))
-    title = tags.read_tag(path, "title") or ""
-    marker = cfg.naming.lossy_marker
-    spec = NameSpec(
-        stem=path.stem,
-        suffix=path.suffix,
-        key=key,
-        bpm=int(tempo),
-        title=naming.strip_head(title, template=template) if title else None,
-        lossy=bool(marker) and (marker in path.stem or marker in title),
-    )
-    rendered = naming.build(
-        spec, template=template, budget=NameBudget.of(cfg.naming), parent_dir=str(path.parent)
-    )
     fields = {
-        "initialkey": key,
-        "title": rendered.title_tag,
         "energylevel": scored.get("energy"),
         "voxlevel": scored.get("voxlevel"),
         "voxgender": scored.get("voxgender"),
         "voxgenderconf": scored.get("voxgenderconf"),
         "driftlevel": _drift_level(scored.get("drift")),
         "drift": scored.get("drift_verdict"),
+        run.MARK_FIELD: run.MARK_VALUE,
     }
-    _write_or_refuse(path, fields, untouched="The file is untouched and was not renamed")
-    target = path.with_name(rendered.filename)
-    if target == path:
-        return path
-    artifacts.record_rename_intent(cfg, job, item, target)
-    if not naming.claim_target(target):
-        # THE RENAME WILL NOT LAND, so the intent is false, and a retry once the source is gone would
-        # read that unrelated file as this item's twin (U223).
-        artifacts.discard_rename_evidence(cfg, job, item)
-        raise refuse(
-            "analysis-write-failed",
-            f"{path.name} could not be renamed to {rendered.filename}: that name "
-            f"is already taken in the folder. The tags were written and the "
-            f"title carries the head, so the next pass converges",
-            origin=_ORIGIN,
-            detail={"path": str(path), "target": str(target), "stage": "rename"},
-        )
-    try:
-        path.rename(target)
-    except OSError as exc:
-        target.unlink(missing_ok=True)
-        artifacts.discard_rename_evidence(cfg, job, item)
-        raise refuse(
-            "analysis-write-failed",
-            f"{path.name} could not be renamed to {rendered.filename}: {exc}",
-            origin=_ORIGIN,
-            detail={"path": str(path), "target": str(target), "stage": "rename"},
-        ) from exc
-    return target
+    _write_or_refuse(path, fields, untouched="The file is untouched")
 
 
 def _drift_level(measured: Any) -> str | None:
@@ -743,10 +698,10 @@ def _drift_level(measured: Any) -> str | None:
 def handle_run(job, item, cfg) -> jobs.Produced:
     """Analyse ONE file, the per item worker behind ``analyze.run``.
 
-    A name carrying the head is skipped unread. Otherwise the light head, the
-    vocal score, then the finalize; a head with no key or no decode is a
-    terminal skip with nothing written. The configuration is the frozen one
-    (KTD9).
+    A file already measured is skipped unread. Otherwise the light measure,
+    the vocal score, then the finalize; a measure with no decode or no tempo
+    is a terminal skip with nothing written. The file keeps its name (U343).
+    The configuration is the frozen one (KTD9).
     """
     folder, path = _folder_and_path(job, item)
     if not path.is_file():
@@ -765,10 +720,9 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             },
         )
     # THE SOURCE IS A FILE, so evidence an earlier attempt left names a rename
-    # that did not land; this attempt starts clean and records its own if
-    # it renames (U223).
+    # that did not land; this attempt starts clean, and renames nothing (U223, U343).
     artifacts.discard_rename_evidence(cfg, job, item)
-    if carries_head(path, cfg):
+    if already_measured(path, cfg):
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
         )
@@ -786,18 +740,16 @@ def handle_run(job, item, cfg) -> jobs.Produced:
     # so the tag write below can move it (U344 review): read before and after.
     measured = scored.get("energy") is not None
     before = slice_length(path) if measured else None
-    final = _finalize(cfg, job, item, path, scored)
-    held = measured and before is not None and slice_length(final) == before
+    _finalize(path, scored)
+    held = measured and before is not None and slice_length(path) == before
     return artifacts.produced(
         cfg,
         job,
         item,
         {
             "item": item.item_id,
-            "path": str(final),
-            "renamed_to": final.name if final != path else None,
+            "path": str(path),
             "status": "analyzed",
-            "camelot": scored["camelot"],
             "tempo": int(scored.get("rate", scored.get("bpm"))),
             "energy": scored.get("energy"),
             "energy_status": scored.get("energy_status"),

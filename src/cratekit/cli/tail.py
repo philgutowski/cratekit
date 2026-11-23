@@ -80,8 +80,8 @@ PASS_FLAG = "--pass"
 #: The row the vocal rescore reports under, ``<namespace>.rescore`` (U181).
 RESCORE = "rescore"
 
-#: The vocal rescore after ``analyze run`` (U181), over staged files with the
-#: head and no voxlevel. Spelled here, since this module imports no feature
+#: The vocal rescore after ``analyze run`` (U181), over staged files the run
+#: already measured and no voxlevel. Spelled here, since this module imports no feature
 #: module at its top; a test holds the flag to the verb's own.
 VOCALS_VERB = "analyze.vocals"
 VOCALS_WORDS: tuple[str, ...] = ("analyze", "vocals")
@@ -590,9 +590,9 @@ def vocals_on(cfg: config.Config) -> bool:
 
 
 def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | None) -> None:
-    """Score every staged file carrying the head and no voxlevel, as part of the analyze step.
+    """Score every staged file analyze run measured with no voxlevel, as part of the analyze step.
 
-    ``analyze run`` skips a name carrying the head (R-277), so such a file is
+    ``analyze run`` skips a file it already measured (R-277, U343), so such a file is
     never scored again by it; ``analyze vocals --unscored`` queues exactly
     those. ``unable`` is :func:`vocals_unavailable`; when set nothing is
     queued and the row says so.
@@ -611,7 +611,7 @@ def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | Non
         chain.note(
             RESCORE,
             "info",
-            f"staged files carrying the head and no voxlevel were not scored, since "
+            f"staged files analyze run measured with no voxlevel were not scored, since "
             f"the vocal model cannot score here: {unable}",
         )
         return
@@ -626,7 +626,7 @@ def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | Non
         chain.note(
             RESCORE,
             "ok",
-            f"every staged file carrying the head carries a voxlevel, so no vocal "
+            f"every staged file analyze run measured carries a voxlevel, so no vocal "
             f"score was owed over {folder}",
         )
         return
@@ -641,7 +641,7 @@ def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | Non
         RESCORE,
         "ok",
         f"crate analyze vocals job {job.job_id} scored the {count} staged file(s) "
-        f"carrying the head and no voxlevel over {folder}",
+        f"analyze run measured with no voxlevel over {folder}",
     )
 
 
