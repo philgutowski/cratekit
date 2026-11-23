@@ -209,16 +209,13 @@ class ChangeSummary:
         the recorded bytes do not depend on source order."""
         totals: dict[str, TreeChange] = {entry.tree: entry for entry in self.trees}
         for entry in other.trees:
-            seen = totals.get(entry.tree)
-            totals[entry.tree] = (
-                entry
-                if seen is None
-                else TreeChange(
-                    tree=entry.tree,
-                    created=seen.created + entry.created,
-                    updated=seen.updated + entry.updated,
-                    removed=seen.removed + entry.removed,
-                )
+            # A tree only ``other`` names adds to zeros, so it reads back as itself.
+            seen = totals.get(entry.tree, TreeChange(tree=entry.tree))
+            totals[entry.tree] = TreeChange(
+                tree=entry.tree,
+                created=seen.created + entry.created,
+                updated=seen.updated + entry.updated,
+                removed=seen.removed + entry.removed,
             )
         return ChangeSummary(tuple(sorted(totals.values(), key=lambda e: e.tree)))
 

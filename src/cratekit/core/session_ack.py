@@ -12,7 +12,7 @@ import logging
 import os
 import socket
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -73,12 +73,7 @@ class ShownAge:
     completed_at: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "portion": self.portion,
-            "state": self.state,
-            "age_seconds": self.age_seconds,
-            "completed_at": self.completed_at,
-        }
+        return asdict(self)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> ShownAge:
