@@ -1,9 +1,7 @@
 """U241: librosa's kernels are compiled by one process at a time.
 
-The lock holds two processes apart and never stops a worker; a process warms
-once, before its first decode, never without the extra; and with the real
-stack the warm up reaches every kernel real heads reach, and two workers on an
-empty cache finish (those skip without the extra).
+The lock holds two processes apart and never stops a worker, and a process
+warms once, before its first decode; the real stack tests skip without the extra.
 """
 
 from __future__ import annotations
@@ -136,10 +134,7 @@ def test_the_warm_up_runs_inside_the_lock(monkeypatch):
 
 
 def test_the_warm_ups_own_head_does_not_wait_on_the_lock_it_holds(monkeypatch):
-    """The warm up's own head must not wait on the lock it holds.
-
-    This lock refuses a second entry out loud; the real one would hang the suite.
-    """
+    """The warm up's own head must not wait on the lock it holds; this lock refuses loudly."""
     inner: list[bool] = []
     held: list[bool] = []
 
@@ -181,9 +176,7 @@ def test_nothing_is_warmed_and_no_lock_is_taken_without_the_extra(monkeypatch):
 
 
 def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
-    """The one call that keeps two processes out of the kernel cache together,
-    against a stand in for librosa so it runs where the merge gate does.
-    """
+    """The one call keeping two processes out of the cache, against a librosa stand in."""
     import types
 
     order: list[str] = []
@@ -262,11 +255,7 @@ for path in sys.argv[1:]:
 
 
 def test_the_warm_up_reaches_every_kernel_a_real_head_reaches(tmp_path):
-    """Warm an empty cache, measure real files against it, and the cache must not move.
-
-    Every key method, a calibrated energy and the vocal decode, over a stinger, a
-    drum track, a pad and a track long enough for the windowed key.
-    """
+    """Warm an empty cache, measure real files against it, and the cache must not move."""
     pytest.importorskip("librosa")
     files = _audio(tmp_path)
     cache = tmp_path / "numba"
@@ -328,9 +317,7 @@ _COLD_POOL = textwrap.dedent(
 
 @pytest.mark.parametrize("attempt", [1, 2, 3])
 def test_two_workers_starting_together_on_an_empty_cache_finish(tmp_path, attempt):
-    """The review's crash, as a test. THREE ATTEMPTS, BECAUSE THE DEFECT IS A RACE,
-    each with an empty cache of its own.
-    """
+    """The review's crash: three attempts, since the defect is a race, each cache empty."""
     pytest.importorskip("librosa")
     files = _audio(tmp_path)[:3]
     cache = tmp_path / "numba"
