@@ -46,7 +46,7 @@ from tests.test_adoption import _bucket_and_genre, _readable
 PRESET = "Kick 01.wav"
 
 #: The two old home folders the sampler rows are recorded under, both mapped here.
-HOMES = ("/Users/old-one/Music/rekordbox/Sampler", "/Users/old-two/Music/rekordbox/Sampler")
+HOMES = ("/old-machine-one/rekordbox/Sampler", "/old-machine-two/rekordbox/Sampler")
 
 
 def _genre() -> str:
@@ -77,12 +77,13 @@ def _scan(rows, root: Path, rules=(), **kwargs) -> dict[str, adopt_scan.ScannedT
         ("/vol/lib/Music/a.flac", "/vol/lib/", True),
         ("/vol/library/a.flac", "/vol/lib", False),
         ("/vol/libArchive/a.flac", "/vol/lib", False),
-        ("/vol/lib/../home/Sampler/a.wav", "/vol/lib", False),
+        ("/vol/lib/../srv/Sampler/a.wav", "/vol/lib", False),
         ("/vol/lib/Music/../Other/a.flac", "/vol/lib", True),
-        ("/home/Sampler/a.wav", "/vol/lib", False),
+        ("/srv/Sampler/a.wav", "/vol/lib", False),
         ("/vol/a.flac", "/vol/lib", False),
         ("/anything/at/all.flac", "/", True),
-        ("/vol/lib/Café/a.flac", "/vol/lib/Café", True),
+        ("/vol/lib/Cafe\u0301/a.flac", "/vol/lib/Caf\u00e9", True),
+        ("/vol/lib/Caf\u00e9/a.flac", "/vol/lib/Cafe\u0301", True),
     ],
 )
 def test_within_root_is_anchored_on_whole_components_and_reads_no_dots(path, root, inside):
@@ -96,6 +97,8 @@ def test_within_root_reaches_the_root_through_a_name_that_is_the_same_directory(
     alias = tmp_path / "LIBRARY-alias"
     alias.symlink_to(root, target_is_directory=True)
     assert adopt_scan.within_root(str(alias / "Music" / "a.flac"), str(root)) is True
+    # A directory below the alias that is gone is asked nothing and is no answer.
+    assert adopt_scan.within_root(str(alias / "Gone" / "a.flac"), str(root)) is True
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     assert adopt_scan.within_root(str(elsewhere / "a.flac"), str(root)) is False
@@ -106,20 +109,20 @@ def test_within_root_reaches_the_root_through_a_name_that_is_the_same_directory(
 
 def test_a_row_mapped_outside_the_root_is_excluded_and_keeps_its_path(tmp_path):
     root = tmp_path / "library"
-    old_volume = "/Volumes/Old Drive/Music"
-    old_home = "/Users/someone-else/Music/rekordbox/Sampler"
+    old_volume = "/old-drive/Music"
+    old_home = "/old-machine/rekordbox/Sampler"
     here = tmp_path / "home" / "Sampler"
     rules = (
         locations.PrefixRule(old_volume, str(root / "Music")),
         locations.PrefixRule(old_home, str(here)),
-        locations.PrefixRule("/Volumes/Twin", f"{root}Archive"),
+        locations.PrefixRule("/twin-drive", f"{root}Archive"),
     )
     found = _scan(
         [
             _row("inside", root / "Music" / "a.flac"),
             _row("remapped-in", f"{old_volume}/b.flac"),
             _row("sampler", f"{old_home}/{PRESET}"),
-            _row("sibling", "/Volumes/Twin/c.flac"),
+            _row("sibling", "/twin-drive/c.flac"),
         ],
         root,
         rules,
@@ -148,10 +151,10 @@ def test_an_outside_row_is_never_probed(tmp_path):
         return Readability.READABLE
 
     root = tmp_path / "library"
-    rules = (locations.PrefixRule("/Users/x/Sampler", str(tmp_path / "Sampler")),)
+    rules = (locations.PrefixRule("/old-machine/Sampler", str(tmp_path / "Sampler")),)
     list(
         adopt_scan.scan_rows(
-            [_row("s", f"/Users/x/Sampler/{PRESET}")],
+            [_row("s", f"/old-machine/Sampler/{PRESET}")],
             DECLARED,
             root=root,
             prefix_map=rules,
@@ -166,9 +169,9 @@ def test_the_tagging_walk_still_reads_a_row_outside_the_root(tmp_path, monkeypat
     root = tmp_path / "library"
     here = tmp_path / "Sampler"
     found = _scan(
-        [_row("s", f"/Users/x/Sampler/{PRESET}")],
+        [_row("s", f"/old-machine/Sampler/{PRESET}")],
         root,
-        (locations.PrefixRule("/Users/x/Sampler", str(here)),),
+        (locations.PrefixRule("/old-machine/Sampler", str(here)),),
         confine_to_root=False,
     )
     assert found["s"].readability is Readability.READABLE
@@ -199,9 +202,9 @@ def _data(root: Path) -> dict:
 
 def _outside_plan(tmp_path: Path, ids: tuple[str, ...]) -> adopt_plan.AdoptionPlan:
     root = tmp_path / "library"
-    rules = (locations.PrefixRule("/Users/x/Sampler", str(tmp_path / "Sampler")),)
-    rows = [_row("inside", root / "Music" / "a.flac")]
-    rows += [_row(content_id, f"/Users/x/Sampler/{content_id}.wav") for content_id in ids]
+    rules = (locations.PrefixRule("/old-machine/Sampler", str(tmp_path / "Sampler")),)
+    rows = [_row("inside", root / "Music" / "a.flac"), _row("unmapped", "/no-rule/a.flac")]
+    rows += [_row(content_id, f"/old-machine/Sampler/{content_id}.wav") for content_id in ids]
     scanned = list(
         adopt_scan.scan_rows(rows, DECLARED, root=root, prefix_map=rules, probe=_readable)
     )
@@ -214,16 +217,17 @@ def test_the_plan_counts_and_names_every_row_it_leaves_outside(tmp_path):
 
     assert [entry.content_id for entry in plan.applicable()] == ["inside"]
     assert plan.counts()["outside-root"] == 2
-    assert plan.counts()["excluded"] == 2
+    assert plan.counts()["excluded"] == 3
+    assert plan.counts()["unmapped"] == 1
     assert document["outside_root"] == [
         {
             "content_id": "s-1",
-            "location": "/Users/x/Sampler/s-1.wav",
+            "location": "/old-machine/Sampler/s-1.wav",
             "path": str(tmp_path / "Sampler" / "s-1.wav"),
         },
         {
             "content_id": "s-2",
-            "location": "/Users/x/Sampler/s-2.wav",
+            "location": "/old-machine/Sampler/s-2.wav",
             "path": str(tmp_path / "Sampler" / "s-2.wav"),
         },
     ]
