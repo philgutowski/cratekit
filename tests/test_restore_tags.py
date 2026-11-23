@@ -618,3 +618,23 @@ def test_a_dry_run_counts_a_file_it_cannot_read_as_failed(tmp_path):
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
 
     assert done.failed == (str(path),) and not done.read_back
+
+
+def test_the_title_tag_goes_back_to_the_file_s_own_value_not_the_row_s(
+    native_library, silence
+):
+    """The adopt compares a title tag with its row by body alone, so a file whose
+    tag carries another head than its row's is adopted, and the restore puts back
+    the tag's own head (the table's T6, which no earlier test reached)."""
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    golf = _file(cfg, "Golf")
+    assert tags.write_tags(golf, {"title": "05A - 124 - Golf"})
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    assert _surfaces(cfg, "Golf")[:2] == ("09A - 98 - Golf", "09A - 98 - Golf")
+
+    code, envelope = _restore(_adopted(cfg).session_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert _surfaces(cfg, "Golf")[:3] == ("01A - 124 - Golf", "05A - 124 - Golf", None)
