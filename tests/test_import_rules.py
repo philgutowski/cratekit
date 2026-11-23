@@ -1,42 +1,24 @@
 """Seams between packages, enforced as tests: the import rules (U296).
 
-Point 4 of U290 asks that each feature module reach the core only through a
-small named interface, and that toggling any module off leave nothing
-dangling. ``tests/test_layering.py`` already holds the direction of imports;
-this file holds how wide a package's reach may be. Four rules, each with an
-allowance per importing package under ``tests/ratchets/imports/`` that only
-ever shrinks:
+U290 point 4: each feature module reaches the core only through a small named
+interface, and toggling a module off leaves nothing dangling.
+``tests/test_layering.py`` holds import direction; this holds reach. Four
+rules, each with a per package allowance under ``tests/ratchets/imports/``
+that only shrinks:
 
-1. **No private name crosses a package.** A name with a leading underscore
-   belongs to the package that defines it.
-2. **A feature package imports from core only the modules on the named
-   interface**, the list below, at most 25 of them.
-3. **An always on package never imports a toggleable package at module top
-   level.** Under a function it may, since that import runs only when asked.
-4. **With each toggle off in turn and its homes unimportable, every verb that
-   remains still builds.** Read from source: a verb builds by importing its
-   module and running its builder, so it dangles when what those load names a
-   module in a home of the toggle that was switched off. Driving it for real
-   costs more than the whole budget of these checks, so the suite reads it
-   statically and ``scripts/refactor_measure.py imports --drive`` drives it
-   for the audit; on the day this was written the two readings agreed on
-   every toggle, 159 dangling verbs summed over them. An import made by a
-   function the builder calls is not followed, and an import guarded by
-   ``try`` is read as one that runs.
+1. **No private name crosses a package.**
+2. **A feature package imports from core only the named interface** below.
+3. **An always on package never imports a toggleable one at module top
+   level**; under a function it may.
+4. **With each toggle off, every remaining verb still builds**, read
+   statically from what each verb's module and builder import (the drive in
+   ``scripts/refactor_measure.py imports --drive`` agreed on every toggle).
+   An import in a function the builder calls is not followed; one guarded by
+   ``try`` counts as run.
 
 And one ceiling: the count of distinct core names feature packages use may
-not grow.
-
-AN ALLOWANCE LINE IS A CROSSING, NOT A COUNT OF ITS USES. One line per package
-and name, however many files hold it, so a module that is split in two adds
-no line, and a line whose crossing is gone fails nothing: removing a crossing
-cannot fail another card's package.
-
-The lists live here, where the layer ladder's own lists live, and the script
-reads them from this file as literals so there is one copy. The checkers are
-pure functions over source text in ``scripts/refactor_measure.py``, the same
-code the refactor's audit reads through. Fixture tests prove each rule bites
-on synthetic sources before the one test that reads the tree.
+not grow. An allowance line is one crossing per package and name, so a split
+module adds no line. The script reads the lists below as literals.
 """
 
 from __future__ import annotations
@@ -89,11 +71,10 @@ CORE_INTERFACE = (
 )
 CORE_INTERFACE_LIMIT = 25
 
-#: The modules and packages each toggle of ``core.profiles.MODULES`` owns: what
-#: cannot be imported once it is off. A package holding any of them is
-#: toggleable, and every other package is always on. Four toggles own nothing:
-#: ``web`` and ``desktop`` are deferred, and the verbs ``identify`` and
-#: ``repair`` gate live in always on packages.
+#: The modules and packages each toggle of ``core.profiles.MODULES`` owns. A
+#: package holding any is toggleable, every other always on. ``web`` and
+#: ``desktop`` are deferred, and ``identify`` and ``repair`` gate verbs in
+#: always on packages, so those four own nothing.
 TOGGLE_HOMES = {
     "analysis": ("cratekit.analysis",),
     "vocals": ("cratekit.vocals",),
@@ -567,13 +548,7 @@ def test_a_package_initializer_is_loaded_with_any_module_inside_it():
 
 
 def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
-    """An import past the switched off package never runs, so it is no cause.
-
-    ``sync`` loads ``label`` and ``label`` loads ``export``. With ``export``
-    off, ``label`` is still there and its import of ``export`` dangles the
-    verb. With ``labels`` off the import of ``label`` is where it stops, and
-    ``label``'s own import of ``export`` is never reached.
-    """
+    """An import past the switched off package never runs: with ``labels`` off, ``label``'s ``export`` import is not reached."""
     tree = _tree(
         export__cli="",
         label__registry="from cratekit.export import cli\n",
@@ -626,12 +601,7 @@ def test_a_name_bound_in_an_except_branch_is_a_name_the_module_defines():
 
 
 def test_a_local_variable_named_as_an_imported_module_is_not_a_use_of_it():
-    """The tree's own case: ``source.name`` beside an imported module ``source``.
-
-    A module's alias is followed anywhere in the file, so what keeps a local
-    variable's attributes out of the count, and out of the private rule, is
-    that the module does not define them.
-    """
+    """A local ``source.name`` beside an imported module ``source`` is not a use: the module does not define it."""
     tree = _tree(
         core__config="def load(): ...\n",
         sync__run=(
@@ -673,11 +643,7 @@ def test_the_interface_is_at_most_25_core_modules_sorted_and_real():
 
 
 def test_every_toggle_has_its_homes_declared_and_every_home_exists():
-    """A toggle added to ``core.profiles.MODULES`` must say here what it owns.
-
-    Otherwise rule four reads it as owning nothing and its verbs' package as
-    always on, which is the quiet way for a new module to be born unguarded.
-    """
+    """Every toggle declares its homes here, or rule four reads its package as always on."""
     assert tuple(TOGGLE_HOMES) == profiles.MODULES
     source = REPO_ROOT / "src"
     for toggle, owned in TOGGLE_HOMES.items():
@@ -734,11 +700,7 @@ def test_a_planned_entry_is_not_a_landed_verb():
 
 
 def test_no_package_crosses_a_seam_beyond_its_allowance():
-    """All four rules and the ceiling over one reading of the tree.
-
-    One test, because the reading parses every module and four tests would
-    parse the package four times.
-    """
+    """All four rules and the ceiling over one reading of the tree, so the package is parsed once."""
     sources = measure.read_sources(REPO_ROOT, [measure.SOURCE])
     tree = measure.Tree(sources)
     rules = measure.Rules(CORE_INTERFACE, TOGGLE_HOMES, CORE_NAMES_CEILING)
