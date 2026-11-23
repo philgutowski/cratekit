@@ -1,0 +1,260 @@
+name = "u340"
+pass_kind = "light"
+
+[[rows]]
+id = "R01_too_coarse_files"
+description = "files_by_genre: drop the too coarse test, so a coarse second genre names the fallback's folder"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_tag_second.py"]
+old = '''    if not value or taxonomy.is_too_coarse_as_source(value):
+        return None
+    resolution = resolve_bucket(taxonomy, value)'''
+new = '''    if not value:
+        return None
+    resolution = resolve_bucket(taxonomy, value)'''
+
+[[rows]]
+id = "R02_fallback_files"
+description = "files_by_genre: let a fallback match name its bucket, so an unknown word files a track into the fallback folder"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_tag_second.py"]
+old = '''    resolution = resolve_bucket(taxonomy, value)
+    if resolution.match is Match.FALLBACK:
+        return None
+    return resolution.bucket_id'''
+new = '''    resolution = resolve_bucket(taxonomy, value)
+    return resolution.bucket_id'''
+
+[[rows]]
+id = "R03_same_folder"
+description = "second_bucket: drop the same folder test, so a second genre naming the first's folder files a second entry there"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_tag_second.py", "tests/test_rebuild.py"]
+old = '''    if second is None or second == first:'''
+new = '''    if second is None:'''
+
+[[rows]]
+id = "R04_first_files_nowhere"
+description = "second_bucket: drop the first genre test, so a track with no routable genre is filed by its second alone"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_tag_second.py"]
+old = '''    first = files_by_genre(taxonomy, raw_genre)
+    if first is None:
+        return None
+    second'''
+new = '''    first = files_by_genre(taxonomy, raw_genre)
+    second'''
+
+[[rows]]
+id = "R05_derive_one_bucket"
+description = "filed_genres: answer the genre's bucket alone, so rebuild, converge and resort never file the second folder"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    return ((first, entry.genre), (second, entry.second_genre))'''
+new = '''    return ((first, entry.genre),)'''
+
+[[rows]]
+id = "R06_truth_unread"
+description = "read_truth: drop the second genre reading, so a file's second genre never reaches the derivation"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''        second_genre=values["secondgenre"],'''
+new = '''        second_genre=None,'''
+
+[[rows]]
+id = "R07_vox_first_only"
+description = "derive_from_taxonomy: file the with vox sub in the genre's bucket only"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py"]
+old = '''            if vocal_threshold is not None and routing.routes_with_vox(
+                entry.voxlevel, vocal_threshold
+            ):
+                out.extend('''
+new = '''            if bucket_id == routing.resolve_bucket(declared, entry.genre).bucket_id and vocal_threshold is not None and routing.routes_with_vox(
+                entry.voxlevel, vocal_threshold
+            ):
+                out.extend('''
+
+[[rows]]
+id = "R08_census_no_second"
+description = "scan_rows: never name a second bucket, so adoption plans no second entry"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py"]
+old = '''            second_bucket=routing.second_bucket(declared, row.genre, second) or "",'''
+new = '''            second_bucket="",'''
+
+[[rows]]
+id = "R09_census_unread_raises"
+description = "_second_of: let an unreadable file's failure end the census walk"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py"]
+old = '''        return (reader(path) or "").strip()
+    except (tags.TagReadFailed, OSError):
+        return ""'''
+new = '''        return (reader(path) or "").strip()
+    except OSError:
+        return ""'''
+
+[[rows]]
+id = "R10_plan_no_second_entry"
+description = "build_adoption_plan: drop the second entry, so adoption never files the second folder"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
+old = '''        if second_sub:
+            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+new = '''        if second_sub and False:
+            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+[[rows]]
+id = "R11_counts_per_entry"
+description = "AdoptionPlan.counts: count every entry, so a track with two genres is counted twice on the gate"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py"]
+old = '''        counts = {str(member): 0 for member in (*Disposition, *Readability)}
+        for entry in self.firsts():'''
+new = '''        counts = {str(member): 0 for member in (*Disposition, *Readability)}
+        for entry in self.entries:'''
+
+[[rows]]
+id = "R13_second_flag"
+description = "build_adoption_plan: leave the second flag off, so the entry reads as a track's first"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
+old = '''            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+new = '''            entry = replace(unplaced, genre=track.second_genre, second=False)'''
+[[rows]]
+id = "R14_elsewhere_asked"
+description = "buckets_asked: ask a bucket the track's other entry claims, so the first entry's tree path plans there too"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adopt_move.py"]
+old = '''        if bucket.id in elsewhere:
+            continue'''
+new = '''        if bucket.id in elsewhere and False:
+            continue'''
+
+[[rows]]
+id = "R16_worker_last_entry"
+description = "remaining: index entries by track with the last one winning, as before the card"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adopt_move.py"]
+old = '''    entries = move_engine.entries_by_track(current.entries)'''
+new = '''    entries = {entry.content_id: (entry,) for entry in current.entries}'''
+
+[[rows]]
+id = "R17_edit_second_path_off"
+description = "_plan_genre: read a track with two genres as one, so an account edit in one folder is taken as today"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py", "tests/test_organize_mirror_edits.py"]
+old = '''        elif two is not None:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "R18_edit_off_other"
+description = "_second_genre_tags: drop the check that the edit left the other folder, so a take off of one folder is read as a no op"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''        if other in left:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R19_edit_third_swapped"
+description = "_second_genre_tags: replace the second genre whichever folder the move left"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py", "tests/test_organize_mirror_edits.py"]
+old = '''    found = (word, energy, truth.second_genre) if left == {one} else (truth.genre, energy, word)'''
+new = '''    found = (truth.genre, energy, word)'''
+[[rows]]
+id = "R20_edit_write_drops_second"
+description = "_write_tags: never write the second genre, so an edit that replaces it writes nothing"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if change.second_was or change.second:
+        pairs.append(("secondgenre", change.second))'''
+new = '''    if False:
+        pairs.append(("secondgenre", change.second))'''
+
+[[rows]]
+id = "R21_verb_same_folder"
+description = "tag second _reason: drop the same folder outcome, so a second genre naming the file's own folder is written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second.py"]
+old = '''    if routing.second_bucket(declared, file_genre, wanted) is None:
+        return SAME_FOLDER'''
+new = '''    if False:
+        return SAME_FOLDER'''
+
+[[rows]]
+id = "R23_verb_moved"
+description = "tag second apply: write a file that changed since the plan"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second.py"]
+old = '''        if now is None or now != (item.genre, item.current):'''
+new = '''        if now is None:'''
+
+[[rows]]
+id = "R24_verb_genre_refusal"
+description = "assert_genre_files: accept any word, so a second genre filing nowhere is written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second.py"]
+old = '''    if routing.files_by_genre(declared, genre) is not None:
+        return
+    raise refuse('''
+new = '''    return
+    raise refuse('''
+
+[[rows]]
+id = "R26_apply_split_kept"
+description = "competing_place: drop the split place the other entry keeps no more, so adoption withholds Soul beside R&B (B1)"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
+old = '''    held = tuple(sorted((set(placements.holds(bucket, content_id)) & competing) - kept))'''
+new = '''    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))'''
+
+[[rows]]
+id = "R27_move_split_kept"
+description = "standing: drop the split place the other entry keeps no more, so adopt move takes Soul with R&B out of R&B (B1)"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
+old = '''        sorted((set(placements.holds(entry.bucket, entry.content_id)) & competing) - kept)'''
+new = '''        sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing)'''
+
+[[rows]]
+id = "R28_worker_no_elsewhere"
+description = "remaining: check an approved move with no other entry's buckets, so the worker disagrees with the plan for a split pair"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
+old = '''            elsewhere=move_engine.elsewhere_of(claimed, entry),'''
+new = '''            elsewhere=frozenset(),'''
+
+[[rows]]
+id = "R29_edit_fallback_taken"
+description = "_second_genre_tags: take a move whose genres file the track elsewhere, so a move into Electronica / Other loses a folder (B2)"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if filed != {kept, to}:'''
+new = '''    if False:'''
+
