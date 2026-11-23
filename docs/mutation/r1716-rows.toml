@@ -1,0 +1,245 @@
+name = "r1716"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_unlisted_marks"
+description = "mark_of: a playlist the listing omits is no longer refused a mark (reworded to a crash, so a None shown reaches the count test)"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    if shown is None:
+        return None
+    tracks, updated = shown.tracks, shown.updated'''
+new = '''    tracks, updated = getattr(shown, "tracks", 0), getattr(shown, "updated", "2026-01-01T00:00:00+00:00")'''
+
+[[rows]]
+id = "K2_uncounted_marks"
+description = "mark_of: a listing with no count, or a boolean or negative one, still marks the playlist"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    if not isinstance(tracks, int) or isinstance(tracks, bool) or tracks < 0:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "K3_negative_count_marks"
+description = "mark_of: a negative count marks the playlist, the floor one lower"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''isinstance(tracks, bool) or tracks < 0:'''
+new = '''isinstance(tracks, bool) or tracks < -1:'''
+
+[[rows]]
+id = "K4_unstamped_marks"
+description = "mark_of: a listing with no stamp that reads as an instant still marks the playlist"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    if _instant(updated) is None:
+        return None
+    return Mark('''
+new = '''    if updated is None:
+        return None
+    return Mark('''
+
+[[rows]]
+id = "K5_naive_instant"
+description = "_instant: a time with no zone reads as an instant"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    return None if moment is None or moment.tzinfo is None else moment'''
+new = '''    return moment'''
+
+[[rows]]
+id = "K6_settle_dropped"
+description = "keep: a read under a stamp younger than SETTLED is held, the lag guard of round one"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''            or not mark.settled(moment)
+        ):'''
+new = '''        ):'''
+
+[[rows]]
+id = "K7_settle_coefficient"
+description = "SETTLED at 10 minutes, under the 13 the provider was measured lagging"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''SETTLED = timedelta(minutes=30)'''
+new = '''SETTLED = timedelta(minutes=10)'''
+
+[[rows]]
+id = "K8_settle_boundary"
+description = "Mark.settled: a stamp exactly SETTLED old is not settled"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''        return stamped is not None and moment - stamped >= SETTLED'''
+new = '''        return stamped is not None and moment - stamped > SETTLED'''
+
+[[rows]]
+id = "K9_count_agreement_dropped"
+description = "keep: a read holding fewer or more tracks than the listing counts is held, the lag guard of round one"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''            or len(listing.refs) != mark.tracks
+'''
+new = ''''''
+
+[[rows]]
+id = "K10_not_whole_held"
+description = "keep: a listing not read whole is held like a read"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py", "tests/test_sync_removed_gone.py"]
+old = '''            listing.state != removed.READ
+            or mark is None'''
+new = '''            mark is None'''
+
+[[rows]]
+id = "K11_stale_entry_kept"
+description = "keep: a read not whole now leaves the older held read in place"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''            if self.entries.pop(account, None) is not None:'''
+new = '''            if self.entries.get(account) is not None:'''
+
+[[rows]]
+id = "K12_hold_coefficient"
+description = "HELD_FOR at 2 hours, under the three hours the measured account reads for"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''HELD_FOR = timedelta(hours=6)'''
+new = '''HELD_FOR = timedelta(hours=2)'''
+
+[[rows]]
+id = "K13_hold_boundary"
+description = "_fresh: a read exactly HELD_FOR old is still used"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''        return timedelta(0) <= age < HELD_FOR'''
+new = '''        return timedelta(0) <= age <= HELD_FOR'''
+
+[[rows]]
+id = "K14_future_read_used"
+description = "_fresh: a read stamped after the run began is used"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''        return timedelta(0) <= age < HELD_FOR'''
+new = '''        return age < HELD_FOR'''
+
+[[rows]]
+id = "K15_reader_unchecked"
+description = "get: a read made by another reader version is trusted"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''            or entry.get("reader") != READER
+'''
+new = ''''''
+
+[[rows]]
+id = "K16_mark_unchecked"
+description = "get: a held read is used whatever count and stamp the listing shows now"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''            or entry.get("mark") != mark.stored()
+'''
+new = ''''''
+
+[[rows]]
+id = "K17_malformed_sets"
+description = "get: a malformed refs, isrcs or recordings list reads as empty"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    if not isinstance(raw, list) or not all(isinstance(one, str) for one in raw):
+        return None'''
+new = '''    if not isinstance(raw, list) or not all(isinstance(one, str) for one in raw):
+        return frozenset()'''
+
+[[rows]]
+id = "K18_version_unchecked"
+description = "_document: a document of another version is read"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "maintainer"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    if raw.get("version") != VERSION:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K19_flush_interval"
+description = "FLUSH_EVERY at 500, so a kill loses ten times more"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "maintainer"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''FLUSH_EVERY = 50'''
+new = '''FLUSH_EVERY = 500'''
+
+[[rows]]
+id = "K20_merge_dropped"
+description = "flush: another run's write is not merged, so overlapping runs erase each other's reads, round one's finding 6"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "maintainer"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''        theirs, _why = _document(self.path)'''
+new = '''        theirs, _why = {}, ""'''
+
+[[rows]]
+id = "K21_dropped_resurrected"
+description = "flush: a playlist this run dropped comes back from an older write"
+file = "src/cratekit/sync/removed_kept.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''                other = other if other_at is not None and other_at > self.moment else None'''
+new = '''                other = other if other_at is not None else None'''
+
+[[rows]]
+id = "K22_store_never_read"
+description = "read_account: the held read is never used, so every run reads every playlist again (R-1716 itself)"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py", "tests/test_sync_removed.py"]
+old = '''        held = kept.get(account, shown) if kept is not None else None'''
+new = '''        held = None'''
+
+[[rows]]
+id = "K23_flush_before_stop"
+description = "_read_synced: the park is worded before the store is written, so its count and an unkept write are read off a store not yet written"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    except jobs.Parked as exc:
+        kept.flush()
+        raise'''
+new = '''    except jobs.Parked as exc:
+        raise'''
+
+[[rows]]
+id = "K24_stop_counts_this_run"
+description = "_stopped: the stop counts only this run's reads, round one's BLOCKING finding"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py"]
+old = '''    standing = 0 if kept.unkept else kept.standing()'''
+new = '''    standing = 0 if kept.unkept else len(kept.kept)'''
+
+[[rows]]
+id = "K25_adapter_stamp_dropped"
+description = "tidal_catalogue: the provider's last updated stamp is never passed through, so nothing is ever held"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_sync_removed_kept.py", "tests/test_label_tidal_catalogue.py"]
+old = '''                    updated=_stamp(getattr(playlist, "last_updated", None)),'''
+new = '''                    updated=None,'''

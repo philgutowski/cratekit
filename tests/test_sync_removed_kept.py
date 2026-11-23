@@ -513,7 +513,16 @@ def _shown(account: str = "acc-x", *, tracks: int | None = 2, updated: str | Non
 
 @pytest.mark.parametrize(
     ("tracks", "updated"),
-    [(None, STAMP), (2, None), (2, ""), (2, "  "), (True, STAMP), (-1, STAMP)],
+    [
+        (None, STAMP),
+        (2, None),
+        (2, ""),
+        (2, "  "),
+        (2, "not a time"),
+        (2, "2026-11-20T09:15:00"),
+        (True, STAMP),
+        (-1, STAMP),
+    ],
 )
 def test_a_listing_with_no_count_or_no_stamp_marks_nothing(tracks, updated):
     assert removed_kept.mark_of(_shown(tracks=tracks, updated=updated)) is None
@@ -568,7 +577,8 @@ def test_only_a_read_whole_is_kept_and_a_read_not_whole_now_drops_the_kept_one(
     cfg, _root = native_library
     store = removed_kept.SyncedReads(cfg, NOW)
     store.keep("acc-x", _shown(), _listing())
-    store.keep("acc-x", _shown(), removed.Listing(account="acc-x", name="X", state=state))
+    # COUNTED NONE, so the count guard alone cannot refuse an empty listing not read whole.
+    store.keep("acc-x", _shown(tracks=0), removed.Listing(account="acc-x", name="X", state=state))
     store.flush()
 
     assert removed_kept.SyncedReads(cfg, NOW).get("acc-x", _shown()) is None
