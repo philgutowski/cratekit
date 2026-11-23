@@ -2,7 +2,7 @@
 title: A restore that brings analysis files back is refused by the watch over its own session
 date: 2026-09-20
 category: integration-issues
-module: "src/cratekit/modules/tools/backup.py, src/cratekit/session/restore_cli.py, src/cratekit/core/analysis_store.py, src/cratekit/core/session.py"
+module: "src/cratekit/modules/tools/backup.py, src/cratekit/modules/tools/backup_snapshot.py, src/cratekit/session/restore_cli.py, src/cratekit/core/analysis_store.py, src/cratekit/core/session.py"
 problem_type: integration_issue
 component: restore
 root_cause: incorrect_assumption
@@ -16,7 +16,7 @@ symptoms:
 applies_when:
   - "A unit adds a transfer to backup.plan_restore, or anything else that puts files under the library root or the analysis share"
   - "A restore engine is tested with a runner that records commands and returns zero"
-  - "A plan is built in modules/tools/backup.py and spent inside restore_cli's recovery session"
+  - "A plan is built in modules/tools/backup_snapshot.py (re-exported by backup.py) and spent inside restore_cli's recovery session"
 related_components:
   - "beat_grid_protection"
   - "analysis_watch"
@@ -42,7 +42,8 @@ half planned one more transfer in `backup.plan_restore`, a copy of the share to
 `share` beside wherever the database lands, and every test of it passed.
 
 The built in review read one file further than the tests did. The engine lives
-in `modules/tools/backup.py` and knows nothing about sessions. Its one caller,
+in `modules/tools/backup_snapshot.py` since U311 split it out of `backup.py`,
+which re-exports it, and knows nothing about sessions. Its one caller,
 `restore_cli.restore_under_one_session`, spends the plan INSIDE
 `restore.recovery_session(analysis_roots=analysis_store.watch_roots(cfg))`. That
 watch fingerprints every analysis file under the library root and the live

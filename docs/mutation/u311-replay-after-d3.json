@@ -1,0 +1,917 @@
+{
+  "name": "u311-replay-after-d3",
+  "pass_kind": "replay",
+  "branch": "cloud/868-tools-backup-refactor",
+  "head": "ba568c78",
+  "when": "2026-11-23 04:40 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22415,
+  "baseline_exit": 1,
+  "pytest_runs": 30,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 149,
+  "known_source": "a scratch baseline measured on the base with a stand in rclone on the path",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: it is for commit `5224c6668bba`, and this tree is at `ba568c785216`",
+  "subset_baselines": 3,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/tools/backup.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/tools/backup.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "195112d3adbc833a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22415,
+    "baseline_collected": 22415,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r757-a.E5_mode_read_backwards",
+      "description": "comparison_mode: report fast for a command without the option and full for one with it",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c9ea8996551e552",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_only_a_full_mirror_moves_the_date_of_the_last_full_comparison",
+        "tests/test_backup_comparison.py::test_the_frozen_mode_is_the_one_the_plan_is_built_in",
+        "tests/test_backup_comparison.py::test_the_two_modes_differ_by_the_listing_option_and_by_nothing_else",
+        "tests/test_backup_comparison.py::test_totals_that_could_not_be_read_are_none_and_never_zero"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return COMPARISON_FAST if FAST_LIST in command.argv else COMPARISON_FULL",
+      "new": "    return COMPARISON_FAST if FAST_LIST not in command.argv else COMPARISON_FULL",
+      "source": {
+        "table": "r757-a.json",
+        "id": "E5_mode_read_backwards"
+      }
+    },
+    {
+      "id": "r757-a.E6_unread_total_is_zero",
+      "description": "_count: answer zero for a total rclone did not give, so an unread run says it sent nothing",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bfc98e81934b872b",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_totals_that_could_not_be_read_are_none_and_never_zero"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(value, bool) or not isinstance(value, (int, float)):\n        return None\n    return value",
+      "new": "    if isinstance(value, bool) or not isinstance(value, (int, float)):\n        return 0\n    return value",
+      "source": {
+        "table": "r757-a.json",
+        "id": "E6_unread_total_is_zero"
+      }
+    },
+    {
+      "id": "r757-a.E7_first_totals_win",
+      "description": "comparison_report: keep the first totals logged and not the last",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "82073a43c3520a66",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_the_last_totals_logged_are_the_ones_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(found, dict):\n            stats = found",
+      "new": "        if isinstance(found, dict) and not stats:\n            stats = found",
+      "source": {
+        "table": "r757-a.json",
+        "id": "E7_first_totals_win"
+      }
+    },
+    {
+      "id": "r757-a.E8_failed_mirror_reports_nothing",
+      "description": "run_backup: read the comparison only when the mirror returned zero",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "770d30abf33c40d0",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_a_failed_mirror_says_why_in_words_and_how_far_it_got"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if command.label == MIRROR:",
+      "new": "            if command.label == MIRROR and result.returncode == 0:",
+      "source": {
+        "table": "r757-a.json",
+        "id": "E8_failed_mirror_reports_nothing"
+      }
+    },
+    {
+      "id": "r757-b1.E10_fast_run_records_a_full_comparison",
+      "description": "run_backup: record a full comparison for either mode, so doctor says one ran after every fast backup",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "094d2ae4b5654c33",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_only_a_full_mirror_moves_the_date_of_the_last_full_comparison"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    and comparison[\"mode\"] == COMPARISON_FULL",
+      "new": "                    and comparison[\"mode\"] in (COMPARISON_FULL, COMPARISON_FAST)",
+      "source": {
+        "table": "r757-b1.json",
+        "id": "E10_fast_run_records_a_full_comparison"
+      }
+    },
+    {
+      "id": "r757-b1.E11_full_run_records_nothing",
+      "description": "run_backup: never record a full comparison, so doctor asks for one for ever",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f4699dd2cb3a1df4",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_only_a_full_mirror_moves_the_date_of_the_last_full_comparison"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    and comparison[\"mode\"] == COMPARISON_FULL",
+      "new": "                    and False",
+      "source": {
+        "table": "r757-b1.json",
+        "id": "E11_full_run_records_nothing"
+      }
+    },
+    {
+      "id": "r757-b1.E12_plain_line_dropped",
+      "description": "_said: drop a line that is not a logged object, the review's fix",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "156abcf6a0a7b913",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 726,
+      "baseline_collected": 726,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_a_failed_mirror_says_why_in_words_and_how_far_it_got"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not isinstance(entry, dict):\n            lines.append(line)",
+      "new": "        if not isinstance(entry, dict):\n            pass",
+      "source": {
+        "table": "r757-b1.json",
+        "id": "E12_plain_line_dropped"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.C1_tree_absent_refusal",
+      "description": "Drop the refusal for a governed tree the export does not hold, so every entry reports uncovered",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b8a6c396bafd840f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_tree_the_export_does_not_hold_refuses_rather_than_reporting_everything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not view.has_folder(tree.display):\n        raise _refuse_absent(tree)\n",
+      "new": "",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "C1_tree_absent_refusal"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.C2_tree_anchored_at_zero",
+      "description": "Anchor the governed-path filter at position zero, the shape that reported nothing for a nested tree",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4522f8d08bf24ee4",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_tree_nested_inside_another_folder_is_still_the_governed_tree"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        playlist.path for playlist in view.playlists if wanted in playlist.path[:-1]",
+      "new": "        playlist.path for playlist in view.playlists if playlist.path[:1] == (wanted,)",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "C2_tree_anchored_at_zero"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.C4_placement_count",
+      "description": "Keep only the first placement per track, so a track filed twice reports one",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a51c852a34f31d4f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_covered_track_names_every_path_under_the_tree_that_holds_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            held.setdefault(track_id, []).append(playlist.path)",
+      "new": "            held.setdefault(track_id, [playlist.path])",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "C4_placement_count"
+      }
+    },
+    {
+      "id": "u27-reports-round-2.C3_uncovered_order",
+      "description": "Round 1 zero, re-run against the replacement guard: drop the deterministic order",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "473b315a3bfe26e1",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_the_uncovered_list_is_ordered_BY_ARTIST_AND_NOT_BY_THE_WALK",
+        "tests/modules/test_reports_engines.py::test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        uncovered=tuple(sorted(uncovered, key=_by_name)),",
+      "new": "        uncovered=tuple(uncovered),",
+      "source": {
+        "table": "u27-reports-round-2.json",
+        "id": "C3_uncovered_order"
+      }
+    },
+    {
+      "id": "u27-reports-round-2.C3b_tie_break",
+      "description": "Sort on artist and name alone, leaving the tie to the walk",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "306fcc1cb8f98a32",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_two_entries_sharing_an_artist_and_a_name_still_hold_an_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (placement.entry.artist, placement.entry.name, placement.entry.track_id)",
+      "new": "    return (placement.entry.artist, placement.entry.name, \"\")",
+      "source": {
+        "table": "u27-reports-round-2.json",
+        "id": "C3b_tie_break"
+      }
+    },
+    {
+      "id": "u27-reports-round-3-fixes.F6_folder_count_overwrite",
+      "description": "Count a playlist's raw length again, so folder rows stop reconciling with placements",
+      "file": "src/cratekit/modules/reports/coverage.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "977431f93ac7d1df",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_folder_count_never_exceeds_what_the_collection_can_account_for",
+        "tests/modules/test_reports_engines.py::test_two_playlists_sharing_a_display_path_add_up_rather_than_overwrite"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        counts.setdefault(playlist.path, 0)\n        for track_id in playlist.track_ids:\n            if track_id not in known:\n                continue\n            counts[playlist.path] += 1\n            held.setdefault(track_id, []).append(playlist.path)",
+      "new": "        counts[playlist.path] = len(playlist.track_ids)\n        for track_id in playlist.track_ids:\n            held.setdefault(track_id, []).append(playlist.path)",
+      "source": {
+        "table": "u27-reports-round-3-fixes.json",
+        "id": "F6_folder_count_overwrite"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L1_distinct_tracks",
+      "description": "Sum the sub-playlists instead of counting distinct tracks, the double count the docstring names",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "68e37f767504981f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_genre_counts_distinct_tracks_rather_than_summing_its_playlists"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                tracks=len(tracks),",
+      "new": "                tracks=playlists and sum(len(p.track_ids) for p in view.playlists if p.path[: len(folder)] == folder and len(p.path) > len(folder)),",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L1_distinct_tracks"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L3_empty_tempo_is_zero",
+      "description": "Report an unreadable library as a tempo range of zero rather than as unknown",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0085fd21d3d2c78f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_library_with_no_readable_head_reports_none_rather_than_zero"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not found:\n        return TempoSpread(readable=0, unreadable=unreadable)\n",
+      "new": "    if not found:\n        return TempoSpread(\n            readable=0, unreadable=unreadable, lowest=0.0, highest=0.0, median=0.0\n        )\n",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L3_empty_tempo_is_zero"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L4_median_even",
+      "description": "Take the upper middle instead of averaging the pair on an even population",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97e0715d88d8f08f",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_tempo_median_over_an_even_population_averages_the_middle_pair"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(ordered) % 2:\n        return ordered[middle]\n    return (ordered[middle - 1] + ordered[middle]) / 2\n",
+      "new": "    return ordered[middle]\n",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L4_median_even"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L5_unused_buckets",
+      "description": "Report no unused buckets at all",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b8f1d6443e77593",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_declared_bucket_with_no_folder_is_a_gap"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            unused_buckets=tuple(sorted(declared_ids - present_ids)),",
+      "new": "            unused_buckets=(),",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L5_unused_buckets"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L6_entries_in_no_playlist",
+      "description": "Count every entry as in no playlist",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "296dfb3e1af2ce6e",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_the_gaps_count_entries_with_no_head_and_entries_in_no_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            entries_in_no_playlist=sum(1 for entry in view.entries if not entry.playlists),",
+      "new": "            entries_in_no_playlist=len(view.entries),",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L6_entries_in_no_playlist"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.L7_shape_governed_filter",
+      "description": "Measure the tree shape over every folder in the export rather than the governed tree",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f35425f79e026fe7",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_taxonomy_whose_tree_this_library_does_not_use_reports_no_genres",
+        "tests/modules/test_reports_engines.py::test_the_shape_measures_the_governed_tree_from_its_own_node"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    governed_folders = [\n        path for path in view.folders if tree_display == path[-1] or tree_display in path[:-1]\n    ]\n",
+      "new": "    governed_folders = list(view.folders)\n",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "L7_shape_governed_filter"
+      }
+    },
+    {
+      "id": "u27-reports-round-2.L2_genre_parent",
+      "description": "Round 1 zero, re-run against the replacement guards: loosen the genre filter",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8d430d64f180d6a5",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_folder_below_a_genre_is_not_itself_a_genre",
+        "tests/modules/test_reports_engines.py::test_a_tree_nested_under_another_folder_yields_no_genre_from_that_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(folder) < 2 or folder[-2] != tree_display:",
+      "new": "        if len(folder) < 2 or tree_display not in folder:",
+      "source": {
+        "table": "u27-reports-round-2.json",
+        "id": "L2_genre_parent"
+      }
+    },
+    {
+      "id": "u27-reports-round-3-fixes.F2_depth_origin",
+      "description": "Measure the tree depth from the export root again rather than from the tree's own node",
+      "file": "src/cratekit/modules/reports/library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab4b2e68418b3862",
+      "subset": [
+        "tests/modules/test_reports_engines.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_reports_engines.py::test_a_tree_nested_under_another_folder_yields_no_genre_from_that_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        return len(path) - path.index(tree_display)\n    except ValueError:  # pragma: no cover - callers filter to governed paths\n        return 0",
+      "new": "    return len(path)",
+      "source": {
+        "table": "u27-reports-round-3-fixes.json",
+        "id": "F2_depth_origin"
+      }
+    },
+    {
+      "id": "r154-b.B11_marker_name_safety",
+      "description": "Write a marker for any identity at all, so one carrying a separator or a dot segment is interpolated into a remote path",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "abb872f26da75504",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 276,
+      "baseline_collected": 276,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so[..]",
+        "tests/modules/test_tools.py::test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so[.hidden]",
+        "tests/modules/test_tools.py::test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so[has space]",
+        "tests/modules/test_tools.py::test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so[has/slash]",
+        "tests/test_backup_cli.py::test_a_library_whose_identity_cannot_be_a_marker_is_told_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not _MARKER_IDENTITY.fullmatch(folded):\n        return None",
+      "new": "    if False:\n        return None",
+      "source": {
+        "table": "r154-b.json",
+        "id": "B11_marker_name_safety"
+      }
+    },
+    {
+      "id": "r154-b.B9_marker_failure_fails_the_portion",
+      "description": "Let a marker that cannot be written fail the database portion, which skips the settings and publishes no age over a good copy",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "beaa47c91eb5a3fb",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 276,
+      "baseline_collected": 276,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_marker_that_cannot_be_written_warns_and_does_not_fail_the_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:",
+      "new": "            if False and command.label == SNAPSHOT_IDENTITY:",
+      "source": {
+        "table": "r154-b.json",
+        "id": "B9_marker_failure_fails_the_portion"
+      }
+    },
+    {
+      "id": "r222-a.A1_nothing_held",
+      "description": "Hold nothing, which is the finding itself: the rotation counts attempts again and a retry that succeeds purges the failed attempt's archive",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2ae6f2b4bcc2cfa0",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 276,
+      "baseline_collected": 276,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_completed_mirror_to_another_destination_settles_nothing_here",
+        "tests/modules/test_tools.py::test_a_remote_with_no_completed_mirror_on_record_is_never_purged",
+        "tests/modules/test_tools.py::test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote",
+        "tests/modules/test_tools.py::test_a_wider_keep_counts_the_held_run_as_one_of_its_slots",
+        "tests/test_backup_cli.py::test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    held = [name for name in names if keep > 0 and (floor is None or name > floor)]",
+      "new": "    held = []",
+      "source": {
+        "table": "r222-a.json",
+        "id": "A1_nothing_held"
+      }
+    },
+    {
+      "id": "r222-a.A2_boundary_not_strict",
+      "description": "Hold a folder named exactly at the floor, so the last completed run's own folder is never settled and survives every later run",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5452e0e4251b8b17",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 276,
+      "baseline_collected": 276,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_remote_with_no_completed_mirror_on_record_is_never_purged",
+        "tests/modules/test_tools.py::test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote",
+        "tests/modules/test_tools.py::test_the_run_after_a_retried_one_rotates_every_attempt_out_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "(floor is None or name > floor)]",
+      "new": "(floor is None or name >= floor)]",
+      "source": {
+        "table": "r222-a.json",
+        "id": "A2_boundary_not_strict"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

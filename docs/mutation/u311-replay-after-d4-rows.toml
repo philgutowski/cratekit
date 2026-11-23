@@ -1,0 +1,308 @@
+name = "u311-replay-after-d4"
+pass_kind = "replay"
+
+[[rows]]
+id = "r222-a.A3_no_floor_holds_nothing"
+source = { table = "r222-a.json", id = "A3_no_floor_holds_nothing" }
+description = "Read no floor as nothing to hold, so a remote with no completed mirror on record is rotated as though every folder were settled"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '(floor is None or name > floor)]'
+new = '(floor is not None and name > floor)]'
+
+[[rows]]
+id = "r222-a.A4_keep_zero_holds"
+source = { table = "r222-a.json", id = "A4_keep_zero_holds" }
+description = "Hold the run's folders at a keep of zero, overruling a request to keep no archive"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '    held = [name for name in names if keep > 0 and (floor is None or name > floor)]'
+new = '    held = [name for name in names if (floor is None or name > floor)]'
+
+[[rows]]
+id = "r222-a.A5_held_run_takes_no_slot"
+source = { table = "r222-a.json", id = "A5_held_run_takes_no_slot" }
+description = "Spend the whole keep on settled folders, so the held run is kept on top of the keep rather than as one slot of it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '    slots = keep - 1 if held else keep'
+new = '    slots = keep'
+
+[[rows]]
+id = "r222-a.A6_any_destination_is_a_floor"
+source = { table = "r222-a.json", id = "A6_any_destination_is_a_floor" }
+description = "Take the floor from a completed mirror to ANOTHER destination, which says nothing about which folders here are finished"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''
+    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return None'''
+new = '''
+    if fact is None:
+        return None'''
+
+[[rows]]
+id = "r222-a.A7_no_record_is_a_late_floor"
+source = { table = "r222-a.json", id = "A7_no_record_is_a_late_floor" }
+description = "Answer a missing record with a floor after every date, so nothing is held and the old rotation runs on a remote with no completed mirror"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''
+    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return None'''
+new = '''
+    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return "9999"'''
+
+[[rows]]
+id = "r222-a.A8_floor_read_by_a_rehearsal"
+source = { table = "r222-a.json", id = "A8_floor_read_by_a_rehearsal" }
+description = "Read the record above the rehearsal's return, so a preview fails over a file it never touches"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''
+    if keep < 0 or not purge:
+        return out, None
+    floor = _rotation_floor(cfg)'''
+new = '''
+    floor = _rotation_floor(cfg)
+    if keep < 0 or not purge:
+        return out, None'''
+
+[[rows]]
+id = "r222-a.A9_rehearsal_purges"
+source = { table = "r222-a.json", id = "A9_rehearsal_purges" }
+description = "EXISTING GUARD, sampled because this round re-armed its tests: a rehearsal runs the real purge"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '                    purge=not dry_run,'
+new = '                    purge=True,'
+
+[[rows]]
+id = "r395.M1_no_pipx_detection"
+source = { table = "r395.json", id = "M1_no_pipx_detection" }
+description = "Drop the pipx branch, every environment gets the pip form"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '    if (prefix / PIPX_METADATA).is_file():'
+new = '    if False:'
+
+[[rows]]
+id = "r395.M2_bare_pip"
+source = { table = "r395.json", id = "M2_bare_pip" }
+description = "Print a bare pip instead of the running interpreter's pip"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '[sys.executable, "-m", "pip", "install", f"{DISTRIBUTION}[{extras}]"]'
+new = '["pip", "install", f"{DISTRIBUTION}[{extras}]"]'
+
+[[rows]]
+id = "r395.M4_no_force"
+source = { table = "r395.json", id = "M4_no_force" }
+description = "Drop --force from the pipx form"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '["pipx", "install", "--force", f"{source}[{wanted}]"]'
+new = '["pipx", "install", f"{source}[{wanted}]"]'
+
+[[rows]]
+id = "r395.M5_trust_missing_source"
+source = { table = "r395.json", id = "M5_trust_missing_source" }
+description = "Use the recorded source even when the directory is gone"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '    source = match["source"] if Path(match["source"]).is_dir() else "."'
+new = '    source = match["source"]'
+
+[[rows]]
+id = "r395.M6_always_dot"
+source = { table = "r395.json", id = "M6_always_dot" }
+description = "Always print the '.' form, ignoring the recorded clone"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '    source = match["source"] if Path(match["source"]).is_dir() else "."'
+new = '    source = "."'
+
+[[rows]]
+id = "r395.M7_fallback_drops_extras"
+source = { table = "r395.json", id = "M7_fallback_drops_extras" }
+description = "The review's defect: an unusable source drops the recorded extras"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_cli_contract.py", "tests/test_install_command.py", "tests/test_vocals_cli.py"]
+old = '''
+    source = match["source"] if Path(match["source"]).is_dir() else "."
+    return source, chosen'''
+new = '''
+    if not Path(match["source"]).is_dir():
+        return ".", ()
+    return match["source"], chosen'''
+
+[[rows]]
+id = "u192.F1_no_rearm_catch"
+source = { table = "u192.json", id = "F1_no_rearm_catch" }
+description = "settle: let the cancelled refusal through untouched, so an interrupted drive leaves the job closed and names job resume"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''
+    except JobCancelled as exc:
+        raise _resumable(exc, job_id, argv, origin) from exc'''
+new = '''
+    except ZeroDivisionError as exc:
+        raise _resumable(exc, job_id, argv, origin) from exc'''
+
+[[rows]]
+id = "u192.F2_no_retry"
+source = { table = "u192.json", id = "F2_no_retry" }
+description = "_resumable: read the job instead of re-arming it, so the named --job command meets a closed job"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '        job = jobs.retry(store, job_id)'
+new = '        job = jobs.get(store, job_id)'
+
+[[rows]]
+id = "u192.F3_keep_remedy_token"
+source = { table = "u192.json", id = "F3_keep_remedy_token" }
+description = "_resumable: keep the job resume token, so the fix line names the detached worker ahead of the --job command"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '    remediation = dataclasses.replace(cause.remediation, remedy=None, steps=steps)'
+new = '    remediation = dataclasses.replace(cause.remediation, steps=steps)'
+
+[[rows]]
+id = "u192.F4_command_dropped"
+source = { table = "u192.json", id = "F4_command_dropped" }
+description = "_resumable: the first step says to resume the job without naming the command"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '        f"resume it with: {command}",'
+new = '        "resume it with its --job command",'
+
+[[rows]]
+id = "u192.F5_settled_count"
+source = { table = "u192.json", id = "F5_settled_count" }
+description = "_resumable: report the total in place of the settled count"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''        f"the job is queued again with {progress['settled']} of {progress['total']} "'''
+new = '''        f"the job is queued again with {progress['total']} of {progress['total']} "'''
+
+[[rows]]
+id = "u192.F8_not_exclusive"
+source = { table = "u192.json", id = "F8_not_exclusive" }
+description = "add_job_options: declare the two flags on the parser rather than in one exclusive group"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '    chosen = parser.add_mutually_exclusive_group()'
+new = '    chosen = parser'
+
+[[rows]]
+id = "u46-author.M1_no_items_enqueued"
+source = { table = "u46-author.json", id = "M1_no_items_enqueued" }
+description = "Queue the recording with no item, so the driver has nothing to claim"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+tests = ["tests/test_job_seam.py", "tests/test_master_cli.py"]
+old = '            item_ids=(str(payload[SOURCE]),),'
+new = ''
+
+[[rows]]
+id = "u46-round-2.M6_staging_not_cleared"
+source = { table = "u46-round-2.json", id = "M6_staging_not_cleared" }
+description = "Leave a previous attempt's partial encode in the staging directory"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+tests = ["tests/test_job_seam.py", "tests/test_master_cli.py"]
+old = '''
+    if directory.exists():
+        shutil.rmtree(directory)'''
+new = ''
+
+[[rows]]
+id = "u46-round-2.M7B_engine_refusal_swallowed"
+source = { table = "u46-round-2.json", id = "M7B_engine_refusal_swallowed" }
+description = "Translate the engine's encoder-failed into a generic internal defect"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+tests = ["tests/test_job_seam.py", "tests/test_master_cli.py"]
+old = '''
+            str(exc.refusal),
+            exc.detail,'''
+new = '''
+            "internal-error",
+            "the mastering engine refused",'''
+
+[[rows]]
+id = "u184.A1_flag_ignored"
+source = { table = "u184.json", id = "A1_flag_ignored" }
+description = "record_ack: never take the session road, so --as session falls to the gate and leaves a run waiting"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py", "tests/test_crate_sync_skill.py", "tests/test_rekordbox_visit_skill.py"]
+old = '    if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:'
+new = '    if False:'
+
+[[rows]]
+id = "u184.A2_any_actor_accepted"
+source = { table = "u184.json", id = "A2_any_actor_accepted" }
+description = "build_ack: drop the one value restriction, so --as names any actor and is parsed"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py", "tests/test_crate_sync_skill.py", "tests/test_rekordbox_visit_skill.py"]
+old = '        choices=(session.SESSION_ACTOR,),'
+new = '        choices=None,'
+
+[[rows]]
+id = "u192.F7_queue_only_always"
+source = { table = "u192.json", id = "F7_queue_only_always" }
+description = "queue_only: always True, so a verb run by hand queues and returns as before U192"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py", "tests/test_label_genre.py"]
+old = '    return bool(getattr(args, "queue_only", False))'
+new = '    return True'
+
+[[rows]]
+id = "u27-restore-cli-independent.X1_the_off_machine_engine_stops_refusing_an_unconfirmed_restore"
+source = { table = "u27-restore-cli-independent.json", id = "X1_the_off_machine_engine_stops_refusing_an_unconfirmed_restore" }
+description = "What the from-backup zeros DO leave held: remove the refusal that stops a restore with no recorded decision, in the backup module the verb calls. Paired with I_A1 and with the whole from-backup family of zeros, which are one hole rather than eleven"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if not confirmed:
+        raise BackupRefused(
+            Refusal.RESTORE_NOT_CONFIRMED,
+            "a restore replaces the live database and is not performed without an "
+            "explicit decision naming this library and this snapshot.",
+        )'''
+new = ''
+
+[[rows]]
+id = "u27-restore-cli-round-2.S3_analysis_watch_watches_nothing"
+source = { table = "u27-restore-cli-round-2.json", id = "S3_analysis_watch_watches_nothing" }
+description = "Arm the analysis watch on no roots, so it reports a clean session either way"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '        analysis_roots=watched,'
+new = '        analysis_roots=(),'

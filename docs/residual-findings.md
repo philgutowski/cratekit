@@ -2607,3 +2607,126 @@ so no row's verdict depends on the rows before it. Ledger only.
 **Measured cost.** None to a person today. The six are guards no test holds: a plan that folds on a first sync (`F8`), a removal that beats an addition (`A1`), an account ISRC read out of order (`B3`), and three narrower ones. U304 kept every kill that stood on the base, and these were not standing.
 
 **Closes when:** each of the six is read against its test as it is now, and either a test kills it again or a line says why it is equivalent; the four noise rows are marked in the kill set so `killset.py rows` stops offering them. Ledger only.
+
+---
+
+## R-1912. The reservation guards read Refusal names only in the module that declares Refusal, so the restore and database plans U311 moved to backup_snapshot.py are outside them
+
+**Found:** at the review of #868, U311, 2026-11-22.
+
+**The mechanism.** `tests/test_reserved_causes.py` resolves a `Refusal.X` name
+only inside the module that declares the enum. U311 split the backup engine,
+and the restore plan, snapshot resolution and the database capture plan now
+live in `src/cratekit/modules/tools/backup_snapshot.py`, which imports
+`Refusal` from `backup.py`. Two readings follow. The named cause population
+for `modules/tools/backup.py` shrank from seventeen slugs to seven, and the
+pin in `tests/ratchets/reserved_causes/modules.tools.py` was measured again to
+match. And `test_no_module_in_the_package_keeps_a_second_reservation_table`
+is blind there: driven at review, a `{Refusal.REKORDBOX_RUNNING:
+ExitCode.PRECONDITION}` table appended to `backup.py` fails it, and the same
+table appended to `backup_snapshot.py` passes it (a string keyed table there
+is still caught).
+
+**Measured cost.** None today: no second table exists and every refusal's
+exit code is unchanged, which the behaviour comparison shows. A table added
+to `backup_snapshot.py` later would go unseen.
+
+**Closes when:** the reader follows a `Refusal` imported from the declaring
+module, so a sibling's names join their population and the second table
+guard reads them. The file is not U311's; the suite card #869 (U312) owns it.
+Ledger only.
+
+---
+
+## R-1913. The analysis store's source scan of the backup engine reads backup.py by name, so the restore plan U311 moved to backup_snapshot.py is outside it
+
+**Found:** at the review of #868, U311, 2026-11-22.
+
+**The mechanism.**
+`tests/test_analysis_store.py::test_the_backup_module_moves_analysis_files_and_never_opens_one`
+reads the source of `src/cratekit/modules/tools/backup.py` and refuses a call
+that opens or writes an analysis file. U311 split the engine, and the restore
+plan now lives in `backup_snapshot.py`. Driven at review: a
+`target.joinpath("x.dat").write_bytes(b"")` placed at the top of
+`_plan_restore_inside_the_gates` fails the test on the base, in `backup.py`,
+and passes it on the branch, in `backup_snapshot.py`. The two guards of the
+same shape in `tests/modules/test_tools.py`, U311's own file, were widened in
+the same unit to walk every file the engine is split across.
+
+**Measured cost.** None today: the planner writes no analysis file, and the
+behaviour comparison shows every file a restore plan writes unchanged.
+
+**Closes when:** the scan reads every `backup*.py` under `modules/tools`, as
+the two `test_tools.py` guards now do. The file is not U311's; the suite card
+#869 (U312) owns it. Ledger only.
+
+---
+
+## R-1914. backup_snapshot.py cannot be imported before backup.py, whose names it takes at import
+
+**Found:** at the review of #868, U311, 2026-11-22.
+
+**The mechanism.** U311 moved the restore side and the database plan out of
+`src/cratekit/modules/tools/backup.py` into `backup_snapshot.py`, which
+imports the engine's constants and types from `backup`, and `backup` imports
+it back at its foot to re-export every moved name. Importing
+`cratekit.modules.tools.backup_snapshot` first, with `backup` not yet loaded,
+raises `ImportError: cannot import name 'NEWEST_WALK' from partially
+initialized module`. The module docstring says it is loaded through `backup`.
+
+**Measured cost.** None reached: no registry entry, `import_module` call or
+test imports it first, and `tests/test_cli_contract.py`'s package walk imports
+in sorted order, `backup` first. Driven at review.
+
+**Closes when:** the constants and types both files use move to a module
+neither imports back, so either can load first, or a test imports the sibling
+alone and pins the order. Ledger only.
+
+---
+
+## R-1915. About 140 backup and restore tests are the machine's on a cloud container, because rclone is not installed there
+
+**Found:** building #868, U311, 2026-11-22.
+
+**The mechanism.** The cloud container has no `rclone` on the path, and
+installing it from a session was refused. Every test that resolves the
+program before its own stand in answers fails on the base, so
+`scripts/cloud_battery.py baseline` records it as the machine's: 55 in
+`tests/test_backup_quick.py`, 33 in `tests/test_backup_unproven_root.py`, 27
+in `tests/test_restore_cli.py`, 24 in `tests/test_backup_comparison.py`, and
+more in `test_restore.py` and `test_backup_cli.py`, of the baseline's 249.
+`compare` then subtracts them from the branch, so a backup change can break
+one unseen. U311 drove its backup and restore suites base against branch
+with a stand in `rclone` on the path that exits 0: 24 files, the same 107
+failures on both, the rest of them the root and stand in limits.
+
+**Measured cost.** A cloud unit that touches the backup engine is proved by
+its own base against branch run and the behaviour comparison, not by the
+battery, for these tests.
+
+**Closes when:** the cloud environment's setup script installs `rclone`, so
+these tests run in the battery; an environment change for Phillip's approval,
+not a code change. Ledger only.
+
+---
+
+## R-1916. A few mastering and set builder refusals whose text U311 rebuilt from the same words are reached by no behaviour scenario
+
+**Found:** at the review of #868, U311, 2026-11-22.
+
+**The mechanism.** U311 rebuilt some refusal messages and steps in
+`src/cratekit/modules/tools/mastering.py`, `src/cratekit/master/cli.py` and
+`src/cratekit/setbuilder/cli.py` from shared pieces (the two not indexed
+messages share one suffix, the output exists sentence is one function).
+Review drove each base against branch and found them byte identical, and
+U311 added scenarios for `--lufs` out of range, ffprobe missing, and `--key`
+or `--bpm` beside an owned anchor. Still reached by no scenario: a split
+recording refused for its layout or a missing part, an anchor inside an
+excluded folder, and an absent library root. Mutating the not indexed wording
+or the `--lufs` step survives the unit suite on the base as well.
+
+**Measured cost.** None today: every one is byte identical, driven. A later
+change to that wording would pass the behaviour comparison.
+
+**Closes when:** `tests/behaviour/master.py` and `setbuilder.py` drive the
+three cases, or the unit suites pin their text. Ledger only.

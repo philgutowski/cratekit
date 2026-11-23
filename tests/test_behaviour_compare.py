@@ -1616,6 +1616,9 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "analysis_check/nothing_in_scope_and_the_refusals",
         "analysis_check/suspect_analysis",
         "analysis_check/waiting_on_the_visit",
+        "backup/a_backup_refuses_while_rekordbox_or_its_agent_runs",
+        "backup/a_rehearsal_copies_nothing",
+        "backup/a_second_capture_and_a_full_check",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
         "cli/a_gate_shown_answered_stale_and_not_reached",
@@ -1714,6 +1717,10 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "label_sync/a_question_nobody_answers_and_an_empty_registry_refuse",
         "label_sync/labels_in_each_state_asked_answered_and_refused",
         "label_sync_go/answers_summarised_gated_and_downloaded",
+        "master/a_recording_is_mastered_through_the_queue",
+        "master/mastering_refuses_outside_its_loudness_range_and_without_its_probe",
+        "master/mastering_refuses_over_an_existing_master",
+        "master/mastering_refuses_without_its_encoder",
         "organize/a_genre_two_root_folders_on_the_account_carry_is_refused_by_the_mirror",
         "organize/a_mirror_pass_after_a_full_apply_and_a_rerun_that_plans_nothing",
         "organize/an_account_with_no_stored_session_refuses_the_account_steps",
@@ -1727,6 +1734,23 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "outbound/a_playlist_exported_through_its_confirm_and_the_jobs_resume",
         "outbound/a_prune_whose_removal_the_accounts_window_lags_is_refused",
         "outbound/an_exported_playlist_pruned_of_the_track_its_library_playlist_lost",
+        "reports/a_report_refuses_an_export_it_cannot_read",
+        "reports/coverage_lists_what_the_tree_does_not_file",
+        "reports/duplicates_offer_a_pair_into_the_review_queue",
+        "reports/the_aging_report_bands_each_grouping",
+        "reports/the_library_report_names_its_genres_and_gaps",
+        "session/restore_bare_metal_onto_a_replacement",
+        "session/restore_bare_metal_refused_while_the_library_is_mounted",
+        "session/restore_run_puts_the_snapshot_back",
+        "session/restore_run_with_nothing_to_restore",
+        "session/session_ack_through_its_gate",
+        "session/session_release_through_its_gate",
+        "setbuilder/a_set_is_built_around_an_owned_anchor",
+        "setbuilder/a_set_is_built_around_an_unowned_anchor",
+        "setbuilder/the_set_builder_refuses_a_key_or_tempo_beside_an_owned_anchor",
+        "setbuilder/the_set_builder_refuses_an_anchor_it_cannot_place",
+        "skills/the_default_directory_is_under_home",
+        "skills/the_shipped_skills_are_installed_and_refreshed",
         "sync/collection_removal",
         "sync_marks/a_collision_is_refused_and_named_and_the_rest_strip",
         "sync_marks/a_missing_intake_file_refuses_the_verb_before_anything_is_listed",
@@ -1794,7 +1818,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "196 scenarios" in summary and "no difference" in summary
+    assert f"{len(manifest['scenarios'])} scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
