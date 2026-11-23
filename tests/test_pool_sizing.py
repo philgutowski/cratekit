@@ -1175,15 +1175,21 @@ def test_the_real_probe_measures_a_freshly_spawned_child():
     )
 
 
-def test_a_loader_that_never_returns_lands_on_the_floor_like_every_other_failure():
-    """A loader that never returns lands on the floor, like every other failure."""
+@pytest.mark.parametrize(
+    "loader,timeout,limit,why",
+    [
+        (_still_running_when_the_deadline_passes, 1.0, 60, "to give up on a hung loader"),
+        (_dies_without_answering, 30.0, 15, "for a dead child; the write end is still open"),
+    ],
+    ids=["a-loader-that-never-returns", "a-child-that-dies-without-answering"],
+)
+def test_a_probe_that_gets_no_answer_lands_on_the_floor_in_time(loader, timeout, limit, why):
+    """A hung loader lands on the floor like every other failure; a dead child at end of file."""
     started = time.monotonic()
-    measured = pool.measure_worker_bytes(
-        _still_running_when_the_deadline_passes, floor_bytes=4242, timeout_seconds=1.0
-    )
+    measured = pool.measure_worker_bytes(loader, floor_bytes=4242, timeout_seconds=timeout)
     elapsed = time.monotonic() - started
     assert measured == 4242
-    assert elapsed < 60, f"the probe took {elapsed:.1f} seconds to give up on a hung loader"
+    assert elapsed < limit, f"the probe waited {elapsed:.1f}s {why}"
 
 
 def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
@@ -1272,19 +1278,6 @@ def test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop():
     )
     assert watched.exitcode == -signal.SIGKILL
     assert watched.rungs == ["join", "terminate", "join", "kill", "join", "close"]
-
-
-def test_a_probe_child_that_dies_without_answering_gives_up_at_once():
-    """A child that dies silently is seen at end of file, not after the deadline."""
-    started = time.monotonic()
-    measured = pool.measure_worker_bytes(
-        _dies_without_answering, floor_bytes=4242, timeout_seconds=30.0
-    )
-    elapsed = time.monotonic() - started
-    assert measured == 4242
-    assert elapsed < 15, (
-        f"the probe waited {elapsed:.1f}s for a dead child; the write end is still open"
-    )
 
 
 def test_a_real_loader_that_raises_lands_on_the_floor_without_printing_anything(capfd):
