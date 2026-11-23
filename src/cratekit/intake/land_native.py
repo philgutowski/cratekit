@@ -587,14 +587,18 @@ def _colour_notes(placed) -> list[dict[str, str]]:
 
 #: The visit's short path (U319): with Auto Analysis on, a launch in front
 #: raises one dialog whose OK analyses every waiting row on the preference's
-#: own mode, so a dyn row still takes Dynamic. Said after the selections, so
+#: own mode, so a dyn row still takes Dynamic, and a closing Normal run on one
+#: other row leaves the mode the next launch reads Normal (U954). Said after
+#: the selections, so
 #: "as above" names them. ``cli.tail`` spells the same, held to this by a test.
 AUTO_ANALYSIS_STEP = (
     "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
     "on its Auto Analysis dialog only when it shows every one of those Normal "
     "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
     "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}, "
+    f"and then one row without it takes Analyze Tracks with {drift.NORMAL_SETTINGS} "
+    f"again, so the visit ends on Normal"
 )
 
 
@@ -602,17 +606,19 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     """The warning a native write carries when rows joined the collection, else none.
 
     ONE PLAYLIST, ANALYZE (U166), holding every waiting row; TWO SELECTIONS in
-    it, Normal and Dynamic by the dyn My Tag (U157); and the Auto Analysis
-    path beside them (U319).
+    it, Dynamic first and Normal last by the dyn My Tag (U157), so the last
+    run leaves the mode Normal (U954); and the Auto Analysis path beside them
+    (U319).
     """
     if not collection.added:
         return []
     dyned = sum(1 for row in collection.added if row.dyn)
     normal = len(collection.added) - dyned
     selections = (
-        f"run Analyze Tracks on the {normal} row(s) without the dyn My Tag with "
-        f"{drift.NORMAL_SETTINGS}, and on the {dyned} row(s) carrying it with "
-        f"{drift.DYNAMIC_SETTINGS}"
+        f"run Analyze Tracks first on the {dyned} row(s) carrying the dyn My Tag "
+        f"with {drift.DYNAMIC_SETTINGS} as the Normal run's, then last on the "
+        f"{normal} row(s) without it with {drift.NORMAL_SETTINGS}, so the mode "
+        f"the next launch reads is Normal"
     )
     return [
         {
