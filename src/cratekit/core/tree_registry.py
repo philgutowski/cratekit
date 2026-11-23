@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from cratekit.core import config, session, snapshot
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
@@ -81,6 +81,11 @@ NOT_REBUILDABLE: frozenset[DerivationSource] = frozenset(DerivationSource) - REB
 
 #: Where every tree starts.
 DEFAULT_MODE: Mode = Mode.XML
+
+
+def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
+    """``refuse`` with the run scope and this module's origin, which every refusal here carries."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("tree_registry",), **fields)
 
 
 def cutover_trees(declared: Taxonomy) -> frozenset[str]:
@@ -482,15 +487,13 @@ def record_cutover(
         standing = current.record(tree_id)
         if standing is not None and standing.mode == Mode.DATABASE:
             # Asked under the lock, so two cutovers of one tree cannot both pass.
-            raise refuse(
+            raise _refuse(
                 "cutover-already-recorded",
                 f"the tree {tree_id!r} is already recorded as database native, "
                 f"anchored to root {standing.root_id!r} since "
                 f"{standing.cutover_on}; recording it again would move the "
                 f"anchor or the day under a tree that may have taken writes",
                 steps=("leave the record as it is; a tree cuts over once",),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
                 detail={
                     "tree_id": tree_id,
                     "root_id": standing.root_id,
@@ -564,13 +567,11 @@ def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, .
     """
     parsed, unreadable = session.scan_log(cfg)
     if unreadable:
-        raise refuse(
+        raise _refuse(
             "internal-error",
             f"{session.unread_clause(unreadable, cfg)}, so {so}; refusing rather than "
             "writing the tree registry against a log it cannot read",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={
                 "unreadable": [str(path) for path in unreadable],
                 "unlisted": session.log_unlisted(unreadable, cfg),
@@ -614,15 +615,13 @@ def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
                 "import any export a run left in awaiting-import, then close it",
             )
         )
-    return refuse(
+    return _refuse(
         "cutover-open-run",
         f"session {first.session_id} has not reached a terminal state, so "
         f"a cutover would flip a tree while that run still holds a capture "
         f"and possibly an un-imported export",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=tuple(owed),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={
             "sessions": [record.session_id for record in open_runs],
             "states": {record.session_id: str(record.state) for record in open_runs},
@@ -636,7 +635,7 @@ def _pending_xml_refusal(cfg: config.Config, export: Path) -> CratekitError | No
     pending = pending_intake_xml(cfg)
     if not pending:
         return None
-    return refuse(
+    return _refuse(
         "cutover-xml-pending",
         f"{len(pending)} un-imported intake XML file(s) are still sitting "
         f"in this library, so a cutover would proceed over work the next "
@@ -646,8 +645,6 @@ def _pending_xml_refusal(cfg: config.Config, export: Path) -> CratekitError | No
             "import or remove each pending intake XML",
             "do not treat a U22 stub listing as an importable splice",
         ),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"paths": [str(path) for path in pending]},
     )
 
@@ -658,14 +655,12 @@ def _export_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
     export_path = Path(export)
     if export_path.is_file() and export_path.stat().st_size != 0:
         return None
-    return refuse(
+    return _refuse(
         "cutover-export-missing",
         "a Fresh Export has to exist before a tree flips, so a failed "
         "validation still has an XML-era copy of the tree to walk back to",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=("take a Fresh Export from rekordbox and pass that file in",),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"export": str(export_path)},
     )
 
@@ -684,14 +679,12 @@ def _snapshot_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
                 continue
             if record.verified:
                 return None
-    return refuse(
+    return _refuse(
         "cutover-snapshot-missing",
         "no verified snapshot exists for this library, so a failed "
         "cutover would have nothing to restore from in the same session",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=("take a library snapshot before flipping a tree",),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"store": str(store)},
     )
 
@@ -800,7 +793,7 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
     """
     taken = native_writes(cfg, tree_id)
     if taken:
-        raise refuse(
+        raise _refuse(
             "cutover-native-write-taken",
             f"the tree {tree_id!r} has taken {len(taken)} native write(s) since "
             f"it cut over, so the database owns it and it cannot go back on the "
@@ -811,23 +804,19 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
                 "to undo the writes themselves, restore a capture taken before "
                 "the cutover, which carries the registry back with the database",
             ),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={"tree_id": tree_id, "sessions": list(taken)},
         )
     open_runs = _open_runs(
         _whole_log(cfg, so="whether a run is still open was not established")
     )
     if open_runs:
-        raise refuse(
+        raise _refuse(
             "cutover-open-run",
             f"session {open_runs[0].session_id} has not reached a terminal "
             f"state, so whether it wrote the tree {tree_id!r} natively is not "
             f"established and the tree cannot go back on the XML bridge yet",
             remedy=Remedy.COMPLETE_PENDING_ACTION,
             steps=("close or abandon every open run, then revert",),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={
                 "tree_id": tree_id,
                 "sessions": [record.session_id for record in open_runs],

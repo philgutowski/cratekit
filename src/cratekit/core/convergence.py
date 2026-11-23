@@ -48,6 +48,11 @@ SCHEMA_VERSION = 1
 SOFT_DELETE_COLUMN = "rb_local_deleted"
 
 
+def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
+    """``refuse`` with the run scope and this module's origin, which every refusal here carries."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("convergence",), **fields)
+
+
 class Purpose(StrEnum):
     """What a governed database write is FOR. Two answers, one pair of gates apart.
 
@@ -155,7 +160,7 @@ def probe(db: Any) -> Fingerprint:
     """
     session = getattr(db, "session", _NO_SESSION)
     if session is _NO_SESSION:
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             "this database handle exposes no session, so the autoflush guard "
             "this probe has to run under cannot be armed; a query issued outside "
@@ -163,8 +168,6 @@ def probe(db: Any) -> Fingerprint:
             "guard reads to decide what a commit would do, and the guard then "
             "passes a forbidden write it can no longer see",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"handle": type(db).__name__},
         )
     with rb_writer._no_autoflush(session):
@@ -193,14 +196,12 @@ def _reading(what: str, read: Callable[[], Any]) -> Any:
     except CratekitError:
         raise
     except Exception as exc:  # noqa: BLE001 - a database that cannot answer IS the answer
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             f"the database's {what} could not be read ({exc}), so whether this "
             f"is the database Cratekit last wrote to cannot be decided in either "
             f"direction",
             remedy=Remedy.RUN_DOCTOR,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"reading": what, "column": SOFT_DELETE_COLUMN},
         ) from exc
 
@@ -208,14 +209,12 @@ def _reading(what: str, read: Callable[[], Any]) -> Any:
 def _counted(what: str, value: Any) -> int:
     """A reading that must already BE a whole number, never one coerced into being."""
     if not _is_whole_number(value):
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             f"the database answered its {what} with {value!r}, which is not a "
             f"whole number; coercing it would build the comparison that decides "
             f"whether this library went backward out of a value nobody checked",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"reading": what, "found": type(value).__name__},
         )
     return value
@@ -675,7 +674,7 @@ def clear_unconverged(
     """
     outstanding = [str(entry) for entry in differences]
     if outstanding and disposition is None:
-        raise refuse(
+        raise _refuse(
             "tree-unconverged",
             f"the tree {tree_id!r} still differs from what this library declares "
             f"in {len(outstanding)} place(s), so its unconverged flag stays set; "
@@ -690,8 +689,6 @@ def clear_unconverged(
                 "somebody curated by hand under this tree, is answered by a "
                 "named person disposing of it for this tree alone",
             ),
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"tree_id": tree_id, "differences": outstanding[:20]},
         )
 
@@ -702,7 +699,7 @@ def clear_unconverged(
         if disposition is not None:
             if not current.blocking:
                 # A disposition answers a refusal, and there is none to answer.
-                raise refuse(
+                raise _refuse(
                     "tree-unconverged",
                     f"the tree {tree_id!r} is not refusing anything, so there is "
                     f"no difference for anybody to dispose of; recording one now "
@@ -713,8 +710,6 @@ def clear_unconverged(
                         "run the convergence check for this tree and dispose of "
                         "what it actually reports",
                     ),
-                    scope=Scope.RUN,
-                    origin=("convergence",),
                     detail={"tree_id": tree_id, "actor": disposition.actor},
                 )
             settled = replace(
@@ -802,7 +797,7 @@ def assert_no_out_of_band_restore(
     found = checked.regression
     if found is None:
         return
-    raise refuse(
+    raise _refuse(
         "tree-unconverged",
         f"this library's database went backward since Cratekit last wrote to it "
         f"({str(found)}), which no snapshot restore of ours explains, so every "
@@ -816,8 +811,6 @@ def assert_no_out_of_band_restore(
             "is missing and what it holds that nothing declares",
             "run the rebuild for each tree it reports short",
         ),
-        scope=Scope.RUN,
-        origin=("convergence",),
         detail={
             "regression": str(found),
             "trees": list(checked.trees),
@@ -837,7 +830,7 @@ def assert_converged(cfg: config.Config, tree_id: str) -> None:
     record = read(cfg).tree(tree_id)
     if record is None or not record.blocking:
         return
-    raise refuse(
+    raise _refuse(
         "tree-unconverged",
         f"the tree {tree_id!r} has been unconverged since {record.since} "
         f"({record.reason}), so writing to it now would add to a tree that is "
@@ -849,8 +842,6 @@ def assert_converged(cfg: config.Config, tree_id: str) -> None:
             "a difference the rebuild cannot derive is answered by a named "
             "person disposing of it for this tree alone",
         ),
-        scope=Scope.RUN,
-        origin=("convergence",),
         detail={"tree_id": tree_id, "reason": record.reason, "since": record.since},
     )
 
