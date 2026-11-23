@@ -263,3 +263,28 @@ def test_a_bucket_any_entry_of_the_track_claims_is_never_left():
     assert adopt_move.still_moved(both, DECLARED, moved) == {}
     named = [_entry(NEW_BUCKET, OLD_GENRE)]
     assert adopt_move.still_moved(named, DECLARED, moved) == {}
+
+
+def test_a_move_stopped_before_its_removal_keeps_its_entry_and_a_resume_finishes(
+    filed, monkeypatch
+):
+    """The entry is spent only once the track reads back moved (mutation table, M24)."""
+    from cratekit.core import jobs, rb_writer
+    from tests.test_adopt_move import _fails
+
+    _tag_set("--row", "mover")
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "remove_memberships", _fails)
+        code, failed = drive(_resume(job_id))
+    assert code != int(ExitCode.OK), failed
+    assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH), _place(NEW_BUCKET, HIGH)}
+    assert dict(genre_moves.read(filed)) == {"mover": frozenset({OLD_BUCKET})}
+
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    collection.reset_cache()
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH)}
+    assert dict(genre_moves.read(filed)) == {}
