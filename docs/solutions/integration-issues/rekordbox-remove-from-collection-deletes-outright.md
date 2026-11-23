@@ -140,9 +140,9 @@ neither counted nor moved: this product's own membership writers leave a
 marked row at a number a live row also holds, and counting it put two live
 rows on one place (review round one). The binding's `remove_from_playlist`
 has the same numbering rule but is not reused: it commits by itself, a
-delete, a commit and then the moves, so the moves are not under the
-confinement, and its count and time are the binding's own rather than the
-removal's final count; an ORM write of `TrackNo` also adds `updated_at`
+delete, a commit and then the moves, so the delete, and every earlier
+playlist's moves, are committed before the confinement can read them, and
+its count and time are the binding's own; an ORM write of `TrackNo` also adds `updated_at`
 through the binding's `onupdate`.
 **Still unmeasured:** a history list holding other tracks (left numbered as it
 was), a playlist already holding a gap or a row marked removed below the

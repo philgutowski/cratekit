@@ -584,11 +584,13 @@ def _stamp_violations(
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {USN_STAMP_COLUMN} "
             f"{stamp.counter} from {old_counter} and holds {new_counter}"
+            + (", so the count did not move" if new_counter == old_counter else "")
         )
     if new_time != stamp.at or new_time == old_time:
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {TIME_STAMP_COLUMN} "
             f"{stamp.at!r} from {old_time!r} and holds {new_time!r}"
+            + (", so the time did not move" if new_time == old_time else "")
         )
     return found
 

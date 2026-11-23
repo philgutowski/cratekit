@@ -150,10 +150,23 @@ def test_a_plan_with_no_readable_time_cannot_say_forward_and_refuses(read_at):
 
 @pytest.mark.parametrize(
     "text",
-    ["2026-11-20 09:00:00.000 -05:00", "2026-11-20T14:00:00.000Z", "2026-11-20 14:00 +00:00", "2026-13-20 14:00:00.000 +00:00"],
-    ids=["another-offset", "zulu", "whole-minute", "no-such-month"],
+    [
+        "2026-11-20 09:00:00.000 -05:00",
+        "2026-11-20 14:00:00.000 Z",
+        "2026-11-20 14:00 +00:00",
+        "2026-13-20 14:00:00.000 +00:00",
+        "2026-11-20 14:00:00.0000 +00:00",
+        "2026-11-20 14:00:00 +00:00",
+        "2026-11-20 14:00:00.000 +00:00 (UTC)",
+        " 2026-11-20 14:00:00.000 +00:00",
+        "2026-11-20T14:00:00.000 +00:00",
+    ],
+    ids=[
+        "another-offset", "zulu", "whole-minute", "no-such-month", "four-digits",
+        "no-fraction", "zone-name", "padded", "t-separator",
+    ],
 )
-def test_only_the_stamp_s_own_form_is_read_back(text):
+def test_a_text_off_the_stamp_s_form_on_any_one_axis_is_not_read(text):
     """The reader reads what :func:`stamp_time` wrote and nothing a row might hold."""
     assert rb_removal.stamp_moment(text) is None
     assert rb_removal.stamp_moment("2026-11-20 14:00:00.000 +00:00") == datetime(2026, 11, 20, 14, tzinfo=timezone.utc)
@@ -262,7 +275,7 @@ def test_a_count_already_at_the_stamp_is_refused_as_unmoved():
     )
     after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
     violations = rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP)
-    assert any("from 3047665 and holds 3047665" in line for line in violations), violations
+    assert any("from 3047665 and holds 3047665, so the count did not move" in line for line in violations), violations
 
 
 def test_a_removal_that_renumbers_nothing_is_not_held_to_the_plan_s_time():

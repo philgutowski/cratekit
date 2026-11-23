@@ -2071,3 +2071,20 @@ def test_a_read_back_refuses_a_count_the_stamp_does_not_name(one_offered, monkey
         assert any("after the commit" in line for line in removal.read_back())
     finally:
         rb_writer.close_db(handle)
+
+
+def test_the_confinement_reads_the_count_again_through_the_writer(one_offered, monkeypatch):
+    """The second read of the count, before the commit, bites a patch on rb_writer too (U300)."""
+    cfg = one_offered
+    _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    real = rb_writer.counter_at_commit
+    calls: list[int] = []
+
+    def drifting(db):
+        calls.append(1)
+        return real(db) + (len(calls) > 1)
+
+    monkeypatch.setattr(rb_writer, "counter_at_commit", drifting)
+    before = _every_table(cfg)
+    _refused_with_nothing_written(cfg, before, "New1", "the commit would leave localUpdateCount")
+    assert len(calls) == 2
