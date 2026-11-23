@@ -1619,6 +1619,10 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
         "cli/help_of_every_verb",
+        "config/each_config_the_loader_turns_away",
+        "config/the_config_written_shown_and_changed",
+        "config/the_taxonomies_and_the_tables_dump_equal",
+        "config/the_taxonomy_verbs_write_the_active_copy",
         "core_facts/pool_gate_preflight_and_tags_answers",
         "core_gates/a_plan_that_moved_after_its_gate",
         "core_gates/an_application_version_off_its_pin",
@@ -1758,7 +1762,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "160 scenarios" in summary and "no difference" in summary
+    assert "164 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
