@@ -52,8 +52,8 @@ file = "src/cratekit/analysis/energy.py"
 surface = "maintainer"
 tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
 old = '''    warm.kernels()
-    # THROUGH THE ONE DECODER (U263).'''
-new = '''    # THROUGH THE ONE DECODER (U263).'''
+    # THROUGH THE ONE DECODER (U263), which'''
+new = '''    # THROUGH THE ONE DECODER (U263), which'''
 
 [[rows]]
 id = "M6_warm_skips_file_measure"
@@ -102,13 +102,13 @@ old = '''    held = measured and before is not None and slice_length(final) == b
 new = '''    held = measured and slice_length(final) == before'''
 
 [[rows]]
-id = "M11_length_read_unscored"
-description = "handle_run: read the slice's length for a file with no energy level as well"
-file = "src/cratekit/analysis/cli.py"
-surface = "maintainer"
-tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
-old = '''    measured = scored.get("energy") is not None'''
-new = '''    measured = True'''
+id = "M11_centre_read_from_top"
+description = "centred: read a file libsndfile opens from its top, not its centre, so run and restamp measure different audio than they did"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py", "tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    return load(path, rate, offset=_centre(length, seconds), duration=seconds)'''
+new = '''    return load(path, rate, offset=0.0, duration=seconds)'''
 
 [[rows]]
 id = "M12_decoded_whole_unread"

@@ -198,7 +198,7 @@ def test_the_energy_measure_asks_for_the_warm_up_before_it_decodes(tmp_path, mon
     """U344, closing R-1491: the restamp's and calibrate's measure is warmed as a head is."""
     import types
 
-    from cratekit.analysis import energy
+    from cratekit.analysis import decode, energy
 
     order: list[str] = []
     stand_in = types.ModuleType("librosa")
@@ -209,6 +209,9 @@ def test_the_energy_measure_asks_for_the_warm_up_before_it_decodes(tmp_path, mon
 
     stand_in.load = load
     monkeypatch.setitem(sys.modules, "librosa", stand_in)
+    # The stand in has no length to give, and libsndfile is read as opening the
+    # file whether or not soundfile is installed, so the decode is librosa's.
+    monkeypatch.setattr(decode, "libsndfile_opens", lambda path: True)
     monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
     assert energy.features_from_path(tmp_path / "missing.flac") is None
     assert order == ["warmed", "decoded"]

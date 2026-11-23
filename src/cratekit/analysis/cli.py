@@ -819,10 +819,12 @@ def slice_length(path: Path) -> float | str | None:
     """The length the energy measure centres its slice on, or None when unread.
 
     A file libsndfile opens answers its header's length, a read of the header
-    alone. Any other is decoded whole through ffmpeg, whose length is the
-    decoded samples' and no tag can move, so it answers that it is decoded,
-    with no decode here. None when the analysis stack is absent or the header
-    cannot be read: a length not read is not a length that held.
+    alone. Any other is decoded whole (by ffmpeg, or by audioread under a
+    librosa before 1.0), whose length is the decoded samples' and no tag can
+    move, so it answers that it is decoded, with no decode here; a file nothing
+    can read answers so too, and the run measured no energy for it to keep.
+    None when the analysis stack is absent or the length cannot be read: a
+    length not read is not a length that held.
     """
     try:
         if not decode.libsndfile_opens(path):

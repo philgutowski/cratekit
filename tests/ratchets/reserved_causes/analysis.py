@@ -25,6 +25,8 @@ KEBAB_LITERALS = {
     'analysis/cli.py': [
         'analysis-write-failed',
         'db-metadata-not-written',
+        # 2026-11-23, U344: a slice length libsndfile cannot read, so ffmpeg decodes it whole.
+        'decoded-whole',
         'energy-calibration-missing',
         'folder-absent',
         'internal-error',

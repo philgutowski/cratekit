@@ -1475,8 +1475,9 @@ crate metadata mytags-vocals [--apply]
   `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
   row says when vocals cannot score.
 - `analyze run` measures a track's energy exactly as `analyze restamp` does,
-  over the central two minutes decoded on their own, so one file under one
-  calibration, measured over the same audio, gets one level from either verb.
+  over the same central two minutes (decoded alone, or for a file only ffmpeg
+  reads cut from one whole decode), so one file under one calibration,
+  measured over the same audio, gets one level from either verb.
   Until U344 the run read the energy from the whole track it decoded for the
   key, which gave a level one step apart on a track sitting on a level's
   edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
