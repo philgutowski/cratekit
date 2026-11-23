@@ -8,6 +8,7 @@ liveness and the database handle are injected.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import os
@@ -94,6 +95,40 @@ def acknowledge(cfg, **kwargs):
     return session.record_acknowledgment(cfg, terminal=lambda: True, **kwargs)
 
 
+def _gates_refusal(cfg, **arguments):
+    """The cause the real gates refuse with, by default for a destructive workflow
+    through the open seams, failing when they admit the session instead."""
+    arguments = {"workflow": "a-destructive-workflow", **open_gates(cfg), **arguments}
+    return _refusal_entering(session.assert_gates, cfg, **arguments)
+
+
+@contextlib.contextmanager
+def _umask(mask: int):
+    """Run the body under ``mask``, since 022 hides a missing explicit mode."""
+    previous = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
+def _handle_recording(disposed: list[str]):
+    """A database handle whose close and engine disposal are recorded in order."""
+
+    class Engine:
+        def dispose(self):
+            disposed.append("engine")
+
+    class Handle:
+        session = object()
+        engine = Engine()
+
+        def close(self):
+            disposed.append("session")
+
+    return Handle
+
+
 def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     """Size and modification time of every file under each root."""
     found: dict[str, tuple[int, int]] = {}
@@ -112,9 +147,7 @@ def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The three gates: three codes, and nothing written on any refused path
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
@@ -123,11 +156,9 @@ def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
 
     def refuse_with(**arguments):
         before = state_fingerprint(*roots)
-        with pytest.raises(CratekitError) as excinfo:
-            with session.assert_gates(cfg, workflow="a-destructive-workflow", **arguments):
-                raise AssertionError("the gates admitted a session they should have refused")
+        cause = _gates_refusal(cfg, **arguments)
         assert state_fingerprint(*roots) == before, "a refused session left a trace"
-        return excinfo.value.cause
+        return cause
 
     wrong_volume = refuse_with(
         identity_provider=foreign_identity, mount_enumerator=lambda: ()
@@ -186,9 +217,7 @@ def test_every_mount_verdict_has_a_declared_refusal_slug(state):
     assert REASONS[slug] is ExitCode.LIBRARY_UNAVAILABLE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The volume gate, for every volume a prefix rule points at
-# ═══════════════════════════════════════════════════════════════════════════
 
 _RECORDED_ELSEWHERE = "/recorded/on/another/machine"
 _ARCHIVE = "AAAA-1111-the-archive"
@@ -530,9 +559,7 @@ def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
     assert seen, "the refusal read the identity through some other provider"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The lock
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_second_process_refuses_and_names_the_holder(cfg):
@@ -564,8 +591,7 @@ def test_a_nested_session_is_a_programming_error_not_a_foreign_holder(cfg):
 
 def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
     """Unlinking a lock lets a second process lock a fresh inode at the same name."""
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         with session.session_lock(cfg) as held:
             assert held.exists()
             assert stat.S_IMODE(held.stat().st_mode) == config.PRIVATE_FILE_MODE
@@ -573,8 +599,6 @@ def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
                 stat.S_IMODE(held.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
             )
         assert held.exists(), "the lock file was unlinked on release"
-    finally:
-        os.umask(previous)
 
 
 def test_releasing_the_lock_clears_the_holder_so_the_next_run_is_not_told_to_wait(cfg):
@@ -755,9 +779,7 @@ def test_the_lock_left_by_this_machines_earlier_boot_is_releasable(cfg, monkeypa
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
     live = session.current_holder()
     dead = _before_a_power_loss(live)
-    lock = session.lock_path(cfg)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text(json.dumps({"holder": dead.to_json()}))
+    lock = _lock_recording(cfg, dead)
 
     assert session.release_stale_lock(cfg) == dead
     assert session.read_lock_holder(lock) is None
@@ -770,9 +792,7 @@ def test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable(
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
     live = session.current_holder()
     theirs = _before_a_power_loss(live, machine="f" * 32)
-    lock = session.lock_path(cfg)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text(json.dumps({"holder": theirs.to_json()}))
+    lock = _lock_recording(cfg, theirs)
     before = lock.read_bytes()
 
     cause = _refusal(session.release_stale_lock, cfg)
@@ -780,9 +800,7 @@ def test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable(
     assert lock.read_bytes() == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The acknowledgment (KTD18, R34)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_agent_shaped_invocation_cannot_mint_the_acknowledgment(cfg):
@@ -847,11 +865,8 @@ def test_an_expired_acknowledgment_refuses_exactly_as_an_absent_one_does(cfg):
 
 
 def test_the_acknowledgment_file_is_private_under_any_umask(cfg):
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         acknowledge(cfg)
-    finally:
-        os.umask(previous)
     mode = stat.S_IMODE(session.ack_path(cfg).stat().st_mode)
     assert mode == config.PRIVATE_FILE_MODE
 
@@ -878,10 +893,7 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     assert toggles, "no module toggle was found, so the walk is broken"
     object.__setattr__(cfg.modules, "explicit", toggles)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _gates_refusal(cfg).code is ExitCode.ACK_REQUIRED
 
     reads_environment = [
         function.__name__
@@ -902,9 +914,7 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The session log
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_log_records_everything_a_restore_has_to_judge(cfg):
@@ -945,11 +955,8 @@ def test_the_log_records_everything_a_restore_has_to_judge(cfg):
 
 
 def test_a_session_record_is_private_under_any_umask(cfg):
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         record = session.open_session(cfg, workflow="a-destructive-workflow")
-    finally:
-        os.umask(previous)
     path = session.log_path(record.session_id, cfg)
     assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
     assert stat.S_IMODE(path.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
@@ -975,9 +982,7 @@ def test_an_unreadable_record_does_not_stop_the_log_being_read(cfg):
     assert [r.session_id for r in session.records(cfg)] == [good.session_id]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One source per run (R29)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg):
@@ -990,10 +995,8 @@ def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg)
             raise refuse("refused-by-policy", "source two is not acceptable")
         return session.ChangeSummary((session.TreeChange(tree=f"tree-{source}", created=1),))
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.commit_sources(record, ("one", "two", "three"), run_one, cfg=cfg)
+    cause = _refusal(session.commit_sources, record, ("one", "two", "three"), run_one, cfg=cfg)
 
-    cause = excinfo.value.cause
     assert cause.detail["committed"] == ["one"]
     assert cause.detail["refused_source"] == "two"
     assert set(cause.detail["remaining"]) == {"two", "three"}
@@ -1028,9 +1031,7 @@ def test_a_resume_skips_a_committed_source_and_finishes_the_rest(cfg):
     assert {entry.tree for entry in resumed.change.trees} == {"tree-one", "tree-two"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The capture gate, and the post-commit read-back (AE13)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_capture_that_failed_its_check_blocks_the_commit_behind_it(cfg):
@@ -1049,24 +1050,12 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
     session.write_record(record, cfg)
 
     disposed: list[str] = []
-
-    class Engine:
-        def dispose(self):
-            disposed.append("engine")
-
-    class Handle:
-        session = object()
-        engine = Engine()
-
-        def close(self):
-            disposed.append("session")
-
     cause = _refusal(
         session.verify_commit,
         record,
         cfg,
         expect=lambda _db: False,
-        reopen=Handle,
+        reopen=_handle_recording(disposed),
     )
     assert cause.code is ExitCode.LIBRARY_UNREADABLE
     assert cause.reason == "session-committed-unverified"
@@ -1089,20 +1078,9 @@ def test_the_read_back_releases_the_database_completely(cfg):
     """The read-back disposes the engine too, since a pooled connection held open
     makes a restore over the file fail as if corrupt."""
     disposed: list[str] = []
-
-    class Engine:
-        def dispose(self):
-            disposed.append("engine")
-
-    class Handle:
-        session = object()
-        engine = Engine()
-
-        def close(self):
-            disposed.append("session")
-
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    assert session.verify_commit(record, cfg, expect=lambda _db: True, reopen=Handle) is True
+    handle = _handle_recording(disposed)
+    assert session.verify_commit(record, cfg, expect=lambda _db: True, reopen=handle) is True
     assert disposed == ["session", "engine"]
 
 
@@ -1128,11 +1106,9 @@ def test_an_unresolved_session_refuses_every_further_write(cfg):
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert excinfo.value.cause.reason == "session-committed-unverified"
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
+    cause = _gates_refusal(cfg)
+    assert cause.reason == "session-committed-unverified"
+    assert cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
 def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
@@ -1145,9 +1121,7 @@ def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
     assert rb_writer.default_protected_snapshot_paths(cfg) == {capture_path.resolve()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The un-imported XML output as a first-class state
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
@@ -1198,9 +1172,7 @@ def test_the_pending_action_is_the_one_the_command_line_layer_already_enforces(c
     assert gates.blocked_by(run, "profile.show") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The runtime half of R17's fifth surface
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _analysis_tree(root: Path) -> list[Path]:
@@ -1327,10 +1299,8 @@ def test_the_watched_set_covers_every_file_surface_five_declares():
     assert not session.is_analysis_file("something.DAT")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The residual finding "The backup restore is not yet bound to the
 # destructive-session gates": the backup restore passes the same gates
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches, cfg, tmp_path):
@@ -1413,10 +1383,8 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The latch has an exit, the log fails CLOSED, and the guards run on both paths.
 # Found by an adversarial read: the other half of properties tested above.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _condemn(cfg):
@@ -1432,10 +1400,7 @@ def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
     acknowledge(cfg)
     condemned = _condemn(cfg)
 
-    with pytest.raises(CratekitError) as refused:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert refused.value.cause.reason == "session-committed-unverified"
+    assert _gates_refusal(cfg).reason == "session-committed-unverified"
 
     with session.assert_gates(
         cfg,
@@ -1455,10 +1420,7 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
         "intent": session.Intent.RECOVERY,
     }
 
-    with pytest.raises(CratekitError) as no_ack:
-        with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
-            pass
-    assert no_ack.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _gates_refusal(cfg, **recovery).code is ExitCode.ACK_REQUIRED
 
     acknowledge(cfg)
     wrong_disk = _refusal_entering(
@@ -1879,9 +1841,7 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
         assert sidecar.read_bytes() == b"the live write-ahead log"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The record a gated session keeps (R-12, R-375)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def recording_gates(cfg, **overrides):

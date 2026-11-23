@@ -44,9 +44,7 @@ SRC_ROOT = REPO_ROOT / "src"
 _ELSEWHERE = "0000-0000-not-this-disk"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -197,6 +195,12 @@ def completed_session(
     return record, captured
 
 
+def _planned(cfg, held, **session_options):
+    """One completed session, and the restore plan for it under ``held``."""
+    record, _captured = completed_session(cfg, **session_options)
+    return record, restore.plan(cfg, record.session_id, held=held)
+
+
 @pytest.fixture
 def held(cfg):
     """One open recovery session, the way the verb will hold it."""
@@ -205,9 +209,7 @@ def held(cfg):
         yield open_session
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 1 (AE18): a completed session is listed and its capture restores
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_completed_session_is_listed_with_its_timestamp_workflow_and_changes(cfg):
@@ -283,9 +285,7 @@ def test_a_capture_that_failed_its_integrity_check_is_never_restored_from(cfg, h
     assert cause.reason == "snapshot-integrity-failed"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 2: restoring across a later committed session
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_restoring_across_a_later_committed_session_refuses_and_names_the_counts(cfg, held):
@@ -332,9 +332,7 @@ def test_a_later_session_that_committed_nothing_does_not_need_an_override(cfg, h
     assert decided.discarded_sessions == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 3: reconciliation of what a restore cannot undo
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_restore_lists_every_effect_it_cannot_undo_and_blocks_convergence(cfg, held):
@@ -453,9 +451,7 @@ def test_recording_the_same_marker_twice_does_not_reopen_a_closed_one(cfg):
     assert not again[0].outstanding
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 4: a restore predating a cutover
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _cut_over(cfg, tree_id: str = "routing") -> None:
@@ -516,9 +512,7 @@ def test_a_restore_predating_a_cutover_marks_that_tree_unconverged(cfg, held):
 def test_a_restore_taken_after_the_cutover_marks_nothing(cfg, held):
     """P7: a capture taken after the flip already says database native, so no rebuild."""
     _cut_over(cfg)
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     assert decided.unconverged == ()
 
@@ -653,9 +647,7 @@ def test_retraction_touches_the_transient_latch_and_nothing_else(cfg):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 5: retention
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _age_capture(root: Path, *, days: int, now: datetime) -> None:
@@ -776,9 +768,7 @@ def test_the_capture_store_sharing_the_database_volume_is_reported(cfg):
     assert decided.shares_the_database_volume is True
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Scenario 6: capacity
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_session_refuses_before_snapshotting_when_the_store_cannot_fit_one(
@@ -869,9 +859,7 @@ def _fingerprint(root: Path) -> dict[str, int]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registered obligations: the derived set and the companion asymmetry
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_restore_replaces_exactly_the_derived_coupled_set(cfg, held):
@@ -918,9 +906,7 @@ def test_the_reconciliation_lock_is_its_own_entry_and_lives_elsewhere(cfg):
 
 
 def test_the_live_companion_files_are_cleared_before_anything_is_copied(cfg, held):
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     acts = [step.act for step in decided.steps if step.act is not restore.Act.RECORD]
     first_copy = next(
@@ -969,17 +955,13 @@ def test_the_restore_module_spells_no_companion_suffix_of_its_own(cfg):
     assert not re.search(r"""["'][^"']*-(?:wal|shm)""", source)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registered obligations: one held session, and the resolved record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_one_session_spans_the_plan_and_the_run(cfg, held):
     """A plan that gives the lock back leaves a window a second process commits in,
     so a real second process must still be refused between plan and run."""
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     contender = _lock_taken_in_another_process(session.lock_path(cfg))
     assert contender != 0, "the library lock was released between the plan and the run"
     restore.run(decided, cfg, held=held)
@@ -1129,9 +1111,7 @@ class _holding:
             self.handle.close()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registered obligation: bare-metal recovery
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _volume_is_gone(cfg) -> dict:
@@ -1141,20 +1121,17 @@ def _volume_is_gone(cfg) -> dict:
     drives the no answer directly.
     """
     shutil.rmtree(cfg.library.root, ignore_errors=True)
-    return {
-        "identity_provider": lambda _path: _ELSEWHERE,
-        "mount_enumerator": lambda: (),
-        "mount_probe": lambda _path: True,
-    }
+    return _foreign_volume(cfg)
 
 
-def _session_onto(cfg, target, seams, *, acknowledged=True, terminal=True):
+def _session_onto(cfg, target, seams, *, acknowledged=True, terminal=True, **more):
     """A bare-metal session onto ``target`` through the volume seams ``seams``."""
     return restore.bare_metal_session(
         cfg,
         target=target,
         acknowledged=acknowledged,
         terminal=lambda: terminal,
+        **more,
         **seams,
     )
 
@@ -1312,14 +1289,7 @@ def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, 
 
     assert "named for replacement" in cause.message
 
-    with restore.bare_metal_session(
-        cfg,
-        target=target,
-        acknowledged=True,
-        replacing_existing=True,
-        terminal=lambda: True,
-        **seams,
-    ) as open_session:
+    with _session_onto(cfg, target, seams, replacing_existing=True) as open_session:
         assert open_session.workflow == "bare-metal-recovery"
 
     # Distinct, not read off the constants, since one log field must keep the
@@ -1365,9 +1335,7 @@ def test_bare_metal_recovery_takes_the_installation_lock_not_the_library_one(cfg
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The hazards a green suite cannot see
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_dry_run_and_a_real_run_walk_the_same_list_in_the_same_order(cfg, held):
@@ -1391,9 +1359,7 @@ def test_a_rehearsal_never_clears_the_live_companion_files(cfg, held):
     """Clearing is itself destructive, so a preview that cleared would do the damage."""
     for companion in config.sidecar_paths("rekordbox_db", cfg):
         companion.write_bytes(b"companion, generation two")
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     restore.run(decided, cfg, held=held, dry_run=True)
 
     for companion in config.sidecar_paths("rekordbox_db", cfg):
@@ -1401,8 +1367,7 @@ def test_a_rehearsal_never_clears_the_live_companion_files(cfg, held):
 
 
 def test_a_restore_refuses_while_rekordbox_holds_the_database(cfg, held, monkeypatch):
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     monkeypatch.setattr(
         "cratekit.core.processes.running_process_names", lambda: ("rekordbox",)
     )
@@ -1593,16 +1558,7 @@ def test_a_held_session_used_after_its_block_is_refused(cfg):
 
 def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
     record, _captured = completed_session(cfg)
-    pretending = restore.Held(
-        workflow=held.workflow,
-        lock=held.lock,
-        intent=session.Intent.WRITE,
-        issued_by=held.issued_by,
-        authorises=held.authorises,
-        gates=held.gates,
-        record=held.record,
-        token=held.token,
-    )
+    pretending = dataclasses.replace(held, intent=session.Intent.WRITE)
 
     cause = _refusal(restore.plan, cfg, record.session_id, held=pretending)
 
@@ -1612,9 +1568,7 @@ def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
 def test_a_rehearsal_reports_what_is_outstanding_rather_than_what_it_recorded(cfg, held):
     """A preview that reported convergence because it wrote nothing would lie."""
     _one_effect_marker(cfg)
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     rehearsed = restore.run(decided, cfg, held=held, dry_run=True)
 
     assert rehearsed.outstanding
@@ -1632,10 +1586,8 @@ def test_the_restore_module_names_no_verb(cfg):
     assert restore.BARE_METAL_WORKFLOW not in registry.VERB_NAMES
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The nine blocking defects two adversarial reviews found, each driven by the
 # reviewer's own reproduction.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _foreign_volume(cfg) -> dict:
@@ -1668,13 +1620,7 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
     replacement = tmp_path / "replacement"
     replacement.mkdir()
 
-    with restore.bare_metal_session(
-        cfg,
-        target=replacement,
-        acknowledged=True,
-        terminal=lambda: True,
-        **seams,
-    ) as bare_metal:
+    with _session_onto(cfg, replacement, seams) as bare_metal:
         assert bare_metal.issued_by is restore.Guard.BARE_METAL
         assert bare_metal.authorises == replacement
         assert not bare_metal.authorises_path(cfg.library.root)
@@ -1690,9 +1636,7 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U95: every path comes from the directory the session authorises
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _tree_bytes(root) -> dict[str, bytes]:
@@ -1718,14 +1662,7 @@ def _recovered_onto(cfg, replacement: Path) -> Path:
 
 
 def _bare_metal(cfg, replacement: Path):
-    return restore.bare_metal_session(
-        cfg,
-        target=replacement,
-        acknowledged=True,
-        replacing_existing=True,
-        terminal=lambda: True,
-        **_foreign_volume(cfg),
-    )
+    return _session_onto(cfg, replacement, _foreign_volume(cfg), replacing_existing=True)
 
 
 def _rendered(decided, *, library, capture) -> list[tuple[str, str, str]]:
@@ -1996,8 +1933,7 @@ def test_u95_staging_inside_the_library_but_not_under_its_store_is_refused(
     bystander = Path(cfg.library.root).parent / "a-neighbouring-volume"
     bystander.mkdir()
     (bystander / "keep.txt").write_bytes(b"not this restore's to touch")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     tampered = dataclasses.replace(decided, pre_restore_root=aimed_at(cfg, decided))
     before = _tree_bytes(cfg.library.root)
 
@@ -2159,8 +2095,7 @@ def test_blocking_2_the_live_log_is_moved_aside_rather_than_deleted(cfg, held):
 def test_blocking_2_a_failure_mid_restore_is_a_structured_refusal(cfg, held, monkeypatch):
     """A raw OSError carries no reason, remedy or exit code, and failures are when
     people restore."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     def _explode(_source, _target):
         raise OSError(28, "No space left on device")
@@ -2180,8 +2115,7 @@ def test_blocking_2_a_failure_mid_restore_is_a_structured_refusal(cfg, held, mon
 
 def test_blocking_2_a_restore_checks_the_library_volume_has_room_for_the_copy(cfg, held):
     """One call site, inside ``capture``, so a restore checked nothing at all."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     calls: list[tuple[int, str]] = []
     original = snapshot.assert_room_for
@@ -2261,9 +2195,7 @@ def test_blocking_5_an_interrupted_restore_in_a_none_effect_window_latches(cfg, 
     """A restore with no effect markers still latches before replacing, so a kill
     mid restore refuses the next write session."""
     acknowledge(cfg)
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     assert decided.markers == (), "this fixture must have no effect markers at all"
     assert decided.steps[0].act is restore.Act.RECORD
     assert decided.steps[-1].act is restore.Act.RELEASE
@@ -2295,8 +2227,7 @@ def test_blocking_5_a_restore_that_completes_retracts_its_own_latch(cfg):
 
 def test_blocking_5_a_rehearsal_does_not_latch_anything(cfg, held):
     """A rehearsal performs nothing at all, including the latch."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     restore.run(decided, cfg, held=held, dry_run=True)
 
@@ -2365,8 +2296,7 @@ def test_the_rehearsal_refuses_a_replacement_whose_source_is_gone(cfg, held):
 
 def test_the_rehearsal_refuses_a_target_directory_nobody_can_write_to(cfg, held):
     """The other case the empty rehearsal reported clean."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     database_dir = config.state_path("rekordbox_db", cfg).parent
     database_dir.chmod(0o500)
 
@@ -2464,10 +2394,8 @@ def test_the_tree_mark_happens_after_the_coupled_state_is_replaced(cfg, held):
     assert acts.index(restore.Act.MARK_TREES) < acts.index(restore.Act.RELEASE)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The register entry this unit owns, and the obligation U36's landing left without
 # one. A register entry no @requires cites gates nothing.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build():
@@ -2525,10 +2453,8 @@ def test_the_restore_verbs_hold_one_session_across_both_halves():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fix round 2: what the first round's fixes broke, each driven by the
 # verifier's own reproduction.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_round2_a_completed_restore_discharges_an_earlier_interrupted_one(cfg):
@@ -2606,9 +2532,7 @@ def test_round2_three_attempts_stage_their_logs_side_by_side(cfg):
 def test_round2_a_restore_that_fits_is_not_refused(cfg, held):
     """P7: a restore the volume can hold is not refused by summing every source."""
     _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
-    record, _captured = completed_session(cfg)
-
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     estimate = restore.space_peak_bytes(decided)
     summed = sum(
         snapshot.incoming_bytes(entry.source)
@@ -2731,8 +2655,7 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
     The seam goes through ``monkeypatch`` so a stubbed probe cannot leak.
     """
     _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     largest_single = max(
         snapshot.incoming_bytes(step.source)
@@ -2752,8 +2675,7 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
 def test_round3_a_staged_log_is_counted_as_permanent_growth(cfg, held):
     """A CLEAR is a rename, so the restored companion's size is never given back."""
     _build_capacity_shape(cfg, database=1024, wal=8192, items=10)
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     staged = {step.target for step in decided.steps if step.act is restore.Act.CLEAR}
     companions = sum(
@@ -2770,8 +2692,7 @@ def test_round2_the_restore_capacity_refusal_names_the_library_volume(
 ):
     """The capacity refusal names the library volume, not the capture store, and
     stubs the probe through ``monkeypatch``."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 1)
     cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
@@ -2825,8 +2746,7 @@ def test_round2_a_successful_restore_over_an_unremovable_old_copy_still_succeeds
 
 def test_round2_a_directory_replacement_checks_its_parent_not_itself(cfg, held):
     """``_replace_directory`` writes in the target's parent, so the parent is probed."""
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     coupled_parent = config.library_coupled_dir(cfg).parent
     coupled_parent.chmod(0o500)
 
@@ -2946,8 +2866,7 @@ def test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal(cfg, he
     """BLOCKING 2: renaming the coupled directory needs write permission on the
     target itself, so an unwritable target refuses at the rehearsal."""
     write_state(cfg, "label_watermarks", {"source": "before"})
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     coupled = config.library_coupled_dir(cfg)
     assert any(
         step.act is restore.Act.REPLACE_TREE and step.target == coupled
@@ -3005,9 +2924,7 @@ def test_round3_staged_companions_are_bounded_by_the_keep_count(cfg):
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fix round 4: the halves of a claimed fix that nothing could see
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _staged_attempt(store: Path, name: str, *, age: int, payload: bytes = b"") -> Path:
@@ -3064,8 +2981,7 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
     path is a prefix of the target's and a substring test cannot tell them apart.
     """
     write_state(cfg, "label_watermarks", {"source": "before"})
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     coupled = config.library_coupled_dir(cfg)
     assert any(
         step.act is restore.Act.REPLACE_TREE and step.target == coupled
@@ -3108,8 +3024,7 @@ def test_round4_the_peak_of_an_ordinary_plan_is_an_exact_number(cfg, held):
     * replace the coupled tree: peak = max(6,144, 2,048 + 8,192) = 10,240
     """
     write_state(cfg, "label_watermarks", {"source": "before"})
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     captured = {
         entry.source.name: entry.captured
@@ -3192,8 +3107,7 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
     This cannot see the headroom's value; the next test pins it with literals.
     """
     _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     demanded = int(restore.space_peak_bytes(decided) * snapshot.CAPACITY_HEADROOM)
     summed = sum(
@@ -3226,8 +3140,7 @@ def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
     so the constant is in ``(1.05, 1.10]``.
     """
     write_state(cfg, "label_watermarks", {"source": "before"})
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     captured = {
         entry.source.name: entry.captured
@@ -3271,8 +3184,7 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     of its transactions. The refusal has its own slug and every field is pinned."""
     log = _wal_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     assert log in [
         step.target for step in decided.steps if step.act is restore.Act.CLEAR
     ], "this plan does not stage the log aside, so it proves nothing"
@@ -3341,8 +3253,7 @@ def test_round6_the_rehearsal_refuses_the_collision_the_real_run_refuses(cfg, he
     index = _shm_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
     index.write_bytes(b"the live shared-memory index")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
     cleared = [step.target for step in decided.steps if step.act is restore.Act.CLEAR]
     assert cleared == [log, index], (
         f"this plan does not clear both companions in order, so it proves nothing: "
@@ -3380,8 +3291,7 @@ def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, m
     index = _shm_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
     index.write_bytes(b"the live shared-memory index")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     real_stage = restore._stage_companion_aside
 
@@ -3411,8 +3321,7 @@ def test_round6_a_dangling_link_at_the_resting_name_is_a_name_already_taken(cfg,
     """A dangling link at the resting name is a taken name, so ``lexists`` is asked."""
     log = _wal_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     decided.pre_restore_root.mkdir(parents=True)
     taken = decided.pre_restore_root / log.name
@@ -3435,8 +3344,7 @@ def test_round6_a_dangling_link_at_the_live_companion_is_still_moved_aside(cfg, 
     log = _wal_path(cfg)
     log.symlink_to(log.parent / "somewhere-that-is-not-there")
     assert not log.exists() and log.is_symlink()
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     outcome = restore.run(decided, cfg, held=held)
 
@@ -3456,8 +3364,7 @@ def test_round6_a_dangling_link_at_the_live_name_does_not_defeat_the_collision_g
     never renames over a staged log (found by mutation)."""
     log = _wal_path(cfg)
     log.symlink_to(log.parent / "somewhere-that-is-not-there")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     decided.pre_restore_root.mkdir(parents=True)
     survivor = decided.pre_restore_root / log.name
@@ -3481,8 +3388,7 @@ def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, 
     """
     log = _wal_path(cfg)
     log.write_bytes(b"the live log, transactions committed since the checkpoint")
-    record, _captured = completed_session(cfg)
-    decided = restore.plan(cfg, record.session_id, held=held)
+    record, decided = _planned(cfg, held)
 
     decided.pre_restore_root.mkdir(parents=True)
     survivor = decided.pre_restore_root / log.name
