@@ -116,7 +116,13 @@ TOGGLE_HOMES = {
 #: The three private names it made public (config.exclusive_lock,
 #: config.mkdir_private, preflight.names_one_path) each replaced the private
 #: spelling of itself and moved nothing.
-CORE_NAMES_CEILING = 452
+#:
+#: 2026-11-23, U342, by the coordinator's call for #994, raised by one for
+#: naming.stamp_head, which analyze adopt calls to give a title with no head
+#: one: the naming engine is the one place a head is rendered, and building it
+#: in a feature package would undo what the refactor is for. U331 (#980) counts
+#: it as an interface name.
+CORE_NAMES_CEILING = 453
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────

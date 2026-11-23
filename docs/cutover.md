@@ -2929,13 +2929,23 @@ their units but U243 and U260. Two worker tabs, W1 and W2.
 - **A183 (#879):** a night that runs unattended to its gate. The schedule is loaded for 03:17, and staging holds nothing a landing takes.
 - **A202 (#929):** step 1 waits on U955 (#1002). R-1716 (#1010) is built: a `sync removed` stopped at the ceiling or the hour's line keeps what it read, so running it again reads only what is left; step 1 records the calls the whole step spent.
 - **A207 (#947):** an `export set` or `export playlist`, and organize's root and mirror steps, driven by this checkout.
-- **A208 (#950):** the adoption verbs.
+- **A208 (#950):** `adopt apply`, which waits on U956 (#1020).
 - **A211 (#962):** `sync pair` through both gates, which Phillip put off today.
 - **A141 (#744):** a landing of an album of eight or more.
 - **A129 (#711):** a removal Phillip makes of a track landed after `f3dc078`.
 - **A203 (#934):** step 3, at the next release.
 - **A5 (#178):** lines 8 and 9, which need hardware.
 - **U29 (#29):** stays attended.
+
+**Continued at Phillip's word, "you can continue as needed", after the closing report.** Desktop control stayed off at his word.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Stale branches | `git push origin --delete` on each `cloud/` branch already merged into `main` | The 14 replay branches of U311 and R-1887 deleted; 87 unmerged ones on closed cards left for Phillip | done |
+| A208, the census | `crate adopt scan`, its job driven by `--job` | **11,207 settled in about 40 s**: 11,056 readable, 137 unmapped, 14 not a path; 9,779 to route, 1,277 needing a genre, 151 excluded | done |
+| A208, `adopt apply` | planned live (digest `740e23787895e730`), rehearsed on a copy to an equal digest, then approved **on the copy only** and driven under its run | **The job failed `adopt-entries-failed`**: rekordbox's 8 sampler preset WAVs, made readable by sitting 101's Sampler path mappings for A129, were routed and cannot be placed in the library tree, so nothing was recorded as adopted. The live gate was answered abort. Carded as U956 (#1020) | refused, U956 |
+| A208, `adopt move` | planned live (run `21:38:34Z-c908`), rehearsed on a fresh copy to an equal digest **`137462986b158733`** and driven through there, then live, answered `approve` as `session` and driven under its run | **60 moved**: each a track held in two energy playlists of the genre tree, taken out of the one its energy reading does not name; 60 memberships removed, none added, none held back. 10 left and named (four tracks one sub held by two rows, four whose genre names no style, two with no reading) | done |
+| A207, the mirror step | `crate organize --only mirror` (run `21:47:02Z-711c`) | 246 account requests to plan 25 folders, then **every mirror step refused at the 500 call ceiling** for one command, the same refusal as before U309. The second session's mirror had finished at 17:35Z. Decided by the session under Phillip's instruction of 2026-11-21: answered abort, rather than spend another hour's calls on a mirror just made. The root step is not driven, since Phillip declined it at sitting 48 | refused |
 
 ## Next sitting
 
