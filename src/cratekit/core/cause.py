@@ -1062,6 +1062,19 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # An approved suggested genre a file did not take; its row is left
         # without one so file and row agree.
         "tag-suggest-unwritten": ExitCode.PRECONDITION,
+        # ── U340's refusals, ``tag second`` ──
+        # A genre and --clear both, or neither.
+        "tag-second-usage": ExitCode.PRECONDITION,
+        # A second genre that files a track nowhere: blank, too coarse, or the fallback.
+        "tag-second-genre-undeclared": ExitCode.PRECONDITION,
+        # No row chosen, a rows file that cannot be read, a playlist path that
+        # names no one playlist.
+        "tag-second-no-rows": ExitCode.PRECONDITION,
+        "tag-second-rows-unreadable": ExitCode.PRECONDITION,
+        "tag-second-playlist-unknown": ExitCode.PRECONDITION,
+        # An approved second genre a file did not take; raised after the others
+        # were written, and a second run plans the rest.
+        "tag-second-unwritten": ExitCode.PRECONDITION,
         # U327. A title tag or key tag ``analyze adopt`` could not write; the
         # row keeps its old title so title and file agree.
         "analyze-adopt-unwritten": ExitCode.PRECONDITION,

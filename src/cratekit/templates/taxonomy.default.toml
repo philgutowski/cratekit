@@ -528,7 +528,9 @@ rates = false
 # leaves the R&B band; a track whose genre names R&B is never touched. Its
 # other memberships stay, "with vox" among them. Adoption will not file a
 # Soul track into a band here while it still sits in one of these, and the
-# move lists any Soul track it cannot move out. `bucket` is the folder that
+# move lists any Soul track it cannot move out. A Soul track whose second
+# genre is R&B (`crate tag second`) belongs in both folders, so its R&B band
+# is its own and neither withholds it nor is left. `bucket` is the folder that
 # keeps the place, `sub` its identifier there and `display` the name that
 # folder gives it. Delete these tables once no Soul track is left in them.
 #

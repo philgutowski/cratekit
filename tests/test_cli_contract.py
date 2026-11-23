@@ -1518,6 +1518,9 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U339. A row no library holds: the plan lists it gone, the gate asks and
         # the apply is a no op. tests/test_tag_set.py.
         "tag.set": ["Deep House", "--row", "no-such-row"],
+        # U340. A row the collection does not hold: the plan leaves it, the gate asks
+        # and the apply is a no op. tests/test_tag_second.py.
+        "tag.second": ["Deep House", "--row", "999999"],
         # U292. No argument: it reads the collection and writes nothing;
         # tests/test_tag_backlog.py.
         "tag.backlog": [],

@@ -243,6 +243,13 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
     'tag-retag-folder-unknown',
+    # 2026-11-23, U340: tag second's refusals, a second genre set or cleared on chosen files.
+    'tag-second-genre-undeclared',
+    'tag-second-no-rows',
+    'tag-second-playlist-unknown',
+    'tag-second-rows-unreadable',
+    'tag-second-unwritten',
+    'tag-second-usage',
     'tag-retag-unwritten',  # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tag-set-scope-unknown',  # 2026-11-23, U339: the rows tag set was asked about.
     'tag-set-unwritten',  # 2026-11-23, U339: a file that would not take its set genre.

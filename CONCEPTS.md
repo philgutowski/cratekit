@@ -295,6 +295,16 @@ own gate; adoption adds only.
 
 *Avoid:* reading it as a second favourites signal; All Favorites is the one.
 
+### Second genre
+A genre word in a file's own `SecondGenre` tag that files the track into a
+second genre folder beside the one its genre names, each in its own energy
+band (U340). It names a folder only beside a genre that names one, and only a
+different one (`routing.second_bucket`). Set and cleared by `crate tag second`;
+adoption gives such a track a second plan entry.
+
+*Avoid:* reading it as a second value of the genre tag, which rekordbox would
+join into one word.
+
 ### Off taxonomy
 A genre written onto a file that the taxonomy has no place for: the catalogue's
 own word passed through by the last tier of `routing.suggest_tag`. A third
@@ -1107,7 +1117,8 @@ bucket and of the one whose folder holds it; only ever left, never filed into.
 ### Split place
 `[[bucket.split_from]]`: a place another bucket still files into that this
 bucket's tracks sit in (Soul in R&B's bands). Competes in the declaring bucket
-only; `crate adopt move` moves its tracks to their own band.
+only; `crate adopt move` moves its tracks to their own band, except a track
+whose second genre names the holder, for which that band is its own (U340).
 
 ### Genre sub
 `[[bucket.genre_sub]]` (`id`, `display`, `sources`): an additive playlist under an

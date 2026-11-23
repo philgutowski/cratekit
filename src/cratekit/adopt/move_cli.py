@@ -307,8 +307,9 @@ def remaining(
     into and its subs left in the bucket it leaves, with ``moved`` as the plan
     read it.
     """
-    entries = {entry.content_id: entry for entry in current.entries}
+    entries = move_engine.entries_by_track(current.entries)
     refused = move_engine.refused_buckets(current.entries)
+    claimed = move_engine.claimed_buckets(current.entries)
     moved = move_engine.still_moved(current.entries, declared, moved)
     todo: list[move_engine.Move] = []
     gone: set[str] = set()
@@ -316,7 +317,7 @@ def remaining(
     if not current.placements.read:
         raise _stale(approved, {move.content_id: "the tree could not be read" for move in approved})
     for move in approved:
-        entry = entries.get(move.content_id)
+        entry = move_engine.entry_for(entries, move.content_id, move.bucket)
         if entry is None:
             # ONCE PER TRACK, since a track may carry a move in each of two
             # buckets and is gone from the collection only once.
@@ -335,7 +336,7 @@ def remaining(
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
         now = move_engine.standing_in(
             entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused,
-            moved=moved,
+            elsewhere=move_engine.elsewhere_of(claimed, entry), moved=moved,
         )
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
@@ -345,7 +346,12 @@ def remaining(
         if isinstance(now, move_engine.Move) and now.into != move.into:
             stale[move.content_id] = "its genre names another folder now"
             continue
-        held = set(current.placements.holds(move.bucket, move.content_id)) & competing
+        held = set(
+            move_engine.held_in(
+                current.placements, declared, move.bucket, move.content_id,
+                elsewhere=move_engine.elsewhere_of(claimed, entry),
+            )
+        )
         if now is None and move.target_bucket:
             # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET.
             arrived = move.target in current.placements.holds(move.into, move.content_id)
@@ -419,6 +425,7 @@ def read_back(
     declared: taxonomy.Taxonomy,
     approved: Sequence[move_engine.Move],
     gone: Sequence[str],
+    claimed: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, list[str]]:
     """Where every approved track sits now, read off the database afresh.
 
@@ -429,15 +436,22 @@ def read_back(
     listed so it would be seen. Each move is read back in its own bucket and
     each list names a track once, so a track whose two moves (R-780) ended
     differently is in two lists.
+
+    ``claimed`` is :func:`cratekit.adopt.move.claimed_buckets` over the plan
+    the run checked against: a split place a track's other entry claims is
+    that entry's band, never one this move was leaving (U340).
     """
     held_now = placements.read_placements(cfg, declared)
+    claimed = claimed or {}
     found: dict[str, set[str]] = {name: set() for name in ("moved", "in_both", "untouched")}
     found.update(neither=set(), gone=set(gone))
     for move in approved:
         if move.content_id in found["gone"]:
             continue
-        _kind, competing = routing.competing_subs(declared, move.bucket)
-        held = set(held_now.holds(move.bucket, move.content_id)) & competing
+        elsewhere = claimed.get(move.content_id, frozenset()) - {move.bucket}
+        held = move_engine.held_in(
+            held_now, declared, move.bucket, move.content_id, elsewhere=elsewhere
+        )
         if move.target_bucket:
             # ACROSS BUCKETS (U339): the target is read in the bucket it files
             # into, and every sub of the bucket left must be gone.
@@ -488,10 +502,8 @@ def handle(job, item, cfg) -> jobs.Produced:
         )
 
     approved = move_engine.from_rows(document["moves"])
-    moved = genre_moves.read(cfg)
-    todo, gone = remaining(
-        approved, apply_cli.current_plan(cfg, declared, vocals=False), declared, moved
-    )
+    current = apply_cli.current_plan(cfg, declared, vocals=False)
+    todo, gone = remaining(approved, current, declared, genre_moves.read(cfg))
 
     written: trees.MoveReport | None = None
     interrupted: BaseException | None = None
@@ -507,7 +519,9 @@ def handle(job, item, cfg) -> jobs.Produced:
             # second commit is over additions that landed, then raised as it came.
             refused = exc
 
-    found = read_back(cfg, declared, approved, gone)
+    found = read_back(
+        cfg, declared, approved, gone, move_engine.claimed_buckets(current.entries)
+    )
     # A GENRE MOVE READ BACK OUT OF ITS OLD BUCKET IS SPENT (U339), so the
     # bucket is never asked again for a track a person later puts there by hand.
     # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included.

@@ -62,6 +62,30 @@ KEBAB_LITERALS = {
         'remap-records-unread',
         'tag-remap-unwritten',
     ],
+    # 2026-11-23, U340: tag second, a second genre set or cleared on chosen files.
+    'tagging/second.py': [
+        'already-that-second-genre',
+        'file-missing',
+        'file-unreadable',
+        'genre-names-no-folder',
+        'genre-names-that-folder',
+        'held-out',
+        'no-second-genre',
+        'row-not-in-collection',
+        'tag-second',
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+        'utf-8',
+    ],
+    'tagging/second_cli.py': [
+        'second-genre-left',
+        'second-genre-nothing-to-write',
+        'second-genre-written',
+        'tag-second-unwritten',
+        'tag-second-usage',
+    ],
     'tagging/retag.py': [
         'answer-too-coarse',
         'coarse-genre',
@@ -265,6 +289,14 @@ LITERAL_HOLDERS = {
         'whitelist-violation',
     ],
     'tagging/genre_set_cli.py': ['tag-set-scope-unknown', 'tag-set-unwritten'],
+    # 2026-11-23, U340: tag second's refusals.
+    'tagging/second.py': [
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+    ],
+    'tagging/second_cli.py': ['tag-second-unwritten', 'tag-second-usage'],
     # 2026-11-22, U306: searchers split by source; the literals moved with their code.
     'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.

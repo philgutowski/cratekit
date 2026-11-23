@@ -98,13 +98,14 @@ def _adoption(
     applicable = plan.applicable()
     vocal = len(plan.vocal_additions())
     counts = {
-        "tracks read": len(plan.entries), "placeable": len(applicable),
+        "tracks read": len(plan.firsts()), "placeable": len(applicable),
         "to file": len(pending), "vocal memberships to add": vocal,
     }
     if not pending and not vocal:
         detail = (
-            f"nothing to file: {len(plan.entries)} track(s) read, "
-            f"{len(applicable)} already filed by an apply, the rest unplaceable"
+            f"nothing to file: {len(plan.firsts())} track(s) read, "
+            f"{len(applicable)} placement(s) already filed by an apply, the rest "
+            f"unplaceable; a track with a second genre has a placement in each folder"
         )
         return planned_step(ADOPT, title, False, detail, digest=screen["digest"], counts=counts)
     if not registry.is_database_native(declared.tree.id):
@@ -113,7 +114,7 @@ def _adoption(
             title,
             refuse(
                 "tree-unconverged",
-                f"{len(pending)} track(s) would be filed into {declared.tree.display}, "
+                f"{len(pending)} placement(s) would be filed into {declared.tree.display}, "
                 f"which is still on the xml bridge, so its memberships cannot be "
                 f"written to the database and nothing is planned",
                 remedy=Remedy.COMPLETE_PENDING_ACTION,
@@ -155,8 +156,9 @@ def _adoption(
         return {"job_id": job.job_id, **apply_cli.applied_summary(cfg, job.job_id)}
 
     detail = (
-        f"file {len(pending)} track(s) into {declared.tree.display} and add "
-        f"{vocal} vocal membership(s); no file tag is written"
+        f"file {len(pending)} placement(s) into {declared.tree.display}, one per "
+        f"genre folder of a track, and add {vocal} vocal membership(s); no file tag "
+        f"is written"
     )
     return planned_step(
         ADOPT, title, True, detail,

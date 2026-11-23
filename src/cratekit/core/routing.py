@@ -151,6 +151,41 @@ def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
     return Resolution(taxonomy.fallback.bucket, Match.FALLBACK, None)
 
 
+def files_by_genre(taxonomy: Taxonomy, raw_genre: str | None) -> str | None:
+    """The bucket a genre word files a track into, or None when it files nothing.
+
+    ADOPTION'S RULE, asked by every path that reads a second genre (U340): a
+    blank word, one the taxonomy declares too coarse to be a genre, and one
+    that resolves only through the fallback tier name no bucket.
+    """
+    value = (raw_genre or "").strip()
+    if not value or taxonomy.is_too_coarse_as_source(value):
+        return None
+    resolution = resolve_bucket(taxonomy, value)
+    if resolution.match is Match.FALLBACK:
+        return None
+    return resolution.bucket_id
+
+
+def second_bucket(
+    taxonomy: Taxonomy, raw_genre: str | None, second_genre: str | None
+) -> str | None:
+    """The second genre folder a track is filed into beside its genre's, or None (U340).
+
+    THE ONE RULE every filing path asks. A second genre names a bucket only
+    beside a genre that names one itself, by :func:`files_by_genre`, and only a
+    bucket other than that one, so a track with one genre, or a second genre
+    naming the same folder, is filed exactly as before.
+    """
+    first = files_by_genre(taxonomy, raw_genre)
+    if first is None:
+        return None
+    second = files_by_genre(taxonomy, second_genre)
+    if second is None or second == first:
+        return None
+    return second
+
+
 # Entry point 2: tagging. Allowed to decline.
 
 

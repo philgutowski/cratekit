@@ -288,3 +288,28 @@ def test_a_move_stopped_before_its_removal_keeps_its_entry_and_a_resume_finishes
     assert code == int(ExitCode.OK), resumed
     assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH)}
     assert dict(genre_moves.read(filed)) == {}
+
+
+def test_a_track_with_a_second_genre_leaves_only_its_old_folder(filed):
+    """One move, by the first genre's entry; the second genre's folder stays (U340)."""
+    from cratekit.tagging import second_cli
+
+    verb = ["tag", "second", "Tech House", "--row", "mover"]
+    _code, refused = drive(verb)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, second_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
+    code, acted = drive(["--run", run_id, *verb])
+    assert code == int(ExitCode.OK), acted
+    collection.reset_cache()
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    assert drive(_resume(job_id))[0] == int(ExitCode.OK)
+    collection.reset_cache()
+    assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH), _place("tech_house", HIGH)}
+
+    _tag_set("--row", "mover")
+    (move,) = _shown()["items"]
+    assert (move["bucket"], move["target_bucket"]) == (OLD_BUCKET, NEW_BUCKET)
+    _move()
+
+    assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH), _place("tech_house", HIGH)}
+    assert dict(genre_moves.read(filed)) == {}
