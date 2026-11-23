@@ -1,9 +1,7 @@
-"""Most-recent-N plus owned-dedup. The watermark is not an input.
+"""Most-recent-N minus owned identities. The watermark is never an input.
 
-KTD11: watermarks are audit records that gate nothing on their own. Scope comes
-from the newest N candidates the source listed, minus identities already owned.
-Using the watermark as a date floor is the silent zero-scope failure this
-repository already removed once.
+Watermarks are audit records that gate nothing (KTD11); using one as a date
+floor is the silent zero-scope failure.
 """
 
 from __future__ import annotations
@@ -24,11 +22,10 @@ def scoped(
     owned: Container[str],
     limit: int,
 ) -> list[ScopedItem]:
-    """Return up to ``limit`` unowned candidates, preserving source order.
+    """Return up to ``limit`` unowned candidates in source order (newest first).
 
-    The source lists newest first. This function does not sort, does not read a
-    watermark, and does not treat an empty owned set as "everything is new" in
-    any special way: empty owned simply keeps the first ``limit`` items.
+    No sorting and no watermark; an empty owned set simply keeps the first
+    ``limit`` items.
     """
     if limit < 0:
         raise ValueError("limit is a count, never negative")

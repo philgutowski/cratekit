@@ -2547,3 +2547,63 @@ read each affected row's kills by name.
 **Closes when:** the driver includes the sentinel in what it guards and
 restores (or the test removes what an escaped write left, in a finalizer),
 so no row's verdict depends on the rows before it. Ledger only.
+
+---
+
+## R-1907. Sync ends U304 short of its line, code line and test targets, so a further card is owed for the audit
+
+**Found:** at the record of #861, U304, 2026-11-22.
+
+**The mechanism.** U304 split `sync/pair_cli.py` (5,785 lines) into seven modules under 1,500 lines, emptied sync's duplication allowance, cut its import allowance to one line, and shortened the prose of the package and its 27 test files to each rule and its reason. It did not simplify the code: the split adds an import block to each new module and a re-export block to `pair_cli`, and every guard's text was kept in place so the kill set replays row for row. Measured on the final head against `c9192091`: source lines 16,703 to 15,352 (target 12,574); code lines 11,066 to 11,095, up, where Phillip's answer on #847 asks every card for 15 percent fewer; test lines 21,897 to 21,323 (target 15,374); the suites' summed test time is not cut. The brief's targets were measured at `ff8e5ec`, before `removed.py` and `unavailable.py` landed.
+
+**Measured cost.** None to a person: behaviour is unchanged. The cost is point 2 and point 5 of #847's definition of done, which the final audit (#872) measures.
+
+**Closes when:** a later card simplifies sync's code itself (the longest functions are `plan_pair`, `check`, `sync_pair` and `_warnings`), anchoring each kill row it moves, and trims the suites where one test's kills are covered by another. Ledger only: #847's audit files a further area card for a point that falls short.
+
+---
+
+## R-1908. Sync still reaches core.held_plan, a module off the named interface, because its file is another card's
+
+**Found:** at the build of #861, U304, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/sync.txt` keeps one line, `off-interface cratekit.core.held_plan`. Sync is the only feature package that holds a plan across its gates, through `core/held_plan.py`, which is not on `CORE_INTERFACE` in `tests/test_import_rules.py`. U304 owns neither file: `core/held_plan.py` was #857's (U300), which landed without moving it, and the interface list is the import rules test's, capped at 25, which admits a module only when another leaves.
+
+**Measured cost.** None to a person. Point 4 of #847 asks for every package's allowance empty.
+
+**Closes when:** the final audit (#872) or a later core card either puts `held_plan` behind a module on the interface (`session`, which owns the write path the plan feeds, is the natural home) or trades it onto the list, and sync's line is pruned. Ledger only.
+
+---
+
+## R-1909. The behaviour capture's clock pin misses a clock bound as a default argument, so two captures of one commit differ
+
+**Found:** at the build of #861, U304, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/__init__.pin` replaces `time.time` and the other clocks wherever a module holds them by name, but `acquire/isrc_cache.py` (`clock: Callable[[], float] = time.time`) and `core/provider_gate.py` (`clock=time.time`) bound the real function as a default when they were imported, which no patch of a name reaches. Measured: two captures of `c9192091` differed in `isrc_cache.json`'s `asked_at` for every scenario that asks the provider for an ISRC (a tie), and in `provider_gate.json`'s `last_call` and hour buckets for a ceiling stop. Four `sync mark` plans' digests also differed between the two captures, by an input not traced. U304 left those scenarios out of `tests/behaviour/sync_*.py` and says so in their docstrings.
+
+**Measured cost.** None to a person. A card cannot compare a tie, a ceiling stop or those four mark plans base against branch.
+
+**Closes when:** the pin also reaches a clock held as a default (for example by patching the two classes' defaults while the pins are on), the mark digest's moving input is found, and the left out scenarios are added back. The harness is U297's, now #869's or #870's to change. Ledger only.
+
+---
+
+## R-1910. A module __getattr__ makes the refactor measure over count one module's outside uses and read its import as lazy
+
+**Found:** at the review of #861, U304, round two, 2026-11-22.
+
+**The mechanism.** U304 gave `sync/playlists.py` a module `__getattr__` that imports `label.catalogue.AccountPlaylist` on first use, since organize's suite reads that name there. Round two drove `scripts/refactor_measure.py` over it: `_defined_names` answers None for a module with a `__getattr__`, so `outside` counts an attribute of any local variable named `playlists` as a use (one spurious name, `items`, from a keyword argument in `tests/test_organize_mirror.py`), and rule four reads the import inside `__getattr__` as lazy, so a top level `from cratekit.sync.playlists import AccountPlaylist` would hide a labels edge from the static verb check (0 such imports today). The fallback `raise AttributeError` kills no test.
+
+**Measured cost.** None to a person. A later card reading `outside` for that file sees one name too many.
+
+**Closes when:** the measure treats a module `__getattr__` as answering only the names it tests for, or the name moves to a module organize owns. Ledger only.
+
+---
+
+## R-1911. Ten recorded kills on sync's files read zero on the base U304 replayed, four of them noise and six lost before it
+
+**Found:** at the kill set replay of #861, U304, 2026-11-23.
+
+**The mechanism.** `killset.py rows` read 658 live rows for `src/cratekit/sync/`, each recorded as killed by its own table. Replayed on `c9192091`, before U304's first edit, ten read zero even promoted to the full suite (`docs/mutation/u304-replay-before.md`). Four were recorded as killed only by a test that has nothing to do with the row: `r1376.F15_null`, `r1411.W5_agreed_at_every_order` and `r1446.M10_kept_order_with_unread` by the inode bound test of #702 (`test_repair_rows.py`), which fails on a container's disk by itself, and `r1372.K18_let_go_on_any_record` by a set inspiration backfill test, each after promotion. Their recorded kill was the machine's, not the mutation's. Six were killed by sync's own tests when recorded and are not now: `r1372.K16_no_let_go_at_done`, `r1376.F2_first_stop_empty_id`, `r1376.F8_fold_on_first_sync`, `r1411.E3_refused_order_passes_no_expect`, `u130-a.A1_removal_beats_addition` and `u130-b.B3_account_isrc_not_first`. Some later change to those tests or that code, before `c9192091`, stopped them killing.
+
+**Measured cost.** None to a person today. The six are guards no test holds: a plan that folds on a first sync (`F8`), a removal that beats an addition (`A1`), an account ISRC read out of order (`B3`), and three narrower ones. U304 kept every kill that stood on the base, and these were not standing.
+
+**Closes when:** each of the six is read against its test as it is now, and either a test kills it again or a line says why it is equivalent; the four noise rows are marked in the kill set so `killset.py rows` stops offering them. Ledger only.

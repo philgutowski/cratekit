@@ -1,8 +1,8 @@
-"""U130's two account changes over a stand in for the client, and the pairs record.
+"""U130's account changes over a stand in for the client, and the pairs record.
 
-The removal guard (R-836) now admits a playlist the author paired as well as one
-the product made, and nothing else. ``order_tracks`` is held to the same guard,
-moves each track to the front in turn (U220) and reads back after each move.
+The removal guard (R-836) admits a playlist the author paired or the product
+made, nothing else. ``order_tracks`` is held to it and moves each track to the
+front in turn (U220).
 """
 
 from __future__ import annotations
@@ -88,8 +88,8 @@ def test_the_order_moves_each_track_to_the_front_and_reads_back(installed):
     after = _adapter(installed, store).order_tracks("mine", ("a", "d", "b", "c"))
     assert after == ("a", "d", "b", "c")
     assert store.members["mine"] == ["a", "d", "b", "c"]
-    # "b" and "c" already stand in order at the tail of the asked order (U220);
-    # only what comes before them is moved, the last first, each to the front.
+    # "b" and "c" already end the asked order (U220), so only what precedes
+    # them moves, the last first, each to the front.
     assert [(asked, to) for _pid, asked, to in store.moves] == [((3,), 0), ((1,), 0)]
 
 
@@ -112,7 +112,7 @@ def test_the_order_of_an_unpaired_playlist_is_refused_before_any_call(installed)
 def test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept(
     installed,
 ):
-    """U231: no read back between moves; the order's one later reading shows where it landed."""
+    """U231: no read back between moves, the order's one later reading shows where it landed."""
     store = _store()
     _paired(installed, store, "mine", ["a", "b", "c"])
     store.misplace = True
@@ -126,8 +126,8 @@ def test_a_track_held_twice_is_not_moved(installed):
     store = _store()
     _paired(installed, store, "mine", ["a", "b", "a", "c"])
     after = _adapter(installed, store).order_tracks("mine", ("c", "a", "b"))
-    # "a" is held twice, so it is not one of the moves; "b" is the asked
-    # order's tail and stays, so "c" alone goes to the front (U220).
+    # "a" is held twice so it is not moved, "b" is the tail and stays, so
+    # "c" alone goes to the front (U220).
     assert after == ("c", "a", "b", "a")
     assert [asked for _pid, asked, _to in store.moves] == [(3,)]
 

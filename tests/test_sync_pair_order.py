@@ -1,15 +1,9 @@
 """U220: a pair whose account order is refused stops alone, and a continue of the run finishes it.
 
-Sitting 62's live ``crate sync pair`` added six tracks to one paired playlist
-and then its order was refused; the refusal stopped the whole write, so it
-never reached the other 101 pairs nor the rekordbox side of a playlist the
-account had made. Driven through the dispatcher on the disposable database
-and the fake account the discovery suite builds: one pair's order refuses,
-every other pair and the playlist brought into rekordbox are still written,
-the stop names the pair and the run, and a continue of the run puts it in
-order, passing the adapter the check's own listing to agree with first.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Every other pair and the playlist brought into rekordbox are still written,
+the stop names the pair and the run, and a continue puts it in order, handing
+the adapter the check's own listing to agree with first. D1 applies, nothing
+here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -75,10 +69,8 @@ def _refusing(world, monkeypatch, refused_on: set[str], *, reason: str = "outbou
 def owed(world):
     """Two pairs synced once in GIG READY, then changed so each owes the account a write.
 
-    Opener is reordered in rekordbox, so its account side owes an order;
-    Second gains a track in rekordbox, so its account side owes an addition;
-    and a playlist made on the account in the synced folder owes rekordbox a
-    new playlist.
+    Opener owes an order, Second an addition, and an account playlist made in
+    the folder owes rekordbox a new playlist.
     """
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
@@ -101,8 +93,7 @@ def test_a_refused_order_stops_its_pair_alone_and_every_other_write_lands(
 
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
-    # Every other write landed: the other pair's addition and the playlist
-    # brought into rekordbox.
+    # Every other write landed, the addition and the playlist brought into rekordbox.
     assert world.account.playlists[second_account] == ["t4", "t5", "t6"]
     inside = in_rekordbox(world, gig)
     assert "Closer" in inside and world.held(inside["Closer"]) == ["7", "8"]
@@ -140,8 +131,7 @@ def test_a_continue_of_the_run_puts_the_refused_pair_in_order_and_moves_nothing_
     assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
     assert world.held(opener) == ["3", "1", "2"]
     assert world.account.added == added, "a continue added a track a second time"
-    # The continue handed the adapter the check's own listing to agree with
-    # before its first move, since this run had seen the order refused.
+    # The run saw the order refused, so the adapter is handed the check's listing.
     assert world.account.expected[-1] == (opener_account, ("t1", "t2", "t3"))
     assert done["data"]["totals"]["finished_before"] == 2
     held = pairs.PairStore(cfg).get(opener_account)
@@ -174,15 +164,10 @@ def test_the_order_refusals_that_stop_one_pair_are_the_two_an_order_raises():
 def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved(
     world, owed, monkeypatch
 ):
-    """U220's round two, read again by R-1420: a change under a refusal that no record names.
+    """R-1420: a change under a refusal that no record names is held as moved.
 
-    U220 passed the continue its own listing to agree with, so a move that
-    landed somewhere the read back did not expect was ordered from. Since
-    U231 the adapter records its moves before the first is sent, and this
-    fake changes the playlist without telling ``begun``: a refusal with no
-    moves recorded sent none, so the change is someone else's, and the
-    continue holds it as moved with nothing written. A fresh sync then
-    takes the account's order as the person's.
+    The adapter records its moves before the first is sent (U231), so a
+    refusal with none recorded sent none and the change is someone else's.
     """
     _gig, opener, _second = owed
     opener_account = world.titled("GIG READY Opener")
@@ -215,7 +200,7 @@ def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved
 
 
 def test_the_stop_carries_every_unfinished_pairs_steps_once():
-    """Round two: the stop asks the person to do what each refusal asks, so it shows each."""
+    """The stop asks the person to do what each refusal asks, so it shows each."""
     def cause(steps):
         return refuse(
             "outbound-remove-refused",
@@ -236,9 +221,7 @@ def test_the_stop_carries_every_unfinished_pairs_steps_once():
     assert "run crate sync pair again" in said.message
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1420: a continue of a refused order writes nothing over a person's reorder
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _ids(*content_ids: str) -> list[str]:
@@ -249,10 +232,8 @@ def _ids(*content_ids: str) -> list[str]:
 def refused_once(world, monkeypatch):
     """One pair in GIG READY reordered in rekordbox to 4, 3, 1, 2, its account order refused once.
 
-    The order is refused before any move is sent, as the adapter refuses a
-    reading it would not trust, so the account still stands as the plan
-    read it. Answers rekordbox's playlist, the account's, the refused run and
-    the set of playlists still refusing, emptied.
+    Refused before any move, so the account stands as the plan read it.
+    Answers rekordbox's playlist, the account's, and the refused run.
     """
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
@@ -273,7 +254,7 @@ def refused_once(world, monkeypatch):
 def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since(
     world, refused_once, cfg
 ):
-    """R-1420: the person's 2, 4, 1, 3 passed the check and was written over with 4, 3, 1, 2."""
+    """R-1420: the person's 2, 4, 1, 3 made since the refusal is held as moved, not written over."""
     opener, account_id, run_id = refused_once
     # The person reorders the playlist on the account between the two commands.
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
@@ -305,7 +286,7 @@ def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since
 
 
 def test_a_fresh_sync_over_the_same_two_reorders_takes_the_accounts_order(world, cfg):
-    """What the continue now leaves to: the merge a fresh sync makes of both reorders."""
+    """What the continue leaves to: a fresh sync's merge of both reorders."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
     code, envelope = sync()
@@ -380,12 +361,10 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_sinc
 def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_since(
     world, cfg, monkeypatch, stop
 ):
-    """R-1420, one step over: an order stopped before ``begun`` by a stop that is no order refusal.
+    """R-1420: an order stopped before ``begun`` by a stop that is no order refusal.
 
-    A rejected session stops the whole write and a cooldown parks it, each
-    after the order was marked begun and before any move was sent, so the
-    run carries ``ordering`` and no ``order-refused``. The person's reorder
-    on the account before the continue is held as moved all the same.
+    The run carries ``ordering`` and no ``order-refused``; the person's reorder
+    before the continue is held as moved all the same.
     """
     from cratekit.core import jobs
 
@@ -433,11 +412,10 @@ def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_sin
 def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_listing(
     world, cfg, monkeypatch, stop
 ):
-    """Round one's row 2: whatever stopped the order before any move, the continue agrees first.
+    """Whatever stopped the order before any move, the continue agrees first.
 
-    A refused order's continue passed the check's listing as ``expect``;
-    one parked or stopped with the whole write passed nothing, so a reorder
-    landing between the check and the adapter's reading was ordered from.
+    Without ``expect``, a reorder landing between the check and the adapter's
+    reading would be ordered from.
     """
     from cratekit.core import jobs
 
@@ -490,11 +468,10 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
 def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_listing_first(
     world, cfg, monkeypatch, damage
 ):
-    """Round two's row 1: the record carried beside the run's steps still says the order began.
+    """The record carried beside the run's steps still says the order began.
 
-    The order parked before any move, then the run's steps file is lost: the
-    continue reads the carried record, as it does for moves already sent,
-    and hands the adapter the check's listing to agree with.
+    With the steps file lost, the continue reads the carried record and hands
+    the adapter the check's listing to agree with.
     """
     from cratekit.core import held_plan, jobs
 
@@ -533,7 +510,7 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
 def test_a_continue_of_a_refused_order_that_also_added_holds_the_added_track_moved_since(
     world, cfg, monkeypatch
 ):
-    """The mutation table's B2: a person moving only the track this write added is a reorder too."""
+    """A person moving only the track this write added is a reorder too."""
     opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
     world.account.playlists[account_id][:] = _ids("1", "2", "5", "3", "4")
     ordered = list(world.account.ordered)

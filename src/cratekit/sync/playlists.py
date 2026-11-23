@@ -1,88 +1,43 @@
 """The playlists source: list the account, keep what is new, queue it as intake.
 
-The third R25 source, and the one the slim profile runs alone. It has no worker
-of its own. Each account playlist it keeps is queued through
-``intake.cli.queue_playlist``, under ``intake.playlist``, which is exactly the job
-``crate intake playlist`` queues for the same playlist, with two keys added: the
-intake run the pass shares (R29) and ``source_id``, which is how this module
-later finds the jobs it queued. A separate playlists worker with its own item
-shape was rejected for the reason U61 rejected a fourth worker: it would rebuild
-the intake path one layer down.
+The core R25 source, with no worker of its own: each kept playlist is queued
+through ``intake.cli.queue_playlist`` exactly as ``crate intake playlist``
+queues it, plus the shared intake run (R29) and ``source_id``, by which this
+module finds its jobs again.
 
-**WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when the
-record holds it as taken, or its name still carries the retired swept prefix
-(U242, :func:`is_taken`), when its
-name ends with the suffix the source system's label batch leaves on its run
-debris (R-361), when its identifier is in this source's cursor, when its name
-is a quarterly favourites placeholder, which is the favourites source's to
-sweep, when a playlist intake job for it is still open, or when the listing
-says it holds no tracks. Everything else is listed track by track and queued. A
-playlist whose tracks come back empty is reported empty rather than queued, and
-a playlist that cannot be read is reported unreadable rather than skipped in
-silence. A track the account lists with no title or no artist is set aside and
-named, and the playlist's other tracks are queued (R-1289); a playlist so
-queued is recorded once its job succeeds, as a short listing is, so the named
-track is not offered by a later pass.
+**WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when it is
+taken (:func:`is_taken`), is label batch debris (R-361), is in the cursor, is
+a favourites placeholder, has an open intake job, or lists no tracks. The rest
+are listed track by track and queued; an empty one is reported empty and an
+unreadable one reported, never skipped in silence. A track with no title or
+artist is set aside and named while the rest queue (R-1289).
 
-**THE DEBRIS RULE IS THE SOURCE SYSTEM'S, SUFFIX AND CASE (R-361).** Its label
-batch builds one `<label> LIBRARY` playlist per run and leaves it on the
-account, and its own sweep drops any name ending ` LIBRARY`, leading space,
-case sensitive. The fourth attended sitting found eleven of them among the
-eighteen playlists a pass queued, about 1600 tracks of label catalogue offered
-as ordinary intake. The name rule is copied rather than narrowed: a playlist a
-person named `My Night LIBRARY` is excluded too, which is the collision the
-source system already accepts, and every debris name the sitting listed was a
-label run. The source system's sweep ALSO drops every playlist id its run
-manifests registered as run created, and that half has no counterpart here,
-because Cratekit reads no manifest of the source system's: a run playlist
-whose name lost the suffix is still offered. Jobs already queued for debris
-are not cancelled by this rule; it decides what a later pass offers, and
-:func:`pending_marks` keeps the same names out of the mark, so a debris job
-that succeeds, one queued before the rule or by hand, never has the source
-system's throwaway renamed under it.
+**THE DEBRIS RULE IS THE SOURCE SYSTEM'S, SUFFIX AND CASE (R-361).** A name
+ending ` LIBRARY`, case sensitive, is excluded, copied rather than narrowed.
+The source system also drops ids its manifests registered, which has no
+counterpart here. :func:`pending_marks` keeps debris out of the mark too.
 
-**THE CURSOR IS IDENTIFIERS, AND IT MOVES ON CLEAN COMPLETION ONLY.** Queueing
-is not completion. At the start of every pass :func:`reconcile` reads every
-playlist intake job for this library, the ones this source queued AND the ones
-``crate intake playlist`` queued by hand (R-382), and records the playlist of
-every one that SUCCEEDED, which is the state a job reaches only when every item
-is done. A failed or cancelled job is not recorded and its playlist is offered
-again, and an open one, whichever verb queued it, holds its playlist back as in
-flight. The cursor still moves only here, at the top of a pass, and never on a
-job's completion. Nothing is ever filtered by title except the three naming
-conventions above, which are conventions spelled in the name by the systems
-that apply them, and none is stored (D5).
+**THE CURSOR IS IDENTIFIERS, AND IT MOVES ON CLEAN COMPLETION ONLY.** At the
+top of every pass :func:`reconcile` records the playlist of every SUCCEEDED
+playlist intake job for this library, whichever verb queued it (R-382). A
+failed or cancelled one is offered again and an open one is held back as in
+flight. Nothing is filtered by title except the naming conventions above, and
+none is stored (D5).
 
-**SWEPT MEANS RESOLVED, NOT ACQUIRED, AND THE PASS SAYS SO (R-359).** The job a
-sweep composes resolves every track to owned, offered or missing and acquires
-none, so a SUCCEEDED job is a playlist whose missing tracks are still not in the
-library, and once it is recorded no later pass offers it again. The cursor is
-deliberately left recording on success, because the alternative needs an
-acquisition step the pass does not compose. What changed is the report: every
-block carries :data:`SWEPT_MEANS`, and :func:`said` gives the check a person
-reads by default the same fact in words.
+**SWEPT MEANS RESOLVED, NOT ACQUIRED, AND THE PASS SAYS SO (R-359).** A
+succeeded job resolved every track and acquired none, yet it is never offered
+again; every block carries :data:`SWEPT_MEANS` and :func:`said` words it.
 
-**THE MARK IS ITS OWN VERB, AND THE PASS STILL MARKS NOTHING (U82).**
-``sync/marks.py`` states the rule: a playlist is marked only after the
-importable file exists and a recheck holds. Since U242 the mark is a taken
-entry in Cratekit's own record and no title changes, decided by Phillip on
-2026-11-11, and :func:`mark_swept` is the application. The file arrives three verbs after the
-pass, once its missing tracks were listed, downloaded and landed, so the caller
-is the gated verb in ``sync/mark_cli.py`` and never the pass. A pass therefore
-still reports the mark as :data:`MARK_UNBOUND`, which is true of the pass: it
-resolves tracks, acquires none and writes no importable file.
+**THE MARK IS ITS OWN VERB, AND THE PASS STILL MARKS NOTHING (U82).** The
+importable file arrives verbs later, so :func:`mark_swept` is called by
+``sync/mark_cli.py`` and the pass reports :data:`MARK_UNBOUND`.
 
-**THE RECHECK IS A SECOND READ, NOT THE PLAN'S OWN.** :func:`mark_swept` reads
-the account listing again rather than trusting the one :func:`plan` already took.
-A recheck served from the planning read confirms only that the plan was
-internally consistent, which it always is, and the thing it is supposed to catch
-is a playlist that changed between the plan and the mark. That second read is
-taken once and shared by every mark in the batch.
+**THE RECHECK IS A SECOND READ, NOT THE PLAN'S OWN**, since one served from
+the planning read can never catch a playlist that changed in between. It is
+read once per batch.
 
-**THE MARK SET IS THE CURSOR, NOT WHAT THIS PASS ADDED TO IT.** The cursor is
-written before anything is marked and moves whether or not the mark lands, so a
-set taken from the newly recorded is a set nothing can offer a second time. See
-:func:`pending_marks`, which is where the reasoning lives.
+**THE MARK SET IS THE CURSOR, NOT WHAT THIS PASS ADDED TO IT**; see
+:func:`pending_marks`.
 
 Layer: modules.
 """
@@ -94,44 +49,45 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
-from cratekit.label.catalogue import (
-    AccountPlaylist,
-    Catalogue,
-    PlaylistReferenceInvalid,
-)
-from cratekit.label.catalogue import playlist_id as typed_playlist_id
 from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
 
-#: This source's identifier, as ``sync.sources`` declares it and as the jobs it
-#: queues carry it.
+if TYPE_CHECKING:
+    from cratekit.label.catalogue import AccountPlaylist, Catalogue
+
+
+def __getattr__(name: str) -> Any:
+    """``AccountPlaylist`` stays readable here, where callers outside sync read it.
+
+    Imported on first use, so this module imports the labels package only when
+    something asks for it (U304).
+    """
+    if name == "AccountPlaylist":
+        from cratekit.label.catalogue import AccountPlaylist
+
+        return AccountPlaylist
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+#: This source's identifier, as ``sync.sources`` declares it and its jobs carry it.
 SOURCE_ID = "playlists"
 
-#: The prefix the source system put on a playlist it had swept, RETIRED by
-#: U242 (Phillip, 2026-11-11). No verb writes it any more; a title still
+#: The legacy swept prefix, RETIRED (U242). No verb writes it; a title still
 #: carrying it reads as taken until ``crate sync strip`` takes it off.
 SWEPT_PREFIX = "DOWNLOADED "
 
-#: The suffix the source system's label batch leaves on the throwaway playlist
-#: each run builds, `<label> LIBRARY`. Its own sweep drops any name ending with
-#: it, leading space and upper case exactly, and this is that rule kept rather
-#: than reinvented (R-361). Case sensitive on purpose: `Colorize Library` is a
-#: name a person could give a playlist, and the batch never writes it.
+#: The suffix of the label batch's throwaway `<label> LIBRARY` playlists (R-361).
+#: Case sensitive on purpose, since a person could name one `Colorize Library`.
 LIBRARY_PLAYLIST_SUFFIX = " LIBRARY"
 
-#: What a recorded playlist means in this build, on the block a machine reads.
-#: The cursor records a playlist whose intake job SUCCEEDED, which is every track
-#: resolved and none acquired (R-359).
+#: What a recorded playlist means, on the machine block: resolved, none acquired (R-359).
 SWEPT_MEANS = "resolved-not-acquired"
 
-#: The same fact in words, keyed by the token the block carries, so the human
-#: sentence is there exactly when the machine field is.
+#: The same fact in words, keyed by the token, so it shows exactly when the field does.
 SWEPT_MEANS_SAID: Mapping[str, str] = MappingProxyType(
     {
         SWEPT_MEANS: (
@@ -143,21 +99,16 @@ SWEPT_MEANS_SAID: Mapping[str, str] = MappingProxyType(
     }
 )
 
-#: What the pass says about the mark step when nothing marked the account,
-#: which is every pass, since a pass writes no importable file. The mark is the
-#: gated verb in ``sync/mark_cli.py``, run once the pass has been landed.
+#: The mark step as every pass reports it, since a pass writes no importable file.
 MARK_UNBOUND = "unbound"
 
 #: What the pass says when :func:`mark_swept` ran against the account seam.
 MARK_APPLIED = "applied"
 
-#: The kind every mark this source defers carries. One kind, because the only
-#: side effect a mark leaves is a taken entry in the record (U242).
+#: The kind of every mark this source defers, a taken entry in the record (U242).
 MARK_KIND = "taken"
 
-#: The two refusals one playlist's listing may end in that are about THAT
-#: playlist. Any other refusal, a credential or an unbound adapter, is about the
-#: whole source and ends it.
+#: The refusals about ONE playlist's listing; any other ends the whole source.
 PER_PLAYLIST_REASONS = frozenset({"label-playlist-unreadable", "intake-list-unusable"})
 
 
@@ -166,22 +117,13 @@ class Excluded(StrEnum):
 
     SWEPT = "already-swept"
     LABEL_DEBRIS = "label-debris"
-    #: A year playlist ``label playlists`` built for a followed label (R-835).
-    #: It is that label's catalogue, and swept as intake every release on it
-    #: would be listed as missing from the library.
+    #: A year playlist ``label playlists`` built, a label's catalogue (R-835).
     LABEL_FOLDER = "label-folder"
-    #: A playlist ``export set`` made from a set's tracklist (R-837). The set's
-    #: tracks are fetched from that tracklist, so swept as intake it would be a
-    #: second download of the same set.
+    #: A playlist ``export set`` made, which would be a second download (R-837).
     SET_PLAYLIST = "set-playlist"
-    #: A playlist the author marked to stay the same list as a rekordbox
-    #: playlist (U130). ``sync pair`` keeps it, queueing for acquisition what
-    #: the library lacks, so swept as intake it would be queued twice and
-    #: marked with the swept prefix under the author.
+    #: A playlist ``sync pair`` keeps, which would otherwise be queued twice (U130).
     PAIRED = "paired"
-    #: A playlist ``crate organize`` made to mirror a rekordbox playlist
-    #: (U147). It holds tracks the library already owns, so swept as intake it
-    #: would be marked with the swept prefix under the mirror.
+    #: A playlist ``crate organize`` mirrors from rekordbox, already owned (U147).
     MIRROR = "mirror"
     RECORDED = "recorded"
     PLACEHOLDER = "favorites-placeholder"
@@ -193,9 +135,8 @@ class Excluded(StrEnum):
 def is_swept_name(name: str) -> bool:
     """Whether the name carries the legacy swept prefix.
 
-    Since U242 a title alone never says a playlist is taken to a reader:
-    :func:`is_taken` asks this AND the record. This stays for what reads the
-    prefix itself, the migration and the strip that take it off.
+    Readers asking "taken" use :func:`is_taken`; this is for the migration and
+    the strip.
     """
     return str(name or "").startswith(SWEPT_PREFIX)
 
@@ -213,11 +154,8 @@ def is_taken(
 ) -> bool:
     """Whether Cratekit holds this playlist as taken, finished with (U242). Pure.
 
-    THE ONE QUESTION EVERY READER ASKS. ``taken`` is the record's taken ledger,
-    :func:`taken_ids`, and a playlist it holds is taken whatever its title.
-    A title still carrying the legacy prefix is taken too, until ``crate sync
-    strip`` takes it off, so a playlist taken before the record knew it is
-    never read as new in between.
+    THE ONE QUESTION EVERY READER ASKS. Held in ``taken``, whatever its title,
+    or still carrying the legacy prefix, so it never reads as new in between.
     """
     return str(playlist_id or "") in taken or is_swept_name(name)
 
@@ -225,8 +163,7 @@ def is_taken(
 def taken_ids(cfg: config.Config) -> frozenset[str]:
     """Every playlist the record holds as taken, or the record's own refusal.
 
-    UNREAD IS NOT NONE. A record that cannot be read refuses rather than
-    answering empty, since empty offers every taken playlist as new.
+    UNREAD IS NOT NONE, since empty would offer every taken playlist as new.
     """
     from cratekit.sync import mark_record
 
@@ -251,14 +188,10 @@ def exclusion(
 ) -> Excluded | None:
     """Why this playlist is not new, or ``None`` when it is. Pure.
 
-    The ORDER is the report's, not a precedence any one playlist depends on: a
-    playlist can meet several rules, and the first one named is the one a person
-    is told.
-
-    ``taken`` is the record's taken ledger (U242): a playlist it holds is
-    :attr:`Excluded.SWEPT` whatever its title, so one stripped of the legacy
-    prefix is excluded exactly as it was while it carried it.
+    The ORDER only picks which reason a person is told. A playlist in
+    ``taken`` is :attr:`Excluded.SWEPT` whatever its title.
     """
+    from cratekit.favorites import placeholders
     if is_taken(playlist.playlist_id, playlist.name, taken):
         return Excluded.SWEPT
     if is_library_debris(playlist.name):
@@ -285,14 +218,9 @@ def exclusion(
 def source_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
     """Every job THIS source queued for THIS library, newest first.
 
-    All three fields, because each alone names jobs this source does not own:
-    the key is shared with ``crate intake playlist`` run by hand, and the queue is
-    installation scoped while the cursor is per library.
-
-    NOT WHAT THE CURSOR IS RECONCILED OVER, since R-382. That is
-    :func:`playlist_jobs`, which a playlist run by hand also reaches. This set is
-    for a reader that needs a pass's own jobs, the mark verb grouping them by the
-    run they share.
+    All three fields, since the key is shared with ``crate intake playlist``
+    and the queue is installation scoped. NOT WHAT THE CURSOR IS RECONCILED
+    OVER, which is :func:`playlist_jobs` (R-382).
     """
     return tuple(
         job
@@ -314,19 +242,13 @@ _playlist_of = playlist_of
 def recorded_as(job: jobs.Job) -> str:
     """The identifier the cursor records for a playlist intake job, or ``""``.
 
-    A job THIS SOURCE queued carries the listing's own identifier, and it is
-    returned verbatim, because that is what the next listing is compared with.
-    A job ``crate intake playlist`` queued carries what a person TYPED, which may
-    be a URL or a share link, so it is read through the provider's reference
-    parser and records the identifier the listing would carry. A reference the
-    parser does not recognise is kept as typed: the job that succeeded listed
-    it, so the catalogue it ran against took it as an identifier.
-
-    THE HEARTS ARE NOT A PLAYLIST. Both verbs that list the account's hearts,
-    ``crate intake playlist favorites`` and the favourites source, queue them
-    under the reserved reference, and that is never an account playlist this
-    cursor could hold, so such a job records nothing.
+    This source's own job carries the listing's identifier, returned verbatim.
+    A hand queued job carries what a person TYPED, so it is parsed to the
+    identifier a listing would carry, or kept as typed when unrecognised.
+    THE HEARTS ARE NOT A PLAYLIST, so a favourites job records nothing.
     """
+    from cratekit.label.catalogue import PlaylistReferenceInvalid
+    from cratekit.label.catalogue import playlist_id as typed_playlist_id
     reference = _playlist_of(job)
     if not reference:
         return ""
@@ -343,13 +265,9 @@ def recorded_as(job: jobs.Job) -> str:
 def playlist_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
     """Every playlist intake job for THIS library, whichever verb queued it (R-382).
 
-    What the cursor is reconciled over and what an open job holds back. It is
-    wider than :func:`source_jobs` on purpose: a playlist a person ran through
-    ``crate intake playlist`` has been resolved exactly as a sweep would resolve
-    it, so a pass that offered it again would repeat the work. The key keeps
-    ``intake.set`` out and the library keeps another library's jobs out. The
-    hearts are kept out by the readers, which ask :func:`recorded_as` and skip
-    a job it records nothing for.
+    What the cursor is reconciled over and an open job holds back, wider than
+    :func:`source_jobs` because a hand run playlist is resolved just as a sweep
+    would. Readers skip the hearts via :func:`recorded_as`.
     """
     return tuple(
         job
@@ -375,9 +293,7 @@ def open_playlists(found: Iterable[jobs.Job]) -> frozenset[str]:
 
 def reconcile(store, cfg: config.Config, *, handler_key: str) -> tuple[str, ...]:
     """Record every playlist whose job completed cleanly. Returns the newly recorded."""
-    # NOT ``marks``, which is this module's deferred mark engine. The local name
-    # used to be ``marks`` and shadowed nothing, because nothing here imported
-    # the engine until R-358 did.
+    # NOT ``marks``, which would shadow the deferred mark engine.
     cursor = WatermarkStore(cfg)
     existing = cursor.read(SOURCE_ID)
     known = set(existing.swept) if existing is not None else set()
@@ -399,21 +315,15 @@ class Sweep:
     ready: dict[str, dict[str, Any]] = field(default_factory=dict)
     excluded: dict[str, Excluded] = field(default_factory=dict)
     unreadable: dict[str, str] = field(default_factory=dict)
-    #: Playlists that listed short of the count the provider declares, as
-    #: ``ListingShortfall.block`` carries it (R-515). Queued all the same.
+    #: Playlists that listed short of the declared count (R-515), queued all the same.
     short: dict[str, dict[str, int]] = field(default_factory=dict)
-    #: Each track the reader set aside, by playlist identifier then track
-    #: identifier, as the account names it and why (R-1289). The playlist's
-    #: other tracks are queued all the same.
+    #: Each track set aside, by playlist then track, with its name and why (R-1289).
     unread: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     recorded_now: tuple[str, ...] = ()
-    #: THE WHOLE CURSOR after this pass reconciled, not only what it added. It
-    #: is what :func:`mark_swept` marks from, for the reason that function
-    #: gives: the cursor moves whether or not the mark lands, so a mark set
-    #: taken from :attr:`recorded_now` is a set nothing can offer a second time.
+    #: THE WHOLE CURSOR after reconciling, what :func:`mark_swept` marks from
+    #: (see :func:`pending_marks`).
     recorded: frozenset[str] = frozenset()
-    #: Every playlist the record holds as taken (U242), read once with the
-    #: listing. A taken playlist is never offered and never taken again.
+    #: Every playlist held as taken, read once with the listing (U242).
     taken: frozenset[str] = frozenset()
 
     def names(self) -> dict[str, str]:
@@ -438,20 +348,12 @@ def _listed_or_refuse(found: Catalogue) -> tuple[AccountPlaylist, ...]:
 
 
 def account_listing(found: Catalogue) -> tuple[AccountPlaylist, ...]:
-    """Every playlist the account lists, with the count it declares, or the refusal.
-
-    The listing ``sync removed`` reads (U287), which needs each playlist's
-    declared count beside its identifier, through the same refusal.
-    """
+    """Every playlist the account lists, with the count it declares, or the refusal (U287)."""
     return _listed_or_refuse(found)
 
 
 def account_names(found: Catalogue) -> dict[str, str]:
-    """Every playlist the account lists, identifier to name, or the refusal.
-
-    The listing ``sync unmark`` plans and rechecks against (R-838), through the
-    same refusal an unread listing gets everywhere else here.
-    """
+    """Every playlist the account lists, identifier to name, or the refusal (R-838)."""
     return {playlist.playlist_id: playlist.name for playlist in _listed_or_refuse(found)}
 
 
@@ -468,17 +370,10 @@ def plan(
 ) -> Sweep:
     """Reconcile the cursor, list the account, and decide every playlist.
 
-    Reconciled FIRST so a playlist whose job finished since the last pass is
-    excluded as recorded in this one rather than queued again.
-
-    ``label_built`` is every year playlist ``label playlists`` recorded, HANDED
-    IN rather than read here, because this source is core and the record is
-    the outbound package's, which a core module does not import (R-835).
-    ``set_built`` is every playlist ``export set`` made, handed in for the same
-    reason (R-837). ``paired`` is every account playlist ``sync pair`` keeps,
-    handed in for the same reason (U130). ``mirrored`` is every playlist
-    ``crate organize`` mirrors a rekordbox playlist into, for the same reason
-    (U147).
+    Reconciled FIRST so a job finished since the last pass excludes its
+    playlist rather than queueing it again. ``label_built``, ``set_built``,
+    ``paired`` and ``mirrored`` are HANDED IN, since a core module does not
+    import the packages that record them.
     """
     recorded_now = reconcile(store, cfg, handler_key=handler_key)
     existing = WatermarkStore(cfg).read(SOURCE_ID)
@@ -507,10 +402,8 @@ def plan(
             sweep.excluded[playlist.playlist_id] = reason
             continue
         try:
-            # ROW BY ROW (R-1289), as ``sync twins`` and ``sync pair`` read: a
-            # track the account lists with no title or no artist is set aside
-            # and named, and every other track of the playlist is queued. A row
-            # with no provider id still refuses the listing, per playlist.
+            # ROW BY ROW (R-1289). A track with no title or artist is set aside;
+            # a row with no provider id still refuses the listing.
             listing = intake_cli.list_playlist_readable(found, playlist.playlist_id)
         except CratekitError as exc:
             if exc.cause.reason not in PER_PLAYLIST_REASONS:
@@ -520,16 +413,14 @@ def plan(
             continue
         tracks = listing.tracks
         if listing.short is not None:
-            # SAID, NEVER REFUSED (R-515): the rows served are queued, and the
-            # summary carries how many the provider counted and withheld.
+            # SAID, NEVER REFUSED (R-515); the rows served are queued.
             sweep.short[playlist.playlist_id] = listing.short.block()
         if listing.unread:
             sweep.unread[playlist.playlist_id] = {
                 ref: {**one.said(), "why": one.why} for ref, one in listing.unread.items()
             }
             if not tracks:
-                # EVERY TRACK UNREAD is a playlist that could not be read, not
-                # an empty one, and it is offered again as an unreadable one is.
+                # EVERY TRACK UNREAD is unreadable, not empty, so it is offered again.
                 sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE
                 sweep.unreadable[playlist.playlist_id] = (
                     "no track on it could be queued: "
@@ -555,13 +446,9 @@ def queue(
 ) -> None:
     """Queue one intake playlist job per ready playlist, under the shared run.
 
-    ``filed`` is appended to AS EACH JOB IS QUEUED, because each enqueue is its
-    own transaction: a refusal on the third playlist leaves the first two filed,
-    and the caller has to be able to name them.
-
-    EACH JOB CARRIES THE NAME THE ACCOUNT LISTED (U113), so the landing can
-    give the playlist its own INBOX playlist under that name without listing
-    the account again, after ``sync mark`` has prefixed it.
+    ``filed`` is appended to AS EACH JOB IS QUEUED, since each enqueue is its
+    own transaction and a caller must name what was filed before a refusal.
+    Each job carries the listed name (U113) for the landing's INBOX playlist.
     """
     names = sweep.names()
     for playlist_id, tracks in sweep.ready.items():
@@ -582,19 +469,10 @@ def queue(
 def marking_sweep(store, cfg: config.Config, found: Catalogue, *, handler_key: str) -> Sweep:
     """The sweep a mark is taken from, built WITHOUT MOVING THE CURSOR.
 
-    :func:`plan` reconciles first, which writes the cursor, and lists every new
-    playlist track by track, which is provider calls a mark has no use for. A
-    mark is asked for between passes, by a verb that stops at a gate before it
-    does anything, and a verb that wrote the cursor on its way to the question
-    would have moved state for an answer of abort.
-
-    So ``recorded`` here is what the cursor holds TOGETHER WITH what
-    :func:`reconcile` would add at the top of the next pass, the playlists whose
-    job this source queued has SUCCEEDED. Read from the cursor alone, the
-    ordinary sequence of pass, list, download, land, mark would find nothing
-    recorded, because nothing reconciles between the pass and the mark. The rule
-    for what counts as recorded is :func:`completed`, the one :func:`reconcile`
-    uses, so this reads the policy and does not restate it.
+    The mark verb stops at a gate first, so it must not write state an abort
+    would leave behind. ``recorded`` is the cursor TOGETHER WITH what
+    :func:`reconcile` would add (by :func:`completed`), since nothing
+    reconciles between the pass and the mark.
     """
     existing = WatermarkStore(cfg).read(SOURCE_ID)
     held = set(existing.swept) if existing is not None else set()
@@ -609,37 +487,17 @@ def pending_marks(
 ) -> tuple[marks.PendingMark, ...]:
     """Every recorded playlist the account still lists and the record does not hold as taken.
 
-    ``only`` NARROWS AND NEVER WIDENS. A caller that knows which playlists a
-    landed file completes passes them, and the set is what was already pending
-    AND is named there, so an identifier that is not recorded, not listed or
-    already taken is not marked because somebody named it. ``None`` is every
-    pending playlist, and an empty set is none of them: the two are different
-    answers and ``if only`` would have read them as one.
+    ``only`` NARROWS AND NEVER WIDENS. ``None`` is every pending playlist and
+    an empty set is none, so ``if only`` would be wrong.
 
     **THE SET IS THE WHOLE CURSOR AND NOT** :attr:`Sweep.recorded_now`. The
-    cursor is written by :func:`reconcile` at the top of :func:`plan`, before
-    anything could have marked anything, and it moves whether the mark then
-    lands, refuses or finds a stale recheck. So a set taken from what this pass
-    ADDED is a set no later pass can offer again: the playlist is recorded, it
-    is excluded as :attr:`Excluded.RECORDED` forever after, and it is never
-    taken. Taking the set from what the cursor HOLDS makes a mark that did not
-    land this pass an ordinary candidate on the next one.
+    cursor moves before any mark and whether or not it lands, so a set of what
+    this pass added could never be offered again; from the whole cursor, an
+    unlanded mark is retried and a taken one drops out.
 
-    What ends the retrying is the mark itself. A playlist the mark reached is
-    held as taken (U242), or before U242 carried the prefix, and a taken one
-    is skipped here, so the set shrinks by exactly what landed.
-
-    A recorded playlist the account no longer lists has no name to record and
-    is not pending. Nothing is owed to a playlist that is gone.
-
-    **THE LABEL BATCH'S DEBRIS IS NEVER MARKED (R-361).** A pass no longer
-    queues a ` LIBRARY` name, and a job for one can still reach the cursor: the
-    eleven the fourth sitting left queued, resumed, or one a person ran through
-    ``crate intake playlist``, which R-382 records. Its name is the source
-    system's throwaway and the source system's own sweep never prefixes it, so
-    nothing here takes it. Asked here and not only in :func:`exclusion`,
-    because the exclusion decides what is OFFERED and this decides what is
-    TAKEN, and a rule on the offering path leaves the taking path open.
+    A playlist no longer listed is owed nothing. **THE LABEL BATCH'S DEBRIS IS
+    NEVER MARKED (R-361)**, asked here too because :func:`exclusion` decides
+    what is offered and this decides what is taken.
     """
     listed = sweep.names()
     return tuple(
@@ -663,28 +521,13 @@ def mark_swept(
 ) -> tuple[str, ...]:
     """Hold the recorded playlists as taken. Returns the taken ids.
 
-    **NO TITLE CHANGES (U242).** The account is read, to recheck each title,
-    and never written: ``take`` is handed each playlist's identifier and the
-    title the plan listed, and records it in the taken ledger, raising when it
-    cannot. Before U242 this prefixed the title instead.
+    **NO TITLE CHANGES (U242).** The account is only read, to recheck; ``take``
+    records each id and listed title in the ledger, raising when it cannot.
 
-    ``only`` is :func:`pending_marks`'s, handed straight through.
-
-    **THE FILE IS CHECKED FIRST AND BY** :func:`marks.apply_deferred`, which
-    refuses ``sync-marks-blocked`` when the importable file is missing or empty.
-    There is deliberately no early return in front of it: a call with nothing
-    pending and no file still refuses, because a caller that has no file is
-    wrong about the run whether or not this pass happened to record anything.
-
-    ``applied`` is APPENDED TO AS EACH TAKE LANDS, on :func:`queue`'s pattern
-    and for its reason: a failure on the third playlist leaves the first two
-    taken, and the return value is gone when this raises. A caller that wants
-    to name what landed passes a list.
-
-    **THE ONE PRODUCTION CALLER IS** ``sync/mark_cli.py`` (U82), which hands it
-    the intake file a landing wrote and the playlists that file completes, or,
-    on a database native intake tree, a :class:`marks.NativeLanding` (R-777). The
-    pass itself still never calls this, since a pass writes no importable file.
+    **THE FILE IS CHECKED FIRST AND BY** :func:`marks.apply_deferred`, with no
+    early return in front, so nothing pending and no file still refuses.
+    ``applied`` is APPENDED TO AS EACH TAKE LANDS, so a caller can name what
+    landed when this raises. The one production caller is ``sync/mark_cli.py``.
     """
     listed = sweep.names()
     landed = applied if applied is not None else []
@@ -722,11 +565,8 @@ def report(
 ) -> dict[str, Any]:
     """The playlists block of the pass summary. Identifiers first, names to read.
 
-    ``marked`` is what :func:`mark_swept` returned, or ``None`` when the pass
-    never reached the mark step. The two are different facts and the block says
-    which: ``None`` reports :data:`MARK_UNBOUND`, and an empty result reports
-    :data:`MARK_APPLIED` with nothing under ``marked``, which is a mark step that
-    ran and found every recheck stale.
+    ``marked`` of ``None`` reports :data:`MARK_UNBOUND`; an empty result reports
+    :data:`MARK_APPLIED`, a mark step that found every recheck stale.
     """
     names = sweep.names()
     return {
@@ -763,44 +603,16 @@ def report(
 def said(block: Mapping[str, Any]) -> str | None:
     """The words for what the block says swept means, or ``None`` when it says nothing.
 
-    Read off the block's own token rather than returned unconditionally, so a
-    block that stopped carrying the field is also a check that stopped saying it.
+    Read off the block's own token, so the words go when the field does.
     """
     return SWEPT_MEANS_SAID.get(str(block.get("swept_means") or ""))
 
 
 __all__ = [
-    "LIBRARY_PLAYLIST_SUFFIX",
-    "MARK_APPLIED",
-    "MARK_KIND",
-    "MARK_UNBOUND",
-    "PER_PLAYLIST_REASONS",
-    "SOURCE_ID",
-    "SWEPT_MEANS",
-    "SWEPT_MEANS_SAID",
-    "SWEPT_PREFIX",
-    "Excluded",
-    "Sweep",
-    "account_listing",
-    "account_names",
-    "completed",
-    "exclusion",
-    "is_library_debris",
-    "is_swept_name",
-    "is_taken",
-    "mark_swept",
-    "marking_sweep",
-    "open_playlists",
-    "pending_marks",
-    "playlist_jobs",
-    "playlist_of",
-    "plan",
-    "queue",
-    "reconcile",
-    "recorded_as",
-    "report",
-    "said",
-    "source_jobs",
-    "taken_ids",
-    "untaken_name",
+    "LIBRARY_PLAYLIST_SUFFIX", "MARK_APPLIED", "MARK_KIND", "MARK_UNBOUND", "PER_PLAYLIST_REASONS",
+    "SOURCE_ID", "SWEPT_MEANS", "SWEPT_MEANS_SAID", "SWEPT_PREFIX", "Excluded", "Sweep",
+    "account_listing", "account_names", "completed", "exclusion", "is_library_debris",
+    "is_swept_name", "is_taken", "mark_swept", "marking_sweep", "open_playlists", "pending_marks",
+    "playlist_jobs", "playlist_of", "plan", "queue", "reconcile", "recorded_as", "report", "said",
+    "source_jobs", "taken_ids", "untaken_name"
 ]

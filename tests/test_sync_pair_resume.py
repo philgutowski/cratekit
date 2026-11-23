@@ -1,13 +1,8 @@
 """U210: a sync stopped part way through its write finishes with a continue of the same run.
 
-Driven through ``crate sync pair`` on the disposable databases the sync pair
-suites build, with every write the fake account makes sent through a real
-provider gate, so ``--calls`` stops the write on the ceiling exactly as it
-stops a live one: the dispatcher's own scope, the gate's own park. A plan
-made by the first command is held under its run (U209); this file asks what
-the run's recorded steps let a continue do after a stop.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The fake account's writes go through a real provider gate, so ``--calls`` stops
+the write on the ceiling as it stops a live one. D1 applies, nothing here names
+a real account, person or track.
 """
 
 from __future__ import annotations
@@ -50,11 +45,9 @@ class Limited:
 def gate_the_account(account, monkeypatch, *, limited_on: int | None = None) -> None:
     """Send every write the fake account makes through a real provider gate.
 
-    The fake counts a write in ``_bump`` before it changes anything, so the
-    gate is asked first: a call the ceiling refuses is never made and changes
-    nothing, which is the gate's own promise for a live call. ``limited_on``
-    makes that gated call answer rate limited, writing nothing, which trips
-    the gate's cooldown: a park that is not the ceiling.
+    The gate is asked before ``_bump`` changes anything, so a refused call
+    changes nothing, as for a live call. ``limited_on`` makes that call answer
+    rate limited, a park that is not the ceiling.
     """
     gate = provider_gate.Gate(
         provider_gate.GateSettings(min_interval_s=0.0), sleep=lambda seconds: None
@@ -100,9 +93,7 @@ def _codes(envelope) -> set[str]:
     return {warning["code"] for warning in envelope.get("warnings") or ()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Many made pairs: the Sitting 54 shape
-# ═══════════════════════════════════════════════════════════════════════════
+# Many made pairs.
 
 
 @pytest.fixture
@@ -116,9 +107,8 @@ def gated(world, monkeypatch):
 def made_world(gated):
     """Five rekordbox playlists in one folder, each made on the account by the write.
 
-    Each made pair costs three gated writes (make, move, fill) and the folder
-    one, so the write is sixteen calls: a ceiling of ten stops it after three
-    pairs, on the fourth pair's make.
+    Three gated writes a pair and one for the folder, sixteen in all, so a
+    ceiling of ten stops on the fourth pair's make.
     """
     world = gated
     folder = world.folder("GIG READY")
@@ -214,8 +204,7 @@ def test_a_stop_between_making_a_playlist_and_filling_it_fills_it_and_makes_no_s
     assert code == int(ExitCode.OK), (between, done)
     assert world.account.created == ["GIG READY Opener"], "a second playlist was made"
     assert world.in_folder("GIG READY") == {"GIG READY Opener": made}, between
-    # Moved once: by the stopped command, or by the continue when the stop
-    # came before the move, never by both.
+    # Moved once, by the stopped command or by the continue, never by both.
     assert len(world.account.moves) == 1, (between, world.account.moves)
     assert world.account.playlists[made] == ["t1", "t2", "t3"]
     held = pairs.PairStore(cfg).get(made)
@@ -266,9 +255,7 @@ def test_a_title_taken_in_the_folder_before_the_continue_refuses_stale_naming_it
     assert world.account._writes == writes, "the continue wrote over a moved folder"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The gate's forecast
-# ═══════════════════════════════════════════════════════════════════════════
+# The gate's forecast.
 
 
 def test_a_gate_whose_ceiling_is_below_the_expected_calls_says_so_with_the_calls_value(
@@ -305,7 +292,7 @@ def test_a_gate_under_its_ceiling_shows_the_expected_calls_and_no_warning(made_w
 def test_a_stop_in_a_run_whose_plan_was_not_held_says_it_cannot_be_continued(
     made_world, monkeypatch
 ):
-    """Round one's second finding: no step recorded, so no continue of the run is promised."""
+    """No step recorded, so no continue of the run is promised."""
     world, _playlists = made_world
     monkeypatch.setattr(pair_cli, "_hold", lambda *args: "the plan could not be written")
     run_id, _first = to_the_write(VERB)
@@ -320,6 +307,7 @@ def test_a_stop_in_a_run_whose_plan_was_not_held_says_it_cannot_be_continued(
 
 def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
     from cratekit.modules.outbound.pairs import Pair
+    from cratekit.sync import pair_write
 
     one = pair_cli.PairPlan.__new__(pair_cli.PairPlan)
     object.__setattr__(one, "target", pair_cli.Target("", "rb-1", False, "GIG READY", "t"))
@@ -337,11 +325,11 @@ def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
         fields.update(changed)
         return Pair(**fields)
 
-    assert pair_cli._made_here(pair(), one)
-    assert not pair_cli._made_here(None, one)
-    assert not pair_cli._made_here(pair(made=False), one), "a pair made by hand was read as made"
-    assert not pair_cli._made_here(pair(rekordbox_id="rb-2"), one)
-    assert not pair_cli._made_here(pair(folder="ARCHIVE"), one)
+    assert pair_write._made_here(pair(), one)
+    assert not pair_write._made_here(None, one)
+    assert not pair_write._made_here(pair(made=False), one), "a pair made by hand was read as made"
+    assert not pair_write._made_here(pair(rekordbox_id="rb-2"), one)
+    assert not pair_write._made_here(pair(folder="ARCHIVE"), one)
 
 
 def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
@@ -350,12 +338,10 @@ def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
     run_id, _first = to_the_write(VERB)
     code, stopped = write(run_id, VERB, 3)
     assert code == CEILING, stopped
-    # The check: the made playlist listed with its unpaged read beside it
-    # (U226), and the root folders read once.
+    # The check: the made playlist and its unpaged read (U226), the root folders once.
     check = pair_calls.judged_calls(0) + pair_calls.READ_FOLDER
-    # The write: the first pair filled after its membership is read, and the
-    # other four made and filled; their folder is made already. Each add
-    # counts the client's read after it (U231).
+    # The write: the first pair filled, the other four made and filled, each
+    # add counting the client's read after it (U231).
     fill = pair_calls.listing_calls(0) + 1 + 1 + pair_calls.REPARSE
     others = 4 * (pair_calls.MAKE_PLAYLIST + 1 + 1 + pair_calls.REPARSE)
     assert stopped["cause"]["detail"]["expected"] == check + fill + others
@@ -375,17 +361,13 @@ def test_a_pair_the_stopped_command_finished_is_not_read_again_by_the_continue(m
     assert len(world.account.created) == 5
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# U278: a continue or a forecast above the hour's budget carries the hour
-# ═══════════════════════════════════════════════════════════════════════════
+# U278: a continue or a forecast above the hour's budget carries the hour.
 
 
 @pytest.fixture
 def small_hour(made_world, cfg, monkeypatch):
-    """The made world with an hour of fifty calls, so the ``--calls`` sync pair
-    names for the rest of its write is above the hour (round two's review).
-    The world's config is the one ``config.load`` answers, so it is replaced
-    there as ``cfg`` set it."""
+    """The made world with an hour of fifty calls, so the ``--calls`` named for
+    the rest of the write is above it. ``config.load`` answers the world's config."""
     import dataclasses  # noqa: PLC0415
 
     from cratekit.core import config  # noqa: PLC0415

@@ -1,76 +1,41 @@
 """``sync.mark``: a landed sync pass records the playlists it finished as taken, behind one gate.
 
-SINCE U242 NO TITLE CHANGES. The ``DOWNLOADED `` prefix is retired, decided by
-Phillip on 2026-11-11: a finished playlist is held as taken in Cratekit's own
-record (:mod:`cratekit.sync.mark_record`), and the account is read and never
-written. Everything below that says rename now means that record, and the
-words are kept where they name the rule rather than the write.
+SINCE U242 NO TITLE CHANGES. A finished playlist is held as taken in
+:mod:`cratekit.sync.mark_record`; the account is only read. "Rename" below
+names the rule, not a write. This verb is the one caller of
+:func:`cratekit.sync.playlists.mark_swept`, handed the intake file a landing
+wrote (R-358).
 
-R-358's production half. A pass resolves each account playlist and acquires
-nothing, ``intake missing --run`` lists what it found missing, ``acquire
-download`` fetches that, and ``intake land`` writes one intake file. Only then
-does an importable file exist, which is what ``sync/marks.py`` makes a rename
-wait for. This verb is handed that file and is the one caller of
-:func:`cratekit.sync.playlists.mark_swept`.
-
-THE FILE NAMES THE PASS. ``intake missing --run`` names its list after the run,
-``<run without colons>_synced``, and tells the person to land with that as
-``--pass``, so the intake file is ``<name>_inboxed.xml`` while the batch folder
-and playlist carry the date and the source (U110). Nothing here is told a run
-identifier. The name is read off the intake file, and the pass's jobs are the
-ones whose own run spells that name, which is a comparison in the direction the
-name was built and never an attempt to put the colons back.
+THE FILE NAMES THE PASS. The pass name is read off ``<name>_inboxed.xml``,
+and the pass's jobs are those whose run spells that name (U110), compared in
+the direction the name was built, never by putting the colons back.
 
 ONLY A FINISHED PLAYLIST IS MARKED, AND THE JOB'S OWN REPORTS SAY WHAT FINISHED
-MEANS. Each playlist of the pass has one intake job, and that job committed one
-report per track: owned, suppressed, offered or missing. Every track the pass
-did not find, the offered and the missing, is resolved against the library
-again NOW, by the view ``acquire match`` uses. A playlist is planned only when
-its job SUCCEEDED and every such track is LANDED, the intake file names the
-file, OWNED, the library holds it and the file does not name it, or SUPPRESSED,
-somebody has since deleted it on purpose and the pass itself never owed a
-suppressed track. One track outstanding leaves the playlist alone with the
-track named.
+MEANS. Every track the pass did not find (offered or missing) is resolved
+against the library NOW by ``acquire match``'s view. A playlist is planned only
+when its job SUCCEEDED and every such track is LANDED (named in the file),
+OWNED, or SUPPRESSED; one outstanding track leaves it alone, named.
 
-NOT THE MANIFEST, which the brief named and ``/code-review`` showed cannot
-carry the decision. The manifest beside the pass's list is derived from these
-reports and drops two kinds of track on the way: one the pass OFFERED for
-review, which is never listed for download, and one it handed on to the text
-list because the provider gave it no id. A playlist holding either would have
-had no row owed and been marked DOWNLOADED over a track that is not in the
-library. A manifest can also be another pass's, and a pass whose every missing
-track was handed on has none at all. The reports are per playlist, are written
-once and are what the manifest was made from, so they are read instead and the
-verb takes no manifest.
+NOT THE MANIFEST, which drops offered tracks and tracks with no provider id,
+so a playlist holding either would be marked over a track not in the library.
+The per playlist reports are read instead.
 
-A FILE OF NO PASS IS A PLAN OF NOTHING, NOT A REFUSAL, on the precedent
-``intake land`` set for an empty folder: no playlist job on this library spells
-the file's name, so there is nothing this verb could ever rename from it. That
-is decided before the account is listed or a credential is asked for, the empty
-plan is still gated, and the run ends NO_OP under a warning that says why.
+A FILE OF NO PASS IS A PLAN OF NOTHING, NOT A REFUSAL, decided before the
+account is listed, still gated, ending NO_OP with a warning.
 
-THE PLAN IS SHOWN BEFORE ANYTHING IS RENAMED, and what runs after the answer is
-the engine's own recheck against a second listing, so a playlist retitled or
-removed since the plan is skipped and said, never forced.
+The plan is shown first and the engine rechecks against a second listing, so
+a playlist changed since is skipped and said. A FAILURE PART WAY NAMES WHAT WAS
+MARKED, keeping an account or record refusal's reason; anything else is this
+build's defect.
 
-A FAILURE PART WAY NAMES WHAT WAS MARKED. Each playlist is its own write to
-the record. A refusal the account or the record raised keeps its reason,
-anything else is this build's own defect and says so, and either way the
-message and detail carry the playlists already taken, which stay taken.
+A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-777), so the pass is
+named with ``--pass``, each held track counts owned, and the proof is a
+:class:`cratekit.sync.marks.NativeLanding`, made once the medium reads native
+and read again before the first mark. ``--pass`` on the bridge is refused
+naming ``--xml``.
 
-A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-777), so there the
-pass is named with ``--pass`` instead of ``--xml``. The pass's jobs are found
-by that name exactly as by the file's, and every track the pass did not find is
-resolved against the library the same way; with no file to say which landing
-brought a track, each one the library holds is counted owned. The proof the
-engine waits for is :class:`cratekit.sync.marks.NativeLanding`, made only after
-the medium reads native, and the medium is read again before the first rename.
-``--pass`` on a tree still on the bridge is refused naming ``--xml``, because
-there the intake file is the proof and a pass named without it is unproven.
-
-EVERY MARK IS A TAKEN ENTRY UNDER THE PASS (U242), with the title the plan
-listed and the time, which ``organize --only file`` reads a year from. That
-entry is what ``sync unmark`` lets go to put a mistaken mark back.
+EVERY MARK IS A TAKEN ENTRY UNDER THE PASS (U242), stamped with the time
+``organize --only file`` reads a year from; ``sync unmark`` lets it go.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -104,19 +69,15 @@ SKIP = "skip"
 ALREADY_MARKED = "already-marked"
 NOT_LISTED = "not-listed"
 JOB_UNFINISHED = "job-unfinished"
-#: The pass's own word for the label batch's ` LIBRARY` debris, read through
-#: the enum so the two verbs cannot spell it two ways (R-361). A job for one
-#: reaches the pass only from before the rule or by hand, and the source
-#: system's throwaway is never renamed under it.
+#: The label batch debris word, read through the enum so both verbs spell it one way (R-361).
 LABEL_DEBRIS = str(playlists.Excluded.LABEL_DEBRIS)
 REPORTS_UNREADABLE = "reports-unreadable"
 ROWS_OUTSTANDING = "rows-outstanding"
 #: Why a planned playlist was not renamed after all: the engine's recheck.
 CHANGED_SINCE = "changed-since-plan"
 
-#: The reasons that say the pass did not complete a playlist, so naming one
-#: with ``--playlist`` is refused rather than shown as a skip (U174). The other
-#: reasons are about the account or the name, not the pass, and stay skips.
+#: The reasons the pass did not complete a playlist, so naming one with
+#: ``--playlist`` is refused rather than skipped (U174).
 UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})
 
 #: The gate screen's line naming a plan narrowed by ``--playlist``.
@@ -133,8 +94,7 @@ LANDED = "landed"
 OWNED = "owned"
 SUPPRESSED = "suppressed"
 
-#: The report states that say the pass did not find the track in the library.
-#: ``owned`` and ``suppressed`` are the other two, and neither was ever owed.
+#: The report states saying the pass did not find the track; the others were never owed.
 _NOT_FOUND = frozenset({"missing", "offered"})
 
 
@@ -193,14 +153,8 @@ class _Playlist:
 
 
 def _pass_name(xml: Path) -> str:
-    """The name the pass's list and intake file share, read off the file.
-
-    NOT THE BATCH'S since U110, which is named for the date and the source; a
-    landing names only its intake file for the pass.
-    """
-    # RETIRED OR NOT (R-501). ``intake imported`` renames the file once the
-    # import is proven, and a person who proved it before marking passes that
-    # name. It is the same file and it names the same pass.
+    """The name the pass's list and intake file share, read off the file (not the batch's, U110)."""
+    # RETIRED OR NOT (R-501); a retired intake file names the same pass.
     written = land_cli.unretired_name(xml.name)
     if not written.endswith(land_cli.INTAKE_SUFFIX) or written == land_cli.INTAKE_SUFFIX:
         raise _blocked(
@@ -212,17 +166,15 @@ def _pass_name(xml: Path) -> str:
     return written[: -len(land_cli.INTAKE_SUFFIX)]
 
 
-#: The pass name rule, public for ``label mark`` (R-835), so the two verbs that
-#: read a pass off an intake file read it one way.
+#: The pass name rule, public so ``label mark`` reads a pass the same way (R-835).
 pass_name_of = _pass_name
 
 
 def _comparable(path: str | Path) -> str:
     """A path as both sides spell it, THROUGH THE FILESYSTEM and then the form.
 
-    Resolved first, which is what ``landing._file_labels`` does for the same
-    question, because a library root reached through a link spells every landed
-    file one way in the intake file and another in the index.
+    Resolved first, since a root reached through a link spells files differently
+    in the intake file and the index.
     """
     return locations.norm_for_compare(str(Path(path).resolve()))
 
@@ -246,9 +198,7 @@ def _locations(xml: Path) -> frozenset[str]:
         try:
             named.add(_comparable(locations.location_to_path(recorded)))
         except locations.LocationDecodeError:
-            # A location on another host is not a file this landing put here,
-            # so it is nothing a track could have landed as. Passed over, and
-            # never a traceback out of a verb whose failures are refusals.
+            # Another host's location is nothing this landing put here; passed over.
             continue
     if not named:
         raise _blocked(
@@ -273,11 +223,9 @@ def _native_proof(
 ) -> marks.NativeLanding:
     """The native proof for a pass named on the command line, or the refusal.
 
-    THE MEDIUM IS ``ingest.intake_medium`` AND NO COPY OF IT (R-770), the one
-    switch every verb that writes the intake tree reads. ``verb`` is the one a
-    refusal tells the person to run again and ``named`` where the pass's name
-    came from, since ``label mark --pass`` takes its pass by this same proof
-    and a label batch's name is not one ``intake missing`` gave (R-1056).
+    THE MEDIUM IS ``ingest.intake_medium`` AND NO COPY OF IT (R-770). ``verb``
+    and ``named`` word the refusal for the caller, ``label mark --pass``
+    included (R-1056).
     """
     if not landing.plain_name(name):
         raise _blocked(
@@ -317,24 +265,17 @@ def _native_proof(
     )
 
 
-#: The native proof, public for ``label mark --pass`` (R-1056), so the two
-#: verbs that take a pass by name on a native intake tree prove it one way.
+#: The native proof, public so ``label mark --pass`` proves a pass the same way (R-1056).
 native_proof = _native_proof
 
 
 def native_passes(cfg: config.Config) -> tuple[str, ...]:
     """The passes a database native landing committed, for a caller that marks every pass.
 
-    ``crate organize`` finds a pass on the bridge by its intake file and here by
-    its native landing's record (R-915, U174). NONE ON A TREE READ AS THE
-    BRIDGE, where the intake file is the proof and a pass named without it is
-    refused by :func:`_native_proof`, so a record left from before a revert is
-    not planned as a refusal on every run.
-
-    A ROOT THAT CANNOT BE REACHED IS REFUSED, NEVER READ AS NO PASS. The
-    landings' records live under the library root, so an unmounted volume
-    would read as none and a caller would show a clean plan over passes it
-    could not see (the review of U174).
+    NONE ON A TREE READ AS THE BRIDGE, so a record left from before a revert is
+    not planned as a refusal on every run (R-915, U174). A ROOT THAT CANNOT BE
+    REACHED IS REFUSED, NEVER READ AS NO PASS, or a caller would show a clean
+    plan over passes it could not see.
     """
     medium = ingest.intake_medium(cfg)
     if medium.declared is None:
@@ -402,8 +343,7 @@ def _decided(store, sweep: playlists.Sweep, found: list[jobs.Job]) -> list[_Play
         try:
             reports = missing_cli.job_reports(store, job)
         except CratekitError as exc:
-            # UNREAD IS NOT NOTHING OWED. A playlist whose reports cannot be
-            # read is one this run cannot say is finished, so it is left alone.
+            # UNREAD IS NOT NOTHING OWED. The playlist is left alone.
             entry.reason = REPORTS_UNREADABLE
             entry.why = exc.cause.message
             continue
@@ -418,16 +358,12 @@ def _decided(store, sweep: playlists.Sweep, found: list[jobs.Job]) -> list[_Play
 def _settle(decided: list[_Playlist], named: frozenset[str], cfg: config.Config) -> None:
     """Resolve every track the pass did not find, against the library as it is now.
 
-    THE LIBRARY IS WALKED ONLY WHEN SOMETHING ASKS. A second run over a pass
-    that is wholly marked, or a pass whose every track was owned, has nothing
-    to resolve, and the walk is every file on the music volume.
+    THE LIBRARY IS WALKED ONLY WHEN SOMETHING ASKS, since the walk is every
+    file on the music volume.
 
-    THE VIEW IS ``acquire match``'s OWN, tombstones included, so a track is
-    owned here by the rule that called it missing. A track that is close and not
-    exact is OUTSTANDING, since whether that file is the record is a person's
-    to say. The review store is NOT consulted, so a track somebody has since
-    accepted through review still holds its playlist back, which is recorded as
-    a residual and errs on the side of not renaming.
+    THE VIEW IS ``acquire match``'s OWN, tombstones included. A close but not
+    exact track is OUTSTANDING, a person's to judge. The review store is NOT
+    consulted, which errs on the side of not marking.
     """
     asking = [entry for entry in decided if entry.planned and entry.wanted]
     if not asking:
@@ -483,15 +419,12 @@ def _payload(
     items = [_item(entry) for entry in decided]
     planned = sorted((item["id"], item["name"]) for item in items if item["action"] == MARK)
     if isinstance(proof, marks.NativeLanding):
-        # NO FILE TO FINGERPRINT. The pass and the tree it landed on are what
-        # the person was shown, and the marks themselves, which a track
-        # landing since the plan moves.
+        # NO FILE TO FINGERPRINT, so the pass, tree and marks are the identity.
         identity: dict[str, Any] = {
             "kind": "sync-mark",
             "pass": proof.pass_name,
             "tree": proof.tree_id,
-            # THE LANDINGS THAT PROVE IT, so a second landing of the pass since
-            # the plan is another plan, as a rewritten intake file is.
+            # THE LANDINGS THAT PROVE IT, so a later landing is another plan.
             "landings": list(proof.landings),
             "marks": planned,
         }
@@ -499,17 +432,14 @@ def _payload(
         identity = {
             "kind": "sync-mark",
             "xml": str(proof),
-            # THE ONE STAT ``marks.require_output`` TOOK. A file rewritten since
-            # the person was shown the plan is another landing, and its size
-            # and time move with it.
+            # THE ONE STAT ``marks.require_output`` TOOK, so a rewritten file is another plan.
             "xml_size": seen.st_size,
             "xml_mtime_ns": seen.st_mtime_ns,
             "marks": planned,
         }
     if named:
-        # A NARROWED PLAN IS ANOTHER QUESTION (U174), so an answer to the
-        # screen that named one playlist never carries out the whole pass's.
-        # Left out when nothing is named, so the whole pass's digest is as it was.
+        # A NARROWED PLAN IS ANOTHER QUESTION (U174); left out when nothing is
+        # named, so the whole pass's digest is unchanged.
         identity["only"] = sorted(named)
     return {
         "digest": digest_of(identity),
@@ -563,12 +493,10 @@ def _failed_part_way(
     names: dict[str, str],
     planned: list[str],
 ) -> CratekitError:
-    """The failure, with what was already taken named in it.
+    """The failure, naming what was already taken.
 
-    A REFUSAL THE ACCOUNT OR THE RECORD RAISED KEEPS ITS REASON AND ITS
-    REMEDY: the recheck's listing and the record's own refusal are causes
-    already, so anything else arriving here is this build's own defect, and
-    calling that a provider outage would send a person to retry against a bug.
+    A REFUSAL THE ACCOUNT OR THE RECORD RAISED KEEPS ITS REASON AND ITS REMEDY;
+    anything else is this build's own defect, never called a provider outage.
     """
     marked = [names.get(identity, identity) for identity in landed]
     said = (
@@ -619,9 +547,7 @@ def _failed_part_way(
 class PassPlan:
     """One intake file's pass, planned: what the gate is asked over and what applies.
 
-    PUBLIC FOR ``crate organize`` (U112), which plans every landed pass through
-    :func:`plan_pass` and applies an approved one through :func:`apply_pass`,
-    so a pass is marked there by exactly this verb's body.
+    PUBLIC FOR ``crate organize`` (U112), so it marks a pass by this verb's body.
     """
 
     xml: Path | None
@@ -630,11 +556,9 @@ class PassPlan:
     decided: list[_Playlist] = field(default_factory=list)
     sweep: Any = None
     catalogue_found: Any = None
-    #: What the engine waits for before a rename: the intake file, or on a
-    #: database native intake tree the :class:`marks.NativeLanding` (R-777).
+    #: The native proof the engine waits for in place of the intake file (R-777).
     native: marks.NativeLanding | None = None
-    #: The playlists ``--playlist`` narrowed the plan to, or empty for the
-    #: whole pass (U174).
+    #: The playlists ``--playlist`` narrowed to, or empty for the whole pass (U174).
     named: tuple[str, ...] = ()
 
     @property
@@ -666,22 +590,15 @@ def plan_pass(
 ) -> PassPlan:
     """Plan the marks one intake file's pass earns, reading the account only when it has one.
 
-    ``listing`` IS FOR A CALLER PLANNING MANY PASSES (U112): a callable
-    answering ``(catalogue, sweep)``, asked only for a file a pass owns, so
-    one listing of the account serves every pass rather than one listing
-    each. Absent, this pass lists the account itself, as the verb does.
+    ``listing`` IS FOR A CALLER PLANNING MANY PASSES (U112), a callable
+    answering ``(catalogue, sweep)`` so one account listing serves them all.
 
-    ``playlists_named`` NARROWS AND NEVER WIDENS (U174), ``sync unmark``'s
-    rule: only those playlists of the pass are planned, shown and covered by
-    the digest. One that is not the pass's is refused before the account is
-    listed, since the pass's jobs alone say which playlists it holds, and one
-    the pass did not complete is refused by name with its reason, rather than
-    shown as a skip the person asked to be marked.
+    ``playlists_named`` NARROWS AND NEVER WIDENS (U174). One not of the pass is
+    refused before the account is listed; one the pass did not complete is
+    refused by name with its reason.
     """
     named = tuple(dict.fromkeys(str(one) for one in playlists_named))
-    # THE FILE FIRST, before the account is listed or a credential is asked
-    # for, by the same single read the engine makes again before it renames.
-    # With no file, the native proof first, for the same reason (R-777).
+    # THE FILE FIRST (or the native proof, R-777), before the account is listed.
     native: marks.NativeLanding | None = None
     if (xml is None) == (pass_name is None):
         raise _blocked(
@@ -706,9 +623,7 @@ def plan_pass(
         found = _pass_jobs(store, cfg, name, handler_key)
     _refuse_strangers(named, found, name)
     if not found:
-        # BEFORE THE LISTING AND THE CREDENTIAL. Neither can change the answer,
-        # and a person with no session stored is owed "this file is no pass's"
-        # rather than "log in" followed by it.
+        # BEFORE THE LISTING AND THE CREDENTIAL, which cannot change the answer.
         return PassPlan(
             xml=xml,
             name=name,
@@ -729,10 +644,8 @@ def plan_pass(
     _settle(decided, located, cfg)
     _refuse_unfinished(named, decided, name)
 
-    # THE RECORD BEFORE THE GATE (R-838). One that cannot be read or locked
-    # refuses now, and not after marks it then could not take. A playlist this
-    # pass marked and ``sync unmark`` put back, or let go since U242, is
-    # planned again like any other, and the screen says so.
+    # THE RECORD BEFORE THE GATE (R-838), so an unusable one refuses now. A
+    # playlist since put back or let go is planned again, and the screen says so.
     record = mark_record.MarkRecord(cfg)
     put_back = {
         entry.playlist_id: entry.unmarked
@@ -818,15 +731,11 @@ def shown(planned: PassPlan) -> dict[str, Any]:
 def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
     """Record what the plan marks as taken, after the gate said apply (U242).
 
-    Returns the payload as applied, its warnings and the identifiers taken.
-    Raises naming what was taken when the account's recheck or the record
-    fails. NOTHING IS WRITTEN TO THE ACCOUNT: it is listed once more, for the
-    recheck, and no title changes.
+    Returns the payload as applied, its warnings and the identifiers taken;
+    raises naming what was taken. NOTHING IS WRITTEN TO THE ACCOUNT.
     """
     if planned.native is not None:
-        # THE MEDIUM AGAIN, before the first mark. A tree reverted to the
-        # bridge since the plan has an intake file to wait for, and the native
-        # proof would stand in for a file that should exist.
+        # THE MEDIUM AGAIN, before the first mark, in case the tree reverted.
         if _native_proof(cfg, planned.name) != planned.native:
             raise _blocked(
                 f"the intake tree or the landings of {planned.name!r} changed since the "
@@ -932,12 +841,6 @@ def sync_mark(ctx) -> Envelope:
 
 
 __all__ = [
-    "PassPlan",
-    "apply_pass",
-    "build_mark",
-    "listed",
-    "native_passes",
-    "plan_pass",
-    "shown",
-    "sync_mark",
+    "PassPlan", "apply_pass", "build_mark", "listed", "native_passes", "plan_pass", "shown",
+    "sync_mark"
 ]

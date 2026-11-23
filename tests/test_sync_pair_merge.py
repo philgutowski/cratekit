@@ -1,8 +1,7 @@
 """U130's merge, pure: the last sync, the account now, rekordbox now, and the list both should hold.
 
-Every scenario the brief names, at the level of keys, where each rule is one
-assertion and no database, account or gate stands between the rule and the
-answer. ``tests/test_sync_pair.py`` drives the same scenarios through the verb.
+Each rule is one assertion on keys, with no database, account or gate between;
+``tests/test_sync_pair.py`` drives the same scenarios through the verb.
 """
 
 from __future__ import annotations
@@ -139,9 +138,7 @@ def test_appended_is_removals_then_plain_appends():
     assert pair_merge.appended(("a", "b", "c"), ("b",), ("d", "a")) == ("a", "c", "d")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U202: the later of two opposite changes wins
-# ═══════════════════════════════════════════════════════════════════════════
 
 from datetime import datetime, timedelta, timezone  # noqa: E402
 
@@ -304,12 +301,9 @@ def test_the_first_sync_makes_no_call_whatever_the_moments():
     assert merged.calls == () and set(merged.order) == {"a", "b"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U225: the order after a write stopped part way through it
-# ═══════════════════════════════════════════════════════════════════════════
 
-#: The base both sides held, and what a write stopped part way left: it was
-#: putting the account in rekordbox's new order, which rekordbox led.
+#: The base, and what a stopped write left while putting rekordbox's order on the account.
 _BASE = Base(account=("a", "b", "c"), rekordbox=("a", "b", "c"))
 _LEFT = pair_merge.Stopped(
     account=("c", "a", "b"), rekordbox=("c", "a", "b"), leader=pair_merge.REKORDBOX
@@ -372,12 +366,9 @@ def test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_agai
     assert merged.order == ("a", "b", "c")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1404: a base whose two sides stand in different orders
-# ═══════════════════════════════════════════════════════════════════════════
 
-#: What a pair whose account order is not kept recorded after rekordbox led a
-#: reorder: rekordbox in its new order, the account in its old one.
+#: A pair whose account order is not kept, after rekordbox led a reorder.
 _APART = Base(account=("a", "b", "c"), rekordbox=("c", "a", "b"))
 
 
@@ -426,7 +417,7 @@ def test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order():
 
 
 def test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now():
-    """Round one's review: the same track added on both sides at two places is no disagreement at the base."""
+    """The same track added on both sides at two places is no disagreement at the base."""
     base = Base(account=("a", "b"), rekordbox=("a", "b"))
     merged = merge(base, Side(("a", "x", "b")), Side(("x", "a", "b")))
     assert merged.leader == pair_merge.ACCOUNT
@@ -434,16 +425,14 @@ def test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now()
 
 
 def test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now():
-    """Round one's review: a track the account holds now that only rekordbox held at the base decides nothing."""
+    """A track only rekordbox held at the base decides nothing, wherever the account holds it now."""
     base = Base(account=("a", "b"), rekordbox=("a", "r", "b"))
     merged = merge(base, Side(("r", "a", "b")), Side(("a", "r", "b")))
     assert merged.leader == pair_merge.ACCOUNT
     assert merged.order == ("r", "a", "b")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1416: a first sync whose account order is not kept, led by rekordbox
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_first_sync_whose_order_is_not_kept_leads_with_rekordbox():

@@ -1,16 +1,12 @@
-"""Per-source audit records. They advance only on clean completion.
+"""Per-source audit records, library scoped, advanced only on clean completion.
 
-The document is library-scoped and coupled (R25, R30, KTD21). A cursor is a
-record of how far a source got, not a floor the next increment filters by.
+A cursor records how far a source got, never a floor the next increment
+filters by (R25, R30, KTD21).
 
-**THE PLAYLISTS CURSOR IS A SET, NOT A POSITION (U64).** A labels increment has
-a newest item and a cursor naming it. A playlists sweep does not: each account
-playlist is swept once, in no order, and what the next pass needs is WHICH
-playlists completed. ``swept`` holds those provider identifiers, and it is the
-one record a later pass does filter by: ``sync.playlists`` excludes those ids.
-It is an exclusion by identity, never a date floor. It is optional
-on every record, so a document written before it existed still reads, and it is
-written only when it has something in it. It never holds a title (D5).
+**THE PLAYLISTS CURSOR IS A SET, NOT A POSITION (U64).** ``swept`` holds the
+provider ids of completed playlists, which ``sync.playlists`` excludes by
+identity, never by date. It is optional, written only when non empty, and
+never holds a title (D5).
 """
 
 from __future__ import annotations
@@ -193,13 +189,9 @@ class WatermarkStore:
     ) -> SourceWatermark | None:
         """Add completed identifiers to a set shaped source's cursor.
 
-        NOTHING TO RECORD RECORDS NOTHING, and returns the record as it stands.
-        A pass that swept nothing is not a clean completion of anything, and
-        rewriting the record would move its timestamp as if it were (R-135).
-
-        The union keeps first seen order and is taken UNDER THE LOCK, so two
-        passes recording at once both land. ``cursor`` names the last identifier
-        this call added and ``items`` counts the whole set.
+        NOTHING TO RECORD RECORDS NOTHING, so an empty pass does not move the
+        timestamp (R-135). The union keeps first seen order and is taken UNDER
+        THE LOCK, so concurrent passes both land.
         """
         wanted = [str(identity) for identity in identities if str(identity)]
         with self._locked():
@@ -227,15 +219,10 @@ class WatermarkStore:
 
 
 def status_rows(cfg: config.Config) -> tuple[dict[str, str], ...]:
-    """One row per declared source, plus any extra cursor the document holds.
+    """One row per declared source, plus any extra cursor the document holds (P3).
 
-    Derived from ``sources.DECLARED`` union the document, so a later source
-    added in one place cannot go unreported (P3).
-
-    A declared source whose spec carries ``no_cursor`` is ``unrecorded``, never
-    ``never`` (R-263): nothing writes its record, so the absence says nothing
-    about whether it ran. A record an earlier build left for it is reported as
-    stale rather than as its last completion, since that record no longer moves.
+    A source with ``no_cursor`` is ``unrecorded``, never ``never`` (R-263),
+    and a record an earlier build left for it is reported as stale.
     """
     store = WatermarkStore(cfg)
     records = store.all()

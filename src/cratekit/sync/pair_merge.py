@@ -1,97 +1,56 @@
 """The three way merge of one playlist pair: the last sync, the account now, rekordbox now.
 
-U130. A pair is one of the author's own account playlists and the rekordbox
-playlist marked to stay the same list as it. Each sync compares each side with
-what that side held when the previous sync finished, and this module decides,
-from those four sequences alone, what the list is now. It reads nothing and
-writes nothing, so every rule below is drivable without a database, an account
-or a gate.
+U130. A pair is an account playlist and the rekordbox playlist marked to stay
+the same list. This decides the list now from four sequences alone, each side
+now and at the last sync, reading and writing nothing, so every rule is
+drivable without a database, an account or a gate.
 
-**THE KEYS ARE THE CALLER'S.** Both sides arrive in ONE key space, a track the
-caller has matched across the two sides carrying one key on both, so this
-module never asks what a key means. ``sync/pair_cli.py`` gives a track the
-account carries its remote identifier, and a rekordbox row the account has no
-match for a key of its own, so such a row is kept in rekordbox and is never
-something the account could be asked to take off.
+**THE KEYS ARE THE CALLER'S.** Both sides arrive in one key space, so this
+never asks what a key means. ``sync/pair_plan.py`` gives a rekordbox row the
+account has no match for a key of its own, so it is kept in rekordbox and
+never asked off the account.
 
-**EACH SIDE HAS ITS OWN BASE.** The two sides can rightly hold different lists
-after a sync: a rekordbox row the account has no match for stays in rekordbox
-only, and an account track waiting to be acquired is on the account only. So
-each side's changes are measured against what that side itself held, and a
-track one side never held is never read as one it removed.
+**EACH SIDE HAS ITS OWN BASE.** The sides can rightly differ after a sync, so
+each side's changes are measured against what it held, and a track a side
+never held is never read as one it removed.
 
-**THE RULE.** A track is kept when a side holds it now and no side removed
-it, or when a side added it and the other side's removal is not known to be
-later. Added means held now and not held at the base; removed means held at
-the base and not now. An addition beats a removal it is not known to precede,
-so nothing is lost unless somebody removed it somewhere and that removal is
-the later change. A track taken out and put back on one side between two syncs
-counts as added there: rekordbox shows it by a membership row that is not the
-row the base recorded, and the account by an added date later than the one
-the base recorded and than the base's own sync (U202, which closes R-990).
+**THE RULE.** A track is kept when a side holds it and no side removed it, or
+when a side added it and the other's removal is not known to be later, so
+nothing is lost unless its removal is the later change. A track taken out and
+put back counts as added: a new membership row in rekordbox, a later added
+date on the account (U202, R-990).
 
-**THE LATER OF TWO OPPOSITE CHANGES WINS (U202).** Decided by Phillip on
-2026-11-04: where a track was added on one side and removed on the other since
-the last sync, the change made later is applied to both, so a track taken out
-in rekordbox after it was put back on the account comes off both, and one put
-back on the account after it was taken out in rekordbox stays on both. Each
-side says when it added a track it holds (``Side.added_at``) and when it lost
-a track the base held (``Side.removed_at``), when it knows. A moment at or
-before the base's own sync (``Base.synced``) cannot be a change made since it,
-and a moment with no zone cannot be compared with one that has, so both are
-read as unknown. Where either moment is unknown, which a removal's usually is
-since the account keeps no record of one, the addition wins as before, and
-every such call is returned (``Merged.calls``) so the gate names it. A tie
-keeps the track, since a tie loses nothing.
+**THE LATER OF TWO OPPOSITE CHANGES WINS (U202).** A track added on one side
+and removed on the other goes the way of the later change. A moment at or
+before ``Base.synced``, or with no zone, is unknown. Where either moment is
+unknown, as a removal's usually is, the addition wins, and every such call is
+returned (``Merged.calls``) so the gate names it. A tie keeps the track.
 
-**THE FIRST SYNC ADDS ONLY.** With no base nothing can have been removed, so
-every track either side holds is kept.
+**THE FIRST SYNC ADDS ONLY.** With no base nothing can have been removed.
 
-**THE ORDER FOLLOWS THE SIDE THAT CHANGED ORDER.** A side changed order when the
-tracks it holds now and held at the base stand in a different relative order.
-Rekordbox leads when it alone changed order; the account leads otherwise, which
-is when it alone did, when both did, when neither did, and on the first sync of
-a pair whose account order is kept. The leading side's order is kept as it stands, and each track only the other
-side holds is placed right after the track it follows on that side, so a track
-added mid playlist stays mid playlist rather than going to the end.
+**THE ORDER FOLLOWS THE SIDE THAT CHANGED ORDER.** Rekordbox leads when it
+alone changed relative order since the base; the account leads otherwise.
+The leading order stands, and each track only the other side holds goes
+right after the track it follows there, so a track added mid playlist stays
+mid playlist.
 
-**EXCEPT WHERE THE BASE'S TWO SIDES DISAGREE ON ORDER (R-1404).** A whole write
-always puts rekordbox in the merged order, so a base whose rekordbox order
-disagrees with its account order, on the tracks both held, records an order
-that never crossed to the account: since U231 a pair outside GIG READY has no
-account order written, so a rekordbox reorder, or a track rekordbox placed mid
-playlist that the account appended, leaves its base so. The order the last
-sync settled on is then rekordbox's, and with neither side changed since,
-rekordbox leads, rather than the account putting its older order back into
-rekordbox two syncs after the person's reorder. The account still leads when
-it changed order since the base. A base whose sides agree, which every pair
-whose account order is written holds, leaves the rule above as it was.
+**EXCEPT WHERE THE BASE'S TWO SIDES DISAGREE ON ORDER (R-1404).** Such a base
+records a rekordbox order that never crossed to the account (U231 writes no
+account order outside GIG READY), so with neither side changed since,
+rekordbox leads rather than the account putting its older order back. The
+account still leads when it changed order since the base.
 
 **EXCEPT ON THE FIRST SYNC OF A PAIR WHOSE ACCOUNT ORDER IS NOT KEPT (R-1416).**
-Decided by Phillip on #608 (608-outside-order-2). Outside GIG READY, unless
-``outbound.pair_order_every_pair`` keeps every pair's, the account's order is
-never written (U231), so a first sync led by the account would put rekordbox
-in the account's order for good. The caller says whether the order is kept
-(``order_kept``), and when it is not, no stopped write is handed in (none was
-found, or settled readings kept after the stop show the account reordered
-since, U234) and rekordbox holds a track,
-rekordbox leads that first sync: its tracks keep their order, and each track
-only the account holds is placed after its neighbour there.
-The next sync then reads a base whose sides disagree, so rekordbox's order
-stands until the account changes order, which brings the account's whole
-order. An empty or new rekordbox playlist has no order to keep, and is led by
-the account as before.
+With ``order_kept`` false, no stopped write handed in (U234) and rekordbox
+holding a track, rekordbox leads, or its order is lost for good. Its order
+then stands until the account changes order. An empty rekordbox playlist is
+led by the account.
 
 **AFTER A WRITE STOPPED PART WAY THROUGH ITS ORDER, CHANGED SINCE THAT WRITE
-(U225).** Sitting 62's write stopped part way through putting the account in
-order, and the next sync read the stopped write's own moves as the person's
-reorder on the account and put that scramble into rekordbox. So the caller
-hands the merge what that write left (:class:`Stopped`): the order it was
-putting the account in and rekordbox's order as it stood, and each side's
-change of order is measured against those instead of the base. Rekordbox
-leads when it alone changed order since; the account leads when it did; and
-when neither did, the side that led the stopped write leads again, so the
-order it was writing is finished rather than read as anybody's edit.
+(U225).** The caller hands in what it left (:class:`Stopped`), and each
+side's change of order is measured against that instead of the base, so the
+write's own moves are never read as a person's reorder. With neither side
+changed since, the side that led it leads again and its order is finished.
 
 Layer: modules.
 """
@@ -119,9 +78,7 @@ _NO_MOMENTS: Mapping[str, datetime] = MappingProxyType({})
 def distinct(keys: Iterable[str]) -> tuple[str, ...]:
     """The keys in order, each once at its first position, empties dropped.
 
-    A playlist may hold one track twice. A pair is a list of tracks, and a
-    second copy is not a second track, so the merge reads each side as its
-    first occurrences and leaves the copies where they are.
+    A second copy is not a second track, so copies are left where they are.
     """
     return tuple(dict.fromkeys(str(key) for key in keys if str(key)))
 
@@ -130,15 +87,9 @@ def distinct(keys: Iterable[str]) -> tuple[str, ...]:
 class Side:
     """One side as a sync reads it: its tracks in order, the ones it put back, and when.
 
-    ``readded`` is the tracks this side holds that it took out and put back
-    since the base, which rekordbox tells by a membership row newer than the
-    one the base recorded, and the account by an added date later than the
-    one the base recorded (U202). A key in it that the side does not hold is
-    ignored.
-
-    ``added_at`` is when this side put a track it holds now there, and
-    ``removed_at`` when it lost a track the base held, each only where the
-    side can say (U202). A key missing from either is a moment unknown.
+    ``readded`` is the tracks it took out and put back since the base (U202);
+    a key it does not hold is ignored. ``added_at`` and ``removed_at`` say
+    when, where the side can (U202); a missing key is a moment unknown.
     """
 
     keys: tuple[str, ...]
@@ -173,9 +124,8 @@ class Base:
 class Stopped:
     """What a write stopped part way through its account order left, as the order rule reads it (U225).
 
-    ``account`` is the order that write was putting the account in, and
-    ``rekordbox`` rekordbox's order as it stood when that order began, both as
-    keys; ``leader`` is the side that led that write.
+    ``account`` is the order it was writing, ``rekordbox`` rekordbox's order
+    when it began, and ``leader`` the side that led it.
     """
 
     account: tuple[str, ...]
@@ -220,11 +170,8 @@ class Call:
 class Merged:
     """The list both sides should hold, and what each side must do to hold it.
 
-    ``order`` is every kept track in the merged order. The four lists are in
-    the order a write should take them: additions in ``order``, removals in the
-    side's own order. ``account_order`` and ``rekordbox_order`` are ``order``
-    as each side can hold it, which the caller narrows further for a track one
-    side cannot carry.
+    Additions are in ``order``, removals in the side's own order, the order a
+    write should take them.
     """
 
     order: tuple[str, ...]
@@ -259,10 +206,8 @@ def order_changed(now: Sequence[str], base: Sequence[str]) -> bool:
 def placed(leading: Sequence[str], other: Sequence[str]) -> tuple[str, ...]:
     """The leading order, with each track only ``other`` holds put after its predecessor.
 
-    A track ``other`` holds and ``leading`` does not goes immediately after the
-    nearest track before it in ``other`` that is already placed, and after the
-    tracks already inserted there, so a run of new tracks keeps its own order.
-    A new track with nothing placed before it goes at the start.
+    A run of new tracks keeps its own order; one with nothing placed before it
+    goes at the start.
     """
     result = list(distinct(leading))
     at = {key: index for index, key in enumerate(result)}
@@ -287,13 +232,8 @@ def merge(
 ) -> Merged:
     """Decide the list both sides should hold. Pure.
 
-    ``base`` is None on the first sync of a pair, which adds only.
-    ``stopped`` is what a write stopped part way through its account order
-    left, when the caller found one, and the order rule then reads each side's
-    change of order against it (U225). ``order_kept`` is whether the account
-    is put in the merged order, which the caller decides (U231); a first sync
-    whose order is not kept, with no ``stopped`` handed in, is led by
-    rekordbox when it holds a track (R-1416).
+    ``base`` is None on a pair's first sync. ``stopped`` (U225) and
+    ``order_kept`` (U231, R-1416) steer the order rule, as the module says.
     """
     held_account = set(account.keys)
     held_rekordbox = set(rekordbox.keys)
@@ -347,9 +287,7 @@ def merge(
 
     leader = ACCOUNT
     if stopped is not None:
-        # U225. CHANGED SINCE THE STOPPED WRITE, NOT SINCE THE BASE: its own
-        # moves are nobody's edit, and with no edit since it, the side that
-        # led it leads again.
+        # U225. CHANGED SINCE THE STOPPED WRITE, NOT SINCE THE BASE.
         account_moved = order_changed(account.keys, stopped.account)
         if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:
             leader = REKORDBOX
@@ -360,9 +298,8 @@ def merge(
         # order rekordbox stands in, or the DJ's arrangement is lost for good.
         leader = REKORDBOX
     elif base is not None and not order_changed(account.keys, base.account):
-        # R-1404. A BASE WHOSE SIDES DISAGREE ON ORDER HOLDS REKORDBOX'S as the
-        # order the last sync settled on, the account's never written there,
-        # so with neither side changed since, rekordbox's order stands.
+        # R-1404. A BASE WHOSE SIDES DISAGREE ON ORDER HOLDS REKORDBOX'S, so with
+        # neither side changed since, rekordbox's order stands.
         if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
             base.rekordbox, base.account
         ):
@@ -401,20 +338,7 @@ def appended(now: Sequence[str], removed: Iterable[str], added: Sequence[str]) -
 
 
 __all__ = [
-    "ACCOUNT",
-    "ADDITION_LATER",
-    "REKORDBOX",
-    "REMOVAL_LATER",
-    "TIME_UNKNOWN",
-    "Base",
-    "Call",
-    "Merged",
-    "Side",
-    "Stopped",
-    "appended",
-    "as_held",
-    "distinct",
-    "merge",
-    "order_changed",
-    "placed",
+    "ACCOUNT", "ADDITION_LATER", "REKORDBOX", "REMOVAL_LATER", "TIME_UNKNOWN", "Base", "Call",
+    "Merged", "Side", "Stopped", "appended", "as_held", "distinct", "merge", "order_changed",
+    "placed"
 ]
