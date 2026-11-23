@@ -249,26 +249,17 @@ def _rating_fixture(track_id: int, rating: int) -> bytes:
     )
 
 
-def test_rating_write_golden():
-    from cratekit.write import trees
-
-    content = bytearray(_rating_fixture(42, 0))
-    trees.apply_rating_changes({42: 255}, content)
-    out = bytes(content)
-    _check("sort_inbox_rating", out)
-    assert b'Rating="255"' in out and b'Rating="0"' not in out
-    assert _no_bare_lf(out), "the rating writer must not disturb CRLF"
-
-
-def test_second_rating_writer_golden():
+@pytest.mark.parametrize("golden", ["sort_inbox_rating", "sort_unplaced_rating"])
+def test_rating_write_golden(golden):
     """The source carried two rating writers; both goldens matching proves one lost nothing."""
     from cratekit.write import trees
 
     content = bytearray(_rating_fixture(42, 0))
     trees.apply_rating_changes({42: 255}, content)
     out = bytes(content)
-    _check("sort_unplaced_rating", out)
+    _check(golden, out)
     assert b'Rating="255"' in out and b'Rating="0"' not in out
+    assert _no_bare_lf(out), "the rating writer must not disturb CRLF"
 
 
 def _vox_fixture() -> bytes:

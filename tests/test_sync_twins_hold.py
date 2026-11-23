@@ -88,9 +88,7 @@ def _two_twins(w: World) -> None:
     w.playlist(OTHER, OTHER_NAME, ["t4", "t23", "t5"])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_twin_with_three_missing_tracks_queues_none_and_names_three_on_hold(world, cfg):
@@ -248,9 +246,7 @@ def test_release_all_lets_every_twin_go(world, cfg):
     assert _queued(synced) == ["t20", "t21", "t22", "t23"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A twin paired before U221, read by time
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _as_before_u221(cfg) -> str:
@@ -296,9 +292,7 @@ def test_a_twin_paired_before_u221_is_released_by_name_and_counted_by_time(world
     assert _queued(synced) == ["t20", "t21", "t22"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The release verb's refusals and its plan of nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_abort_lets_nothing_go(world, cfg):
@@ -353,9 +347,7 @@ def test_a_twin_paired_again_since_the_plan_is_left_held(world, cfg):
     assert sorted(store.release_hold({PHIL: held.rekordbox_id})) == [PHIL]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The other makers, the note and the record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_backfills_note_says_the_missing_are_held_not_queued(world):
@@ -428,9 +420,7 @@ def test_a_pair_that_is_no_twin_never_holds(cfg):
     assert not pair_cli.held_for_choice(None, "t1", {})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Late served tracks and stale links
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_short_listings_twin_records_no_hold_and_holds_a_track_served_later(world, cfg):

@@ -141,9 +141,7 @@ def _tree(cfg: config.Config) -> dict[str, str]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The rules
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -372,9 +370,7 @@ def test_the_digest_names_no_copy():
     assert moved.digest != one.digest
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _library():
@@ -562,9 +558,7 @@ def test_the_plan_writes_nothing(machine, silence):
     assert _tree(machine) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The catalogue
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class _Recorded:
@@ -605,9 +599,7 @@ def test_only_a_row_with_no_genre_is_asked_of_the_catalogue(machine, silence):
     assert {title for _artist, title in search.asked} == {"track 12", "track 13"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The verb
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_reports_the_backlog_and_asks_no_gate(machine, silence):
@@ -694,9 +686,7 @@ def test_the_verb_declares_no_write_and_no_gate():
     assert entry.output_schema == "diagnostic/1"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. What round one of the review drove
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_rows_whose_file_is_not_here_are_counted_and_said(machine, silence):

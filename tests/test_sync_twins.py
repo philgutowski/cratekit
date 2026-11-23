@@ -312,9 +312,7 @@ def _phil(w: World) -> None:
     w.playlist(PHIL, PHIL_NAME, ["t3", "t1", "t20", "t2"])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_downloaded_playlist_plans_its_twin_with_the_owned_rows_and_names_the_rest(world):
@@ -596,9 +594,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U213: one track, or one playlist, never refuses the whole backfill
-# ═══════════════════════════════════════════════════════════════════════════
 
 BROKEN = "acc-broken"
 BROKEN_NAME = "DOWNLOADED Broken 10-1-26"
@@ -755,9 +751,7 @@ def test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run(world, cfg
     assert not world.folder()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The pair rule, the name, and the confinement
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _registry_free():

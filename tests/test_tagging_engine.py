@@ -64,9 +64,7 @@ def answering(table: dict[str, SearchHit | None]):
     return searcher
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A. The walk, which is also the item derivation
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_walk_takes_audio_files_and_leaves_everything_else(folder, silence):
@@ -173,9 +171,7 @@ def test_the_master_staging_tree_is_skipped_too(folder, silence):
     assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # B. One file, which is one job item
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_file_with_no_genre_gets_the_answer_written_onto_it(folder, silence):
@@ -351,9 +347,7 @@ def test_a_searcher_that_refuses_propagates_rather_than_becoming_a_skip(folder, 
     assert tags.read_genre_from_file(path) is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # C. The folder pass is the walk plus the per file work, and nothing else
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_folder_pass_produces_exactly_what_the_per_file_calls_produce(folder, silence):
@@ -396,9 +390,7 @@ def test_a_folder_that_is_not_there_tags_nothing_rather_than_raising(tmp_path):
     assert tag.tag_folder(tmp_path / "absent", searcher=answering({})) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # D. The retag side: one candidate at a time is the same pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_one_candidate_at_a_time_is_the_same_pass_as_the_whole_folder(folder, silence):
@@ -443,9 +435,7 @@ def test_the_queue_index_is_the_folder_passs_and_the_workers_one_function(folder
     assert retag.decided_index(None) == {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # C. U84: the picture repair runs first, in place, without the web
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _gradient(width: int, height: int):
@@ -760,9 +750,7 @@ def test_an_encoder_failure_that_is_not_an_art_error_is_still_an_error(
     assert "decoder fell over" in repair.detail
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # D. U85: a file with no picture gets the catalogue's, and no other file does
-# ═══════════════════════════════════════════════════════════════════════════
 
 ART_URL = "https://geo-media.example/image_size/1400x1400/cover.jpg"
 

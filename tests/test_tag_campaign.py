@@ -107,9 +107,7 @@ def _tempo(cfg: config.Config, paths) -> dict[str, object]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The rules
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _rows_plan() -> rows.RowsPlan:
@@ -282,9 +280,7 @@ def test_the_answer_order_on_the_command_line_does_not_move_the_digest():
     assert tag_campaign.digest(plan, one) == tag_campaign.digest(plan, two)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The campaign through the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_whole_campaign_lands_and_needs_genre_falls_as_measured(acknowledged, silence):
@@ -523,9 +519,7 @@ def test_an_empty_backlog_still_asks_and_writes_nothing(acknowledged, silence):
     assert _tree(cfg) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The stop
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named(
@@ -591,9 +585,7 @@ def test_a_first_step_that_refuses_writes_nothing_and_runs_nothing_after(
     assert _tree(cfg) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The catalogue, recorded
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_recorded_catalogue_proposal_is_written_and_asked_once_across_the_acts(
@@ -635,9 +627,7 @@ def test_no_proposal_below_the_floor_is_shown_or_written(acknowledged, silence):
     assert _genre_of(cfg, "80") == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. What a person reads
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_rehearsed_digest_is_set_beside_the_live_one_at_the_gate(acknowledged, silence):
@@ -671,9 +661,7 @@ def test_the_verb_declares_one_explicit_gate_and_the_surfaces_it_writes():
     assert entry.writes == frozenset({"files", "db_metadata"}) and entry.destructive
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Round one of the review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stray(cfg: config.Config, silence: Path, name: str, genre: str) -> Path:
@@ -965,9 +953,7 @@ def test_needing_counts_only_live_rows_with_a_readable_file(machine, silence):
     assert len(_planned(machine).rows) == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Round two of the review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_same_folder_answer_once_the_word_has_left_the_backlog_is_taken_as_given(
@@ -992,9 +978,7 @@ def test_the_joining_rows_are_said_in_the_campaigns_own_words(acknowledged, sile
     assert "the campaign holds each of them out" in note and "--leave" not in note
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. What the mutation table found no test for
-# ═══════════════════════════════════════════════════════════════════════════
 
 ZOUK = "zouk bass"
 

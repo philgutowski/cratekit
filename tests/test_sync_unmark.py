@@ -79,9 +79,7 @@ def _answered(name: str, *extra: str, option: str = "apply") -> tuple[int, dict]
     return drive(["--run", run_id, "sync", "unmark", "--pass", name, *extra])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration, and the record the mark keeps
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_one_remote_write_behind_an_explicit_gate():
@@ -115,9 +113,7 @@ def test_sync_mark_since_u242_holds_each_playlist_as_taken_under_the_pass(slim, 
     assert account.renamed == [] and mark_record.MarkRecord(slim).of_pass(name) == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_that_marked_three_plans_three_renames_back_and_applies_them(slim, monkeypatch):
@@ -213,9 +209,7 @@ def test_a_pass_the_record_holds_nothing_for_is_a_gated_plan_of_nothing(slim, mo
     assert account.renamed == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. Naming the pass, narrowing it, and the answer
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -322,9 +316,7 @@ def test_a_mark_after_an_unmark_clears_the_stamp(slim, monkeypatch):
     assert len(record.of_pass(name)) == 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A record that cannot be read is not an empty one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -369,9 +361,7 @@ def test_an_unreadable_record_refuses_rather_than_reading_as_empty(slim, monkeyp
     assert refused["cause"]["reason"] == "sync-mark-record-unusable"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. Stamps, record failures and a playlist gone from the account
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_title_already_put_back_is_skipped_without_a_stamp(slim, monkeypatch):

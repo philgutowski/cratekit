@@ -34,9 +34,7 @@ MINIMAL = "Rominimal"
 PROGRESSIVE = "Progressive House"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -141,9 +139,7 @@ def names(matcher, line: str) -> tuple[str, ...]:
     return tuple(found.label for found in matcher(line))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The copyright line, read off every container the downloader writes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("suffix", [".flac", ".m4a", ".mp3"])
@@ -172,9 +168,7 @@ def test_the_copyright_line_is_read_from_the_key_the_downloader_writes(tmp_path,
     assert tags.read_tag(path, "copyright") == line
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The engine: the copyright line names a file's label when nothing else does
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 GENRES = {RAWAX: MINIMAL, ATIPIC: PROGRESSIVE, CRONOS: SPECIFIC}
@@ -205,6 +199,15 @@ def test_a_mixed_folder_with_every_catalogue_blocked_tags_each_file_by_its_line(
     assert all(result.copyright_labels == () for result in results)
 
 
+def _techno_from_the_catalogues(path: Path):
+    """``tag_one`` with every seam, a catalogue answering Techno: (result, searcher)."""
+    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
+    result = tag.tag_one(
+        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
+    )
+    return result, searcher
+
+
 def test_a_file_whose_line_names_no_registered_label_is_asked_of_the_catalogues(folder, silence):
     path = downloaded(folder, silence, "a", "℗ 2023 Other Label")
     searcher = blocking()
@@ -223,10 +226,7 @@ def test_a_file_whose_line_names_no_registered_label_is_asked_of_the_catalogues(
 def test_another_act_sharing_a_labels_first_letters_is_never_that_label(folder, silence):
     """U237's whole word rule decides it: ``Rawax`` never names ``RAWAXXX``."""
     path = downloaded(folder, silence, "a", "℗ 2023 RAWAXXX")
-    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(path) == "Techno"
     assert (result.label, result.label_from, result.copyright_labels) == ("", "", ())
@@ -234,10 +234,7 @@ def test_another_act_sharing_a_labels_first_letters_is_never_that_label(folder, 
 
 def test_a_line_naming_two_registered_labels_is_refused_for_that_file(folder, silence):
     path = downloaded(folder, silence, "a", "2023 Cronos Barac under exclusive licence to Atipic")
-    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")], "the file was asked of the catalogues, as before"
     assert tags.read_genre_from_file(path) == "Techno"
     assert result.label == ""
@@ -246,10 +243,7 @@ def test_a_line_naming_two_registered_labels_is_refused_for_that_file(folder, si
 
 def test_a_line_naming_one_label_with_no_genre_is_asked_of_the_catalogues(folder, silence):
     path = downloaded(folder, silence, "a", "℗ 2021 Gettraum")
-    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(path) == "Techno"
     assert (result.label, result.copyright_labels) == ("", ("Gettraum",))
@@ -258,10 +252,7 @@ def test_a_line_naming_one_label_with_no_genre_is_asked_of_the_catalogues(folder
 def test_a_file_with_a_label_tag_keeps_it_whatever_its_line_names(folder, silence):
     """The tag outranks the line: a tag naming a label with no genre is searched."""
     path = downloaded(folder, silence, "a", "℗ 2023 Rawax", label="Other Label")
-    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(path) == "Techno"
     assert (result.label, result.label_tag, result.label_from) == ("", "Other Label", "")
@@ -308,10 +299,7 @@ def test_a_file_already_carrying_a_genre_keeps_it_and_its_line_is_never_matched(
 
 def test_a_file_with_no_copyright_line_is_asked_of_the_catalogues(folder, silence):
     path = downloaded(folder, silence, "a", None)
-    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")]
     assert (result.label, result.copyright_labels) == ("", ())
 
@@ -326,9 +314,7 @@ def test_no_copyright_seam_reads_no_line_and_tags_exactly_as_before(folder, sile
     assert result.label == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The matcher: whole words, through the needle each label is registered with
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -440,9 +426,7 @@ def test_a_searchers_park_reaches_the_job_as_a_park_on_a_file_its_line_could_not
         )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The sweep, through the real dispatcher and a resume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def sweep(*argv: str) -> tuple[int, jobs.Job, dict]:
@@ -706,9 +690,7 @@ def test_a_job_queued_before_needles_were_frozen_is_tagged_as_it_always_was(
     assert tags.read_genre_from_file(folder / "a.flac") == "Techno"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The label go's tail: its tag step passes the copyright tier through
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_tails_tag_step_lands_a_label_batch_with_every_catalogue_blocked(
