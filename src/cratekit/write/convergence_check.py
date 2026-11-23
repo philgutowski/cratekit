@@ -571,6 +571,7 @@ def unidentified(
     skipped = _uncompared_subs(declared, not_compared)
     bucket_names = {declared.bucket(bucket_id).display for bucket_id in declared.bucket_ids()}
     recorded = {entry.folder_id for entry in (() if record is None else record.nodes)}
+    holding = set(filed)
     return tuple(
         node
         for node in nodes
@@ -579,7 +580,7 @@ def unidentified(
         and node.folder_display not in bucket_names
         and node.folder_id not in recorded
         and readings.get(node.playlist_display, set()) - skipped
-        and node.content_ids & set(filed)
+        and node.content_ids & holding
     )
 
 
