@@ -20,7 +20,7 @@ from cratekit.analysis import head_adopt as ha
 from cratekit.analysis.check_cli import template_of
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, tree_registry
-from cratekit.core.cause import Outcome
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.naming import NameTemplate
 from cratekit.tagging import plan_verbs
 from cratekit.tagging.plan_verbs import counted, named, warning
@@ -29,13 +29,18 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 CONFIRM_GATE = "analyze.adopt.confirm"
 
 #: The warnings: nothing to write, what was written and read back, rows left,
-#: answers only half read, and a ``--leave`` naming no row this plan writes.
+#: answers only half read, a ``--leave`` naming no row this plan writes, and a
+#: scope that could not be read whole, said on every path (review round one).
 NOTHING_TO_WRITE = "adopt-nothing-to-write"
 HEADS_WRITTEN = "adopt-heads-written"
 ROWS_LEFT = "adopt-rows-left"
 HALF_READ = "adopt-answer-half-read"
 LEAVE_UNMATCHED = "adopt-leave-unmatched"
-FILES_UNWRITTEN = "adopt-files-unwritten"
+SCOPE_UNREAD = "adopt-scope-unread"
+RECORDS_UNREAD = "adopt-records-unread"
+
+#: The refusal over the files that did not take, after the rest landed.
+UNWRITTEN = "analyze-adopt-unwritten"
 
 #: What the majority refusal says cannot be done until a prefix rule exists.
 _BLOCKED = "no landed row's file can be read to carry rekordbox's key and tempo"
@@ -96,6 +101,11 @@ def _facts(plan: ha.AdoptPlan) -> dict[str, Any]:
     }
     if plan.leave_unmatched:
         facts["leave_unmatched"] = list(plan.leave_unmatched)
+    # WHAT THE SCOPE COULD NOT READ is shown at the gate too, so an empty plan is
+    # never approved as a clean one (review round one).
+    unread = [entry["message"] for entry in _unread(plan)]
+    if unread:
+        facts["unread"] = unread
     return facts
 
 
@@ -139,11 +149,35 @@ def _unmatched(plan: ha.AdoptPlan) -> list[dict[str, str]]:
     )]
 
 
+def _unread(plan: ha.AdoptPlan) -> list[dict[str, str]]:
+    """What the scope could not read, so an empty plan is never read as a clean one."""
+    said = []
+    passed = "; ".join(why for why in plan.scope.passed_over if why)
+    if passed:
+        said.append(warning(
+            SCOPE_UNREAD,
+            f"{passed}; so no row of it was planned, and titles there that differ "
+            f"from rekordbox's are not corrected; name a landing with --pass or --session",
+        ))
+    if plan.scope.unreadable_records:
+        said.append(warning(
+            RECORDS_UNREAD,
+            f"{plan.scope.unreadable_records} session record(s) could not be read, so a "
+            f"landing of {plan.scope.name} among them is not in this plan",
+        ))
+    return said
+
+
 def _advisories(plan: ha.AdoptPlan) -> list[dict[str, str]]:
-    return [*_left(plan), *_half(plan), *_unmatched(plan)]
+    return [*_unread(plan), *_left(plan), *_half(plan), *_unmatched(plan)]
 
 
 def _nothing(plan: ha.AdoptPlan) -> dict[str, str]:
+    if not plan.rows:
+        return warning(
+            NOTHING_TO_WRITE,
+            f"no title is to be written: {plan.scope.name} holds no row to plan",
+        )
     return warning(
         NOTHING_TO_WRITE,
         f"no title is to be written: {plan.counts[ha.AGREE]} of {plan.rows} row(s) of "
@@ -158,27 +192,53 @@ def _written(plan: ha.AdoptPlan, written: ha.Written) -> dict[str, str]:
         f"{len(files.read_back)} file(s) carry rekordbox's key and tempo in their title "
         f"tag and key tag, read back, and {written.written} row(s) in their title, "
         f"{written.read_back} read back from the database as written, the title and no "
-        f"other column; the file names keep their old head; undo the rows with a restore "
-        f"of session {written.session_id}, whose record keeps each file's old title and "
-        f"key tag",
+        f"other column; the file names keep their old head; a restore of session "
+        f"{written.session_id} puts the rows back and not the files, whose old title "
+        f"and key tag its record keeps",
     )
 
 
-def _unwritten(written: ha.Written) -> list[dict[str, str]]:
-    """The warning naming the files that did not take, whose rows were left."""
+def _unwritten(plan: ha.AdoptPlan, written: ha.Written) -> str:
+    """The files that did not take, by title, as one clause, or empty."""
     files = written.files
-    if not files.failed and not files.wrong:
-        return []
+    titles = {item.content_id: _title(item) for item in plan.items}
     parts = []
     if files.failed:
-        parts.append(f"{len(files.failed)} could not be written: {named(list(files.failed))}")
+        parts.append(
+            f"{len(files.failed)} could not be written: "
+            + named([titles.get(one, one) for one in files.failed])
+        )
     if files.wrong:
-        parts.append(f"{len(files.wrong)} do not read back: {named(list(files.wrong))}")
-    return [warning(
-        FILES_UNWRITTEN,
-        "these row(s) keep their old title, because their file did not take the new "
-        "one: " + "; ".join(parts) + "; run the verb again once the file can be written",
-    )]
+        parts.append(
+            f"{len(files.wrong)} do not read back as written: "
+            + named([titles.get(one, one) for one in files.wrong])
+        )
+    if not parts:
+        return ""
+    return (
+        "these keep their old title in rekordbox, because their file did not take the "
+        "new one: " + "; ".join(parts)
+    )
+
+
+def _unwritten_refusal(plan: ha.AdoptPlan, written: ha.Written):
+    """Refuse over the files that did not take, after the rest landed."""
+    files = written.files
+    return refuse(
+        UNWRITTEN,
+        f"{len(files.read_back)} file(s) and {written.written} row(s) took rekordbox's key "
+        f"and tempo, session {written.session_id}; " + _unwritten(plan, written),
+        steps=(
+            "check each named file can be written and is not open elsewhere",
+            "run the verb again, which plans what is left",
+        ),
+        origin=_ORIGIN,
+        detail={
+            "failed": list(files.failed),
+            "wrong": list(files.wrong),
+            "session": written.session_id,
+        },
+    )
 
 
 def scope_and_plan(
@@ -216,7 +276,10 @@ def apply_plan(
         written = ha.apply_adopt(cfg, db, again, analysis_roots=analysis_store.watch_roots(cfg))
     finally:
         rb_writer.close_db(db)
+    # THE READ BACK OUTRANKS THE FILES: a row wrong in the database is the worse news.
     ha.assert_read_back(written)
+    if written.files.failed or written.files.wrong:
+        raise _unwritten_refusal(again, written)
     return written
 
 
@@ -233,27 +296,19 @@ def analyze_adopt(ctx) -> Envelope:
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
-    held: dict[str, ha.Written] = {}
-
-    def apply() -> ha.Written:
-        held["written"] = apply_plan(cfg, plan, ctx.args, declared=declared, template=template)
-        return held["written"]
-
     return plan_verbs.applied(
         ctx,
         plan,
         data,
-        lambda one: [*_unwritten(held["written"]), *_advisories(one)]
-        if "written" in held
-        else _advisories(one),
+        _advisories,
         nothing=_nothing,
-        apply=apply,
+        apply=lambda: apply_plan(cfg, plan, ctx.args, declared=declared, template=template),
         said=lambda written: _written(plan, written),
     )
 
 
 __all__ = [
-    "CONFIRM_GATE", "FILES_UNWRITTEN", "HALF_READ", "HEADS_WRITTEN", "LEAVE_UNMATCHED",
-    "NOTHING_TO_WRITE", "ROWS_LEFT", "analyze_adopt", "apply_plan", "build", "read_plan",
-    "scope_and_plan",
+    "CONFIRM_GATE", "HALF_READ", "HEADS_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
+    "RECORDS_UNREAD", "ROWS_LEFT", "SCOPE_UNREAD", "UNWRITTEN", "analyze_adopt", "apply_plan",
+    "build", "read_plan", "scope_and_plan",
 ]

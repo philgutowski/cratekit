@@ -640,12 +640,19 @@ def test_the_adopt_verb_s_modules_are_in_the_scan_and_emit_no_grid():
         assert anlz_write_violations(scanned[module], module) == []
 
 
-@pytest.mark.parametrize("suffix", [".flac", ".mp3", ".m4a", ".aiff"])
+def _supported_suffixes() -> tuple[str, ...]:
+    from cratekit.core import tags
+
+    return tags.SUPPORTED_SUFFIXES
+
+
+@pytest.mark.parametrize("suffix", _supported_suffixes())
 def test_the_adopt_writer_puts_the_tempo_in_the_title_and_no_tempo_tag_in_any_container(
     tmp_path, suffix
 ):
-    """Surface 3 driven: the adopt writer over each dialect, then every key the
-    container holds read raw. The title carries 128 as text; no tempo key exists."""
+    """Surface 3 driven: the adopt writer over every container the tag module
+    supports, read from its own table, then every key the container holds read
+    raw. The title carries 128 as text; no tempo key exists."""
     import mutagen
 
     from cratekit.analysis import head_adopt

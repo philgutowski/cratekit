@@ -35,6 +35,7 @@ KEBAB_LITERALS = {
         'analysis-check-landing-unknown',  # 2026-10-31, U167
         'analysis-suspect',  # 2026-10-31, U167
         'analysis-write-failed',
+        'analyze-adopt-unwritten',  # 2026-11-23, U327
         'anlz-modified',
         'app-version-pin-drift',
         'app-version-pin-unrecorded',

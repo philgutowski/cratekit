@@ -220,6 +220,12 @@ def head_tempo(row: Any, *, template: NameTemplate) -> int | None:
     return None
 
 
+def _carries_head(row: Any, *, template: NameTemplate) -> bool:
+    """Whether the row's own title, not its file name, carries a key and a tempo."""
+    parsed = parse_head(str(getattr(row, "Title", None) or ""), template=template) or {}
+    return bool(parsed.get("key")) and bool(parsed.get("bpm"))
+
+
 def reference_tempo(hundredths: Any) -> int | None:
     """rekordbox's tempo as the whole number a head carries, None for none.
 
@@ -469,13 +475,17 @@ class Row:
     #: rekordbox's tempo as a head would carry it, and the head's, None when absent.
     tempo: int | None = None
     head_tempo: int | None = None
+    #: The row's own title carries a head ``analyze adopt`` can correct, a key and
+    #: a tempo; a head read off the file name alone is not one.
+    headed: bool = False
     dyn: bool = False
 
     @property
     def differs(self) -> bool:
-        """The title head names another key or another tempo than rekordbox found."""
-        return self.relation in (KEY_ONE_STEP, KEY_FAR) or tempo_differs(
-            self.head_tempo, self.tempo
+        """The title's own head names another key or tempo than rekordbox found,
+        so ``analyze adopt`` would correct it (review round one)."""
+        return self.headed and (
+            self.relation in (KEY_ONE_STEP, KEY_FAR) or tempo_differs(self.head_tempo, self.tempo)
         )
 
     @property
@@ -545,6 +555,7 @@ def read_row(
         "relation": key_relation(head, key),
         "tempo": reference_tempo(getattr(content, "BPM", None)),
         "head_tempo": head_tempo(content, template=template),
+        "headed": _carries_head(content, template=template),
         "dyn": content_id in dyn,
     }
     if one.action != analyzed.CLEAR:

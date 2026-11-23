@@ -1,6 +1,6 @@
 ---
 name: rekordbox-visit
-description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when it shows every field of Phillip's standard and nothing else, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
+description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when it shows every field of Phillip's standard and nothing else, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, give the titles that differ rekordbox's key and tempo with crate analyze adopt, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
 ---
 
 # The rekordbox visit
@@ -86,7 +86,7 @@ Every one of these holds, or the visit does not start.
      or tempo that differs from rekordbox's never reads 27 (U327).
    - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
      are analysed, or gone from the collection (`data.summary.gone`), and
-     were never cleared, so skip to the clear in step 7; with none there is
+     were never cleared, so skip to the adopt and the clear in step 7; with none there is
      no visit to make.
 
    Write down three numbers from it: the batch the Analyze Tracks path's
@@ -276,7 +276,7 @@ seconds, since the agent can outlive the window:
 No verb runs until both are gone. If the agent is still running after two
 minutes, report it rather than kill it.
 
-## 7. Check the result, then clear the analysed rows
+## 7. Check the result, adopt rekordbox's answer, then clear the analysed rows
 
     crate --output json analyze check
 
@@ -309,8 +309,9 @@ clear, while the rows are still in INBOX / Analyze:
 
     crate --output json analyze adopt
 
-It needs the backup acknowledgment, as the clear below does, and stops at its
-own gate, `analyze.adopt.confirm`, listing every row before and after with
+It needs the backup acknowledgment, which the session mints with `crate
+session ack --as session` as CLAUDE.md's backup acknowledgment rule says, the
+clear below reading the same one, and stops at its own gate, `analyze.adopt.confirm`, listing every row before and after with
 its key relation and tempo. It writes the row's title in the database and the
 file's title tag and key tag, and never the Key or BPM columns, a grid or a
 file name. That gate is a database write, so it is answered by CLAUDE.md's
@@ -325,7 +326,13 @@ answer the live gate as the session:
 Read the answer: `data.totals.written` rows took rekordbox's, and every row
 left is named with why in the warnings. A file it could not write keeps its
 row's old title and is named; report it. With `data.summary.differs` at zero
-the plan is empty, and the gate is still answered, ending as a no op. Then
+the plan writes nothing, and the gate is still answered, ending as a no op. An
+`adopt-scope-unread` warning means INBOX / Analyze could not be read and
+nothing was planned: stop and report it. An exit with `analyze-adopt-unwritten`
+means the named files could not take their new title, their rows kept the old
+one, and the rest landed: report them and go on to the clear. **The clear's
+rehearsal copy is taken after the live adopt**, since the clear's digest covers
+each row's title and a copy taken before it rehearses the old titles. Then
 take the analysed rows out of the playlist:
 
     crate inbox analyzed

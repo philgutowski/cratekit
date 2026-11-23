@@ -298,12 +298,21 @@ tag's head first, so the old head is never written back. It reads the backup
 acknowledgment first, shows every row before and after with its key relation
 and tempo behind an explicit gate (`analyze.adopt.confirm`), and `--leave
 CONTENT_ID` holds a row out, given again on the run that applies. A row is
-left and named when rekordbox has not analysed it, its title has no head, its
-file is missing or unreadable, or the file's title tag says another title; a
-missing key never stops the tempo, nor a missing tempo the key. The scope is
+left and named when it has left the collection, rekordbox has not analysed it,
+its title has no head, rekordbox gave neither a key nor a tempo, its file's
+path resolves to no file on this machine or the file is missing or unreadable,
+the file's title tag says another title, or `--leave` holds it; a missing key
+never stops the tempo, nor a missing tempo the key. The tempo compared is
+rekordbox's rounded half up to a whole beat. A file that cannot take its new
+title keeps its row's old title, and the run ends refused under
+`analyze-adopt-unwritten` naming it, after the rest landed; run it again once
+the file can be written. When INBOX / Analyze cannot be read, the run says so
+(`adopt-scope-unread`) rather than reporting nothing to write. The scope is
 the check's: INBOX / Analyze by default, `--pass` or `--session` for a landing
 already cleared from it, never the back catalogue. The run's session record
-keeps each file's old title and key tag beside the database capture.
+keeps each file's old title and key tag beside the database capture; a restore
+of that session puts the rows back, and the files are put back by hand from
+the record.
 
 **A night pass.** `crate sync night` is the same pass with nobody watching,
 for a schedule to run overnight, so the time at the Mac is the landing's

@@ -210,6 +210,7 @@ def _row(
         grid=rc.Grid(state=grid if state == rc.ANALYSED else rc.NOT_READ),
         key=key,
         relation=relation,
+        headed=True,
         dyn=dyn,
     )
 
@@ -750,6 +751,7 @@ def _read_row_today(cfg, db, content_id, *, keys, dyn, template):
         "relation": rc.key_relation(head, key),
         "tempo": rc.reference_tempo(getattr(content, "BPM", None)),
         "head_tempo": rc.head_tempo(content, template=template),
+        "headed": rc._carries_head(content, template=template),
         "dyn": content_id in dyn,
     }
     if one.action != analyzed.CLEAR:
