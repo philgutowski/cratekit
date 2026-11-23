@@ -1601,6 +1601,9 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "acquire_fallback/fallback_offers_and_accepts",
         "acquire_fallback_fetch/fallback_fetch_lands_marked",
         "acquire_fallback_fetch/fallback_fetch_refused_when_strict",
+        "adopt/genre_report",
+        "adopt/move_job_queued_driven_and_reported",
+        "adopt/revert_after_an_apply_that_wrote_tags",
         "adopt/scan_and_apply_jobs_queued_driven_and_reported",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
@@ -1608,6 +1611,11 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "core_facts/pool_gate_preflight_and_tags_answers",
         "core_jobs/jobs_driven_to_each_end_and_read_back",
         "core_review/review_queue_offered_resolved_withheld_exported_and_imported",
+        "deletion/review_aborted_at_the_gate_moves_nothing",
+        "deletion/review_offers_declines_trashes_and_lists_tombstones",
+        "deletion/review_puts_the_file_back_when_its_tombstone_cannot_be_written",
+        "deletion/review_refuses_a_decision_whose_digest_moved",
+        "deletion/review_refuses_a_held_file_and_an_unidentifiable_row",
         "export/a_rename_onto_a_name_the_ledger_already_holds_is_refused",
         "export/a_renamed_inspiration_playlist_renames_the_sets_account_playlist",
         "export/a_set_archived_into_its_years_downloaded_sets_folder",
@@ -1676,7 +1684,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "78 scenarios" in summary and "no difference" in summary
+    assert "86 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
