@@ -275,7 +275,7 @@ Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
-crate analyze adopt        # titles whose key or tempo differs take rekordbox's
+crate analyze adopt        # titles whose key or tempo differs, or with no head, take rekordbox's
 crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 ```
 
@@ -286,23 +286,32 @@ the visit suspect; the check counts it and names `crate analyze adopt`.
 `--pass` or `--session` names one landing.
 
 `analyze adopt` gives each analysed row whose title head names another key or
-tempo rekordbox's answer, since rekordbox's is the more reliable. The key is
+tempo rekordbox's answer, since rekordbox's is the more reliable, and gives a
+title with no head one built from rekordbox's key and tempo (U342), shown as
+`stamped` apart from the corrected rows: the head the naming engine writes,
+the key padded Camelot, set before the whole title, so `[MP3] Alpha` becomes
+`09A - 98 - [MP3] Alpha` and no other character changes. A title with no head
+is stamped only with both halves: one rekordbox did not key, or whose tempo is
+zero, is left as `no-head-unanswered` naming the half missing. The key is
 the Key column's and wins on any difference, one Camelot step included; the
 tempo is rekordbox's rounded, and wins only when the head is more than one
 beat away. Only those two parts of the head change, in the row's title in
 rekordbox, the file's title tag and the file's key tag; the rest of the title,
 the lossy marker included, keeps every character. It never writes the Key or
 BPM columns, a grid or a tempo tag, and it never renames a file, so the file
-name keeps its old head; `name apply` and the library index read the title
-tag's head first, so the old head is never written back. It reads the backup
+name keeps its old head, or keeps having none; `name apply` and the library
+index read the title tag's head first, so the old head is never written back. It reads the backup
 acknowledgment first, shows every row before and after with its key relation
 and tempo behind an explicit gate (`analyze.adopt.confirm`), and `--leave
 CONTENT_ID` holds a row out, given again on the run that applies. A row is
 left and named when it has left the collection, rekordbox has not analysed it,
-its title has no head, rekordbox gave neither a key nor a tempo, its file's
-path resolves to no file on this machine or the file is missing or unreadable,
-the file's title tag says another title, or `--leave` holds it; a missing key
-never stops the tempo, nor a missing tempo the key. The tempo compared is
+its title has no head and rekordbox did not give both a key and a tempo, its
+head could not be read back once built, rekordbox gave neither a key nor a
+tempo, its file's path resolves to no file on this machine or the file is
+missing or unreadable, the file's title tag says another title (for a title
+with no head, anything but that title or the stamped one), or `--leave` holds
+it; on a title with a head a missing key never stops the tempo, nor a missing
+tempo the key. The tempo compared is
 rekordbox's rounded half up to a whole beat. A file that cannot take its new
 title keeps its row's old title, and the run ends refused under
 `analyze-adopt-unwritten` naming it, after the rest landed; run it again once
@@ -1460,7 +1469,10 @@ crate metadata mytags-vocals [--apply]
   spread), then renames the file to the naming template's Camelot head. It
   skips a file already carrying the head, so `analyze vocals --unscored`
   scores the ones it finished with no `voxlevel`, and a title that took
-  rekordbox's key and tempo with `analyze adopt` is never stamped again;
+  rekordbox's key and tempo with `analyze adopt` is never stamped again
+  when its file name carries a head; a file `analyze adopt` stamped keeps a
+  name with no head, so `analyze run` pointed at it measures and names it
+  again, until U343 gives the run a resume tag;
   `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
   row says when vocals cannot score.
 - `analyze run` measures key, tempo, drift and energy in worker processes

@@ -180,7 +180,8 @@ analysis of INBOX / Analyze on Phillip's standard settings, by its Auto
 Analysis path when the launch dialog shows them or else by Analyze Tracks,
 the wait counted in analysis files, the second run for rows marked `dyn`,
 the quit, `crate analyze check`, `crate analyze adopt` giving every title
-whose key or tempo differs rekordbox's, and the clear with `crate inbox
+whose key or tempo differs rekordbox's, and every title with no head one
+built from them, and the clear with `crate inbox
 analyzed`. It is the one procedure for the visit, and nothing it says is
 repeated here. Its verdict is this pass's: a check that ends waiting or
 suspect stops the pass there, and the report says what it named. A title that
