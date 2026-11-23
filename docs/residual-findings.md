@@ -2061,3 +2061,126 @@ base from its own tree will meet the same refusal.
 **Closes when:** the capture refuses with the import named, or scenario
 fixtures live in a module that imports only what every revision has. Ledger
 only.
+
+---
+
+## R-1887. The write path's code lines rose under U300 instead of falling 15 percent, and its tests stay above their line and time targets
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** Phillip's answer A on #847 says every card must still
+remove at least 15 percent of its code lines. #857 set the fourteen files of
+the write path at most 7,189 code lines (8,458 at the survey, 9,045 on U300's
+base `c9192091`) and its fifteen test files at most 10,655 lines (14,553 on
+the base). U300 cut prose to its rule and its reason, by that answer, and split
+the three files over 1,500 lines, so the area's source fell from 18,806 lines
+to 13,872, under its 14,256 target, and no file is over 1,500. Its code lines
+rose, from 9,045 to 9,287: each split adds imports, a re-export block and a
+three line call-time accessor in each part, so a test that patches the facade
+still bites. The tests fell to 11,992 lines, prose only, and their summed time 25
+percent (35 seconds to 26), short of the 30 percent the card asks. The area held no
+copied block of six logical lines to fold (the survey's own count was 0).
+Reflowing message fragments or call arguments onto fewer lines would meet the
+count without simplifying anything, and was not done.
+
+**Measured cost.** None to a person. The area misses the 15 percent code rule
+by 1,599 lines (7,688 is 15 percent under the base) and the card's code target
+by 2,098; its tests miss their line target by 1,337. U300 asked Phillip on
+#857 and took the recommended option, land with the miss named.
+
+**Closes when:** a unit cuts this area's code lines to 7,688 or fewer, with
+behaviour frozen, the behaviour comparison and the kill set replay, likely by
+narrowing the parts' re-export blocks, folding the accessors into one shared
+reader per module, and shortening the longest guards named on #857
+(`guard_violations`, `node_change_violations`, `assert_app_version`,
+`assert_gates`, `verify_commit`, restore's `plan`).
+
+---
+
+## R-1888. Splitting a module needs one entry in three guards no area card owns, the scenario list, the layer ladder and the reports allowlist
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py`. Three guards outside the card's own files pin what the split
+moves: `tests/test_behaviour_compare.py` names every shipped scenario, so the
+card's ten new scenarios joined its list; `tests/test_layering.py` places a part
+of a write-ranked core module only by a line of its own, so restore's three
+parts were placed beside it; and `tests/modules/test_reports.py` asks every
+writer its allowlist's closure reaches to be named, so the moved writers were
+named under their parts. Each edit is the mechanism the guard's own message
+gives, one entry per name, but each file belongs to another card's list
+(the suite card #869 for the first two, #868 for the reports guard), and every
+area card that adds a scenario or splits a module edits the same lists.
+
+**Measured cost.** None to a person; a merge conflict between two area cards
+in a list, which git resolves line by line.
+
+**Closes when:** the suite card (#869) decides whether these three lists stay
+hand-kept or are derived. Ledger only.
+
+---
+
+## R-1889. The tree registry and the backup facts each read their JSON document with the same shape and different words
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** #857's brief notes that `core/tree_registry.py`'s path
+reader repeats `core/backup_facts.py`'s by shape (read the bytes, absent is
+empty, unreadable and not JSON and not an object each refuse). The two differ
+in their exception types, their messages, and a permission branch only the
+backup facts have, so a shared home would take each message and type as a
+parameter. U300 left both where they are rather than fold text a person
+reads into arguments.
+
+**Measured cost.** None; a maintainer reads two readers where one shape would do.
+
+**Closes when:** a card that may change these refusals' wording gives them one
+reader with the two vocabularies as data. Ledger only.
+
+---
+
+## R-1890. Guards that scan the split modules by file or by module name do not read their parts, so a forbidden shape in a part passes them
+
+**Found:** at review rounds one and two of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py` into parts that each module re-exports. Guards that scan a
+module's own file, its `inspect.getsource`, or an import of its exact dotted
+name read the module and not the code that moved to its parts. The two review
+rounds drove each by injecting the forbidden shape into a part: it failed the
+guard on the base and passed it on the branch.
+
+- `tests/test_rb_writer_guard.py`: the writer raises no bare `RuntimeError(`
+  or `SystemExit`, and `_raised_reasons`' scan of the refusals the writer
+  raises, both over `rb_writer.py` alone; the soft-delete guard does not
+  resolve the parts' call-time spelling `_writer().SOFT_DELETE_COLUMN`.
+- `tests/test_cli_contract.py`: the writer never learns the gate's name or a
+  flag string, over `rb_writer.py` alone.
+- `tests/test_sync_night.py`: the night module may not import
+  `cratekit.core.session`, matched with a following dot, so
+  `cratekit.core.session_holders` and its siblings pass.
+- `tests/test_config.py` and `tests/test_process_guard.py`, one scan each.
+
+U300 kept what it could inside its own files: the one part function raising a
+slug `_raised_reasons` reads went back into `rb_writer.py`, the parts read the
+soft-delete column as `rb_writer.SOFT_DELETE_COLUMN` from a local binding,
+which the soft-delete guard resolves (a permissive read written that way in a
+part is caught), and the restore and session scans in `tests/test_restore.py`
+and `tests/test_write_session.py` read the parts. The files above are not
+U300's: `tests/test_rb_writer_guard.py` no card may edit, and the rest are on
+other cards' lists.
+
+**Measured cost.** None today: the reviews grepped every part for each scan's
+forbidden text and found none, and five of the driven injections are still
+caught by a wider guard. The cost is a guard on a path that writes or deletes
+that kills nothing for code in the parts (board bar (d)): a permissive read
+of the soft-delete marker on the removal path written in the parts'
+`_writer()` spelling, or the unattended night job taking the library lock
+through `session_holders`, would pass the guard written to stop it.
+
+**Closes when:** each scan reads its module and its parts (by glob of the
+module's file name, or by every module whose dotted name starts with the
+module's own), the soft-delete guard resolves a call-time accessor, and the
+night ban matches the parts. The writer guard file needs Phillip's leave to
+change, since no card may touch it.
