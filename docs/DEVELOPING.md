@@ -207,6 +207,62 @@ already had, through the config and writer suites that drove them before.
 | undo pending work on a handle after a failed write, never masking its cause | `write.trees.rollback_quietly(db)` |
 | the commit a content row write records | `write.row_defaults.record_commit` |
 
+## Config and the taxonomy, in parts
+
+`core.config` and `core.taxonomy` are each split into parts (U299), and every
+name a caller used stays importable from the module it always came from, which
+is the one to import from. `core.config_base` holds the schema version, the
+volume and template keys, the environment variables and the two installation
+directories;
+`core.state_files` the state inventory and its resolvers, so a new state entry
+is declared there; `core.config_schema` the section classes and `Config`; and
+`core.config_validate` validation and the environment overrides. `core.config`
+keeps the failure types, `from_dict`, migration, loading, saving and the
+durable write and lock helpers, because the suite patches those on `config`
+and they call each other. `core.taxonomy_model` holds the taxonomy's classes,
+`core.taxonomy_build` the build and its checks, and `core.taxonomy` the shipped
+templates and the loader. A test that patches a name patches it in the module
+whose code calls it.
+
+## The guarded writer, the session and the restore, in parts
+
+`core/rb_writer.py`, `core/session.py` and `core/restore.py` are each split
+into parts (U300), and each still answers for every name it had: code,
+scripts and tests import and patch `rb_writer`, `session` and `restore`,
+never a part. A part is re-exported by its module and is not imported from
+anywhere else.
+
+| Module | Its parts |
+|---|---|
+| `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof) |
+| `core.session` | `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
+| `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery` |
+
+Four rules keep the split invisible:
+
+- **A part reads its module's seams through the module, at call time.** A
+  name defined in the module, in another part, or patched on the module by a
+  test is written `_writer().name`, `_session().name` or `_restore().name`
+  inside a part, so a `monkeypatch.setattr(rb_writer, ...)` bites there too.
+  `restore`'s parts read `os` and `shutil` the same way, since a capacity test
+  patches them on `restore`. Only `rb_tables`, which reads nothing back, is
+  imported directly.
+- **What the beat grid suites and the source guards read stays in the module
+  itself**: every writer refusal slug `test_rb_writer_guard.py` scans for, the
+  one read of the soft-delete marker, `commit_guarded`, the write lock, and
+  `CollectionRemoval`, whose two calls `test_sync_removed.py` pins to
+  `core/rb_writer.py`.
+- **Every scan that forbids a shape in a split module reads its parts too**
+  (R-1890): such a guard reads the module by way of `tests/_split_modules.py`,
+  which finds the parts by the glob of the module's file name (`rb_*.py`,
+  `session*.py`, `restore*.py`), so a part must be named that way.
+  `tests/test_split_modules.py` fails on a part the glob misses that this
+  table names, that only its module and its parts import by an absolute
+  import, or that holds an accessor in the parts' spelling. The beat grid suite's writer scans are applied to the parts by
+  `tests/test_rb_writer_parts_guard.py`, since that suite is not edited.
+- **A restore part takes `restore`'s write rank** by one line of its own in
+  `tests/test_layering.py`, as the ladder provides.
+
 ## CI
 
 `.github/workflows/ci.yml` proves packaging and portability, not the suite:

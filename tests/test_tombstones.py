@@ -1,18 +1,8 @@
 """R36: what a tombstone identifies, and the revocability both stores must have.
 
-TWO PARTIES WHO NEVER MEET have to agree here, and that is the whole subject of
-this file. The deletion pass RECORDS a suppression from a row rekordbox
-soft-deleted. An acquisition pass CONSULTS it from a candidate a provider
-returned. Neither imports the other, and on a slim install with deletion switched
-off the recorder is not even present, so the only thing making them agree is that
-both build the identity from ``cratekit.core.tombstone``.
-
-AE17 IS THE ASSERTION THAT MATTERS. A deleted version of a track that a favourite
-label later re-releases must be reported as suppressed, while a DIFFERENT REMIX
-of the same recording is still acquired. Get the identity one notch too coarse
-and deleting one mix silently withholds every other; one notch too fine and the
-tombstone never matches anything and the whole feature is decorative.
-"""
+The deletion pass records and an acquisition pass consults without importing each
+other, so both build the identity from ``cratekit.core.tombstone``. AE17 matters most,
+a deleted version is suppressed while a DIFFERENT REMIX is still acquired."""
 
 from __future__ import annotations
 
@@ -54,18 +44,11 @@ def _row(content_id="1", *, artist=ARTIST, title=ORIGINAL, recorded="/music/x.fl
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The identity
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_remix_and_its_original_are_two_identities(cfg):
-    """AE17, at the level where it is decided.
-
-    KTD16 chose version identity over recording identity because the library is
-    remix-heavy, and fuzzy identity is the exact defect the three-state match
-    exists to prevent.
-    """
+    """AE17: version identity, not recording identity, as the library is remix heavy (KTD16)."""
     assert tombstone.version_identity(artist=ARTIST, title=ORIGINAL) != (
         tombstone.version_identity(artist=ARTIST, title=REMIX)
     )
@@ -80,23 +63,14 @@ def test_a_remix_and_its_original_are_two_identities(cfg):
     ],
 )
 def test_case_spacing_and_padding_are_folded(artist, title):
-    """The four things that differ routinely between a row and a search result.
-
-    None of them is a different version, and an identity that treated them as one
-    would make the suppression miss the sweeps it exists to stop.
-    """
+    """Routine differences between a row and a search result are not a different version."""
     assert tombstone.version_identity(artist=artist, title=title) == (
         tombstone.version_identity(artist=ARTIST, title=ORIGINAL)
     )
 
 
 def test_composition_form_is_folded():
-    """The 144-file lesson, one layer up from the filesystem.
-
-    macOS hands a name back in whatever form it was created with and a provider
-    returns the composed form, so an identity that compared codepoints would miss
-    every accented title and only accented titles.
-    """
+    """Composition form folds, as macOS and providers hand back different forms."""
     accented = "Café Track"
     assert tombstone.version_identity(artist=ARTIST, title=accented) == (
         tombstone.version_identity(
@@ -106,11 +80,7 @@ def test_composition_form_is_folded():
 
 
 def test_punctuation_is_not_folded():
-    """Deliberately conservative, and the asymmetry of the costs is the reason.
-
-    A missed suppression re-acquires something and REPORTS it. An over-eager one
-    silently withholds music the user wants, and nothing tells them.
-    """
+    """Conservative, since an over-eager fold silently withholds music the user wants."""
     assert tombstone.version_identity(artist=ARTIST, title="Track (Live)") != (
         tombstone.version_identity(artist=ARTIST, title="Track [Live]")
     )
@@ -124,19 +94,13 @@ def test_an_identity_with_neither_field_refuses():
 
 
 def test_the_field_set_never_varies_with_the_input():
-    """A producer that omitted an empty field would hash differently from one that
-    supplied it, and the two would never match each other."""
+    """An omitted empty field would hash differently and never match."""
     assert set(tombstone.version_identity(artist=ARTIST, title="")) == {"artist", "title"}
     assert set(tombstone.version_identity(artist="", title=ORIGINAL)) == {"artist", "title"}
 
 
 def test_the_isrc_is_carried_in_the_payload_and_never_in_the_identity(cfg):
-    """The obvious suggestion, and the reason it is wrong.
-
-    A database row often carries a code and a provider candidate often does not.
-    In the identity, a tombstone written from a row that had one would fail to
-    suppress the same version arriving from a source that had none, silently.
-    """
+    """A code in the identity would miss the same version from a source without one."""
     row = library.RemovedRow(
         content_id="1",
         recorded="/music/x.flac",
@@ -152,9 +116,7 @@ def test_the_isrc_is_carried_in_the_payload_and_never_in_the_identity(cfg):
     assert stores.suppressed_version(cfg, artist=ARTIST, title=ORIGINAL)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The stores
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_tombstoned_version_is_suppressed_and_a_different_remix_is_not(cfg):
@@ -172,11 +134,7 @@ def test_revoking_a_tombstone_makes_the_version_acquirable_again(cfg):
 
 
 def test_a_revoked_tombstone_stays_listable_so_the_two_cases_can_be_told_apart(cfg):
-    """R36 says LISTABLE and revocable, and the two halves need each other.
-
-    A revoked record that vanished would leave a person unable to tell "never
-    suppressed" from "suppressed and then lifted".
-    """
+    """R36: LISTABLE and revocable, so "never suppressed" and "lifted" can be told apart."""
     record = stores.record_tombstone(cfg, _row(), actor="cli")
     stores.revoke_tombstone(cfg, record.suppression_id, actor="cli")
     assert stores.list_tombstones(cfg) == ()
@@ -184,9 +142,7 @@ def test_a_revoked_tombstone_stays_listable_so_the_two_cases_can_be_told_apart(c
     assert [held.suppression_id for held in listed] == [record.suppression_id]
     assert listed[0].revoked and listed[0].revoked_by == "cli"
 
-    # The projection a listing renders. It carries the revoked flag, so a person
-    # reading the list can tell the two cases apart rather than being shown a
-    # record that looks live.
+    # The projection a listing renders carries the revoked flag.
     row = stores.summarize(listed[0])
     assert row["revoked"] is True
     assert row["title"] == ORIGINAL and row["identity"] == f"{ARTIST.lower()} - {ORIGINAL.lower()}"
@@ -199,12 +155,7 @@ def test_recording_the_same_version_twice_changes_nothing(cfg):
 
 
 def test_a_decline_and_a_tombstone_are_separate_records_in_separate_stores(cfg):
-    """Revoking a decline must not un-suppress an acquisition.
-
-    A decline is about one library ROW and one file on this disk. A tombstone is
-    about a RECORDING that outlives the row, the file, and the library. Folding
-    them into one store would make "keep this file" mean "acquire this again".
-    """
+    """A decline is about one row, a tombstone about a recording, so neither revokes the other."""
     row = _row()
     decline = stores.record_decline(cfg, row, actor="cli")
     stones = stores.record_tombstone(cfg, row, actor="cli")
@@ -217,8 +168,7 @@ def test_a_decline_and_a_tombstone_are_separate_records_in_separate_stores(cfg):
 
 
 def test_a_decline_survives_a_row_being_re_pointed_at_a_different_file(cfg):
-    """A decline says "leave THAT file alone", and inheriting it onto whatever the
-    row points at next would be a decision nobody made."""
+    """A decline says "leave THAT file alone", and never moves with the row."""
     original = _row(recorded="/music/one.flac")
     stores.record_decline(cfg, original, actor="cli")
     declined = stores.decline_predicate(cfg)
@@ -227,12 +177,7 @@ def test_a_decline_survives_a_row_being_re_pointed_at_a_different_file(cfg):
 
 
 def test_an_unreadable_store_refuses_rather_than_reporting_nothing_suppressed(cfg):
-    """The U11 defect, asserted from this unit's side of the seam.
-
-    A suppression list read as empty un-suppresses everything in it silently, and
-    the next acquisition pass re-acquires exactly what somebody deleted on
-    purpose.
-    """
+    """An empty read would silently un-suppress everything (U11)."""
     stores.record_tombstone(cfg, _row(), actor="cli")
     path = config.state_path(tombstone.STORE_KEY, cfg)
     config.atomic_write_bytes(b'{"version": 1, "store": "tombstones"}\n', path)
@@ -242,8 +187,7 @@ def test_an_unreadable_store_refuses_rather_than_reporting_nothing_suppressed(cf
 
 
 def test_both_stores_are_declared_state_and_roll_back_with_the_database():
-    """R30 names them by name, and the coupling is what stops a restore leaving a
-    tombstone standing over a track the restore just brought back."""
+    """R30: a restore must not leave a tombstone over a track it brought back."""
     for key in (tombstone.STORE_KEY, tombstone.DECLINE_STORE_KEY):
         entry = config.state_file(key)
         assert entry.decision_store
@@ -259,12 +203,9 @@ def test_the_two_kinds_never_collide_even_on_one_identity(cfg):
     ) != review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_REMOVED_FILE, same)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # fold_code: the folding for a STRUCTURED IDENTIFIER, which fold is not
-# ═══════════════════════════════════════════════════════════════════════════
 
-#: The ISO 3901 example code, in the raw form and in the punctuated display form
-#: of the same twelve characters.
+#: The ISO 3901 example code, raw and in its punctuated display form.
 _RAW_CODE = "GBAYA1500001"
 _DISPLAY_CODE = "GB-AYA-15-00001"
 
@@ -286,48 +227,23 @@ _DISPLAY_CODE = "GB-AYA-15-00001"
     ],
 )
 def test_every_spelling_of_one_code_folds_to_one_value(spelling):
-    """The defect, at the unit: each of these is ONE recording's code, not two.
-
-    Each row is a spelling a real column carries. The display form is what a
-    provider prints, the lowered form is what a person types, the spaced and
-    non-breaking-space forms are what a paste out of a PDF leaves behind, and the
-    fullwidth form is what a paste out of a Japanese web page leaves behind. Under
-    ``fold`` every one of them is a different string from the raw code, and a
-    difference between two rows of one recording is what wedges the queue.
-    """
+    """Each spelling a real column carries is ONE recording's code, not two."""
     assert tombstone.fold_code(spelling) == tombstone.fold_code(_RAW_CODE)
 
 
 def test_fold_is_not_fold_code_and_that_is_the_whole_finding():
-    """Stated as the inequality rather than described, so it cannot quietly stop being true.
-
-    If someone later makes ``fold`` strip punctuation, this goes red and they are
-    sent to :func:`test_punctuation_is_not_folded`, which is the test saying why
-    ``fold`` must NOT: over-eager title folding silently withholds music. The two
-    foldings have opposite correct answers on the same input and that is precisely
-    why the code needed its own.
-    """
+    """Stated as an inequality, since the two foldings have opposite correct answers."""
     assert tombstone.fold(_DISPLAY_CODE) != tombstone.fold(_RAW_CODE)
     assert tombstone.fold_code(_DISPLAY_CODE) == tombstone.fold_code(_RAW_CODE)
 
 
 def test_two_genuinely_different_codes_stay_different():
-    """The half the folding may not cost: removing punctuation may not merge codes.
-
-    No two well-formed ISRCs differ only in punctuation, so this is the assertion
-    that the fold is doing the safe operation and not simply erasing the value.
-    """
+    """Removing punctuation never merges two well-formed codes."""
     assert tombstone.fold_code("USRC17607839") != tombstone.fold_code(_RAW_CODE)
 
 
 def test_a_non_ascii_alphanumeric_is_not_transliterated():
-    """The deliberate non-feature, and the over-suppression direction is the reason.
-
-    A Cyrillic ``А`` typed for a Latin ``A`` stays a DIFFERENT code. Folding it
-    away would merge two values that are genuinely different, the collision guard
-    would stop firing, and a deletion would take out a version the person never
-    deleted. Removing punctuation cannot do that; transliterating can.
-    """
+    """No transliteration, which could merge genuinely different codes and over-suppress."""
     cyrillic = "А" + _RAW_CODE[1:]
     assert tombstone.fold_code(cyrillic) != tombstone.fold_code(_RAW_CODE)
     assert tombstone.fold_code(cyrillic) == cyrillic.casefold()
@@ -335,10 +251,5 @@ def test_a_non_ascii_alphanumeric_is_not_transliterated():
 
 @pytest.mark.parametrize("empty", ["", "   ", "-", "--", "\u00a0", "()", "_", "- - -"])
 def test_a_value_carrying_no_code_folds_to_nothing(empty):
-    """Punctuation-only is an ABSENT code, and absence is read as agreement.
-
-    ``ambiguous_versions`` discards the empty string before counting, so this is
-    what keeps a row whose ISRC column holds a placeholder dash from being read as
-    a code that disagrees with a real one. A separator is not a code.
-    """
+    """Punctuation only is an ABSENT code, so a placeholder dash never disagrees with a real one."""
     assert tombstone.fold_code(empty) == ""

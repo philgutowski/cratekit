@@ -1,16 +1,8 @@
-"""What the two adoption verbs share: how a queued job is resumed and reported.
+"""How a queued adoption job is resumed and reported, under its older names.
 
-``crate adopt scan`` and ``crate adopt apply`` differ in what an item is, in
-what they write and in whether a gate stands in front of them. They do not
-differ in how a queued job is resumed, in what a job with no items means, or in
-the shape of the payload they report. Those three were written here, again in
-``tagging.shell`` and again in the verbs that queue a job, until U298 gave each
-one home: :func:`cratekit.core.jobs.advance`, :func:`cratekit.core.jobs.reported`
-and :func:`cratekit.cli.output.no_job`. This module keeps the names its package
-imports them by.
-
-Each verb's summary stays its own, and the gate stays with the verb that
-declares one.
+``adopt.move_cli`` and ``organize`` import these; each has one home since U298,
+:func:`cratekit.core.jobs.advance`, :func:`cratekit.core.jobs.reported` and
+:func:`cratekit.cli.output.no_job`, which the scan and apply verbs call directly.
 
 Layer: modules.
 """

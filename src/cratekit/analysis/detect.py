@@ -1,10 +1,8 @@
 """Read-only detectors. Tempo is measured. It is never emitted as a grid.
 
-The no-beatgrid rule is about writing: a grid element, a tempo tag, an
-average-tempo field, an analysis-file grid. Reading a tempo tag or
-computing a tempo from audio is how energy scoring and the filename head
-get a number. This module never assigns into a tag mapping and never
-writes XML.
+The no-beatgrid rule is about writing. Computing a tempo from audio is how
+energy scoring and the filename head get a number; this module never assigns
+into a tag mapping and never writes XML.
 """
 
 from __future__ import annotations
@@ -23,15 +21,12 @@ from cratekit.core.config import DEFAULT_DRIFT_CUT, DEFAULT_TEMPO_CEILING, DEFAU
 #: The terminal status for a file the decoder could not read at all.
 TERMINAL_UNDECODABLE = "skipped-undecodable"
 #: The terminal status for a file that decoded and could not be analysed: too
-#: short for a tempo, or a signal the chroma or separation step raised on.
-#: Kept apart from keyless, which is a track the analyser READ and found
-#: atonal, for the reason ``TERMINAL_UNDECODABLE`` is kept apart from it.
+#: short for a tempo, or a signal a step raised on. Kept apart from keyless,
+#: a track READ and found atonal.
 TERMINAL_UNANALYSABLE = "skipped-unanalysable"
-#: The terminal status for a file librosa did not read and libsndfile cannot
-#: open, on a machine with no ffmpeg to try it (U263): an M4A, or a file too
-#: damaged to open, which only ffmpeg could have judged. The decoder that was
-#: never tried is named, so it is kept apart from ``TERMINAL_UNDECODABLE``,
-#: which every decoder that could read the file has refused.
+#: The terminal status for a file libsndfile cannot open on a machine with no
+#: ffmpeg to try it (U263). Apart from ``TERMINAL_UNDECODABLE``, which every
+#: decoder that could read the file refused.
 TERMINAL_NO_DECODER = "skipped-no-decoder"
 
 _PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -65,51 +60,30 @@ _KEY_TO_CAMELOT = {
 }
 
 
-#: The frame hop the onset envelope and the tempogram are computed at, in
-#: samples of ``MEASURE_RATE``. Named because it sets the estimator's raw
-#: precision: a tempogram bin is one frame of lag, and at this rate and hop the
-#: bins near 128 beats per minute sit about six apart (lag 20 reads 129.2, lag
-#: 21 reads 123.0), which is the whole of the "off by one to three" bucket
-#: R-744 recorded. The interpolation below is what recovers the precision.
+#: The frame hop of the onset envelope and the tempogram, in samples of
+#: ``MEASURE_RATE``. It sets the raw precision: near 128 beats per minute the
+#: bins sit about six apart (R-744), which the interpolation below recovers.
 TEMPO_HOP = 512
-#: The prior over metrical levels, a log-normal in octaves around a centre,
-#: with the centre and the width librosa's own estimator defaults to. The FORM
-#: is not librosa's: it adds the prior to a log-compressed strength, and this
-#: multiplies the prior into the linear strength, which pulls harder toward
-#: the centre when two levels are close. Kept in this form because it is the
-#: form that was measured: on the sample it beat a flat window by 22 exact
-#: agreements in 299 (docs/cutover.md, sitting 22). The window is the setting,
-#: the prior is the method, and a change to either is re-measured.
+#: The prior over metrical levels, a log-normal in octaves with librosa's
+#: centre and width, multiplied into the linear strength rather than added to
+#: a log one: the form measured, 22 more exact agreements in 299 than a flat
+#: window (docs/cutover.md, sitting 22). A change to it is re-measured.
 TEMPO_PRIOR_CENTRE = 120.0
 TEMPO_PRIOR_OCTAVES = 1.0
 
 #: How far a head's tempo and key agree with rekordbox's own analysis of the
-#: same file, measured on 2026-09-30 over 299 library files rekordbox had
-#: analysed itself, so the run's answer presents a head as a measurement with
-#: a known error rather than as a fact. The sample is every row whose stored
-#: tempo is not a whole number, because a whole number there may have been
-#: imported from a tag rather than computed, so it leans toward tracks with an
-#: unquantised pulse and understates agreement on programmed music: on the 22
-#: files this product had headed and rekordbox then analysed, 16 agreed
-#: exactly and 19 keys of 22 matched. The shape is the one
-#: ``analysis.agreement.Agreement.as_dict`` answers and the script prints
-#: with ``--json``, so re-recording is a copy: the four tempo buckets, the
-#: count within one beat beside them, and the two key buckets. "Other level"
-#: is a pulse read at a related level rekordbox did not choose, three to two
-#: or four to three, and is the method's own rate rather than a setting. Every
-#: count was measured, none is a target. Re-measure with
-#: ``scripts/head_agreement.py --analyse 300 --step 4`` after any change to
-#: this module and replace every number here in the same commit.
+#: same files, measured 2026-09-30 over 299 library files whose stored tempo
+#: is not a whole number (a whole one may be a tag's), so a head is presented
+#: as a measurement with a known error. The shape is
+#: ``analysis.agreement.Agreement.as_dict``'s, so re-recording is a copy.
+#: Every count was measured, none is a target. Re-measure with
+#: ``scripts/head_agreement.py --analyse 300 --step 4`` after any change here
+#: and replace every number in the same commit.
 #:
-#: THE KEY BUCKETS WERE READ WITH THE WHOLE TRACK METHOD, which was the default
-#: then, and ``key_read_with`` says so (U276). The run reads the key with
-#: :data:`KEY_DEFAULT` since, and A121's reading of 2026-11-12 is carried
-#: beside the record under ``key_by_method``, every method over one sample:
-#: the keys equal to rekordbox's, and the wall time of the 300. That sitting
-#: recorded the equal counts and the tempo's equal count only, not the
-#: other buckets, so the record is not replaced whole and no ``differs`` is
-#: written for it: a record's buckets come from one run of the script, and
-#: none here is derived.
+#: THE KEY BUCKETS WERE READ WITH THE WHOLE TRACK METHOD, ``key_read_with``
+#: (U276). A121's reading of every method over one sample (2026-11-12) rides
+#: under ``key_by_method``; it recorded only equal counts, so nothing here is
+#: derived from it.
 _HEAD_AGREEMENT: dict[str, Any] = {
     "measured_on": date(2026, 9, 30).isoformat(),
     "reference": "rekordbox 7.2.19, its own analysis of the same files",
@@ -136,22 +110,13 @@ _HEAD_AGREEMENT: dict[str, Any] = {
 def head_agreement(window: tuple[int, int] | None = None) -> dict[str, Any]:
     """A fresh copy of the recorded agreement, safe to place in an envelope.
 
-    ``key_method`` is the method the run reads the key with, which the
-    ``key`` buckets were not read with when it differs from
-    ``key_read_with``; ``key_by_method`` is the reading of every method over
-    one sample, the run's own among them.
-
-    ``window`` is the floor and ceiling the run bound to the detector. The
-    record was measured under one window, and a DJ who raised theirs is not
-    shown a rate nobody measured for it: ``applies_to_window`` says whether
-    the bound window is the measured one, and the numbers stay so the reader
-    can see what was measured rather than an absence.
+    ``window`` is the floor and ceiling the run bound; ``applies_to_window``
+    says whether it is the one measured, and the numbers stay either way.
     """
     record = copy.deepcopy(_HEAD_AGREEMENT)
     measured = (record["window"]["floor"], record["window"]["ceiling"])
     record["applies_to_window"] = window is None or tuple(window) == measured
-    # THE METHOD THE RUN READS THE KEY WITH, beside the method the buckets
-    # were read with, so a reader can tell the two apart (U276).
+    # Beside ``key_read_with``, so a reader can tell the two apart (U276).
     record["key_method"] = KEY_DEFAULT
     return record
 
@@ -159,10 +124,8 @@ def head_agreement(window: tuple[int, int] | None = None) -> dict[str, Any]:
 def heavy_available() -> bool:
     """Whether the analysis extra is importable HERE, in this process.
 
-    Asked by a worker before it analyses an item, because ``analyse_file``
-    answers a missing extra and a track with no detectable key with the same
-    None, and a job that skipped every file as keyless on a machine that had
-    no librosa would be a clean report over work nothing could do.
+    ``analyse_file`` answers a missing extra and a keyless track with the same
+    None, so a worker asks this first.
     """
     try:
         import librosa  # noqa: F401
@@ -175,18 +138,11 @@ def heavy_available() -> bool:
 def _interpolated_peak(strength: Any, index: int) -> float:
     """The peak's position between bins, by the parabola through three points.
 
-    A tempogram bin is one frame of lag, and the true period is almost never a
-    whole number of frames, so the strongest bin alone is off by up to half a
-    bin, which near 128 beats per minute is three. Fitting a parabola to the
-    bin and its two neighbours puts the peak where the autocorrelation
-    actually turns, to a fraction of a frame. An edge bin, or a flat run where
-    the three points make no parabola, answers the bin itself.
-
-    THE OFFSET IS HELD TO HALF A BIN EITHER WAY. The bin was chosen on the
-    scored strength, prior and window applied, and the parabola is fitted on
-    the raw strength, so a stronger raw neighbour can put the vertex past the
-    midpoint toward it. Past the midpoint the neighbour would have been the
-    bin, had the score allowed it, so the answer stays on this bin's side.
+    The strongest bin alone is off by up to half a bin, three beats per minute
+    near 128. An edge bin, or a flat run that makes no parabola, answers the
+    bin itself. THE OFFSET IS HELD TO HALF A BIN: the bin was chosen on the
+    scored strength and the parabola is fitted on the raw one, and past the
+    midpoint the neighbour would have been the bin.
     """
     if index <= 0 or index >= len(strength) - 1:
         return float(index)
@@ -212,16 +168,10 @@ def tempo_from_autocorrelation(
 ) -> float | None:
     """The tempo the window and the prior pick out of an aggregated tempogram.
 
-    ``strength`` is one autocorrelation over lag, in frames, bin zero the zero
-    lag. The prior is the log-normal over metrical levels the constants above
-    describe, and the window is applied on top of it: a bin whose tempo falls
-    from ``floor`` to ``ceiling``, both included, is a candidate, every other
-    bin is not, so a pulse that reads at 166 with a window of 80 to 160 is
-    named 83, and named 166 when the window is raised. The interpolated answer
-    is held inside the window too, because a bin at the window's edge can
-    have its parabola lean past the edge, and the window is the contract.
-    None when no bin falls inside the window, which a configured window cannot
-    produce (config refuses an empty one) and a short onset envelope can.
+    ``strength`` is one autocorrelation over lag in frames. Only a bin from
+    ``floor`` to ``ceiling``, both included, is a candidate, and the
+    interpolated answer is held inside the window too: the window is the
+    contract. None when no bin falls inside it, as a short envelope can.
     """
     import librosa
     import numpy as np
@@ -247,40 +197,27 @@ def tempo_from_autocorrelation(
     return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))
 
 
-#: The drift measurement (U157), every number a property of the method rather
-#: than a setting, measured on synthetic tracks whose tempo is known by
-#: construction (``tests/test_analysis_drift.py``); the setting is the cut,
-#: ``analysis.drift_cut``. A window is about ten seconds of the tempogram's
-#: frames, long enough to hold a dozen beats at the floor and short enough
-#: that a six minute track gives three dozen readings.
+#: The drift measurement (U157): every number is the method's, measured on
+#: synthetic tracks of known tempo (``tests/test_analysis_drift.py``); the
+#: setting is ``analysis.drift_cut``. A window holds a dozen beats at the floor.
 DRIFT_WINDOW_SECONDS = 10.0
-#: How far either side of the track's own tempo a window's peak is looked
-#: for, as a factor of it: from the tempo over 1.25 to the tempo times 1.25.
-#: Held to a band so a window cannot read a related metrical level, half or
-#: double, three to two or four to three, which would be a jump in the
-#: reading and not a drift in the music: a steady 100 with a section of hats
-#: at 150 reads 48 percent at a band of 0.5 and 0.06 at this one. Wide enough
-#: that a step to either side of the head reaches the other section, 120 to
-#: 140 or 100 to 125, which the first band of 0.12 read as steady because
-#: the head named one section and the other fell outside it (the review of
-#: U157). A step past a quarter is read as the section the head named.
+#: How far either side of the track's tempo a window's peak is looked for, as
+#: a factor: narrow enough that a window cannot read a related metrical level,
+#: a jump in the reading rather than drift, and wide enough that a step of up
+#: to a quarter reaches the other section (U157 review).
 DRIFT_BAND = 0.25
-#: A window counts only when it carries a pulse: its onset strength at least
-#: this fraction of the track's median window, so a breakdown is passed over
-#: rather than read as drift, and at least the absolute floor below, so a
-#: track that is all pad is not judged on the noise in its envelope.
+#: A window counts only when it carries a pulse: onset strength at least this
+#: fraction of the median window, so a breakdown is passed over, and at least
+#: the floor, so a pad is not judged on its noise.
 DRIFT_ONSET_RELATIVE = 0.5
 DRIFT_ONSET_FLOOR = 0.2
-#: And a clear peak: the band's strongest lag stands at least this fraction
-#: above the mean of the lags from half to one and a half of its period. A
-#: drum pattern stands 0.1 to 0.2 above it, white noise and a beatless pad
-#: under 0.02, which is where the gate sits between.
+#: And a clear peak, this fraction above the mean of the lags around it: a
+#: drum pattern stands 0.1 to 0.2 above, noise and a pad under 0.02.
 DRIFT_PULSE_CONTRAST = 0.05
-#: Fewer counted windows than this is too little rhythmic material to judge,
-#: and the drift is unknown rather than a spread of two numbers.
+#: Fewer counted windows than this is too little to judge: the drift is unknown.
 DRIFT_MIN_WINDOWS = 3
-#: The spread is from this percentile of the counted windows' tempos to its
-#: complement, so one odd window in ten moves nothing.
+#: The spread runs from this percentile to its complement, so one odd window
+#: in ten moves nothing.
 DRIFT_PERCENTILE = 10.0
 
 
@@ -294,13 +231,7 @@ def _onset_and_tempogram(samples: Any, rate: int) -> tuple[Any, Any]:
 
 
 def measure_tempo(samples: Any, rate: int, *, floor: int, ceiling: int) -> float | None:
-    """The tempo of decoded samples, inside the window, to a fraction of a beat.
-
-    The onset envelope and the tempogram are the ones librosa's estimator
-    computes; what differs is the window and the interpolation, for the
-    reasons the constants above give. None when the envelope is too short to
-    hold a period inside the window.
-    """
+    """The tempo of decoded samples, inside the window, to a fraction of a beat, or None."""
     return measure_tempo_and_drift(samples, rate, floor=floor, ceiling=ceiling)[0]
 
 
@@ -309,8 +240,7 @@ def measure_tempo_and_drift(
 ) -> tuple[float | None, float | None]:
     """The tempo, and how far it moves over the track, from ONE tempogram (U157).
 
-    The drift is None when the tempo is, and when the track holds too little
-    pulse to judge, :func:`drift_from_tempogram`'s answer.
+    The drift is None when the tempo is, or the track holds too little pulse.
     """
     envelope, tempogram = _onset_and_tempogram(samples, rate)
     tempo = tempo_from_autocorrelation(
@@ -326,20 +256,11 @@ def drift_from_tempogram(
 ) -> float | None:
     """How far the tempo moves over the track, a percent of its middle, or None (U157).
 
-    ``tempogram`` is librosa's, one autocorrelation column per frame, and
-    ``envelope`` the onset strength it was taken from. The frames are cut
-    into windows of :data:`DRIFT_WINDOW_SECONDS`; each window's columns are
-    averaged and its peak is found inside :data:`DRIFT_BAND` of ``tempo``
-    and interpolated as the head's is, so each window reads the track's own
-    pulse to a fraction of a beat. A window without a pulse, the gates above,
-    is passed over. The answer is the spread from the tenth to the ninetieth
-    percentile of the windows' tempos as a percent of their median, so a
-    steady track reads near zero whatever its breakdowns, and a ramp or a
-    stepped change reads the distance it moves.
-
-    NONE IS NOT STEADY. Fewer than :data:`DRIFT_MIN_WINDOWS` windows with a
-    pulse, a beatless, ambient or very short file, has no drift to read, and
-    the caller names it unknown rather than guessing either way.
+    Each window's peak is found inside :data:`DRIFT_BAND` of ``tempo`` and
+    interpolated as the head's is; a window without a pulse is passed over.
+    The answer is the percentile spread of the windows' tempos over their
+    median, so a steady track reads near zero whatever its breakdowns.
+    NONE IS NOT STEADY: too few windows with a pulse is unknown.
     """
     import librosa
     import numpy as np
@@ -350,8 +271,7 @@ def drift_from_tempogram(
         return None
     per = int(round(DRIFT_WINDOW_SECONDS * rate / hop))
     windows = min(tempogram.shape[1], envelope.size) // per
-    # NO WINDOW AT ALL is answered here, before a median of nothing; how many
-    # windows are enough is asked once, of the windows that carry a pulse.
+    # NO WINDOW AT ALL is answered before a median of nothing.
     if windows == 0:
         return None
     frequencies = librosa.tempo_frequencies(tempogram.shape[0], sr=rate, hop_length=hop)
@@ -383,30 +303,14 @@ def drift_from_tempogram(
     return float(100.0 * (high - low) / middle)
 
 
-#: How the chroma the key is read from is taken (U241). ``KEY_WHOLE`` is the
-#: harmonic part of the whole track, then its chroma, which shipped as the
-#: default until U276. ``KEY_WINDOWS`` reads the same chroma from windows
-#: spread evenly over the track. ``KEY_PLAIN`` reads the whole track's chroma
-#: without the harmonic separation.
+#: How the key's chroma is taken (U241): ``KEY_WHOLE`` from the harmonic part
+#: of the whole track, ``KEY_WINDOWS`` the same from windows spread over it,
+#: ``KEY_PLAIN`` from the whole track without the separation.
 #:
-#: ``KEY_PLAIN`` IS THE DEFAULT SINCE U276, on a reading of all three against
-#: rekordbox's own keys. The bar U241 set was agreement with rekordbox on the
-#: library within one percentage point of the whole track's rate, read at an
-#: attended sitting and never on a fixture. A121 read it on 2026-11-12, over
-#: 300 library files rekordbox analysed itself, every fourth eligible one
-#: (``scripts/head_agreement.py --analyse 300 --step 4 --key ...``): whole 159
-#: equal (53.0%) in 663 seconds, windows 157 (52.3%) in 453, plain 161 (53.7%)
-#: in 341. Both cheaper methods met the bar; plain agreed the most and cost the
-#: least, about half of whole's time, because the separation is what it skips.
-#: The tempo, the drift and the energy do not read the key's chroma, so what
-#: can move is the key and whether there is one: the review of U276 drove a
-#: file of clicks with no tone, which the whole track's chroma read as keyless
-#: (``skipped-no-key``) and the plain chroma keys, so ``analyze run`` now
-#: writes it a key and a head. Four drum tools, noise and the 23 track
-#: synthetic set were keyed under both, the drum tools to keys far apart
-#: under the two, since a chroma with no tone in it names no key worth the
-#: name. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay
-#: selectable by name so a later sitting can read all three again.
+#: ``KEY_PLAIN`` IS THE DEFAULT SINCE U276: over 300 library files (A121,
+#: 2026-11-12) it agreed with rekordbox the most, 161 against whole's 159, in
+#: about half the time. A toneless file the whole chroma read as keyless now
+#: gets a key and a head. The other two stay selectable for a later reading.
 KEY_WHOLE = "whole"
 KEY_WINDOWS = "windows"
 KEY_PLAIN = "plain"
@@ -416,27 +320,18 @@ KEY_METHODS = (KEY_WHOLE, KEY_WINDOWS, KEY_PLAIN)
 KEY_DEFAULT = KEY_PLAIN
 #: The harmonic margin the key's separation has always used.
 KEY_HARMONIC_MARGIN = 4
-#: The windowed method's windows: how many, and how long each is. Six of
-#: thirty seconds is three minutes of a track however long it runs. They are
-#: spread, one centred in each sixth, so a key that changes late is heard in
-#: proportion to how much of the track it holds, where the opening minutes
-#: alone would never hear it.
+#: The windowed method's windows, one centred in each sixth, so a key that
+#: changes late is heard in proportion to how much of the track it holds.
 KEY_WINDOW_COUNT = 6
 KEY_WINDOW_SECONDS = 30.0
 
-#: The stages a run's time is reported under (U241), in the order they run.
-#: ``scripts/analyze_stages.py`` prints them; the vocal pass adds its own two.
-#: Every one of them is met by a method that separates; :func:`stages_of`
-#: answers the ones a given method meets.
+#: The stages a run's time is reported under (U241), in order, as a method
+#: that separates meets them. ``scripts/analyze_stages.py`` prints them.
 STAGES = ("decode", "tempo_drift", "harmonic", "chroma_key", "energy")
 
 
 def stages_of(method: str) -> tuple[str, ...]:
-    """The stages a head read with the key ``method`` meets, in the order they run.
-
-    The plain chroma never separates, so it meets no ``harmonic`` stage
-    (U276), and a report of its time does not count one.
-    """
+    """The stages a head read with the key ``method`` meets: plain has no ``harmonic`` (U276)."""
     if method not in KEY_METHODS:
         raise ValueError(f"the key method is one of {KEY_METHODS}, not {method!r}")
     if method == KEY_PLAIN:
@@ -446,11 +341,7 @@ def stages_of(method: str) -> tuple[str, ...]:
 
 @contextmanager
 def timed(timings: MutableMapping[str, float] | None, stage: str) -> Iterator[None]:
-    """Add the wall time of the block to ``timings[stage]``, or do nothing for None.
-
-    The measurement U241's record is built from is the shipped functions timed
-    in place, through this, never a copy of them timed beside them.
-    """
+    """Add the block's wall time to ``timings[stage]``, timing the shipped code in place."""
     if timings is None:
         yield
         return
@@ -470,11 +361,8 @@ def key_windows(
 ) -> list[tuple[int, int]] | None:
     """Where the windowed key reads, as sample ranges, or None for the whole track.
 
-    The track is cut into ``count`` equal parts and one window sits in the
-    middle of each. None when the windows together would cover the track
-    anyway: a track no longer than ``count`` windows, a stinger shorter than
-    one above all, is read whole, so the windowed method and the whole track
-    method are one method on short material.
+    None when the windows would cover the track anyway, so the two methods are
+    one on short material.
     """
     width = int(seconds * rate)
     if count < 1 or width < 1 or length <= count * width:
@@ -494,12 +382,10 @@ def key_profile(
     method: str = KEY_DEFAULT,
     timings: MutableMapping[str, float] | None = None,
 ) -> Any:
-    """The twelve bin chroma profile the key is read from, by ``method``.
+    """The twelve bin chroma profile the key is read from: the mean over every frame read.
 
-    One profile whatever the method: the mean chroma over every frame read.
-    For the windowed method the frames are the windows' own, each window
-    separated and transformed by itself, so its cost is the windows' length
-    and not the track's.
+    Each window is separated and transformed by itself, so it costs the
+    windows' length and not the track's.
     """
     import librosa
     import numpy as np
@@ -526,12 +412,9 @@ def key_profile(
 
 
 def camelot_of(profile: Any) -> str | None:
-    """The Camelot key whose profile the chroma correlates with best, or None.
+    """The Camelot key whose template the chroma correlates with best, first best kept.
 
-    The twenty four correlations against the major and minor templates, the
-    first best kept, exactly as the detector has always chosen. None for a
-    profile with no energy in it, and for one that is not a number, where no
-    correlation compares greater than any other.
+    None for a profile with no energy in it or one that is not a number.
     """
     import numpy as np
 
@@ -563,54 +446,29 @@ def analyse_file(
 ) -> dict[str, Any] | None:
     """Return camelot, tempo, drift and energy, or None when detection cannot run.
 
-    ``key`` is how the key's chroma is taken, :data:`KEY_METHODS`, the plain
-    chroma unless a caller names another (U241, U276). ``timings`` collects
-    the wall time of each stage :func:`stages_of` the method names when a
-    mapping is passed, and costs nothing when it is not.
-
-    ``tempo_window`` is the configured floor and ceiling; the run binds it from
-    ``analysis.tempo_floor`` and ``analysis.tempo_ceiling`` beside the
-    calibration, and a caller that passes nothing gets the shipped default.
-    ``drift_cut`` is ``analysis.drift_cut``, bound the same way, which the
-    drift's verdict is read against (U157).
-
-    Energy is computed from the same decoded samples when ``calibration`` is a
-    :class:`cratekit.analysis.energy.Calibration`, and is an honest absence
-    otherwise: ``energy`` is None and ``energy_status`` names why, so a
-    consumer can tell "this library has no calibration" from "the measurement
-    failed" and neither from "never computed", which is what the first version
-    of this function returned for every track (U58).
-
-    Tests inject a detect callable into run_batch and never reach here.
-    librosa is imported inside the function so a slim install can still
-    import the package.
+    ``key`` is a :data:`KEY_METHODS` name (U241, U276); ``timings`` collects
+    each stage's wall time when given. ``tempo_window`` and ``drift_cut`` are
+    the configured values the run binds (U157). Energy comes from the same
+    samples under a calibration, and is otherwise an honest absence whose
+    ``energy_status`` names why (U58). librosa is imported here so a slim
+    install can still import the package.
     """
     if key not in KEY_METHODS:
-        # A DEFECT IN THE CALLER, raised before anything is imported or opened
-        # rather than swallowed below as a track that could not be analysed.
+        # A DEFECT IN THE CALLER, raised before anything is opened.
         raise ValueError(f"the key method is one of {KEY_METHODS}, not {key!r}")
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
         import numpy  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
-    # THIS PROCESS'S FIRST HEAD IS PRECEDED BY A WARM UP, ALONE (U241). librosa's
-    # compiled kernels are cached on disk, and two processes filling that cache
-    # together crash and leave it damaged; ``analysis.warm`` says how that was
-    # found. Here, rather than in a worker's initializer, so the driver, a
-    # worker, a script and a second command all take the same turn. ``decode``
-    # is the one decoder (U263).
+    # THIS PROCESS'S FIRST HEAD IS PRECEDED BY A WARM UP, ALONE (U241), here so
+    # every caller takes the same turn; ``analysis.warm`` says why.
     from cratekit.analysis import decode, warm
 
     warm.kernels()
     try:
-        # AT THE ENERGY MEASURE RATE, one constant for both, because every
-        # spectral feature is rate dependent and the calibration fitted on the
-        # restamp path scores the samples decoded here.
-        # THROUGH THE ONE DECODER (U263): ``librosa.load``'s samples, bit for
-        # bit, for every file it reads, mixed to mono with one add (U264),
-        # and ffmpeg only for a file libsndfile cannot open, an M4A on
-        # librosa 1.0.
+        # AT THE ENERGY MEASURE RATE, so the restamp path's calibration scores
+        # these samples, and THROUGH THE ONE DECODER (U263).
         with timed(timings, "decode"):
             y, sr = decode.load(path, MEASURE_RATE)
         if y.size == 0:
@@ -618,16 +476,11 @@ def analyse_file(
     except decode.DecoderMissing:
         return {"path": path, "terminal": TERMINAL_NO_DECODER}
     except Exception:
-        # A FILE THE DECODER COULD NOT READ IS NOT A TRACK WITH NO KEY. The
-        # first version returned None here, which the light pass reported as
-        # skipped-no-key: a truncated download was told to the person as
-        # atonal, a clean report over a file the tool could not read.
+        # A FILE THE DECODER COULD NOT READ IS NOT A TRACK WITH NO KEY.
         return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     try:
         floor, ceiling = tempo_window
-        # THE DRIFT IS READ OVER THE WHOLE TRACK, always (U241): it exists to
-        # find a tempo that moves somewhere in it, and it is two percent of
-        # the run.
+        # THE DRIFT IS READ OVER THE WHOLE TRACK, always (U241).
         with timed(timings, "tempo_drift"):
             tempo, drift = measure_tempo_and_drift(y, sr, floor=floor, ceiling=ceiling)
         if tempo is None:
@@ -635,10 +488,7 @@ def analyse_file(
         rate = int(tempo + 0.5)
         profile = key_profile(y, sr, method=key, timings=timings)
     except Exception:
-        # DECODED AND NOT ANALYSABLE IS NOT KEYLESS EITHER. A stinger too short
-        # for a tempo estimate, or a signal the separation raised on, was
-        # reported as atonal by the first version, the same shape as the
-        # undecodable case above one step later.
+        # DECODED AND NOT ANALYSABLE IS NOT KEYLESS EITHER.
         return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
     camelot = camelot_of(profile)
     if camelot is None:
@@ -649,8 +499,7 @@ def analyse_file(
         "path": path,
         "camelot": camelot,
         "rate": rate,
-        # U157: the drift and its verdict, None and unknown for a track with
-        # too little pulse to judge, which the finalize writes as it is.
+        # None and unknown for a track with too little pulse to judge (U157).
         "drift": drift,
         "drift_verdict": drift_words.verdict(drift, drift_cut),
         "energy": level,
@@ -661,11 +510,8 @@ def analyse_file(
 def energy_from_samples(samples: Any, rate: int, *, calibration: Any) -> tuple[int | None, str]:
     """The level and its status for samples already decoded by the head.
 
-    Split out of :func:`analyse_file` so the three answers are one function
-    with one caller each way: no calibration is ``uncalibrated`` and measures
-    nothing, a measurement that fails is ``features-unavailable``, and a level
-    is ``calibrated``. The head's tempo is NOT handed down: the feature vector
-    measures its own from the slice so the run and restamp paths agree.
+    No calibration measures nothing. The head's tempo is NOT handed down: the
+    features measure their own so the run and restamp paths agree.
     """
     from cratekit.analysis import energy
 

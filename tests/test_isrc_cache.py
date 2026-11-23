@@ -1,13 +1,9 @@
 """U206: an ISRC the provider already answered is not asked again.
 
-The cache sits at the two lookup seams, the outbound account's ``match_track``
-and the catalogue's ``tracks_for_isrc``, and every scenario here is driven
-through one of those two shipped classes over a fake client that counts what it
-is asked. The client's own exception classes are used where the seams read a
-failure by its class, because a fake class of the same name is a measurement
-taken on something authored alongside the fix.
-
-D1 applies. Every ISRC here is in a registrant range nobody holds.
+The cache sits at the account's ``match_track`` and the catalogue's
+``tracks_for_isrc``, and every scenario is driven through one of those classes over
+a fake client that counts what it is asked. The client's own exception classes are
+used where the seams read a failure by its class.
 """
 
 from __future__ import annotations
@@ -33,15 +29,9 @@ from tests.test_config import valid_data
 
 ONE = "QZAAA2600001"
 TWO = "QZAAA2600002"
-#: A day in seconds, written out rather than read off the module, so a
-#: wrong day in the module is a failure here and not the same wrong day twice.
+#: A day in seconds, written out so a wrong day in the module fails here.
 DAY = 86_400
 SRC_ROOT = Path(isrc_cache.__file__).resolve().parents[2]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Fakes: a client that answers from memory and counts every ISRC it is asked
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Artist:
@@ -58,12 +48,8 @@ class Track:
     """A provider track in the client's own shape."""
 
     def __init__(
-        self,
-        track_id: str,
-        name: str = "",
-        version: str | None = None,
-        artists: tuple[str, ...] = (),
-        album: str = "",
+        self, track_id: str, name: str = "", version: str | None = None,
+        artists: tuple[str, ...] = (), album: str = "",
     ) -> None:
         self.id = int(track_id)
         self.name = name
@@ -87,9 +73,10 @@ class HTTPFailure(Exception):
 
 
 class Client:
-    """Answers ``get_tracks_by_isrc`` from ``answers``: a track list, or an
-    exception class or instance to raise. ``failures`` are raised first, one per
-    call, before the answer is given."""
+    """Answers ``get_tracks_by_isrc`` from ``answers``: tracks, or an exception to raise.
+
+    ``failures`` are raised first, one per call.
+    """
 
     def __init__(self, answers: dict | None = None, *, country: str | None = "GB") -> None:
         self.answers = dict(answers or {})
@@ -144,11 +131,6 @@ def stored() -> dict:
     return json.loads(config.state_path(isrc_cache.STATE_KEY).read_text(encoding="utf-8"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# An answer is asked once, by either seam, from any instance
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_second_account_over_a_fresh_client_asks_nothing_for_an_answered_isrc(clock):
     first = Client({ONE: single()})
     assert account(first, cache(clock)).match_track(identity="1", isrc=ONE) == "9001"
@@ -170,8 +152,7 @@ def test_the_cache_file_sits_beside_the_provider_gate_not_under_the_library():
 
 
 def test_a_choice_among_several_releases_is_made_from_a_remembered_answer_with_no_call(clock):
-    """Two releases under one ISRC, one the row's version: ``_among`` chooses
-    from the remembered tracks exactly as it chose from the live ones."""
+    """``_among`` chooses from the remembered tracks as it chose from the live ones."""
     answer = [
         Track("9001", "Sun Path", artists=("Aurora Bloom",)),
         Track("9002", "Sun Path", version="Extended Mix", artists=("Aurora Bloom",)),
@@ -242,11 +223,6 @@ def test_a_spelling_that_is_not_its_own_fold_is_asked_and_never_kept(clock):
 
     assert client.asked == [lower, lower]
     assert not config.state_path(isrc_cache.STATE_KEY).exists()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# A not found is kept for a week, a found answer for the configured days
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_not_found_is_kept_and_asked_again_after_seven_days(clock):
@@ -351,14 +327,8 @@ def test_zero_days_asks_every_time_and_writes_nothing(clock, monkeypatch):
     assert not config.state_path(isrc_cache.STATE_KEY).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Only an answer is kept
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
-    "failure",
-    [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
+    "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
     ids=["outage", "rejected-session", "rate-limit"],
 )
 def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, failure):
@@ -375,8 +345,7 @@ def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, failure):
 
 
 def test_an_invalid_isrc_the_account_reads_as_no_match_is_never_kept(clock):
-    """The client raises ``InvalidISRC`` for an outage as well (the solutions
-    entry), so the account path's no match over it is not remembered."""
+    """The client raises ``InvalidISRC`` for an outage too, so that no match is not kept."""
     client = Client({ONE: InvalidISRC})
     made = cache(clock)
     assert account(client, made).match_track(identity="1", isrc=ONE) is None
@@ -399,8 +368,7 @@ def test_an_invalid_isrc_on_the_catalogue_is_raised_and_never_kept(clock, monkey
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
+    "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
     ids=["outage", "rejected-session", "rate-limit"],
 )
 def test_the_catalogue_never_keeps_a_failure(clock, monkeypatch, failure):
@@ -429,8 +397,7 @@ def test_an_outage_then_a_not_found_on_the_retry_keeps_the_not_found(clock):
 
 
 def test_an_outage_then_an_invalid_isrc_on_the_retry_keeps_nothing(clock):
-    """The account reads the retry's ``InvalidISRC`` as no match, and what the
-    attempt before it said decides nothing about keeping it."""
+    """The attempt before a retry's ``InvalidISRC`` decides nothing about keeping it."""
     client = Client({ONE: InvalidISRC})
     client.failures = [HTTPFailure(503)]
     made = cache(clock)
@@ -439,11 +406,6 @@ def test_an_outage_then_an_invalid_isrc_on_the_retry_keeps_nothing(clock):
     account(client, made).match_track(identity="1", isrc=ONE)
 
     assert client.asked == [ONE, ONE, ONE]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The file: set aside when it does not parse, readable under two writers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_corrupt_file_is_set_aside_and_the_lookup_succeeds(clock):
@@ -536,10 +498,7 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     children = [
         subprocess.Popen(
             [sys.executable, str(script), str(path), str(lock), str(first), "40"],
-            env={**os.environ, **env},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            env={**os.environ, **env}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         for first in (1, 101)
     ]
@@ -552,32 +511,18 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     assert isrc_cache.Cache(days=30, path=path, lock_path=lock).count() == 80
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A remembered track reads as the client's own track reads
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def _client_track(**fields) -> tidalapi.media.Track:
-    """A real client track built offline, the solutions entry's method:
-    constructing a ``Session`` makes no request."""
+    """A real client track built offline, since constructing a ``Session`` makes no request."""
     session = tidalapi.Session()
     payload = {
-        "id": 9001,
-        "title": "Sun Path",
-        "duration": 300,
-        "allowStreaming": True,
-        "streamReady": True,
-        "isrc": ONE,
-        "version": "Extended Mix",
-        "trackNumber": 1,
-        "volumeNumber": 1,
-        "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
+        "id": 9001, "title": "Sun Path", "duration": 300, "allowStreaming": True,
+        "streamReady": True, "isrc": ONE, "version": "Extended Mix", "trackNumber": 1,
+        "volumeNumber": 1, "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
         "artists": [
             {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
             {"id": 2, "name": "Nova Reef", "type": "FEATURED"},
         ],
-        "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
-        **fields,
+        "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None}, **fields,
     }
 
     class Missing(dict):
@@ -608,21 +553,14 @@ def test_a_remembered_client_track_reads_as_the_client_track_does(clock, availab
         assert tidal_account._agrees(wanted, kept) == tidal_account._agrees(wanted, live)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The setting and the counts
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_setting_reaches_the_cache_both_openers_build(tmp_path, monkeypatch):
     from cratekit.acquire import provider_session
 
     root = tmp_path / "library"
     built = config.from_dict(valid_data(root, provider={"isrc_cache_days": 4}))
-    # U261: both openers take the process's held session rather than logging
-    # in themselves, so the stand in is the held session, with no app client.
+    # U261: both openers take the held session, so the stand in has no app client.
     monkeypatch.setattr(
-        provider_session,
-        "session_for",
+        provider_session, "session_for",
         lambda cfg=None: SimpleNamespace(client=Client({}), app=None),
     )
 
@@ -651,11 +589,6 @@ def test_the_process_counts_say_what_the_cache_settled_and_what_was_asked(clock)
 
     after = isrc_cache.process_lookups()
     assert (after.remembered - before.remembered, after.asked - before.asked) == (2, 1)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Doctor names what the cache holds and every file it set aside
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _doctor_note(cfg=None):
@@ -693,11 +626,6 @@ def test_doctor_says_when_the_cache_is_off(tmp_path):
     assert "isrc_cache_days is 0" in finding.detail
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# An answer with a track that cannot be read is asked again
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
     "gap",
     [Track("9002", "", artists=("Aurora Bloom",)), Track("9002", "Sun Path"), Track("0", "Sun Path", artists=("Aurora Bloom",))],
@@ -712,11 +640,6 @@ def test_an_answer_holding_a_track_that_cannot_be_read_is_asked_again(clock, mon
 
     assert client.asked == [ONE, ONE]
     assert not config.state_path(isrc_cache.STATE_KEY).exists()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# A copy run that redirects the installation state too keeps the live answers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_copy_run_redirecting_installation_state_shares_answers_through_the_override(
@@ -742,17 +665,13 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
 
     live = config.state_path(isrc_cache.STATE_KEY)
     area = rehearsal.Area(
-        run_id="r1",
-        volume=tmp_path / "volume",
-        local=tmp_path / "local",
-        database=tmp_path / "volume" / "db" / "master.db",
-        cfg=None,
+        run_id="r1", volume=tmp_path / "volume", local=tmp_path / "local",
+        database=tmp_path / "volume" / "db" / "master.db", cfg=None,
     )
     assert config.ENV_ISRC_CACHE_DIR not in os.environ
 
     with rehearsal.redirected(area):
-        # U278: the provider gate stays live too, by its own resolution, so a
-        # rehearsal spends from the account's one allowance.
+        # U278: the provider gate stays live, so a rehearsal spends the account's allowance.
         assert config.installation_state_dir() == tmp_path / "local" / "state"
         assert config.state_path("provider_gate").parent != tmp_path / "local" / "state"
         assert isrc_cache.Cache().path == live
@@ -761,19 +680,13 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
     assert isrc_cache.Cache().path == live
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Review round one: what each seam keeps as a not found is one narrow rule
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
     "failure", [FileNotFoundError, ModuleNotFoundError], ids=["file", "module"]
 )
 def test_the_catalogue_answers_a_class_named_not_found_as_before_and_keeps_nothing(
     clock, monkeypatch, failure
 ):
-    """``_gone`` reads any class named for a not found, and still answers it as
-    empty; the cache keeps only the client's own not found."""
+    """``_gone`` answers a class named for a not found as empty; the cache keeps only its own."""
     client = Client({ONE: failure("not the provider's answer")})
     made = cache(clock)
     assert catalogue(client, made, monkeypatch).tracks_for_isrc(ONE) == ()
@@ -832,11 +745,6 @@ def test_doctor_tells_a_file_that_does_not_parse_from_one_that_cannot_be_read(mo
         scoped.setattr(Path, "read_text", refused)
         unreadable = _doctor_note()
     assert "could not be read" in unreadable.detail
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# U207's batch screen is not asked about a code the cache answers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("seam", ["account", "catalogue"])

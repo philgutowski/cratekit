@@ -1,25 +1,10 @@
 """``crate inbox refill``: rebuild an INBOX account playlist from its recorded pass (U134).
 
-The engine is :mod:`cratekit.intake.refill`, and its docstring says how a
-playlist is found and how each row is resolved. This module is the order a
-person meets it in, which is ``inbox rotate``'s:
-
-* the backup acknowledgment is read before the plan and before the gate
-  (R-733);
-* the plan is made on a handle opened to READ and closed before the gate, and
-  a library whose intake tree is still on the bridge refuses there, naming
-  ``tree cutover``;
-* the explicit gate is asked over the digested plan, AND AN EMPTY PLAN STILL
-  ASKS, so a second run that plans nothing is a question answered and ends
-  ``no_op``;
-* only ``apply`` over a plan that adds a membership opens the database with
-  write intent, and the engine takes the plan again on that handle and
-  refuses ``decision-stale`` when anything moved in between.
-
-THE ITEMS ARE EVERY ROW OF EVERY PLAYLIST, the ones it adds, the ones it
-already holds and the ones it leaves with why, then each account playlist no
-INBOX playlist answers, so the screen a person approves names what stays out
-as well as what goes in.
+The engine is :mod:`cratekit.intake.refill`. The order a person meets it in is
+``inbox rotate``'s, AN EMPTY PLAN STILL ASKS and ends ``no_op``, and only
+``apply`` over a plan that adds a membership opens the database to write. The
+items are every row of every playlist, added, held or left with why, then each
+account playlist no INBOX playlist answers.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -28,17 +13,10 @@ command-line layer, for the reason ``adopt.apply_cli`` gives.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import (
-    active_taxonomy,
-    analysis_store,
-    config,
-    rb_writer,
-    session,
-    tree_registry,
-)
+from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome
 from cratekit.intake import land_cli, refill
 
@@ -59,6 +37,8 @@ UNFOUND = "refill-playlist-unfound"
 
 #: Session records that could not be read, so no playlist was found by name.
 RECORDS_UNREADABLE = "refill-records-unreadable"
+
+_T = TypeVar("_T")
 
 
 def build(parser, entry) -> None:
@@ -126,26 +106,15 @@ def warnings_of(plan: refill.RefillPlan) -> list[dict[str, str]]:
             f"{playlist} {row.position}. {row.artist} - {row.title} ({row.why})"
             for playlist, row in left
         )
-        found.append(
-            {
-                "code": LEFT_OUT,
-                "message": (
-                    f"{len(left)} track(s) of the account playlists are not in their "
-                    f"INBOX playlist, each named with why: {named}"
-                ),
-            }
+        message = (
+            f"{len(left)} track(s) of the account playlists are not in their "
+            f"INBOX playlist, each named with why: {named}"
         )
+        found.append({"code": LEFT_OUT, "message": message})
     if plan.unfound:
         named = "; ".join(f"{one.account_name} ({one.why})" for one in plan.unfound)
-        found.append(
-            {
-                "code": UNFOUND,
-                "message": (
-                    f"{len(plan.unfound)} account playlist(s) of the pass were not "
-                    f"refilled: {named}"
-                ),
-            }
-        )
+        message = f"{len(plan.unfound)} account playlist(s) of the pass were not refilled: {named}"
+        found.append({"code": UNFOUND, "message": message})
     if plan.unreadable:
         found.append(
             {
@@ -164,28 +133,44 @@ def warnings_of(plan: refill.RefillPlan) -> list[dict[str, str]]:
     return found
 
 
-def planned(cfg: config.Config, declared, pass_name: str) -> refill.RefillPlan:
-    """The plan over INBOX as it stands, through a handle opened to read and closed."""
+def reading(cfg: config.Config, plan: Callable[[Any], _T]) -> _T:
+    """``plan(db)`` over a handle opened to read and closed, as every INBOX verb plans."""
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
-        return refill.plan_refill(
-            cfg, db, declared=declared, registry=tree_registry.read(cfg), pass_name=pass_name
-        )
+        return plan(db)
     finally:
         rb_writer.close_db(db)
+
+
+def writing(cfg: config.Config, apply: Callable[[Any, Any], _T]) -> _T:
+    """``apply(db, analysis_roots)`` through a handle of its own, opened to write and closed."""
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        return apply(db, analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+
+
+def planned(cfg: config.Config, declared, pass_name: str) -> refill.RefillPlan:
+    """The plan over INBOX as it stands, through a handle opened to read and closed."""
+    return reading(
+        cfg,
+        lambda db: refill.plan_refill(
+            cfg, db, declared=declared, registry=tree_registry.read(cfg), pass_name=pass_name
+        ),
+    )
 
 
 def written(cfg: config.Config, declared, plan: refill.RefillPlan) -> refill.Refilled:
     """Apply the plan through a handle of this function's own, opened to write."""
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        return refill.apply_refill(
-            cfg, db, plan, declared=declared, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-    finally:
-        rb_writer.close_db(db)
+    return writing(
+        cfg,
+        lambda db, roots: refill.apply_refill(
+            cfg, db, plan, declared=declared, analysis_roots=roots
+        ),
+    )
 
 
 def inbox_refill(ctx) -> Envelope:
@@ -202,21 +187,12 @@ def inbox_refill(ctx) -> Envelope:
     if ctx.gate.require(spec, plan=data, context=facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     if not plan.writes:
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                *warnings,
-                {
-                    "code": NOTHING,
-                    "message": (
-                        f"every track the library owns of the pass's {len(plan.targets)} "
-                        f"INBOX playlist(s) is in its playlist already, so nothing was "
-                        f"written"
-                    ),
-                },
-            ],
+        nothing = (
+            f"every track the library owns of the pass's {len(plan.targets)} "
+            f"INBOX playlist(s) is in its playlist already, so nothing was written"
         )
+        warnings.append({"code": NOTHING, "message": nothing})
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
 
     refilled = written(cfg, declared, plan)
     refill.assert_read_back(refilled)
@@ -225,38 +201,12 @@ def inbox_refill(ctx) -> Envelope:
         "added": refilled.added,
         "read back": sum(len(one.read_back) for one in refilled.filled),
     }
-    return ctx.envelope(
-        data=data,
-        warnings=[
-            *warnings,
-            {
-                "code": REFILLED,
-                "message": (
-                    f"{refilled.added} membership(s) added across "
-                    + ", ".join(
-                        f"{one.name} ({len(one.added)}, now {len(one.read_back)})"
-                        for one in refilled.filled
-                    )
-                    + f"; every one read back from the database, and no content row "
-                    f"was written; undo with a restore of session {refilled.session_id}"
-                ),
-            },
-        ],
+    across = ", ".join(
+        f"{one.name} ({len(one.added)}, now {len(one.read_back)})" for one in refilled.filled
     )
-
-
-__all__ = [
-    "APPROVE_GATE",
-    "LEFT_OUT",
-    "NOTHING",
-    "RECORDS_UNREADABLE",
-    "REFILLED",
-    "UNFOUND",
-    "build",
-    "facts",
-    "inbox_refill",
-    "payload",
-    "planned",
-    "warnings_of",
-    "written",
-]
+    done = (
+        f"{refilled.added} membership(s) added across {across}; every one read back from "
+        f"the database, and no content row was written; undo with a restore of session "
+        f"{refilled.session_id}"
+    )
+    return ctx.envelope(data=data, warnings=[*warnings, {"code": REFILLED, "message": done}])

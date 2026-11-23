@@ -1,9 +1,7 @@
 """R-924: intake set says which phase it is in, and how far, while it runs.
 
-A five hour mix was 557 MB of download and 732 paid calls with nothing on the
-screen. These drive the real dispatcher with the fake fetcher and the fake
-carver and transport the U104 and worker tests already use, and read what a
-person would see on standard error.
+Driven through the real dispatcher with the fakes the U104 and worker suites
+use, reading what a person would see on standard error.
 """
 
 from __future__ import annotations
@@ -20,21 +18,20 @@ from cratekit import cli
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import acrcloud, fetch
 from tests.cli_drive import drive
+from tests.intake import test_set_fetch as set_fetch
 from tests.intake import test_workers as workers
 from tests.intake.test_recognition import FakeCarver, miss
 from tests.intake.test_set_fetch import URL, FakeFetcher, nothing_left
 from tests.intake.test_workers import recording, three_tracks
 
-cfg = workers.cfg
-library = workers.library
-recognised = workers.recognised
+cfg, library, recognised = workers.cfg, workers.library, workers.recognised
+fetcher = set_fetch.fetcher
 
 
-@pytest.fixture
-def fetcher(monkeypatch) -> FakeFetcher:
-    fake = FakeFetcher()
-    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
-    return fake
+def _budget(monkeypatch, **limits) -> None:
+    monkeypatch.setattr(
+        acrcloud.Budget, "from_config", classmethod(lambda cls, recognition: cls(**limits))
+    )
 
 
 def human(argv: list[str]) -> tuple[int, str, list[str]]:
@@ -133,13 +130,9 @@ def test_a_closed_standard_error_does_not_end_a_paid_pass(cfg, library, recognis
     assert "job" in out.getvalue().lower()
 
 
-def test_a_run_the_month_refuses_is_not_told_it_will_pay(
-    cfg, library, recognised, monkeypatch
-):
+def test_a_run_the_month_refuses_is_not_told_it_will_pay(cfg, library, recognised, monkeypatch):
     three_tracks(recognised)
-    monkeypatch.setattr(acrcloud.Budget, "from_config", classmethod(
-        lambda cls, recognition: cls(per_run=acrcloud.MAX_CALLS_PER_RUN, monthly=1)
-    ))
+    _budget(monkeypatch, per_run=acrcloud.MAX_CALLS_PER_RUN, monthly=1)
     code, _out, err = human(["intake", "set", str(recording(library))])
     assert code != int(ExitCode.OK)
     assert recognised.requests == []
@@ -180,7 +173,6 @@ def test_a_cached_recording_says_so_and_counts_no_calls(cfg, library, recognised
     code, _envelope = drive(["intake", "identify", str(path)])
     assert code == int(ExitCode.OK)
     assert len(recognised.requests) == 3
-
     code, _out, err = human(["intake", "set", str(path)])
     assert code == int(ExitCode.OK), err
     assert err == [
@@ -193,9 +185,7 @@ def test_a_cached_recording_says_so_and_counts_no_calls(cfg, library, recognised
 def test_a_parted_set_says_its_parts_in_the_plan(cfg, library, recognised, monkeypatch):
     carver = FakeCarver(600.0)
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: carver)
-    monkeypatch.setattr(acrcloud.Budget, "from_config", classmethod(
-        lambda cls, recognition: cls(per_run=10, monthly=None)
-    ))
+    _budget(monkeypatch, per_run=10, monthly=None)
     recognised.answers[:] = [miss() for _ in range(24)]
     code, _out, err = human(["intake", "set", str(recording(library))])
     assert code == int(ExitCode.OK), err
@@ -222,9 +212,7 @@ class SlowFetcher:
         return directory / "fetched.mp3"
 
 
-def test_the_watcher_reports_the_bytes_written_while_the_download_runs(
-    cfg, library, monkeypatch
-):
+def test_the_watcher_reports_the_bytes_written_while_the_download_runs(cfg, library, monkeypatch):
     monkeypatch.setattr(fetch, "FETCH_PROGRESS_SECONDS", 0.01)
     lines: list[str] = []
     with fetch.fetched(URL, library, SlowFetcher(lines), progress=lines.append) as got:
@@ -237,13 +225,26 @@ def test_the_watcher_reports_the_bytes_written_while_the_download_runs(
 
 
 def test_a_fetch_that_raises_still_stops_the_watcher(cfg, library, monkeypatch):
+    """The fetch fails while the watcher is inside a report, so a watcher left
+    unjoined is still running when the block has ended, whatever the scheduler does."""
     monkeypatch.setattr(fetch, "FETCH_PROGRESS_SECONDS", 0.01)
     lines: list[str] = []
+    reporting = threading.Event()
+
+    def progress(line: str) -> None:
+        lines.append(line)
+        if "so far" in line and not reporting.is_set():
+            reporting.set()
+            time.sleep(0.5)
+
+    class FailsMidReport(FakeFetcher):
+        def fetch(self, url: str, directory: Path) -> Path:
+            assert reporting.wait(10), "the watcher never reported"
+            return super().fetch(url, directory)
+
     with pytest.raises(fetch.SetFetchFailed):
-        with fetch.fetched(URL, library, FakeFetcher(fail="404"), progress=lines.append):
+        with fetch.fetched(URL, library, FailsMidReport(fail="404"), progress=progress):
             pass
-    # The watcher may have read the partial before the raise; it never says
-    # anything landed.
     assert lines[0] == f"fetching: {URL}"
     assert not [one for one in lines if one.startswith("fetched:")]
     assert not [one for one in threading.enumerate() if one.name == fetch.WATCHER_NAME]

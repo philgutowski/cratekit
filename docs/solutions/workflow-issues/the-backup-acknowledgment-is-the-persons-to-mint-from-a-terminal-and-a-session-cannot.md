@@ -2,7 +2,7 @@
 title: The backup acknowledgment is the person's to mint from a terminal, and a session cannot mint it or answer it into existence
 date: 2026-09-16
 category: workflow-issues
-module: src/cratekit/session/cli.py, src/cratekit/core/session.py, src/cratekit/cli/gates.py
+module: "src/cratekit/session/cli.py, src/cratekit/core/session.py, src/cratekit/cli/gates.py, src/cratekit/core/session_ack.py"
 problem_type: workflow_issue
 component: development_workflow
 severity: medium

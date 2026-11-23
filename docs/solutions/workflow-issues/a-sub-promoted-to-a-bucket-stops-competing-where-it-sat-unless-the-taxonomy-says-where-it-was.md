@@ -2,7 +2,7 @@
 title: "A sub promoted to a bucket stops competing where it sat, unless the taxonomy says where it was"
 date: 2026-10-01
 category: workflow-issues
-module: "core/taxonomy.py FormerPlace, core/routing.py competing_subs, adopt/move.py, templates/taxonomy.default.toml"
+module: "core/taxonomy_model.py FormerPlace, core/routing.py competing_subs, adopt/move.py, templates/taxonomy.default.toml"
 problem_type: workflow_issue
 component: core_logic
 severity: high

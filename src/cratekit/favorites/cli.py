@@ -1,36 +1,13 @@
 """``crate sync favorites``: confirm the remote half, queue it, then run it.
 
-The outbound confirm is a separate gate from any local colour or tag write
-this verb may later accompany. The engine in
-``cratekit.modules.outbound.hearts`` is add-only. This shell never un-hearts and
-never un-colours, and since U51 it also DRIVES the sweep: ``handle`` below is the
-per item worker behind the ``sync.favorites`` handler key, and it is the first
-caller in ``src`` of ``hearts.heart_back``.
+``handle`` is the per item worker behind ``sync.favorites``, the caller of the
+add only ``hearts.heart_back``. A favourite is a member of the named playlist
+unioned with every pink row, read from a read only open of the live database
+(R-228); a pink row the export lacks is named beside dangling.
 
-**WHAT A FAVOURITE IS HERE.** The engine below calls its input "pink local
-favourites", and in the live system pink is the operator's standing signal that a
-row should be hearted. A rekordbox collection export carries no colour, so this
-shell reads pink from a read only open of the live database (R-228), unions those
-content ids with membership of a named playlist (defaulting to the one the source
-system maintains), and deduplicates by content id. Each source is named in the
-plan. A pink row the export lacks is left out of the queue and named beside
-dangling. The empty playlist refusal stays ahead of the colour read.
-
-**NO LOCAL WRITE HAPPENS HERE, AND SINCE R-424 NOTHING SAYS OTHERWISE.**
-``heart_back`` accepts a ``LocalColors`` writer and would colour the library row.
-That is a write to the live rekordbox database and belongs behind the guarded
-write session, so ``colors`` is ``None`` and this verb reaches the remote half
-only. That was true before R-424 and only this docstring said it: the registry
-declared four local write surfaces, the guide promised a colour, a Favorite tag
-and playlist membership, and each item's report carried a ``colored`` list that
-was empty on every path. :data:`LOCAL_WRITE_WARNING` is the correction a person
-actually reads, because the default renderer prints a verb's outcome, its
-warnings and its run id, and nothing else.
-
-**ADD ONLY IS A PROPERTY OF THE TYPE, NOT OF THIS FILE'S RESTRAINT.**
-``modules/outbound/service.RemoteAccount`` declares no remove, so a caller that
-wanted one would have nowhere to call it. This shell passes no ``flags`` at all,
-which is one fewer surface for a remove-shaped request to arrive on.
+**NO LOCAL WRITE HAPPENS HERE, AND NOTHING SAYS OTHERWISE (R-424)**: ``colors``
+is ``None`` and :data:`LOCAL_WRITE_WARNING` says so where a person reads it.
+**ADD ONLY IS A PROPERTY OF THE TYPE**: ``RemoteAccount`` declares no remove.
 
 Layer: modules.
 """
@@ -46,40 +23,21 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.cause import Outcome, refuse
 from cratekit.favorites import colour, placeholders
-from cratekit.modules.outbound import account, artifacts, hearts, shell, source
+from cratekit.modules.outbound import hearts, shell, source
 
-#: The two payload keys both outbound verbs freeze, spelled once in
-#: :mod:`cratekit.modules.outbound.shell` because the shared resume branch reads
-#: them to rebuild the confirm digest.
+#: The two payload keys both outbound verbs freeze, spelled in ``outbound.shell``.
 PLAYLIST = shell.PLAYLIST
 EXPORT = shell.EXPORT
 
-#: The quarterly placeholder playlists this source owns, spelled in
-#: :mod:`cratekit.favorites.placeholders` so the core playlists source can
-#: exclude them without importing this CLI.
+#: The quarterly placeholder playlists this source owns, spelled in ``placeholders``.
 PLACEHOLDER_NAME = placeholders.PLACEHOLDER_NAME
 BACKLOG = placeholders.BACKLOG
 placeholder_name = placeholders.placeholder_name
 
-#: What every pass of this verb tells a person about the LOCAL half (R-424).
-#:
-#: A STANDING CONDITION RATHER THAN AN EVENT, which is the same shape as
-#: ``outbound-account-unbound`` in :mod:`cratekit.modules.outbound.shell`: it is
-#: true of this build on every pass, and a person is told at the moment the
-#: report would otherwise let them assume the opposite. It is a warning and not
-#: a line of rendered data because the default renderer has no case for a
-#: ``job_state/1`` payload, so the warning channel is the only place a sentence
-#: reaches the person who did not ask for json.
-#:
-#: Spelled once and read by two composers. ``crate sync all`` builds the
-#: favourites plan itself rather than calling this verb's queueing branch, so a
-#: message living in that branch alone would be absent from the pass most people
-#: actually run.
-#:
-#: IT NAMES ITS SUBJECT. Under ``crate sync all`` this sentence prints beside
-#: warnings from sources that genuinely do write the library, and "this sweep"
-#: in that company reads as a claim about the whole pass. The one place a
-#: warning can be misread is the place it appears next to other warnings.
+#: What every pass of this verb tells a person about the LOCAL half (R-424): a
+#: standing condition, on the warning channel because the default renderer has
+#: no case for a ``job_state/1`` payload. Read by ``crate sync all`` too, and it
+#: names its subject, since there it prints beside sources that do write.
 LOCAL_WRITE_WARNING: dict[str, str] = {
     "code": "favorites-local-write-unbound",
     "message": (
@@ -91,18 +49,11 @@ LOCAL_WRITE_WARNING: dict[str, str] = {
 
 
 def local_write_warning() -> tuple[dict[str, str], ...]:
-    """:data:`LOCAL_WRITE_WARNING` as a warnings tuple, copied per call.
-
-    A COPY, because the envelope's warnings travel into a renderer and into json,
-    and a caller handed the module level dict could mutate the sentence every
-    later pass of this verb reports.
-    """
+    """:data:`LOCAL_WRITE_WARNING` as a warnings tuple, a COPY per call so no caller mutates it."""
     return (dict(LOCAL_WRITE_WARNING),)
 
 
-#: The Pink lookup lives in ``favorites.colour`` since U153, so the placement
-#: that writes the colour and this sweep that reads it share one definition.
-#: The names stay here for the callers and suites that reach them this way.
+#: The Pink lookup lives in ``favorites.colour`` (U153); the names stay here too.
 PINK_COLOUR_NAME = colour.PINK_COLOUR_NAME
 PINK_COLOUR_MISSING = colour.PINK_COLOUR_MISSING
 pink_colour_id = colour.pink_colour_id
@@ -112,10 +63,8 @@ pink_content_ids = colour.pink_content_ids
 def read_pink_track_ids(cfg: config.Config) -> tuple[str, ...]:
     """Pink content ids from a read only open of the configured library.
 
-    THE READ'S OWN REFUSAL PROPAGATES (R-228). A missing database, a running
-    rekordbox, or a file that is not a library must stop the sweep the way a
-    missing export does, rather than let the playlist alone report as complete
-    over colour the sweep never saw.
+    THE READ'S OWN REFUSAL PROPAGATES (R-228), so the playlist alone never
+    reports complete over colour the sweep never saw.
     """
     with rb_writer.read_only_copy(rb_writer.live_db_path(cfg), cfg=cfg) as db:
         return pink_content_ids(db)
@@ -126,39 +75,19 @@ def union_with_pink(
     playlist: source.ResolvedPlaylist,
     pink_ids: Sequence[str],
 ) -> source.ResolvedPlaylist:
-    """Playlist members union pink rows that the export carries, deduplicated.
+    """Playlist members union pink rows that the export carries, deduplicated, playlist order first.
 
-    Playlist order is kept; pink rows the playlist already carries stay once.
-    Pink rows the export lacks are named on ``pink_missing`` and left out of
-    ``track_ids``, beside dangling. ``from_playlist`` and ``from_colour`` count
-    each source's candidates, so a row in both is counted in both and queued
-    once.
+    Pink rows the export lacks are named on ``pink_missing`` and left out.
+    ``from_playlist`` and ``from_colour`` count each source's candidates, so a
+    row in both is counted in both and queued once.
     """
-    missing: list[str] = []
-    in_export: list[str] = []
-    for track_id in pink_ids:
-        if track_id in library.entries:
-            in_export.append(track_id)
-        else:
-            missing.append(track_id)
-    seen: set[str] = set()
-    kept: list[str] = []
-    for track_id in playlist.track_ids:
-        if track_id in seen:
-            continue
-        seen.add(track_id)
-        kept.append(track_id)
-    for track_id in in_export:
-        if track_id in seen:
-            continue
-        seen.add(track_id)
-        kept.append(track_id)
+    in_export = [track_id for track_id in pink_ids if track_id in library.entries]
     return replace(
         playlist,
-        track_ids=tuple(kept),
+        track_ids=tuple(dict.fromkeys([*playlist.track_ids, *in_export])),
         from_playlist=len(playlist.track_ids),
         from_colour=len(in_export),
-        pink_missing=tuple(missing),
+        pink_missing=tuple(track_id for track_id in pink_ids if track_id not in library.entries),
     )
 
 
@@ -174,9 +103,7 @@ def sweep_source_facts(resolved: source.ResolvedPlaylist) -> dict[str, Any]:
 
 
 #: What an unmatched favourite is said to be when the account gave no reason
-#: for it. The engine names such a row in ``unmatched`` and nowhere else, so
-#: without this sentence it reached no line a person reads (R-856). Spelled in
-#: the shell, so the export says the same thing in the same words.
+#: (R-856), spelled in the shell so the export says the same.
 NO_MATCH = shell.NO_MATCH
 
 #: The warning a finished sweep carries when any favourite went unhearted.
@@ -184,34 +111,24 @@ UNMATCHED_WARNING = "favorites-hearts-unmatched"
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
-    """What this sweep's committed artifacts say it wrote.
+    """What this sweep's committed artifacts say it wrote, per committed item.
 
-    THE ``already`` SET IS THE ONE WORTH REPORTING, because it is the difference
-    between a sweep that had nothing to do and a sweep that did nothing. Both
-    show every item done, and only one of them means the account changed.
-
-    COUNTED, AND EVERY UNMATCHED FAVOURITE LISTED (R-856). The lists alone were
-    in the envelope and nowhere a person reads, because the default renderer
-    prints an outbound summary only when it carries ``counts``, so a sweep that
-    hearted nothing it could not match answered ``ok`` and ``N of N settled``.
-    The count keys are this verb's own, ``hearted`` and ``already_hearted``,
-    because the export's ``written`` and ``already`` are printed in words about
-    a playlist. ``unmatched_tracks`` is the export's shape, one row per
-    favourite with its identity, artist, title and reason, a row the account
-    said nothing about included, which ``reasons`` omits. Read per committed
-    item, so a resumed sweep is counted across both runs and nothing twice.
+    ``already`` tells a sweep with nothing to do from one that did nothing.
+    COUNTED, AND EVERY UNMATCHED FAVOURITE LISTED (R-856), since the default
+    renderer prints an outbound summary only when it carries ``counts``; the
+    count keys are this verb's own, and ``unmatched_tracks`` is the export's
+    shape, a row the account said nothing about included.
     """
-    hearted: list[str] = []
-    already: list[str] = []
-    unmatched: list[str] = []
+    from cratekit.modules.outbound import artifacts
+
+    found: dict[str, list[str]] = {"hearted": [], "already": [], "unmatched": []}
+    hearted, already, unmatched = found.values()
     reasons: list[str] = []
     left_out: list[dict[str, str]] = []
     for report in artifacts.committed(cfg, job_id):
-        hearted.extend(str(item) for item in report.get("hearted") or ())
-        already.extend(str(item) for item in report.get("already") or ())
-        unmatched.extend(str(item) for item in report.get("unmatched") or ())
-        # One sentence per favourite the account would not choose a release for
-        # (R-356). A report written before that key existed carries none.
+        for key, held in found.items():
+            held.extend(str(item) for item in report.get(key) or ())
+        # One sentence per favourite the account would not choose a release for (R-356).
         said = [one for one in report.get("reasons") or () if isinstance(one, dict)]
         reasons.extend(
             f"{one.get('artist') or ''} - {one.get('title') or ''} "
@@ -220,9 +137,7 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
         )
         left_out.extend(_left_out(report, said))
     return {
-        "hearted": hearted,
-        "already": already,
-        "unmatched": unmatched,
+        **found,
         "reasons": reasons,
         "counts": {
             "hearted": len(hearted),
@@ -236,19 +151,15 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
 def _left_out(report: dict, said: list[dict]) -> list[dict[str, str]]:
     """Each favourite one item report left unhearted, named as the answer lists it.
 
-    OFF THE REPORT'S ``unmatched`` LIST, which names every such row, and not off
-    ``reasons``, which names only a row the account said something about. The
-    names come from ``unmatched_tracks``, which every item report carries since
-    R-856, then from ``reasons`` for a report written before that, and a row
-    neither names is listed by its identity alone rather than left out.
+    OFF THE REPORT'S ``unmatched`` LIST, which names every such row; the names
+    come from ``unmatched_tracks``, else ``reasons``, else the identity alone.
     """
     named: dict[str, dict] = {}
     for one in (*said, *(report.get("unmatched_tracks") or ())):
         if isinstance(one, dict):
             named[str(one.get("row") or "")] = one
     rows = []
-    for item in report.get("unmatched") or ():
-        identity = str(item)
+    for identity in map(str, report.get("unmatched") or ()):
         one = named.get(identity, {})
         rows.append(
             {
@@ -264,19 +175,15 @@ def _left_out(report: dict, said: list[dict]) -> list[dict[str, str]]:
 def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     """The warning a finished sweep carries when it left favourites unhearted.
 
-    THE OUTCOME STAYS ``ok``, for the reason ``export.cli.concluded`` gives:
-    the outcome vocabulary has no partial word, and this is the line a script
-    reading only the outcome and the warnings can key on. It follows the
-    standing warning, which ``shell.resume`` puts first.
+    THE OUTCOME STAYS ``ok``, as ``export.cli.concluded`` says: the vocabulary
+    has no partial word, so this is the line a script keys on.
     """
     tally = shell.unmatched_tally(outbound)
     if tally is None:
         return ()
     missed, total = tally
-    # "WERE NOT HEARTED", NOT "ARE NOT HEARTED". A favourite counted as already
-    # hearted may be counted so off the ledger rather than the account, the
-    # export's R-855 shape, so only what the provider could not match is this
-    # warning's to state.
+    # "WERE NOT HEARTED": only what the provider could not match is this
+    # warning's to state (R-855).
     return (
         {
             "code": UNMATCHED_WARNING,
@@ -294,19 +201,15 @@ def build_sync(parser, entry) -> None:
     del entry
     parser.add_argument(
         "--job",
-        default=None,
         metavar="JOB_ID",
         help="continue the favourites increment already queued under this identifier",
     )
     parser.add_argument(
         "--run-id",
-        default=None,
-        dest="run_id",
         help="intake run shared with the other sources in this sync",
     )
     parser.add_argument(
         "--export",
-        default=None,
         metavar="EXPORT",
         help=(
             "the rekordbox collection export holding the favourites playlist; "
@@ -316,7 +219,6 @@ def build_sync(parser, entry) -> None:
     parser.add_argument(
         "--favorites-playlist",
         default=source.DEFAULT_FAVORITES_PLAYLIST,
-        dest="favorites_playlist",
         metavar="NAME",
         help=(
             "the playlist whose members are swept; the default is the one the "
@@ -331,20 +233,15 @@ def confirm_digest(
 ) -> str:
     """The identity the confirm decision is recorded against.
 
-    Same shape and the same reason as the export verb's: the enqueue path builds
-    it from a freshly resolved playlist and the resume path builds it from the
-    frozen payload, and the whole point is that they agree. Before this the
-    digest named only ``{"kind": ..., "direction": "heartback"}``, which is a
-    constant, so one recorded confirmation authorised a sweep of any playlist in
-    any document.
+    The enqueue path builds it from a freshly resolved playlist and the resume
+    path from the frozen payload, and they must agree.
     """
     return digest_of(
         {
             "kind": "sync.favorites",
             "playlist": playlist_key,
             "export": export_path,
-            # THE TRACK SET, not just the file it came from. A path names where
-            # the answer was read; only this names what will be written.
+            # THE TRACK SET, which names what will be written.
             "tracks": list(tracks),
         }
     )
@@ -353,42 +250,17 @@ def confirm_digest(
 def sync_favorites_argv(job) -> list[str]:
     """The command line that continues one queued favourites increment.
 
-    TWO RUNS TRAVEL HERE AND THEY ARE NOT THE SAME RUN. ``--run-id`` is this
-    verb's own argument and carries the INTAKE run shared with the other sources
-    in a sync. ``--run`` is the root parser's flag and carries the GATE run, the
-    one the confirm decision was recorded against. They defaulted to the same
-    value, which is exactly why emitting only the first looked like carrying the
-    run and restored no gate state at all: ``cli._run_state_for`` reads
-    ``args.run`` and never ``args.run_id``.
-
-    So this builder emitted ``--run-id`` and the child still minted a fresh run,
-    met the explicit confirm gate with nothing recorded, and exited
-    DECISION_REQUIRED on every respawn. The queue held a confirmed sync nothing
-    could advance. Measured by driving this function's own output through the
-    dispatcher on 2026-08-23. A predicate that searched the source for the
-    substring ``--run`` reported this verb CLEAN, because ``--run-id`` contains
-    it, which is the other half of why it survived.
-
-    ``--export`` AND ``--favorites-playlist`` ARE REBUILT FROM THE PAYLOAD, and
-    the playlist is the RESOLVED key rather than whatever was typed. The resumed
-    child recomputes the confirm digest over those two values, so emitting the
-    original argument would produce a different digest and meet ``DecisionStale``
-    on every respawn, which is this docstring's own defect wearing a new hat.
-
-    A job frozen by a build older than this one carries no gate run and resumes
-    without the flag, which returns it to the refusal it was already in.
+    TWO RUNS: ``--run-id`` is the INTAKE run a sync shares, ``--run`` the GATE
+    run the confirm was recorded against, which the resumed child must load.
+    ``--export`` AND ``--favorites-playlist`` ARE REBUILT FROM THE PAYLOAD, so
+    the child computes the same confirm digest.
     """
     payload = job.payload or {}
     argv = ["sync", "favorites", "--job", job.job_id]
-    run_id = payload.get("run_id")
-    if run_id:
-        argv.extend(["--run-id", str(run_id)])
-    exported = payload.get(EXPORT)
-    if exported:
-        argv.extend(["--export", str(exported)])
-    playlist = payload.get(PLAYLIST)
-    if playlist:
-        argv.extend(["--favorites-playlist", str(playlist)])
+    rebuilt = (("--run-id", "run_id"), ("--export", EXPORT), ("--favorites-playlist", PLAYLIST))
+    for flag, key in rebuilt:
+        if payload.get(key):
+            argv.extend([flag, str(payload[key])])
     gate_run = payload.get(jobs.GATE_RUN_KEY)
     resume = ["--run", str(gate_run)] if gate_run else []
     return [*resume, *argv]
@@ -404,17 +276,13 @@ def sync_favorites(ctx) -> Envelope:
             ctx.args.job,
             digest=confirm_digest,
             summary=summary,
-            # THE RESUME IS WHERE THE HEARTING HAPPENS, so it is the pass whose
-            # report a person reads for what the run did. Telling them only at
-            # queue time would put the correction on the invocation that wrote
-            # nothing at all.
+            # THE RESUME IS WHERE THE HEARTING HAPPENS, so it says so too.
             standing=local_write_warning(),
             concluded=concluded,
         )
 
-    # LOADED BEFORE THE GATE (R-227), so the age the gate shows is judged against
-    # the person's own day count, and before the colour read, which needs the
-    # configured database path. See ``export/cli.py`` for the other half of why.
+    # LOADED BEFORE THE GATE (R-227), for the person's own day count, and before
+    # the colour read, which needs the configured database path.
     cfg = shell.load_config("favorites.cli")
     exported, resolved = resolve_sweep(
         getattr(ctx.args, "export", None),
@@ -423,9 +291,8 @@ def sync_favorites(ctx) -> Envelope:
     )
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
 
-    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
-    # beside the export's age and the colour versus playlist counts (R-228).
-    # The resume shows the same tracks off the frozen payload.
+    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), beside the export's age
+    # and the colour versus playlist counts (R-228).
     option = ctx.gate.require(
         spec,
         plan={"digest": sweep_digest(exported, resolved), "items": list(resolved.track_ids)},
@@ -437,17 +304,14 @@ def sync_favorites(ctx) -> Envelope:
         },
     )
     if option == "abort":
-        # THE DECLARED SHAPE, and nothing about the playlist. See
-        # ``shell.declined``: this verb declares ``job_state/1`` and the payload
-        # that named the playlist carried none of that surface's four fields.
+        # THE DECLARED SHAPE, ``job_state/1``; see ``shell.declined``.
         return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
-    run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
         job = queue_sweep(
             store,
             cfg,
             handler_key=ctx.entry.handler_key,
-            run_id=run_id,
+            run_id=getattr(ctx.args, "run_id", None) or ctx.run.run_id,
             gate_run=ctx.run.run_id,
             exported=exported,
             resolved=resolved,
@@ -470,14 +334,10 @@ def resolve_sweep(
 ) -> tuple[Path, source.ResolvedPlaylist]:
     """The export and the favourites union a sweep would queue, or a refusal.
 
-    PUBLIC because ``crate sync all`` resolves the same sweep before it asks its
-    own confirm, and the digest it asks over has to be the one this verb would
-    compute. One resolution, two callers, one digest.
-
-    THE PLAYLIST IS RESOLVED FIRST, so an empty ``All Favorites`` still refuses
-    before any colour is read. Pink rows then join through a read only open, or
-    through ``pink_ids`` when a caller (or a test) already holds them. A colour
-    read that cannot finish refuses with that read's own cause.
+    PUBLIC because ``crate sync all`` asks its confirm over the same digest.
+    THE PLAYLIST IS RESOLVED FIRST, so an empty ``All Favorites`` refuses before
+    any colour is read; pink rows then join through a read only open, or
+    ``pink_ids`` when a caller holds them, a failed read refusing with its cause.
     """
     exported = source.required_path(export)
     wanted = str(playlist or source.DEFAULT_FAVORITES_PLAYLIST)
@@ -507,18 +367,13 @@ def queue_sweep(
     """Queue one favourites sweep. The one spelling of what a sweep job is.
 
     ``gate_run`` IS A RUN OWNED BY ``sync.favorites``, whichever verb queued the
-    job. The resume :func:`sync_favorites_argv` builds loads it with ``--run``,
-    and the dispatcher refuses a run whose record belongs to another verb, so
-    ``crate sync all`` hands its recorded answer to a run of this verb before it
-    calls here (``Gates.hand_off``) rather than passing its own run.
+    job, since the dispatcher refuses a run of another verb on resume, so
+    ``crate sync all`` hands its answer over first (``Gates.hand_off``).
     """
     return jobs.enqueue(
         store,
         handler_key=handler_key,
-        # TWO RUNS, TWO KEYS, on purpose. ``run_id`` is the intake run this
-        # sync shares across its sources. The gate run is the one the
-        # confirm decision was recorded against, and conflating them is the
-        # defect ``sync_favorites_argv`` describes.
+        # TWO RUNS, TWO KEYS, as ``sync_favorites_argv`` says.
         payload={
             "source_id": "favorites",
             "run_id": run_id,
@@ -538,21 +393,11 @@ def run_heart_item(
 ) -> dict:
     """Heart ONE library favourite, and report what happened. Never a remove.
 
-    PURE OF THE JOB ENGINE, taking the payload and an account. The property that
-    matters most, that a track the account already hearts is reported rather than
-    written again, is then drivable without a queue.
-
-    ``colors=None`` AND NO ``flags``. The colour writer would touch the live
-    rekordbox database; ``flags`` exists so a caller that still thinks in mirror
-    mode cannot reach a different function, and the safest value for a shell that
-    never wants one is not to pass it.
-
-    THE REPORT CARRIES NO ``colored`` KEY, and that is R-424 rather than an
-    omission. ``HeartReport.colored`` is the rows the engine coloured, which is
-    every row when a caller hands it a writer and none when it does not. Reported
-    from here it was an empty list on every pass, and an empty list reads as a
-    write that found nothing to do rather than as a write that cannot happen.
-    ``summary`` below never read the key, so nothing downstream loses a field.
+    PURE OF THE JOB ENGINE, so a track the account already hearts being
+    reported rather than written again is drivable without a queue.
+    ``colors=None`` AND NO ``flags``: the colour writer would touch the live
+    database. THE REPORT CARRIES NO ``colored`` KEY (R-424), which would read
+    as a write that found nothing to do rather than one that cannot happen.
     """
     library = source.read_library(Path(str(payload[EXPORT])))
     candidates = source.heart_candidates(library, (row_id,), cfg=cfg)
@@ -586,14 +431,9 @@ def run_heart_item(
         "hearted": list(report.hearted),
         "already": list(report.already),
         "unmatched": list(report.unmatched),
-        # WITH THE ROW'S OWN NAMES, because the engine reports a row by its
-        # identifier and a person reading why a favourite was not hearted needs
-        # to know which favourite. The title is the release title, head off,
-        # which is the only one a heart candidate carries.
+        # WITH THE ROW'S OWN NAMES, the release title being the one a candidate carries.
         "reasons": [row_named(row, reason) for row, reason in report.reasons],
         # EVERY UNMATCHED ROW NAMED, the account's reason or none (R-856).
-        # ``reasons`` carries only a row the account said something about, so
-        # a favourite the provider has never heard of had no name on disk.
         "unmatched_tracks": [row_named(row, said.get(row, "")) for row in report.unmatched],
     }
 
@@ -601,15 +441,12 @@ def run_heart_item(
 def handle(job, item, cfg) -> jobs.Produced:
     """Heart one queued favourite. The per item worker behind ``sync.favorites``.
 
-    THE ITEM NAMES THE ROW, not the payload, for the reason ``master/cli.py``
-    measured: reading the payload would make every item of a multi item job
-    heart the same track.
-
-    ``cfg`` is the frozen configuration (KTD9). It is passed straight to
-    ``heart_back``, which resolves the outbound ledger against it, so a sweep
-    records its hearts in the library it was queued for even if the current
-    configuration now names another.
+    THE ITEM NAMES THE ROW, not the payload, or every item would heart the
+    same track. ``cfg`` is the frozen configuration (KTD9), so a sweep records
+    its hearts in the library it was queued for.
     """
+    from cratekit.modules.outbound import account, artifacts
+
     payload = dict(job.payload or {})
     report = run_heart_item(payload, str(item.item_id), cfg, account.resolve(cfg))
     return artifacts.produced(cfg, job, item, report)

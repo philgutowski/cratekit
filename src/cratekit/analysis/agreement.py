@@ -1,20 +1,14 @@
 """How far a head agrees with rekordbox's own analysis of the same file (R-744).
 
-The head is a filename and a Name, never a grid, so a disagreement plays
-nothing wrong; it tells a DJ reading the title a tempo the deck will not show.
-This module measures that gap and nothing else. It reads a disposable copy of
-the database through ``rb_writer.read_only_copy``, compares each row's head
-with the row's stored tempo and key, and answers four tempo buckets and two
-key buckets. It writes nothing anywhere, and it never opens the live file.
+The head is a filename and a Name, never a grid, so a disagreement tells a DJ
+a tempo the deck will not show. Read off a disposable copy of the database,
+each row's head against its stored tempo and key, in four tempo buckets and
+two key buckets. Nothing is written.
 
-Which rows count as rekordbox's own analysis is the one judgment here. The
-back catalogue's tempo was imported with the grid the source system wrote,
-which is the same integer the head carries, so those rows agree with
-themselves and measure nothing. A stored tempo that is not a whole number was
-computed by rekordbox: no tool that fed this library writes a fraction. That
-is the sample ``analysed_by_rekordbox`` keeps, and the bias it carries is
-stated wherever the numbers are: it leans toward tracks with an unquantised
-pulse and understates agreement on programmed music.
+A stored tempo that is not a whole number was computed by rekordbox; a whole
+one may be the imported integer the head carries, which measures nothing.
+That sample leans toward unquantised pulses and understates agreement on
+programmed music.
 """
 
 from __future__ import annotations
@@ -39,16 +33,13 @@ KEY_EQUAL = "equal"
 KEY_DIFFERS = "differs"
 
 #: How far a ratio may sit from two, or from a half, and still be the same
-#: pulse read an octave away. Two percent either side of a half is one bin of
-#: the estimator at 60; eight percent either side of two holds 166 against
-#: 83.13, which the interpolated estimator answers for a 166 pulse.
+#: pulse an octave away: a half's is one estimator bin at 60, two's holds 166
+#: against 83.13.
 _DOUBLE_TOLERANCE = 0.08
 _HALF_TOLERANCE = 0.02
 
-#: Classic key names, as rekordbox spells them when its display is not set to
-#: Camelot, to the unpadded Camelot code. Both enharmonic spellings of every
-#: black key are here because rekordbox writes flats and a tag may carry
-#: sharps, and a mapping that knows one spelling matches one library.
+#: Classic key names to the unpadded Camelot code, both enharmonic spellings:
+#: rekordbox writes flats and a tag may carry sharps.
 _CLASSIC_TO_CAMELOT: dict[str, str] = {
     "Abm": "1A", "G#m": "1A",
     "Ebm": "2A", "D#m": "2A",
@@ -80,9 +71,8 @@ _CLASSIC_TO_CAMELOT: dict[str, str] = {
 def camelot_from_scale_name(name: str | None) -> str | None:
     """A rekordbox key name in either notation as a padded Camelot code.
 
-    ``8A`` and ``08A`` both answer ``08A``; ``Am`` answers ``08A`` too. A name
-    in neither notation, or no name, answers None, so a row rekordbox has not
-    keyed is counted as unkeyed rather than as a disagreement.
+    ``8A``, ``08A`` and ``Am`` all answer ``08A``. Anything else answers None,
+    unkeyed rather than a disagreement.
     """
     if not name:
         return None
@@ -103,11 +93,8 @@ def round_half_up(value: float) -> int:
 def tempo_bucket(head: int, reference: float) -> str:
     """Which of the four buckets a head's tempo falls in against a reference.
 
-    Equal when the reference rounds to the head. Off by one to three when the
-    rounded difference is that small, which is the estimator's bin width. Half
-    or double when the ratio sits an octave away within the tolerances above.
-    Everything else is another metrical level, three to two or four to three,
-    or a track the two methods simply read differently.
+    Off by one to three is the estimator's bin width; half or double is an
+    octave within the tolerances; anything else is another metrical level.
     """
     if reference <= 0:
         return OTHER_LEVEL
@@ -206,9 +193,8 @@ def compare(
 ) -> Agreement:
     """Bucket every row's head against the row's stored tempo and key.
 
-    ``head_of`` answers the head to compare for a row, by default the one
-    parsed off the filename. The re-analysis path hands in one that answers
-    the detector's reading of the file instead, so one bucketing serves both.
+    ``head_of`` answers a row's head, by default the filename's; the
+    re-analysis path hands in the detector's reading.
     """
     template = template or NameTemplate()
     if head_of is None:
@@ -273,9 +259,7 @@ def rows_of(db: Any) -> list[HeadRow]:
 def read_rows(cfg: config.Config, *, database: Path | None = None) -> list[HeadRow]:
     """The rows, read off a disposable copy of ``database`` or the configured one.
 
-    Refuses while rekordbox or its agent is running, as every read only copy
-    does, because a copy taken under the live application describes no
-    library that exists.
+    Refuses while rekordbox or its agent is running, as every read only copy does.
     """
     source = database if database is not None else cfg.library.db_path
     with rb_writer.read_only_copy(source, cfg=cfg) as db:
@@ -307,10 +291,7 @@ def sample_for_reanalysis(
 ) -> list[tuple[HeadRow, Path]]:
     """Every ``step``-th row rekordbox analysed itself whose file is here, up to ``limit``.
 
-    Lazy on purpose: a row is resolved and its file looked for only until the
-    sample is full, so asking for ten files off a library of thousands costs
-    ten resolutions and the rows skipped by ``step``, not a walk of the whole
-    collection.
+    Lazy: rows are resolved only until the sample is full.
     """
     from cratekit.core import locations
 
@@ -343,9 +324,8 @@ def reanalyse(
 ) -> Agreement:
     """Run the detector over a sample of rekordbox's own analyses and bucket it.
 
-    Sequential on purpose: a pool whose worker dies mid file waits for ever,
-    which is how the first measurement of R-744 was lost, and the person who
-    asked for a number can pick a limit that fits the time they have.
+    Sequential on purpose: a pool whose worker dies mid file waits for ever
+    (R-744).
     """
     chosen = sample_for_reanalysis(rows, cfg, limit=limit, step=step)
     measured: dict[str, Head | None] = {

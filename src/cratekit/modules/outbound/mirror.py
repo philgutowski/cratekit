@@ -1,66 +1,38 @@
 """A rekordbox folder mirrored onto the streaming account as one flat root folder (U147).
 
-THE SHAPE. The author listens on the account and curates in rekordbox, so every
-genre folder of the routing tree, and the Favorites folder, is copied to the
-account as one root folder of the same name holding one private playlist per
-rekordbox playlist. The account root is flat by the 2026-10-13 decision, since
-the provider's app does not draw a nested folder, so a three level tree becomes
-one root folder per rekordbox folder. A playlist's account title carries its
-folder, ``Deep House Low``, because the account's search and its flat playlist
-list show a title without its folder. Which title each one takes is the
-caller's: this module is handed the titles.
+THE SHAPE. Every genre folder of the routing tree, and the Favorites folder, is
+copied to the account as one root folder of the same name holding one private
+playlist per rekordbox playlist. The root is flat (2026-10-13) because the
+provider's app draws no nested folder, and a playlist's title carries its
+folder, ``Deep House Low``, because the account's search shows a title alone.
+The caller hands in the titles.
 
 A MIRROR, NOT AN EXPORT. Each mirrored playlist ends a refresh holding exactly
-the account tracks of its rekordbox playlist: a track that left rekordbox is
-taken off, including one a person added on the account by hand. That removal is
-permitted because every mirrored playlist is one the product CREATED, which the
-ledger records (``ledger.reserve_mirror_playlist``) and the account seam asks
-before any removal (R-836). The product never removes a mirrored folder, and
-removes a mirrored playlist in one case only: the INBOX folder's, whose batch
-left INBOX (U150), since the batch's tracks remain on the account in their
-year, label or set playlists. Any other playlist the tree no longer declares
-is left and named.
+the account tracks of its rekordbox playlist, a track added on the account by
+hand included, which is safe because the ledger records every mirrored playlist
+as one the product created and the account seam asks it before any removal
+(R-836). A mirrored folder is never removed, and a mirrored playlist only when
+it is the INBOX folder's and its batch left INBOX (U150); any other playlist the
+tree no longer declares is left and named.
 
-THE PLAN READS AND WRITES NOTHING. It reads the root folders, each mirrored
-folder's playlists and each recorded playlist's tracks, and matches every
-library row to an account track through ``match_track``, the matcher ``export
-playlist`` uses. A row matched once is linked in the ledger, so a refresh asks
-the provider only about rows it has not matched before, and a row it could not
-match is remembered with what it was asked under and not asked again until that
-changes (R-1031). Several releases that all agree with a row are a tie the
-mirror breaks by taking one of them, since a listening copy writes nothing
-back as the row's identity (R-1032), and a pair breaks the same way since
-U208, where a heart refuses it. What
-exists is reused,
-by the ledger's record first and by exact name second, never made twice:
+THE PLAN READS AND WRITES NOTHING. Every library row is matched through
+``match_track``; a match is linked in the ledger and a miss remembered with
+what it was asked under (R-1031), so a refresh asks only about new rows. A tie
+between agreeing releases is broken by taking one (R-1032, pairs since U208),
+since a listening copy writes nothing back. A folder is reused by the ledger's
+record, then by its one exact name, else made; two of the name refuse it. A
+playlist is reused by the ledger's record, else made; one of the same title the
+ledger does not record is a person's, left and named.
 
-* the folder: the one recorded, or the one root folder of the exact name, or a
-  new one. Two root folders of the name refuse that folder by name, since which
-  one is the mirror is not something a name decides; the caller plans the rest;
-* a playlist: the one recorded, or a new one. A playlist of the same title in
-  the folder that the ledger does not record is a person's, and is left alone
-  and named rather than adopted, since a person's playlist never loses a track.
+THE APPLY RECORDS EACH WRITE AS IT LANDS, :mod:`folders`' rule, so a stopped
+apply leaves everything recorded for the next plan. Tracks go 100 per add;
+removals run last, so a track moving bands is on its new playlist first.
 
-THE APPLY RECORDS EACH WRITE AS IT LANDS, :mod:`folders`' rule: the ledger takes
-its lock before each create, so an unwritable ledger refuses before anything is
-made, and an apply stopped part way leaves every folder and playlist recorded
-for the next plan to reuse. Tracks go 100 per request through ``add_tracks``,
-never one per call as ``export playlist`` adds them. Removals run last, so a
-track moving from one band to another is on its new playlist before it leaves
-its old one.
-
-AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201, U204). Each mirrored playlist
-keeps its snapshot, the account tracks both sides held when a refresh last
-finished it, recorded by the apply, or by the plan for a playlist with nothing
-to write. The caller reads each playlist of a genre folder, the Favorites
-folder and INBOX three ways (:mod:`mirror_edits`) and hands in a HOLD per
-playlist: a track whose edit on the account the library takes, or
-one held, is never taken off nor added back here. A playlist whose listing came
-back short keeps its snapshot's word on every track it did not list.
-
-MEMBERSHIP, NOT ORDER. Added tracks are appended; the order inside a mirrored
-playlist is not kept equal to rekordbox's, which the plan left to this unit and
-this unit leaves out, since membership is the requirement.
+AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201, U204). Each playlist keeps a
+snapshot of what both sides held when a refresh last finished it, and the
+caller hands in a HOLD per playlist (:mod:`mirror_edits`): a held track is never
+taken off nor added back. A short listing keeps the snapshot's word on every
+track it did not list. Membership is mirrored, not order.
 
 Layer: modules.
 """
@@ -74,7 +46,7 @@ from typing import Any
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import ledger
+from cratekit.modules.outbound import folders, ledger
 from cratekit.modules.outbound.mirror_edits import Hold
 from cratekit.modules.outbound.service import (
     AGREEING_RELEASES,
@@ -89,16 +61,14 @@ _ORIGIN = ("outbound", "mirror")
 CREATE = "create"
 REUSE = "reuse"
 ADOPT = "adopt"
-#: A playlist left alone: a person's of the same title, with nothing made beside it.
+#: A person's playlist of the same title, left with nothing made beside it.
 LEFT = "left"
-#: A playlist left alone because the one recorded is not in the folder and
-#: could not be read, which is what one deleted on the account looks like.
+#: The recorded playlist is not in the folder and could not be read, as one
+#: deleted on the account looks.
 UNREADABLE = "unreadable"
-#: A retiring folder the account lacks that nothing would go into (U150): not
-#: made, since an empty root folder is nothing anyone asked for.
+#: A retiring folder the account lacks that nothing would go into (U150).
 UNMADE = "not made"
-#: A mirrored playlist removed from the account because what it mirrors left
-#: the rekordbox folder (U150), the INBOX folder's retired batch.
+#: A mirrored playlist removed because what it mirrors left the folder (U150).
 RETIRE = "remove"
 
 #: The refusal of a name two folders take, on the account or in the library.
@@ -111,14 +81,12 @@ CHUNK = 100
 NO_ISRC = "the row carries no ISRC, in the database or in its file"
 NO_MATCH = "the account has no track this row's ISRC names"
 
-#: What a miss says when a candidate track could not be read, which is not an
-#: answer about the row, so the miss is never remembered (R-1031). The
-#: adapter formats its reason from the same constant.
+#: A candidate that could not be read says nothing of the row, so such a miss
+#: is never remembered (R-1031).
 UNREAD = UNREADABLE_CANDIDATE
 
-#: What a miss says when it was a tie between agreeing releases, which the
-#: matcher no longer misses on (R-1032), so a miss remembered with it before
-#: the tie was broken is asked again rather than reused.
+#: A miss remembered with a tie's words before ties were broken (R-1032) is
+#: asked again rather than reused.
 TIED = AGREEING_RELEASES
 
 
@@ -129,19 +97,15 @@ def title(folder: str, playlist: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Row:
-    """One library membership: the content row and what a match is made from.
-
-    ``isrc`` is the database row's own code, already folded, or empty; the
-    file's code is read only when this is empty and the row was never linked.
-    """
+    """One library membership. ``isrc`` is the database's own code, folded, or empty."""
 
     content_id: str
     title: str = ""
     artist: str = ""
     isrc: str = ""
     path: str = ""
-    #: When the membership was made in rekordbox, as the database writes it,
-    #: or ``""``; read for a genre folder only, where an edit's time is asked (U201).
+    #: When the membership was made in rekordbox, or ``""``; read for a genre
+    #: folder only, where an edit's time is asked (U201).
     added: str = ""
 
 
@@ -157,26 +121,19 @@ class Source:
 class Folder:
     """One rekordbox folder to mirror, under the root folder name it takes.
 
-    ``retire`` is the INBOX folder's (U150): a playlist the ledger records as
-    mirrored here that the folder no longer declares is REMOVED from the
-    account, rather than left, when its title is not in ``present``, the
-    account title of every node the rekordbox folder holds now, batch or not.
-    One still present that only no longer reads as a batch is left, since
-    not recognising a batch is no evidence that it left.
+    ``retire`` is INBOX's (U150): a recorded playlist the folder no longer
+    declares is removed unless its title is in ``present``, every node the
+    folder holds now, since not recognising a batch is no evidence it left.
     """
 
     name: str
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
-    #: Which edit rule reads this folder, so an edit made on the account to it
-    #: is held and taken into the library: ``mirror_edits.GENRE`` for a genre
-    #: folder of the routing tree (U201), ``FAVORITES`` and ``INBOX`` since
-    #: U204, ``""`` for a folder mirrored one way.
+    #: The edit rule reading it, ``mirror_edits.GENRE``, ``FAVORITES`` or
+    #: ``INBOX``, or ``""`` for a folder mirrored one way.
     edits: str = ""
-    #: Each node the rekordbox folder holds that is not mirrored, as
-    #: ``(label, reason)`` (U214): INBOX names every direct child that is not
-    #: a live batch, so one skipped by rule reads apart from one missed.
+    #: Each node of the folder that is not mirrored, ``(label, reason)`` (U214).
     unmirrored: tuple[tuple[str, str], ...] = ()
 
 
@@ -187,25 +144,20 @@ class Identity:
     isrc: str = ""
     album: str = ""
     title: str = ""
-    #: Whether even one track the code names must agree with the row, which a
-    #: code read off the file's own tag asks, since it did not come from the
-    #: provider and a file tagged with another recording's code would name the
-    #: wrong track (R-879).
+    #: A code read off the file's own tag must agree with the row, since a file
+    #: tagged with another recording's code would name the wrong track (R-879).
     agree: bool = False
 
 
-#: Members that return the requests they made, counted by that number rather
-#: than as one call (U207).
+#: Members that return the requests they made, counted by that number (U207).
 SCREENS = frozenset({"screen_isrcs"})
 
 
 class Counted:
     """The account seam with every call counted, the request count a run reports.
 
-    Every member the step calls is one request or more to the provider, and
-    the count is of calls through the seam, so a chunked add of 250 tracks is
-    three. ``seconds`` is the wall time since construction or the last
-    :meth:`lap`.
+    A chunked add of 250 tracks is three; ``seconds`` runs from construction
+    or the last :meth:`lap`.
     """
 
     def __init__(self, account: RemoteAccount) -> None:
@@ -214,6 +166,10 @@ class Counted:
         self.by_member: dict[str, int] = {}
         self._started = time.monotonic()
 
+    def _count(self, name: str, spent: int) -> None:
+        self.requests += spent
+        self.by_member[name] = self.by_member.get(name, 0) + spent
+
     def __getattr__(self, name: str) -> Any:
         member = getattr(self._account, name)
         if not callable(member):
@@ -221,14 +177,11 @@ class Counted:
 
         def counted(*args: Any, **kwargs: Any) -> Any:
             if name in SCREENS:
-                # A SCREEN SAYS WHAT IT SPENT (U207): none without a batch form,
-                # one per batch with one, never one per call.
+                # A SCREEN SAYS WHAT IT SPENT (U207), one per batch at most.
                 made = member(*args, **kwargs)
-                self.requests += int(made or 0)
-                self.by_member[name] = self.by_member.get(name, 0) + int(made or 0)
+                self._count(name, int(made or 0))
                 return made
-            self.requests += 1
-            self.by_member[name] = self.by_member.get(name, 0) + 1
+            self._count(name, 1)
             return member(*args, **kwargs)
 
         return counted
@@ -242,38 +195,17 @@ class Counted:
 
 
 class Matcher:
-    """Library rows to account tracks, the ledger's links first, the provider second.
+    """Library rows to account tracks: what is already known first, the provider second.
 
-    A LINK IS REUSED while the row's database code is empty or the code it was
-    matched under, so a row retagged in the database with another code is
-    matched again rather than kept on the old track. ``fresh`` gathers every
-    link a plan used that the ledger does not yet hold, for an apply to record.
-
-    A MISS IS REUSED while the row is asked under what it was missed under
-    (R-1031): its database code, title, artist and path, and for a row with no
-    database code its file's ``signature``, since the file's code is read only
-    then. Anything else changing asks the provider again, and ``rematch`` asks
-    every remembered miss. ``missed`` gathers each miss a plan found, for the
-    ledger, except one whose reason says a candidate could not be read.
-
-    ``seen`` IS A FROZEN PLAN'S MATCHES, every row's answer as the gate's plan
-    found it, so a plan rebuilt from them asks the provider about no row they
-    carry.
-
-    ``known`` IS EACH ROW'S OWN PROVIDER TRACK (U150), what a label landing
-    recorded from the manifest row its file was tied to. It answers a row the
-    ledger does not link, before any remembered miss and before the provider,
-    since it names the very track the file was downloaded as: no request, and
-    no ISRC tie between agreeing releases to miss on.
-
-    A TIE TAKES ONE RELEASE (R-1032). A mirrored playlist is a listening copy
-    and writes nothing back as the row's identity, so the provider is asked
-    with ``any_agreeing`` and a tie between releases that all agree with the
-    row is matched as one of them, linked like any match and so kept by every
-    later refresh. A miss remembered with the tie's words before that is asked
-    again rather than reused, once, since asking again no longer misses on it.
-    The pairs break a tie the same way since U208 (``sync/pair_cli._ask``);
-    the hearts keep R-572's refusal and never pass it.
+    A LINK is reused while the row's database code is empty or the one it was
+    matched under, so a retagged row is matched again. A MISS is reused while
+    the row is asked under what it was missed under (R-1031), :meth:`under`;
+    ``rematch`` asks every miss again. ``known`` is each row's own provider
+    track from a label landing (U150), answered before any miss or request.
+    ``seen`` is a frozen plan's answers, so a rebuilt plan asks about none of
+    its rows. A tie between agreeing releases is matched as one of them
+    (R-1032), since a mirror writes nothing back; the hearts keep R-572's
+    refusal. ``fresh`` and ``missed`` gather what an apply records.
     """
 
     def __init__(
@@ -295,12 +227,11 @@ class Matcher:
         self._signature = signature or (lambda _row: "")
         self._seen: dict[str, tuple[str, str, str]] = dict(seen or {})
         self._known = {str(cid): str(remote) for cid, remote in (known or {}).items() if remote}
-        #: How many rows a recorded provider track answered, never asked of the provider.
+        #: Rows a recorded provider track, or a remembered miss, answered.
         self.known = 0
+        self.remembered = 0
         self.fresh: dict[str, tuple[str, str]] = {}
         self.missed: dict[str, tuple[str, tuple[str, ...]]] = {}
-        #: How many rows a remembered miss answered, never asked of the provider.
-        self.remembered = 0
         #: Each content row's identity, read once (U207).
         self._identities: dict[str, Identity] = {}
 
@@ -309,48 +240,40 @@ class Matcher:
         """Every row's answer so far, ``(account track, ISRC, reason)``, for freezing."""
         return dict(self._seen)
 
+    def _link(self, content_id: str, remote: str, isrc: str) -> None:
+        if self._links.get(content_id) != (remote, isrc):
+            self.fresh[content_id] = (remote, isrc)
+
     def match(self, row: Row) -> tuple[str, str]:
         """``(account track, "")`` for a matched row, ``("", reason)`` otherwise."""
         held = self._seen.get(row.content_id)
         if held is None:
-            held = self._match(row)
-            self._seen[row.content_id] = held
+            held = self._seen[row.content_id] = self._match(row)
         remote, isrc, reason = held
-        if remote and self._links.get(row.content_id) != (remote, isrc):
-            self.fresh[row.content_id] = (remote, isrc)
+        if remote:
+            self._link(row.content_id, remote, isrc)
         return remote, reason
 
     def adopt(self, content_id: str, remote: str) -> None:
         """Answer one row as the account track a mirror download fetched it as (U204).
 
-        The row a download's landing made is that very track, as a label
-        landing's ``known`` track is, so it is answered and linked as it even
-        where the provider broke a tie between releases toward another one;
-        otherwise the mirror would swap the track a person added for another
-        release of it. Called once every row is matched and before any plan
-        reads them, so every plan of the run reads the one answer.
+        That row is that very track, so it is linked as it even where the
+        provider broke a tie toward another release; called before any plan
+        reads the rows, so every plan of the run reads one answer.
         """
-        _remote, isrc, _reason = self._seen.get(str(content_id), ("", "", ""))
-        self._seen[str(content_id)] = (str(remote), isrc, "")
-        if self._links.get(str(content_id)) != (str(remote), isrc):
-            self.fresh[str(content_id)] = (str(remote), isrc)
+        content_id, remote = str(content_id), str(remote)
+        isrc = self._seen.get(content_id, ("", "", ""))[1]
+        self._seen[content_id] = (remote, isrc, "")
+        self._link(content_id, remote, isrc)
 
     def under(self, row: Row) -> tuple[str, ...]:
-        """What a miss of this row is remembered under, and reused while it holds."""
-        return (
-            row.isrc,
-            row.title,
-            row.artist,
-            row.path,
-            "" if row.isrc else self._signature(row),
-        )
+        """What a miss of this row is remembered under; the file's signature only without a code."""
+        return (row.isrc, row.title, row.artist, row.path, "" if row.isrc else self._signature(row))
 
     def _settled(self, row: Row) -> tuple[str, tuple[str, str, str]] | None:
         """How a row is answered with no request, ``(kind, answer)``, or None.
 
-        Reads only, so the screen asks it of a row before any match and
-        :meth:`_match` asks it again: the rows the screen leaves out are
-        exactly the rows the match never asks the provider about (U207).
+        Reads only, so the screen and :meth:`_match` ask it alike (U207).
         """
         if row.content_id in self._seen:
             return "seen", self._seen[row.content_id]
@@ -373,12 +296,7 @@ class Matcher:
         return held
 
     def screen(self, rows: Iterable[Row]) -> int:
-        """Screen every code these rows will ask the provider, before any is asked (U207).
-
-        Only a row :meth:`_settled` cannot answer and whose identity carries a
-        code is screened, so a link, a recorded track, a remembered miss and a
-        frozen plan's answer cost nothing here. Returns the requests made.
-        """
+        """Screen every code these rows will ask, before any is asked; the requests made (U207)."""
         codes = [
             said.isrc
             for row in rows
@@ -409,9 +327,8 @@ class Matcher:
             any_agreeing=True,
         )
         if not remote:
-            return self._missed(
-                row, under, self._account.unmatched_reason(row.content_id) or NO_MATCH
-            )
+            reason = self._account.unmatched_reason(row.content_id) or NO_MATCH
+            return self._missed(row, under, reason)
         return str(remote), said.isrc, ""
 
     def _missed(self, row: Row, under: tuple[str, ...], reason: str) -> tuple[str, str, str]:
@@ -443,9 +360,8 @@ class PlaylistPlan:
     #: Matched tracks the provider refused before, not asked again.
     refused: int = 0
     why: str = ""
-    #: What the snapshot is taken from (U201): the account tracks the playlist
-    #: held when planned, its snapshot then, ``None`` for none, the hold the
-    #: caller handed in, and whether its listing came back short.
+    #: What the snapshot is taken from (U201): the tracks held when planned,
+    #: the snapshot then, the caller's hold, and whether the listing was short.
     held: frozenset[str] = frozenset()
     agreed: frozenset[str] | None = None
     hold: Hold = field(default_factory=Hold)
@@ -473,23 +389,17 @@ class PlaylistPlan:
             "add": len(self.add),
             "remove": len(self.remove),
         }
-        if self.remote_id:
-            shown["remote_id"] = self.remote_id
-        if self.move:
-            shown["move"] = True
-        if self.removed_names:
-            shown["removed"] = list(self.removed_names)
-        if self.unmatched:
-            shown["unmatched"] = list(self.unmatched)
-        if self.refused:
-            shown["refused before"] = self.refused
-        if self.kept:
-            shown["held as the account has them"] = self.kept
-        if self.short:
-            shown["short"] = True
-        if self.why:
-            shown["why"] = self.why
-        return shown
+        optional = (
+            ("remote_id", self.remote_id),
+            ("move", self.move),
+            ("removed", list(self.removed_names)),
+            ("unmatched", list(self.unmatched)),
+            ("refused before", self.refused),
+            ("held as the account has them", self.kept),
+            ("short", self.short),
+            ("why", self.why),
+        )
+        return shown | {key: value for key, value in optional if value}
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,13 +411,12 @@ class FolderPlan:
     folder_id: str = ""
     stale_folder: str = ""
     playlists: tuple[PlaylistPlan, ...] = ()
-    #: Mirrored playlists the folder no longer declares, and each node of the
-    #: rekordbox folder that is not mirrored (U214), named and left.
+    #: Mirrored playlists the folder no longer declares, and each node it does
+    #: not mirror (U214), named and left.
     left: tuple[str, ...] = ()
     #: The links this folder's rows used that the ledger does not hold yet.
     links: Mapping[str, tuple[str, str]] = field(default_factory=dict)
-    #: Mirrored playlists to remove from the account, ``(title, remote id)``,
-    #: whose rekordbox playlist left a retiring folder (U150).
+    #: Mirrored playlists to remove, ``(title, remote id)`` (U150).
     retire: tuple[tuple[str, str], ...] = ()
 
     @property
@@ -519,14 +428,14 @@ class FolderPlan:
         )
 
     def counts(self) -> dict[str, int]:
+        steps = self.playlists
         return {
             "create folder": int(self.folder_action == CREATE),
-            "create playlist": sum(1 for one in self.playlists if one.action == CREATE),
-            "add": sum(len(one.add) for one in self.playlists),
-            "remove": sum(len(one.remove) for one in self.playlists),
-            "unmatched": sum(len(one.unmatched) for one in self.playlists),
-            "left": len(self.left)
-            + sum(1 for one in self.playlists if one.action in (LEFT, UNREADABLE)),
+            "create playlist": sum(1 for one in steps if one.action == CREATE),
+            "add": sum(len(one.add) for one in steps),
+            "remove": sum(len(one.remove) for one in steps),
+            "unmatched": sum(len(one.unmatched) for one in steps),
+            "left": len(self.left) + sum(1 for one in steps if one.action in (LEFT, UNREADABLE)),
             "remove playlist": len(self.retire),
         }
 
@@ -543,34 +452,25 @@ class FolderPlan:
         }
 
     def items(self) -> list[dict[str, Any]]:
-        shown: list[dict[str, Any]] = [
-            {
-                "folder": self.name,
-                "action": self.folder_action,
-                **({"folder_id": self.folder_id} if self.folder_id else {}),
-            }
+        head = {"folder": self.name, "action": self.folder_action}
+        why = f"what it mirrors left {self.name}, so the product removes the playlist it made"
+        return [
+            head | ({"folder_id": self.folder_id} if self.folder_id else {}),
+            *(one.item() for one in self.playlists),
+            *({"playlist": line, "action": LEFT} for line in self.left),
+            *(
+                {"playlist": name, "action": RETIRE, "remote_id": remote_id, "why": why}
+                for name, remote_id in self.retire
+            ),
         ]
-        shown.extend(one.item() for one in self.playlists)
-        shown.extend({"playlist": line, "action": LEFT} for line in self.left)
-        shown.extend(
-            {
-                "playlist": name,
-                "action": RETIRE,
-                "remote_id": remote_id,
-                "why": f"what it mirrors left {self.name}, so the product removes the playlist it made",
-            }
-            for name, remote_id in self.retire
-        )
-        return shown
 
 
 def ambiguous(name: str, found: Sequence[str]) -> CratekitError:
     """Two root folders of a mirror's name: that folder refused by name, nothing written."""
     return refuse(
         AMBIGUOUS_REASON,
-        f"the account holds {len(found)} root folders named {name!r}, so which one "
-        f"is the mirror is not something its name decides, and nothing was planned "
-        f"for it",
+        f"the account holds {len(found)} root folders named {name!r}, so which one is the mirror "
+        f"is not something its name decides, and nothing was planned for it",
         steps=(
             "rename or merge the extra folders on the account so one carries the "
             "name, then run organize again",
@@ -594,6 +494,44 @@ def _wanted(source: Source, matcher: Matcher) -> tuple[tuple[str, ...], tuple[st
     return tuple(dict.fromkeys(wanted)), tuple(unmatched)
 
 
+def _reused(
+    source: Source,
+    mine: ledger.MirrorPlaylist,
+    listing: PlaylistListing,
+    placed: bool,
+    hold: Hold,
+    matcher: Matcher,
+) -> PlaylistPlan:
+    """A recorded playlist's step: what to add and take off, a hold's tracks left as they are."""
+    names = listing.names
+    wanted, unmatched = _wanted(source, matcher)
+    on = set(names)
+    keep = set(wanted)
+    remove = tuple(one for one in names if one not in keep and one not in hold.keep)
+    return PlaylistPlan(
+        name=source.name,
+        action=REUSE,
+        remote_id=mine.remote_id,
+        move=not placed,
+        add=tuple(
+            one for one in wanted if one not in on and one not in mine.refused and one not in hold.skip
+        ),
+        remove=remove,
+        tracks=len(wanted),
+        unmatched=unmatched,
+        removed_names=tuple(f"{names[one][0]} - {names[one][1]} ({one})" for one in remove),
+        refused=sum(1 for one in wanted if one in mine.refused and one not in on),
+        held=frozenset(on),
+        agreed=mine.agreed,
+        hold=hold,
+        short=listing.short,
+        kept=len(
+            [one for one in names if one not in keep and one in hold.keep]
+            + [one for one in wanted if one not in on and one in hold.skip]
+        ),
+    )
+
+
 def plan(
     folder: Folder,
     account: RemoteAccount,
@@ -606,11 +544,10 @@ def plan(
 ) -> FolderPlan:
     """Decide one mirrored folder and every playlist in it. Reads only.
 
-    ``root`` is the account's root folders, identifier to name, read once by
-    the caller for every folder. Raises :func:`ambiguous` for two root folders
-    of the name. ``holds`` is each playlist's hold by title (U201), and
-    ``listings`` each recorded playlist's listing the caller already read, by
-    remote identifier, so it is not read twice.
+    ``root`` is the account's root folders, identifier to name, read once for
+    every folder; two of the name raise :func:`ambiguous`. ``holds`` is each
+    playlist's hold by title (U201), ``listings`` each recorded playlist's
+    listing already read, by remote identifier.
     """
     holds = holds or {}
     listings = listings or {}
@@ -623,13 +560,8 @@ def plan(
         named = sorted(fid for fid, name in root.items() if name == folder.name)
         if len(named) > 1:
             raise ambiguous(folder.name, named)
-        if named:
-            folder_action, folder_id = ADOPT, named[0]
-        else:
-            folder_action, folder_id = CREATE, ""
-    # A RETIRING FOLDER IS MADE ONLY TO HOLD SOMETHING (U150): an INBOX with no
-    # live batch, or one whose folder a person deleted with only removals
-    # left, makes no empty root folder.
+        folder_action, folder_id = (ADOPT, named[0]) if named else (CREATE, "")
+    # A RETIRING FOLDER IS MADE ONLY TO HOLD SOMETHING (U150).
     if folder_action == CREATE and folder.retire and not folder.playlists:
         folder_action = UNMADE
     inside = account.folder_playlists(folder_id) if folder_id else {}
@@ -640,9 +572,8 @@ def plan(
         mine = made.get(source.name)
         if mine is not None:
             placed = mine.remote_id in inside
-            # ONE READ PER PLAYLIST, names and all: the names are what the gate
-            # shows a removal by, and the adapter keeps the membership it read
-            # for the add that follows.
+            # ONE READ PER PLAYLIST, names and all, which the gate shows a
+            # removal by and the adapter keeps for the add that follows.
             try:
                 listing = listings.get(mine.remote_id)
                 if listing is None:
@@ -650,87 +581,34 @@ def plan(
             except CratekitError as exc:
                 if placed or exc.cause.reason != "unavailable-transient":
                     raise
-                steps.append(
-                    PlaylistPlan(
-                        name=source.name,
-                        action=UNREADABLE,
-                        remote_id=mine.remote_id,
-                        why=(
-                            "the playlist recorded for it is not in the folder and could "
-                            "not be read, so it may have been deleted on the account; "
-                            "nothing is made in its place"
-                        ),
-                    )
+                why = (
+                    "the playlist recorded for it is not in the folder and could not be read, so "
+                    "it may have been deleted on the account; nothing is made in its place"
                 )
+                steps.append(PlaylistPlan(source.name, UNREADABLE, mine.remote_id, why=why))
                 continue
-            names = listing.names
             hold = holds.get(source.name, Hold())
-            wanted, unmatched = _wanted(source, matcher)
-            on = set(names)
-            keep = set(wanted)
-            remove = tuple(one for one in names if one not in keep and one not in hold.keep)
-            steps.append(
-                PlaylistPlan(
-                    name=source.name,
-                    action=REUSE,
-                    remote_id=mine.remote_id,
-                    move=not placed,
-                    add=tuple(
-                        one
-                        for one in wanted
-                        if one not in on and one not in mine.refused and one not in hold.skip
-                    ),
-                    remove=remove,
-                    tracks=len(wanted),
-                    unmatched=unmatched,
-                    removed_names=tuple(
-                        f"{names[one][0]} - {names[one][1]} ({one})" for one in remove
-                    ),
-                    refused=sum(1 for one in wanted if one in mine.refused and one not in on),
-                    held=frozenset(on),
-                    agreed=mine.agreed,
-                    hold=hold,
-                    short=listing.short,
-                    kept=len(
-                        [one for one in names if one not in keep and one in hold.keep]
-                        + [one for one in wanted if one not in on and one in hold.skip]
-                    ),
-                )
-            )
+            steps.append(_reused(source, mine, listing, placed, hold, matcher))
             continue
-        # A PERSON'S PLAYLIST IS DECIDED BEFORE ANY ROW IS MATCHED, since
-        # nothing is written to it and a match would be a request for nothing.
+        # A PERSON'S PLAYLIST IS DECIDED BEFORE ANY ROW IS MATCHED, since a
+        # match would be a request for nothing.
         theirs = sorted(pid for pid, name in inside.items() if name == source.name)
         if theirs:
-            steps.append(
-                PlaylistPlan(
-                    name=source.name,
-                    action=LEFT,
-                    remote_id=theirs[0],
-                    why=(
-                        f"the folder holds {len(theirs)} playlist(s) of this title the "
-                        f"product did not make, so a person's playlist is left as it is "
-                        f"and nothing is made beside it; rename it on the account to "
-                        f"let the mirror make its own"
-                    ),
-                )
+            why = (
+                f"the folder holds {len(theirs)} playlist(s) of this title the product did not "
+                f"make, so a person's playlist is left as it is and nothing is made beside it; "
+                f"rename it on the account to let the mirror make its own"
             )
+            steps.append(PlaylistPlan(source.name, LEFT, theirs[0], why=why))
             continue
         wanted, unmatched = _wanted(source, matcher)
         steps.append(
             PlaylistPlan(
-                name=source.name,
-                action=CREATE,
-                move=True,
-                add=wanted,
-                tracks=len(wanted),
-                unmatched=unmatched,
+                source.name, CREATE, move=True, add=wanted, tracks=len(wanted), unmatched=unmatched
             )
         )
     declared = {source.name for source in folder.playlists}
-    # EVERY NODE THE FOLDER LEAVES OFF IS NAMED (U214), so a batch skipped by
-    # rule reads apart from one missed, and the step's ``left`` count holds it.
-    left: list[str] = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]
+    left = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]
     retire: list[tuple[str, str]] = []
     for name, entry in sorted(made.items()):
         if name in declared:
@@ -741,16 +619,13 @@ def plan(
                 f"left on the account as it is"
             )
         elif name in folder.present:
-            # STILL THERE, ONLY NOT RECOGNISED. A landing record that could not
-            # be read, or a batch folder gone, unrecognises a batch that never
-            # left; removing its playlist would read absence as evidence.
+            # STILL THERE, ONLY NOT RECOGNISED: absence is no evidence it left.
             left.append(
                 f"{name} ({entry.remote_id}): still in {folder.name} in rekordbox but no "
                 f"longer read as one to mirror, so it is left on the account as it is"
             )
         else:
             retire.append((name, entry.remote_id))
-    rows = [row for source in folder.playlists for row in source.rows]
     return FolderPlan(
         name=folder.name,
         folder_action=folder_action,
@@ -758,19 +633,13 @@ def plan(
         stale_folder=stale,
         playlists=tuple(steps),
         left=tuple(left),
-        links=matcher.links_of(rows),
+        links=matcher.links_of([row for source in folder.playlists for row in source.rows]),
         retire=tuple(retire),
     )
 
 
 def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str], frozenset[str]]]:
-    """The snapshot of each playlist with nothing to write, by title (U201).
-
-    Such a playlist is already as the mirror would leave it, so its snapshot is
-    taken at the plan, which the apply of a folder with no write never reaches.
-    A playlist whose listing was short keeps the snapshot's word on every
-    track it did not list.
-    """
+    """The snapshot of each playlist with nothing to write, by title, taken at the plan (U201)."""
     return {
         one.name: (one.remote_id, one.held, one.hold.tracks | one.unlisted())
         for one in planned.playlists
@@ -779,15 +648,9 @@ def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str], frozens
 
 
 @dataclass
-class Applied:
+class Applied(folders.Applied):
     """What an apply wrote, for the report and for a failure part way."""
 
-    folder_id: str = ""
-    folder_created: bool = False
-    created: list[str] = field(default_factory=list)
-    moved: list[str] = field(default_factory=list)
-    added: dict[str, int] = field(default_factory=dict)
-    refused: dict[str, int] = field(default_factory=dict)
     removed: dict[str, int] = field(default_factory=dict)
     #: Playlists a removal was refused on, each with the refusal's words.
     kept: list[tuple[str, str]] = field(default_factory=list)
@@ -808,6 +671,13 @@ class Applied:
         }
 
 
+def _kept(exc: CratekitError, name: str, done: Applied) -> None:
+    """A removal refused with nothing sent is kept and named; any other refusal is raised."""
+    if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
+        raise exc
+    done.kept.append((name, exc.cause.message))
+
+
 def apply(
     cfg: config.Config,
     account: RemoteAccount,
@@ -819,17 +689,11 @@ def apply(
     """Carry out one folder's plan, recording each write as it lands, into ``done``.
 
     ``done`` is the caller's, so a raise part way leaves in it what was
-    written before the raise. ``links`` are the rows to record as matched,
-    the folder's own by default; a caller planning several folders hands every
-    one its run matched, so a folder with nothing to write does not leave its
-    rows to be matched again.
-
-    A REMOVAL REFUSED WITH NOTHING SENT, ``outbound-remove-refused`` at source
-    scope (positions unknown, or a playlist the ledger does not vouch for), is
-    kept and named and the apply goes on, since the adds already landed and the
-    other playlists are their own. ANY OTHER REFUSAL IS RAISED, the read back
-    that differs above all: a track other than the asked ones may have come
-    off, and the refusal's own words say to check the playlist by hand.
+    written. ``links`` are the rows to record as matched, the folder's own by
+    default; a caller planning several folders hands each every one its run
+    matched. A removal refused with nothing sent (``outbound-remove-refused``
+    at source scope) is kept and named, since the adds landed; any other
+    refusal, a read back that differs above all, is raised.
     """
     ledger.record_mirror_links(cfg, planned.links if links is None else links)
     if planned.folder_action == UNMADE:
@@ -860,9 +724,7 @@ def apply(
         for start in range(0, len(step.add), CHUNK):
             chunk = step.add[start : start + CHUNK]
             held = set(account.add_tracks(remote_id, chunk))
-            added_to.setdefault(step.name, set()).update(
-                str(one) for one in chunk if one in held
-            )
+            added_to.setdefault(step.name, set()).update(str(one) for one in chunk if one in held)
             refused = [one for one in chunk if one not in held]
             ledger.record_mirror_refused(cfg, planned.name, step.name, refused)
             done.added[step.name] = done.added.get(step.name, 0) + len(chunk) - len(refused)
@@ -875,42 +737,31 @@ def apply(
         try:
             gone = account.remove_tracks(remote_of[step.name], step.remove)
         except CratekitError as exc:
-            if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
-                raise
-            done.kept.append((step.name, exc.cause.message))
+            _kept(exc, step.name, done)
             continue
         done.removed[step.name] = len(gone)
         landed[step.name] = {str(one) for one in gone}
     # THE SNAPSHOT, ONCE EVERY WRITE OF THE FOLDER LANDED (U201): what each
     # playlist held, less what came off, with what went on.
-    ledger.record_mirror_agreed(
-        cfg,
-        planned.name,
-        {
-            step.name: (
+    snapshot = {}
+    for step in planned.playlists:
+        if step.name in remote_of:
+            gone = frozenset(landed.get(step.name, set()))
+            after = (set(step.held) - gone) | added_to.get(step.name, set())
+            snapshot[step.name] = (
                 remote_of[step.name],
-                frozenset(
-                    (set(step.held) - landed.get(step.name, set())) | added_to.get(step.name, set())
-                ),
-                step.hold.tracks
-                | step.unlisted(frozenset(landed.get(step.name, set()))),
+                frozenset(after),
+                step.hold.tracks | step.unlisted(gone),
             )
-            for step in planned.playlists
-            if step.name in remote_of
-        },
-    )
-    # A RETIRED PLAYLIST GOES LAST, AND ITS RECORD AFTER IT (U150). Removed
-    # first, so a ledger write that fails leaves a record the next plan
-    # retires again, and the adapter answers a playlist already gone as
-    # removed; forgotten first, a removal that failed would leave a playlist
-    # no record vouches for, which nothing could then remove.
+    ledger.record_mirror_agreed(cfg, planned.name, snapshot)
+    # A RETIRED PLAYLIST GOES LAST, AND ITS RECORD AFTER IT (U150), so a ledger
+    # write that fails leaves a record the next plan retires again, never a
+    # playlist no record vouches for.
     for name, remote_id in planned.retire:
         try:
             account.remove_playlist(remote_id)
         except CratekitError as exc:
-            if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
-                raise
-            done.kept.append((name, exc.cause.message))
+            _kept(exc, name, done)
             continue
         ledger.forget_mirror_playlist(cfg, planned.name, name, remote_id)
         done.retired.append(name)
@@ -918,30 +769,8 @@ def apply(
 
 
 __all__ = [
-    "ADOPT",
-    "AMBIGUOUS_REASON",
-    "Applied",
-    "CHUNK",
-    "CREATE",
-    "Counted",
-    "Folder",
-    "FolderPlan",
-    "Identity",
-    "LEFT",
-    "Matcher",
-    "NO_ISRC",
-    "NO_MATCH",
-    "PlaylistPlan",
-    "RETIRE",
-    "REUSE",
-    "Row",
-    "Source",
-    "UNMADE",
-    "UNREAD",
-    "UNREADABLE",
-    "ambiguous",
-    "apply",
-    "plan",
-    "settled",
-    "title",
+    "ADOPT", "AMBIGUOUS_REASON", "Applied", "CHUNK", "CREATE", "Counted", "Folder",
+    "FolderPlan", "Identity", "LEFT", "Matcher", "NO_ISRC", "NO_MATCH", "PlaylistPlan",
+    "RETIRE", "REUSE", "Row", "Source", "UNMADE", "UNREAD", "UNREADABLE", "ambiguous", "apply",
+    "plan", "settled", "title",
 ]

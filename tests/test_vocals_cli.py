@@ -329,11 +329,6 @@ def test_owed_by_unit_no_longer_lists_25():
     assert registry.entry("metadata.mytags-vocals").planned_in is None
 
 
-# ---------------------------------------------------------------------------
-# U93: a recursive vocals pass queues a whole tree as one resumable job
-# ---------------------------------------------------------------------------
-
-
 def nest(folder: Path, silence: Path, relative: str, **fields) -> Path:
     """``place``, one level down or more. The item id becomes this relative path."""
     path = folder / relative
@@ -524,11 +519,6 @@ def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
     code, resumed = drive(resume_argv(vocals_job().job_id))
     assert code == int(ExitCode.OK), resumed
     assert [w["code"] for w in resumed["warnings"]] == []
-
-
-# ---------------------------------------------------------------------------
-# U181: --unscored queues only what analyze run will never score again
-# ---------------------------------------------------------------------------
 
 
 def test_unscored_queues_a_headed_file_with_no_score_and_leaves_the_rest_alone(

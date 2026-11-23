@@ -1,26 +1,7 @@
 """A capture of a database in write ahead log mode is one the restore can use (R-1665).
 
-The capture records which of the engine's companion files it took by looking
-at the capture directory, and the integrity check then opened that same
-directory through the binding. Closing the check's handle was the last close
-of the copy, so SQLite folded the log into the captured database and deleted
-the captured log and its shared memory index. The manifest still listed both,
-so ``restore.plan`` refused the capture as missing two files, and the undo of
-the guarded write it was taken for could not run.
-
-Two layers hold it now, and each is asserted here on its own:
-
-1. **The check never opens the capture** (``rb_writer.integrity_ok``). It reads
-   a private throwaway copy of the file set it is given, so what it checks is
-   the capture's bytes and what it changes on close is only the copy's.
-2. **A capture never records verified over a source the check changed or
-   removed** (``snapshot.capture``). Whatever verifier ran, a manifest that
-   says verified lists only bytes that are still there as they were copied.
-
-Driven on the suite's real disposable database, which is built in WAL mode
-because the real library runs in it, with the real check. No library volume,
-no rekordbox, no live database.
-"""
+The check reads a throwaway copy and never opens the capture, and a capture never
+records verified over a source the check changed or removed."""
 
 from __future__ import annotations
 
@@ -41,7 +22,6 @@ from tests.test_restore import acknowledge, gate_seams
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A saved library whose database is the suite's real WAL disposable database."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     (root / "db").mkdir(parents=True)
@@ -72,7 +52,6 @@ def cfg(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _nothing_is_running(monkeypatch):
-    """No rekordbox, injected in every place a probe is resolved."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
@@ -151,18 +130,11 @@ def _restore(cfg, record: session.SessionRecord) -> None:
         restore.run(decided, cfg, held=held)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The card's scenario: a WAL database with a handle open, the real check
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_capture_taken_while_a_handle_holds_the_log_restores_what_it_recorded(cfg):
-    """The row only the log holds at the capture comes back, through plan and run.
-
-    The caller's connection keeps the log from folding, so the newest title
-    exists only in the captured ``-wal``. Before the fix the check's close
-    deleted that file from the capture and the plan refused the capture.
-    """
+    """The row only the log holds at the capture comes back, through plan and run."""
     database = _database(cfg)
     content = _first_id(database)
     live = sqlite3.connect(database)
@@ -193,12 +165,7 @@ def test_a_capture_taken_while_a_handle_holds_the_log_restores_what_it_recorded(
 
 
 def test_a_capture_taken_through_the_callers_own_handle_restores(cfg):
-    """The ordinary call shape: the caller's open handle, its fold run first.
-
-    The fold truncates the log rather than removing it, so the capture still
-    holds an empty log and the index beside the database, and the check's close
-    used to delete both from the capture all the same.
-    """
+    """The ordinary call shape: the caller's handle, its fold run first, still restores."""
     database = _database(cfg)
     handle = W.open_db(database)
     try:
@@ -289,9 +256,7 @@ def test_a_database_in_rollback_journal_mode_captures_and_restores_as_before(cfg
     assert _title(database, content) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Layer one: the check reads a throwaway copy
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("encrypted", [False, True], ids=["plain", "encrypted"])
@@ -330,10 +295,7 @@ def _damage_page(copied: Path, name: str) -> None:
 
 
 def test_a_damaged_copy_still_fails_the_check(cfg, tmp_path):
-    """The throwaway copy carries the damage, so the verdict is still about these bytes.
-
-    A table's root page, which the open's own canary already refuses.
-    """
+    """The throwaway copy carries the damage, so the verdict is still about these bytes."""
     copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
     _damage_page(copied, "djmdContent")
 
@@ -341,11 +303,7 @@ def test_a_damaged_copy_still_fails_the_check(cfg, tmp_path):
 
 
 def test_damage_only_the_consistency_check_sees_fails_the_check(cfg, tmp_path, monkeypatch):
-    """An index page damaged, so the open succeeds and ``quick_check`` alone refuses.
-
-    The test above stops at the open's canary, so it holds no verdict of the
-    check itself; this one asserts the open succeeded first.
-    """
+    """An index page damaged, so the open succeeds and ``quick_check`` alone refuses."""
     copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
     _damage_page(copied, "sqlite_autoindex_djmdSongPlaylist_1")
     opened: list[Path] = []
@@ -391,9 +349,7 @@ def test_the_check_removes_its_throwaway_copy(cfg, tmp_path, monkeypatch):
     assert made[0] != copied.parent
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Layer two: nothing records verified over what the check changed
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _hermetic(tmp_path, monkeypatch):
@@ -566,9 +522,7 @@ def test_a_check_that_resizes_the_database_at_its_own_time_is_not_recorded_verif
 
 
 def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):
-    """``os.walk`` skips what it cannot read unless told to raise, and a skipped
-    directory is one the guard cannot vouch for. Driven through the walk's own
-    error report, since this container reads every directory as root."""
+    """``os.walk`` raises on what it cannot read, as the guard cannot vouch for a skipped one."""
     real = os.walk
 
     def unreadable(top, *args, onerror=None, **kwargs):
@@ -584,19 +538,12 @@ def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):
     assert snapshot._walked(tmp_path / "capture") == {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The restore's side: a capture that lost a file after its verdict
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("suffix", W.restored_sidecar_suffixes())
 def test_a_capture_that_lost_its_log_after_the_verdict_is_refused_by_the_plan(cfg, suffix):
-    """A restore never accepts a capture missing data it records.
-
-    The verdict is true and the database is still there, so only
-    ``assert_sources_present`` stands between the plan and a restore that would
-    put the database back without the log its newest rows live in.
-    """
+    """A restore never accepts a capture missing data it records."""
     database = _database(cfg)
     live = sqlite3.connect(database)
     try:

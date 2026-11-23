@@ -1,106 +1,185 @@
-"""The guarded rekordbox database writer: the chain of refusals that stands
-between automation and an irreplaceable music library.
+"""The guarded rekordbox database writer: the chain of refusals between automation and the library.
 
-pyrekordbox supplies no version gating, no write-ahead-log handling and no
-locking, so every property in this module is load-bearing and none of it can be
-delegated upstream. The chain, in the order it fires, and what each link refuses:
+pyrekordbox has no version gating, write-ahead-log handling or locking, so every
+link here is load-bearing. In firing order:
 
-1. **Three version pins.** The installed binding, the database's own schema
-   version, and the installed rekordbox application. Any drift is a
-   stop-and-revalidate event rather than a silent write, because a rekordbox
-   update can rotate the database key or migrate the schema underneath a writer
-   that was validated against neither.
-2. **The two-process refusal**, covering the application AND its background
-   agent, at open and again at commit. The agent is the one that gets missed: it
-   holds the database handle and mutates the library through cloud sync with the
-   application closed, which is exactly the window a long write runs in.
-3. **The cloud-sync canary.** A concurrent writer we cannot see is a concurrent
-   writer we cannot serialise against, so an active library sync refuses.
-4. **A write-ahead-log-aware snapshot** with a symmetric restore, taken before
-   any write and verified before anything commits behind it.
-5. **The additive whitelist.** A session may CREATE rows only in named playlist
-   and tag tables, may MODIFY only columns an enabled operation has REGISTERED,
-   and may DELETE nothing but the one row shape below. That is R17 stated as a property of the
-   database rather than as a code-review note: grid and analysis data is
-   structurally unwritable, not merely untested. ONE REMOVAL IS ADMITTED, on
-   purpose (R-758): a membership row may be marked removed with rekordbox's own
-   soft delete marker, in the membership table only, and only by a commit that
-   asks for it by name. See :data:`REMOVABLE_TABLES`. ONE CREATION BEYOND THE
-   WHITELIST IS ADMITTED the same way (R-746): a content row, only by a commit
-   that names the table, and only carrying what the file and the filesystem
-   say, with every column an analysis pass fills asserted empty from SQL
-   before the commit. See :data:`ADMITTABLE_ROW_TABLES`. ONE HARD DELETE IS
-   ADMITTED (U288), rekordbox's own Remove from Collection as two sittings
-   measured it (A178, A185): a track's content row and every row naming it
-   in six tables beside it, only by a commit that names those tables, and
-   proven from SQL before the commit to have reached nothing else but the
-   ``TrackNo`` of the live members after it in each playlist it left, which
-   rekordbox renumbers too (R-1830). See :data:`DELETABLE_TABLES` and
-   :func:`renumbered_positions`.
+1. **Three version pins**: binding, database schema, rekordbox application. Drift
+   refuses, because an update can rotate the key or migrate the schema.
+2. **The two-process refusal**, application AND background agent, at open and at
+   commit. The agent mutates the library through cloud sync with the app closed.
+3. **The cloud-sync canary.** An active sync is a writer we cannot serialise against.
+4. **A write-ahead-log-aware snapshot** with a symmetric restore, verified before
+   anything commits behind it.
+5. **The additive whitelist.** CREATE only in named playlist and tag tables, MODIFY
+   only REGISTERED columns, DELETE nothing, so grid and analysis data is
+   structurally unwritable (R17). Three exceptions, each only by a commit that
+   names its table: a membership soft delete (R-758, :data:`REMOVABLE_TABLES`), a
+   content row carrying only file facts with every analysis column asserted
+   empty (R-746, :data:`ADMITTABLE_ROW_TABLES`), and Remove from Collection,
+   proven from SQL to reach nothing but the renumbered ``TrackNo`` after it
+   (U288, R-1830, :data:`DELETABLE_TABLES`, :func:`renumbered_positions`).
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
-WHAT CHANGED IN THE PORT, AND WHY EACH CHANGE IS A FIX RATHER THAN A DRIFT.
+Every path is a late-bound accessor, an unset application pin refuses (S2),
+pruning is a separate step after the commit (R30), and the writable column set
+is registered per operation rather than maximal (R14).
 
-* **No import-time path constants.** The source froze four paths at import, so a
-  configuration loaded afterwards changed the config module and nothing else.
-  Every path here is a late-bound accessor reading resolved configuration.
-* **The application pin is configuration, and an unset pin REFUSES** (S2). A pin
-  the software copies from whatever happens to be installed refuses nothing,
-  forever, which is the entire property the pin exists to provide.
-* **The cloud canary has a real predicate.** The source's was an unconditional
-  "not active" whose docstring is a falsification record; see
-  :func:`cloud_sync_state` for the marker that was found, the three traps around
-  it, and the incident that produced them.
-* **The snapshot-protection scan works.** The source globbed a filename its own
-  run-state store never writes, read a status key that does not exist, and
-  compared against a terminal set missing one of the two real values, so nothing
-  was ever protected. See :func:`default_protected_snapshot_paths`.
-* **Pruning is not called from inside the snapshot.** The source pruned inside
-  the write session, before the commit the snapshot protects. Pruning is now a
-  separate step the caller places after its commit (R30).
-* **The writable column set is registered, not maximal.** The source shipped a
-  static union of every column any operation might ever want, so a slim install
-  with no metadata operations still had four extra columns structurally
-  writable. R14's "widened only as far as each feature requires" is implemented
-  here rather than described.
-
-LAYER: infrastructure. It may read configuration directly and may do input and
-output. It carries remediation TOKENS and never the text a user types (D2).
+LAYER: infrastructure. It carries remediation TOKENS, never user text (D2).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import shutil
+import shutil  # noqa: F401 - read as rb_writer.shutil where a test patches a copy
 import sys
-import tempfile
-from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass, field
-from enum import StrEnum
-from functools import partial
+from contextlib import contextmanager
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
-from cratekit.core import config, processes
+from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Scope, name_the_database, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.rb_changes import (
+    Decision,
+    clear_registry_buffer,
+    guard_violations,
+    metadata_decision,
+    pending_changes,
+    pending_objects,
+    write_metadata_field,
+)
+from cratekit.core.rb_changes import _registry_changes as _registry_changes
+from cratekit.core.rb_changes import _registry_created_instances as _registry_created_instances
+from cratekit.core.rb_changes import _table_of as _table_of
+from cratekit.core.rb_copies import CANARY_TABLES as CANARY_TABLES
+from cratekit.core.rb_copies import (
+    IntegrityCheckCopyFailed,
+    RunStateVocabulary,
+    default_protected_snapshot_paths,
+    disposable_root,
+    file_set,
+    integrity_ok,
+    prune_snapshots,
+    read_run_state_records,
+    restore_from_snapshot,
+    snapshot_database_in,
+    snapshot_db,
+)
+from cratekit.core.rb_copies import _copy_file_set as _copy_file_set
+from cratekit.core.rb_copies import _copy_tables as _copy_tables
+from cratekit.core.rb_copies import copy_file_set as copy_file_set
+from cratekit.core.rb_copies import disposable_copy as disposable_copy
+from cratekit.core.rb_copies import read_only_copy as read_only_copy
+from cratekit.core.rb_copies import recorded_db_drives as recorded_db_drives
+from cratekit.core.rb_nodes import (
+    NodeTables,
+    add_membership,
+    add_memberships,
+    add_my_tag,
+    assert_node_changes_confined,
+    ensure_folder,
+    ensure_my_tag_value,
+    ensure_playlist,
+    is_folder,
+    move_playlist_node,
+    my_tag_writable,
+    node_change_violations,
+    node_tables,
+    remove_memberships,
+    remove_playlist_node,
+    top_level_folders,
+)
+from cratekit.core.rb_probes import _PROCESS_PROBES as _PROCESS_PROBES
+from cratekit.core.rb_probes import (
+    ENV_APP_PATH,
+    LIBRARY_SYNC_SETTING,
+    SETTINGS_APP_DIRNAME,
+    TEST_SETTINGS_ENV,
+    CloudSyncState,
+    CloudSyncVerdict,
+    cloud_sync_active,
+    cloud_sync_state,
+    read_installed_app_version,
+    read_rekordbox_settings,
+    rekordbox_agent_running,
+    rekordbox_processes_running,
+    rekordbox_running,
+)
+from cratekit.core.rb_probes import _binding_probe as _binding_probe
+from cratekit.core.rb_probes import _no_autoflush as _no_autoflush
+from cratekit.core.rb_removal import (
+    DatabaseReading,
+    _mapped,
+    assert_collection_removal_confined,
+    collection_removal_violations,
+    content_references,
+    database_id,
+    database_reading,
+    recorded_columns,
+    removal_renumbering,
+    remove_from_collection,
+    renumber_memberships,
+    renumbered_positions,
+)
+from cratekit.core.rb_tables import _REGISTERED as _REGISTERED
+from cratekit.core.rb_tables import (
+    ADMITTABLE_ROW_TABLES,
+    BINDING_ID_LIMIT,
+    COLLECTION_REMOVAL_TABLES,
+    CONTENT_ANALYSIS_TABLES,
+    CONTENT_LINK_COLUMN,
+    CONTENT_REFERENCE_COLUMN,
+    CONTENT_ROW_DEFAULTS,
+    CONTENT_ROW_EMPTY_COLUMNS,
+    CONTENT_TABLE,
+    DELETABLE_TABLES,
+    EMPTY_ON_CREATE,
+    FIELD_EMPTIES,
+    FILE_ID_COLUMN,
+    FILE_ID_POLICY,
+    FOLDER_PATH_COLUMN,
+    GRIDLESS_ON_CREATE_COLUMNS,
+    ISRC_COLUMN,
+    LOCAL_UPDATE_COUNT,
+    MEMBERSHIP_TABLE,
+    MOVED,
+    PERMITTED_ROW_TABLES,
+    PLAYLIST_REFERENCE_COLUMN,
+    PLAYLIST_TABLE,
+    RECORDED_COLUMNS,
+    RECORDED_REMOVALS_KEY,
+    REMOVABLE_TABLES,
+    ROOT_PARENT_SENTINELS,
+    ROW_DEFAULTS_POLICY,
+    ROW_PROBE_COLUMNS,
+    ROW_PROBE_OWNER,
+    SHELVE_POLICY,
+    TARGET_REFERENCE_COLUMN,
+    TRACK_COLOR_POLICY,
+    TRACK_NUMBER_COLUMN,
+    UNINSPECTABLE,
+    FieldPolicy,
+    Ownership,
+    content_writable_columns,
+    field_policies_for_commit,
+    register_field_policy,
+    registered_field_policies,
+    reset_field_policies,
+    row_probe_policy,
+)
+from cratekit.core.rb_tables import ALBUM_TABLE as ALBUM_TABLE
+from cratekit.core.rb_tables import ARTIST_TABLE as ARTIST_TABLE
+from cratekit.core.rb_tables import GENRE_TABLE as GENRE_TABLE
+from cratekit.core.rb_tables import LOOKUP_TABLES as LOOKUP_TABLES
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Refusals
-#
-# Two types, not one, because callers discriminate on them: a snapshot integrity
-# probe swallows an unavailable database and must NOT swallow "the application is
-# running", which is a different fact with a different fix.
-#
-# Both carry a structured cause (KTD25). A bare RuntimeError, which is what the
-# source raised, forces every catcher to parse a message string, and a typed
-# failure that collapses at any hop cannot be recovered downstream.
+# Refusals. Two types because callers discriminate: a snapshot integrity probe
+# swallows an unavailable database but must NOT swallow a running application.
+# Both carry a structured cause (KTD25).
 # ---------------------------------------------------------------------------
 
 
@@ -122,13 +201,7 @@ def _cause(
     detail: Mapping[str, Any] | None = None,
     inner: Cause | None = None,
 ) -> Cause:
-    """Build one cause through the shared constructor, then hand back the cause.
-
-    Routed through ``cause.refuse`` rather than constructing a ``Cause`` here so
-    that the closed reason registry and the default-remediation lookup are
-    applied in exactly one place. A raise site that builds its own cause is a
-    raise site that can invent an undeclared slug.
-    """
+    """Build one cause through ``cause.refuse``, so the closed reason registry applies in one place."""
     return refuse(
         reason,
         message,
@@ -149,59 +222,34 @@ def _running(message: str, **kwargs: Any) -> RekordboxRunning:
 
 
 # ---------------------------------------------------------------------------
-# Configuration accessors, all late-bound
-#
-# Rule 1 of the configuration module is that nothing resolves at import. The
-# source system bound its database path, its state root, its snapshot root and
-# its lock path at import time in seventeen modules, so reloading configuration
-# afterwards changed the configuration module and nothing else. There is no
-# module-level path constant here to bind.
+# Configuration accessors, all late-bound: nothing resolves at import.
 # ---------------------------------------------------------------------------
 
-#: The environment variable pointing at a disposable database for the integration
-#: suite. Named here so the accessor and the tests cannot disagree about it.
+#: The environment variable pointing at a disposable database for the integration suite.
 TEST_DB_ENV = "CRATEKIT_TEST_DB"
 
-#: rekordbox's own legacy playlist file, which lives beside the database. It is
-#: deliberately NOT a declared Cratekit state entry: it belongs to rekordbox, not
-#: to us. It travels with the database through snapshot and restore because
-#: pyrekordbox reconciles playlists against it on commit, and a restored database
-#: sitting beside a newer copy of this file describes two different libraries.
+#: rekordbox's own legacy playlist file beside the database. Not Cratekit state, but it
+#: travels through snapshot and restore because pyrekordbox reconciles against it on commit.
 MASTER_PLAYLIST_XML = "masterPlaylists6.xml"
 
 def db_sidecar_suffixes() -> tuple[str, ...]:
-    """Every suffix a SQLite database file travels with, DERIVED from the state schema.
+    """Every suffix a SQLite file travels with, DERIVED from the state schema (P4).
 
-    Derived rather than listed (P4): a companion list kept here would be the
-    hand-maintained set the schema exists to abolish, and the cost of that drift
-    is a captured database silently missing every transaction still in its log.
-
-    A function rather than a constant because a module-level read of a
-    configuration attribute is a snapshot, and this repository fails the build on
-    those regardless of whether the particular value can move.
+    A hand list would drift, and a capture would silently miss the log's transactions.
     """
     return tuple(sidecar.suffix for sidecar in config.SQLITE_SIDECARS)
 
 
 def restored_sidecar_suffixes() -> tuple[str, ...]:
-    """The subset a RESTORE writes back out of a snapshot.
-
-    The asymmetry is declared in the schema and is the fix for a real regression:
-    the shared-memory index is derived from the log, so restoring a stale one
-    beside a fresh log hands SQLite two disagreeing views of one database.
-    """
+    """The subset a RESTORE writes back: a stale shared-memory index beside a fresh log corrupts."""
     return tuple(sidecar.suffix for sidecar in config.SQLITE_SIDECARS if sidecar.restored)
 
 
 def _loaded_config(cfg: config.Config | None) -> config.Config | None:
     """The effective configuration, or None when this machine has none usable.
 
-    None is not a pass. Every caller below treats an absent configuration as a
-    machine that has recorded no decisions, which for the application pin means
-    a refusal rather than a default (S2). Configuration failures are absorbed
-    here rather than propagated because a writer refusal has to arrive in the
-    writer's own vocabulary; the underlying configuration error is carried into
-    the refusal's message so the result is still self-diagnosing.
+    None is not a pass: callers treat it as no recorded decisions, so the app pin
+    refuses (S2). Errors are absorbed so the refusal arrives in the writer's vocabulary.
     """
     if cfg is not None:
         return cfg
@@ -213,13 +261,10 @@ def _loaded_config(cfg: config.Config | None) -> config.Config | None:
 
 
 def _pins(cfg: config.Config | None = None) -> config.RekordboxConfig:
-    """The three pins as configured, falling back to the schema's own defaults.
+    """The three pins as configured, else schema defaults.
 
-    Pins 1 and 2 have defaults because they are facts about the SHIPPED build:
-    the binding version is fixed by the lockfile and the schema version is fixed
-    by what this build was validated against. Pin 3 has no default because it is
-    a fact about the USER's machine, and inventing one would be the tautology S2
-    forbids.
+    Pins 1 and 2 are facts about the shipped build; pin 3 is about the user's
+    machine and has no default (S2).
     """
     loaded = _loaded_config(cfg)
     return config.RekordboxConfig() if loaded is None else loaded.rekordbox
@@ -236,86 +281,43 @@ def pinned_db_version(cfg: config.Config | None = None) -> str:
 
 
 def pinned_app_version(cfg: config.Config | None = None) -> str | None:
-    """The recorded rekordbox application pin, or None when none was recorded.
-
-    None is the state that refuses. The health check reads this accessor rather
-    than a module constant, so there is exactly one answer to "what is pinned"
-    and it cannot drift from what the writer enforces.
-    """
+    """The recorded rekordbox application pin, or None, which refuses."""
     return _pins(cfg).pinned_app_version
 
 
 def pin_validated_on(cfg: config.Config | None = None) -> str | None:
-    """The date the recorded pin was confirmed against a real write.
-
-    A pin without this is a number somebody typed. With it, a stale pin is
-    visible as stale, which is what turns a recorded decision into a reviewable
-    one.
-    """
+    """The date the recorded pin was confirmed against a real write, so a stale pin shows."""
     return _pins(cfg).validated_on
 
 
 def live_db_path(cfg: config.Config | None = None) -> Path:
-    """The configured rekordbox database.
-
-    No default, deliberately. A default library root is one person's disk baked
-    into shipped code (R1), and an unconfigured library is a named refusal
-    (AE10) that the configuration layer already owns with its own remedy token.
-    """
+    """The configured rekordbox database. No default: one person's disk in code (R1, AE10)."""
     resolved = cfg if cfg is not None else config.load()
     return config.state_path("rekordbox_db", resolved)
 
 
 def snapshot_root(cfg: config.Config | None = None) -> Path:
-    """Where snapshots live: library-scoped, and outside the coupled set.
-
-    Beside the library rather than per installation, so a second machine can
-    restore the first machine's write. Outside the coupled set because a capture
-    that included the snapshot store would nest every previous snapshot inside
-    the new one.
-    """
+    """Where snapshots live: beside the library, and outside the coupled set to avoid nesting."""
     resolved = cfg if cfg is not None else config.load()
     return config.state_path("snapshots", resolved)
 
 
 def write_lock_path(cfg: config.Config | None = None) -> Path:
-    """The cross-process write-session lock, beside the library.
-
-    The source system put this under the installation root while the database it
-    protects travelled with the library, so two installations held two different
-    locks and both opened one database. It is also the file the old system has to
-    be able to open during the migration overlap (R31), which only a path beside
-    the library can provide.
-    """
+    """The cross-process write-session lock, beside the library so every installation shares it (R31)."""
     resolved = cfg if cfg is not None else config.load()
     return config.state_path("write_lock", resolved)
 
 
-#: The first bytes of an UNencrypted SQLite file. A rekordbox 6 database on a
-#: real machine is encrypted and does not start with it, while every disposable
-#: database this suite builds does.
+#: The first bytes of an UNencrypted SQLite file. A real rekordbox 6 database is encrypted.
 SQLITE_HEADER = b"SQLite format 3"
 
 
 def unlock_needed(path: Path | str) -> bool:
     """True when the file at ``path`` is encrypted, so the binding needs the key.
 
-    ASKED OF THE BYTES RATHER THAN ASSUMED EITHER WAY, and both constant answers
-    are wrong somewhere. ``unlock=True`` against a plain file fails on a database
-    a test just built; ``unlock=False`` against a real library fails on every
-    machine. ``open_db`` and ``integrity_ok`` ask it whenever their caller names
-    no answer, and no caller in ``src`` names one (R-239): five verb sites used
-    to pass ``unlock=False`` and failed at the open on every real library, which
-    ``tests/test_rb_writer_db.py`` now refuses by walking the source.
-
-    A file that cannot be read at all answers True, which is the conservative
-    direction: the open below then fails with the database's own refusal rather
-    than with a guess made here.
-
-    THE HEADER IS THE ONLY THING READ, and its length comes from the constant
-    rather than from a number typed beside it. A copy that read the whole file
-    through ``read_bytes`` to look at fifteen characters lived in
-    ``cratekit.deletion.cli`` until R-239 removed it.
+    ASKED OF THE BYTES RATHER THAN ASSUMED: either constant answer fails somewhere,
+    and no caller in ``src`` names one (R-239). An unreadable file answers True, so
+    the open fails with the database's own refusal. Only the header is read.
     """
     try:
         with Path(path).open("rb") as handle:
@@ -327,20 +329,9 @@ def unlock_needed(path: Path | str) -> bool:
 def close_db(db: Any) -> None:
     """Release a database handle COMPLETELY: the session AND the connection pool.
 
-    THE BINDING'S OWN CLOSE IS NOT ENOUGH, and the gap is invisible until the one
-    moment it is not. It closes the session and leaves the engine's pooled
-    connection open, so the process still holds the database file, its
-    write-ahead log, and its shared-memory index. Everything keeps working, which
-    is why nobody notices.
-
-    Then a restore replaces those three files underneath that live connection,
-    and the next reader gets an input-output error against a database that is in
-    fact perfectly intact. Observed directly against a disposable database while
-    building this unit: the log stayed open and non-empty after the documented
-    close, and the restored copy would not open afterwards.
-
-    Tolerant of a handle that is already half closed, because the recovery path
-    is exactly where a caller is unwinding from a failure and cannot be sure.
+    The binding's close leaves the pooled connection holding the file, log and
+    index, so a later restore underneath it gives the next reader an I/O error on
+    an intact database. Tolerates a half-closed handle, since recovery unwinds.
     """
     try:
         if getattr(db, "session", None) is not None:
@@ -352,11 +343,7 @@ def close_db(db: Any) -> None:
 
 
 def integration_db_path() -> Path | None:
-    """A disposable database for the integration suite, or None when unset.
-
-    Never falls back to the configured library. A test that can silently reach
-    the live database is a test that eventually does.
-    """
+    """A disposable database for the integration suite, or None. Never the configured library."""
     raw = os.environ.get(TEST_DB_ENV)
     return Path(raw) if raw else None
 
@@ -367,16 +354,9 @@ def integration_db_path() -> Path | None:
 
 
 def assert_binding_version(cfg: config.Config | None = None) -> None:
-    """Refuse unless the installed binding is exactly the validated version.
+    """Refuse unless the installed binding is exactly the validated version, on every open.
 
-    Refuses: any version string that is not an exact match, including the
-    placeholder used when the attribute is missing entirely.
-    When: on every open, read or write.
-
-    The strictest pin in the module and the only one with no escape. The binding
-    is schema-coupled: it maps table shapes this build was validated against, and
-    a mismatch is not a smaller risk on a read than on a write, because a read
-    that mis-maps a column feeds a write that follows it.
+    No escape: the binding maps table shapes, and a mis-mapped read feeds the write after it.
     """
     import pyrekordbox
 
@@ -400,19 +380,9 @@ def assert_binding_version(cfg: config.Config | None = None) -> None:
 def db_schema_version(db: Any) -> str | None:
     """The schema version the database stores, or None when it holds no property row.
 
-    ONE READER, because there are now two callers. The pin below refuses on drift
-    from it and the convergence fingerprint records it, and two spellings of
-    "read the property table" is two chances to reach for a different column when
-    the schema moves.
-
-    IT DOES NOT CATCH, AND THAT IS THE DECISION IT MAKES. The raise on a table
-    that cannot be read comes from the binding, not from here; what this function
-    decides is to LET IT THROUGH rather than absorbing it into None. The two
-    outcomes mean different things and only one of them is ordinary: no property
-    row at all is a database this build has never seen written, while a table
-    that will not answer is evidence of a migration. Both callers wrap it and
-    both attach their own remedy, so wrapping here would replace two accurate
-    answers with one generic one.
+    One reader for the pin and the fingerprint. IT DOES NOT CATCH: an unreadable
+    table is evidence of a migration, unlike a missing row, and each caller
+    attaches its own remedy.
     """
     from pyrekordbox.db6 import tables
 
@@ -423,22 +393,11 @@ def db_schema_version(db: Any) -> str | None:
 def assert_schema_version(
     db: Any, *, force: bool = False, cfg: config.Config | None = None
 ) -> None:
-    """Refuse when the database's stored schema version drifts from the pin.
+    """Refuse when the stored schema version drifts from the pin, inside :func:`open_db`.
 
-    Refuses: a stored version that is not an exact match, AND a property table
-    that cannot be read at all, because an unreadable property table is itself
-    evidence of a migrated schema.
-    When: inside :func:`open_db`, on every open.
-
-    FOLDED INTO THE OPEN CHAIN, WHICH THE SOURCE DID NOT DO. There it was a
-    caller responsibility, and its three call sites disagreed: two threaded a
-    force flag and the third called it only on a real run, so a rehearsal never
-    saw a schema drift at all. A guard a caller can forget is a guard that is
-    eventually forgotten.
-
-    ``force`` is the deliberate re-validation path: it warns and continues. The
-    flag that reaches it belongs to the command-line layer, which is why nothing
-    here names one (D2).
+    An unreadable property table refuses too, as evidence of a migration. Folded
+    into the open chain so no caller can forget it. ``force`` warns and continues;
+    its flag belongs to the command-line layer (D2).
     """
     pin = pinned_db_version(cfg)
     try:
@@ -465,148 +424,25 @@ def assert_schema_version(
 
 
 # ---------------------------------------------------------------------------
-# Pin 3: the installed application
-#
-# Two platform probes behind one accessor. The source read a macOS bundle layout
-# directly, which is an ImportError-free but silently macOS-only assumption (R1).
+# Pin 3: the installed application, two platform probes behind one accessor (R1).
 # ---------------------------------------------------------------------------
-
-#: Test-only relocation of the application bundle. It RELOCATES an already
-#: configured value and cannot supply one, which is the same rule the
-#: configuration module applies to its own three overrides.
-ENV_APP_PATH = "CRATEKIT_REKORDBOX_APP"
-
-
-def _macos_app_version(app_path: Path) -> str | None:
-    """The short version string from a macOS application bundle, or None."""
-    import plistlib
-
-    info = Path(app_path) / "Contents" / "Info.plist"
-    try:
-        with info.open("rb") as handle:
-            data = plistlib.load(handle)
-    except (OSError, ValueError):
-        return None
-    value = data.get("CFBundleShortVersionString")
-    return str(value) if value else None
-
-
-def _windows_app_version(app_path: Path) -> str | None:  # pragma: no cover - needs Windows
-    """Placeholder probe for a Windows install.
-
-    Returns None, which the caller already handles by warning and continuing, so
-    a Windows install degrades exactly as an uninstalled application does today
-    rather than crashing. That is the cheapest correct seam: adding Windows is
-    filling in this function, not changing the decision above it.
-    """
-    return None
-
-
-def _default_app_probe() -> Callable[[Path], str | None]:
-    if sys.platform == "darwin":
-        return _macos_app_version
-    if sys.platform.startswith("win"):
-        return _windows_app_version
-    return lambda _path: None
-
-
-def _candidate_app_paths(cfg: config.Config | None) -> list[Path]:
-    """Where to look for the installed application, most specific first.
-
-    Configuration is asked first so a user whose application lives outside the
-    platform's usual place stops falling through to the degraded state described
-    on :func:`assert_app_version`. The environment override exists for tests and
-    is deliberately narrower than the source's, which was named for one person.
-    """
-    override = os.environ.get(ENV_APP_PATH)
-    if override:
-        return [Path(override)]
-    configured = _pins(cfg).app_path
-    if configured is not None:
-        return [Path(configured)]
-    if sys.platform == "darwin":
-        import glob
-
-        # Newest first: several major versions can be installed side by side, and
-        # the one that opened the database most recently is the newest.
-        return [
-            Path(found)
-            for found in sorted(glob.glob("/Applications/rekordbox*/rekordbox.app"), reverse=True)
-        ]
-    return []
-
-
-def read_installed_app_version(*, cfg: config.Config | None = None) -> str | None:
-    """The installed rekordbox application version, or None when it cannot be found.
-
-    None on every failure path, never an exception. The caller treats "cannot
-    find it" as its own outcome, and a probe that raised would make that
-    indistinguishable from a drift, which has the opposite remediation.
-
-    ``cfg`` is KEYWORD-ONLY so that a caller cannot pass an application path here
-    by mistaking the first parameter for one, and so that the effective
-    configuration is always threaded by name rather than by position. Passing it
-    is what makes the pin comparison and this probe read ONE set of effective
-    values (P2); see :func:`assert_app_version`.
-    """
-    probe = _default_app_probe()
-    for candidate in _candidate_app_paths(cfg):
-        version = probe(candidate)
-        if version:
-            return version
-    return None
 
 
 def assert_app_version(*, force: bool = False, cfg: config.Config | None = None) -> None:
     """Refuse when the installed application drifts from the recorded pin.
 
-    Refuses: a located version that is not an EXACT match for the recorded pin,
-    and a located version when no pin was ever recorded.
-    Warns and continues: when the application cannot be located at all.
+    Refuses: a located version not EXACTLY the pin, and any located version when
+    no pin was recorded. Warns and continues when the application cannot be found.
     When: inside :func:`open_db` on a write-intent open.
 
-    WHY THE COMPARISON STAYS EXACT. The schema pin cannot see a point release: it
-    held its value across a whole major version of rekordbox, and key extraction
-    has broken across a point release before. Adding semantic-version tolerance,
-    or comparing only major and minor, deletes the property this pin exists for.
-
-    WHY AN UNRECORDED PIN REFUSES (S2). A pin the software copies from whatever
-    is installed refuses nothing, forever. Setup may READ the installed version
-    and PROPOSE it; recording it takes an explicit decision from the user, and
-    the recorded decision carries the date it was validated on.
-
-    WHY A MISSING APPLICATION ONLY WARNS. Refusing there would break every
-    headless run for no safety gain: an application that is not installed cannot
-    be holding the database open. Note what it costs, though, and note it out
-    loud: on such a machine pin 3 is absent entirely and only the schema pin
-    guards, which is a weaker guarantee than a machine where the probe resolves.
-    The health check reports that as a named condition rather than leaving it as
-    a line of transient log output, and the configured application path is the
-    mechanism that makes the probe stop failing.
-
-    WHY AN UNRECORDED PIN REFUSES IN THIS MODULE'S OWN VOCABULARY. The refusal
-    itself belongs to the configuration layer, which owns the remedy token, but
-    the TYPE it raises there is a plain configuration error carrying no reason
-    slug and no exit code. Letting that escape gave one condition two identities:
-    an unrecorded pin exited as a configuration precondition on a machine with a
-    config file and as a version-pin refusal on a machine without one, which is
-    exactly the collapse the cause type exists to prevent. It also escaped every
-    ``except RekordboxUnavailable`` a caller writes, breaking the discrimination
-    contract this module's header states. It is re-raised below with the
-    configuration error carried underneath, so nothing is lost.
-
-    WHY THE CONFIGURATION IS RESOLVED ONCE (P2). The pin is judged against a
-    configuration and the probe searches the application path recorded in a
-    configuration, so those had better be the same one. The probe used to be
-    called with no argument and re-entered ``config.load()`` on its own, which
-    under KTD9 is a different snapshot from the one a queued job was frozen
-    against: a check and its consumer disagreeing about the same input.
+    EXACT, because the schema pin cannot see a point release and key extraction
+    has broken across one. AN UNRECORDED PIN REFUSES (S2): a copied pin refuses
+    nothing. A MISSING APPLICATION ONLY WARNS: it cannot hold the database open,
+    though only the schema pin then guards, which the health check reports. The
+    configuration error is re-raised as this module's type so one condition has
+    one identity. The configuration is resolved once (P2, KTD9).
     """
     loaded = _loaded_config(cfg)
-
-    # Threaded, not re-derived. ``read_installed_app_version`` stays a SEAM a
-    # test replaces with a one-line stand-in; what changed is that the value it
-    # searches with now comes from the caller rather than from a second load.
     found = read_installed_app_version(cfg=loaded)
     if found is None:
         logger.warning(
@@ -616,9 +452,6 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
         return
 
     if loaded is not None:
-        # The refusal on an unset pin lives in the configuration layer, which
-        # owns the remedy token for it, and is inert until a writer calls it.
-        # This is that call.
         try:
             loaded.assert_rekordbox_pin_recorded()
         except config.ConfigError as exc:
@@ -654,15 +487,8 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
 
     detail = {"installed": found, "pinned": pin, "validated_on": pin_validated_on(loaded)}
     if not pin:
-        # The other half of ONE identity. This branch is the machine with no
-        # usable configuration at all; the branch above is the machine that has a
-        # configuration and never recorded a pin. Same slug, same remedy token,
-        # therefore the same exit code either way, which is the whole point:
-        # "you never pinned one" must not become a different failure depending on
-        # whether a config file happens to exist. Raised as its own reason rather
-        # than folded into drift because "you pinned the wrong version" and "you
-        # never pinned one" have the same class of code and different things to
-        # do about them.
+        # The configless machine: same slug and remedy as the unrecorded pin above,
+        # so "you never pinned one" exits the same either way.
         raise _unavailable(
             "app-version-pin-unrecorded",
             message,
@@ -673,168 +499,13 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
 
 
 # ---------------------------------------------------------------------------
-# The two-process refusal
-#
-# Three sites, not two: open, commit, and restore. The plan names the first two.
-# The third matters because restore replaces the database file underneath
-# whatever has it open, and the unit that owns restore must not drop it.
+# The two-process refusal, at three sites: open, commit, and restore, because
+# restore replaces the file underneath whatever has it open.
 # ---------------------------------------------------------------------------
 
 
-def _asked_or_scanned(name: str, ask: Callable[[], int]) -> int:
-    """pyrekordbox's answer for one process, or the careful scan's when it raises (U211).
-
-    pyrekordbox's ``get_process_id`` walks every process and catches only
-    ``AccessDenied`` and ``NoSuchProcess``, so a process that raises anything
-    else as it dies, the ``SystemError`` Sitting 54 met, ends its walk and
-    escaped this guard as ``INTERNAL``. The careful scan in ``core.processes``
-    reads each process in its own try, skips one that is gone or a zombie, and
-    refuses by name over a live one it cannot read, so that is the answer
-    whenever pyrekordbox raises. An ``ImportError`` is not a scan that failed,
-    and is left to say what it says.
-    """
-    try:
-        return ask()
-    except ImportError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - every escape from its walk is the scan's to judge
-        logger.debug("pyrekordbox could not scan for %s, so the careful scan answers: %s", name, exc)
-        return processes.rekordbox_pid(name)
-
-
-def rekordbox_running() -> bool:
-    """True when the rekordbox application itself is running."""
-    from pyrekordbox.utils import get_rekordbox_pid
-
-    return bool(_asked_or_scanned("rekordbox", get_rekordbox_pid))
-
-
-def rekordbox_agent_running() -> bool:
-    """True when the background agent is running.
-
-    The agent holds the database handle and mutates the library through cloud
-    sync even with the application closed, so a guard that checks only the
-    application declares the coast clear during exactly the window a long write
-    occupies.
-    """
-    from pyrekordbox.utils import get_rekordbox_agent_pid
-
-    return bool(_asked_or_scanned("rekordboxAgent", get_rekordbox_agent_pid))
-
-
-@contextmanager
-def _binding_probe(*, strict: bool) -> Iterator[None]:
-    """The binding's own rekordbox probe, answered carefully for the block's length (U211).
-
-    The binding asks ``get_rekordbox_pid`` itself, once as it constructs, where
-    the answer only decides whether it logs a warning, and once inside
-    ``commit``, where a running rekordbox raises before anything is written. Its
-    walk is the one above, so the same dying process escapes it: as
-    ``database-open-failed`` at construction, which names a damaged library,
-    and as ``INTERNAL`` at commit. For this block the name the binding calls is
-    a wrapper that asks the binding's own function first, so a test's fake or
-    a clean machine answers exactly as before, and the careful scan only when
-    that raises.
-
-    ``strict`` is the commit's: the careful scan's refusal stands. Off, at
-    construction, a scan that cannot confirm answers zero, since all it costs
-    is a log line and the writer's own guard has already asked. The binding's
-    name is put back when the block ends, however it ends.
-    """
-    from pyrekordbox.db6 import database as binding
-
-    asked = binding.get_rekordbox_pid
-    if getattr(asked, "_cratekit_careful", False):
-        yield
-        return
-
-    def careful(*args: Any, **kwargs: Any) -> int:
-        try:
-            return _asked_or_scanned("rekordbox", partial(asked, *args, **kwargs))
-        except processes.AbsenceUnconfirmed:
-            if strict:
-                raise
-            return 0
-
-    careful._cratekit_careful = True  # type: ignore[attr-defined]
-    binding.get_rekordbox_pid = careful
-    try:
-        yield
-    finally:
-        if binding.get_rekordbox_pid is careful:
-            binding.get_rekordbox_pid = asked
-
-
-#: The probe that answers for each name in the shared process list.
-#:
-#: Keyed by name rather than written as a sequence of ``if`` statements, so the
-#: list itself lives in ``core.processes`` and this module holds only the
-#: MECHANISM for asking. The writer asks pyrekordbox, which is the upstream
-#: authority on finding rekordbox; the backup module asks the platform directly,
-#: because it must work on a slim install with the rekordbox extra absent. Two
-#: mechanisms, deliberately. One list, mandatorily.
-#:
-#: The value is the probe's ATTRIBUTE NAME, not the function object, and it is
-#: resolved through the module at call time. Capturing the function here instead
-#: would freeze it at import and silently defeat every test that fakes a running
-#: rekordbox by patching these two seams, which is how the whole refuse-while-open
-#: path is exercised without a real application on the machine.
-_PROCESS_PROBES: Mapping[str, str] = MappingProxyType(
-    {
-        "rekordbox": "rekordbox_running",
-        "rekordboxAgent": "rekordbox_agent_running",
-    }
-)
-
-
-def rekordbox_processes_running() -> str:
-    """The names of the rekordbox processes holding the database, comma joined.
-
-    The empty string means both are clear. One predicate rather than three call
-    sites each asking two questions, so a site cannot accidentally check half.
-
-    Iterates the SHARED name list rather than a local copy. A name added there
-    with no probe here raises instead of being skipped, because a process this
-    guard cannot ask about is one it cannot declare clear. Refusing is the safe
-    direction; silently not checking is how a guard passes a write it should
-    have stopped.
-    """
-    running = []
-    unconfirmed: processes.AbsenceUnconfirmed | None = None
-    for name in processes.REKORDBOX_PROCESSES:
-        probe_name = _PROCESS_PROBES.get(name)
-        if probe_name is None:
-            raise _running(
-                f"{name!r} is listed as a process holding the database but this "
-                f"module has no way to ask whether it is running, so no write "
-                f"can be declared safe",
-                detail={"process": name},
-            )
-        try:
-            if globals()[probe_name]():
-                running.append(name)
-        except processes.AbsenceUnconfirmed as exc:
-            unconfirmed = unconfirmed or exc
-    if unconfirmed is not None:
-        # ONE ANSWER WITH ``core.processes`` (U211, from the review). Each
-        # probe is asked in its own try, so a name another probe read is
-        # still answered as running, which is established, and only a scan
-        # that read none of them leaves the absence unknown. The names in
-        # ``read`` are a second source for the one case the suite cannot
-        # produce, pyrekordbox answering no for a name the careful scan read.
-        read = {processes.executable_stem(found) for _pid, found in unconfirmed.read}
-        running = [name for name in processes.REKORDBOX_PROCESSES if name in running or name in read]
-        if not running:
-            raise unconfirmed
-    return ", ".join(running)
-
-
 def assert_rekordbox_closed(what: str) -> None:
-    """Refuse while either rekordbox process is up.
-
-    ``what`` names the operation being refused, so the message says which write
-    was stopped rather than only that something was.
-    """
+    """Refuse while either rekordbox process is up; ``what`` names the refused operation."""
     running = rekordbox_processes_running()
     if running:
         raise _running(
@@ -849,239 +520,13 @@ def assert_rekordbox_closed(what: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class CloudSyncState(StrEnum):
-    """What is known about rekordbox's Cloud Library Sync, as three answers.
-
-    Three rather than a boolean because "cannot tell" has a different fix from
-    "it is on", and collapsing them is how the previous predicate came to refuse
-    every open while blaming the wrong thing.
-    """
-
-    OFF = "off"
-    ON = "on"
-    UNKNOWN = "unknown"
-
-
-@dataclass(frozen=True, slots=True)
-class CloudSyncVerdict:
-    """One reading of the cloud-sync state, with the evidence that produced it.
-
-    ``reason`` quotes the actual key or row that decided the answer. The source's
-    two refusal messages both named a marker that its own docstring recorded as
-    false, which is how a three-day outage hid: the refusal was loud and pointed
-    at the wrong thing.
-    """
-
-    state: CloudSyncState
-    reason: str
-
-
-#: The setting rekordbox writes when the user toggles Cloud Library Sync. Found
-#: 2026-08-01 against a disposable copy of a real library, after every database
-#: marker had been falsified.
-LIBRARY_SYNC_SETTING = "EnableLibrarySync"
-
-#: The application-data subdirectory holding that settings file. It is named for
-#: major version SIX even under rekordbox 7, and there is no version-7 directory
-#: at all, so deriving this name from the installed application version finds
-#: nothing. Verified on a machine running rekordbox 7.
-SETTINGS_APP_DIRNAME = "rekordbox6"
-
-#: A real rekordbox application-data directory supplied to the canary's battery,
-#: the settings-file sibling of :data:`TEST_DB_ENV`. Named here for the same
-#: reason that one is: the reader and the tests cannot disagree about it.
-#:
-#: It is a SUBSTITUTION, not a skip. With it unset the battery parses a settings
-#: file the test wrote itself, so every assertion runs on every machine; with it
-#: set the SAME assertions run against a real file and the battery gets stronger.
-#: A gate expressed as a skip would let the untested case look tested.
-TEST_SETTINGS_ENV = "CRATEKIT_TEST_REKORDBOX_SETTINGS"
-
-
-def _no_autoflush(session: Any):
-    """Suspend the session's automatic flush, degrading to a no-op without one.
-
-    THE FAILURE THIS PREVENTS, WHICH IS THE SHARPEST ONE IN THIS MODULE. Every
-    guard downstream reads the session's PENDING collections to decide what a
-    commit would do. An object-mapper session flushes pending changes before a
-    query so the query can see them, and a flush empties exactly those
-    collections. So any probe that queries through the caller's session hands the
-    whitelist an empty session and a forbidden write sails through a guard that
-    can no longer see it.
-
-    That is not hypothetical: the cloud canary in the source system read nothing
-    at all, so ordering it before the whitelist was safe by accident. Giving the
-    canary a real predicate made it a query, and the guard went blind. The fix
-    travels with every probe rather than with the one that exposed it.
-
-    THE PROBE THAT EXPOSED THIS IS GONE AND THIS STAYS. The canary's database
-    cross-check was deleted on evidence, so at the time of writing no pre-commit
-    check queries at all and this guard has nothing to suspend. Do not delete it
-    on that basis. The containment belongs to the guard PATH, not to whichever
-    probe currently occupies it, and removing it because its occupant left is how
-    the next probe added there inherits the hazard with the fix already gone.
-
-    Degrades to a no-op rather than raising, because the probes are driven with
-    stand-in objects in tests, and a helper that demanded a real session would
-    make the guard untestable without a database.
-    """
-    guard = getattr(session, "no_autoflush", None)
-    if guard is None:
-        return nullcontext()
-    return guard
-
-
-def read_rekordbox_settings(app_dir: Path | str | None = None) -> Mapping[str, Any]:
-    """Parse rekordbox's settings file through the binding's own reader.
-
-    A seam as well as a reader: patching this function is how the tests drive
-    every branch of :func:`cloud_sync_state` without a rekordbox install. Patch
-    it HERE, in this module, because that is where the canary resolves the name.
-    """
-    from pyrekordbox.config import get_pioneer_app_dir
-    from pyrekordbox.config import read_rekordbox_settings as _read
-
-    base = Path(app_dir) if app_dir is not None else get_pioneer_app_dir()
-    return _read(base / SETTINGS_APP_DIRNAME)
-
-
-def cloud_sync_state(db: Any = None) -> CloudSyncVerdict:
-    """Read whether Cloud Library Sync is on, off, or unreadable.
-
-    ONE SOURCE, AND THAT IS A DECISION RATHER THAN A GAP. The declared setting is
-    authoritative, cheap, and readable while everything is closed. A database
-    cross-check for a settings file that had gone stale used to sit below; it was
-    deleted on evidence, and the comment where it stood records both the evidence
-    and the limit of that evidence.
-
-    ``db`` is accepted and DELIBERATELY NOT READ. It stays in the signature
-    because :func:`cloud_sync_active` is the seam every refusal site drives
-    through and a handle is what any future corroborator would need. Nothing here
-    queries it, which is the property that keeps this function off the hazard
-    described on :func:`_no_autoflush`; adding a query means reading that first.
-
-    WHAT WAS OBSERVED, AND WHAT WAS NOT. Read on 2026-08-01 from a disposable
-    copy of a real library: the OFF encoding is ``val="0"``. The ON encoding was
-    never observed. Producing it means switching library sync on against a
-    library carrying 2,938,336 local updates against the 103,480 the cloud has
-    ever acknowledged, dormant since 2024-08-27, which sets the cloud agent
-    reconciling that backlog against a live library and is not quickly
-    reversible. The comparison below is written as "not zero" precisely so that
-    whatever the positive encoding turns out to be is caught by it.
-
-    **The ON encoding is an untested inference.** It does not belong in the list
-    that follows and must not be read as if it did. Every marker in that list was
-    checked against a real library and found FALSE; this one was not checked at
-    all. A reader who cannot tell those two apart will trust the wrong half.
-
-    EVERY DATABASE MARKER THAT LOOKS LIKE THE ANSWER IS FALSE, and each was
-    checked against a real library rather than reasoned about:
-
-    * the cloud agent registry's row count. A real library has carried one such
-      row since 2023 with sync switched off. Keying on it refused every open for
-      three days, undetected, because nothing opened the database in between.
-      That incident is the reason this function has three states instead of two.
-    * the cloud property table's service name, which reads as a configured
-      service with sync off;
-    * the equipment authorisation temporary file, which tracks device auth and is
-      independent of library sync;
-    * the cloud credential row's timestamp, which refreshes routinely while every
-      library-sync row is years stale. Authentication activity is not library
-      activity, and that confusion is what produced the false positive above;
-    * per-row sync columns on the content table, which are historical bookkeeping.
-
-    TWO SETTINGS KEYS ARE TRAPS. Both the sync METHOD and the overwrite-list flag
-    read as enabled while library sync is off, so anything matching a substring
-    of the word "sync" produces an immediate false positive.
-    """
-    try:
-        settings = read_rekordbox_settings()
-    except Exception as exc:  # noqa: BLE001 - any failure to read is "cannot tell"
-        return CloudSyncVerdict(
-            CloudSyncState.UNKNOWN,
-            f"the rekordbox settings file could not be read, so {LIBRARY_SYNC_SETTING} "
-            f"is unknown: {exc}",
-        )
-
-    if LIBRARY_SYNC_SETTING not in settings:
-        return CloudSyncVerdict(
-            CloudSyncState.UNKNOWN,
-            f"the rekordbox settings file carries no {LIBRARY_SYNC_SETTING} value",
-        )
-
-    declared = settings[LIBRARY_SYNC_SETTING]
-    if str(declared) not in ("0", "False"):
-        return CloudSyncVerdict(
-            CloudSyncState.ON,
-            f"{LIBRARY_SYNC_SETTING}={declared!r} in the rekordbox settings file",
-        )
-
-    # A DATABASE STALENESS CROSS-CHECK STOOD HERE AND WAS DELETED ON EVIDENCE.
-    #
-    # It read two cloud rows to catch a settings file that claimed off while sync
-    # had in fact been running. The question it answered was "does rekordbox
-    # write this file when the user flips the toggle, or only when it quits". A1
-    # answered that at no cost: Auto Analysis was toggled in the interface and,
-    # with rekordbox STILL RUNNING, the settings file already carried the new
-    # value 23 seconds later; separately, two keys edited on disk with rekordbox
-    # closed were honoured at the next startup. The file flips at toggle time, so
-    # there is no staleness window for a cross-check to close (A3).
-    #
-    # HONEST LIMIT. That was observed on Auto Analysis and on the master database
-    # directory, not on the library-sync key itself. It is strong evidence about
-    # rekordbox's write discipline generally and it is a judgement, not a
-    # certainty. If the settings file is ever found lagging a live toggle, this
-    # is the paragraph that was wrong.
-    #
-    # AND A REASON NOT TO PUT IT BACK CASUALLY. That cross-check was the only
-    # code in this canary that touched the caller's session. Touching the session
-    # is what re-arms the hazard on ``_no_autoflush``: the query flushed a
-    # caller's pending write out of the collections the additive whitelist reads,
-    # so the guard approved a commit it could no longer see. The guard would have
-    # passed a forbidden write BECAUSE the canary started working. Reading
-    # nothing removes that at the root; anything added back here must be read
-    # against ``_no_autoflush`` first.
-    return CloudSyncVerdict(CloudSyncState.OFF, f"{LIBRARY_SYNC_SETTING}={declared!r}")
-
-
-def cloud_sync_active(db: Any) -> bool:
-    """True only when the evidence says library sync is ON.
-
-    An unreadable state answers False here and is refused separately by
-    :func:`assert_cloud_sync_readable`. Keeping the two apart is what lets this
-    predicate stay the seam every refusal site drives through while the
-    cannot-tell case keeps its own distinct message and its own escape.
-    """
-    return cloud_sync_state(db).state is CloudSyncState.ON
-
-
 def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
     """Refuse a WRITE when the cloud-sync state cannot be determined.
 
-    THE UNCERTAIN CASE, DECIDED EXPLICITLY. A state we cannot read is a
-    concurrent writer we cannot rule out, and the whole module fails closed on
-    the write path, so unknown refuses. The 2026 incident is not an argument
-    against refusing; it is an argument against refusing silently on a false
-    signal with a misattributed message. This refusal names the file it could not
-    read and the error it got, which is self-diagnosing in one line.
-
-    It binds to WRITE intent only. A read-only open must keep working on a
-    machine with no rekordbox settings at all, or the snapshot integrity check
-    would refuse on exactly the machine trying to verify a snapshot, and a user
-    could not reach the step that fixes their setup.
-
-    ITS OWN SLUG, NOT THE ACTIVE ONE. This refusal and the two genuinely-ACTIVE
-    ones used to share a reason, so two conditions with opposite remedies arrived
-    at the caller as one exit code, which is the collision the cause type exists
-    to prevent. "Cloud Library Sync is on" is answered by switching it off.
-    "We cannot tell whether it is on" is answered by a PERSON deciding, which is
-    what the decision code already means and what its remedy token already says.
-    No new code was invented for it, per S4.
-
-    ``force`` is the boolean that decision resolves to. It is a boolean and
-    nothing else: the core never learns the name of the gate that produced it,
-    nor any text a user types, because remediation crosses this layer as a token
-    and the rendering belongs to the command-line layer (D2).
+    Unknown is a concurrent writer we cannot rule out, so it fails closed, naming
+    the file and the error. WRITE intent only, so a read-only open still works on a
+    machine with no settings. Its own slug, since "it is on" and "cannot tell" have
+    opposite remedies (S4). ``force`` is a boolean and nothing else (D2).
     """
     if force:
         return
@@ -1092,10 +537,7 @@ def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
         "cloud-sync-unreadable",
         f"Cloud Library Sync could not be read, so a concurrent writer cannot be "
         f"ruled out and this write is refused: {verdict.reason}",
-        # The token AND the sentence. The token says a person must answer; the
-        # sentence says what to look at before answering, and it is a sentence
-        # rather than a command because switching a preference in another
-        # application is not something this product can run for them.
+        # The token says a person must answer; the sentence says what to look at.
         remedy=Remedy.ANSWER_DECISION,
         steps=(
             "confirm Cloud Library Sync is switched off in rekordbox, which "
@@ -1111,18 +553,7 @@ def assert_cloud_sync_readable(db: Any = None, *, force: bool = False) -> None:
 
 
 def handle_path(db: Any) -> str | None:
-    """The database file an OPEN HANDLE is actually reading, or None.
-
-    The binding keeps no public attribute for it, and the object mapper it is
-    built on does: the engine carries the URL it was constructed from. Read off
-    the handle rather than remembered by the caller so that a read failure names
-    the file even where the caller did not open it, which is every reader that
-    was handed a handle.
-
-    None rather than a guess when the handle is not one of these, because a wrong
-    path is worse here than no path: the classification would probe a file the
-    failure was never about.
-    """
+    """The database file an OPEN HANDLE is reading, from its engine URL, or None rather than a guess."""
     database = getattr(getattr(db, "engine", None), "url", None)
     spelled = getattr(database, "database", None)
     return str(spelled) if spelled else None
@@ -1137,23 +568,10 @@ def canary(
 ) -> None:
     """Cheap reads that fail fast on key or schema drift, plus the cloud refusal.
 
-    The two reads are chosen because they exercise the whole path: the local
-    update counter proves the registry is readable and the first content row
-    proves the main table maps. A failure of either means the database is
-    incompatible or unopenable, whatever the file's existence suggests.
-
-    THE FILE IS NAMED ON THE FAILURE, and this is the site the whole guarantee
-    below rests on. ``canary-read-failed`` sits on the library-unreadable band,
-    whose declared remedy is ``restore-from-snapshot``, which tells a user to
-    overwrite the library state they still have. Over a ``chmod 000`` that advice
-    destroys data, and a ``chmod 000`` is exactly what produces this failure: the
-    binding opens lazily, so the file is not touched until these two reads, and
-    what comes back is a driver level "unable to open database file" carrying no
-    errno, no filename and nothing else to classify.
-
-    The path is what makes it classifiable, and this is the only place that knows
-    it, so this is where it is recorded. ``path`` when the caller opened the file
-    and knows which one it meant, and the handle's own engine URL otherwise.
+    THE FILE IS NAMED ON THE FAILURE. This slug's default remedy is
+    ``restore-from-snapshot``, which destroys data over a ``chmod 000``, and that
+    is exactly what fails here as a bare driver error. The path makes it
+    classifiable: ``path`` from the caller, else the handle's engine URL.
     """
     try:
         db.get_local_usn()
@@ -1183,9 +601,7 @@ def canary(
 def require_present(target: Path) -> None:
     """Refuse a database path whose directory or file is absent, by the open's own causes.
 
-    SHARED BY ``open_db`` AND ``read_only_copy``, since the favourites colour read. The copy ran
-    before the open's guards, so a missing file escaped the copy as a raw
-    ``FileNotFoundError`` and reached a person as an internal error.
+    Shared with ``read_only_copy``, whose copy otherwise escaped as a raw ``FileNotFoundError``.
     """
     if not target.parent.exists():
         raise _unavailable(
@@ -1214,28 +630,19 @@ def open_db(
 ) -> Any:
     """Open the rekordbox database behind the full open-side gate.
 
-    THE ORDER OF THE CHECKS IS LOAD-BEARING and is preserved from the source:
+    THE ORDER OF THE CHECKS IS LOAD-BEARING:
 
-    1. the parent directory, so an unmounted volume is named as an unmounted
-       volume rather than as a missing file;
+    1. the parent directory, so an unmounted volume is named as one;
     2. the file itself;
-    3. only on a write-intent open: the two-process refusal, then the
-       application pin. Both before anything is opened, so the run aborts up
-       front instead of discovering the guard at commit;
-    4. the binding pin, unconditionally, so even a read-only open enforces it;
+    3. write intent only: the two-process refusal, then the application pin,
+       before anything opens;
+    4. the binding pin, unconditionally;
     5. the open itself, with any failure wrapped;
     6. the canary, then the schema pin.
 
-    ``require_closed`` is the write-intent flag. A caller that forgets it gets no
-    open-time refusal, which is why the commit-side check is unconditional and is
-    the real backstop.
-
-    ``unlock`` is ASKED OF THE FILE when a caller names no answer, which is
-    every caller in ``src``: :func:`unlock_needed` reads the header, so a real
-    library opens with the key and a disposable plain database opens without
-    it. An explicit bool exists for the integration suite. It is not a safety
-    escape, because the live database is encrypted and reading it with the key
-    off simply fails.
+    ``require_closed`` is the write-intent flag; the commit-side check is the
+    real backstop. ``unlock`` is asked of the file unless a caller (only the
+    integration suite) names it.
     """
     target = Path(path) if path is not None else live_db_path(cfg)
 
@@ -1250,8 +657,7 @@ def open_db(
 
     from pyrekordbox import Rekordbox6Database
 
-    # U285. A stamp the binding cannot place in local time, the zero date
-    # another app writes, reads as a bound rather than failing its row.
+    # U285: a stamp the binding cannot place in local time reads as a bound.
     from cratekit.core import rb_dates
 
     rb_dates.install()
@@ -1263,17 +669,8 @@ def open_db(
         with _binding_probe(strict=False):
             db = Rekordbox6Database(path=str(target), unlock=unlock)
     except Exception as exc:  # noqa: BLE001 - every open failure is one refusal
-        # The same hand-off the canary makes, at the other half of the same
-        # connection, and MEASURED TO KILL NOTHING TODAY, which is recorded in
-        # the mutation table rather than left for a reader to discover. This
-        # binding never connects while it constructs, so every failure it raises
-        # here is a Python level error or an ``OSError`` carrying its own
-        # filename, both of which the classification already answers; the case
-        # that needs a recorded path is a driver level ``sqlite3.Error``, which
-        # only an eagerly connecting binding produces. It stays because this slug
-        # shares the canary's band and therefore its ``restore-from-snapshot``
-        # default, so the day the binding connects earlier is the day a chmod
-        # here starts telling a user to overwrite their library.
+        # Kills nothing today (recorded in the mutation table), kept because this
+        # slug shares the canary's ``restore-from-snapshot`` default.
         name_the_database(exc, target)
         raise _unavailable(
             "database-open-failed",
@@ -1290,8 +687,7 @@ def open_db(
         path=target,
     )
     assert_schema_version(db, force=force_schema, cfg=cfg)
-    # U185. Another app's folder at the top of the tree, read as the handle
-    # opens, so a commit through this handle can be refused if it changed it.
+    # U185: another app's top-level folder, remembered so a commit changing it is refused.
     from cratekit.core import foreign_tree
 
     foreign_tree.remember(db)
@@ -1301,37 +697,11 @@ def open_db(
 class SharedRead:
     """ONE READ HANDLE FOR A READ ONLY REPORT, opened at its first read (U267).
 
-    The organize verb's read only report reads the library in up to ten
-    places, and each used to open the database itself, paying the whole open
-    path every time: the key derivation of an encrypted file, the binding's
-    configuration read, the process walk, the canary, the schema pin and the
-    foreign tree read. The report makes one of these and hands it to every
-    reader, so the open, and every check it runs, happens once.
-
-    LAZY, AND A FAILED OPEN IS NOT KEPT. :meth:`handle` opens where the first
-    reader would have opened its own, through :func:`open_db` with read intent
-    exactly as each reader did, so a report that reads no database opens none,
-    and an open that refuses refuses that reader with today's reason. The next
-    reader asks again, as its own open would have, and refuses or opens on its
-    own merits.
-
-    EACH READER RELEASES IT, AND A RELEASE FORGETS EVERY ROW THE READ LOADED.
-    :meth:`release` empties the session's identity map, so the next reader
-    reads the database afresh, as it did on a handle of its own, and never
-    takes a row an earlier reader loaded as the row the database holds now.
-    It locks nothing either: the session keeps its own transaction object,
-    and with it the pooled connection, but the driver begins no database
-    transaction for a read, so a released handle holds no lock while the
-    report waits on a provider.
-
-    NEVER A WRITE HANDLE. It is opened with read intent and is made only by a
-    caller that writes nothing; every gated write opens its own handle with
-    ``require_closed`` as before, and is never handed this one. Not a process
-    wide cache either: each report makes its own and closes it.
-
-    :meth:`close` closes it through :func:`close_db` once, from the report's
-    ``finally``, so every way out of the report disposes the engine. A handle
-    asked for after the close is refused as a defect rather than reopened.
+    LAZY, AND A FAILED OPEN IS NOT KEPT: each reader opens or refuses on its own
+    merits through :func:`open_db` with read intent. EACH READER RELEASES IT, and
+    a release empties the identity map so no reader takes a stale row; a read
+    holds no lock. NEVER A WRITE HANDLE, and not a process-wide cache.
+    :meth:`close` disposes it once; asking after the close is a defect.
     """
 
     def __init__(self, cfg: config.Config | None = None) -> None:
@@ -1376,267 +746,15 @@ def _defect(message: str) -> CratekitError:
 
 
 def done_reading(db: Any, shared: SharedRead | None) -> None:
-    """End a reader's use of ``db``: close it when it was the reader's own, release it when shared.
-
-    THE ONE PLACE A READER DECIDES WHICH, so a reader handed the report's
-    shared handle never closes it under the readers after it, and a reader
-    that opened its own never leaves it open.
-    """
+    """End a reader's use of ``db``: close it when it was the reader's own, release it when shared."""
     if shared is None:
         close_db(db)
     else:
         shared.release(db)
 
 
-# ---------------------------------------------------------------------------
-# Snapshot, integrity, restore, prune
-# ---------------------------------------------------------------------------
-
-
-def snapshot_db(
-    db_path: Path | str | None = None,
-    *,
-    stamp: str,
-    root: Path | str | None = None,
-    db: Any = None,
-    cfg: config.Config | None = None,
-) -> Path:
-    """Copy the database and everything it is incomplete without. Returns the copy.
-
-    WRITE-AHEAD-LOG AWARE, IN TWO LAYERS. When the caller passes its open handle
-    a checkpoint runs first so the database file is self-contained; that is the
-    belt. The full file-set copy is the braces, and it is what actually holds the
-    guarantee: a checkpoint can fail for reasons a snapshot must survive, and the
-    committed transactions still sitting in the log are captured by copying the
-    log itself.
-
-    IT DOES NOT PRUNE. The source pruned from inside this function, which put
-    retention inside the write session, before the commit the snapshot exists to
-    protect. Pruning is a separate step the caller places after its commit (R30).
-    """
-    source = Path(db_path) if db_path is not None else live_db_path(cfg)
-    destination_root = Path(root) if root is not None else snapshot_root(cfg)
-
-    if db is not None:
-        try:
-            from sqlalchemy import text
-
-            db.session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
-        except Exception as exc:  # noqa: BLE001 - the checkpoint is the belt, not the braces
-            logger.debug("snapshot checkpoint did not run, relying on the sidecar copy: %s", exc)
-
-    destination = destination_root / stamp
-    # An explicit mode on the directory as well as on the files: a private file
-    # inside a world-writable directory can be unlinked and replaced by any local
-    # account whatever its own mode says (P1).
-    config.mkdir_private(destination)
-    return _copy_file_set(source, destination)
-
-
-def _copy_file_set(source: Path, destination: Path) -> Path:
-    """Copy a database and everything it is incomplete without into ``destination``.
-
-    ONE LOOP FOR THE SNAPSHOT AND THE DISPOSABLE COPY. The sidecars are derived
-    from the state schema rather than listed (P4), and the playlist file rides
-    along because the binding saves it beside the database. A second copy of
-    this loop is where the next sidecar gets added to one and not the other,
-    and the copy that misses the log opens cleanly and is silently behind.
-    """
-    database, *companions = file_set(source)
-    copied = destination / database.name
-    shutil.copy2(database, copied)
-    for companion in companions:
-        if companion.exists():
-            shutil.copy2(companion, destination / companion.name)
-    return copied
-
-
-def file_set(source: Path | str) -> tuple[Path, ...]:
-    """The database first, then every file a copy of it takes along, present or not.
-
-    The list :func:`_copy_file_set` copies from and the one the room for a
-    throwaway copy is measured over (``snapshot.assert_room_for_check``,
-    R-1677), so the two cannot drift apart: the companions derived from the
-    state schema (P4), and the playlist file the binding saves beside the
-    database. What is absent is copied as nothing and measured as nothing.
-    """
-    origin = Path(source)
-    return (
-        origin,
-        *(origin.with_name(origin.name + suffix) for suffix in db_sidecar_suffixes()),
-        origin.parent / MASTER_PLAYLIST_XML,
-    )
-
-
-def copy_file_set(source: Path | str, destination: Path) -> Path:
-    """Copy a database's whole file set into an existing ``destination``, answering the copy.
-
-    For a caller that keeps the copy where it chooses, a rehearsal's scratch
-    area (U162), through the one loop the snapshot and the disposable copy
-    use. THE CALLER ESTABLISHES THAT REKORDBOX IS CLOSED, as for
-    :func:`disposable_copy`.
-    """
-    return _copy_file_set(Path(source), destination)
-
-
-def disposable_root() -> Path:
-    """The directory every throwaway copy is made in: the system's temporary one.
-
-    Asked in this one place so that the room measured for a throwaway copy
-    (``snapshot.assert_room_for_check``, R-1677) is the room of the volume the
-    copy then lands on. ``tempfile`` reads ``TMPDIR`` (``TEMP`` on Windows),
-    which is how a person moves it to a volume with room. Raises
-    :class:`FileNotFoundError` when no usable temporary directory exists.
-    """
-    return Path(tempfile.gettempdir())
-
-
-class IntegrityCheckCopyFailed(Exception):
-    """The throwaway copy the integrity check reads could not be made (R-1677).
-
-    NO VERDICT, WHICH IS NOT A FAILED ONE. The check never opens the file it is
-    asked about (R-1665), so a copy that cannot be made leaves nothing checked
-    and nothing to say about the database. Raised by :func:`integrity_ok` only
-    when its caller asks with ``raise_copy_failure``, so a caller that can name
-    the cause, a full temporary volume above all, does, and every other caller
-    keeps the False it has always had. ``scratch`` is the directory the copy
-    was to go in, None when not even that could be found.
-    """
-
-    def __init__(self, source: Path | str, error: OSError, scratch: Path | None = None) -> None:
-        self.source = Path(source)
-        self.error = error
-        self.scratch = scratch
-        super().__init__(
-            f"the integrity check's throwaway copy of {self.source} could not be made "
-            f"in {scratch if scratch is not None else 'any temporary directory'}: {error}"
-        )
-
-
-def _scratch_or_none() -> Path | None:
-    try:
-        return disposable_root()
-    except OSError:
-        return None
-
-
-@contextmanager
-def disposable_copy(source: Path | str) -> Iterator[Path]:
-    """A throwaway copy of a database in a private temporary directory, then gone.
-
-    THE ONE WAY A READ ONLY DIAGNOSTIC MAY REACH THE DATABASE (R-372). The live
-    file is protected by standing constraint, so doctor and the wizard, which
-    only want to count rows and read two registry entries, copy the file first
-    and open the copy. Nothing here opens ``source``: it is read as bytes by the
-    copy and never handed to the binding. The file set travels whole, through
-    the same loop the snapshot uses, for the reason that loop gives.
-
-    ``mkdtemp`` creates the directory at 0700 (P1). The directory is removed on
-    the way out whether the body raised or returned, so a diagnostic that ran a
-    hundred times leaves nothing behind.
-
-    THE CALLER ESTABLISHES THAT REKORDBOX IS CLOSED. A copy taken under the live
-    application is torn the way a backup taken under it is: it opens, and is
-    missing whatever was mid write. This function copies bytes and cannot know
-    who else holds them; ``read_only_copy`` below asks before it copies.
-    """
-    origin = Path(source)
-    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-", dir=disposable_root()))
-    try:
-        yield _copy_file_set(origin, directory)
-    finally:
-        shutil.rmtree(directory, ignore_errors=True)
-
-
-@contextmanager
-def read_only_copy(source: Path | str, *, cfg: config.Config | None = None) -> Iterator[Any]:
-    """An OPEN handle on a disposable copy of ``source``, closed and removed after.
-
-    The one call site of "copy, open the copy, close it, remove it", so the
-    guarantee that the live path is never handed to the binding lives here and
-    not in each diagnostic that wants a read. ``check_app_version=False`` for
-    the reason ``integrity_ok`` gives: a copy is a file, and whether an
-    application is installed says nothing about what its rows say. The binding
-    pin and the schema pin still apply on the way in.
-
-    REFUSES WHILE REKORDBOX OR ITS AGENT IS RUNNING, under the slug the writers
-    refuse with, because a copy taken under a live application is incomplete
-    and a reading off it is a reading of a database that does not exist. The
-    backup feature holds the same rule for the same reason.
-
-    A FILE THAT IS NOT A LIBRARY IS NAMED AS ONE (R-663). A zero byte file one
-    directory over from the live database was given to setup, and every read
-    of its copy said ``no such table`` with the full statement, which reads as
-    a damaged library and names a snapshot restore. When the canary fails on a
-    copy that is empty, or that holds none of the tables the canary reads, the
-    refusal names the CONFIGURED path and the copy's size instead, under a slug
-    whose remedy is setup. An empty copy is refused BEFORE the open, so no
-    earlier refusal on the way in, a pin or an open that fails on a header that
-    is not there, can answer for it; SQLite discards a log beside a file of zero
-    pages, so an empty copy is empty whatever travelled with it. The tables are
-    asked only after the canary failed, so a library that opens is never read a
-    second time. Both are asked of the copy, never of ``source``.
-    """
-    assert_rekordbox_closed("copying the database for a read only look")
-    require_present(Path(source))
-    with disposable_copy(source) as copied:
-        refusal = None if copied.stat().st_size else _not_a_library(Path(source), copied)
-        if refusal is not None:
-            raise refusal
-        try:
-            db = open_db(copied, check_app_version=False, cfg=cfg)
-        except RekordboxUnavailable as exc:
-            if exc.cause.reason != "canary-read-failed":
-                raise
-            refusal = _not_a_library(Path(source), copied)
-            if refusal is None:
-                raise
-            raise refusal from exc
-        try:
-            yield db
-        finally:
-            close_db(db)
-
-
-#: The tables the canary reads, ``get_local_usn`` off the first and the first
-#: content row off the second. A file holding NEITHER is not a rekordbox
-#: library, which is a different fact from a library holding one and failing
-#: the other, which is schema drift and stays the canary's own refusal.
-CANARY_TABLES = ("agentRegistry", "djmdContent")
-
-
-def _copy_tables(copied: Path) -> set[str] | None:
-    """The table names in the copy's own schema, or None when they could not be read.
-
-    Through the binding rather than a bare connection, because a real library is
-    encrypted and only the binding holds the key. None, never an empty set, when
-    the read fails, so a file that could not be listed is never reported as a
-    file with nothing in it.
-    """
-    from pyrekordbox import Rekordbox6Database
-    from sqlalchemy import text
-
-    try:
-        with _binding_probe(strict=False):
-            db = Rekordbox6Database(path=str(copied), unlock=unlock_needed(copied))
-    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
-        return None
-    try:
-        rows = db.session.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
-        return {str(row[0]) for row in rows}
-    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
-        return None
-    finally:
-        close_db(db)
-
-
 def _not_a_library(source: Path, copied: Path) -> RekordboxUnavailable | None:
-    """The refusal for a copy that is empty or holds no canary table, else None.
-
-    None hands the canary's own refusal back, which is the answer for a file
-    holding one of the two tables and for a file whose tables could not be
-    listed: neither is established to be something other than a library.
-    """
+    """The refusal for a copy that is empty or holds no canary table, else None (the canary's own)."""
     size = copied.stat().st_size
     if size:
         tables = _copy_tables(copied)
@@ -1659,479 +777,12 @@ def _not_a_library(source: Path, copied: Path) -> RekordboxUnavailable | None:
     )
 
 
-def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:
-    """rekordbox's own record of where this database was made and where it is now.
-
-    ``BaseDBDrive`` and ``CurrentDBDrive`` are two COLUMNS of the one row in
-    ``djmdProperty``, and they are rekordbox's renamed drive mechanism: nearly
-    every collection row keeps the path it was imported under, and the
-    application remaps the base drive to the current one at runtime. The source
-    system verified that on 2026-08-01 and carried the old name as a constant;
-    this product's answer is a ``library.location_prefix_map`` rule, and these
-    two names are what setup offers it from (R-372).
-
-    Blank and None come back as None so a caller has one absence to test. The
-    trailing separator rekordbox stores is stripped, because a prefix rule is
-    matched on a whole path component and ``/Volumes/NAME/`` would never match
-    ``/Volumes/NAME/Music/a.flac`` under that rule.
-    """
-    from sqlalchemy import text
-
-    row = db.session.execute(
-        text("SELECT BaseDBDrive, CurrentDBDrive FROM djmdProperty LIMIT 1")
-    ).first()
-    if row is None:
-        return None, None
-
-    def _clean(value: Any) -> str | None:
-        if not isinstance(value, str) or not value.strip():
-            return None
-        stripped = value.strip().rstrip("/\\")
-        return stripped or value.strip()
-
-    return _clean(row[0]), _clean(row[1])
-
-
-def integrity_ok(
-    snapshot_database: Path | str,
-    *,
-    unlock: bool | None = None,
-    raise_copy_failure: bool = False,
-) -> bool:
-    """True when a snapshot passes SQLite's own consistency check.
-
-    Run through the same open path the writers use rather than through a bare
-    connection, so a snapshot that cannot be opened the way it will be USED fails
-    here rather than at the moment somebody needs it. The application pin is
-    skipped: a snapshot is a file, and whether an application is installed says
-    nothing about whether the copy is intact. ``unlock`` is passed through
-    unanswered, so the copy is asked for its key the way the open asks the
-    original.
-
-    IT NEVER OPENS THE FILE IT IS GIVEN (R-1665). The file set, the database
-    and every companion the state schema declares, is copied into a private
-    throwaway directory through the one loop the capture uses, and the check
-    opens the copy. The verdict is therefore about exactly the given bytes,
-    log included, and what the close does is done to the copy: the last close
-    of a database in write ahead log mode folds the log into the main file and
-    deletes the log and its index, and when that close was of the capture
-    itself it removed the files the capture's record lists, so the restore
-    refused the capture as missing them. A copy that cannot be made answers
-    False, like an unreadable snapshot: a check that could not run has not
-    passed. The throwaway directory is removed whatever the check answered.
-
-    ``raise_copy_failure`` RAISES :class:`IntegrityCheckCopyFailed` IN PLACE OF
-    THAT FALSE, and only for the copy (R-1677): the capture asks for it so a
-    temporary volume with no room for the copy is refused as that, under its
-    own slug, rather than as a capture that failed its check with the remedy
-    to report a defect. Everything after the copy, an open refused, a
-    consistency check not ok, an error from either or from the close, is the
-    check's own answer and stays False whatever was asked, so a real integrity
-    failure is never told as a copy that could not be made.
-    """
-    from sqlalchemy import text
-
-    copied = False
-    try:
-        with disposable_copy(snapshot_database) as checked:
-            copied = True
-            try:
-                db = open_db(checked, check_app_version=False, unlock=unlock)
-            except RekordboxUnavailable:
-                return False
-            try:
-                result = db.session.execute(text("PRAGMA quick_check")).scalar()
-                return str(result).lower() == "ok"
-            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
-                return False
-            finally:
-                # The full release, not the binding's session close: the
-                # throwaway directory is removed next, and a pooled connection
-                # left open would hold its files while it goes.
-                close_db(db)
-    except OSError as exc:
-        if raise_copy_failure and not copied:
-            raise IntegrityCheckCopyFailed(snapshot_database, exc, _scratch_or_none()) from exc
-        logger.warning(
-            "the integrity check could not copy %s to check it, so it did not pass: %s",
-            snapshot_database,
-            exc,
-        )
-        return False
-
-
-def restore_from_snapshot(
-    snapshot_database: Path | str,
-    db_path: Path | str | None = None,
-    *,
-    cfg: config.Config | None = None,
-) -> None:
-    """Put a snapshot back, write-ahead-log symmetrically.
-
-    THE ASYMMETRY IS THE WHOLE POINT AND IT IS NOT A TYPO. Both LIVE sidecars are
-    removed first so the engine cannot replay a log belonging to the database
-    that was just replaced. The snapshot's log is copied back, because the
-    transactions it holds are part of the state being restored. The snapshot's
-    shared-memory index is NOT copied back, because it is derived from the log,
-    and a stale one beside a fresh log describes a database that no longer exists.
-
-    The regression this encodes: a restore that copied back only the database
-    file while deleting the live sidecars silently reverted a snapshot taken with
-    uncheckpointed frames to a pre-log state. Nothing failed. The library was
-    simply older than the snapshot said it was.
-
-    THE CALLER MUST HAVE RELEASED EVERY HANDLE FIRST, through :func:`close_db`
-    rather than through the binding's own close, which leaves a pooled connection
-    open. Replacing these three files underneath a live connection produces an
-    input-output error against a database that is actually intact, which reads as
-    a corrupted restore and is not one.
-    """
-    target = Path(db_path) if db_path is not None else live_db_path(cfg)
-    source = Path(snapshot_database)
-
-    assert_rekordbox_closed("restoring the database")
-
-    for suffix in db_sidecar_suffixes():
-        live_sidecar = target.with_name(target.name + suffix)
-        if live_sidecar.exists():
-            live_sidecar.unlink()
-
-    shutil.copy2(source, target)
-    for suffix in restored_sidecar_suffixes():
-        snapshot_sidecar = source.with_name(source.name + suffix)
-        if snapshot_sidecar.exists():
-            shutil.copy2(snapshot_sidecar, target.with_name(target.name + suffix))
-
-    playlist_xml = source.parent / MASTER_PLAYLIST_XML
-    if playlist_xml.exists():
-        shutil.copy2(playlist_xml, target.parent / MASTER_PLAYLIST_XML)
-
-
-# --- the protected-snapshot provider seam ----------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class RunStateVocabulary:
-    """What the run-state store calls the fields this scan reads.
-
-    A PARAMETER RATHER THAN A LITERAL because the source's equivalent was three
-    literals typed into this module about a file another module writes, and all
-    three were wrong: the filename, the field name, and one of the two terminal
-    values. Nothing failed, because a scan that matches nothing returns nothing,
-    and the result was that no snapshot was ever protected while a comment said
-    they were.
-
-    The unit that owns the session log (U8) supplies its own instance. These
-    defaults were provisional and are no longer: ``core.session`` has landed and
-    publishes ``RUN_STATE_VOCABULARY``, derived from its own state enumeration
-    rather than restated, and it matches these values exactly.
-
-    Two guards hold that. One compares the two vocabularies, which is the weak
-    half, because the version of this that failed agreed with itself perfectly.
-    The other builds a REAL session record through the session module, writes it
-    to the directory the session module chooses, reads it with the scan below,
-    and asserts the capture comes back protected. Changing a default here without
-    changing it there fails the second one.
-    """
-
-    state_key: str = "state"
-    terminal_states: frozenset[str] = frozenset({"closed", "abandoned"})
-    snapshot_key: str = "snapshot_path"
-
-
-def read_run_state_records(run_state_dir: Path) -> list[Mapping[str, Any]]:
-    """Every run-state record in one directory, skipping anything unreadable.
-
-    BOUNDED TO ONE DIRECTORY, one level deep. The source walked the entire
-    runtime-state tree recursively on every snapshot, which on a real
-    installation meant descending dozens of unrelated cache directories to find
-    a file that was never there.
-
-    Any name ending in ``.json`` counts, so this module never encodes another
-    module's filename convention. That convention is exactly what the source got
-    wrong.
-    """
-    records: list[Mapping[str, Any]] = []
-    try:
-        entries = sorted(run_state_dir.glob("*.json"))
-    except OSError:
-        return records
-    for entry in entries:
-        try:
-            parsed = json.loads(entry.read_text())
-        except (OSError, ValueError):
-            continue
-        if isinstance(parsed, Mapping):
-            records.append(parsed)
-    return records
-
-
-def default_protected_snapshot_paths(
-    cfg: config.Config | None = None,
-    *,
-    vocabulary: RunStateVocabulary | None = None,
-    records: Iterable[Mapping[str, Any]] | None = None,
-) -> set[Path]:
-    """Snapshot paths an OPEN run still references, which pruning must never delete.
-
-    R30 in one sentence: a snapshot an unfinished run may restore from is not
-    old, whatever its position in the retention order.
-
-    Every parameter is optional, so this remains the zero-argument callable the
-    pruning seam expects while staying fully drivable from a test. Resolution
-    goes through the state inventory's own path builder, never through a glob
-    pattern typed in this module.
-    """
-    vocab = vocabulary or RunStateVocabulary()
-    if records is None:
-        resolved = _loaded_config(cfg)
-        if resolved is None:
-            return set()
-        records = read_run_state_records(config.state_path("session_log", resolved))
-
-    protected: set[Path] = set()
-    for record in records:
-        state = str(record.get(vocab.state_key, "")).lower()
-        if state in vocab.terminal_states:
-            continue  # a finished run releases its snapshot
-        recorded = record.get(vocab.snapshot_key)
-        if not recorded:
-            continue
-        try:
-            protected.add(Path(str(recorded)).resolve())
-        except (OSError, ValueError):
-            continue
-    return protected
-
-
-def snapshot_database_in(directory: Path) -> Path | None:
-    """The database file inside a snapshot directory, or None if it holds none.
-
-    Derived from the file's SHAPE rather than from a fixed name, because the
-    database's filename belongs to the user's rekordbox install and not to us.
-    A directory holding no database is not a snapshot and is never touched.
-    """
-    for candidate in sorted(directory.glob("*.db")):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def prune_snapshots(
-    root: Path | str | None = None,
-    *,
-    keep: int = 5,
-    protected_provider: Callable[[], set[Path]] | None = default_protected_snapshot_paths,
-    cfg: config.Config | None = None,
-) -> list[Path]:
-    """Delete all but the newest ``keep`` snapshots, sparing any an open run holds.
-
-    ``protected_provider`` is a zero-argument callable returning a set of paths.
-    Passing None means no protection at all, which is only ever correct in a test
-    that is asserting retention itself.
-
-    A PROVIDER THAT RAISES DELETES NOTHING. Failing open here would mean a
-    transient error in an unrelated module costs a user their recovery point, and
-    a snapshot kept unnecessarily costs disk.
-
-    A provider may return either the snapshot directory or the database file
-    inside it, and both are honoured, because the snapshot function returns the
-    file path and that is what a session log records.
-    """
-    destination_root = Path(root) if root is not None else snapshot_root(cfg)
-    if not destination_root.is_dir() or keep < 1:
-        return []
-
-    provider = protected_provider
-    if provider is default_protected_snapshot_paths:
-        # Thread the CALLER's configuration into the default provider instead of
-        # letting it resolve its own. A prune judged against one configuration
-        # while the snapshot root came from another would spare the wrong
-        # snapshots, and would do it silently.
-        provider = partial(default_protected_snapshot_paths, cfg)
-
-    try:
-        protected = provider() if provider else set()
-    except Exception as exc:  # noqa: BLE001 - a provider failure must not delete a recovery point
-        logger.warning(
-            "the protected-snapshot provider failed, so every snapshot is kept this run: %s",
-            exc,
-        )
-        return []
-
-    snapshots = sorted(
-        (
-            directory
-            for directory in destination_root.iterdir()
-            if directory.is_dir() and snapshot_database_in(directory) is not None
-        ),
-        key=lambda directory: directory.stat().st_mtime,
-        reverse=True,
-    )
-
-    pruned: list[Path] = []
-    for directory in snapshots[keep:]:
-        database = snapshot_database_in(directory)
-        if directory.resolve() in protected or (
-            database is not None and database.resolve() in protected
-        ):
-            logger.info("keeping snapshot %s: an open run still references it", directory.name)
-            continue
-        shutil.rmtree(directory)
-        pruned.append(directory)
-        logger.info("pruned snapshot %s, keeping the newest %d", directory.name, keep)
-    return pruned
-
-
 # ---------------------------------------------------------------------------
-# Playlist and tag primitives
+# The soft-delete marker, read here and nowhere else in the writer (R-758)
 # ---------------------------------------------------------------------------
 
-#: Parent identifiers that mean "this tag row is a top-level category". Four
-#: spellings because the value has been written all four ways over the life of
-#: the schema, and a reader that knows only one silently treats a category as a
-#: value.
-ROOT_PARENT_SENTINELS = ("", "0", "root", "None")
 
-
-def _is_folder(playlist: Any) -> bool:
-    return int(getattr(playlist, "Attribute", -1)) == 1
-
-
-def is_folder(playlist: Any) -> bool:
-    """Whether a playlist row is a FOLDER. The one spelling of that question."""
-    return _is_folder(playlist)
-
-
-def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
-    """Find or create a playlist FOLDER by name, optionally under a parent.
-
-    ``name`` has no default. The source defaulted it to one feature's folder,
-    which put a taxonomy display name into the one module that must not carry
-    one (R19).
-
-    ``parent`` scopes the match exactly as :func:`ensure_playlist` scopes its
-    own, and for the same reason: two trees may legitimately hold folders of one
-    name, and a global match returns whichever the query happens to yield first.
-    The asymmetry this closes was live: a caller that had gone to the trouble of
-    asserting which root its tree adopted then resolved the folder globally, so
-    the assertion held while the write landed somewhere else entirely.
-
-    Unscoped stays available and stays the default, because a caller writing a
-    top-level folder has no parent to name and requiring one would be a
-    ceremony that answers nothing.
-    """
-    if parent is None:
-        for playlist in db.get_playlist(Name=name):
-            if _is_folder(playlist):
-                return playlist
-        return db.create_playlist_folder(name)
-
-    parent_id = str(parent.ID)
-    for playlist in db.get_playlist(Name=name):
-        if _is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
-            return playlist
-    return db.create_playlist_folder(name, parent=parent)
-
-
-def top_level_folders(db: Any, name: str) -> tuple[Any, ...]:
-    """Every playlist FOLDER named ``name`` sitting directly under the playlist root.
-
-    THE READING HALF OF :func:`ensure_folder`'s unscoped match, and it answers
-    with all of them where that function returns the first. A caller about to
-    record which folder a tree adopted needs to know whether there is exactly
-    one, and "whichever the query happens to yield first" is the answer that
-    question exists to refuse.
-
-    DIRECTLY UNDER THE ROOT, which the unscoped match does not ask. A folder of
-    the same name nested somewhere else is a namesake, and it is not a
-    candidate for a tree's root.
-
-    IT CREATES NOTHING and it reads no soft delete marker, as no playlist lookup
-    in this module does. The rows are materialized, so the query is not being
-    iterated while the caller asks the handle for something else.
-    """
-    return tuple(
-        playlist
-        for playlist in list(db.get_playlist(Name=name))
-        if _is_folder(playlist)
-        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS
-    )
-
-
-def ensure_playlist(db: Any, name: str, parent: Any) -> Any:
-    """Find or create a playlist under a specific parent.
-
-    Scoped to the parent, not global by name: two folders may legitimately hold
-    playlists of the same name, and a global match would return somebody else's.
-    """
-    parent_id = str(parent.ID)
-    for playlist in db.get_playlist(Name=name):
-        if not _is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
-            return playlist
-    return db.create_playlist(name, parent=parent)
-
-
-def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
-    """Add each track to a playlist when absent. Returns the ids it inserted, in order.
-
-    THIS IS WHERE THE "ONLY WHEN ABSENT" RULE LIVES, and :func:`add_membership`
-    is a one-id call into it rather than a second spelling. A caller that wants
-    to batch must come here instead of asking the database what a playlist
-    holds and deciding for itself, because two implementations of one rule is
-    how a track comes to be silently inserted twice or silently skipped (R-10).
-
-    ONE presence query per call, not one per track. The playlist's current
-    content ids are read once, and each insert joins that set, so an id named
-    twice in one call lands once and its second mention reads as present, which
-    is what the per-track read answered when the first insert was still pending.
-
-    Read-then-insert, which is race-free ONLY under the write-session lock. That
-    is not a caveat, it is a requirement: the same lock is what makes the update
-    counter's autoincrement safe, so a caller outside the lock is already unsafe
-    for a second reason.
-
-    A MEMBERSHIP MARKED REMOVED IS NOT PRESENT (R-758). The binding's query
-    returns a soft deleted row beside the live ones, and rekordbox shows no
-    track for it, so counting it would report a track as filed in a playlist a
-    person cannot see it in, and a track moved away and later moved back would
-    never come back.
-    """
-    songs = list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
-    present = {str(song.ContentID) for song in songs if not membership_removed(song)}
-    highest = max((int(song.TrackNo or 0) for song in songs), default=0)
-    inserted: list[str] = []
-    for content_id in content_ids:
-        key = str(content_id)
-        if key in present:
-            continue
-        added = db.add_to_playlist(playlist, key)
-        # AN APPEND GOES PAST THE HIGHEST POSITION, NOT PAST THE ROW COUNT
-        # (U288). The binding numbers a new row as the count plus one, which is
-        # the highest position only while no row was ever deleted outright; a
-        # track taken out of the collection before R-1830 left a gap, and a
-        # removal still leaves the rows marked removed where they were, so the
-        # count plus one could land on a position a live row already holds.
-        number = int(getattr(added, "TrackNo", 0) or 0)
-        if added is not None and number <= highest:
-            added.TrackNo = highest + 1
-            number = highest + 1
-        highest = max(highest, number)
-        present.add(key)
-        inserted.append(key)
-    return inserted
-
-
-def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
-    """Add a track to a playlist when absent. True when it inserted.
-
-    One id through :func:`add_memberships`, which owns the rule.
-    """
-    return bool(add_memberships(db, playlist, [content_id]))
-
-
-#: What "the row could not answer" looks like, distinct from every value the
-#: soft delete column can hold.
+#: What "the row could not answer" looks like, distinct from every marker value.
 _MARKER_ABSENT = object()
 
 
@@ -2144,18 +795,9 @@ def soft_deleted(
 ) -> bool:
     """Read rekordbox's soft delete marker off one mapped row, or REFUSE.
 
-    THE ONE READ OF THE MARKER FOR EVERY ROW KIND (R-758). A collection row, a
-    playlist and a membership each carry the column, and until a membership
-    could be removed only the first was ever asked. Two copies of the read
-    agree today and disagree eventually, so the read and the refusal live here
-    and a caller supplies only the words: what the row is and what treating it
-    as live would cost, which differ by kind. The one read off SQL rows rather
-    than mapped ones, :func:`removal_renumbering`'s, refuses ``None`` the same
-    way (R-1830).
-
-    A ROW THAT CANNOT SAY REFUSES. A missing attribute and ``None`` are both
-    refused, because every default a reader could supply is the answer "live",
-    which is the permissive one.
+    THE ONE READ OF THE MARKER FOR EVERY ROW KIND (R-758); callers supply only the
+    words. A ROW THAT CANNOT SAY REFUSES, missing or ``None``, since every default
+    is the permissive "live". :func:`removal_renumbering` refuses the same (R-1830).
     """
     marker = getattr(row, SOFT_DELETE_COLUMN, _MARKER_ABSENT)
     if marker is _MARKER_ABSENT or marker is None:
@@ -2171,12 +813,7 @@ def soft_deleted(
 
 
 def membership_removed(row: Any) -> bool:
-    """Whether rekordbox, or this product, removed one membership row. Or REFUSE.
-
-    Through :func:`soft_deleted`, which holds the read. A row that cannot say
-    refuses, since treating it as live reports a removed track as filed and
-    treating it as removed would file a track twice.
-    """
+    """Whether rekordbox, or this product, removed one membership row. Or REFUSE."""
     return soft_deleted(
         row,
         message=(
@@ -2203,376 +840,15 @@ def node_removed(row: Any) -> bool:
     )
 
 
-def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
-    """Mark each track's live membership of one playlist removed. Returns the ids.
-
-    THE ONE REMOVAL THIS PRODUCT MAKES, AND IT IS A SOFT DELETE (R-758). The row
-    stays and its soft delete marker is set, with ``updated_at`` moved to now.
-    The binding stamps the local update sequence at commit, as it does for any
-    tracked change. Nothing else on the row is touched: ``TrackNo`` stays, so
-    the rows after it are not renumbered, and the binding's own add numbers a
-    new row from the count of every row, removed ones included, so a number is
-    never given twice.
-
-    WHY NOT THE BINDING'S OWN CALL. ``remove_from_playlist`` deletes the row
-    outright and COMMITS BY ITSELF, which would land a write the guarded commit
-    never judged. It is also the opposite of what rekordbox's own rows show:
-    read on 2026-09-29 from a copy of a snapshot, 4,817 membership rows carried
-    the marker and every one was still there.
-
-    WHAT THAT READING DOES NOT SHOW, said here rather than implied. Every one
-    of those rows sat in a playlist that was itself removed. None sat in a
-    playlist that survives, so how rekordbox records ONE track taken out of a
-    living playlist was not observed, and rekordbox's rows also carry a
-    ``rb_data_status`` this does not write. Recorded in the ledger.
-
-    EVERY LIVE ROW FOR THE PAIR IS MARKED, so a track a playlist holds twice is
-    out of it after one call. An id the playlist does not hold is skipped and is
-    not in the return.
-
-    DOES NOT COMMIT. The commit is the caller's, through
-    :func:`commit_guarded` with this table named in ``removals``, and any other
-    commit refuses the change this makes.
-    """
-    from datetime import datetime
-
-    wanted = {str(content_id) for content_id in content_ids}
-    now = datetime.now()
-    removed: list[str] = []
-    for song in list(db.get_playlist_songs(PlaylistID=str(playlist.ID))):
-        key = str(song.ContentID)
-        if key not in wanted or membership_removed(song):
-            continue
-        setattr(song, SOFT_DELETE_COLUMN, 1)
-        song.updated_at = now
-        removed.append(key)
-    return removed
-
-
 # ---------------------------------------------------------------------------
-# Playlist nodes: the move and the removal (U111)
+# Tag primitives
 # ---------------------------------------------------------------------------
-
-
-def _node_refusal(reason: str, message: str, playlist: Any) -> CratekitError:
-    return refuse(
-        reason,
-        message,
-        remedy=Remedy.REPORT_DEFECT,
-        scope=Scope.RUN,
-        origin=("rb_writer",),
-        detail={"playlist_id": str(getattr(playlist, "ID", ""))},
-    )
-
-
-def _plain_playlist(playlist: Any, what: str) -> None:
-    """Refuse anything but a live, ordinary playlist. A folder carries a tree."""
-    if int(getattr(playlist, "Attribute", -1)) != 0:
-        raise _node_refusal(
-            "whitelist-violation",
-            f"{what} the playlist row {getattr(playlist, 'ID', '?')!r}, which is a "
-            f"folder or a smart playlist; only an ordinary playlist is moved or "
-            f"removed, so a node holding other nodes is never taken with it",
-            playlist,
-        )
-    if node_removed(playlist):
-        raise _node_refusal(
-            "whitelist-violation",
-            f"{what} the playlist row {getattr(playlist, 'ID', '?')!r}, which "
-            f"rekordbox or this product already removed",
-            playlist,
-        )
-
-
-def move_playlist_node(db: Any, playlist: Any, parent: Any) -> None:
-    """Move one ordinary playlist to the end of a live folder. Never a folder.
-
-    A MOVE CHANGES THE NODE'S PARENT AND ITS POSITION, and nothing it holds.
-    The binding's own ``move_playlist`` does it: the node takes the next
-    position in its new parent, and the nodes after it in the old parent close
-    up by one, which is how rekordbox numbers a parent's children. No
-    membership and no content row is read or written.
-
-    REFUSED, NOT SKIPPED: a folder or a smart playlist as the node, a removed
-    node, and a parent that is not a live folder. Each is a caller that planned
-    something the rotation never shows a person.
-
-    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`.
-    """
-    _plain_playlist(playlist, "asked to move")
-    if not _is_folder(parent) or node_removed(parent):
-        raise _node_refusal(
-            "whitelist-violation",
-            f"asked to move a playlist into {getattr(parent, 'ID', '?')!r}, which "
-            f"is not a live folder",
-            playlist,
-        )
-    db.move_playlist(playlist, parent=parent)
-
-
-def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
-    """Mark one ordinary playlist removed, with its own memberships. Returns their ids.
-
-    THE SECOND REMOVAL THIS PRODUCT MAKES, AND THE SAME SOFT DELETE (R-758).
-    rekordbox's own removed playlists keep their rows and carry the marker,
-    and the memberships inside them carry it too: 4,817 such rows were read on
-    2026-09-29, every one in a removed playlist. So the node's marker is set,
-    ``updated_at`` moves to now, and each live membership OF THIS PLAYLIST is
-    marked through :func:`remove_memberships`, which owns that rule.
-
-    WHAT IS NEVER TOUCHED. The tracks: no content row is read or written, and a
-    track's membership of any other playlist is a row of that playlist, which
-    this call never asks for. ``Seq`` stays, as ``TrackNo`` stays on a removed
-    membership, so the node's siblings are not renumbered.
-
-    REFUSED: a folder or a smart playlist, and a node already removed. A folder
-    would carry everything inside it, and a smart playlist has no rows of its
-    own to say what it held.
-
-    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`
-    with both this table and the membership table named in ``removals``.
-    """
-    from datetime import datetime
-
-    _plain_playlist(playlist, "asked to remove")
-    held = [
-        str(song.ContentID)
-        for song in list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
-        if not membership_removed(song)
-    ]
-    marked = remove_memberships(db, playlist, held)
-    setattr(playlist, SOFT_DELETE_COLUMN, 1)
-    playlist.updated_at = datetime.now()
-    return marked
-
-
-@dataclass(frozen=True)
-class NodeTables:
-    """The three tables a node change could reach, read from SQL, row by row.
-
-    Each mapping is a row's identifier to the row's values as a tuple, every
-    column in the table's own order, read with no object mapper in between, so
-    what is compared is what the database holds. THE CONTENT TABLE IS KEPT AS
-    ONE DIGEST PER ROW rather than the row, since it is the widest table and
-    the only question asked of it is whether any row differs at all.
-    """
-
-    content: Mapping[str, str]
-    playlists: Mapping[str, tuple]
-    memberships: Mapping[str, tuple]
-    playlist_columns: tuple[str, ...]
-    membership_columns: tuple[str, ...]
-
-
-def _rows_by_id(session: Any, table: str) -> tuple[dict[str, tuple], tuple[str, ...]]:
-    from sqlalchemy import text
-
-    result = session.execute(text(f"SELECT * FROM {table}"))
-    columns = tuple(result.keys())
-    at = columns.index("ID")
-    return {str(row[at]): tuple(row) for row in result}, columns
-
-
-def _row_digests(session: Any, table: str) -> dict[str, str]:
-    import hashlib
-
-    from sqlalchemy import text
-
-    result = session.execute(text(f"SELECT * FROM {table}"))
-    at = tuple(result.keys()).index("ID")
-    return {
-        str(row[at]): hashlib.sha256(repr(tuple(row)).encode("utf-8")).hexdigest()
-        for row in result
-    }
-
-
-def node_tables(db: Any) -> NodeTables:
-    """Read the content, playlist and membership tables as they stand, from SQL.
-
-    Taken once before a node change and once after, by
-    :func:`assert_node_changes_confined`. It flushes nothing itself, so the
-    first reading is of the database before the caller has written anything.
-    """
-    session = db.session
-    content = _row_digests(session, CONTENT_TABLE)
-    playlists, playlist_columns = _rows_by_id(session, PLAYLIST_TABLE)
-    memberships, membership_columns = _rows_by_id(session, MEMBERSHIP_TABLE)
-    return NodeTables(content, playlists, memberships, playlist_columns, membership_columns)
-
-
-def _changed(columns: Sequence[str], before: tuple, after: tuple) -> set[str]:
-    return {name for name, old, new in zip(columns, before, after) if old != new}
-
-
-def node_change_violations(
-    before: NodeTables,
-    after: NodeTables,
-    *,
-    moved: Mapping[str, str],
-    removed: Iterable[str],
-    created: Iterable[str] = (),
-) -> list[str]:
-    """Every difference between two readings that the planned node change does not explain.
-
-    ``moved`` maps each moved playlist to the folder it moves into, ``removed``
-    names each removed playlist, and ``created`` the folder rows the change
-    may add. Empty means the change was confined, AND that it was made.
-
-    PURE, as :func:`guard_violations` is, so every branch is reachable with
-    literal readings. What it explains, and nothing more:
-
-    * no content row differs, is added or disappears;
-    * a membership differs only inside a removed playlist, and only in the
-      marker and the bookkeeping beside it, and the marker only ever goes on;
-    * a moved playlist sits under the named folder, live, and differs in its
-      parent, position and bookkeeping only; a removed one carries the marker
-      and differs in the marker and bookkeeping only. EACH IS ASKED WHETHER IT
-      CHANGED OR NOT, so a planned write that never happened is refused here,
-      before the commit, and not found by the read back after it;
-    * any other playlist differs in position and bookkeeping only, and only
-      when it sits in a parent a node left or joined, which is where the
-      binding renumbers; a position change anywhere else is refused;
-    * the playlist rows added are exactly ``created``, and nothing is added to
-      the membership table and nothing disappears from either.
-    """
-    violations: list[str] = []
-    gone = {str(key) for key in removed}
-    planned_moves = {str(key): str(value) for key, value in moved.items()}
-    if before.content != after.content:
-        changed = sorted(
-            key
-            for key in set(before.content) | set(after.content)
-            if before.content.get(key) != after.content.get(key)
-        )
-        violations.append(
-            f"{len(changed)} {CONTENT_TABLE} row(s) changed, and a node change "
-            f"touches no track: {', '.join(changed[:10])}"
-        )
-
-    p_cols = before.playlist_columns
-    marker_at = p_cols.index(SOFT_DELETE_COLUMN)
-    parent_at = p_cols.index("ParentID")
-    for key in sorted(set(before.playlists) - set(after.playlists)):
-        violations.append(f"the {PLAYLIST_TABLE} row {key!r} disappeared")
-    added = set(after.playlists) - set(before.playlists)
-    for key in sorted(added - {str(key) for key in created}):
-        violations.append(f"an unplanned {PLAYLIST_TABLE} row {key!r} was added")
-    # The parents a node left or joined: the only places a renumbering belongs.
-    renumbered = {
-        str(before.playlists[key][parent_at]) for key in planned_moves if key in before.playlists
-    } | set(planned_moves.values())
-    for key in sorted(planned_moves):
-        new = after.playlists.get(key)
-        if new is None or str(new[parent_at]) != planned_moves[key] or new[marker_at]:
-            violations.append(
-                f"the moved playlist {key!r} is not live under the planned "
-                f"{planned_moves[key]!r}"
-            )
-    for key in sorted(gone):
-        new = after.playlists.get(key)
-        if new is None or not new[marker_at]:
-            violations.append(f"the removed playlist {key!r} does not carry the marker")
-    for key in sorted(set(before.playlists) & set(after.playlists)):
-        old, new = before.playlists[key], after.playlists[key]
-        changed = _changed(p_cols, old, new)
-        if not changed:
-            continue
-        if key in planned_moves:
-            allowed = _MOVED_COLUMNS
-        elif key in gone:
-            allowed = _REMOVED_COLUMNS
-        elif str(old[parent_at]) in renumbered:
-            allowed = _SIBLING_COLUMNS
-        else:
-            allowed = frozenset()
-        stray = changed - allowed
-        if stray:
-            violations.append(
-                f"the {PLAYLIST_TABLE} row {key!r} changed {sorted(stray)}, which the "
-                f"planned node change does not explain"
-            )
-
-    m_cols = before.membership_columns
-    owner_at = m_cols.index("PlaylistID")
-    m_marker = m_cols.index(SOFT_DELETE_COLUMN)
-    for key in sorted(set(before.memberships) ^ set(after.memberships)):
-        violations.append(f"the {MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
-    # A REMOVED NODE KEEPS NO LIVE MEMBERSHIP, asked of every row it owns
-    # whether the row changed or not, for the planned moves' reason above.
-    for key in sorted(set(after.memberships)):
-        row = after.memberships[key]
-        if str(row[owner_at]) in gone and not row[m_marker]:
-            violations.append(
-                f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist "
-                f"{str(row[owner_at])!r} is still live"
-            )
-    for key in sorted(set(before.memberships) & set(after.memberships)):
-        old, new = before.memberships[key], after.memberships[key]
-        changed = _changed(m_cols, old, new)
-        if not changed:
-            continue
-        owner = str(old[owner_at])
-        if owner not in gone:
-            violations.append(
-                f"the {MEMBERSHIP_TABLE} row {key!r} of playlist {owner!r} changed "
-                f"{sorted(changed)}, and only a removed playlist's own memberships may"
-            )
-            continue
-        if changed - _REMOVED_COLUMNS or not new[m_marker]:
-            violations.append(
-                f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist {owner!r} "
-                f"changed {sorted(changed)}; only its marker may go on"
-            )
-    return violations
-
-
-def assert_node_changes_confined(
-    db: Any,
-    before: NodeTables,
-    *,
-    moved: Mapping[str, str],
-    removed: Iterable[str],
-    created: Iterable[str] = (),
-) -> None:
-    """Refuse, before the commit, a node change that reached anything it did not plan.
-
-    THE CHECK IS FROM SQL, as :func:`assert_created_rows_are_gridless` is and
-    for its reason: the mapped objects say what the writer intended. The
-    pending work is flushed DELIBERATELY, inside the transaction, so the
-    second reading sees it and a violation still rolls back.
-
-    WHAT IT ADDS TO THE WHITELIST, which :func:`commit_guarded` still runs
-    after it from the binding's buffer, a list a flush does not empty. The
-    whitelist judges tables and columns, so it admits a marker on ANY
-    membership once the commit names the membership table, and it cannot see
-    the sibling renumbering the binding makes with its tracking switched off.
-    This judges rows: whose membership, which parent, which position.
-
-    A REFUSAL ROLLS THE HANDLE BACK, so nothing the node change made can land
-    later under another operation's name.
-    """
-    db.session.flush()
-    after = node_tables(db)
-    violations = node_change_violations(
-        before, after, moved=moved, removed=removed, created=created
-    )
-    if violations:
-        db.rollback()
-        raise _unavailable(
-            "whitelist-violation",
-            "the node change reached rows it did not plan, or did not make one it "
-            "planned, read from SQL before the commit:\n  - " + "\n  - ".join(violations),
-            detail={"violations": violations},
-        )
 
 
 def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
     """Mirror the shape of existing tag rows: (root parent, category, value).
 
-    The binding defines no constants for these, so the alternative to mirroring
-    is fabricating them. A fabricated attribute value produces rows rekordbox
-    reads as a different kind of object, which is a corruption that looks like a
-    working write.
+    The binding defines no constants, and a fabricated attribute is a corruption that looks working.
     """
     root_parent = None
     category_attr = None
@@ -2585,8 +861,7 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
         elif value_attr is None:
             value_attr = getattr(tag, "Attribute", 0)
     if category_attr is None:
-        # :func:`my_tag_writable` reads this reason by the same literal, and the
-        # native landing's no category test holds the two together.
+        # :func:`my_tag_writable` reads this reason by the same literal.
         raise _unavailable(
             "mytag-category-template-missing",
             "the library has no tag category to mirror, so there is nothing to "
@@ -2597,385 +872,22 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
     return root_parent, category_attr, value_attr
 
 
-def my_tag_writable(db: Any) -> bool:
-    """Whether :func:`ensure_my_tag_value` could make a row here, asked before a plan promises one.
-
-    THE WRITER'S OWN QUESTION, not a second reading of the table. A planner
-    that promises a tag the writer then refuses fails after its other work,
-    the native landing's file moves among them (U127). Any other refusal is
-    the caller's as it would be the writer's.
-    """
-    try:
-        _mytag_templates(db)
-    except RekordboxUnavailable as exc:
-        if exc.cause.reason != "mytag-category-template-missing":
-            raise
-        return False
-    return True
-
-
-def ensure_my_tag_value(db: Any, category_name: str, value_name: str) -> Any:
-    """Find or create a tag category and one value inside it. Returns the value row."""
-    from uuid import uuid4
-
-    from pyrekordbox.db6 import tables
-
-    root_parent, category_attr, value_attr = _mytag_templates(db)
-
-    category = next((tag for tag in db.get_my_tag(Name=category_name)), None)
-    if category is None:
-        category = tables.DjmdMyTag.create(
-            ID=db.generate_unused_id(tables.DjmdMyTag, is_28_bit=True),
-            UUID=str(uuid4()),
-            Name=category_name,
-            Attribute=category_attr,
-            ParentID=root_parent,
-            Seq=0,
-        )
-        db.add(category)
-
-    value = next(
-        (
-            tag
-            for tag in db.get_my_tag(Name=value_name)
-            if str(getattr(tag, "ParentID", "")) == str(category.ID)
-        ),
-        None,
-    )
-    if value is None:
-        value = tables.DjmdMyTag.create(
-            ID=db.generate_unused_id(tables.DjmdMyTag, is_28_bit=True),
-            UUID=str(uuid4()),
-            Name=value_name,
-            Attribute=value_attr,
-            ParentID=str(category.ID),
-            Seq=0,
-        )
-        db.add(value)
-    return value
-
-
-def add_my_tag(db: Any, value_row: Any, content_id: str) -> bool:
-    """Associate a track with a tag value when absent. True when it inserted."""
-    from uuid import uuid4
-
-    from pyrekordbox.db6 import tables
-
-    existing = db.get_my_tag_songs(
-        MyTagID=str(value_row.ID), ContentID=str(content_id)
-    ).first()
-    if existing is not None:
-        return False
-    db.add(
-        tables.DjmdSongMyTag.create(
-            ID=db.generate_unused_id(tables.DjmdSongMyTag),
-            UUID=str(uuid4()),
-            MyTagID=str(value_row.ID),
-            ContentID=str(content_id),
-            TrackNo=0,
-        )
-    )
-    return True
-
-
 # ---------------------------------------------------------------------------
 # The additive whitelist
 # ---------------------------------------------------------------------------
 
-#: The content table, named once so the judge and the registry cannot disagree.
-CONTENT_TABLE = "djmdContent"
 
-#: The lookup tables a landing links a row's artist, album and genre to (U163),
-#: named once so the admission and the writer cannot disagree.
-ARTIST_TABLE = "djmdArtist"
-ALBUM_TABLE = "djmdAlbum"
-GENRE_TABLE = "djmdGenre"
-LOOKUP_TABLES: tuple[str, ...] = (ARTIST_TABLE, ALBUM_TABLE, GENRE_TABLE)
-
-#: Tables a writer may CREATE rows in. A new content row is forbidden because
-#: new-track intake stays in the XML bridge, where the user performs, reviews and
-#: can undo the import. A beat-grid row cannot even be modelled, since the
-#: binding has no class for it, but that is not what makes it unwritable: ANY
-#: unlisted table is refused, so grid and analysis rows are structurally
-#: impossible rather than merely untested (R17).
-#:
-#: THE CONTENT TABLE IS NOT HERE AND STAYS OUT. One writer, the native landing,
-#: creates a content row, and it does so by naming the table on its own commit
-#: through ``creations``, see :data:`ADMITTABLE_ROW_TABLES` (R-746). Listing it
-#: here would let every membership and tag writer create one by accident.
-#:
-#: Static, and deliberately not feature-derived. This is the set that makes the
-#: structural guarantee, so no registration may widen it.
-PERMITTED_ROW_TABLES = frozenset(
-    {"djmdPlaylist", "djmdSongPlaylist", "djmdMyTag", "djmdSongMyTag", "djmdKey"}
-)
-
-#: ``djmdKey`` joins the whitelist on the A4 verdict, TOLERATED, settled against
-#: rekordbox 7.2.17 on 2026-08-01. An externally authored key row rendered
-#: correctly while referenced and was left completely untouched across a full
-#: launch and quit cycle: rekordbox did not renumber ``Seq``, did not set ``usn``,
-#: did not flip ``rb_data_status`` and did not soft-delete. There is no column
-#: ownership to document because rekordbox took ownership of nothing.
-#:
-#: TWO RULES TRAVEL WITH THE PERMISSION, and both are preventable only in code.
-#:
-#: 1. Create and link in the SAME write session. Never speculatively. rekordbox
-#:    garbage collects a lookup row nothing references, which it was observed
-#:    doing (43 rows to 42), and it would do the same to one of its own.
-#: 2. A duplicate ``ScaleName`` is the one real hazard. There is no unique
-#:    constraint and no trigger, so it is invisible to the schema. Resolve before
-#:    creating, under the write lock this module already holds.
-#:
-#: THE PERMISSION IS A CEILING, NOT A LICENCE. Phillip's decision, taken at the
-#: desk while A4 ran, is that the writer may never author a key value at all:
-#: padded Camelot belongs in the track title as a sorting artifact, and the key
-#: metadata field stays blank so rekordbox's answer and this product's answer
-#: remain independently comparable. That is the grid rule's own argument one
-#: layer up. Nothing in this module can write a key today and nothing should
-#: acquire the ability without that decision being revisited.
-
-#: Analysis columns a row THIS PRODUCT CREATES may never declare. Checked on
-#: creation, which until W3 had no column policy at all.
-#:
-#: AN HONEST LIST RATHER THAN A DERIVATION, and the honesty is the point (P4). A
-#: rule such as "every column whose name contains Analysis" reads plausibly and
-#: misses ``BPM`` and ``CueUpdated``, and a derivation that is nearly complete
-#: invites trust it has not earned. A test asserts every name here is a real
-#: column on the content table, so a binding rename fails loudly rather than
-#: silently disarming the check.
-GRIDLESS_ON_CREATE_COLUMNS = frozenset(
-    {
-        "BPM",
-        "Analysed",
-        "AnalysisDataPath",
-        "AnalysisUpdated",
-        "CueUpdated",
-    }
-)
-
-#: What a CONTENT row this product creates must leave for rekordbox to fill,
-#: the five above and five more that only an analysis pass writes. Settled at
-#: sitting 17 (A8, 2026-09-29) against rekordbox 7.2.19 on the live library:
-#: a row inserted with every one of these empty was accepted with no dialog,
-#: showed a tempo of zero until asked, and was analysed on request to the tempo
-#: and key its file names. The key is an analysis output and the writer never
-#: authors one, see the note on ``djmdKey`` above. The three sample and rate
-#: columns are read from the audio during analysis and are the tell tale of a
-#: row something other than rekordbox filled in. The artwork path is extracted
-#: during analysis too.
-#:
-#: The same honest list, for the same reason, and the same schema test holds it
-#: to real column names.
-CONTENT_ROW_EMPTY_COLUMNS = GRIDLESS_ON_CREATE_COLUMNS | frozenset(
-    {
-        "KeyID",
-        "SampleRate",
-        "BitRate",
-        "BitDepth",
-        "ImagePath",
-    }
-)
-
-#: What rekordbox writes on every content row it makes for itself and the
-#: binding's ``add_content`` leaves NULL, by column (R-923). A row without them
-#: is accepted, analysed and stable, which is all A8 tried, and will not load to
-#: a deck: measured on the live library on 2026-10-09, 165 native rows refused a
-#: deck with no dialog while a bridge imported row loaded at once. Of 10,272
-#: live rows rekordbox made, none leaves any of the first twelve NULL, and it
-#: writes an empty string to the nine text columns after them.
-#:
-#: EVERY VALUE IS THE COLUMN'S OWN EMPTY. A rating of 0 is no stars, a colour of
-#: ``'0'`` is no colour, an empty string is no text, so writing one over a NULL
-#: says nothing a person could have meant otherwise, and a fill if empty
-#: operation that comes later, the rating backfill among them, still reads the
-#: column as unset. None of them is an analysis column: the landing sets them on
-#: the row it creates and the guard's creation policy admits them.
-#:
-#: The same honest list, measured rather than derived, and the same schema test
-#: holds it to real column names.
-CONTENT_ROW_DEFAULTS: Mapping[str, Any] = MappingProxyType(
-    {
-        "Rating": 0,
-        "ColorID": "0",
-        "DJPlayCount": 0,
-        "DiscNo": 0,
-        "DeliveryControl": "on",
-        "SamplerTrackInfo": 0,
-        "SamplerPlayOffset": 0,
-        "SamplerGain": 0.0,
-        "VideoAssociate": "0",
-        "LyricStatus": 0,
-        "ServiceID": 0,
-        "ExtInfo": "null",
-        "FileNameS": "",
-        "Commnt": "",
-        "Subtitle": "",
-        "ReleaseDate": "",
-        "ModifiedByRBM": "",
-        "DeliveryComment": "",
-        "Lyricist": "",
-        "OrgFolderPath": "",
-        "Reserved1": "",
-    }
-)
-
-#: The tables an analysis pass writes rows into FOR a content row, keyed on the
-#: content identifier. A content row this product creates must own none of
-#: them: a cue is grid relative, the mixer parameters are gain and peak, and the
-#: file rows name the analysis and artwork files. Read from SQL for every
-#: admitted content row before its commit. Measured on rekordbox's own not yet
-#: analysed rows, 223 of them, zero of each.
-CONTENT_ANALYSIS_TABLES: tuple[str, ...] = ("djmdCue", "djmdMixerParam", "contentFile")
-
-#: Tables a commit may be ASKED to admit a CREATION in beyond the whitelist,
-#: and the whole of them. The content table is the one, and it is admitted by
-#: ``creations`` on one commit rather than listed in :data:`PERMITTED_ROW_TABLES`,
-#: because every other writer in this product keeps refusing it: a membership
-#: writer that could create a content row by accident is the hazard the
-#: whitelist exists to make structural. A commit that names any other table
-#: here is refused, so no caller can widen it by asking, and the admitted row
-#: still carries the column policy :data:`CONTENT_ROW_EMPTY_COLUMNS` states,
-#: judged in memory and then from SQL. Static, for the reason
-#: :data:`REMOVABLE_TABLES` is.
-#:
-#: THE THREE LOOKUP TABLES JOINED WITH U163, so a landing writes artist,
-#: album and genre on the rows it makes (R-921). Admitted on the landing's
-#: commit by name and only when it mints a word the library has no active row
-#: for, and under rekordbox's own rule for a lookup row: minted and linked in
-#: the same commit, because rekordbox garbage collects one nothing references
-#: (A4). A lookup row carries no analysis column, so the creation policy is the
-#: whitelist's own: none of :data:`GRIDLESS_ON_CREATE_COLUMNS`.
-ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES})
-
-#: rekordbox's soft-delete marker, named once so a reader can be BOUND to it
-#: rather than to a string that looks like it.
-#:
-#: The column belongs to this module because the vocabulary of the binding does,
-#: and it is spelled out here rather than left as a literal inside
-#: :data:`BOOKKEEPING_COLUMNS` because a guard that can only recognize the literal
-#: is one indirection away from being switched off. A reader that says
-#: ``rb_writer.SOFT_DELETE_COLUMN`` is resolvable through the import graph; a
-#: reader that says ``"rb_local_deleted"`` is a string somebody typed.
-#:
-#: Naming it does NOT make it readable permissively. It is a bookkeeping column,
-#: so a binding that stops exposing it produces a row that cannot say whether it
-#: is a tombstone, and every default a reader could supply for that is the answer
-#: "active", which is the permissive one. See
+#: rekordbox's soft-delete marker, named once so a reader is BOUND to it through the import
+#: graph. Naming it does NOT make it readable permissively; see
 #: ``tests/_source_guards.py:permissive_soft_delete_reads``.
 SOFT_DELETE_COLUMN = "rb_local_deleted"
 
-#: The membership table, named once so the removal rule and the primitive that
-#: makes a removal cannot disagree about which table they mean.
-MEMBERSHIP_TABLE = "djmdSongPlaylist"
-
-#: The playlist and folder table, named once for the node removal (U111).
-PLAYLIST_TABLE = "djmdPlaylist"
-
-#: Tables a commit may be ASKED to admit a removal in, and the whole of them.
-#:
-#: A removal is a row whose soft delete marker changes. It is refused in every
-#: table, these included, unless the commit names the table in ``removals``,
-#: and a commit that names any table outside this set is refused as well, so no
-#: caller can widen it by asking. Static, for the reason
-#: :data:`PERMITTED_ROW_TABLES` is. A hard delete is admitted only by
-#: ``deletions`` (U288), in :data:`DELETABLE_TABLES`.
-#:
-#: THE PLAYLIST TABLE JOINED WITH U111, on purpose and with a guard of its own.
-#: Admitting it here lets a commit carry a removed node, and that is all it
-#: does: the membership move names only :data:`MEMBERSHIP_TABLE`, and the one
-#: caller that names this table, the INBOX rotation, removes through
-#: :func:`remove_playlist_node`, which refuses a folder, and proves from SQL
-#: before its commit, :func:`assert_node_changes_confined`, that nothing it did
-#: not plan changed. Never the content table.
-REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, PLAYLIST_TABLE})
-
-# ---------------------------------------------------------------------------
-# A track taken out of the collection, as rekordbox takes it out (U288)
-# ---------------------------------------------------------------------------
-
-#: The tables rekordbox's own Remove from Collection deletes a track's rows
-#: from, OUTRIGHT, and the whole of them: measured at sittings 101 and 102
-#: (A178, A185) on rekordbox 7.2.19, on a never analysed track and then on an
-#: analysed one with cues, a history play and a playlist membership. The
-#: content row first, since it is the row the others name. A commit may be
-#: asked to admit a hard delete in these tables and in no other, by
-#: ``deletions``, and only the collection removal asks (U288).
-#:
-#: WHAT REKORDBOX ALSO DOES AND THIS DOES NOT, said here so nobody reads the
-#: set as the whole of rekordbox's removal: it deletes the artist and album
-#: rows the removal leaves named by nothing, which its next removal sweeps
-#: anyway (A178), and it deletes the track's analysis folder, which is a file
-#: and outside this module. Both are left, and the record says so.
-COLLECTION_REMOVAL_TABLES: tuple[str, ...] = (
-    CONTENT_TABLE,
-    MEMBERSHIP_TABLE,
-    "djmdCue",
-    "contentCue",
-    "contentFile",
-    "djmdSongHistory",
-    "djmdMixerParam",
-)
-
-#: The same tables as a set: what ``deletions`` may name. Static, for the
-#: reason :data:`REMOVABLE_TABLES` is: no caller widens it by asking.
-DELETABLE_TABLES = frozenset(COLLECTION_REMOVAL_TABLES)
-
-#: The column a row of another table names a content row by.
-CONTENT_REFERENCE_COLUMN = "ContentID"
-
-#: The column a few tables name ANY row by, a content row among them, beside
-#: the table it names (``imageFile``). Asked too, so a row that names the
-#: track this way is refused rather than left naming a row that is gone.
-#: ``uuidIDMap``, which A178 and A185 read unchanged, names rows by
-#: ``CurrentID`` and is not asked.
-TARGET_REFERENCE_COLUMN = "TargetID"
-
-#: The registry row whose counter the binding advances at every commit.
-LOCAL_UPDATE_COUNT = "localUpdateCount"
-
-#: The column a membership row holds its place in its playlist in, and the
-#: column it names its playlist by: what the removal's renumbering reads and
-#: writes (R-1830).
-TRACK_NUMBER_COLUMN = "TrackNo"
-PLAYLIST_REFERENCE_COLUMN = "PlaylistID"
-
-#: The key a session record names the rows a removal took out under, so the
-#: deletion pass can offer their files and ``restore list`` can name them. A
-#: row deleted outright leaves no soft delete marker for the pass to read
-#: (R-1037), so this record is the only place the removal is written down.
-RECORDED_REMOVALS_KEY = "collection_removed"
-
-#: The collection row's columns a recorded removal keeps, read before the row
-#: is deleted: every one the deletion pass reads off a removed row but the
-#: marker and the sequence, which the record states for itself.
-RECORDED_COLUMNS: tuple[str, ...] = (
-    "ID",
-    "FolderPath",
-    "FileSize",
-    "ArtistName",
-    "Title",
-    "ISRC",
-    "RemixerName",
-    "Subtitle",
-)
-
-
-
-#: The columns a node change may move on a playlist row it does not plan:
-#: a sibling's position, which the binding renumbers when a node leaves or
-#: joins its parent, and the bookkeeping it stamps beside that.
-_SIBLING_COLUMNS = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
-
-#: What a planned move may change on its own row.
-_MOVED_COLUMNS = _SIBLING_COLUMNS | {"ParentID"}
 
 #: What a planned removal may change on its own row, and on its memberships.
 _REMOVED_COLUMNS = frozenset({SOFT_DELETE_COLUMN, "updated_at", "usn", "rb_local_usn"})
 
-#: Columns the binding and the object mapper bump on their own during a commit.
-#: TEN of them. Without every one, an otherwise legitimate write trips the guard,
-#: and a guard that fires on correct code gets disabled, which is the failure mode
-#: that actually loses data (P7).
+#: Columns the binding and the object mapper bump on their own during a commit. All ten,
+#: or a correct write trips the guard and the guard gets disabled (P7).
 BOOKKEEPING_COLUMNS = frozenset(
     {
         "ID",
@@ -2992,659 +904,11 @@ BOOKKEEPING_COLUMNS = frozenset(
 )
 
 
-class Ownership(StrEnum):
-    """How strongly an operation owns a field it declares.
-
-    ``OWNED`` means the operation may overwrite, because it owns that field's
-    formatting or assignment outright. ``FILL_IF_EMPTY`` means it writes only
-    into an unset field, which is what keeps a value a person set by hand from
-    being replaced by automation.
-    """
-
-    OWNED = "owned"
-    FILL_IF_EMPTY = "fill_if_empty"
-
-
-@dataclass(frozen=True, slots=True)
-class FieldPolicy:
-    """One operation's declared fields, and how strongly it owns each.
-
-    THIS IS THE SEAM THAT INVERTS THE DIRECTION. The source kept a single static
-    table here, keyed on feature operation names, so the writer enumerated
-    features and the writable column set was the maximal union of every operation
-    that might ever exist. On a slim install with no metadata operations enabled,
-    four columns were still structurally writable for no reason.
-
-    Operations now register themselves, the writable set becomes the union of
-    what is actually enabled, and R14's "widened only as far as each feature
-    requires" is implemented rather than described.
-    """
-
-    owner: str
-    fields: Mapping[str, Ownership]
-
-
-#: The one operation that exists at this unit's time: the track colour write. It
-#: is registered here rather than left to a later unit because the whitelist must
-#: be meaningful the moment it ships, and an empty writable set would make the
-#: guard vacuous instead of strict.
-TRACK_COLOR_POLICY = FieldPolicy(
-    owner="track-color",
-    fields=MappingProxyType({"ColorID": Ownership.OWNED}),
-)
-
-#: The repair of a row a landing created without rekordbox's defaults (R-923).
-#: Registered by that repair alone and never at baseline, so no other writer
-#: gains a column by its existing.
-#:
-#: FILL IF EMPTY ON EVERY FIELD, and the value it fills is the column's own
-#: empty, :data:`CONTENT_ROW_DEFAULTS`. Two of its fields have owners elsewhere,
-#: the colour here and the rating in the metadata operations, and neither is
-#: overwritten: a colour or a rating a person set reads as present and is
-#: skipped, and what a NULL becomes is the value both owners already read as
-#: unset.
-ROW_DEFAULTS_POLICY = FieldPolicy(
-    owner="row-defaults",
-    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),
-)
-
-#: The column rekordbox keys a row's file by, and what it holds: THE FILE'S
-#: INODE NUMBER AT THE MOMENT REKORDBOX IMPORTED IT (U115, R-928). Measured on
-#: the live library on 2026-10-09: every row rekordbox made that day carries
-#: its file's ``st_ino`` exactly, as do 459 of 459 rows created that month,
-#: 1,851 of 1,851 in July and 33 of 33 in April. A row whose file was copied
-#: since carries the old inode and still loads, and 1,358 rows carry 0 and
-#: load, so the value need not match the file today. The binding's
-#: ``add_content`` mints a random 28 bit id instead, a value no file on the
-#: volume has ever carried, and that is the one rekordbox refuses: such a row
-#: shows every column and never loads to a deck.
-#:
-#: NOT A BOOKKEEPING COLUMN. Adding it to :data:`BOOKKEEPING_COLUMNS` would
-#: blind the guard to it for every writer. The landing sets it on the row it
-#: creates, where the creation policy admits any column rekordbox does not
-#: derive from the audio, and the repair below owns it for its one commit.
-FILE_ID_COLUMN = "rb_file_id"
-
-#: The upper bound of the binding's random id. ``generate_unused_id`` takes
-#: four random bytes and shifts them right by four, so the value is under
-#: 2 to the 28th. A volume whose inode counter has passed this cannot tell a
-#: random id from a stale one by magnitude, and the repair says so.
-BINDING_ID_LIMIT = 1 << 28
-
-#: The repair of a row the binding gave a random file id (U115). Registered by
-#: that repair alone and never at baseline, as :data:`ROW_DEFAULTS_POLICY` is.
-#:
-#: OWNED, NOT FILL IF EMPTY, because the value it replaces is present and
-#: wrong: a random id is what the row carries, and the file's inode is what
-#: rekordbox would have written. Nothing a person could have set is in this
-#: column, so an overwrite replaces only what the binding minted.
-FILE_ID_POLICY = FieldPolicy(
-    owner="row-file-id",
-    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),
-)
-
-#: The column rekordbox keys a row's file by on disk, the full path of the
-#: audio file as the row was imported.
-FOLDER_PATH_COLUMN = "FolderPath"
-
-#: The one write that moves a row's file (U154). ``intake shelve`` renames a
-#: landed batch folder into the processed tree and points every row it holds
-#: at the new path, in one commit. Registered by that verb alone and never at
-#: baseline, as the two row repairs are, so no other writer gains the column by
-#: its existing: a path write is how a row comes to point at nothing.
-#:
-#: OWNED, because the value it replaces is present and about to be wrong. The
-#: file is renamed before the row is written, so the path on the row at the
-#: commit names a folder that is no longer there, and the planned path is the
-#: one rekordbox would have recorded had it imported the file where it now is.
-SHELVE_POLICY = FieldPolicy(
-    owner="shelve",
-    fields=MappingProxyType({FOLDER_PATH_COLUMN: Ownership.OWNED}),
-)
-
-#: The column the binding's ``add_content`` sets from the TRACK menu item's
-#: ``rb_local_usn`` and rekordbox sets to one value on nearly every row it
-#: makes (A32, R-928). Measured on the live library on 2026-10-10: every row
-#: the native landing made carries ``2973454`` and no other row does, while
-#: 10,292 rows rekordbox made carry ``2950670``, every row since 2026-03 but a
-#: few dozen. It keys no table in the database and what it means is unknown.
-#:
-#: NOT A BOOKKEEPING COLUMN, for the reason the file id is not: the guard
-#: would go blind to it for every writer. The creation policy admits it on the
-#: row the binding makes, and the probe below owns it for its one commit.
-CONTENT_LINK_COLUMN = "ContentLink"
-
-#: The recording code, which rekordbox stores as an empty text on every row it
-#: makes from a file without one and the binding leaves NULL (A32). Measured on
-#: 2026-10-10: no row rekordbox made carries NULL here, every binding row does.
-ISRC_COLUMN = "ISRC"
-
-#: THE COLUMNS THE ROW PROBE MAY WRITE, and the type each value is stored as
-#: (A32, R-928). Enumerated on 2026-10-10 over all 78 content columns: these two
-#: and ``AnalysisUpdated`` are the only columns where a binding row carries a
-#: value or a storage shape that no row rekordbox made carries. The third is
-#: deliberately absent. It is an analysis column under R17, refused by the
-#: guard on every write, and it is tested by letting rekordbox analyse the row
-#: again rather than by writing it.
-#:
-#: NOT A BOOKKEEPING COLUMN, either of them: the guard would go blind to them
-#: for every writer.
-ROW_PROBE_COLUMNS: Mapping[str, type] = MappingProxyType(
-    {CONTENT_LINK_COLUMN: int, ISRC_COLUMN: str}
-)
-
-#: The owner a row probe registers its policy under.
-ROW_PROBE_OWNER = "row-probe"
-
-
-def row_probe_policy(columns: Iterable[str]) -> FieldPolicy:
-    """The policy one probe commit registers: exactly the probe columns it writes.
-
-    Built per commit rather than declared once, so a probe that writes only
-    one of the two columns admits only that one to the guard. OWNED, because
-    the value replaced is the binding's and never a person's. Refuses a column
-    outside :data:`ROW_PROBE_COLUMNS` with ``ValueError``, so no caller can
-    widen the probe by naming one.
-    """
-    wanted = set(columns)
-    outside = wanted - set(ROW_PROBE_COLUMNS)
-    if outside:
-        raise ValueError(f"not a row probe column: {sorted(outside)}")
-    return FieldPolicy(
-        owner=ROW_PROBE_OWNER,
-        fields=MappingProxyType(dict.fromkeys(sorted(wanted), Ownership.OWNED)),
-    )
-
-
-_REGISTERED: dict[str, FieldPolicy] = {}
-
-
-def register_field_policy(policy: FieldPolicy) -> None:
-    """Declare one operation's fields, widening the writable column set by exactly them.
-
-    Registration happens when the operation is enabled. An operation that is not
-    registered can write nothing at all, which is the property that makes the set
-    closed by construction rather than by review.
-    """
-    _REGISTERED[policy.owner] = policy
-
-
-def reset_field_policies() -> None:
-    """Return the registry to its baseline. For tests, and for a re-enabled profile."""
-    _REGISTERED.clear()
-    register_field_policy(TRACK_COLOR_POLICY)
-
-
-def registered_field_policies() -> Mapping[str, FieldPolicy]:
-    """Every operation currently permitted to write a content column."""
-    return MappingProxyType(dict(_REGISTERED))
-
-
-def content_writable_columns() -> frozenset[str]:
-    """The union of every registered operation's declared fields.
-
-    Derived by walking the registry rather than by listing, so an operation added
-    later cannot be missed and an operation disabled later cannot leave its
-    column writable (P3).
-    """
-    columns: set[str] = set()
-    for policy in _REGISTERED.values():
-        columns.update(policy.fields)
-    return frozenset(columns)
-
-
-reset_field_policies()
-
-
-@contextmanager
-def field_policies_for_commit(*policies: FieldPolicy) -> Iterator[None]:
-    """Register the named policies for the body and put the registry back after it.
-
-    REGISTERED FOR ONE COMMIT AND THEN PUT BACK, whatever happens inside: a
-    registration left behind would widen the guard for every writer that
-    commits later in the process. The registry as it was is restored, the
-    baseline colour policy included, and a policy another writer registered
-    before survives. Both row repairs enter their commit through this, so the
-    restore rule is spelled once (A32).
-    """
-    was = registered_field_policies()
-    try:
-        for policy in policies:
-            register_field_policy(policy)
-        yield
-    finally:
-        reset_field_policies()
-        for policy in was.values():
-            register_field_policy(policy)
-
-
-def guard_violations(
-    new: Iterable[tuple[str, Iterable[str]]],
-    dirty: Iterable[tuple[str, Iterable[str]]],
-    deleted: Iterable[str],
-    *,
-    content_columns: Iterable[str] | None = None,
-    removals: Iterable[str] = (),
-    creations: Iterable[str] = (),
-    deletions: Iterable[str] = (),
-) -> list[str]:
-    """Judge a pending session against the whitelist. Empty means allowed.
-
-    ``removals`` names the tables this one commit admits a soft delete in. It
-    is empty for every writer but the membership move and the INBOX rotation,
-    and a name outside :data:`REMOVABLE_TABLES` is itself a violation.
-
-    ``creations`` names the tables this one commit admits a creation in beyond
-    the whitelist, the same shape for the same reason (R-746). It is empty for
-    every writer but the one that lands a file in the collection, a name
-    outside :data:`ADMITTABLE_ROW_TABLES` is itself a violation, and an
-    admitted content row is judged against :data:`CONTENT_ROW_EMPTY_COLUMNS`
-    rather than waved through: what makes the admission safe is that the row
-    declares nothing rekordbox derives from the audio.
-
-    ``deletions`` names the tables this one commit admits a HARD delete in
-    (U288). It is empty for every writer but the removal from the collection,
-    and a name outside :data:`DELETABLE_TABLES` is itself a violation. A delete
-    in any table it does not name is refused as every delete always was; which
-    rows go is judged from SQL by :func:`assert_collection_removal_confined`.
-
-    PURE, and that is what makes it the part of the safety chain that is actually
-    tested. It takes table names and column names, so every branch is reachable
-    with literal inputs and no database at all.
-
-    It returns EVERY violation rather than the first. A guard that stops at the
-    first finding turns one review into as many round trips as there are
-    problems, which is how a guard becomes something people work around.
-    """
-    writable = (
-        frozenset(content_columns)
-        if content_columns is not None
-        else content_writable_columns()
-    )
-    violations: list[str] = []
-    admitted = frozenset(removals)
-    for table in sorted(admitted - REMOVABLE_TABLES):
-        violations.append(
-            f"asks to remove rows in {table!r}, and a removal is admitted in "
-            f"{sorted(REMOVABLE_TABLES)} and nowhere else"
-        )
-    admitted &= REMOVABLE_TABLES
-    creatable = frozenset(creations)
-    for table in sorted(creatable - ADMITTABLE_ROW_TABLES):
-        violations.append(
-            f"asks to create rows in {table!r}, and a creation beyond the "
-            f"whitelist is admitted in {sorted(ADMITTABLE_ROW_TABLES)} and nowhere else"
-        )
-    creatable &= ADMITTABLE_ROW_TABLES
-    deletable = frozenset(deletions)
-    for table in sorted(deletable - DELETABLE_TABLES):
-        violations.append(
-            f"asks to delete rows in {table!r}, and a delete is admitted in "
-            f"{sorted(DELETABLE_TABLES)} and nowhere else"
-        )
-    deletable &= DELETABLE_TABLES
-
-    for table, columns in new:
-        if table == CONTENT_TABLE and table in creatable:
-            # THE ONE ADMISSION (R-746), with its column policy judged here and
-            # again from SQL in ``assert_created_rows_are_gridless``. A row a
-            # landing creates carries what the file's tags and the filesystem
-            # say. Every column rekordbox fills during analysis stays empty.
-            declared = {column for column in columns if column in CONTENT_ROW_EMPTY_COLUMNS}
-            if declared:
-                violations.append(
-                    f"creates a {CONTENT_TABLE} row declaring analysis column(s): "
-                    f"{sorted(declared)}; a row this product creates carries what "
-                    f"the file says and rekordbox derives the rest from the audio"
-                )
-            continue
-        if table in LOOKUP_TABLES and table in creatable:
-            # U163. A lookup row a landing mints carries a name and nothing
-            # rekordbox derives, judged as any other creation is.
-            declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
-            if declared:
-                violations.append(
-                    f"creates a row in {table!r} declaring analysis column(s): "
-                    f"{sorted(declared)}; a row this product creates is gridless and "
-                    f"rekordbox derives the grid from the audio"
-                )
-            continue
-        if table == CONTENT_TABLE:
-            violations.append(
-                f"creates a {CONTENT_TABLE} row; only a landing whose commit admits "
-                f"one by name may, and an import in the XML bridge is what every "
-                f"other intake performs"
-            )
-            continue
-        if table not in PERMITTED_ROW_TABLES:
-            violations.append(f"creates a row in the non-whitelisted table {table!r}")
-            continue
-        # W3. A CREATION used to be judged on its table name alone, so a row in a
-        # permitted table could declare any column at all, analysis columns
-        # included. The column set was bound and then discarded.
-        declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
-        if declared:
-            violations.append(
-                f"creates a row in {table!r} declaring analysis column(s): "
-                f"{sorted(declared)}; a row this product creates is gridless and "
-                f"rekordbox derives the grid from the audio"
-            )
-
-    for table, columns in dirty:
-        columns = set(columns)
-        # THE MARKER IS JUDGED BEFORE THE BOOKKEEPING FILTER DROPS IT (R-758).
-        # It is a bookkeeping column, so a row whose only change was the marker
-        # used to read as untouched, in any table, and a writer could remove a
-        # track from the collection with the guard saying nothing.
-        if SOFT_DELETE_COLUMN in columns and table not in admitted:
-            violations.append(
-                f"changes the soft delete marker of a row in {table!r}, which "
-                f"removes it; writers are additive-only and this commit admits "
-                f"no removal there"
-            )
-        modified = {column for column in columns if column not in BOOKKEEPING_COLUMNS}
-        if not modified:
-            continue
-        if table == CONTENT_TABLE:
-            forbidden = modified - writable
-            if forbidden:
-                violations.append(
-                    f"modifies non-whitelisted {CONTENT_TABLE} column(s): {sorted(forbidden)}"
-                )
-        elif table not in PERMITTED_ROW_TABLES:
-            violations.append(
-                f"modifies the non-whitelisted table {table!r}: {sorted(modified)}"
-            )
-
-    for table in deleted:
-        # Unconditional for every writer but one. No flag, no configuration.
-        # Additive only is what makes the snapshot a real safety net: if nothing
-        # is ever removed, the worst outcome of a bad run is extra rows, which a
-        # person can see and remove. Deletion is the one operation whose damage
-        # is invisible. The removal R-758 admits is a soft delete and arrives as
-        # a modification, so it never reaches this loop and ``removals`` does
-        # not apply here. THE ONE HARD DELETE (U288) is rekordbox's own Remove
-        # from Collection, measured at two sittings (A178, A185): admitted only
-        # in a table the commit names in ``deletions``, only from
-        # :data:`DELETABLE_TABLES`, and judged row by row from SQL before the
-        # commit by :func:`assert_collection_removal_confined`.
-        if table in deletable:
-            continue
-        violations.append(f"deletes a row in {table!r}; writers are additive-only")
-
-    return violations
-
-
-#: Reported instead of a column name when an object cannot be introspected.
-#: Guaranteed to be outside every writable set, so it refuses.
-UNINSPECTABLE = "<uninspectable>"
-
-#: Reported for a re-parented row, whose changed column the binding's buffer does
-#: not carry. A named sentinel rather than an empty set, because an empty set is
-#: indistinguishable from a bookkeeping-only touch and would skip the table check
-#: entirely. On a whitelisted table it passes, on any other it refuses, which is
-#: exactly the judgement a move deserves.
-MOVED = "<moved>"
-
-
-def clear_registry_buffer() -> None:
-    """Empty the binding's process-wide update buffer.
-
-    Called when a write session opens. The binding already does this inside its
-    own open, so this is belt and braces, and it is cheap. It is here because the
-    guard's correctness now DEPENDS on the buffer describing this session and no
-    other, and a dependency that important should be asserted by this module
-    rather than inherited from a library's implementation detail. A test pins it.
-    """
-    try:
-        from pyrekordbox.db6.registry import RekordboxAgentRegistry
-    except Exception:  # noqa: BLE001 - binding absent means no buffer to clear
-        return
-    RekordboxAgentRegistry.clear_buffer()
-
-
-def _table_of(obj: Any) -> str | None:
-    table = getattr(obj, "__table__", None)
-    return getattr(table, "name", None)
-
-
-def _columns_of(obj: Any) -> set[str]:
-    """The columns an EXISTING object reports as changed. Fails closed."""
-    from sqlalchemy import inspect as sa_inspect
-
-    try:
-        return {
-            attribute.key
-            for attribute in sa_inspect(obj).attrs
-            if attribute.history.has_changes()
-        }
-    except Exception:  # noqa: BLE001 - un-inspectable means treat as all-changed
-        return {UNINSPECTABLE}
-
-
-def _declared_columns(obj: Any) -> set[str]:
-    """The columns a NOT YET FLUSHED object carries a value for.
-
-    Deliberately does NOT go through the object mapper. Inspecting a transient
-    instance forces mapper configuration, and if that configuration fails the
-    failure is CACHED process-wide: every later mapper use then raises, including
-    in code that had nothing to do with the guard. Swallowing the exception here
-    does not undo it, because the damage is recorded inside the mapper registry
-    rather than raised past us. Reading the instance dictionary asks the same
-    question and touches none of that machinery.
-
-    Fails closed, like its sibling: an object with no table reports the sentinel.
-    """
-    table = getattr(obj, "__table__", None)
-    if table is None:
-        return {UNINSPECTABLE}
-    names = {column.name for column in table.columns}
-    try:
-        state = vars(obj)
-    except TypeError:  # no instance dictionary to read
-        return {UNINSPECTABLE}
-    return {key for key, value in state.items() if key in names and value is not None}
-
-
-def _session_changes(
-    session: Any,
-) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
-    """Adapt an object-mapper session into the judge's inputs, keyed by instance.
-
-    FAILS CLOSED. An object whose state cannot be introspected reports a
-    placeholder column name, which is guaranteed to be outside any writable set
-    and therefore refuses. The alternative, reporting no changed columns, would
-    let exactly the objects we cannot see through unexamined.
-
-    NOT SUFFICIENT ON ITS OWN, which is the whole of W2. ``session.new`` and
-    ``session.dirty`` are emptied by any flush, and SQLAlchemy flushes pending
-    work before a query so the query can see it. A flushed INSERT is still
-    uncommitted and still rollback-able, but it has left these collections, so a
-    guard reading only them judges an empty session and approves. Every one of
-    this module's own primitives does an add followed by a lookup, in a loop, so
-    the blindness is the normal case rather than the exotic one.
-
-    Keyed by ``id(instance)`` so the union with the registry buffer merges rather
-    than double-reports.
-    """
-    created = {
-        id(obj): (_table_of(obj) or UNINSPECTABLE, _declared_columns(obj)) for obj in session.new
-    }
-    modified = {
-        id(obj): (_table_of(obj) or UNINSPECTABLE, _columns_of(obj)) for obj in session.dirty
-    }
-    removed = {id(obj): (_table_of(obj) or UNINSPECTABLE) for obj in session.deleted}
-    return created, modified, removed
-
-
-def _buffer_entries(db: Any) -> list[tuple[Any, str | None, str, list[Any]]]:
-    """ONE walk of the binding's update buffer, for both readers of it.
-
-    Each entry as ``(entry, op, key, instances)``. ``op`` is None for an
-    entry whose shape this code does not understand, and the readers refuse
-    on it rather than skip it. "move" carries a LIST of instances; the other
-    three carry one, and both are handed over as a list so a reader has one
-    shape to walk. Empty without a handle, for the scoping reason
-    :func:`_registry_changes` gives, and empty without the binding.
-    """
-    if db is None:
-        return []
-    try:
-        from pyrekordbox.db6.registry import RekordboxAgentRegistry
-    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
-        return []
-    walked: list[tuple[Any, str | None, str, list[Any]]] = []
-    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
-        try:
-            target, op, key, _value = entry
-        except (TypeError, ValueError):  # a shape this code does not understand
-            walked.append((entry, None, "", []))
-            continue
-        instances = list(target) if isinstance(target, (list, tuple)) else [target]
-        walked.append((entry, str(op), str(key) if key else "", instances))
-    return walked
-
-
-def _registry_changes(
-    db: Any,
-) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
-    """The same judgement inputs, read from the binding's own update buffer.
-
-    ``RekordboxAgentRegistry.__update_sequence__`` is a process-wide list the
-    binding appends to on every tracked write. Crucially it is NOT emptied by a
-    flush: it is cleared only on open, close, commit and rollback. So it still
-    holds a creation that autoflush has already carried out of ``session.new``,
-    which is exactly what makes it the fix for W2.
-
-    It is not sufficient on its own either. The binding disables its own tracking
-    around a dozen of its internal operations, and a raw ``session.add`` never
-    reaches it at all. Neither source is complete, so the guard reads the UNION.
-    Stating that plainly matters: a derivation that is nearly complete invites
-    trust it has not earned (P4).
-
-    Reads a list. Runs no query, so it cannot flush anything itself.
-
-    SCOPED TO A HANDLE, DELIBERATELY. The buffer is a CLASS attribute, shared
-    process wide, and the binding clears it on open, close, commit and rollback
-    rather than per session. So without an open handle there is no session whose
-    buffer this could be, and reading it anyway attributes another caller's
-    writes to this one. That is not hypothetical: it fired the first time this
-    ran, when a guard called with no handle inherited rows created by earlier
-    work in the same process and refused a write that was perfectly legitimate.
-    A guard that refuses correct code is one people route around (P7).
-    """
-    created: dict[int, tuple[str, set[str]]] = {}
-    modified: dict[int, tuple[str, set[str]]] = {}
-    removed: dict[int, str] = {}
-
-    for entry, op, key, instances in _buffer_entries(db):
-        if op is None:
-            # A shape this code does not understand. Refuse rather than ignore.
-            modified[id(entry)] = (UNINSPECTABLE, {UNINSPECTABLE})
-            continue
-        for obj in instances:
-            table = _table_of(obj)
-            if table is None:
-                modified[id(obj)] = (UNINSPECTABLE, {UNINSPECTABLE})
-            elif op == "create":
-                created[id(obj)] = (table, _declared_columns(obj))
-            elif op == "update":
-                seen = modified.get(id(obj))
-                columns = set(seen[1]) if seen else set()
-                columns.add(key if key else UNINSPECTABLE)
-                modified[id(obj)] = (table, columns)
-            elif op == "delete":
-                removed[id(obj)] = table
-            elif op == "move":
-                modified[id(obj)] = (table, {MOVED})
-            else:
-                # An operation this code has never heard of. Refuse rather than
-                # ignore: a future binding adding a fifth op must fail loudly
-                # here, not pass silently.
-                modified[id(obj)] = (table, {UNINSPECTABLE})
-    return created, modified, removed
-
-
-def pending_changes(
-    session: Any, db: Any = None
-) -> tuple[list[tuple[str, set[str]]], list[tuple[str, set[str]]], list[str]]:
-    """Everything this session will write, from BOTH sources, unioned.
-
-    Creation wins over modification for the same instance: a row created and then
-    updated in one session is a creation, and reporting it as both would produce
-    two findings for one act.
-    """
-    s_created, s_modified, s_removed = _session_changes(session)
-    r_created, r_modified, r_removed = _registry_changes(db)
-
-    created = {**r_created, **s_created}
-
-    modified: dict[int, tuple[str, set[str]]] = {}
-    for source in (r_modified, s_modified):
-        for key, (table, columns) in source.items():
-            seen = modified.get(key)
-            modified[key] = (table, (set(seen[1]) if seen else set()) | set(columns))
-
-    # Creation wins.
-    for key in created:
-        modified.pop(key, None)
-
-    removed = {**r_removed, **s_removed}
-
-    return list(created.values()), list(modified.values()), list(removed.values())
-
-
-def pending_objects(session: Any, db: Any = None) -> list[tuple[Any, str, frozenset[str]]]:
-    """Every object this session will write, with what it does and which columns.
-
-    The same two sources :func:`pending_changes` unions, the session's pending
-    collections and the binding's update buffer, kept as OBJECTS rather than
-    as table names, for a guard whose question is which rows and not which
-    tables (U185). ``op`` is ``create``, ``modify`` or ``delete``; creation
-    wins over modification for one object, as it does there. An entry whose
-    shape the buffer reader does not understand is left out here, since the
-    whitelist already refuses it under its own name.
-    """
-    found: dict[int, tuple[Any, str, set[str]]] = {}
-
-    def note(obj: Any, op: str, columns: Iterable[str]) -> None:
-        seen = found.get(id(obj))
-        if seen is not None and seen[1] == "create":
-            return
-        if seen is not None and op == "modify" and seen[1] == "modify":
-            found[id(obj)] = (obj, op, seen[2] | set(columns))
-            return
-        found[id(obj)] = (obj, op, set(columns))
-
-    for _entry, op, key, instances in _buffer_entries(db):
-        for obj in instances:
-            if op == "create":
-                note(obj, "create", _declared_columns(obj))
-            elif op == "delete":
-                note(obj, "delete", ())
-            elif op == "update":
-                note(obj, "modify", (key or UNINSPECTABLE,))
-            elif op == "move":
-                note(obj, "modify", (MOVED,))
-    if session is not None:
-        for obj in list(getattr(session, "new", ())):
-            note(obj, "create", _declared_columns(obj))
-        for obj in list(getattr(session, "dirty", ())):
-            note(obj, "modify", _columns_of(obj))
-        for obj in list(getattr(session, "deleted", ())):
-            note(obj, "delete", ())
-    return [(obj, op, frozenset(columns)) for obj, op, columns in found.values()]
-
-
 def assert_foreign_untouched(db: Any) -> None:
     """Refuse a commit that would change another app's folder at the top (U185).
 
-    ASKED TWO WAYS, because neither sees everything. The pending objects are
-    what the session will write and have not yet flushed; the subtree read
-    again from SQL is what a flush or raw SQL already put in the transaction,
-    compared with the reading :func:`open_db` kept. A handle with no reading,
-    or one whose reading at open failed, REFUSES: whether the write leaves the
-    folder alone is then a question nobody looked at.
+    ASKED TWO WAYS: the pending objects, and the subtree reread from SQL against
+    the reading :func:`open_db` kept. A handle with no reading REFUSES.
     """
     from cratekit.core import foreign_tree
 
@@ -3670,60 +934,15 @@ def assert_foreign_untouched(db: Any) -> None:
         )
 
 
-def _registry_created_instances(db: Any) -> dict[int, Any]:
-    """The INSTANCES the binding's buffer records a creation for, keyed by identity.
-
-    :func:`_registry_changes` reduces each entry to a table and a column set,
-    which is what the whitelist judge needs and is not enough for a read back:
-    the SQL check below needs the object, because the object is what knows its
-    primary key once the flush has assigned one. Same buffer, same scoping rule,
-    read for a different purpose. Runs no query.
-    """
-    found: dict[int, Any] = {}
-    for _entry, op, _key, instances in _buffer_entries(db):
-        if op != "create":
-            continue
-        for obj in instances:
-            found[id(obj)] = obj
-    return found
-
-
-#: What "empty" is for a column an analysis pass fills: every spelling the
-#: database uses for a value nobody wrote. ``'0'`` is the key identifier of a
-#: row rekordbox has not analysed, and the empty string is its artwork path.
-#: PUBLIC, because the landing reads the committed rows back against the same
-#: notion of empty, and a second spelling there is how the read back comes to
-#: refuse a row the guard admitted.
-EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0")
-
-
 def assert_created_rows_are_gridless(db: Any) -> None:
     """Verify from SQL that no row this session creates carries analysis data.
 
-    WHY NOT READ THE OBJECT. The mapped object is our own construction, so
-    reading an attribute off it reports what the writer INTENDED rather than what
-    the database will store, and between that read and the INSERT the binding's
-    own machinery still runs: it stamps a local update sequence onto every
-    buffered instance, and column defaults are applied by the database rather
-    than by the attribute. Second, after a flush the object may be expired, so
-    reading an attribute can trigger a fresh load and the answer then depends on
-    session cache state rather than on the row. The in-memory check in
-    ``guard_violations`` is a backstop; this is the check.
-
-    ORDERING IS LOAD BEARING. The flush here is DELIBERATE and happens after the
-    guard has already captured what it is judging, so it cannot be the flush that
-    blinds the guard. It runs before the commit, so a violation still rolls back.
-    A check that only ran after the commit would find a violation it could no
-    longer undo, leaving a snapshot restore as the sole remedy.
-
-    THE ROWS READ BACK COME FROM BOTH SOURCES (R-760). This used to walk
-    ``session.new`` alone, so a creation the binding had already flushed, which
-    is every row its own ``add_content`` makes, was counted as pending and then
-    never read: the whitelist saw it through the buffer and this check saw
-    nothing. The buffer's instances are read here for the same reason the
-    whitelist reads them, and a content row is held to the wider list
-    :data:`CONTENT_ROW_EMPTY_COLUMNS` and to owning no row in any table an
-    analysis pass writes.
+    NOT FROM THE OBJECT, which reports intent, not what the database stores after
+    the binding's stamping and defaults. ORDERING IS LOAD BEARING: the deliberate
+    flush comes after the guard captured its inputs and before the commit, so a
+    violation still rolls back. THE ROWS COME FROM BOTH SOURCES (R-760), and a
+    content row is held to :data:`CONTENT_ROW_EMPTY_COLUMNS` and to owning no
+    analysis table row.
     """
     session = getattr(db, "session", None)
     if session is None:
@@ -3737,7 +956,7 @@ def assert_created_rows_are_gridless(db: Any) -> None:
     if not instances:
         return
 
-    # Resolve the objects again by identity so the primary keys are populated.
+    # The flush populates the primary keys.
     try:
         session.flush()
     except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
@@ -3815,89 +1034,6 @@ def assert_session_whitelisted(
 
 
 # ---------------------------------------------------------------------------
-# Per-field metadata policy: the semantic gate above the structural one
-# ---------------------------------------------------------------------------
-
-
-class Decision(StrEnum):
-    """What the per-field policy says about one proposed write."""
-
-    WRITE = "write"
-    SKIP_SAME = "skip_same"
-    SKIP_PRESENT = "skip_present"
-    SKIP_UNOWNED = "skip_unowned"
-
-
-#: What "unset" means per column, because fill-if-empty has to know when a value
-#: is absent and the database spells absence three ways.
-#:
-#: AN HONEST LIST RATHER THAN A DERIVATION. A rule such as "identifier columns
-#: also count zero as empty" covers four of these five and quietly misses the
-#: rating, and a derivation that is nearly complete is worse than a list, because
-#: it invites trust (P4). Anything not named here falls back to the two spellings
-#: every column shares.
-FIELD_EMPTIES: Mapping[str, tuple[Any, ...]] = MappingProxyType(
-    {
-        "Title": (None, ""),
-        "Rating": (None, "", 0, "0"),
-        "GenreID": (None, "", 0, "0"),
-        "KeyID": (None, "", 0, "0"),
-        "ColorID": (None, "", 0, "0"),
-    }
-)
-
-_DEFAULT_EMPTIES: tuple[Any, ...] = (None, "")
-
-
-def metadata_decision(
-    owner: str,
-    field_name: str,
-    current: Any,
-    new: Any,
-    *,
-    policies: Mapping[str, FieldPolicy] | None = None,
-) -> Decision:
-    """Decide one field write. Pure, so every operation is testable without a database.
-
-    CLOSED BY CONSTRUCTION. An operation that has not registered, or a field it
-    did not declare, is unowned and writes nothing. That is what makes ratings a
-    person set, colours a person chose, and comments a person typed unwritable by
-    automation: they simply have no policy entry.
-    """
-    table = policies if policies is not None else _REGISTERED
-    policy = table.get(owner)
-    mode = None if policy is None else policy.fields.get(field_name)
-    if mode is None:
-        return Decision.SKIP_UNOWNED
-    if str(current) == str(new):
-        return Decision.SKIP_SAME  # idempotent: re-running a run is a no-op
-    if mode is Ownership.OWNED:
-        return Decision.WRITE
-    empties = FIELD_EMPTIES.get(field_name, _DEFAULT_EMPTIES)
-    return Decision.WRITE if current in empties else Decision.SKIP_PRESENT
-
-
-def write_metadata_field(
-    row: Any,
-    owner: str,
-    field_name: str,
-    new_value: Any,
-    *,
-    policies: Mapping[str, FieldPolicy] | None = None,
-) -> Decision:
-    """Apply the per-field policy to one existing row and report what happened.
-
-    Does not commit. The caller batches and calls :func:`commit_guarded`, whose
-    whitelist is the structural backstop underneath this semantic one.
-    """
-    current = getattr(row, field_name, None)
-    decision = metadata_decision(owner, field_name, current, new_value, policies=policies)
-    if decision is Decision.WRITE:
-        setattr(row, field_name, new_value)
-    return decision
-
-
-# ---------------------------------------------------------------------------
 # The cross-process write-session lock
 # ---------------------------------------------------------------------------
 
@@ -3905,12 +1041,8 @@ def write_metadata_field(
 def _acquire_exclusive(handle: Any) -> None:
     """Take a non-blocking exclusive lock on an open file. Raises OSError on contention.
 
-    Two backends, selected at call time rather than at import so the module stays
-    importable on a platform with neither. Both give the property that matters:
-    the kernel releases the lock when the holder dies, which IS the stale-lock
-    recovery story. A lock file carrying a process identifier is deliberately not
-    used, because reclaiming one means unlinking and recreating, and that races a
-    live holder.
+    The kernel releases it when the holder dies, which IS the stale-lock recovery;
+    a pid file would race a live holder when reclaimed.
     """
     if sys.platform.startswith("win"):  # pragma: no cover - needs Windows
         import msvcrt
@@ -3938,27 +1070,12 @@ def _release_exclusive(handle: Any) -> None:
 def write_session_lock(path: Path | str | None = None, *, cfg: config.Config | None = None):
     """Hold the write-session lock for a whole session: snapshot through smoke test.
 
-    Two writers must not interleave. The membership helper's read-then-insert and
-    the update counter's autoincrement are race-free only under this lock, and a
-    failing writer's snapshot restore would otherwise erase a concurrent writer's
-    committed work.
-
-    THE FILE IS NEVER UNLINKED. Unlinking it to "clean up" races a live holder
-    that is holding a lock on the inode, and the second process then creates a
-    fresh file and locks that instead, so both believe they hold it.
-
-    NOT THE SAME LOCK AS THE SESSION LOCK, and the difference is scope rather
-    than mechanism. This one is narrow: it is held from capture through smoke
-    test so two writers cannot interleave. ``core.session`` holds a wider one on
-    its own file for a whole destructive session, so a second process refuses at
-    the door instead of part way through. Both call the same two acquisition
-    helpers below, deliberately: a second implementation of one primitive is a
-    second chance for the two to differ on a platform nobody tests.
+    Two writers must not interleave. THE FILE IS NEVER UNLINKED, since that races
+    a holder locking the inode. Narrower than ``core.session``'s lock, sharing the
+    same acquisition helpers.
     """
     target = Path(path) if path is not None else write_lock_path(cfg)
-    # The directory mode is part of the file mode: a private lock file inside a
-    # world-writable directory can be unlinked and replaced by any local account,
-    # which takes mutual exclusion with it (P1).
+    # A private directory too, or the lock file can be replaced (P1).
     config.mkdir_private(target.parent)
 
     handle = open(target, "a+")
@@ -3967,10 +1084,8 @@ def write_session_lock(path: Path | str | None = None, *, cfg: config.Config | N
             try:
                 os.chmod(target, config.PRIVATE_FILE_MODE)
             except OSError as exc:
-                # Best effort, and deliberately not fatal. The mode matters, but
-                # not as much as the lock: a second person on a shared machine
-                # cannot chmod a file the first one created, and refusing there
-                # would turn a cosmetic problem into no mutual exclusion at all.
+                # Best effort: on a shared machine the mode may be unsettable, and
+                # refusing would cost mutual exclusion itself.
                 logger.debug("could not set the mode on the write lock at %s: %s", target, exc)
         try:
             _acquire_exclusive(handle)
@@ -4010,18 +1125,10 @@ class CommitWitness:
 def commit_witness(db: Any) -> Iterator[CommitWitness]:
     """Tell a commit that LANDED and then raised from one that never landed.
 
-    AN EXCEPTION OUT OF A COMMIT DOES NOT MEAN NOTHING WAS COMMITTED. The
-    binding's ``commit`` lands the SQL transaction FIRST and only then reconciles
-    and saves rekordbox's legacy playlist file, so a failure in that second half
-    arrives as an exception over rows that are already durable. A caller that
-    reads the exception as "nothing landed" rolls back, which by then does
-    nothing, and records a session that committed no work, and the next restore
-    reaches back past those rows without asking.
-
-    Asked of the engine rather than inferred from where the exception came from:
-    the listener is SQLAlchemy's own ``after_commit``, which fires when the
-    transaction has landed and at no other time. Removed on the way out, so a
-    handle that outlives this block is left as it was found.
+    AN EXCEPTION OUT OF A COMMIT DOES NOT MEAN NOTHING WAS COMMITTED: the binding
+    lands the SQL first, then saves the legacy playlist file, so a rollback then
+    does nothing and a restore would silently reach past durable rows. Asked of
+    SQLAlchemy's ``after_commit`` event, removed on the way out.
     """
     from sqlalchemy import event
 
@@ -4047,47 +1154,18 @@ def commit_guarded(
 ) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
-    ``removals`` IS EMPTY FOR EVERY WRITER BUT A FEW. It names the tables this
-    commit admits a soft delete in, and the whitelist holds it to
-    :data:`REMOVABLE_TABLES`. The membership move names the membership table
-    and the INBOX rotation names both (U111), as the favourites month split
-    does for the quarters it retires (U145). Any other commit refuses a
-    changed marker.
-
-    ``creations`` IS EMPTY FOR EVERY WRITER BUT ONE AS WELL (R-746). It names
-    the tables this commit admits a creation in beyond the whitelist, the
-    whitelist holds it to :data:`ADMITTABLE_ROW_TABLES`, and a source guard
-    holds the callers that pass it to the native landing. Any other commit
-    refuses a content row, as every commit did before the landing existed.
-
-    ``deletions`` IS EMPTY FOR EVERY WRITER BUT THE REMOVAL FROM THE COLLECTION
-    (U288). It names the tables this commit admits a hard delete in, held to
-    :data:`DELETABLE_TABLES`, and a source guard holds its one caller to
-    ``sync.removed``. Any other commit refuses every delete the session or the
-    binding's buffer reports, as before.
-
-    RE-CHECKED AT COMMIT, NOT ONLY AT OPEN, AND UNCONDITIONALLY. A run takes
-    minutes, and the user can launch rekordbox during it. The open-time process
-    refusal is behind a flag a caller can forget; this one is not, which is what
-    makes it the real backstop.
-
-    A GUARD FAILURE ROLLS THE SESSION BACK. Leaving the rejected objects pending
-    would carry them into whatever commits next, so a refused write would land
-    later under a different operation's name.
-
-    The binding's post-commit reconciliation logs one warning per playlist absent
-    from rekordbox's legacy playlist file, which under rekordbox 7 is a near-empty
-    artifact. That logger is quietened for the duration of the commit only, and
-    restored in a finally, so a failure cannot leave the process permanently
-    quieter than it was.
+    ``removals`` (U111, U145), ``creations`` (R-746) and ``deletions`` (U288) are
+    empty for every writer but their few, held to their tables by the whitelist
+    and to their callers by source guards. RE-CHECKED AT COMMIT, UNCONDITIONALLY:
+    rekordbox can launch mid-run, and the open-time refusal sits behind a flag. A
+    GUARD FAILURE ROLLS THE SESSION BACK, so a refused write never lands later
+    under another name. The binding's reconciliation logger is quietened for the
+    commit only, restored in a finally.
     """
     assert_rekordbox_closed("committing")
 
-    # EVERY PRE-COMMIT CHECK RUNS WITH THE AUTOMATIC FLUSH SUSPENDED. The checks
-    # below read the database, and a query would otherwise flush the caller's
-    # pending work before the whitelist has judged it, which empties the
-    # collections the whitelist inspects. See ``_no_autoflush``: this is the one
-    # ordering in the module where a read can defeat a guard.
+    # EVERY PRE-COMMIT CHECK RUNS WITH THE AUTOMATIC FLUSH SUSPENDED, so no read
+    # empties what the whitelist inspects; see ``_no_autoflush``.
     with _no_autoflush(getattr(db, "session", None)):
         if cloud_sync_active(db):
             raise _unavailable(
@@ -4098,18 +1176,13 @@ def commit_guarded(
         assert_cloud_sync_readable(db, force=force_cloud_canary)
 
         try:
-            # Reads the binding's update buffer as well as the session, so a
-            # write autoflush has already carried out of ``session.new`` is
-            # still judged (W2).
+            # Reads the buffer too, so an autoflushed write is still judged (W2).
             assert_session_whitelisted(
                 db.session, db, removals=removals, creations=creations, deletions=deletions
             )
             assert_created_rows_are_gridless(db)
             assert_foreign_untouched(db)
         except RekordboxUnavailable:
-            # Rolled back rather than left pending: carrying rejected objects
-            # forward would land a refused write later, under whatever operation
-            # commits next and in that operation's name.
             db.rollback()
             raise
 
@@ -4123,545 +1196,13 @@ def commit_guarded(
         reconciliation_logger.setLevel(previous)
 
 
-# The collection removal's own reads and checks (U288)
-
-
-def _tables(session: Any) -> tuple[str, ...]:
-    from sqlalchemy import text
-
-    rows = session.execute(
-        text("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-    ).fetchall()
-    return tuple(str(row[0]) for row in rows if not str(row[0]).startswith("sqlite_"))
-
-
-def _columns(session: Any, table: str) -> tuple[tuple[str, int], ...]:
-    """Each column's name and its place in the primary key (0 when it is not in it)."""
-    from sqlalchemy import text
-
-    return tuple(
-        (str(row[1]), int(row[5] or 0))
-        for row in session.execute(text(f'PRAGMA table_info("{table}")')).fetchall()
-    )
-
-
-def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[str, int]]:
-    """Every row naming one of ``content_ids`` in a table the removal does NOT delete from.
-
-    Read from SQL over every table the database holds, by its
-    ``ContentID`` column and by ``TargetID`` where a table has one
-    (``imageFile``), so a table the binding does not map is asked too.
-    ``uuidIDMap`` names rows by ``CurrentID``, which is not asked, and
-    rekordbox was measured to leave it.
-    ``{content id: {table: rows}}``, empty when nothing outside
-    :data:`DELETABLE_TABLES` names any of them. A table A178 and A185 did not
-    measure (My Tag, the sampler, related tracks, the hot cue bank list, the
-    tag list, the active censor, or one this build has never heard of) is one
-    whose rows rekordbox may delete or keep, so a row holding one is refused
-    rather than guessed at.
-    """
-    from sqlalchemy import bindparam, text
-
-    wanted = sorted({str(one) for one in content_ids})
-    found: dict[str, dict[str, int]] = {}
-    if not wanted:
-        return found
-    session = db.session
-    for table in _tables(session):
-        if table in DELETABLE_TABLES:
-            continue
-        names = {name for name, _pk in _columns(session, table)}
-        asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []
-        if TARGET_REFERENCE_COLUMN in names:
-            asked.append(TARGET_REFERENCE_COLUMN)
-        for column in asked:
-            statement = text(
-                f'SELECT {column}, COUNT(*) FROM "{table}" '
-                f"WHERE {column} IN :ids GROUP BY {column}"
-            ).bindparams(bindparam("ids", expanding=True))
-            for content_id, count in session.execute(statement, {"ids": wanted}).fetchall():
-                held = found.setdefault(str(content_id), {})
-                held[table] = held.get(table, 0) + int(count)
-    return found
-
-
-def _mapped(table: str) -> Any:
-    from pyrekordbox.db6 import tables
-
-    for mapper in tables.Base.registry.mappers:
-        if getattr(mapper.class_, "__tablename__", None) == table:
-            return mapper.class_
-    raise _unavailable(
-        "whitelist-violation",
-        f"the binding maps no class for {table!r}, so a track's rows there cannot be "
-        f"deleted through it; nothing was written",
-        detail={"table": table},
-    )
-
-
-def database_id(db: Any) -> str | None:
-    """rekordbox's own identifier for the library, ``DjmdProperty.DBID``, or None.
-
-    What a recorded removal is bound to, as the deletion watermark is: a
-    position in one database's update count means nothing in another's.
-    """
-    held = db.get_property()
-    row = held.first() if hasattr(held, "first") else held
-    identity = getattr(row, "DBID", None) if row is not None else None
-    return str(identity) if identity else None
-
-
-def recorded_columns(row: Any) -> dict[str, Any]:
-    """One collection row's :data:`RECORDED_COLUMNS`, read off it before it is deleted."""
-    found: dict[str, Any] = {}
-    for name in RECORDED_COLUMNS:
-        value = getattr(row, name, None)
-        found[name] = value if value is None or isinstance(value, (int, float)) else str(value)
-    return found
-
-
-def remove_from_collection(db: Any, content_id: str) -> dict[str, tuple[str, ...]]:
-    """Delete one live track's every row in :data:`COLLECTION_REMOVAL_TABLES`. Returns them by table.
-
-    THE ONE HARD DELETE THIS PRODUCT MAKES, and it is rekordbox's own (A178,
-    A185): Remove from Collection deletes the content row and every row naming
-    it in the six tables beside it, outright, none of them soft deleted, and
-    leaves each playlist and history list row untouched and possibly empty.
-    So does this. The members after it in a playlist that keeps others are
-    renumbered by :class:`CollectionRemoval`, not here (R-1830), and a history
-    list is left numbered as it was, since what rekordbox does there was not
-    measured.
-
-    THROUGH THE BINDING'S OWN DELETE, so each row reaches its update buffer:
-    the whitelist judges it, and the commit advances ``localUpdateCount`` once
-    per row deleted, stamping only the rows that go, so no surviving row
-    carries the new values, which is what A178 and A185 read. The children
-    first and the content row last.
-
-    REFUSED, WITH NOTHING DELETED: a content id the database holds no live row
-    for, and one that a table outside the removal set names
-    (:func:`content_references`), since what rekordbox does with that row was
-    never measured.
-
-    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`
-    with ``deletions`` naming :data:`DELETABLE_TABLES`, after
-    :func:`assert_collection_removal_confined`; any other commit refuses every
-    delete this makes.
-    """
-    key = str(content_id)
-    content_class = _mapped(CONTENT_TABLE)
-    row = db.session.get(content_class, key)
-    if row is None or soft_deleted(
-        row,
-        message=(
-            f"the collection row {key!r} cannot say whether rekordbox removed it, and "
-            f"deleting it as live could take a track out twice"
-        ),
-        origin=("rb_writer",),
-        detail={"content_id": key},
-    ):
-        raise _unavailable(
-            "whitelist-violation",
-            f"asked to take the collection row {key!r} out of the collection, and the "
-            f"database holds no live row of that id; nothing was written",
-            detail={"content_id": key},
-        )
-    held = content_references(db, (key,)).get(key, {})
-    if held:
-        named = ", ".join(f"{table} ({count})" for table, count in sorted(held.items()))
-        raise _unavailable(
-            "whitelist-violation",
-            f"the collection row {key!r} is named by rows in {named}, which "
-            f"rekordbox's Remove from Collection was never measured on, so what it "
-            f"would do with them is not known; nothing was written",
-            detail={"content_id": key, "tables": dict(sorted(held.items()))},
-        )
-    deleted: dict[str, tuple[str, ...]] = {}
-    for table in COLLECTION_REMOVAL_TABLES[1:]:
-        mapped = _mapped(table)
-        found = list(
-            db.session.query(mapped).filter(getattr(mapped, CONTENT_REFERENCE_COLUMN) == key)
-        )
-        for child in found:
-            db.delete(child)
-        deleted[table] = tuple(sorted(str(child.ID) for child in found))
-    db.delete(row)
-    deleted[CONTENT_TABLE] = (key,)
-    return {table: deleted[table] for table in COLLECTION_REMOVAL_TABLES}
-
-
-def renumbered_positions(
-    memberships: Iterable[tuple[str, str, str, int | None, bool]],
-    removed: Iterable[str],
-) -> dict[str, tuple[str, int, int]]:
-    """Which membership rows a removal renumbers, and to what. PURE (R-1830).
-
-    ``memberships`` is every row of every playlist concerned, each
-    ``(membership id, playlist id, content id, TrackNo, live)``. Returns
-    ``{membership id: (playlist id, TrackNo now, TrackNo after)}`` holding
-    only the rows whose number moves.
-
-    WHAT REKORDBOX DOES, MEASURED AT SITTING 102 (A197): a playlist at
-    ``TrackNo`` 1, 2 and 3, the middle track taken out with Remove from
-    Collection, left the third row at 2 and every other column of it as it
-    was. So in each playlist, every surviving LIVE row numbered above a
-    removed live row is lowered by one per removed live row below it: the
-    binding's own rule in ``remove_from_playlist`` (strictly above, down by
-    one per removal), held to the rows rekordbox shows. The binding's call
-    itself is not used, since it commits by itself and stamps ``updated_at``
-    and ``rb_local_usn`` on every row it moves, which rekordbox did not.
-
-    ONLY LIVE ROWS COUNT AND ONLY LIVE ROWS MOVE (review round one's B1). A
-    row marked removed is one rekordbox shows nobody, and this product's own
-    membership writers leave such a row at a number a live row may also hold
-    (``playlist_pair`` numbers the live rows one through N). Counting a marked
-    removed row would lower the live row sharing its number onto the next
-    live row's, two live rows on one place; moving a marked survivor writes a
-    row nobody sees. So a playlist the track was only marked out of is not
-    renumbered, and live numbers that were distinct stay distinct and in
-    their order. A row with no number, or whose marker cannot be read
-    (``live`` given as False), is neither lowered nor counted. What rekordbox
-    does in a playlist holding a gap or a marked row was not measured.
-    """
-    rows = [
-        (str(key), str(playlist), str(content), number, bool(live))
-        for key, playlist, content, number, live in memberships
-    ]
-    gone = {str(one) for one in removed}
-    deleted: dict[str, list[int]] = {}
-    for _key, playlist, content, number, live in rows:
-        if content in gone and live and number is not None:
-            deleted.setdefault(playlist, []).append(int(number))
-    moved: dict[str, tuple[str, int, int]] = {}
-    for key, playlist, content, number, live in rows:
-        if content in gone or not live or number is None:
-            continue
-        below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))
-        if below:
-            moved[key] = (playlist, int(number), int(number) - below)
-    return moved
-
-
-def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[str, int, int]]:
-    """The membership rows removing ``content_ids`` would renumber, read from SQL (R-1830).
-
-    Every row of every playlist holding a membership row that names one of
-    them, with whether it is live, put through :func:`renumbered_positions`. Reads and
-    writes nothing else; the plan asks it on a read only copy for the count
-    its screen shows, and :meth:`CollectionRemoval.prepare` asks it again on
-    the write handle for the rows it writes.
-    """
-    from sqlalchemy import bindparam, text
-
-    wanted = sorted({str(one) for one in content_ids})
-    if not wanted:
-        return {}
-    statement = text(
-        f'SELECT "ID", "{PLAYLIST_REFERENCE_COLUMN}", "{CONTENT_REFERENCE_COLUMN}", '
-        f'"{TRACK_NUMBER_COLUMN}", "{SOFT_DELETE_COLUMN}" FROM "{MEMBERSHIP_TABLE}" '
-        f'WHERE "{PLAYLIST_REFERENCE_COLUMN}" IN (SELECT "{PLAYLIST_REFERENCE_COLUMN}" '
-        f'FROM "{MEMBERSHIP_TABLE}" WHERE "{CONTENT_REFERENCE_COLUMN}" IN :ids)'
-    ).bindparams(bindparam("ids", expanding=True))
-    rows = db.session.execute(statement, {"ids": wanted}).fetchall()
-    unreadable = sorted(str(row[0]) for row in rows if row[4] is None)
-    if unreadable:
-        # REFUSED, AS :func:`soft_deleted` REFUSES (round two's X1). Other
-        # readers take a NULL marker as live (``COALESCE(..., 0)``), so a row
-        # this rule passed over as not live could end on a live row's number.
-        raise refuse(
-            "soft-delete-marker-unreadable",
-            f"{len(unreadable)} playlist membership row(s) in a playlist this removal "
-            f"would renumber cannot say whether rekordbox removed them, so where the "
-            f"tracks after the removed one belong cannot be said; nothing was written",
-            remedy=Remedy.RUN_DOCTOR,
-            scope=Scope.RUN,
-            origin=("rb_writer",),
-            detail={"membership_ids": unreadable[:20], "column": SOFT_DELETE_COLUMN},
-        )
-    return renumbered_positions(
-        ((row[0], row[1], row[2], None if row[3] is None else int(row[3]), _live(row[4])) for row in rows),
-        wanted,
-    )
-
-
-def _live(marker: Any) -> bool:
-    """Whether a membership row's soft delete marker reads live. Unreadable reads as not live.
-
-    The confinement's reading only: :func:`removal_renumbering` refuses a
-    playlist holding an unreadable marker before anything is written, as
-    :func:`soft_deleted` refuses one, so no renumbering is planned around one.
-    """
-    return marker is not None and not bool(marker)
-
-
-def renumber_memberships(db: Any, moved: Mapping[str, tuple[str, int, int]]) -> None:
-    """Write each planned ``TrackNo``, that one column and nothing else, inside the open transaction.
-
-    ONE UPDATE OF ONE COLUMN PER ROW, FROM SQL, because that is the whole of
-    what rekordbox wrote (A197): the row's ``updated_at`` and ``rb_local_usn``
-    stayed as they were. A write through the mapped object would add
-    ``updated_at`` by the binding's ``onupdate``, and the binding's own
-    renumbering stamps both. Each update names the number the row held when
-    it was planned, so a row that moved since refuses rather than being
-    numbered from a reading that no longer holds; the handle is rolled back.
-    Any mapped object of a renumbered row the session holds is expired, so a
-    later read sees the new number. DOES NOT COMMIT, and what it wrote is
-    judged from SQL by :func:`assert_collection_removal_confined`.
-    """
-    from sqlalchemy import text
-
-    statement = text(
-        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after '
-        f'WHERE "ID" = :key AND "{TRACK_NUMBER_COLUMN}" = :before'
-    )
-    session = db.session
-    for key, (_playlist, before, after) in sorted(moved.items()):
-        result = session.execute(statement, {"after": after, "key": key, "before": before})
-        if result.rowcount != 1:
-            db.rollback()
-            raise _unavailable(
-                "whitelist-violation",
-                f"the playlist membership {key!r} no longer holds the place {before} the "
-                f"removal planned to renumber from, so its renumbering was not written and "
-                f"nothing was committed",
-                detail={"membership_id": key, "planned": before},
-            )
-    for held in list(session.identity_map.values()):
-        if _table_of(held) == MEMBERSHIP_TABLE and str(getattr(held, "ID", "")) in moved:
-            session.expire(held)
-
-
-@dataclass(frozen=True)
-class DatabaseReading:
-    """Every table of the database as it stands, row by row, read from SQL.
-
-    ``rows`` is each table's rows keyed by their primary key (``rowid`` for a
-    table with none), each a digest of the row's values, so what is compared
-    is what the database holds. ``named`` is, for each table of
-    :data:`DELETABLE_TABLES`, which content row each row names. ``counter`` is
-    ``localUpdateCount``, or None when the registry holds no such row.
-    ``positions`` is, for each membership row, its playlist, the content row
-    it names, its ``TrackNo``, whether it is live and a digest of every other
-    column, so a renumbering is judged column by column (R-1830).
-    """
-
-    rows: Mapping[str, Mapping[str, str]]
-    named: Mapping[str, Mapping[str, str]]
-    counter: int | None
-    positions: Mapping[str, tuple[str, str, int | None, bool, str]] = field(default_factory=dict)
-
-
-def database_reading(db: Any) -> DatabaseReading:
-    """Read every table from SQL. Flushes nothing itself, as :func:`node_tables` does not."""
-    import hashlib
-
-    from sqlalchemy import text
-
-    session = db.session
-    rows: dict[str, dict[str, str]] = {}
-    named: dict[str, dict[str, str]] = {}
-    positions: dict[str, tuple[str, str, int | None, bool, str]] = {}
-    for table in _tables(session):
-        columns = _columns(session, table)
-        keys = [name for name, place in sorted(columns, key=lambda one: one[1]) if place]
-        names = [name for name, _place in columns]
-        selected = ", ".join(f'"{name}"' for name in names)
-        if keys:
-            keyed = [names.index(name) for name in keys]
-            result = session.execute(text(f'SELECT {selected} FROM "{table}"'))
-        else:
-            keyed = [len(names)]
-            result = session.execute(text(f'SELECT {selected}, rowid FROM "{table}"'))
-        reference = (
-            names.index("ID")
-            if table == CONTENT_TABLE
-            else (names.index(CONTENT_REFERENCE_COLUMN) if CONTENT_REFERENCE_COLUMN in names else None)
-        )
-        placed = (
-            (
-                names.index(PLAYLIST_REFERENCE_COLUMN),
-                names.index(CONTENT_REFERENCE_COLUMN),
-                names.index(TRACK_NUMBER_COLUMN),
-                names.index(SOFT_DELETE_COLUMN),
-            )
-            if table == MEMBERSHIP_TABLE
-            and {
-                PLAYLIST_REFERENCE_COLUMN,
-                CONTENT_REFERENCE_COLUMN,
-                TRACK_NUMBER_COLUMN,
-                SOFT_DELETE_COLUMN,
-            }
-            <= set(names)
-            else None
-        )
-        found: dict[str, str] = {}
-        naming: dict[str, str] = {}
-        for row in result:
-            values = tuple(row)
-            key = "|".join(str(values[at]) for at in keyed)
-            found[key] = hashlib.sha256(repr(values[: len(names)]).encode("utf-8")).hexdigest()
-            if table in DELETABLE_TABLES and reference is not None:
-                naming[key] = str(values[reference])
-            if placed is not None:
-                playlist_at, content_at, number_at, marker_at = placed
-                rest = tuple(
-                    value for at, value in enumerate(values[: len(names)]) if at != number_at
-                )
-                number = values[number_at]
-                positions[key] = (
-                    str(values[playlist_at]),
-                    str(values[content_at]),
-                    None if number is None else int(number),
-                    _live(values[marker_at]),
-                    hashlib.sha256(repr(rest).encode("utf-8")).hexdigest(),
-                )
-        rows[table] = found
-        if table in DELETABLE_TABLES:
-            named[table] = naming
-    counter = session.execute(
-        text("SELECT int_1 FROM agentRegistry WHERE registry_id = :id"),
-        {"id": LOCAL_UPDATE_COUNT},
-    ).scalar() if "agentRegistry" in rows else None
-    return DatabaseReading(rows, named, None if counter is None else int(counter), positions)
-
-
-def collection_removal_violations(
-    before: DatabaseReading,
-    after: DatabaseReading,
-    *,
-    removed: Iterable[str],
-    committed: bool = False,
-) -> list[str]:
-    """Every difference between two readings the planned removal does not explain.
-
-    PURE, as :func:`node_change_violations` is. Empty means the removal was
-    confined, AND that it was made. What it explains, and nothing more:
-
-    * a row disappears only from a table of :data:`DELETABLE_TABLES`, and only
-      when it names one of the ``removed`` content rows;
-    * EVERY row of those tables that named one is gone, and each removed
-      content row was live before, asked whether anything changed or not, so a
-      planned delete that never happened is refused before the commit;
-    * no table appears or disappears, no row is added, no row changes but
-      one: a live membership row of a playlist a removed live row left, whose
-      ``TrackNo`` moved to exactly the number :func:`renumbered_positions`
-      gives it and whose every other column stayed (R-1830). Every row that
-      rule renumbers must have moved, so a planned renumbering that never
-      happened is refused as a planned delete is;
-    * with ``committed``, the read back after the commit: the one exception is
-      the registry's ``localUpdateCount`` row, which must have moved forward,
-      since the binding advances it at every commit and rekordbox's own
-      removal advanced it too.
-    """
-    gone = {str(one) for one in removed}
-    violations: list[str] = []
-    planned = renumbered_positions(
-        (
-            (key, playlist, content, number, live)
-            for key, (playlist, content, number, live, _rest) in before.positions.items()
-        ),
-        gone,
-    )
-    for table in sorted(set(before.rows) ^ set(after.rows)):
-        violations.append(f"the table {table!r} appeared or disappeared")
-    for content_id in sorted(gone):
-        if content_id not in before.named.get(CONTENT_TABLE, {}):
-            violations.append(f"the planned {CONTENT_TABLE} row {content_id!r} was not there")
-    for table in sorted(set(before.rows) & set(after.rows)):
-        old, new = before.rows[table], after.rows[table]
-        for key in sorted(set(new) - set(old)):
-            violations.append(f"an unplanned {table} row {key!r} was added")
-        naming = before.named.get(table, {})
-        for key in sorted(set(old) - set(new)):
-            if table not in DELETABLE_TABLES or naming.get(key) not in gone:
-                violations.append(f"the {table} row {key!r} disappeared, which no planned removal explains")
-        for key in sorted(set(old) & set(new)):
-            if table == MEMBERSHIP_TABLE and key in planned:
-                violations.extend(_renumbering_violations(key, planned[key], before, after))
-                continue
-            if old[key] == new[key]:
-                continue
-            if committed and table == "agentRegistry" and key == LOCAL_UPDATE_COUNT:
-                continue
-            violations.append(f"the {table} row {key!r} changed, and a removal changes no row")
-        for key, names in sorted(naming.items()):
-            if names in gone and key in new:
-                violations.append(
-                    f"the {table} row {key!r} still names the removed {CONTENT_TABLE} row {names!r}"
-                )
-    if committed and (
-        before.counter is None or after.counter is None or after.counter <= before.counter
-    ):
-        violations.append(
-            f"{LOCAL_UPDATE_COUNT} did not move forward ({before.counter} to {after.counter})"
-        )
-    return violations
-
-
-def _renumbering_violations(
-    key: str,
-    plan: tuple[str, int, int],
-    before: DatabaseReading,
-    after: DatabaseReading,
-) -> list[str]:
-    """What is wrong with one membership row the removal was to renumber, or nothing."""
-    _playlist, was, wanted = plan
-    then = before.positions.get(key)
-    now = after.positions.get(key)
-    if then is None or now is None:
-        return [f"the {MEMBERSHIP_TABLE} row {key!r} could not be read for its renumbering"]
-    found: list[str] = []
-    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than "
-            f"{TRACK_NUMBER_COLUMN}, and a renumbering moves that column alone"
-        )
-    if now[2] != wanted:
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r} was to be renumbered from {was} to "
-            f"{wanted} and holds {now[2]}"
-        )
-    return found
-
-
-def assert_collection_removal_confined(
-    db: Any, before: DatabaseReading, *, removed: Iterable[str]
-) -> None:
-    """Refuse, before the commit, a removal that reached anything it did not plan.
-
-    THE CHECK IS FROM SQL, as :func:`assert_node_changes_confined` is and for
-    its reason, and the pending work is flushed DELIBERATELY inside the
-    transaction so the second reading sees it and a violation still rolls
-    back. What it adds to the whitelist, which :func:`commit_guarded` still
-    runs after it: the whitelist admits a delete of ANY row of a named table,
-    and this judges rows: whose, and that nothing else in any table moved.
-
-    A REFUSAL ROLLS THE HANDLE BACK, so nothing the removal made can land later
-    under another operation's name.
-    """
-    db.session.flush()
-    violations = collection_removal_violations(before, database_reading(db), removed=removed)
-    if violations:
-        db.rollback()
-        raise _unavailable(
-            "whitelist-violation",
-            "the removal from the collection reached rows it did not plan, or did not "
-            "make one it planned, read from SQL before the commit:\n  - "
-            + "\n  - ".join(violations[:20]),
-            detail={"violations": violations},
-        )
-
-
 class CollectionRemoval:
     """One removal from the collection, prepared, then committed, then read back (U288).
 
-    THE ONE ENTRY A VERB CALLS, so the order is this class's and not each
-    caller's: :meth:`prepare` reads everything first and writes nothing (each row live, no unmeasured table naming one, the database's
-    identity, the columns the record keeps, and the whole database from SQL);
-    :meth:`commit` deletes, renumbers the members after each removed one in
-    every playlist it left (R-1830), proves both confined from SQL before the
-    commit, and commits with ``deletions`` naming :data:`DELETABLE_TABLES`;
-    :meth:`read_back` reads the whole database again after it.
+    THE ONE ENTRY A VERB CALLS, so the order is the class's: :meth:`prepare`
+    reads everything and writes nothing; :meth:`commit` deletes, renumbers
+    (R-1830), proves both confined from SQL and commits with ``deletions``;
+    :meth:`read_back` reads the whole database again.
     """
 
     def __init__(
@@ -4678,8 +1219,7 @@ class CollectionRemoval:
         self.identity = identity
         self.columns = {key: dict(value) for key, value in columns.items()}
         self.before = before
-        #: The membership rows :meth:`commit` renumbers, each ``(playlist id,
-        #: TrackNo now, TrackNo after)``, read at :meth:`prepare` (R-1830).
+        #: Rows :meth:`commit` renumbers, ``(playlist id, TrackNo now, TrackNo after)`` (R-1830).
         self.renumbered: dict[str, tuple[str, int, int]] = dict(renumbered or {})
         #: Rows deleted, by table, once :meth:`commit` has made them.
         self.deleted: dict[str, int] = {}
@@ -4688,10 +1228,8 @@ class CollectionRemoval:
     def prepare(cls, db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
         """Prepare a removal from the collection, reading everything and writing NOTHING.
 
-        REFUSED HERE, before any delete: a content id with no live row, one a
-        table outside the removal set names (:func:`content_references`), and a
-        database with no identity of its own, since the record of what was
-        removed is bound to it and a record bound to nothing never offers a file.
+        REFUSED HERE: no live row, a row named outside the removal set, or a
+        database with no identity, since the removal record is bound to it.
         """
         ids = tuple(dict.fromkeys(str(one) for one in content_ids))
         identity = database_id(db)
@@ -4740,22 +1278,12 @@ class CollectionRemoval:
 
     @staticmethod
     def held(db: Any, content_ids: Iterable[str]) -> dict[str, dict[str, int]]:
-        """Which of ``content_ids`` a table outside the removal set names, and where.
-
-        The plan asks this before it offers a row, so a row :meth:`prepare`
-        would refuse is answered kept rather than offered and then refused.
-        See :func:`content_references`.
-        """
+        """Which of ``content_ids`` a table outside the removal set names, so the plan keeps them."""
         return content_references(db, content_ids)
 
     @staticmethod
     def renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[str, int, int]]:
-        """The membership rows removing ``content_ids`` would renumber (R-1830).
-
-        The plan asks this for the count its screen shows and its digest
-        binds, so the count is the one :meth:`prepare` will write. See
-        :func:`removal_renumbering`.
-        """
+        """The membership rows removing ``content_ids`` would renumber, for the plan's count (R-1830)."""
         return removal_renumbering(db, content_ids)
 
     def commit(self, *, force_cloud_canary: bool = False) -> None:
@@ -4784,11 +1312,8 @@ class CollectionRemoval:
     ) -> None:
         """Name every removed row in a session record's ``detail``, under :data:`RECORDED_REMOVALS_KEY`.
 
-        ``about`` is what the verb says of each row beside its columns, its
-        artist, title, file and the playlists it left. ``sequence`` is the
-        update count the commit left, or None when it could not be read, and
-        the deletion pass then offers none of these files. Each membership
-        row the removal renumbered is named too, from and to (R-1830).
+        ``about`` is the verb's description of each row. ``sequence`` None means the
+        deletion pass offers none of these files. Renumbered rows are named (R-1830).
         """
         recorded: dict[str, Any] = {
             "database_identity": self.identity,
@@ -4803,8 +1328,7 @@ class CollectionRemoval:
                 for content_id in self.content_ids
             ],
         }
-        # Written only when the removal renumbered something, so a record of
-        # a removal that renumbered nothing reads as every earlier one does.
+        # Only when something moved, so other records read as before.
         if self.renumbered:
             recorded["renumbered"] = [
                 {"membership_id": key, "playlist_id": playlist, "from": was, "to": now}
@@ -4814,145 +1338,39 @@ class CollectionRemoval:
 
 
 __all__ = [
-    "ADMITTABLE_ROW_TABLES",
-    "BINDING_ID_LIMIT",
-    "BOOKKEEPING_COLUMNS",
-    "CONTENT_ANALYSIS_TABLES",
-    "CONTENT_LINK_COLUMN",
-    "CONTENT_ROW_DEFAULTS",
-    "CONTENT_ROW_EMPTY_COLUMNS",
-    "CONTENT_TABLE",
-    "EMPTY_ON_CREATE",
-    "CommitWitness",
-    "ENV_APP_PATH",
-    "FIELD_EMPTIES",
-    "FILE_ID_COLUMN",
-    "FOLDER_PATH_COLUMN",
-    "SHELVE_POLICY",
-    "FILE_ID_POLICY",
-    "ISRC_COLUMN",
-    "ROW_PROBE_COLUMNS",
-    "ROW_PROBE_OWNER",
-    "GRIDLESS_ON_CREATE_COLUMNS",
-    "LIBRARY_SYNC_SETTING",
-    "MASTER_PLAYLIST_XML",
-    "MEMBERSHIP_TABLE",
-    "NodeTables",
-    "PERMITTED_ROW_TABLES",
-    "PLAYLIST_TABLE",
-    "REMOVABLE_TABLES",
-    "COLLECTION_REMOVAL_TABLES",
-    "CollectionRemoval",
-    "TARGET_REFERENCE_COLUMN",
-    "RECORDED_COLUMNS",
-    "RECORDED_REMOVALS_KEY",
-    "database_id",
-    "recorded_columns",
-    "CONTENT_REFERENCE_COLUMN",
-    "DELETABLE_TABLES",
-    "DatabaseReading",
-    "LOCAL_UPDATE_COUNT",
-    "assert_collection_removal_confined",
-    "collection_removal_violations",
-    "content_references",
-    "database_reading",
-    "remove_from_collection",
-    "removal_renumbering",
-    "renumber_memberships",
-    "renumbered_positions",
-    "PLAYLIST_REFERENCE_COLUMN",
-    "TRACK_NUMBER_COLUMN",
-    "ROW_DEFAULTS_POLICY",
-    "ROOT_PARENT_SENTINELS",
-    "SETTINGS_APP_DIRNAME",
-    "SOFT_DELETE_COLUMN",
-    "TEST_DB_ENV",
-    "TEST_SETTINGS_ENV",
-    "TRACK_COLOR_POLICY",
-    "CloudSyncState",
-    "CloudSyncVerdict",
-    "Decision",
-    "FieldPolicy",
-    "Ownership",
-    "RekordboxRunning",
-    "RekordboxUnavailable",
-    "RunStateVocabulary",
-    "SQLITE_HEADER",
-    "SharedRead",
-    "add_membership",
-    "add_memberships",
-    "add_my_tag",
-    "assert_app_version",
-    "assert_foreign_untouched",
-    "assert_binding_version",
-    "assert_cloud_sync_readable",
-    "assert_rekordbox_closed",
-    "assert_schema_version",
-    "assert_created_rows_are_gridless",
-    "assert_session_whitelisted",
-    "canary",
-    "cloud_sync_active",
-    "cloud_sync_state",
-    "close_db",
-    "done_reading",
-    "clear_registry_buffer",
-    "commit_guarded",
-    "commit_witness",
-    "content_writable_columns",
-    "db_schema_version",
-    "db_sidecar_suffixes",
-    "default_protected_snapshot_paths",
-    "ensure_folder",
-    "top_level_folders",
-    "ensure_my_tag_value",
-    "my_tag_writable",
-    "ensure_playlist",
-    "MOVED",
-    "UNINSPECTABLE",
-    "field_policies_for_commit",
-    "row_probe_policy",
-    "guard_violations",
-    "pending_changes",
-    "pending_objects",
-    "integration_db_path",
-    "IntegrityCheckCopyFailed",
-    "disposable_root",
-    "file_set",
-    "integrity_ok",
-    "is_folder",
-    "live_db_path",
-    "membership_removed",
-    "move_playlist_node",
-    "node_change_violations",
-    "node_removed",
-    "node_tables",
-    "assert_node_changes_confined",
-    "remove_playlist_node",
-    "metadata_decision",
-    "open_db",
-    "pin_validated_on",
-    "pinned_app_version",
-    "pinned_db_version",
-    "pinned_pyrekordbox",
-    "prune_snapshots",
-    "read_installed_app_version",
-    "read_rekordbox_settings",
-    "read_run_state_records",
-    "register_field_policy",
-    "registered_field_policies",
-    "remove_memberships",
-    "rekordbox_agent_running",
-    "rekordbox_processes_running",
-    "rekordbox_running",
-    "reset_field_policies",
-    "restore_from_snapshot",
-    "restored_sidecar_suffixes",
-    "snapshot_database_in",
-    "snapshot_db",
-    "snapshot_root",
-    "soft_deleted",
-    "unlock_needed",
-    "write_lock_path",
-    "write_metadata_field",
-    "write_session_lock",
+    "ADMITTABLE_ROW_TABLES", "BINDING_ID_LIMIT", "BOOKKEEPING_COLUMNS", "CONTENT_ANALYSIS_TABLES",
+    "CONTENT_LINK_COLUMN", "CONTENT_ROW_DEFAULTS", "CONTENT_ROW_EMPTY_COLUMNS", "CONTENT_TABLE",
+    "EMPTY_ON_CREATE", "CommitWitness", "ENV_APP_PATH", "FIELD_EMPTIES", "FILE_ID_COLUMN",
+    "FOLDER_PATH_COLUMN", "SHELVE_POLICY", "FILE_ID_POLICY", "ISRC_COLUMN", "ROW_PROBE_COLUMNS",
+    "ROW_PROBE_OWNER", "GRIDLESS_ON_CREATE_COLUMNS", "LIBRARY_SYNC_SETTING", "MASTER_PLAYLIST_XML",
+    "MEMBERSHIP_TABLE", "NodeTables", "PERMITTED_ROW_TABLES", "PLAYLIST_TABLE", "REMOVABLE_TABLES",
+    "COLLECTION_REMOVAL_TABLES", "CollectionRemoval", "TARGET_REFERENCE_COLUMN", "RECORDED_COLUMNS",
+    "RECORDED_REMOVALS_KEY", "database_id", "recorded_columns", "CONTENT_REFERENCE_COLUMN",
+    "DELETABLE_TABLES", "DatabaseReading", "LOCAL_UPDATE_COUNT",
+    "assert_collection_removal_confined", "collection_removal_violations", "content_references",
+    "database_reading", "remove_from_collection", "removal_renumbering", "renumber_memberships",
+    "renumbered_positions", "PLAYLIST_REFERENCE_COLUMN", "TRACK_NUMBER_COLUMN",
+    "ROW_DEFAULTS_POLICY", "ROOT_PARENT_SENTINELS", "SETTINGS_APP_DIRNAME", "SOFT_DELETE_COLUMN",
+    "TEST_DB_ENV", "TEST_SETTINGS_ENV", "TRACK_COLOR_POLICY", "CloudSyncState", "CloudSyncVerdict",
+    "Decision", "FieldPolicy", "Ownership", "RekordboxRunning", "RekordboxUnavailable",
+    "RunStateVocabulary", "SQLITE_HEADER", "SharedRead", "add_membership", "add_memberships",
+    "add_my_tag", "assert_app_version", "assert_foreign_untouched", "assert_binding_version",
+    "assert_cloud_sync_readable", "assert_rekordbox_closed", "assert_schema_version",
+    "assert_created_rows_are_gridless", "assert_session_whitelisted", "canary", "cloud_sync_active",
+    "cloud_sync_state", "close_db", "done_reading", "clear_registry_buffer", "commit_guarded",
+    "commit_witness", "content_writable_columns", "db_schema_version", "db_sidecar_suffixes",
+    "default_protected_snapshot_paths", "ensure_folder", "top_level_folders", "ensure_my_tag_value",
+    "my_tag_writable", "ensure_playlist", "MOVED", "UNINSPECTABLE", "field_policies_for_commit",
+    "row_probe_policy", "guard_violations", "pending_changes", "pending_objects",
+    "integration_db_path", "IntegrityCheckCopyFailed", "disposable_root", "file_set",
+    "integrity_ok", "is_folder", "live_db_path", "membership_removed", "move_playlist_node",
+    "node_change_violations", "node_removed", "node_tables", "assert_node_changes_confined",
+    "remove_playlist_node", "metadata_decision", "open_db", "pin_validated_on",
+    "pinned_app_version", "pinned_db_version", "pinned_pyrekordbox", "prune_snapshots",
+    "read_installed_app_version", "read_rekordbox_settings", "read_run_state_records",
+    "register_field_policy", "registered_field_policies", "remove_memberships",
+    "rekordbox_agent_running", "rekordbox_processes_running", "rekordbox_running",
+    "reset_field_policies", "restore_from_snapshot", "restored_sidecar_suffixes",
+    "snapshot_database_in", "snapshot_db", "snapshot_root", "soft_deleted", "unlock_needed",
+    "write_lock_path", "write_metadata_field", "write_session_lock",
 ]

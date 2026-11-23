@@ -2,7 +2,7 @@
 title: "A guard covered by another guard gets a direct test per layer, because the driver mutates one site per row"
 date: 2026-09-23
 category: workflow-issues
-module: "scripts/mutate.py, src/cratekit/acquire/match.py"
+module: "scripts/mutate.py, src/cratekit/acquire/match_library.py"
 problem_type: workflow_issue
 component: mutation_driver
 root_cause: tool_shape_not_visible_in_the_method

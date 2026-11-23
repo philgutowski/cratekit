@@ -50,13 +50,13 @@ KEBAB_LITERALS = {
         'no-tag',
         'under-another-name',
     ],
-    'adopt/revert.py': [
-        'a-different-size',
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_changed.py': ['a-different-size', 'not-a-regular-file', 'took-too-long'],
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_record.py': [
         'adoption-file-unidentifiable',
         'adoption-ledger-unusable',
         'dev-ino',
-        'not-a-regular-file',
-        'took-too-long',
         'utf-8',
     ],
     'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only'],
@@ -70,12 +70,14 @@ KEBAB_LITERALS = {
 }
 
 NAMED_WITH_OWN = {
-    'adopt/revert.py': ['a-different-size', 'not-a-regular-file', 'took-too-long'],
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_changed.py': ['a-different-size', 'not-a-regular-file', 'took-too-long'],
     'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only'],
 }
 
 NAMED_WITH_INTEGER = frozenset({
-    'adopt/revert.py',
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_changed.py',
 })
 
 LITERAL_HOLDERS = {
@@ -93,11 +95,13 @@ LITERAL_HOLDERS = {
         'decision-stale',
         'internal-error',
     ],
-    'adopt/revert.py': ['adoption-file-unidentifiable', 'adoption-ledger-unusable'],
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_record.py': ['adoption-file-unidentifiable', 'adoption-ledger-unusable'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/scan_cli.py': ['adopt-item-absent'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
-    'adopt/revert.py',
+    # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
+    'adopt/revert_record.py',
 })

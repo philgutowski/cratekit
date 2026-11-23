@@ -1,16 +1,10 @@
 """R-731: adoption withholds a track that already holds a competing place.
 
-The plan placed each track by genre and energy reading and never read the tree,
-and the writer is add only, so 569 of 700 additions on a copy of a real library
-were a second energy band beside the one the track held. This module holds the
-three pure halves of the fix: what the taxonomy says competes, what the plan
-does with a track that holds one, and how a tree already read becomes the value
-the plan takes. The read off a real database and the approved apply are driven
-in ``tests/test_adopt_workers.py``.
-
-Every expected identifier is derived from the shipped taxonomy's own
-declarations rather than spelled, so a template that moves does not leave a
-test asserting a name nobody declares.
+The three pure halves: what the taxonomy says competes, what the plan does
+with a track that holds one, and how a tree already read becomes the value the
+plan takes. The read off a real database and the approved apply are driven in
+``tests/test_adopt_workers.py``. Every expected identifier is derived from the
+shipped taxonomy's own declarations rather than spelled.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
@@ -27,48 +21,12 @@ from cratekit.adopt import scan as adopt_scan
 from cratekit.core import convergence, routing, taxonomy
 from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
+from tests.test_adopt_move import HIGH, LOW, MED, SINK, _scanned
+from tests.test_adopt_move import _pure_energy_bucket as _energy_bucket
+from tests.test_adopt_workers import _style_bucket
 
 TREE_ID = "shelf_stack"
 DECLARED = taxonomy.default_taxonomy()
-
-
-def _energy_bucket() -> taxonomy.Bucket:
-    """A bucket the shipped template splits by energy."""
-    return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if bucket.sub_by_source is None and bucket.energy.enabled
-    )
-
-
-def _style_bucket() -> taxonomy.Bucket:
-    """A bucket with no energy dimension and more than one style sub."""
-    return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if not bucket.energy.enabled and len(bucket.subs) > 1
-    )
-
-
-def _band(level: int) -> str:
-    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
-
-
-LOW, MED, HIGH = _band(1), _band(5), _band(9)
-SINK = DECLARED.energy.no_energy_sub.id
-
-
-def _scanned(content_id: str, bucket: str, *, energy: int | None, genre: str = "") -> adopt_scan.ScannedTrack:
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac",
-        readability=adopt_scan.Readability.READABLE,
-        disposition=adopt_scan.Disposition.ROUTE,
-        genre=genre or DECLARED.bucket(bucket).display,
-        bucket=bucket,
-        energy=energy,
-    )
 
 
 def _held(bucket: str, **tracks: tuple[str, ...]) -> adopt_plan.Placements:
@@ -76,14 +34,18 @@ def _held(bucket: str, **tracks: tuple[str, ...]) -> adopt_plan.Placements:
 
 
 def _plan(tracks, placements=adopt_plan.UNREAD) -> adopt_plan.AdoptionPlan:
-    return adopt_plan.build_adoption_plan(
-        tracks, DECLARED, tree=TREE_ID, placements=placements
-    )
+    return adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID, placements=placements)
 
 
 def _only(plan: adopt_plan.AdoptionPlan) -> adopt_plan.PlanEntry:
     (entry,) = plan.entries
     return entry
+
+
+def _recorded(bucket: str) -> convergence.TreeConvergence:
+    """A record naming node ``f1``, ``p1`` as where ``bucket``'s Med was written."""
+    node = convergence.DestinationNode(bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1")
+    return convergence.TreeConvergence(tree_id=TREE_ID, nodes=(node,))
 
 
 # ── what the taxonomy says competes ────────────────────────────────────────
@@ -145,7 +107,10 @@ def test_a_track_in_one_band_whose_file_reads_another_is_withheld_and_listed():
     assert entry.disposition is adopt_scan.Disposition.WITHHELD
     assert not entry.applicable
     assert (entry.bucket, entry.sub, entry.holds, entry.withheld_by) == (
-        bucket, HIGH, (MED,), "band",
+        bucket,
+        HIGH,
+        (MED,),
+        "band",
     )
     assert plan.applicable() == ()
     assert plan.withheld_by_placement() == {"total": 1, "band": 1, "style": 0}
@@ -210,12 +175,8 @@ def test_a_track_in_a_band_whose_file_has_no_reading_is_withheld_from_the_sink()
 def test_a_track_in_one_style_sub_is_withheld_from_another():
     bucket = _style_bucket()
     first, second = bucket.subs[0], bucket.subs[1]
-    genre = next(
-        source for source, sub in bucket.sub_by_source.map.items() if sub == second.id
-    )
-    plan = _plan(
-        [_scanned("t", bucket.id, energy=8, genre=genre)], _held(bucket.id, t=(first.id,))
-    )
+    genre = next(source for source, sub in bucket.sub_by_source.map.items() if sub == second.id)
+    plan = _plan([_scanned("t", bucket.id, energy=8, genre=genre)], _held(bucket.id, t=(first.id,)))
     entry = _only(plan)
     assert entry.disposition is adopt_scan.Disposition.WITHHELD
     assert (entry.sub, entry.holds, entry.withheld_by) == (second.id, (first.id,), "style")
@@ -305,7 +266,10 @@ def test_a_genre_answered_later_is_withheld_over_the_place_the_track_holds():
 
     assert entry.disposition is adopt_scan.Disposition.WITHHELD
     assert (entry.bucket, entry.sub, entry.holds, entry.withheld_by) == (
-        bucket, HIGH, (MED,), "band",
+        bucket,
+        HIGH,
+        (MED,),
+        "band",
     )
     assert answered.placements == plan.placements
 
@@ -344,9 +308,7 @@ def test_a_collision_verdict_withholds_under_its_own_reason_and_own_count():
 
 def test_a_track_the_plan_withheld_is_not_a_stranger_in_its_own_folder():
     bucket = _energy_bucket()
-    folder = adopt_plan.ExistingFolder(
-        node_id="n1", display=bucket.display, content_ids=("t", "u")
-    )
+    folder = adopt_plan.ExistingFolder(node_id="n1", display=bucket.display, content_ids=("t", "u"))
     plan = adopt_plan.build_adoption_plan(
         [_scanned("t", bucket.id, energy=8), _scanned("u", bucket.id, energy=8)],
         DECLARED,
@@ -403,14 +365,7 @@ def test_a_sub_class_playlist_and_a_hand_made_one_are_not_places():
 
 def test_a_renamed_node_is_resolved_through_its_recorded_identifier():
     bucket = _energy_bucket().id
-    record = convergence.TreeConvergence(
-        tree_id=TREE_ID,
-        nodes=(
-            convergence.DestinationNode(
-                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
-            ),
-        ),
-    )
+    record = _recorded(bucket)
     renamed = _node(bucket, MED, "t", names=("Renamed folder", "Renamed list"))
     assert adopt_placements.placements_from(DECLARED, [renamed], None).held == {}
     found = adopt_placements.placements_from(DECLARED, [renamed], record)
@@ -420,14 +375,7 @@ def test_a_renamed_node_is_resolved_through_its_recorded_identifier():
 
 def test_a_sub_held_under_both_names_is_one_the_writer_can_see():
     bucket = _energy_bucket().id
-    record = convergence.TreeConvergence(
-        tree_id=TREE_ID,
-        nodes=(
-            convergence.DestinationNode(
-                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
-            ),
-        ),
-    )
+    record = _recorded(bucket)
     nodes = [
         _node(bucket, MED, "t", "u", names=("Renamed folder", "Renamed list")),
         _node(bucket, MED, "t", ids=("f2", "p2")),
@@ -439,14 +387,7 @@ def test_a_sub_held_under_both_names_is_one_the_writer_can_see():
 
 def test_a_recorded_node_that_carries_the_declared_names_is_not_unnamed():
     bucket = _energy_bucket().id
-    record = convergence.TreeConvergence(
-        tree_id=TREE_ID,
-        nodes=(
-            convergence.DestinationNode(
-                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
-            ),
-        ),
-    )
+    record = _recorded(bucket)
     found = adopt_placements.placements_from(DECLARED, [_node(bucket, MED, "t")], record)
     assert (found.holds(bucket, "t"), found.holds_unnamed(bucket, "t")) == ((MED,), ())
 
@@ -495,14 +436,7 @@ def test_two_nodes_answering_for_one_sub_are_two_playlists_and_not_a_double():
 
 def test_a_double_in_a_renamed_recorded_node_is_still_a_double():
     bucket = _energy_bucket().id
-    record = convergence.TreeConvergence(
-        tree_id=TREE_ID,
-        nodes=(
-            convergence.DestinationNode(
-                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
-            ),
-        ),
-    )
+    record = _recorded(bucket)
     renamed = _node(bucket, MED, "t", names=("Renamed folder", "Renamed list"), doubled=("t",))
     found = adopt_placements.placements_from(DECLARED, [renamed], record)
     assert found.holds_doubled(bucket, "t") == (MED,)

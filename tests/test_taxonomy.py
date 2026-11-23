@@ -1,20 +1,16 @@
 """The template is data, and a template that cannot be trusted is refused at load.
 
-Two halves:
-
-* the LOADER's validation rules, each proved to bite against a synthetic template
-  built by mutating a good one, so a rule cannot pass by describing itself;
-* the PARAMETERISATION claim, proved with a second taxonomy that shares nothing
-  with the shipped default. That second template is the only honest way to show
-  the engine reads its taxonomy rather than remembering one.
-
-Parity against the pre-consolidation resolvers lives next door in
-tests/test_routing_parity.py.
+The loader's rules are each proved to bite on a template mutated from the good
+one, so a rule cannot pass by describing itself. The parameterisation claim is
+proved with a second taxonomy sharing nothing with the default, the only honest
+way to show the engine reads its taxonomy rather than remembering one. Parity
+against the old resolvers is in tests/test_routing_parity.py.
 """
 
 from __future__ import annotations
 
 import copy
+import enum
 import tomllib
 from pathlib import Path
 
@@ -67,39 +63,35 @@ def problems_from(raw: dict, mutate) -> tuple[str, ...]:
     return caught.value.problems
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The shipped default is loadable and internally consistent
-# ═══════════════════════════════════════════════════════════════════════════
+# The shipped default is loadable and internally consistent.
 
 
 def test_the_shipped_default_loads(default):
-    # 2 since R-797: the shipped template declares a former place, and a
-    # template has to state the version that knows one. 3 since U118, for a
-    # split place, the same way. 4 since U119, for a sub class derived from a
-    # playlist, the same way again. 5 since U155, for a genre sub.
+    # 2 for a former place (R-797), 3 a split place (U118), 4 a playlist sub
+    # class (U119), 5 a genre sub (U155): a template states the version it needs.
     assert default.schema_version == 5
     assert default.buckets
     assert default.fallback.bucket in default.bucket_ids()
 
 
 def test_every_bucket_declares_a_tempo_window(default):
-    """A bucket with no window makes detection fall back to a generic one.
-
-    That failure is silent and total: a window spanning a full octave folds
-    nothing, so the octave-error defence the windows exist for is simply off, for
-    every track, with no warning. Refusing beats defaulting.
-    """
+    """With no window detection falls back to an octave wide one, which folds
+    nothing and silently turns the octave error defence off."""
     assert default.buckets_without_bpm_prior() == ()
 
 
-def test_the_tree_root_and_intake_are_declared_not_hardcoded(default):
-    """R19's actual test: the two most-copied names in the old system are data.
+@pytest.mark.parametrize("node", ["tree", "intake", "catalog", "long_tracks", "inspiration"])
+def test_each_root_node_is_declared_by_id_and_display(default, node):
+    """R19: the old system's most copied literals are data. The optional catalog
+    tree, long track playlist (U88) and inspiration folder (U121) ship declared."""
+    declared = getattr(default, node)
+    assert declared is not None and declared.id and declared.display
 
-    The tree root appeared as a literal in fifteen places and the intake folder
-    in five, none of them sharing a constant.
-    """
-    assert default.tree.id and default.tree.display
-    assert default.intake.id and default.intake.display
+
+def test_the_long_track_bound_and_the_inspiration_folder_ship_as_the_source_system_had_them(default):
+    assert default.long_tracks.over_seconds == 1200
+    assert default.inspiration.id == "inspiration"
+    assert default.inspiration.display == "INSPIRATION"
 
 
 def test_the_reserved_and_derived_subs_carry_different_policies(default):
@@ -108,94 +100,15 @@ def test_the_reserved_and_derived_subs_carry_different_policies(default):
     assert SubPolicy.MANUAL in policies.values()
     assert SubPolicy.DERIVED in policies.values()
     derived = [entry for entry in default.sub_classes if entry.policy is SubPolicy.DERIVED]
-    # TWO since U119, the vocal class and the genre Favorites, each additive and
-    # each on its own signal.
+    # Two since U119, the vocal class and the genre Favorites, each additive.
     assert len(derived) == 2 and all(entry.additive for entry in derived)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Loader validation. Each rule bites.
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_an_unsupported_schema_version_is_refused(default_raw):
-    problems = problems_from(default_raw, lambda d: d.__setitem__("schema_version", 99))
-    assert any("schema_version" in p for p in problems)
-
-
-def test_a_display_name_used_as_an_id_is_refused(default_raw):
-    """R19 in one assertion: an id is persisted, so it may never be a display name."""
-
-    def mutate(d):
-        d["bucket"][0]["id"] = d["bucket"][0]["display"]
-
-    problems = problems_from(default_raw, mutate)
-    assert any("must match" in p for p in problems)
-
-
-def test_the_catalog_tree_is_declared_in_the_shipped_default(default):
-    """The optional third tree, and the shipped template does declare one.
-
-    Optional in the schema, present in the default. A user who never imports a
-    catalog can delete the section; one who does gets a tree without editing
-    anything, which is the point of shipping a template at all.
-    """
-    assert default.catalog is not None
-    assert default.catalog.id and default.catalog.display
-
-
-def test_a_template_declaring_no_catalog_tree_loads_clean(default_raw):
-    """Absent is a complete declaration, not a deficient one.
-
-    Every other tree in this file is mandatory, so the loader's default answer to
-    a missing section is a problem. This one has to load, or a user who deletes a
-    section they do not use finds their whole taxonomy refused.
-    """
-    data = mutated(default_raw, lambda d: d.pop("catalog"))
-    assert build_taxonomy(data).catalog is None
-
-
-def test_a_half_declared_catalog_tree_is_refused_as_strictly_as_a_mandatory_one(
-    default_raw,
-):
-    """Optional to WRITE is not optional to get right.
-
-    A section carrying one half of the pair reaches a writer as a tree named the
-    empty string, or as one whose id cannot be a state key. Skipping validation
-    because the section is optional is how an optional section becomes the one
-    nobody checks.
-    """
-
-    def no_display(d):
-        d["catalog"]["display"] = ""
-
-    def bad_id(d):
-        d["catalog"]["id"] = d["catalog"]["display"]
-
-    def wrote_the_header_and_nothing_else(d):
-        d["catalog"] = {}
-
-    assert any("[catalog] display" in p for p in problems_from(default_raw, no_display))
-    assert any("[catalog] id" in p for p in problems_from(default_raw, bad_id))
-    # The empty table is the case a truthiness test gets wrong: it is falsy, so
-    # "the user wrote the section header and stopped" reads as "the user wrote no
-    # section" and every rule above is skipped for exactly the template most
-    # likely to be half finished.
-    empty = problems_from(default_raw, wrote_the_header_and_nothing_else)
-    assert any("[catalog] id" in p for p in empty)
-    assert any("[catalog] display" in p for p in empty)
-
-
-def test_the_long_track_playlist_is_declared_in_the_shipped_default(default):
-    """U88: the source system's separation of sets from tracks, as data."""
-    assert default.long_tracks is not None
-    assert default.long_tracks.id and default.long_tracks.display
-    assert default.long_tracks.over_seconds == 1200
-
-
-def test_a_template_declaring_no_long_track_playlist_loads_clean(default_raw):
-    data = mutated(default_raw, lambda d: d.pop("long_tracks"))
-    assert build_taxonomy(data).long_tracks is None
+@pytest.mark.parametrize("section", ["catalog", "long_tracks", "inspiration"])
+def test_a_template_declaring_no_optional_section_loads_clean(default_raw, section):
+    """Absent is a complete declaration, or deleting an unused section refuses all."""
+    data = mutated(default_raw, lambda d: d.pop(section))
+    assert getattr(build_taxonomy(data), section) is None
 
 
 def test_a_long_track_playlist_with_no_bound_takes_the_source_systems(default_raw):
@@ -203,181 +116,272 @@ def test_a_long_track_playlist_with_no_bound_takes_the_source_systems(default_ra
     assert build_taxonomy(data).long_tracks.over_seconds == 1200
 
 
-def test_a_half_declared_long_track_playlist_is_refused(default_raw):
-    def no_display(d):
-        d["long_tracks"]["display"] = ""
-
-    def bad_id(d):
-        d["long_tracks"]["id"] = d["long_tracks"]["display"]
-
-    def not_a_table(d):
-        d["long_tracks"] = "Sets"
-
-    assert any("[long_tracks] display" in p for p in problems_from(default_raw, no_display))
-    assert any("[long_tracks] id" in p for p in problems_from(default_raw, bad_id))
-    assert any("[long_tracks] must be a table" in p for p in problems_from(default_raw, not_a_table))
-    empty = problems_from(default_raw, lambda d: d.__setitem__("long_tracks", {}))
-    assert any("[long_tracks] id" in p for p in empty)
-    assert any("[long_tracks] display" in p for p in empty)
-
-
-@pytest.mark.parametrize("bound", [True, 0, -5, "1200", 1200.5])
-def test_a_long_track_bound_that_is_not_whole_positive_seconds_is_refused(default_raw, bound):
-    """A boolean, zero or a negative bound would put every track in the playlist."""
-
-    def mutate(d):
-        d["long_tracks"]["over_seconds"] = bound
-
-    assert any("[long_tracks] over_seconds" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_duplicate_bucket_id_is_refused(default_raw):
-    def mutate(d):
-        d["bucket"][1]["id"] = d["bucket"][0]["id"]
-
-    assert any("duplicate bucket id" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_duplicate_display_name_is_refused(default_raw):
-    """Two folders with one name means the XML bridge writes into whichever it
-    finds first, which is not a decision anybody made."""
-
-    def mutate(d):
-        d["bucket"][1]["display"] = d["bucket"][0]["display"]
-
-    assert any("duplicate display name" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_fallback_naming_no_declared_bucket_is_refused(default_raw):
-    def mutate(d):
-        d["fallback"]["bucket"] = "nowhere"
-
-    problems = problems_from(default_raw, mutate)
-    assert any("routing must always land" in p for p in problems)
-
-
-def test_a_template_letting_tagging_fall_back_is_refused(default_raw):
-    """The blanket-genre rule, enforced at load rather than by convention.
-
-    A guessed genre written onto a file outlives the run that guessed it, and the
-    old system had to DELETE tags to undo exactly this.
-    """
-
-    def mutate(d):
-        d["fallback"]["tagging_uses_fallback"] = True
-
-    problems = problems_from(default_raw, mutate)
-    assert any("allowed to decline" in p for p in problems)
-
-
-def test_non_increasing_energy_bands_are_refused(default_raw):
-    """Overlapping bounds put one level in two bands, and the winner is
-    whichever happens to be first in the file."""
-
-    def mutate(d):
-        d["energy"]["bands"][1]["max"] = d["energy"]["bands"][0]["max"]
-
-    assert any("does not increase" in p for p in problems_from(default_raw, mutate))
-
-
-def test_bands_not_reaching_the_top_of_the_scale_are_refused(default_raw):
-    def mutate(d):
-        d["energy"]["bands"][-1]["max"] = 8
-
-    problems = problems_from(default_raw, mutate)
-    assert any("scale_max" in p for p in problems)
-
-
 def test_rating_cuts_are_not_required_to_align_with_band_cuts(default):
-    """The decoupling is deliberate and must stay expressible.
-
-    Energy is decile-calibrated, so an even five-way star spread and a three-way
-    tree split are both right. A loader that forced them to agree would re-rate a
-    whole library the first time either moved.
-    """
+    """Deliberate: forcing them to agree would re-rate a library when either moved."""
     band_cuts = {band.max for band in default.energy.bands}
     rating_cuts = {cut.max for cut in default.energy.rating_cuts}
     assert band_cuts != rating_cuts
 
 
-def test_a_band_display_override_naming_an_undeclared_band_is_refused(default_raw):
-    def mutate(d):
-        for bucket in d["bucket"]:
-            if "band_display" in bucket.get("energy", {}):
-                bucket["energy"]["band_display"]["nosuchband"] = "Whatever"
-                return
-        raise AssertionError("the default no longer overrides any band label")
+# Loader validation: each rule bites, on one mutation of the shipped template.
 
+
+def _walk(d, path):
+    for step in path:
+        d = step(d) if callable(step) else d[step]
+    return d
+
+
+def _get(*path):
+    return lambda d: _walk(d, path)
+
+
+def _set(path: tuple, value):
+    """A mutation setting the key at the end of ``path``. A callable step is
+    applied to the data, and a callable value is read off the data."""
+
+    def mutate(d):
+        _walk(d, path[:-1])[path[-1]] = value(d) if callable(value) else value
+
+    return mutate
+
+
+def _all(*mutations):
+    def mutate(d):
+        for each in mutations:
+            each(d)
+
+    return mutate
+
+
+def _promoted(data: dict) -> dict:
+    """The bucket of the shipped template that declares a former place."""
+    return next(bucket for bucket in data["bucket"] if bucket.get("formerly"))
+
+
+def _holder(data: dict) -> dict:
+    """The bucket whose folder holds that former place."""
+    former = _promoted(data)["formerly"][0]
+    return next(bucket for bucket in data["bucket"] if bucket["id"] == former["bucket"])
+
+
+def _another_bucket(data: dict) -> dict:
+    return next(
+        bucket
+        for bucket in data["bucket"]
+        if not bucket.get("formerly") and bucket["id"] != _holder(data)["id"]
+    )
+
+
+def _splitter(data: dict) -> dict:
+    """The bucket of the shipped template that declares split places."""
+    return next(bucket for bucket in data["bucket"] if bucket.get("split_from"))
+
+
+def _split_holder(data: dict) -> dict:
+    """The bucket whose bands those split places are."""
+    place = _splitter(data)["split_from"][0]
+    return next(bucket for bucket in data["bucket"] if bucket["id"] == place["bucket"])
+
+
+def _band_ids(data: dict) -> set:
+    return {band["id"] for band in data["energy"]["bands"]} | {"unsorted"}
+
+
+def _band_label_holder(data: dict) -> dict:
+    return next(b for b in data["bucket"] if (b.get("energy") or {}).get("band_display"))
+
+
+def _override_an_undeclared_band(d):
+    for bucket in d["bucket"]:
+        if "band_display" in bucket.get("energy", {}):
+            bucket["energy"]["band_display"]["nosuchband"] = "Whatever"
+            return
+    raise AssertionError("the default no longer overrides any band label")
+
+
+def _route_by_source_outside_the_bucket(d):
+    for bucket in d["bucket"]:
+        if "sub_by_source" in bucket:
+            bucket["sub_by_source"]["default"] = "not_a_sub"
+            return
+    raise AssertionError("the default no longer routes any bucket by source genre")
+
+
+def _former_place_named_for_a_band(data):
+    holder = _band_label_holder(data)
+    former = _promoted(data)["formerly"][0]
+    former["bucket"] = holder["id"]
+    former["display"] = next(iter(holder["energy"]["band_display"].values()))
+
+
+def _one_band_split_by_two_buckets(data):
+    other = next(
+        bucket
+        for bucket in data["bucket"]
+        if bucket["id"] not in (_splitter(data)["id"], _split_holder(data)["id"])
+        and not bucket.get("sub_by_source")
+        and (bucket.get("energy") or {}).get("enabled", True)
+    )
+    other["split_from"] = [dict(_splitter(data)["split_from"][0], id="another_id")]
+
+
+def _split_another_buckets_former_place(data):
+    hip_hop = next(b for b in data["bucket"] if b["id"] == "hip_hop")
+    _splitter(data)["split_from"][0].update(
+        sub=hip_hop["formerly"][0]["id"], display=hip_hop["formerly"][0]["display"]
+    )
+
+
+def _tagging_word_in_two_buckets(data):
+    first = _splitter(data)
+    other = next(b for b in data["bucket"] if b.get("tag_aliases") and b is not first)
+    first.setdefault("tag_aliases", []).append(other["tag_aliases"][0])
+
+
+def case(id_: str, mutate, *needles, absent: tuple = ()):
+    """A refused mutation. A needle is a text some problem carries, or a tuple of
+    texts one problem carries together; ``absent`` texts no problem carries."""
+    return pytest.param(mutate, needles, absent, id=id_)
+
+
+_FORMER = (_promoted, "formerly", 0)
+_former = _get(*_FORMER)
+
+
+def _former_copy(**changed):
+    return lambda d: [dict(_former(d), **changed)]
+
+
+_SPLIT = (_splitter, "split_from", 0)
+_ONE_TABLE = {"id": "x", "bucket": "y", "sub": "z", "display": "One table"}
+
+
+REFUSED = [
+    case("unsupported-schema-version", _set(("schema_version",), 99), "schema_version"),
+    # R19: an id is persisted, so it may never be a display name.
+    case("display-name-as-id", _set(("bucket", 0, "id"), _get("bucket", 0, "display")), "must match"),
+    # An optional section is checked as strictly as a mandatory one; the empty
+    # table is falsy, so a truthiness test would skip it.
+    *[
+        row
+        for section in ("catalog", "long_tracks", "inspiration")
+        for row in (
+            case(f"{section}-without-display", _set((section, "display"), ""), f"[{section}] display"),
+            case(f"{section}-bad-id", _set((section, "id"), _get(section, "display")), f"[{section}] id"),
+            case(f"{section}-header-only", _set((section,), {}), f"[{section}] id", f"[{section}] display"),
+        )
+    ],
+    case("long-tracks-not-a-table", _set(("long_tracks",), "Sets"), "[long_tracks] must be a table"),
+    case("inspiration-not-a-table", _set(("inspiration",), "INSPIRATION"), "[inspiration] must be a table"),
+    # A boolean, zero or a negative bound would put every track in the playlist.
+    *[
+        case(f"long-track-bound-{bound!r}", _set(("long_tracks", "over_seconds"), bound), "[long_tracks] over_seconds")
+        for bound in (True, 0, -5, "1200", 1200.5)
+    ],
+    case("duplicate-bucket-id", _set(("bucket", 1, "id"), _get("bucket", 0, "id")), "duplicate bucket id"),
+    # Two folders of one name and the XML bridge writes into whichever is first.
+    case("duplicate-display", _set(("bucket", 1, "display"), _get("bucket", 0, "display")), "duplicate display name"),
+    case("fallback-to-no-bucket", _set(("fallback", "bucket"), "nowhere"), "routing must always land"),
+    # The blanket genre rule: a guessed genre on a file outlives the run.
+    case("tagging-uses-fallback", _set(("fallback", "tagging_uses_fallback"), True), "allowed to decline"),
+    # Overlapping bounds put one level in two bands.
+    case("bands-not-increasing", _set(("energy", "bands", 1, "max"), _get("energy", "bands", 0, "max")), "does not increase"),
+    case("bands-short-of-scale", _set(("energy", "bands", -1, "max"), 8), "scale_max"),
+    case("band-label-for-undeclared-band", _override_an_undeclared_band, "not a declared band"),
+    case("source-sub-outside-bucket", _route_by_source_outside_the_bucket, "not a declared sub"),
+    case("source-string-routing-two-ways", _set(("bucket", 1, "aliases"), lambda d: [
+        *d["bucket"][1]["aliases"], d["bucket"][0]["aliases"][0]]), "cannot route two ways"),
+    case("fuzzy-rule-to-no-bucket", _set(("fuzzy", 0, "bucket"), "nowhere"), "is not declared"),
+    # An uppercase keyword could never match, and reads as a rule that fires.
+    case("uppercase-keyword", _set(("fuzzy", 0, "keyword"), lambda d: d["fuzzy"][0]["keyword"].upper()), "can never match"),
+    case("suggest-rule-answers-and-declines", _set((lambda d: next(r for r in d["suggest"] if "bucket" in r), "decline"),
+         "ask"), "exactly one of bucket, tag, decline"),
+    # KTD14: the XML bridge's indentation encodes exactly three levels.
+    case("tree-depth-not-three", _set(("tree", "depth"), 4), "KTD14"),
+    case("bad-tempo-window", _set(("bucket", 0, "bpm"), {"start": 100, "floor": 120, "ceil": 140}), "floor < start < ceil"),
+    # A former place (R-797) that is still a place.
+    case("former-in-undeclared-bucket", _set((*_FORMER, "bucket"), "no_such_bucket"), "is not declared"),
+    # Stops a mistyped line planning removals from a live sub.
+    case("former-is-a-live-sub", _set((*_FORMER, "sub"), _get(_holder, "sub", 0, "id")), "still declares the sub"),
+    case("former-named-for-live-sub", _set((*_FORMER, "display"), _get(_holder, "sub", 0, "display")),
+         "still holds a sub named"),
+    # A band is a live place of an energy bucket, under the bucket's label for it.
+    case("former-named-for-a-band", _former_place_named_for_a_band, "still holds a sub named"),
+    case("former-named-for-sub-class", _set((*_FORMER, "display"), _get("sub_class", 0, "display")), "still holds a sub named"),
+    case("former-id-is-a-band", _set((*_FORMER, "id"), _get("energy", "bands", 0, "id")), "already a sub of this bucket"),
+    case("former-twice-in-one-bucket", _set((_promoted, "formerly"), lambda d: [*_promoted(d)["formerly"], dict(_former(d))]),
+         "duplicate former place id", "already the former place of"),
+    case("one-playlist-former-place-of-two-buckets", _set((_another_bucket, "formerly"), _former_copy(id="another_id")),
+         "already the former place of", absent=("duplicate former place id",)),
+    # Both compete in the folder that holds them, under their identifiers.
+    case("two-buckets-one-former-place-id",
+         _set((_another_bucket, "formerly"), _former_copy(sub="another_sub", display="Another playlist")),
+         "duplicate former place id", absent=("already the former place of",)),
+    case("former-short-of-id", _set((*_FORMER, "id"), "Not An Id"), ("formerly", "must match")),
+    case("former-short-of-sub", _set((*_FORMER, "sub"), ""), ("formerly", "must match")),
+    case("former-short-of-display", _set((*_FORMER, "display"), ""), ("formerly", "display must be a non-empty string")),
+    # An older build reads version 1, ignores the declaration and files a track
+    # into its new place while it sits in the old one.
+    case("former-under-schema-1", _set(("schema_version",), 1), "declares a former place under schema_version 1"),
+    # One pair of brackets is valid TOML, and raised out of the loader as a defect.
+    *[
+        case(f"former-as-{name}", _set((_promoted, "formerly"), shape), "formerly must be an array of tables")
+        for name, shape in (("one-table", _ONE_TABLE), ("list-of-strings", ["a bare name"]), ("string", "a bare name"))
+    ],
+    # It competes in the holder too, so the identifier has to be free there.
+    case("former-id-is-holder-sub", _set((*_FORMER, "id"), _get(_holder, "sub", 0, "id")),
+         "where a former place competes as well"),
+    # A split place (U118) that is not a live band; stops a former place being
+    # written as a split place.
+    case("split-of-undeclared-band", _set((*_SPLIT, "sub"), "no_such_band"), "is not a band"),
+    case("split-out-of-bucket-with-no-bands",
+         _set((*_SPLIT, "bucket"), lambda d: next(b for b in d["bucket"] if b.get("sub_by_source"))["id"]), "is not a band"),
+    case("split-renamed", _set((*_SPLIT, "display"), "Renamed by hand"), ("the name", "gives")),
+    case("split-out-of-undeclared-bucket", _set((*_SPLIT, "bucket"), "no_such_bucket"), "not another declared bucket"),
+    case("split-out-of-itself", _set((*_SPLIT, "bucket"), _get(_splitter, "id")), "not another declared bucket"),
+    case("one-band-split-by-two-buckets", _one_band_split_by_two_buckets, "already split out by"),
+    case("split-id-of-a-former-place", _set((*_SPLIT, "id"), _get(*_FORMER, "id")), "already a former or split place"),
+    case("split-of-holders-former-place-renamed", _set((lambda d: next(
+        r for r in _splitter(d)["split_from"] if r["sub"] not in _band_ids(d)), "display"), "Renamed by hand"), "gives"),
+    # Only the holder's own former place is one the holder competes on.
+    case("split-of-another-buckets-former", _split_another_buckets_former_place, "is not a band or a former place"),
+    case("split-id-is-a-band", _set((*_SPLIT, "id"), _get("energy", "bands", 0, "id")), "already a sub of this bucket"),
+    case("split-in-bucket-without-energy", _all(_set((_splitter, "energy"), {"enabled": False}),
+         _set((_splitter, "single_sub"), {"id": "everything", "display": "Everything"})), "does not split by energy"),
+    # An older build ignores the key and files the split genre into its new
+    # folder while it sits in the old band.
+    *[
+        case(f"split-under-schema-{v}", _set(("schema_version",), v), f"declares a split place under schema_version {v}")
+        for v in (1, 2)
+    ],
+    *[
+        case(f"split-as-{name}", _set((_splitter, "split_from"), shape), "split_from must be an array of tables")
+        for name, shape in (("one-table", _ONE_TABLE), ("string", "a bare name"))
+    ],
+    case("tagging-word-claimed-by-two-buckets", _tagging_word_in_two_buckets, "is claimed by both"),
+    # A sub class derived from a playlist (U119).
+    case("two-additive-classes-on-one-signal", _set(("sub_class",), lambda d: [*d["sub_class"], {
+        "id": "second_vox", "display": "Second", "policy": "derived", "additive": True}]),
+         ("'vox' signal", "only one is supported per signal")),
+    case("playlist-signal-without-playlist", _set(("sub_class", 2, "signal_playlist"), ""), "signal_playlist"),
+    case("playlist-signal-manual", _all(_set(("sub_class", 2, "policy"), "manual"), _set(("sub_class", 2, "additive"), False)),
+         "derived and additive"),
+    case("playlist-name-on-vocal-class", _set(("sub_class", 1, "signal_playlist"), "All Favorites"),
+         "only meaningful for a playlist signal"),
+    case("unknown-signal", _set(("sub_class", 2, "signal"), "colour"), "signal 'colour'"),
+    case("playlist-signal-under-schema-3", _set(("schema_version",), 3), "schema_version = 4"),
+]
+
+
+@pytest.mark.parametrize(("mutate", "needles", "absent"), REFUSED)
+def test_a_template_breaking_a_rule_is_refused_by_name(default_raw, mutate, needles, absent):
     problems = problems_from(default_raw, mutate)
-    assert any("not a declared band" in p for p in problems)
-
-
-def test_a_source_routed_sub_pointing_outside_its_bucket_is_refused(default_raw):
-    def mutate(d):
-        for bucket in d["bucket"]:
-            if "sub_by_source" in bucket:
-                bucket["sub_by_source"]["default"] = "not_a_sub"
-                return
-        raise AssertionError("the default no longer routes any bucket by source genre")
-
-    problems = problems_from(default_raw, mutate)
-    assert any("not a declared sub" in p for p in problems)
-
-
-def test_one_source_string_routing_two_ways_is_refused(default_raw):
-    def mutate(d):
-        d["bucket"][1]["aliases"] = list(d["bucket"][1]["aliases"]) + [
-            d["bucket"][0]["aliases"][0]
-        ]
-
-    problems = problems_from(default_raw, mutate)
-    assert any("cannot route two ways" in p for p in problems)
-
-
-def test_a_fuzzy_rule_naming_no_declared_bucket_is_refused(default_raw):
-    def mutate(d):
-        d["fuzzy"][0]["bucket"] = "nowhere"
-
-    assert any("is not declared" in p for p in problems_from(default_raw, mutate))
-
-
-def test_an_uppercase_keyword_is_refused(default_raw):
-    """It could never match, and a rule that can never fire reads as one that does."""
-
-    def mutate(d):
-        d["fuzzy"][0]["keyword"] = d["fuzzy"][0]["keyword"].upper()
-
-    assert any("can never match" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_suggest_rule_that_both_answers_and_declines_is_refused(default_raw):
-    def mutate(d):
-        rule = next(r for r in d["suggest"] if "bucket" in r)
-        rule["decline"] = "ask"
-
-    problems = problems_from(default_raw, mutate)
-    assert any("exactly one of bucket, tag, decline" in p for p in problems)
-
-
-def test_a_tree_depth_other_than_three_is_refused_by_name(default_raw):
-    """KTD14: the XML bridge's indentation encodes exactly three levels.
-
-    Refusing by name beats emitting bytes rekordbox reads as a different tree.
-    """
-
-    def mutate(d):
-        d["tree"]["depth"] = 4
-
-    problems = problems_from(default_raw, mutate)
-    assert any("KTD14" in p for p in problems)
-
-
-def test_a_bad_tempo_window_is_refused(default_raw):
-    def mutate(d):
-        d["bucket"][0]["bpm"] = {"start": 100, "floor": 120, "ceil": 140}
-
-    problems = problems_from(default_raw, mutate)
-    assert any("floor < start < ceil" in p for p in problems)
+    for needle in needles:
+        parts = (needle,) if isinstance(needle, str) else needle
+        assert any(all(part in p for part in parts) for p in problems), (needle, problems)
+    for text in absent:
+        assert not any(text in p for p in problems), (text, problems)
 
 
 def test_every_problem_is_reported_not_just_the_first(default_raw):
@@ -397,9 +401,7 @@ def test_invalid_toml_is_refused_as_a_template_problem():
     assert "not valid TOML" in caught.value.problems[0]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Parameterisation: a second taxonomy, sharing nothing
-# ═══════════════════════════════════════════════════════════════════════════
+# Parameterisation: a second taxonomy, sharing nothing.
 
 
 def test_the_second_template_shares_no_name_with_the_default(default, second):
@@ -414,96 +416,75 @@ def test_the_second_template_shares_no_name_with_the_default(default, second):
     assert default.tree.display != second.tree.display
 
 
-def test_a_custom_taxonomy_routes_with_no_code_change(second):
-    """The whole parameterisation claim, in one assertion per tier."""
-    assert routing.resolve_bucket(second, "Banger").bucket_id == "floor_filler"
-    assert routing.resolve_bucket(second, "Slow Burn").bucket_id == "slow_burn"
-    assert routing.resolve_bucket(second, "a proper banger").bucket_id == "floor_filler"
-    assert routing.resolve_bucket(second, "no idea").bucket_id == "unfiled"
+def _band(bucket, level):
+    return lambda t: routing.energy_sub(t, bucket, level).display
 
 
-def test_a_custom_taxonomy_uses_its_own_band_count(second):
-    """Four bands, four different cuts, and none of the default's names."""
-    seen = {
-        level: routing.energy_sub(second, "floor_filler", level).display
-        for level in range(1, 11)
-    }
-    assert seen[1] == "Warm Up"
-    assert seen[3] == "Groove"
-    assert seen[6] == "Peak"
-    assert seen[9] == "Afters"
+def _by_source(level, genre):
+    return lambda t: routing.energy_sub(t, "field_recordings", level, source_genre=genre).id
 
 
-def test_a_custom_taxonomy_applies_its_own_band_label_override(second):
-    """Same cuts, different labels, and only the overridden ones move."""
-    assert routing.energy_sub(second, "slow_burn", 1).display == "Barely Moving"
-    assert routing.energy_sub(second, "slow_burn", 4).display == "Groove"
-    assert routing.energy_sub(second, "slow_burn", 10).display == "Last Call"
+def _prior(t):
+    prior = routing.bpm_prior(t, "Banger")
+    return (prior.start, prior.floor, prior.ceil)
 
 
-def test_a_custom_taxonomy_honours_a_bucket_with_no_energy_split(second):
-    for level in (None, 1, 5, 10):
-        assert routing.energy_sub(second, "spoken", level).display == "Spoken Word"
-    assert routing.no_energy_sub(second, "spoken") is None
-    assert routing.rates(second, "spoken") is False
+def _unknown_tempo(t):
+    unknown = routing.suggest_tag(t, "slow one")
+    return (unknown.bucket_id, unknown.needs_review is True)
 
 
-def test_a_custom_taxonomy_honours_a_bucket_routing_by_source(second):
-    assert routing.energy_sub(second, "field_recordings", 5, source_genre="Wildlife").id == "birds"
-    assert routing.energy_sub(second, "field_recordings", None, source_genre="Weather").id == "water"
+# The whole parameterisation claim: the second template answers by its own
+# declaration, one case per tier, band, curve and vocabulary it declares.
+CUSTOM = [
+    ("routes-exactly", lambda t: routing.resolve_bucket(t, "Banger").bucket_id, "floor_filler"),
+    ("routes-by-display", lambda t: routing.resolve_bucket(t, "Slow Burn").bucket_id, "slow_burn"),
+    ("routes-by-keyword", lambda t: routing.resolve_bucket(t, "a proper banger").bucket_id, "floor_filler"),
+    ("routes-to-its-fallback", lambda t: routing.resolve_bucket(t, "no idea").bucket_id, "unfiled"),
+    # Four bands, four different cuts, and none of the default's names.
+    *[(f"band-{lv}-{name}", _band("floor_filler", lv), name) for lv, name in
+      ((1, "Warm Up"), (3, "Groove"), (6, "Peak"), (9, "Afters"))],
+    # Same cuts, different labels, and only the overridden ones move.
+    *[(f"label-override-{lv}", _band("slow_burn", lv), name) for lv, name in
+      ((1, "Barely Moving"), (4, "Groove"), (10, "Last Call"))],
+    *[(f"no-energy-split-{lv}", _band("spoken", lv), "Spoken Word") for lv in (None, 1, 5, 10)],
+    ("no-energy-split-has-no-no-energy-sub", lambda t: routing.no_energy_sub(t, "spoken"), None),
+    ("no-energy-split-does-not-rate", lambda t: routing.rates(t, "spoken"), False),
+    ("by-source-wildlife", _by_source(5, "Wildlife"), "birds"),
+    ("by-source-without-energy", _by_source(None, "Weather"), "water"),
     # Unmapped falls to the DECLARED default rather than to whichever sub is first.
-    assert routing.energy_sub(second, "field_recordings", 5, source_genre="Ghosts").id == "engines"
+    ("by-source-unmapped-to-declared-default", _by_source(5, "Ghosts"), "engines"),
+    *[(f"rating-{lv}", lambda t, lv=lv: routing.energy_rating(t, lv), r) for lv, r in
+      ((3, 51), (6, 153), (10, 255), (None, None))],
+    ("tempo-window", _prior, (128, 120, 140)),
+    ("declines-its-own-word", lambda t: routing.suggest_tag(t, "Misc").declined, True),
+    ("declines-empty-as-not-found", lambda t: routing.suggest_tag(t, "").decline, routing.Decline.NOT_FOUND),
+    ("tags-by-its-vocabulary", lambda t: routing.suggest_tag(t, "Banger").tag, "Floor Filler"),
+    ("tempo-split-slow", lambda t: routing.suggest_tag(t, "slow one", bpm=80.0).bucket_id, "spoken"),
+    ("tempo-split-fast", lambda t: routing.suggest_tag(t, "slow one", bpm=110.0).bucket_id, "slow_burn"),
+    ("tempo-split-unknown-needs-review", _unknown_tempo, ("slow_burn", True)),
+]
 
 
-def test_a_custom_taxonomy_uses_its_own_rating_curve(second):
-    assert routing.energy_rating(second, 3) == 51
-    assert routing.energy_rating(second, 6) == 153
-    assert routing.energy_rating(second, 10) == 255
-    assert routing.energy_rating(second, None) is None
-
-
-def test_a_custom_taxonomy_uses_its_own_tempo_windows(second):
-    prior = routing.bpm_prior(second, "Banger")
-    assert (prior.start, prior.floor, prior.ceil) == (128, 120, 140)
-
-
-def test_a_custom_taxonomy_uses_its_own_decline_vocabulary(second):
-    assert routing.suggest_tag(second, "Misc").declined
-    assert routing.suggest_tag(second, "").decline is routing.Decline.NOT_FOUND
-    assert routing.suggest_tag(second, "Banger").tag == "Floor Filler"
-
-
-def test_a_custom_taxonomy_splits_on_tempo_where_it_declares_one(second):
-    assert routing.suggest_tag(second, "slow one", bpm=80.0).bucket_id == "spoken"
-    assert routing.suggest_tag(second, "slow one", bpm=110.0).bucket_id == "slow_burn"
-    unknown = routing.suggest_tag(second, "slow one")
-    assert unknown.bucket_id == "slow_burn" and unknown.needs_review is True
+@pytest.mark.parametrize(("ask", "answer"), [pytest.param(a, b, id=i) for i, a, b in CUSTOM])
+def test_a_custom_taxonomy_answers_by_its_own_declaration(second, ask, answer):
+    got = ask(second)
+    assert got is answer if answer is None or isinstance(answer, (bool, enum.Enum)) else got == answer
 
 
 def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):
-    """R-650. The library's own folder names are not a gap in the library.
-
-    ``suggest_tag`` has NO tier that recognises a display name, deliberately:
-    recognising one is routing's job, and tagging must not invent a bucket. So a
-    catalogue answering with a bucket's own name, which happens constantly
-    because this tagger writes bucket names back onto files, reaches the last
-    tier and passes through as itself. The TAG is right, routing places it by
-    its own second tier, and reporting it would put the person's own template in
-    front of them as something to go and fix.
-
-    BOTH TEMPLATES, because the shipped one has two such buckets and the second
-    has three, measured 2026-09-21. A template whose every bucket display also
-    has an alias would make this vacuous, which is what the second loop rules
-    out.
+    """R-650. ``suggest_tag`` has no tier for a display name, so a bucket's own
+    name, which this tagger writes back onto files, passes through the last tier
+    as itself. Routing places it, so reporting it would show the person their
+    own template as something to fix. Both templates, and the second loop shows
+    the check is not vacuous.
     """
     for declared in (default, second):
         displays = [bucket.display for bucket in declared.buckets]
         assert displays
         assert [d for d in displays if routing.suggest_tag(declared, d).off_taxonomy] == []
 
-    # NOT VACUOUS, which is the half a passing assertion above cannot show. Each
-    # of these is claimed by no alias and comes back out of the resolver as
-    # itself with no bucket, which is the last tier's own shape.
+    # Claimed by no alias, and back out of the resolver as itself with no bucket.
     for declared, display in ((default, "NonElectronic"), (second, "Floor Filler")):
         assert declared.bucket_for_display(display) is not None
         assert declared.tagging_alias(display.lower()) is None
@@ -512,17 +493,9 @@ def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, seco
 
 
 def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
-    """The two ways a declared-looking word still does not land where it says.
-
-    The suppression above is the ROUTING tier, not the vocabulary, and this is
-    the measurement that decided it. A sub's display is a word the template
-    declares and ``resolve_bucket`` does not recognise, so the file wears it and
-    lands in the fallback. A bucket display in another case is the same story,
-    and it is not hypothetical: the Bandcamp picker only ever selects a tag
-    equal to its own lowercase, so that is the case this product produces.
-
-    Both are exactly the cost R-650 names, so both are reported rather than
-    suppressed for looking familiar.
+    """The suppression above is the routing tier, not the vocabulary. A sub's
+    display and a bucket display in another case (the Bandcamp picker's own
+    lowercase) both land in the fallback, the cost R-650 names, so both report.
     """
     for display in ("Birds", "Water", "Engines"):
         assert routing.suggest_tag(second, display).off_taxonomy is True
@@ -535,13 +508,8 @@ def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
 
 
 def test_an_off_taxonomy_word_can_still_route_to_a_real_bucket(default):
-    """The flag is about the WORD, and reading it as a place is wrong both ways.
-
-    ``suggest_tag``'s last tier and ``resolve_bucket``'s keyword tier read two
-    different rule lists, so a string nothing tags can still be routed by a
-    fuzzy rule. Driven 2026-09-21 on two ordinary Beatport genre strings. This
-    is why the sweep's warning says what was written and not where it went.
-    """
+    """The flag is about the WORD: tagging and the keyword tier read two rule
+    lists, so a word nothing tags can still route by a fuzzy rule."""
     for value in ("Psy-Trance", "Hardcore / Hard Techno"):
         assert routing.suggest_tag(default, value).off_taxonomy is True
         landing = routing.resolve_bucket(default, value)
@@ -550,21 +518,13 @@ def test_an_off_taxonomy_word_can_still_route_to_a_real_bucket(default):
 
 
 def test_two_taxonomies_coexist_in_one_process(default, second):
-    """The reason nothing here reads configuration (seam decision S3).
-
-    A resolver that reached for global config could not be asked this question at
-    all, and the question is the unit's verification.
-    """
+    """Why nothing here reads configuration (seam decision S3)."""
     assert routing.resolve_bucket(default, "Banger").bucket_id == default.fallback.bucket
     assert routing.resolve_bucket(second, "Banger").bucket_id == "floor_filler"
 
 
 def test_a_template_with_no_energy_dimension_routes_and_does_not_error():
-    """R19's least glamorous requirement: a taxonomy may simply not use energy.
-
-    The engine must place the track in its bucket and report that there is no sub
-    below it, rather than raising or inventing one.
-    """
+    """R19: a taxonomy may not use energy; the track lands with no sub below it."""
     template = """
 schema_version = 1
 [tree]
@@ -590,71 +550,47 @@ display = "Everything"
     assert routing.energy_rating(taxonomy, 7) is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R19: a rename must not orphan state
-# ═══════════════════════════════════════════════════════════════════════════
+# R19: a rename must not orphan state.
 
 
-def test_renaming_a_display_name_preserves_state_keyed_to_its_identifier(default_raw):
-    """The entire reason ids exist, asserted end to end.
-
-    In the old system a folder name was simultaneously code, config, a state key,
-    XML bytes, and a folder in the user's rekordbox. Renaming it orphaned every
-    record keyed on the old name, silently, because nothing connected them.
-    """
+def _renamed(default_raw):
     before = build_taxonomy(default_raw)
-    target = before.buckets[0]
-
-    # State written under the OLD taxonomy, keyed on the identifier.
-    state = {bucket.id: {"swept": index} for index, bucket in enumerate(before.buckets)}
-
     after = build_taxonomy(
         mutated(default_raw, lambda d: d["bucket"][0].__setitem__("display", "Renamed By Hand"))
     )
+    return before, after
+
+
+def test_renaming_a_display_name_preserves_state_keyed_to_its_identifier(default_raw):
+    """The reason ids exist: a renamed folder once orphaned every record keyed on it."""
+    before, after = _renamed(default_raw)
+    target = before.buckets[0]
+    state = {bucket.id: {"swept": index} for index, bucket in enumerate(before.buckets)}
     renamed = after.bucket(target.id)
 
     assert renamed.display == "Renamed By Hand"
     assert renamed.display != target.display
     assert renamed.id == target.id
     assert state[renamed.id] == {"swept": 0}
-    # And routing follows the new name, because the passthrough tier reads the
-    # display off the declaration rather than off a hardcoded list.
+    # Routing follows the new name, read off the declaration.
     assert routing.resolve_bucket(after, "Renamed By Hand").bucket_id == target.id
 
 
 def test_a_renamed_bucket_keeps_its_aliases_and_its_tempo_window(default_raw):
     """A rename is cosmetic. Anything it changes besides the name is a bug."""
-    before = build_taxonomy(default_raw)
-    after = build_taxonomy(
-        mutated(default_raw, lambda d: d["bucket"][0].__setitem__("display", "Renamed By Hand"))
-    )
+    before, after = _renamed(default_raw)
     original, renamed = before.buckets[0], after.buckets[0]
     assert renamed.aliases == original.aliases
     assert renamed.bpm == original.bpm
     assert renamed.family == original.family
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A former place (R-797): the loader refuses one that is still a place
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def _promoted(data: dict) -> dict:
-    """The bucket of the shipped template that declares a former place."""
-    return next(bucket for bucket in data["bucket"] if bucket.get("formerly"))
-
-
-def _holder(data: dict) -> dict:
-    """The bucket whose folder holds that former place."""
-    former = _promoted(data)["formerly"][0]
-    return next(bucket for bucket in data["bucket"] if bucket["id"] == former["bucket"])
+# Former places (R-797) and split places (U118) that load.
 
 
 def test_the_shipped_template_declares_three_former_places_and_they_load(default, default_raw):
     """R&B's since R-797, Hip-Hop's since U118 and Jazz's since U133, each read as written."""
-    declared = [
-        (bucket.id, place) for bucket in default.buckets for place in bucket.formerly
-    ]
+    declared = [(bucket.id, place) for bucket in default.buckets for place in bucket.formerly]
     raw = [
         (bucket["id"], row) for bucket in default_raw["bucket"] for row in bucket.get("formerly", [])
     ]
@@ -665,50 +601,8 @@ def test_the_shipped_template_declares_three_former_places_and_they_load(default
         )
 
 
-def test_a_former_place_in_a_bucket_nobody_declares_is_refused(default_raw):
-    def mutate(data):
-        _promoted(data)["formerly"][0]["bucket"] = "no_such_bucket"
-
-    assert any("is not declared" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_former_place_naming_a_sub_its_bucket_still_declares_is_refused(default_raw):
-    """The guard that stops a mistyped line planning removals from a live sub."""
-
-    def mutate(data):
-        live = _holder(data)["sub"][0]
-        _promoted(data)["formerly"][0]["sub"] = live["id"]
-
-    assert any("still declares the sub" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_former_place_carrying_the_name_of_a_live_sub_is_refused(default_raw):
-    def mutate(data):
-        live = _holder(data)["sub"][0]
-        _promoted(data)["formerly"][0]["display"] = live["display"]
-
-    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_former_place_named_for_a_band_of_an_energy_bucket_is_refused(default_raw):
-    """A band is a live place of a bucket that splits by energy, under the
-    bucket's own label for it."""
-
-    def mutate(data):
-        holder = next(
-            bucket
-            for bucket in data["bucket"]
-            if (bucket.get("energy") or {}).get("band_display")
-        )
-        former = _promoted(data)["formerly"][0]
-        former["bucket"] = holder["id"]
-        former["display"] = next(iter(holder["energy"]["band_display"].values()))
-
-    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
-
-
 def test_a_band_name_is_no_live_place_in_a_bucket_that_does_not_split_by_energy(default_raw):
-    """The other side of the rule above: the check asks what THAT bucket holds."""
+    """The check asks what THAT bucket holds."""
 
     def mutate(data):
         former = _promoted(data)["formerly"][0]
@@ -721,78 +615,6 @@ def test_a_band_name_is_no_live_place_in_a_bucket_that_does_not_split_by_energy(
     assert build_taxonomy(mutated(default_raw, mutate)).buckets
 
 
-def test_a_former_place_named_for_a_sub_class_is_refused(default_raw):
-    def mutate(data):
-        _promoted(data)["formerly"][0]["display"] = data["sub_class"][0]["display"]
-
-    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_former_place_whose_own_id_is_a_band_is_refused(default_raw):
-    def mutate(data):
-        _promoted(data)["formerly"][0]["id"] = data["energy"]["bands"][0]["id"]
-
-    assert any("already a sub of this bucket" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_former_place_declared_twice_in_one_bucket_is_refused(default_raw):
-    def mutate(data):
-        promoted = _promoted(data)
-        promoted["formerly"].append(dict(promoted["formerly"][0]))
-
-    found = problems_from(default_raw, mutate)
-    assert any("duplicate former place id" in p for p in found)
-    assert any("already the former place of" in p for p in found)
-
-
-def _another_bucket(data: dict) -> dict:
-    return next(
-        bucket
-        for bucket in data["bucket"]
-        if not bucket.get("formerly") and bucket["id"] != _holder(data)["id"]
-    )
-
-
-def test_one_playlist_cannot_be_the_former_place_of_two_buckets(default_raw):
-    def mutate(data):
-        _another_bucket(data)["formerly"] = [
-            dict(_promoted(data)["formerly"][0], id="another_id")
-        ]
-
-    found = problems_from(default_raw, mutate)
-    assert any("already the former place of" in p for p in found)
-    assert not any("duplicate former place id" in p for p in found)
-
-
-def test_two_buckets_cannot_declare_one_former_place_id(default_raw):
-    """Both compete in the folder that holds them, under their identifiers."""
-
-    def mutate(data):
-        first = _promoted(data)["formerly"][0]
-        _another_bucket(data)["formerly"] = [
-            dict(first, sub="another_sub", display="Another playlist")
-        ]
-
-    found = problems_from(default_raw, mutate)
-    assert any("duplicate former place id" in p for p in found)
-    assert not any("already the former place of" in p for p in found)
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "message"),
-    [
-        ("id", "Not An Id", "must match"),
-        ("sub", "", "must match"),
-        ("display", "", "display must be a non-empty string"),
-    ],
-)
-def test_a_former_place_short_of_a_field_is_refused(default_raw, field, value, message):
-    def mutate(data):
-        _promoted(data)["formerly"][0][field] = value
-
-    assert any("formerly" in p and message in p for p in problems_from(default_raw, mutate))
-
-
 def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
     def mutate(data):
         formerly = {row["id"] for bucket in data["bucket"] for row in bucket.get("formerly", [])}
@@ -800,26 +622,10 @@ def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
             bucket.pop("formerly", None)
         # A split place naming a former place goes with it (U118).
         splitter = _splitter(data)
-        splitter["split_from"] = [
-            row for row in splitter["split_from"] if row["sub"] not in formerly
-        ]
+        splitter["split_from"] = [row for row in splitter["split_from"] if row["sub"] not in formerly]
 
     loaded = build_taxonomy(mutated(default_raw, mutate))
     assert all(bucket.formerly == () for bucket in loaded.buckets)
-
-
-def test_a_former_place_under_schema_version_1_is_refused(default_raw):
-    """An older build reads version 1, ignores the declaration, and files a
-    track into its new place while it sits in the old one. Version 2 is what
-    such a build refuses by name, so the declaration has to state it."""
-
-    def mutate(data):
-        data["schema_version"] = 1
-
-    assert any(
-        "declares a former place under schema_version 1" in p
-        for p in problems_from(default_raw, mutate)
-    )
 
 
 def test_a_version_1_template_with_no_former_place_still_loads(default_raw, second):
@@ -836,56 +642,8 @@ def test_a_version_1_template_with_no_former_place_still_loads(default_raw, seco
     assert second.schema_version == 1
 
 
-@pytest.mark.parametrize(
-    "shape",
-    [
-        {"id": "x", "bucket": "y", "sub": "z", "display": "One table, single brackets"},
-        ["a bare name"],
-        "a bare name",
-    ],
-    ids=["one-table", "list-of-strings", "string"],
-)
-def test_a_former_place_in_the_wrong_shape_is_a_problem_and_not_a_crash(default_raw, shape):
-    """A person edits a library's copy by hand, and one pair of brackets is
-    valid TOML. It raised an attribute error out of the loader, which every
-    verb reported as a defect in this product."""
-
-    def mutate(data):
-        _promoted(data)["formerly"] = shape
-
-    assert any(
-        "formerly must be an array of tables" in p for p in problems_from(default_raw, mutate)
-    )
-
-
-def test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused(default_raw):
-    """It competes in that bucket too, so the identifier has to be free there."""
-
-    def mutate(data):
-        _promoted(data)["formerly"][0]["id"] = _holder(data)["sub"][0]["id"]
-
-    assert any("where a former place competes as well" in p for p in problems_from(default_raw, mutate))
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# A split place (U118): the loader refuses one that is not a live band
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def _splitter(data: dict) -> dict:
-    """The bucket of the shipped template that declares split places."""
-    return next(bucket for bucket in data["bucket"] if bucket.get("split_from"))
-
-
-def _split_holder(data: dict) -> dict:
-    """The bucket whose bands those split places are."""
-    place = _splitter(data)["split_from"][0]
-    return next(bucket for bucket in data["bucket"] if bucket["id"] == place["bucket"])
-
-
 def test_the_shipped_template_splits_one_bucket_out_of_every_place_of_another(default, default_raw):
-    """Soul out of R&B: every band, the no reading sub and R&B's own former
-    place, each read as written."""
+    """Soul out of R&B: every band, the no reading sub and R&B's former place."""
     (splitter,) = [bucket for bucket in default.buckets if bucket.split_from]
     holder = default.bucket(splitter.split_from[0].bucket)
     raw = _splitter(default_raw)["split_from"]
@@ -900,43 +658,15 @@ def test_the_shipped_template_splits_one_bucket_out_of_every_place_of_another(de
     }
 
 
-def test_a_split_place_naming_a_band_the_holder_does_not_file_into_is_refused(default_raw):
-    """The guard that stops a former place being written as a split place."""
-
-    def mutate(data):
-        _splitter(data)["split_from"][0]["sub"] = "no_such_band"
-
-    assert any("is not a band" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_out_of_a_bucket_with_no_bands_is_refused(default_raw):
-    def mutate(data):
-        holder = next(bucket for bucket in data["bucket"] if bucket.get("sub_by_source"))
-        _splitter(data)["split_from"][0]["bucket"] = holder["id"]
-
-    assert any("is not a band" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_under_another_name_than_the_holders_is_refused(default_raw):
-    def mutate(data):
-        _splitter(data)["split_from"][0]["display"] = "Renamed by hand"
-
-    assert any("the name" in p and "gives" in p for p in problems_from(default_raw, mutate))
-
-
 def test_a_split_place_of_a_band_under_its_own_label_is_checked_against_that_label(default_raw):
     """A holder that labels its bands differently is asked for its label."""
 
     def mutate(data):
-        holder = next(
-            bucket for bucket in data["bucket"] if (bucket.get("energy") or {}).get("band_display")
-        )
+        holder = _band_label_holder(data)
         band, label = next(iter(holder["energy"]["band_display"].items()))
-        bands = {row["id"] for row in data["energy"]["bands"]} | {"unsorted"}
         splitter = _splitter(data)
-        splitter["split_from"] = [row for row in splitter["split_from"] if row["sub"] in bands]
-        place = splitter["split_from"][0]
-        place.update(bucket=holder["id"], sub=band, display=label)
+        splitter["split_from"] = [row for row in splitter["split_from"] if row["sub"] in _band_ids(data)]
+        splitter["split_from"][0].update(bucket=holder["id"], sub=band, display=label)
         for other in splitter["split_from"][1:]:
             other["bucket"] = holder["id"]
             other["display"] = holder["energy"]["band_display"].get(other["sub"], other["display"])
@@ -953,87 +683,6 @@ def test_a_split_place_of_a_band_under_its_own_label_is_checked_against_that_lab
     assert any("gives" in p for p in problems_from(default_raw, plain_name))
 
 
-def test_a_split_place_out_of_itself_or_a_bucket_nobody_declares_is_refused(default_raw):
-    for name in ("no_such_bucket", None):
-
-        def mutate(data, name=name):
-            _splitter(data)["split_from"][0]["bucket"] = name or _splitter(data)["id"]
-
-        assert any("not another declared bucket" in p for p in problems_from(default_raw, mutate))
-
-
-def test_one_band_split_out_by_two_buckets_is_refused(default_raw):
-    def mutate(data):
-        other = next(
-            bucket
-            for bucket in data["bucket"]
-            if bucket["id"] not in (_splitter(data)["id"], _split_holder(data)["id"])
-            and not bucket.get("sub_by_source")
-            and (bucket.get("energy") or {}).get("enabled", True)
-        )
-        other["split_from"] = [dict(_splitter(data)["split_from"][0], id="another_id")]
-
-    assert any("already split out by" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_id_shared_with_a_former_place_is_refused(default_raw):
-    def mutate(data):
-        _splitter(data)["split_from"][0]["id"] = _promoted(data)["formerly"][0]["id"]
-
-    assert any("already a former or split place" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_of_the_holders_former_place_under_another_name_is_refused(default_raw):
-    def mutate(data):
-        former = next(row for row in _splitter(data)["split_from"] if row["sub"] not in (
-            {band["id"] for band in data["energy"]["bands"]} | {"unsorted"}
-        ))
-        former["display"] = "Renamed by hand"
-
-    assert any("gives" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_of_another_buckets_former_place_is_refused(default_raw):
-    """Only the holder's own former place, which is a place the holder competes on."""
-
-    def mutate(data):
-        hip_hop = next(b for b in data["bucket"] if b["id"] == "hip_hop")
-        _splitter(data)["split_from"][0].update(
-            sub=hip_hop["formerly"][0]["id"], display=hip_hop["formerly"][0]["display"]
-        )
-
-    assert any("is not a band or a former place" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_split_place_whose_id_is_a_band_is_refused(default_raw):
-    def mutate(data):
-        _splitter(data)["split_from"][0]["id"] = data["energy"]["bands"][0]["id"]
-
-    assert any("already a sub of this bucket" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_bucket_that_does_not_split_by_energy_cannot_declare_a_split_place(default_raw):
-    def mutate(data):
-        _splitter(data)["energy"] = {"enabled": False}
-        _splitter(data)["single_sub"] = {"id": "everything", "display": "Everything"}
-
-    assert any("does not split by energy" in p for p in problems_from(default_raw, mutate))
-
-
-@pytest.mark.parametrize("version", [1, 2])
-def test_a_split_place_under_an_older_schema_version_is_refused(default_raw, version):
-    """A build that reads version 2 ignores the key and files every track of
-    the split genre into its new folder while it sits in the old band."""
-
-    def mutate(data):
-        data["schema_version"] = version
-
-    assert any(
-        f"declares a split place under schema_version {version}" in p
-        for p in problems_from(default_raw, mutate)
-    )
-
-
 def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
     def mutate(data):
         data["schema_version"] = 2
@@ -1045,23 +694,9 @@ def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 2
 
 
-@pytest.mark.parametrize(
-    "shape",
-    [{"id": "x", "bucket": "y", "sub": "z", "display": "One table"}, "a bare name"],
-    ids=["one-table", "string"],
-)
-def test_a_split_place_in_the_wrong_shape_is_a_problem_and_not_a_crash(default_raw, shape):
-    def mutate(data):
-        _splitter(data)["split_from"] = shape
-
-    assert any(
-        "split_from must be an array of tables" in p for p in problems_from(default_raw, mutate)
-    )
-
-
 def test_a_tagging_only_word_wins_over_another_buckets_routing_alias(default):
     """"Trap / Wave" routes to one bucket and tags as Hip-Hop, as it did while
-    Hip-Hop was a sub. A tagging-only word is the more specific statement."""
+    Hip-Hop was a sub: a tagging-only word is the more specific statement."""
     routed = default.routing_alias("Trap / Wave")
     tagged = default.tagging_alias("trap / wave")
     assert routed is not None and tagged is not None
@@ -1069,57 +704,7 @@ def test_a_tagging_only_word_wins_over_another_buckets_routing_alias(default):
     assert routed != tagged[0]
 
 
-def test_two_buckets_listing_one_tagging_only_word_is_refused(default_raw):
-    def mutate(data):
-        first = _splitter(data)
-        other = next(bucket for bucket in data["bucket"] if bucket.get("tag_aliases") and bucket is not first)
-        first.setdefault("tag_aliases", []).append(other["tag_aliases"][0])
-
-    assert any("is claimed by both" in p for p in problems_from(default_raw, mutate))
-
-
-# ---------------------------------------------------------------------------
-# U121: the INSPIRATION folder, an optional root node like the catalog tree
-# ---------------------------------------------------------------------------
-
-
-def test_the_inspiration_folder_is_declared_in_the_shipped_default(default):
-    """U121: the folder a set's permanent playlist is kept in, as data. A
-    library whose author keeps no such playlists can delete the section; one
-    who does gets the folder the source system already used."""
-    assert default.inspiration is not None
-    assert default.inspiration.id == "inspiration"
-    assert default.inspiration.display == "INSPIRATION"
-
-
-def test_a_template_declaring_no_inspiration_folder_loads_clean(default_raw):
-    data = mutated(default_raw, lambda d: d.pop("inspiration"))
-    assert build_taxonomy(data).inspiration is None
-
-
-def test_a_half_declared_inspiration_folder_is_refused_as_strictly_as_a_mandatory_one(
-    default_raw,
-):
-    def no_display(d):
-        d["inspiration"]["display"] = ""
-
-    def bad_id(d):
-        d["inspiration"]["id"] = d["inspiration"]["display"]
-
-    def empty(d):
-        d["inspiration"] = {}
-
-    def not_a_table(d):
-        d["inspiration"] = "INSPIRATION"
-
-    assert any("[inspiration] display" in p for p in problems_from(default_raw, no_display))
-    assert any("[inspiration] id" in p for p in problems_from(default_raw, bad_id))
-    emptied = problems_from(default_raw, empty)
-    assert any("[inspiration] id" in p for p in emptied)
-    assert any("[inspiration] display" in p for p in emptied)
-    assert any("[inspiration] must be a table" in p for p in problems_from(default_raw, not_a_table))
-# U119: a sub class derived from a playlist, beside the vocal one
-# ---------------------------------------------------------------------------
+# U119: a sub class derived from a playlist, beside the vocal one.
 
 
 def test_the_shipped_default_declares_the_genre_favorites_as_a_playlist_signal(default):
@@ -1139,59 +724,14 @@ def test_two_additive_classes_load_when_their_signals_differ(default):
     assert sorted(entry.signal for entry in additive) == ["playlist", "vox"]
 
 
-def test_two_additive_classes_on_one_signal_are_refused(default_raw):
-    def second_vocal(d):
-        d["sub_class"].append(
-            {"id": "second_vox", "display": "Second", "policy": "derived", "additive": True}
-        )
-
-    problems = problems_from(default_raw, second_vocal)
-    assert any("'vox' signal" in p and "only one is supported per signal" in p for p in problems)
-
-
-def test_a_playlist_signal_names_its_playlist_and_is_derived_and_additive(default_raw):
-    def no_playlist(d):
-        d["sub_class"][2]["signal_playlist"] = ""
-
-    def manual(d):
-        d["sub_class"][2]["policy"] = "manual"
-        d["sub_class"][2]["additive"] = False
-
-    assert any("signal_playlist" in p for p in problems_from(default_raw, no_playlist))
-    assert any("derived and additive" in p for p in problems_from(default_raw, manual))
-
-
-def test_a_playlist_name_on_a_vocal_class_and_an_unknown_signal_are_refused(default_raw):
-    def misplaced(d):
-        d["sub_class"][1]["signal_playlist"] = "All Favorites"
-
-    def unknown(d):
-        d["sub_class"][2]["signal"] = "colour"
-
-    assert any("only meaningful for a playlist signal" in p for p in problems_from(default_raw, misplaced))
-    assert any("signal 'colour'" in p for p in problems_from(default_raw, unknown))
-
-
-def test_a_playlist_signal_under_schema_version_three_is_refused_by_name(default_raw):
-    def older(d):
-        d["schema_version"] = 3
-
-    problems = problems_from(default_raw, older)
-    assert any("schema_version = 4" in p for p in problems)
-
-
 def test_a_template_without_the_favorites_class_loads_clean(default_raw):
     data = mutated(default_raw, lambda d: d["sub_class"].pop(2))
     built = build_taxonomy(data)
     assert [entry.id for entry in built.sub_classes if entry.additive] == ["with_vox"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# One parse per text in a process (U247)
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# Every count below is of a text the test made unique, since the memo outlives
-# the test and a text another test parsed would be answered with no parse.
+# One parse per text in a process (U247). Every count is of a text the test made
+# unique, since the memo outlives the test.
 
 
 def _shipped_text() -> str:
@@ -1240,10 +780,7 @@ def test_an_edit_that_keeps_the_length_is_a_different_text_and_is_parsed_again(m
 
 @pytest.mark.parametrize(
     "text, problem",
-    [
-        ("this is not = = toml", "not valid TOML"),
-        ("schema_version = 1\n", None),
-    ],
+    [("this is not = = toml", "not valid TOML"), ("schema_version = 1\n", None)],
     ids=["not-toml", "not-a-taxonomy"],
 )
 def test_a_text_that_does_not_load_raises_on_every_call(monkeypatch, text, problem):
@@ -1261,11 +798,8 @@ def test_a_text_that_does_not_load_raises_on_every_call(monkeypatch, text, probl
 
 
 def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
-    """The active copy, the shipped template and the upgraded text, asked in turn.
-
-    The fewest texts one verb asks for side by side, so a memo too small to hold
-    them would parse each one again on every round of an interleaved run.
-    """
+    """The active copy, the shipped template and the upgraded text, asked in turn,
+    so a memo too small for them would parse each on every round."""
     texts = [unique(_shipped_text()) for _ in range(3)]
     parses = counted(monkeypatch)
 
@@ -1277,12 +811,8 @@ def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
 
 
 def test_the_memo_holds_eight_texts_and_parses_the_first_again_after_a_ninth(monkeypatch):
-    """Bounded, and the bound is a handful: nine texts push the first one out.
-
-    THE NINE IS WRITTEN HERE rather than read off the module, so a bound raised
-    to hold every text a long process ever saw fails this test instead of
-    passing it by its own number.
-    """
+    """Bounded to a handful. The nine is written here, not read off the module,
+    so a bound raised to hold every text fails instead of passing by its own number."""
     texts = [unique(_shipped_text()) for _ in range(9)]
     parses = counted(monkeypatch)
 

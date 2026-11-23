@@ -110,16 +110,20 @@ KEBAB_LITERALS = {
         'rows-left-alone',
         'rows-nothing-to-write',
     ],
-    'tagging/searchers.py': [
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/catalogues.py': [
         'catalogue-parse-broken',
         'catalogue-unreachable',
-        # 2026-11-13, U281: the Cloudflare header a refusal's note is named by.
-        'cf-mitigated',
-        'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'not-asked',
         'parse-break',
+    ],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/discogs.py': [
+        'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'x-discogs-ratelimit-remaining',  # 2026-11-12, U244
     ],
+    # 2026-11-13, U281: the Cloudflare header a refusal's note is named by.
+    'tagging/searchers.py': ['cf-mitigated'],
     # 2026-11-21, U292: the needs genre backlog's causes and its verb's notes.
     'tagging/backlog.py': [
         'answer-does-not-reach',
@@ -182,8 +186,11 @@ KEBAB_LITERALS = {
 NAMED_WITHOUT_OWN = {
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/discogs.py': ['credential-missing'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
 }
@@ -191,13 +198,11 @@ NAMED_WITHOUT_OWN = {
 NAMED_WITH_OWN = {
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
-    'tagging/searchers.py': [
-        'catalogue-parse-broken',
-        'catalogue-unreachable',
-        'credential-missing',
-        'parse-break',
-    ],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/discogs.py': ['credential-missing'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     # 2026-11-15, U289: how a catalogue's question was read off a file.
     'tagging/titles.py': ['as-written', 'by-name', 'head-alone', 'name-ambiguous', 'past-head'],
@@ -205,7 +210,7 @@ NAMED_WITH_OWN = {
 }
 
 NAMED_WITH_INTEGER = frozenset({
-    'tagging/searchers.py',
+    'tagging/discogs.py',  # 2026-11-22, U306: moved from searchers with the Discogs asker.
     # 2026-11-15, U289.
     'tagging/titles.py',
 })
@@ -228,8 +233,11 @@ LITERAL_HOLDERS = {
         'tag-retag-folder-unknown',
     ],
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
+    # 2026-11-22, U306: searchers split by source; the literals moved with their code.
+    'tagging/discogs.py': ['credential-missing'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/suggest_cli.py': [
         'review-selection-invalid',
@@ -241,5 +249,5 @@ LITERAL_HOLDERS = {
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'tagging/cli.py',  # 2026-11-11, U240: how many failed files a refusal names.
-    'tagging/searchers.py',
+    'tagging/discogs.py',  # 2026-11-22, U306: moved from searchers with the Discogs asker.
 })
