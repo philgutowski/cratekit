@@ -2,7 +2,7 @@
 title: "An xml import sets a track's attributes only on a row it creates, so a Rating patched into an export never reaches a track rekordbox already holds"
 date: 2026-09-24
 category: integration-issues
-module: src/cratekit/write/routing_cli.py, src/cratekit/write/rbxml.py, src/cratekit/write/trees.py
+module: src/cratekit/write/routing_export.py, src/cratekit/write/rbxml.py, src/cratekit/write/trees.py
 problem_type: integration_issue
 component: rekordbox_xml_bridge
 severity: medium

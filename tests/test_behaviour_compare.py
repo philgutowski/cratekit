@@ -1590,6 +1590,17 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     manifest = json.loads((captures[0] / compare.MANIFEST).read_text(encoding="utf-8"))
     assert manifest["scenarios"] == [
+        "acquire/a_tombstone_withholds_a_deleted_record",
+        "acquire/acquire_audit_and_the_refusals",
+        "acquire/match_verdicts_over_three_readers",
+        "acquire_bandcamp/bandcamp_plan_and_fetch",
+        "acquire_bandcamp/bandcamp_without_a_session",
+        "acquire_download/a_drive_lands_every_track",
+        "acquire_download/a_missing_session_parks",
+        "acquire_download/a_refused_login_and_a_withdrawn_session_park",
+        "acquire_fallback/fallback_offers_and_accepts",
+        "acquire_fallback_fetch/fallback_fetch_lands_marked",
+        "acquire_fallback_fetch/fallback_fetch_refused_when_strict",
         "adopt/scan_and_apply_jobs_queued_driven_and_reported",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
@@ -1597,6 +1608,13 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "core_facts/pool_gate_preflight_and_tags_answers",
         "core_jobs/jobs_driven_to_each_end_and_read_back",
         "core_review/review_queue_offered_resolved_withheld_exported_and_imported",
+        "export/a_rename_onto_a_name_the_ledger_already_holds_is_refused",
+        "export/a_renamed_inspiration_playlist_renames_the_sets_account_playlist",
+        "export/a_set_archived_into_its_years_downloaded_sets_folder",
+        "export/a_set_made_on_the_account_with_its_unmatched_row_named",
+        "export/a_set_with_no_stored_account_session_is_refused",
+        "export/the_archive_backfill_files_every_set_its_intake_file_proves",
+        "export/the_set_backfill_makes_a_playlist_for_each_inspiration_set",
         "favorites/favorites_put_in_order_behind_the_gate",
         "intake/a_batch_is_shelved_into_the_processed_tree",
         "intake/a_calibrated_landing_tags_the_rows_that_clear_the_cut",
@@ -1640,11 +1658,38 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "intake_set/a_set_with_no_recognition_key_is_refused_before_any_seam",
         "intake_set/identify_then_set_then_the_resume_that_resolves_each_track",
         "label/registry_document_written_read_back_and_refused",
+        "organize/a_genre_two_root_folders_on_the_account_carry_is_refused_by_the_mirror",
+        "organize/a_mirror_pass_after_a_full_apply_and_a_rerun_that_plans_nothing",
+        "organize/an_account_with_no_stored_session_refuses_the_account_steps",
+        "organize/the_account_side_makes_the_label_folder_and_archives_the_set",
+        "organize/the_filing_step_alone_files_a_marked_playlist_in_its_year",
+        "organize/the_rekordbox_side_files_the_tracks_and_rotates_the_batch",
+        "organize/the_root_step_alone_removes_debris_and_then_the_emptied_legacy_folder",
+        "organize/with_the_export_module_off_organize_plans_and_says_what_it_left_out",
+        "organize_mirror_edits/a_track_moved_on_the_account_is_retagged_and_refiled_in_the_library",
+        "outbound/a_label_year_pruned_of_a_held_release",
+        "outbound/a_playlist_exported_through_its_confirm_and_the_jobs_resume",
+        "outbound/a_prune_whose_removal_the_accounts_window_lags_is_refused",
+        "outbound/an_exported_playlist_pruned_of_the_track_its_library_playlist_lost",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
         "write/guarded_tree_write",
         "write/xml_splice",
+        "write_link/an_unknown_row_refuses_before_any_gate",
+        "write_link/three_probe_values_written_behind_the_gate",
+        "write_link/without_the_acknowledgment_the_probe_refuses_before_its_gate",
+        "write_metadata/an_unreadable_calibration_refuses_and_writes_nothing",
+        "write_metadata/vocal_tags_planned_then_written_then_already_there",
+        "write_naming/a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "write_naming/a_rename_planned_and_applied_beside_a_referenced_file",
+        "write_naming/a_row_under_an_unmapped_volume_refuses_and_renames_nothing",
+        "write_pending/route_pending_after_a_native_landing",
+        "write_resort/a_resort_planned_queued_and_run_by_its_worker",
+        "write_resort/an_answer_over_a_copy_does_not_approve_the_live_file",
+        "write_rows/an_inline_answer_is_refused_and_nothing_is_filled",
+        "write_rows/bare_rows_given_their_defaults_behind_the_gate",
+        "write_rows/without_the_acknowledgment_the_repair_refuses_before_its_gate",
     ]
     assert manifest["root"] == str(root.resolve()) and manifest["source"] == "the working tree"
     # The run cleaned up after itself, and held nothing back.
@@ -1653,7 +1698,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "55 scenarios" in summary and "no difference" in summary
+    assert "100 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())

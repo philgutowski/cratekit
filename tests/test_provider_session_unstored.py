@@ -1,25 +1,12 @@
-"""R-1694: a catalogue or account login whose access token the client library
-refreshed goes on when the keychain cannot take the refreshed session, and the
-verb says so, the way a download's drive does since U274.
+"""R-1694: a login whose refreshed access token the keychain cannot take goes on, and
+the verb says so, the way a download's drive does since U274.
 
-Before this card ``provider_session._login`` wrote the refresh back at its
-scope's close and nothing caught a refusal of that write, so on the product's
-own opt in for a machine with no keychain, ``CRATE_ALLOW_ENV_CREDENTIALS=1``
-with the session in the environment and keyring's fail backend, every verb
-that opens the catalogue or the account failed once the stored access token
-had expired.
-
-1. **The login goes on**: ``client_session`` and ``session_for`` hand back the
-   logged in client, the stored session is left to log in the next run, and
-   the failure is noted by its class alone.
-2. **The verb says so**: one ``provider-session-not-stored`` warning on the
-   envelope, through the real dispatcher, beside the verb's own answer.
-3. **Nothing else is caught**: an unchanged session writes and warns nothing,
-   a rejected login still raises its typed rejection and holds nothing, a
-   defect in the capture still raises, and a scope that asked for no tolerance
-   still raises its write back failure.
-
-D1 applies. Nothing here names a real account, a real token or a real path.
+1. The login goes on: the logged in client is handed back, the stored session is left
+   to log in the next run, and the failure is noted by its class alone.
+2. The verb says so: one ``provider-session-not-stored`` warning on the envelope.
+3. Nothing else is caught: an unchanged session writes and warns nothing, a rejected
+   login and a defect in the capture still raise, and so does a scope that asked for
+   no tolerance.
 """
 
 from __future__ import annotations
@@ -47,8 +34,7 @@ HARVEST = ["label", "harvest", "https://example.invalid/playlist/harvest"]
 
 
 def no_keychain(monkeypatch) -> None:
-    """The product's own opt in for a machine with no keychain: the session is
-    read from the environment, and keyring's real fail backend refuses a write."""
+    """The opt in for a machine with no keychain: keyring's fail backend refuses a write."""
     from keyring.backends import fail
 
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
@@ -98,11 +84,6 @@ def not_stored(envelope: dict) -> list[str]:
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The login goes on
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_refreshed_login_the_keychain_cannot_take_returns_the_client(monkeypatch):
     factory = use(monkeypatch, Factory(refresh_to=REFRESHED))
     no_keychain(monkeypatch)
@@ -113,15 +94,13 @@ def test_a_refreshed_login_the_keychain_cannot_take_returns_the_client(monkeypat
     assert client is factory.built[0]
     assert client.access_token == REFRESHED
     assert noted_since(before) == ("CredentialBackendUnavailable",)
-    # The stored session is untouched: on the opt in, the environment's.
     assert secrets.get_json(SESSION) == STORED
 
 
 def test_the_held_session_is_the_stored_one_so_a_reuse_neither_logs_in_nor_warns_again(
     cfg, monkeypatch
 ):
-    """The keychain still holds the session the client was opened from, so the
-    next resolve reuses the client rather than logging in and failing again."""
+    """The keychain still holds the opened session, so the next resolve reuses the client."""
     factory = use(monkeypatch, Factory(refresh_to=REFRESHED))
     no_keychain(monkeypatch)
     before = len(provider_session.unstored())
@@ -203,8 +182,7 @@ def test_a_token_file_that_cannot_take_the_refresh_is_noted(monkeypatch):
 
 
 def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch):
-    """So a file that cannot be written is never reported over a session that
-    had nothing to store."""
+    """A session with nothing to store never reports a file that cannot be written."""
     use(monkeypatch, Factory())
     record()
     before = len(provider_session.unstored())
@@ -224,17 +202,10 @@ def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch):
     assert noted_since(before) == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The verb says so
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns(
     installed, monkeypatch
 ):
-    """Driven through the real dispatcher and the real catalogue opener. The
-    fake client cannot serve a playlist, so the verb's own answer is a refusal;
-    the refresh the keychain could not take must not replace it."""
+    """Through the real dispatcher: the verb's own answer stands and the warning rides beside it."""
     use(monkeypatch, Factory())
     no_keychain(monkeypatch)
     _, unchanged = drive(HARVEST)
@@ -269,11 +240,6 @@ def test_the_warning_is_this_verbs_alone(installed, monkeypatch):
 def test_the_drives_warning_keeps_its_code():
     assert vendored.SESSION_NOT_STORED == provider_session.SESSION_NOT_STORED
     assert provider_session.SESSION_NOT_STORED == "provider-session-not-stored"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. Nothing else is caught
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_rejected_login_on_the_opt_in_still_raises_the_rejection_and_holds_nothing(
@@ -354,8 +320,7 @@ def test_a_defect_in_the_write_back_still_raises(monkeypatch):
 def test_a_scope_that_asked_for_no_tolerance_still_raises_its_write_back_failure(
     monkeypatch, tmp_path
 ):
-    """The drive and streamrip keep their own handling: without the callback a
-    write back the keychain refuses raises as before."""
+    """Without the callback, a write back the keychain refuses raises as before."""
     no_keychain(monkeypatch)
 
     with pytest.raises(secrets.CredentialBackendUnavailable):
@@ -366,16 +331,11 @@ def test_a_scope_that_asked_for_no_tolerance_still_raises_its_write_back_failure
 
 
 def test_a_failure_in_the_body_never_reaches_the_tolerance(monkeypatch):
-    """Only the write back is caught: what the body raises is raised, whatever
-    its class, and nothing is noted for it."""
+    """Only the write back is caught: what the body raises is raised and not noted."""
     record()
     seen: list[BaseException] = []
 
-    for raised in (
-        secrets.CredentialBackendUnavailable("x"),
-        OSError("x"),
-        AdapterAuthFailed("x"),
-    ):
+    for raised in (secrets.CredentialBackendUnavailable("x"), OSError("x"), AdapterAuthFailed("x")):
         with pytest.raises(type(raised)):
             with provider_session.materialised_session(unstored=seen.append):
                 raise raised
@@ -385,7 +345,7 @@ def test_a_failure_in_the_body_never_reaches_the_tolerance(monkeypatch):
 def test_two_failed_stores_in_one_verb_make_one_warning_naming_the_class_once(
     installed, monkeypatch
 ):
-    """Round one: a verb whose two logins both failed to store says so once."""
+    """A verb whose two logins both failed to store says so once."""
     from cratekit.label import tidal_catalogue
 
     use(monkeypatch, Factory(refresh_to=REFRESHED))

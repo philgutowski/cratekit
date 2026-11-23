@@ -1658,3 +1658,227 @@ product defect. Not on the base's Linux baseline list.
 **Closes when:** the workers signal that they are ready (a marker file each,
 as the suite's other process tests do) and the race starts on both signals.
 Ledger only.
+
+---
+
+## R-1868. A heard title that carries its feat credit after the version reads an owned track as missing, and it is downloaded again
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** Recognition named `Sixth Sense (Louie Vega Remix) feat.
+Ursula Rucker`. The library holds `Sixth Sense (Louie Vega Remix)` by Josh
+Wink, cued. The set job reported the heard one missing, and the download took
+a second copy.
+
+**Measured cost.** One duplicate in 100 landed rows, read by comparing every
+landed title against the older rows. The set's INSPIRATION playlist was given
+the cued copy by hand.
+
+**Closes when:** a trailing feat credit after a version is read off the title
+before the match. Ledger only.
+
+---
+
+## R-1869. The scheduled night pass runs from the development checkout, so a pull during it ends it mid run with its downloads stranded in staging
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** `crate schedule install`, run from the development
+checkout at sitting 102, wrote that checkout's `.venv/bin/crate` into the
+launchd job, whose editable install reads the working tree. The night of
+2026-11-21 ran from 15:38Z to 15:44Z on the 22nd. The checkout was fast
+forwarded at 15:40:40Z across U298, and the run ended `internal-error`,
+`ImportError: cannot import name 'load_config' from
+'cratekit.cli.output'`, when it next imported lazily.
+
+**Measured cost.** The download had succeeded, 32 of 32 settled with one
+skipped. The pass never reached its tail or its gate, and `sync night`'s
+record names no pass run, no staging and no gate, so its files sit in
+download staging with no command naming them. The installed copy, 0.18.0,
+has no `sync night`.
+
+**Closes when:** the schedule names an installed copy rather than a
+checkout, or a night that dies after its download records the pass run a
+`crate sync land --pass-run` continues.
+
+---
+
+## R-1870. A set landing's rehearsal refuses whenever the set holds a track another landing brought in after the set's job ran
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** A set job freezes each track's report when it runs. At
+`intake land --set`, a track reported missing that no staged file answers is
+asked of the library through `_LibraryView`, which indexes the files under
+the configured music root. The rehearsal points that root at its own area,
+which holds only the landing's clones, so the live plan calls the track owned
+and the rehearsal's leaves it out, and the rehearsal refuses
+`decision-stale`.
+
+**Measured cost.** Six sets by one DJ share tracks. Three landings rehearsed
+equal; Third Floor Sounds refused twice (319 differing lines) and Salas Roma
+once (117), every differing line in the set playlist's members and left
+rows. Running `intake set` again for each refrozen the reports at no
+recognition cost, 0 calls each, about two minutes of fetching per mix, and
+all three then rehearsed equal and landed.
+
+**Closes when:** the rehearsal's ownership view reads the live library's
+files, or the refusal names running the set job again as its remedy.
+
+---
+
+## R-1871. The new rbxml_insert.py sits outside both readings of the emitter guard, which read rbxml.py alone
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `tests/test_tree_registry.py` finds the XML byte writers
+two ways: `_public_functions` keeps only functions whose `__module__` is
+`cratekit.write.rbxml`, and `_byte_writers_by_source` parses `rbxml.py` alone.
+U302 moved the read only placement helpers into `write/rbxml_insert.py` and
+imports them back into `rbxml`, so a byte writer added to `rbxml_insert.py`
+later, and imported back the same way, is checked by neither reading. The
+review planted one there on a scratch copy: both conformance tests stayed
+green, while the same function in `rbxml.py` failed both.
+
+**Measured cost.** None today: no function in `rbxml_insert.py` changes a
+buffer (read by grep and by syntax tree). The producer is a future edit, not
+driven.
+
+**Closes when:** the guard reads every module under `write/` whose name
+starts `rbxml`, or `rbxml_insert.py` is folded back. `tests/test_tree_registry.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1872. How the depth walk treats a truncated NODE open tag is pinned by no test, on the base and the branch alike
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `rbxml._node_tokens`, which U302 folded out of
+`depth_of` and `matching_close`, stops at an open tag with no end. Counting
+that tag as a level before stopping changes only `depth_of`, and no test
+fails: 90 passed under the mutation, and the base form in `depth_of`
+survives the same mutation.
+
+**Measured cost.** None driven: a document holding an unterminated open tag
+inside the playlist section is one `playlists_span` and `node_at` already
+read as unusable, so no writer reaches the depth it would misread.
+
+**Closes when:** a test feeds the walk a truncated tag inside an otherwise
+readable playlist section, if such a document can be produced. Ledger only.
+
+---
+
+## R-1873. The outbound suites' less work fixture caches the command tree and syncs nothing, so a later test patching a handler or a store pragma silently misses
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** `_less_work` in `tests/test_outbound_workers.py` is autouse in about fifteen of the card's test files that import it. It makes `os.fsync` a no-op, sets `PRAGMA synchronous=OFF` on every `PrivateStore`, and builds the command tree once per module membership for the life of the worker. The cached tree binds each verb's handler and registry entry when first built, so a test that patches either takes effect only when it happens to build the tree first; the review drove one that read "patch took effect: False" after another test and "True" alone. Its docstring now says so.
+
+**Measured cost.** None today: no test in those files patches a handler, a registry entry or a build time default, and none is about durability or a store's pragmas. The recorded fsync kills on `core/config.py` are killed by files outside the set, and two replayed kills on `core/jobs.py` still die. The fixture halved the files' test time.
+
+**Closes when:** the fixture moves to a shared helper module beside the other suite helpers, and either drops the parser cache or keys it on the handlers it binds. Ledger only.
+
+---
+
+## R-1874. Two names behind a toggle are served by a module __getattr__, so they leave __all__, dir() and resolved type hints
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** Moving organize's and the outbound source's top level imports behind their toggles left two names served lazily: `organize/inspiration.py` answers `PREFIX` and `modules/outbound/source.py` answers `library_export` through a module `__getattr__`. Attribute access, `from ... import` and `monkeypatch.setattr` all work, and the patch `tests/test_outbound_workers.py` makes on `source.library_export.read_export_file` still bites. But `PREFIX` left `inspiration.__all__` (ruff refuses a name there that is not bound at top level), neither name is in `dir()`, `typing.get_type_hints(source.Library)` raises `NameError` where the base resolved it, and patching `inspiration.PREFIX` no longer changes `account_sets`' message, which reads `MARK_PREFIX` itself. `organize/mirror_edits.Change` also gained defaults for `path` through `energy` that the base required.
+
+**Measured cost.** None a person sees: nothing outside the card's files uses any of these, and `inspiration.PREFIX`'s one user is the card's own test.
+
+**Closes when:** `inspiration.PREFIX` is dropped in favour of `folders.MARK_PREFIX` at its one test, and `source.Library`'s annotation names its type under `TYPE_CHECKING` only. Ledger only.
+
+---
+
+## R-1875. The behaviour scenarios record the fake account's writes per kind, not its reads or the order across kinds, and no verb reaches a reservation already taken
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/outbound.py`'s `account_calls` writes `vars(account)` of the suite's fake, which keeps one list per kind of write. Reads (`folders`, `folder_playlists`, `playlist_tracks`, `playlist_listing`) are not recorded, and the order of calls across kinds is not captured, so the card's "the same calls in the same order" is proved by the scenarios for writes within a kind and by the mirror's printed request count, and otherwise by the review's base against branch drives of the account (3,000 trials comparing every request, move, removal and read back). No scenario reaches a reservation already taken through a verb (the rename twin stands in), the INBOX or Favorites mirror, `mirror-downloads`, the inspiration write, a stale answer, or a filing or root failure part way.
+
+**Measured cost.** Not driven: a change of call order across kinds would pass the comparison and be caught only by the suite's own order tests.
+
+**Closes when:** the fake account records every call, reads included, in one ordered log that the capture writes, and a scenario drives a ledger reservation held by another run. Ledger only.
+
+---
+
+## R-1876. Twelve recorded kills on organize, the outbound module and export no longer kill on the base itself
+
+**Found:** at the kill set replay of #866, U309, 2026-11-22.
+
+**The mechanism.** The replay before U309's first edit measured, on the base `c919209`, every recorded kill on the card's 34 source files: 639 rows from `killset.py rows`, in six batches. 627 were killed. Twelve recorded no death at all, so `killset.py check` does not hold the branch to them and they are none of U309's: eight read zero, `u142.S11_read_handle_requires_closed`, `u112-b.A6_exported_not_product_made`, `u51-item-derivation.H1_export_item_not_payload`, `r1308.M10_count_unchecked`, `u116.M13_utc_year`, `u227.R12_tree_filter`, `u214.M12_frozen_pairs` and `u226.M18_waited_unformatted`; four broke collection with no death, `r572.A1_album_rule_gone`, `r572.A3_album_over_two_hearts`, `r572.A6_album_despite_unreadable` and `r356-a.A13_reason_never_stored`. Each row's measurement is in `docs/mutation/u309-replay-before-a.md` to `-f.md`.
+
+**Measured cost.** Unknown per row. A zero is a guard whose test was removed, merged or weakened since its table was measured, or a guard written twice so one mutation no longer bites; a collection error with no death is a mutation that breaks an import, which the driver cannot read as a kill. Either way the guard may hold today with no test that proves it.
+
+**Closes when:** each of the twelve is driven on `main`: a test that kills it written where the guard is user facing, or the row recorded as no longer applying with its reason. Ledger only.
+
+---
+
+## R-1877. Acquire's code lines and its tests' lines and time stop short of U305's targets
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** U305 brought `src/cratekit/acquire/` from 16,426 lines to
+11,283 (target 13,194, met) and its largest file under 1,500, but its
+code lines, not counting blank, comment or docstring lines, from 8,003 to
+7,193 against a target of 6,856, and its twenty test files from 23,654 lines
+to 19,920 against 17,503, measured at the branch's last code commit. The prose went to its rule and its reason and the
+layout was filled to the width; what is left is statements, and removing them
+with behaviour frozen needs the near copies the cli modules hold (the lossy
+policy, the output exists refusal and the staging moves `cli.py`,
+`bandcamp_cli.py` and `fallback_cli.py` each spell) brought to one home, and
+the match suite's parametrised cases merged where two prove one rule. Their summed
+test time fell from 61.4 to 54.3 seconds measured back to back on one
+container, about 12 percent against the 30 the card asked, most of it the
+export guard's parse cache (`docs/restart/u305.md`).
+
+**Measured cost.** None to a person: behaviour is unchanged. The epic's size
+and test bars carry the gap to the audit.
+
+**Closes when:** the final audit, #872 (U315), measures acquire against
+U290's totals, and a further card takes the near copies if the totals need
+them. Ledger only.
+
+---
+
+## R-1878. A comment in another card's file names a match internal that moved in U305
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** The comment above `_RESOLVED` in `src/cratekit/intake/cli.py`
+points a reader at "the note above `match._REMEMBERED`". U305 split
+`acquire/match.py`, and the remembered reads with that note now live in
+`acquire/match_library.py`. `match._REMEMBERED` no longer exists as an
+attribute of `match`. The file is #864's (U307), so U305 left it. A second comment, in
+`src/cratekit/modules/outbound/tidal_account.py`, named ``match._first_named``
+at the build; #866 (U309) rewrote that file and landed before this unit
+merged, and no comment there names it now.
+
+**Measured cost.** A reader following the comment finds nothing on
+`match`; no code reads the name.
+
+**Closes when:** the comment names `match_library._REMEMBERED`, in #864 or
+any later edit of that file. Ledger only.
+
+---
+
+## R-1879. Acquire still reaches core.binary_refusal, a core module off the named interface
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** `acquire/fallback_cli.py` imports `core.binary_refusal`
+for the `yt-dlp-missing` refusal, as `intake/cli.py` does, and the module is
+not on the import rules' interface list, so acquire's import allowance keeps
+the one line `off-interface cratekit.core.binary_refusal`. The module and the
+list belong to #858 (U301) and #869 (U312): folding `yt_dlp_missing` into
+`core.binaries`, which is on the list, empties both packages' lines without a
+copy in either.
+
+**Measured cost.** None to a person; the seam bar of U290's point 4 holds one
+line open in acquire and one in intake.
+
+**Closes when:** the refusal lives in an interface module and acquire's
+allowance is pruned. Ledger only.

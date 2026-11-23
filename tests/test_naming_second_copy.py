@@ -1,12 +1,7 @@
 """U212: a rename held back by a second copy of one recording says so.
 
-Sitting 55 (A70) downloaded two tracks an unlanded pass had already staged and
-named. The new copies, named for their provider ids, rendered to the names the
-earlier copies held, and ``name apply`` refused ``rename-incomplete`` with "is
-already taken in the folder by a file nothing here is renaming", which sent the
-session to compare audio by hand. When the file in the way carries the same
-ISRC as the file held back, the plan and the refusal now say it is the same
-recording twice, and carry the ISRC for the verb that ran the step.
+When the file in the way carries the same ISRC as the file held back, the plan
+and the refusal say it is one recording twice and carry the ISRC.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the naming apply suite by name
@@ -79,8 +74,8 @@ def test_a_target_held_by_another_recording_keeps_the_plain_collision(configured
 
 
 def test_a_copy_with_no_isrc_on_either_side_is_never_called_the_same_recording(configured):
-    """Absence of a read is not a match: no ISRC on the file in the way, then
-    none on the file held back."""
+    """Absence of a read is not a match: no ISRC on the file in the way, then none on the file held
+    back."""
     folder = _folder(configured)
     _copies(folder, earlier=None, newer=ISRC)
     (item,) = _plan(folder)["items"]
@@ -95,8 +90,8 @@ def test_a_held_back_copy_with_no_isrc_is_never_called_the_same_recording(config
 
 
 def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
-    """Review round one, F3: the reason is the two movers', so the item carries
-    no ISRC that would describe the file on disk instead."""
+    """Review round one, F3: the reason is the two movers', so the item carries no ISRC that would
+    describe the file on disk instead."""
     folder = _folder(configured)
     _copies(folder, earlier=ISRC, newer=ISRC)
     third = _track(folder, "102.flac")
@@ -112,10 +107,7 @@ def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
 
 
 def test_a_copy_that_takes_the_name_after_the_plan_is_said_a_second_copy(configured):
-    """Review round one, F8, the claim after the gate. ``lead`` renders onto the
-    name ``marked`` holds while ``marked`` is itself moving, so the plan leaves
-    it promised (R-172) and the claim finds the name taken by a file carrying
-    the same ISRC."""
+    """Review round one, F8, the claim after the gate."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     lead = _track(

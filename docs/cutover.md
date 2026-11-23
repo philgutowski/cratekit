@@ -2857,6 +2857,8 @@ by the session at 16:03Z.
 | The playlists by hand | the typed set's INSPIRATION playlist, 19 in set order, and 6 tracks the set landings could not tie, through the row menu's Add To Playlist | read back on a copy: 19, 12, 18, 20, 13, 27 and 16. One drag scrolled the tree and dropped a track in `Crossfader DJ Course - Global Influence`; it was removed from that playlist at once, which reads 10 again. A drag onto the tree is not safe; the menu is |
 | The quit | rekordbox's menu | both processes gone |
 | The check | `analyze check` | **exit 27, suspect**: 100 analysed, 92 constant and 8 variable on `dyn` rows, Key filled on 100, title keys equal on 33, below the 37.9% floor; 18 one step, 49 far. Dead Letter 2 of 15, Bossa Nova 8 of 15. Nothing cleared: INBOX / Analyze still holds the 100 |
+| The decision on keys | Phillip, 2026-11-22: "when key or temp is off, go with what rekordbox found as I think its more reliable" | Replaces his decision of 2026-10-01 that Cratekit's key wins. No ear comparison is owed. The check run again read the same: grids sound, Key filled on 100, keys alone suspect. 72 titles differ, 67 in key and 10 in tempo, 5 in both; no verb writes them, so U327 (#944) is filed |
+| The clear | `crate inbox analyzed` on a disposable copy, run `2026-11-22T23:56:29Z-93412183b89f1a1d`, then live, run `2026-11-22T23:57:05Z-0c2c45db75953999` | Digest **`3acc7f708af1b1d5`** both, approved as `session`: **100 left INBOX / Analyze, which holds 0**. The live database's hash was the same before and after the copy's run. The copy removed |
 
 Ten title heads carry a tempo off by a ratio of rekordbox's: The Curse 85 for
 128, Hostile Takeover 84 for 126, Don't Go 100 for 125, Think of Me 100 for
@@ -2864,8 +2866,9 @@ Ten title heads carry a tempo off by a ratio of rekordbox's: The Curse 85 for
 for 80, Magic Flute 92 for 138, Burn Da Roof 100 for 150.
 
 The night pass of 2026-11-21 died mid run; its downloads sit in staging, the
-residual on the schedule and the checkout. Owed: a few far keys compared by
-ear, then the clear; a genre on the 47; the night pass's files landed.
+residual on the schedule and the checkout. Owed: the 72 titles
+given rekordbox's key and tempo by U327's verb; a genre on the 47; the night
+pass's files landed.
 
 
 ## Next sitting

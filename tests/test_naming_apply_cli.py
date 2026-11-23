@@ -1,18 +1,7 @@
 """U39: ``name.apply`` carries an existing head through instead of destroying it.
 
-WHY THIS FILE EXISTS. The conformance suite drives every verb over an EMPTY
-library, so ``name.apply``'s loop body shipped in U37 without a single driven
-rename. Driving it on 2026-08-24 showed the shipped verb renaming
-``01A - 124 - Cola.flac`` to ``Cola.flac``: the spec was built from the title
-tag and the initialkey tag with no tempo, the default head is all or nothing,
-so the head rendered empty and the pass destroyed the convention it exists to
-apply. Every test here drives the real dispatcher over real audio files.
-
-THE TEMPO IS TEXT. The recovered head values come from the head parser over
-the filename and the title, which is string parsing over names the library
-already holds. Nothing here reads or writes any analysis surface, and the
-tempo lands in the filename and the title convention only, never in a tag
-field, which ``core.tags.FIELDS`` having no tempo key guarantees structurally.
+Every test drives the real dispatcher over real audio files. The tempo is text,
+parsed from the filename and the title, and lands in those alone, never a tag.
 """
 
 from __future__ import annotations
@@ -22,7 +11,11 @@ import json
 import unicodedata
 from pathlib import Path
 
+import mutagen
 import pytest
+from pyrekordbox.db6 import tables
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from cratekit import cli
 from cratekit.core import config, locations, naming, rb_writer, tags
@@ -32,6 +25,13 @@ from cratekit.write.naming_cli import _template
 from tests._containers import synth_container
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
+
+
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
+    code, envelope = result
+    assert code == int(expected), envelope
+    return envelope
 
 
 @pytest.fixture
@@ -45,12 +45,7 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def configured(library, monkeypatch):
-    """A machine set up far enough that the verb reaches its own logic.
-
-    The collection is stubbed as READ AND EMPTY, which is a real state and not a
-    missing database: these tests are about the rename, and the collection guard
-    is driven against a disposable database further down.
-    """
+    """A machine set up far enough that the verb reaches its own logic."""
     resolved = config.from_dict(valid_data(library))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: ())
@@ -64,13 +59,24 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
-def _track(
-    folder: Path, name: str, *, title: str | None = None, key: str | None = None
-) -> Path:
+#: One second of silence, synthesized once per process: ffmpeg writes the same
+#: bytes every time, and a subprocess per track was half of each test's time.
+_SILENCE: list[bytes] = []
+
+
+def _silence(target: Path) -> Path:
+    """A real audio file at ``target``, synthesized once and copied after."""
+    if _SILENCE:
+        target.write_bytes(_SILENCE[0])
+    else:
+        synth_container(target.parent, ".flac").rename(target)
+        _SILENCE.append(target.read_bytes())
+    return target
+
+
+def _track(folder: Path, name: str, *, title: str | None = None, key: str | None = None) -> Path:
     """A real audio file under ``folder`` with the given name and tags."""
-    made = synth_container(folder, ".flac")
-    target = folder / name
-    made.rename(target)
+    target = _silence(folder / name)
     fields: dict[str, object] = {}
     if title is not None:
         fields["title"] = title
@@ -87,13 +93,18 @@ def _folder(cfg) -> Path:
     return folder
 
 
-def _drive(folder: Path, option: str) -> dict:
+def _answer(folder: Path, option: str = "apply") -> tuple[int, dict]:
+    """Status and whole envelope from one run answered ``option``, whatever it exits with."""
     code, out, _ = drive([
         "--output", "json", "-d", f"name.apply.confirm={option}",
         "name", "apply", "--root", str(folder),
     ])
-    assert code == int(ExitCode.OK), out
-    return json.loads(out)["data"]
+    return code, json.loads(out)
+
+
+def _drive(folder: Path, option: str) -> dict:
+    envelope = _exited(_answer(folder, option))
+    return envelope["data"]
 
 
 def _plan(folder: Path) -> dict:
@@ -105,19 +116,11 @@ def _apply(folder: Path) -> dict:
     return _drive(folder, "apply")
 
 
-def _answer(folder: Path) -> tuple[int, dict]:
-    """Status and whole envelope from one apply, whatever it exits with.
-
-    ``_apply`` asserts a zero exit, which is right for a sweep that carried out
-    every rename it promised. R-172's whole content is that an apply which could
-    not is a non-success answer carrying its plan, so these tests read both
-    halves rather than the payload alone.
-    """
-    code, out, _ = drive([
-        "--output", "json", "-d", "name.apply.confirm=apply",
-        "name", "apply", "--root", str(folder),
-    ])
-    return code, json.loads(out)
+def _refused(folder: Path, *untouched: Path) -> dict:
+    """The envelope of an apply refused before any rename, every file in ``untouched`` in place."""
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
+    assert all(path.is_file() for path in untouched), envelope
+    return envelope
 
 
 def _moves(plan: dict) -> list[tuple[str, str]]:
@@ -128,166 +131,116 @@ def _actions(plan: dict) -> dict[str, str]:
     return {item["from"]: item["action"] for item in plan["items"]}
 
 
-def test_a_folder_already_in_convention_proposes_no_rename(configured):
-    """The pass is idempotent over the convention it establishes."""
-    folder = _folder(configured)
-    _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="01A")
-    assert _plan(folder)["items"] == []
-
-
-def test_an_unpadded_head_is_carried_and_padded_with_the_tempo_intact(configured):
-    folder = _folder(configured)
-    path = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
-    assert _moves(_plan(folder)) == [
-        ("1A - 124 - Cola.flac", "01A - 124 - Cola.flac")
-    ]
-    _apply(folder)
-    renamed = folder / "01A - 124 - Cola.flac"
-    assert renamed.is_file() and not path.exists()
-    assert tags.read_tag(renamed, "title") == "01A - 124 - Cola"
-    assert _plan(folder)["items"] == []
-
-
-def test_the_head_is_recovered_from_the_title_when_the_filename_lost_it(configured):
-    """The tag then rename crash window leaves the head in the title and not
-    in the filename. The pass heals that file rather than stripping it."""
-    folder = _folder(configured)
-    _track(folder, "Cola.flac", title="01A - 124 - Cola", key="01A")
-    _apply(folder)
-    healed = folder / "01A - 124 - Cola.flac"
-    assert healed.is_file()
-    assert tags.read_tag(healed, "title") == "01A - 124 - Cola"
-
-
-def test_the_plan_and_the_apply_agree_on_a_marked_file(configured):
-    """The plan used to build its spec without the lossy flag, so it promised
-    a marked file a rename the apply pass was never going to perform."""
-    folder = _folder(configured)
+@pytest.mark.parametrize(
+    ("name", "title", "key"),
+    [
+        pytest.param("01A - 124 - Cola.flac", "01A - 124 - Cola", "01A", id="in-convention"),
+        pytest.param("{marker} Cola.flac", "{marker} Cola", None, id="marked-plan-agrees-with-apply"),
+        pytest.param("13A - 124 - Cola.flac", "13A - 124 - Cola", None, id="13A-is-no-head"),
+        pytest.param("{marker} Cola.flac", "Cola", None, id="marker-in-filename-alone-kept"),
+    ],
+)
+def test_a_file_the_pass_must_leave_proposes_no_rename(configured, name, title, key):
+    """The pass is idempotent, leaves an unparseable head as the body, and keeps a marker."""
     marker = configured.naming.lossy_marker
-    _track(folder, f"{marker} Cola.flac", title=f"{marker} Cola")
+    folder = _folder(configured)
+    _track(folder, name.format(marker=marker), title=title.format(marker=marker), key=key)
     assert _plan(folder)["items"] == []
 
 
-def test_a_name_with_no_parseable_head_is_left_as_it_arrives(configured):
-    """13A is off the wheel, so the whole name is the body and stays put.
-    Driven and pinned rather than assumed."""
+@pytest.mark.parametrize(
+    ("name", "title", "key", "to"),
+    [
+        pytest.param(
+            "1A - 124 - Cola.flac", "1A - 124 - Cola", "Amaj", "01A - 124 - Cola.flac",
+            id="a-key-tag-not-camelot-is-ignored",
+        ),
+        pytest.param(
+            "1A - 124 - Cola.flac", "5B - 95 - Cola", None, "01A - 124 - Cola.flac",
+            id="the-filename-head-wins-over-the-title-head",
+        ),
+        pytest.param(
+            "1A - 124 - Artist Name - Song Title.flac", "1A - 124 - Song Title", "1A",
+            "01A - 124 - Artist Name - Song Title.flac", id="the-filename-body-is-carried-R-168",
+        ),
+        pytest.param(
+            "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac", "5A - 122 - Golden Boy", None,
+            "05A - 122 - Golden Boy - Alphadog.flac", id="a-trailing-repeat-of-the-lead-is-deduped",
+        ),
+        pytest.param(
+            "6A - 118 - Track - Artist - Track (Deluxe Edition).flac", "6A - 118 - Track", None,
+            "06A - 118 - Track - Artist - Track (Deluxe Edition).flac",
+            id="a-segment-only-starting-with-the-lead-survives",
+        ),
+        pytest.param(
+            "Cola.flac", "{marker} Cola", None, "{marker} Cola.flac",
+            id="a-marker-in-the-title-alone-is-recovered",
+        ),
+    ],
+)
+def test_one_file_is_planned_its_one_rename(configured, name, title, key, to):
+    """The head is derived and padded; each surface keeps its own body (U41, R-168)."""
+    marker = configured.naming.lossy_marker
     folder = _folder(configured)
-    _track(folder, "13A - 124 - Cola.flac", title="13A - 124 - Cola")
+    _track(folder, name, title=title.format(marker=marker), key=key)
+    assert _moves(_plan(folder)) == [(name, to.format(marker=marker))]
+
+
+@pytest.mark.parametrize(
+    ("name", "title", "key", "to", "tag"),
+    [
+        pytest.param(
+            "1A - 124 - Cola.flac", "1A - 124 - Cola", "1A", "01A - 124 - Cola.flac",
+            "01A - 124 - Cola", id="an-unpadded-head-is-padded-with-the-tempo-intact",
+        ),
+        pytest.param(
+            "Cola.flac", "01A - 124 - Cola", "01A", "01A - 124 - Cola.flac", "01A - 124 - Cola",
+            id="the-head-is-recovered-from-the-title-tag",
+        ),
+        pytest.param(
+            "1A - 124 - Cola.flac", "Cola", None, "01A - 124 - Cola.flac", "01A - 124 - Cola",
+            id="the-filename-head-alone-is-enough",
+        ),
+        pytest.param(
+            "01A - 124 - Cola.flac", "01A - 124 - Cola", "2A", "02A - 124 - Cola.flac",
+            "02A - 124 - Cola", id="the-tag-key-wins-over-a-stale-head",
+        ),
+        pytest.param(
+            "1A - 124 - Artist Name - Song Title.flac", "1A - 124 - Song Title", "1A",
+            "01A - 124 - Artist Name - Song Title.flac", "01A - 124 - Song Title",
+            id="the-title-tag-is-not-given-the-filename-body",
+        ),
+        pytest.param(
+            "1A - 124 - Artist Name - Song Title.flac", None, "1A",
+            "01A - 124 - Artist Name - Song Title.flac", "01A - 124 - Artist Name - Song Title",
+            id="no-title-tag-takes-the-body-from-the-filename",
+        ),
+        pytest.param(
+            "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac", "5A - 122 - Golden Boy", None,
+            "05A - 122 - Golden Boy - Alphadog.flac", "05A - 122 - Golden Boy",
+            id="a-deduping-rename-converges-on-one-pass",
+        ),
+    ],
+)
+def test_an_applied_rename_lands_its_name_and_title_tag_and_converges(
+    configured, name, title, key, to, tag
+):
+    """One apply renames the file, writes the head into the title tag, and converges."""
+    folder = _folder(configured)
+    path = _track(folder, name, title=title, key=key)
+    assert _moves(_plan(folder)) == [(name, to)]
+    _apply(folder)
+    renamed = folder / to
+    assert renamed.is_file() and not path.exists()
+    assert tags.read_tag(renamed, "title") == tag
     assert _plan(folder)["items"] == []
-
-
-def test_a_key_tag_that_is_not_camelot_does_not_poison_the_pass(configured):
-    """The head's own key still carries the rename; the junk tag is ignored
-    rather than crashing the render or overruling the head."""
-    folder = _folder(configured)
-    _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="Amaj")
-    assert _moves(_plan(folder)) == [
-        ("1A - 124 - Cola.flac", "01A - 124 - Cola.flac")
-    ]
-
-
-def test_the_tag_key_wins_over_a_stale_head_and_the_pass_converges(configured):
-    """Renaming from metadata is the verb's job. The head fills silence; it
-    does not overrule a tag somebody corrected, and one apply converges."""
-    folder = _folder(configured)
-    _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="2A")
-    assert _moves(_plan(folder)) == [
-        ("01A - 124 - Cola.flac", "02A - 124 - Cola.flac")
-    ]
-    _apply(folder)
-    assert (folder / "02A - 124 - Cola.flac").is_file()
-    assert _plan(folder)["items"] == []
-
-
-def test_the_filename_head_alone_is_enough_when_the_title_tag_lacks_it(configured):
-    """Acquired files often carry a clean title tag while the filename still
-    holds the head. The filename is the surface being renamed, so it is the
-    first head source, and the title fallback must not be the only one."""
-    folder = _folder(configured)
-    _track(folder, "1A - 124 - Cola.flac", title="Cola")
-    assert _moves(_plan(folder)) == [
-        ("1A - 124 - Cola.flac", "01A - 124 - Cola.flac")
-    ]
-    _apply(folder)
-    renamed = folder / "01A - 124 - Cola.flac"
-    assert renamed.is_file()
-    assert tags.read_tag(renamed, "title") == "01A - 124 - Cola"
-
-
-def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
-    """Precedence, pinned where it is observable. Every other test that gives
-    both surfaces a parseable head gives them the SAME values, so none of them
-    can tell "the filename wins" from "either wins, it did not matter here".
-    The filename is the convention's ground truth and the title is a recovery
-    fallback for the crash window, not a correction channel, so a stale title
-    head must not drag a correct filename backwards."""
-    folder = _folder(configured)
-    _track(folder, "1A - 124 - Cola.flac", title="5B - 95 - Cola")
-    assert _moves(_plan(folder)) == [
-        ("1A - 124 - Cola.flac", "01A - 124 - Cola.flac")
-    ]
-
-
-#: U41 answered the question the removed test had guessed at. The head is the
-#: verb's to derive; the BODY of each surface is carried through untouched. The
-#: filename keeps the filename's body and the title tag keeps the title tag's,
-#: which is what `NameSpec` always meant by holding `stem` and `title`
-#: separately. Measured over the library on 2026-08-25, read only: 53 percent of
-#: names are `Title - Artist - Album`, 25 percent are `Artist - Title`, and one
-#: percent have a body equal to the title tag, so no single recomposition rule
-#: fits and none is attempted.
-
-
-def test_the_filename_body_is_carried_through_a_padding_rename(configured):
-    """R-168. The library keeps the artist in the filename and the title alone
-    in the tag, so composing the name from the tag drops the artist off almost
-    every file. The head is padded and the body is whatever the file already
-    had."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "1A - 124 - Artist Name - Song Title.flac",
-        title="1A - 124 - Song Title",
-        key="1A",
-    )
-    assert _moves(_plan(folder)) == [
-        (
-            "1A - 124 - Artist Name - Song Title.flac",
-            "01A - 124 - Artist Name - Song Title.flac",
-        )
-    ]
-
-
-def test_the_title_tag_is_not_given_the_filename_body(configured):
-    """The other half of the same decision, and the one a rename could corrupt
-    silently. The apply pass rewrites the title tag, so a spec that fed the
-    filename's body into both surfaces would stuff the artist and the album
-    into every title tag in the library. Each surface keeps its own body."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "1A - 124 - Artist Name - Song Title.flac",
-        title="1A - 124 - Song Title",
-        key="1A",
-    )
-    _apply(folder)
-    renamed = folder / "01A - 124 - Artist Name - Song Title.flac"
-    assert renamed.is_file()
-    assert tags.read_tag(renamed, "title") == "01A - 124 - Song Title"
 
 
 def test_both_library_grammars_survive_a_rename(configured):
-    """Measured on the real library: `Artist - Title` and
-    `Title - Artist - Album` both occur, in that order of rarity, and no rule
-    distinguishes them. Preserving the body serves both without knowing which
-    is which."""
+    """`Artist - Title` and `Title - Artist - Album` both occur, and no rule tells them apart."""
     folder = _folder(configured)
     _track(folder, "2A - 120 - Artist - Song.flac", title="2A - 120 - Song")
-    _track(
-        folder,
-        "3A - 121 - Song Two - Artist Two - Some Album.flac",
-        title="3A - 121 - Song Two",
-    )
+    _track(folder, "3A - 121 - Song Two - Artist Two - Some Album.flac", title="3A - 121 - Song Two")
     assert sorted(_moves(_plan(folder))) == sorted(
         [
             ("2A - 120 - Artist - Song.flac", "02A - 120 - Artist - Song.flac"),
@@ -300,25 +253,7 @@ def test_both_library_grammars_survive_a_rename(configured):
 
 
 def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
-    """The structural form of R-168, stated as what it actually forbids.
-
-    "A rename never shortens the body" is the wrong rule and was tried first.
-    Two shorteners are legitimate and predate this unit: ``dedupe_stem`` drops a
-    trailing segment that merely repeats the lead, and ``fit_to_budget``
-    truncates a name over the path ceiling. Driven over sixty real library files
-    they account for every remaining body change and nothing else does. What
-    must never happen is the body being REPLACED by the title tag's body, which
-    is the defect, and that is the first assertion.
-
-    THESE THREE FIXTURES DELIBERATELY TRIGGER NEITHER SHORTENER, which is why
-    the second assertion may demand exact equality here. That is a property of
-    the inputs and not a general rule, so do not read it as one and do not
-    "fix" a future failure by widening it. The shorteners are pinned in
-    ``test_a_trailing_segment_repeating_the_lead_is_still_deduped``,
-    ``test_a_trailing_segment_that_only_starts_with_the_lead_survives`` and
-    ``test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt``. Two
-    reviewers caught this docstring promising a weaker rule than the assertion
-    enforced, which is the same shape as the defect this unit fixes."""
+    """The structural form of R-168, stated as what it actually forbids."""
     folder = _folder(configured)
     names = [
         "1A - 124 - Artist Name - Song Title.flac",
@@ -329,125 +264,17 @@ def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
         _track(folder, name, title="Song")
     template = _template(configured)
     moves = _moves(_plan(folder))
-    # Without this the whole guard is a loop with no assertion outside it, so an
-    # implementation that proposes NO rename satisfies it vacuously. Driven by
-    # the independent pass, which passed this test against a plan pass stubbed
-    # to return nothing. All three fixtures are unpadded, so all three move.
+    # All three are unpadded and must move, or the loop below passes vacuously.
     assert len(moves) == 3, f"expected three renames, got {moves!r}"
     for frm, to in moves:
         before = naming.strip_head(Path(frm).stem, template=template)
         after = naming.strip_head(Path(to).stem, template=template)
-        assert after != "Song", (
-            f"{frm} was rebuilt from the title tag: {before!r} became {after!r}"
-        )
+        assert after != "Song", f"{frm} was rebuilt from the title tag: {before!r} became {after!r}"
         assert after == before, f"{frm} lost body text: {before!r} became {after!r}"
 
 
-def test_a_trailing_segment_repeating_the_lead_is_still_deduped(configured):
-    """``dedupe_stem`` has always run inside ``build`` and never had anything to
-    work on, because the body it received was a single segment off the title
-    tag. Feeding it the filename's real body is what switches it on, so its
-    behaviour is pinned here rather than discovered later as a surprise. Nine of
-    sixty real files take this path."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
-        title="5A - 122 - Golden Boy",
-    )
-    assert _moves(_plan(folder)) == [
-        (
-            "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
-            "05A - 122 - Golden Boy - Alphadog.flac",
-        )
-    ]
-
-
-def test_a_marker_in_the_title_alone_is_still_recovered(configured):
-    """The marker is read from either surface, and the only other test of that
-    ``or`` puts it in BOTH at once, so it cannot say which operand carries the
-    case. This is the marker's own crash window: a run that wrote the marked
-    title and died before the rename leaves the marker in the title alone, and
-    the pass has to carry it onto the file rather than drop it."""
-    folder = _folder(configured)
-    marker = configured.naming.lossy_marker
-    _track(folder, "Cola.flac", title=f"{marker} Cola")
-    assert _moves(_plan(folder)) == [("Cola.flac", f"{marker} Cola.flac")]
-
-
-def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
-    """The other operand of the same ``or``, and the direction that loses data.
-    An acquired file is marked in its name while its title tag arrives clean
-    from the source. If only the title were consulted the render would drop
-    the marker, and the pass would propose renaming the marked file to its
-    unmarked form, which is how a lossy copy and its lossless twin stop being
-    distinguishable. It proposes nothing instead."""
-    folder = _folder(configured)
-    marker = configured.naming.lossy_marker
-    _track(folder, f"{marker} Cola.flac", title="Cola")
-    assert _plan(folder)["items"] == []
-
-
-def test_a_trailing_segment_that_only_starts_with_the_lead_survives(configured):
-    """The negative half of dedupe, and the rule that makes it safe to run
-    unconditionally. ``dedupe_stem``'s docstring calls it "ambiguity means
-    identity": anything not matching exactly passes through byte identical, so
-    a trailing segment that merely BEGINS with the lead is not a repeat and is
-    kept. Only the positive case was pinned, which is how a widened rule would
-    have shipped looking correct."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
-        title="6A - 118 - Track",
-    )
-    assert _moves(_plan(folder)) == [
-        (
-            "6A - 118 - Track - Artist - Track (Deluxe Edition).flac",
-            "06A - 118 - Track - Artist - Track (Deluxe Edition).flac",
-        )
-    ]
-
-
-def test_a_deduping_rename_converges_on_one_pass(configured):
-    """``dedupe_stem`` applies its rule once rather than to a fixed point, and
-    this unit is what gave it real input, so convergence is pinned at the
-    surface rather than assumed. Apply, then re-plan and require silence."""
-    folder = _folder(configured)
-    _track(
-        folder,
-        "5A - 122 - Golden Boy - Alphadog - Golden Boy.flac",
-        title="5A - 122 - Golden Boy",
-    )
-    _apply(folder)
-    assert (folder / "05A - 122 - Golden Boy - Alphadog.flac").is_file()
-    assert _plan(folder)["items"] == []
-
-
-def test_a_file_with_no_title_tag_takes_its_body_from_the_filename(configured):
-    """The only surface left when the tag is absent is the name itself, so the
-    body comes from there and the tag is populated from it. This fills an empty
-    tag rather than losing anything, and it is what the pre-U41 code did too.
-    Driven by hand during review and pinned here because a hand drive that
-    leaves no test is a measurement nobody can repeat."""
-    folder = _folder(configured)
-    _track(folder, "1A - 124 - Artist Name - Song Title.flac", key="1A")
-    _apply(folder)
-    renamed = folder / "01A - 124 - Artist Name - Song Title.flac"
-    assert renamed.is_file()
-    assert tags.read_tag(renamed, "title") == "01A - 124 - Artist Name - Song Title"
-
-
 def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
-    """Truncation went from unreachable to live in this unit, and nothing drove
-    it. While the body came off the title tag it was short by construction, so
-    the ceiling was never approached; carrying the real body means some names
-    now cross it. Four of thirty six renames in a sixty file real library
-    sample took this path.
-
-    Truncating is not the defect. Losing the body to the tag is. This asserts
-    the shape rather than an exact string, because the fixture's temporary
-    parent directory varies in length between runs and moves the cut."""
+    """Truncation keeps the body's lead and marks the cut, rather than rebuilding it."""
     folder = _folder(configured)
     body = "Artist Name - " + ("Extremely Long Song Title Part " * 6).strip()
     name = f"1A - 124 - {body}.flac"
@@ -463,16 +290,6 @@ def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
     assert len(after) < len(before), "nothing was truncated"
 
 
-# ---------------------------------------------------------------------------
-# U67: a file the collection references is never renamed or retagged.
-#
-# Driven against a DISPOSABLE database in the temporary library, never the
-# configured one, through the same seams ``tests/test_adopt_collection.py``
-# neutralises. The open is a read, so none of those seams weakens the guard
-# under test.
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def prefix_map() -> list[dict[str, str]]:
     """No volume rewrites, unless a test parametrizes this name."""
@@ -481,10 +298,7 @@ def prefix_map() -> list[dict[str, str]]:
 
 @pytest.fixture
 def collected(library, monkeypatch, prefix_map):
-    """A configured machine whose collection is a real, readable database.
-
-    The rows are added per test through :func:`_record`.
-    """
+    """A configured machine whose collection is a real, readable database (U67)."""
     from pyrekordbox.db6 import database as binding
 
     data = valid_data(
@@ -499,32 +313,17 @@ def collected(library, monkeypatch, prefix_map):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0})
     _build_disposable_database(Path(resolved.library.db_path), with_tag_category=False)
     return resolved
 
 
 def _record(cfg, recorded: str, *, identifier: str, deleted: int = 0) -> None:
     """Add one collection row recording ``recorded`` as its path."""
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
     engine = create_engine(f"sqlite:///{cfg.library.db_path}")
     with Session(engine) as db_session:
-        db_session.add(
-            _row(
-                tables.DjmdContent,
-                ID=identifier,
-                Title=Path(recorded).name,
-                rb_local_deleted=deleted,
-                FolderPath=recorded,
-            )
-        )
+        fields = {"Title": Path(recorded).name, "rb_local_deleted": deleted, "FolderPath": recorded}
+        db_session.add(_row(tables.DjmdContent, ID=identifier, **fields))
         db_session.commit()
     engine.dispose()
 
@@ -536,37 +335,37 @@ def _pair(folder: Path) -> tuple[Path, Path]:
     return held, free
 
 
-def _refusal(folder: Path) -> tuple[int, dict]:
-    return _answer(folder)
-
-
 def test_a_referenced_file_is_untouched_and_its_sibling_is_renamed(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, str(held), identifier="10")
     before = held.read_bytes()
     plan = _plan(folder)
-    assert {item["from"]: item["action"] for item in plan["items"]} == {
-        held.name: "referenced",
-        free.name: "rename",
-    }
+    assert _actions(plan) == {held.name: "referenced", free.name: "rename"}
     assert plan["totals"] == {"count": 1, "referenced": 1, "collides": 0, "unnamed": 0}
     _apply(folder)
     assert held.is_file() and held.read_bytes() == before
     assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
 
 
-def test_a_row_recorded_as_a_location_url_protects_its_file(collected):
+@pytest.mark.parametrize(
+    ("spelled", "deleted"),
+    [
+        pytest.param(locations.location_url, 0, id="recorded-as-a-location-url"),
+        pytest.param(lambda held: str(held).replace("Held", "HELD"), 0, id="a-case-variant"),
+        pytest.param(str, 1, id="a-tombstoned-row"),
+    ],
+)
+def test_a_row_naming_the_file_another_way_still_protects_it(collected, spelled, deleted):
+    """A URL, a case variant and a tombstone each still hold the file they name."""
     folder = _folder(collected)
     held, _free = _pair(folder)
-    _record(collected, locations.location_url(held), identifier="10")
+    _record(collected, spelled(held), identifier="10", deleted=deleted)
     _apply(folder)
     assert held.is_file()
 
 
-@pytest.mark.parametrize(
-    "prefix_map", [[{"from": "/mnt/volume", "to": "{library.root}"}]]
-)
+@pytest.mark.parametrize("prefix_map", [[{"from": "/mnt/volume", "to": "{library.root}"}]])
 def test_a_row_under_a_remapped_volume_still_protects_its_file(collected):
     folder = _folder(collected)
     held, _free = _pair(folder)
@@ -577,80 +376,53 @@ def test_a_row_under_a_remapped_volume_still_protects_its_file(collected):
     assert held.is_file()
 
 
-# ---------------------------------------------------------------------------
-# R-500: a row whose recorded prefix matches no rule refuses the whole verb,
-# when it could name a file the plan would rename (R-675).
-#
-# Such a row is keyed only by a spelling no file on this machine carries, so it
-# matches no candidate and the file it names is planned as an ordinary rename.
-# A renamed volume changes a path's prefix and never its leaf, so the rows that
-# could be a candidate under another spelling are the ones whose file name is a
-# candidate's, and the first live plan with renames found 582 dark rows none of
-# which was (R-675). The tests below record rows under a candidate's own name
-# where they mean to refuse, and under another name where they mean to pass.
-# ---------------------------------------------------------------------------
-
-
 def test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     relative = held.relative_to(collected.library.root)
     _record(collected, f"/mnt/volume/{relative}", identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _refused(folder, held, free)
     cause = envelope["cause"]
     assert cause["reason"] == "collection-row-unmapped"
     assert cause["remediation"]["remedy"] == "fix-config-values"
     assert "location_prefix_map" in cause["remediation"]["steps"][0]
-    # The second step is for a row no rule can place, R-523's close.
     assert "no rule can place it" in cause["remediation"]["steps"][1]
     assert cause["message"].startswith("1 collection row records")
     assert f"/mnt/volume/{relative}" in cause["message"]
     assert cause["detail"]["unmapped"] == 1
     assert cause["detail"]["unmapped_locations"] == [f"/mnt/volume/{relative}"]
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/volume"]
-    assert held.is_file() and free.is_file()
 
 
 def test_an_unmapped_row_refuses_the_plan_too(collected):
-    """The abort option reads the plan, and a plan over a collection with a hole
-    in it would show a rename the apply was never going to be allowed."""
+    """A plan over a collection with a hole would show a rename the apply would never allow."""
     folder = _folder(collected)
     _pair(folder)
     _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
-    code, out, _ = drive([
-        "--output", "json", "-d", "name.apply.confirm=abort",
-        "name", "apply", "--root", str(folder),
-    ])
-    assert code == int(ExitCode.PRECONDITION), out
-    assert json.loads(out)["cause"]["reason"] == "collection-row-unmapped"
+    envelope = _exited(_answer(folder, "abort"), ExitCode.PRECONDITION)
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
 
 
 def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
-    """Two dark rows, one of them a tombstone (R-524), each under the name of a
-    file the plan would rename, and a third row that resolves."""
+    """Two dark rows under candidates' names, one a tombstone (R-524), and one that resolves."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
     _record(collected, "/mnt/library/Music/1A - 124 - Held.flac", identifier="11")
-    # A row under the root resolves whether or not its file is there, so it is
-    # not dark and holds no candidate.
+    # A row under the root resolves whether or not its file is there, so it is not dark.
     _record(collected, str(folder / "03A - 124 - Other.flac"), identifier="12")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _refused(folder, held, free)
     cause = envelope["cause"]
     assert cause["message"].startswith("2 collection rows record")
     assert "/mnt/volume/Music/2A - 124 - Free.flac" in cause["message"]
     assert "/mnt/library/Music/1A - 124 - Held.flac" not in cause["message"]
     assert cause["detail"]["unmapped"] == 2
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/library", "/mnt/volume"]
-    # Each dark row paired with the files it could be naming, in row order,
-    # the same order as the locations, so the two lists read together.
+    # Each dark row with the files it could be naming, in the locations' order.
     assert cause["detail"]["could_name"] == [
         {"row": "/mnt/volume/Music/2A - 124 - Free.flac", "files": [str(free)]},
         {"row": "/mnt/library/Music/1A - 124 - Held.flac", "files": [str(held)]},
     ]
-    assert held.is_file() and free.is_file()
 
 
 def test_two_dark_rows_under_one_candidate_name_each_name_it(collected):
@@ -658,35 +430,24 @@ def test_two_dark_rows_under_one_candidate_name_each_name_it(collected):
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
     _record(collected, "/mnt/library/Contents/1A - 124 - Held.flac", identifier="11", deleted=1)
-    _code, envelope = _refusal(folder)
+    _code, envelope = _answer(folder)
     assert envelope["cause"]["detail"]["unmapped"] == 2
-    assert [pair["files"] for pair in envelope["cause"]["detail"]["could_name"]] == [
-        [str(held)],
-        [str(held)],
-    ]
+    assert [pair["files"] for pair in envelope["cause"]["detail"]["could_name"]] == [[str(held)]] * 2
     assert held.is_file() and free.is_file()
 
 
 def test_a_dark_row_is_matched_across_folders_by_leaf_alone(collected, tmp_path):
-    """The rule the guard rests on, named: a renamed volume or a moved mount
-    changes a path's prefix and never its leaf. The row sits under a folder
-    tree unlike the candidate's in every segment but the last, and it refuses."""
+    """A renamed volume or a moved mount changes a path's prefix and never its leaf."""
     folder = _folder(collected)
     held, free = _pair(folder)
     elsewhere = tmp_path / "old-laptop" / "Downloads" / "stick" / "1A - 124 - Held.flac"
     _record(collected, str(elsewhere), identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["detail"]["could_name"] == [
-        {"row": str(elsewhere), "files": [str(held)]}
-    ]
-    assert held.is_file() and free.is_file()
+    envelope = _refused(folder, held, free)
+    assert envelope["cause"]["detail"]["could_name"] == [{"row": str(elsewhere), "files": [str(held)]}]
 
 
 def test_a_dark_row_under_a_held_candidate_name_refuses_nothing(collected):
-    """A candidate a resolved row references is never renamed (R-407), so a
-    dark row under its name puts nothing in doubt: the resolved keys are read
-    before the dark rows are compared. The held file stays, its sibling goes."""
+    """A referenced candidate is never renamed (R-407), so a dark row under its name doubts nothing."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, str(held), identifier="10")
@@ -698,80 +459,54 @@ def test_a_dark_row_under_a_held_candidate_name_refuses_nothing(collected):
     assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
 
 
-@pytest.mark.parametrize(
-    "prefix_map", [[{"from": "/mnt/VOLUME", "to": "{library.root}"}]]
-)
+@pytest.mark.parametrize("prefix_map", [[{"from": "/mnt/VOLUME", "to": "{library.root}"}]])
 def test_a_rule_differing_from_the_recorded_volume_only_in_case_refuses(collected):
-    """PINNED TO THE REFUSAL. The shared resolver compares a prefix exactly, so
-    this row is unmapped to every writer, and matching it here alone would make
-    this verb a second locate that disagrees with the first. The message names
-    the recorded spelling, which is what shows a person the difference."""
+    """The shared resolver compares a prefix exactly; matching it here alone would be a second locate."""
     folder = _folder(collected)
     held, free = _pair(folder)
     relative = held.relative_to(collected.library.root)
     _record(collected, f"/mnt/volume/{relative}", identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _refused(folder, held, free)
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
     assert "/mnt/volume/" in envelope["cause"]["message"]
-    assert held.is_file() and free.is_file()
 
 
-def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
-    collected, monkeypatch
-):
-    """The re-read before the rename, on its own. The plan is built over a
-    collection every row of which resolves, and the apply pass reads one that
-    gained a row under a volume no rule names."""
+def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(collected, monkeypatch):
+    """The re-read before the rename, on its own."""
     folder = _folder(collected)
     held, free = _pair(folder)
     reads = iter([(), ("/mnt/volume/Music/1A - 124 - Held.flac",)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _refused(folder, held, free)
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
-    assert held.is_file() and free.is_file()
 
 
 def test_the_refusal_names_the_decoded_location_a_rule_is_matched_against(collected):
-    """A row recorded as a location URL is quoted DECODED, because a rule is
-    compared with the decoded path and the encoded spelling would never match."""
+    """A row recorded as a location URL is quoted DECODED, as a rule is matched against it."""
     folder = _folder(collected)
     _pair(folder)
-    _record(
-        collected,
-        "file://localhost/mnt/volume/My%20Music/1A%20-%20124%20-%20Held.flac",
-        identifier="10",
-    )
-    _code, envelope = _refusal(folder)
+    _record(collected, "file://localhost/mnt/volume/My%20Music/1A%20-%20124%20-%20Held.flac", identifier="10")
+    _code, envelope = _answer(folder)
     cause = envelope["cause"]
     assert "/mnt/volume/My Music/1A - 124 - Held.flac" in cause["message"]
     assert "%20" not in cause["message"]
     assert cause["detail"]["unmapped_locations"] == ["/mnt/volume/My Music/1A - 124 - Held.flac"]
 
 
-def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_name(
-    collected, tmp_path
-):
-    """The other half of the existence rule. The folder is on this machine and
-    the recorded file is not, and the row carries a candidate's name, so nothing
-    says whether the row names that candidate."""
+def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_name(collected, tmp_path):
+    """A gone file under a candidate's name may be naming that candidate, so it refuses."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
     gone = tmp_path / "elsewhere" / "1A - 124 - Held.flac"
     _record(collected, str(gone), identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _refused(folder, held, free)
     assert envelope["cause"]["detail"]["unmapped_locations"] == [str(gone)]
     assert envelope["cause"]["detail"]["could_name"] == [{"row": str(gone), "files": [str(held)]}]
-    assert held.is_file() and free.is_file()
 
 
 def test_a_gone_file_under_another_name_refuses_nothing(collected, tmp_path):
-    """R-523, decided: a dark row whose file name is no candidate's cannot be a
-    candidate under another spelling, so it holds nothing and refuses nothing.
-    The row is under a folder that exists here, the shape R-523 filed."""
+    """R-523: a dark row whose file name is no candidate's holds nothing and refuses nothing."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -781,18 +516,24 @@ def test_a_gone_file_under_another_name_refuses_nothing(collected, tmp_path):
     assert (folder / "01A - 124 - Held.flac").is_file()
 
 
-def test_a_dark_tombstone_under_another_name_refuses_nothing(collected):
-    """R-524, decided: a tombstone counts exactly as a live row does, so one
-    under a gone folder refuses when its name is a candidate's and passes when
-    it is not. The live library carries 437 of the second kind."""
+@pytest.mark.parametrize(
+    ("recorded", "deleted"),
+    [
+        pytest.param(
+            "/Users/somebody/Music/Original_Tracks/Adam Ten - Magic Circus.flac", 1,
+            id="a-dark-tombstone-under-another-name-R-524",
+        ),
+        pytest.param("/v4/catalog/tracks/17477108/", 0, id="a-streamed-catalogue-path"),
+        pytest.param("Contents/Artist/1A - 124 - Held.flac", 0, id="a-device-relative-row"),
+        pytest.param("tidal:tracks:12345", 0, id="a-streaming-pseudo-location"),
+        pytest.param("file://elsewhere.invalid{held}", 0, id="a-row-naming-another-host"),
+    ],
+)
+def test_a_row_that_can_name_no_candidate_neither_blocks_nor_protects(collected, recorded, deleted):
+    """A row under no candidate's name, or with no local path, puts no rename in doubt."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    _record(
-        collected,
-        "/Users/somebody/Music/Original_Tracks/Adam Ten - Magic Circus.flac",
-        identifier="10",
-        deleted=1,
-    )
+    _record(collected, recorded.format(held=held), identifier="10", deleted=deleted)
     _apply(folder)
     assert not held.exists() and not free.exists()
 
@@ -801,45 +542,20 @@ def test_a_dark_tombstone_under_a_candidate_name_still_refuses(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["detail"]["could_name"] == [
-        {"row": "/mnt/volume/Music/2A - 124 - Free.flac", "files": [str(free)]}
-    ]
-    assert held.is_file() and free.is_file()
+    envelope = _refused(folder, held, free)
+    assert envelope["cause"]["detail"]["could_name"] == [{"row": "/mnt/volume/Music/2A - 124 - Free.flac", "files": [str(free)]}]
 
 
 def test_a_dark_row_is_matched_to_a_candidate_by_name_ignoring_case(collected):
-    """The leaf is compared as the referenced set compares a path, casefolded
-    and composed, because the volume the library sits on ignores case."""
+    """The leaf is casefolded and composed, as the library's volume ignores case."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/1a - 124 - HELD.FLAC", identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert held.is_file() and free.is_file()
+    _refused(folder, held, free)
 
 
-def test_a_streamed_track_recorded_as_a_catalogue_path_refuses_nothing(collected):
-    """The live form. rekordbox 7 records a streamed track as a path under
-    ``/v4/catalog/tracks/``, which starts with a slash and reaches the resolver
-    as an unmapped path with no file behind it. The first live plan found 137
-    active rows of this shape (R-675). It names no file, so it holds nothing."""
-    folder = _folder(collected)
-    held, free = _pair(folder)
-    _record(collected, "/v4/catalog/tracks/17477108/", identifier="10")
-    _apply(folder)
-    assert not held.exists() and not free.exists()
-
-
-def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_library(
-    collected, tmp_path
-):
-    """The existence half of dark, reached alone. A track in a downloads folder
-    under no rule, present where its row says, shares its name with a library
-    file the plan would rename. The row has answered, it names its own file, so
-    the namesake is not in doubt and is renamed. Without the existence test the
-    row is dark, its leaf matches, and the verb refuses over a file it holds."""
+def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_library(collected, tmp_path):
+    """The existence half of dark, reached alone."""
     folder = _folder(collected)
     held, free = _pair(folder)
     downloads = tmp_path / "laptop" / "Downloads"
@@ -852,21 +568,8 @@ def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_libra
     assert namesake.is_file()
 
 
-def test_a_device_relative_row_neither_blocks_nor_protects(collected):
-    """The other resolution with no path, reached alone. A row recorded relative
-    to a device, no leading slash, is not a path on this machine and is never
-    dark, whatever its leaf. Without the resolution test it reads as an absent
-    file under a candidate's name and refuses."""
-    folder = _folder(collected)
-    held, free = _pair(folder)
-    _record(collected, "Contents/Artist/1A - 124 - Held.flac", identifier="10")
-    _apply(folder)
-    assert not held.exists() and not free.exists()
-
-
 def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
-    """A file the plan holds as unnamed is not renamed, so a dark row under its
-    name cannot be stranded by this pass and refuses nothing."""
+    """An unnamed file is not renamed, so a dark row under its name refuses nothing."""
     folder = _folder(collected)
     _track(folder, "12345.flac")
     held, _free = _pair(folder)
@@ -881,8 +584,7 @@ def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
 
 
 def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
-    """A fresh setup was measured at 9937 unmapped rows, which uncapped is 9937
-    strings in one envelope. The count is never capped, only the two lists."""
+    """A fresh setup was measured at 9937 unmapped rows, too many to list in one envelope."""
     recorded = tuple(f"/absent-{index:02d}/music/track.flac" for index in range(25))
     with pytest.raises(naming_cli.CratekitError) as refused:
         naming_cli._referenced(recorded, cfg=collected, renaming=[Path("/x/track.flac")])
@@ -895,33 +597,18 @@ def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
 
 
 def test_a_row_recording_a_link_to_nothing_is_dark(collected, tmp_path):
-    """The name is on this machine and the file behind it is not, so the row has
-    not answered. Existence is asked of what the path reaches, never of the
-    link itself."""
+    """The name is on this machine and the file behind it is not, so the row has not answered."""
     folder = _folder(collected)
     held, free = _pair(folder)
     dangling = tmp_path / "elsewhere" / "1A - 124 - Held.flac"
     dangling.parent.mkdir()
     dangling.symlink_to(tmp_path / "elsewhere" / "never there.flac")
     _record(collected, str(dangling), identifier="10")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert held.is_file() and free.is_file()
-
-
-def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
-    """A streaming pseudo-location references no file, so it is not a hole in
-    the collection, and a library that ever streamed anything still renames."""
-    folder = _folder(collected)
-    held, free = _pair(folder)
-    _record(collected, "tidal:tracks:12345", identifier="10")
-    _apply(folder)
-    assert not held.exists() and not free.exists()
+    _refused(folder, held, free)
 
 
 def test_an_unmapped_row_over_an_empty_folder_refuses_nothing(collected):
-    """With no rename candidate the collection is not read at all, so a hole in
-    it cannot change the outcome and the empty plan is still readable."""
+    """With no rename candidate the collection is not read, so the empty plan stays readable."""
     folder = _folder(collected)
     _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
     assert _plan(folder)["items"] == []
@@ -940,26 +627,8 @@ def test_a_composition_variant_of_the_name_still_protects_its_file(collected, fo
     assert held.is_file()
 
 
-def test_a_case_variant_of_the_name_still_protects_its_file(collected):
-    folder = _folder(collected)
-    held, _free = _pair(folder)
-    _record(collected, str(held).replace("Held", "HELD"), identifier="10")
-    _apply(folder)
-    assert held.is_file()
-
-
-def test_a_tombstoned_row_still_protects_its_file(collected):
-    folder = _folder(collected)
-    held, _free = _pair(folder)
-    _record(collected, str(held), identifier="10", deleted=1)
-    _apply(folder)
-    assert held.is_file()
-
-
 def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
-    """The row sits under no rule and its recorded file is on this machine, so
-    it has answered (R-500): the recorded key protects the file and nothing
-    refuses. A downloads folder is the ordinary case."""
+    """A row under no rule whose file is on this machine has answered (R-500), and protects it."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -970,9 +639,7 @@ def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
 
 
 def test_a_database_with_no_matching_row_proceeds(collected):
-    """Zero referencing rows from a database that OPENED is a fact, not a
-    failure, so the pass renames. The disposable database holds two rows with
-    no path at all."""
+    """Zero referencing rows from a database that OPENED is a fact, not a failure."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _apply(folder)
@@ -991,8 +658,7 @@ def test_a_missing_database_refuses_and_renames_nothing(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     Path(collected.library.db_path).unlink()
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert envelope["cause"]["remediation"]["remedy"] != "restore-from-snapshot"
     assert held.is_file() and free.is_file()
@@ -1002,36 +668,25 @@ def test_an_unopenable_database_refuses_and_renames_nothing(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     Path(collected.library.db_path).write_bytes(b"not a database at all")
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert held.is_file() and free.is_file()
 
 
 def test_an_empty_folder_needs_no_database(collected):
-    """With nothing to rename the collection cannot change the outcome, so a
-    machine with no database can still read an empty plan."""
+    """With nothing to rename, a machine with no database can still read an empty plan."""
     folder = _folder(collected)
     Path(collected.library.db_path).unlink()
     assert _plan(folder)["items"] == []
 
 
 def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, monkeypatch):
-    """The re-check before the rename, on its own. The plan is built over an
-    empty collection and the apply pass reads one that references the file,
-    which is rekordbox importing while the gate waits on a person.
-
-    R-172 added the second half: the file is still protected AND the run says
-    the rename a person approved did not happen. The protection is not a reason
-    to report success over a plan that was carried out in part, and the next run
-    shows the same file as referenced and exits 0.
-    """
+    """The re-check before the rename, on its own."""
     folder = _folder(collected)
     held, free = _pair(folder)
     reads = iter([(), (str(held),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [held.name]
     assert "began referencing it" in incomplete[0]["why"]
@@ -1040,19 +695,11 @@ def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, mo
 
 
 def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected, monkeypatch):
-    """The read open still runs the canary, which refuses a library whose cloud
-    sync is ON. That is kept as a refusal, the same one every other collection
-    reader makes, and the person is told the real cause and its remedy rather
-    than only that the collection could not be read."""
+    """The read open still runs the canary, which refuses a library whose cloud sync is ON."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 1},
-    )
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 1})
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     cause = envelope["cause"]
     assert cause["reason"] == "collection-unreadable"
     assert cause["remediation"]["remedy"] == "disable-cloud-sync"
@@ -1060,51 +707,21 @@ def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected
     assert held.is_file() and free.is_file()
 
 
-def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
-    collected, tmp_path
-):
-    """The root is given through a link and the row records the real path, so
-    only the RESOLVED spelling of the candidate matches."""
+@pytest.mark.parametrize("through_link", [False, True], ids=["real-path-recorded", "link-recorded"])
+def test_a_file_is_protected_through_a_linked_root(collected, tmp_path, through_link):
+    """A root given through a link matches a row by the resolved or the absolute spelling."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    _record(collected, str(held), identifier="10")
     link = tmp_path / "linked"
     link.symlink_to(folder, target_is_directory=True)
+    _record(collected, str(link / held.name if through_link else held), identifier="10")
     _apply(link)
     assert held.is_file()
     assert not free.exists()
 
 
-def test_a_file_recorded_through_a_link_is_protected_through_that_link(
-    collected, tmp_path
-):
-    """The row records the path through a link and the root is given the same
-    way, so only the ABSOLUTE spelling of the candidate matches."""
-    folder = _folder(collected)
-    held, free = _pair(folder)
-    link = tmp_path / "linked"
-    link.symlink_to(folder, target_is_directory=True)
-    _record(collected, str(link / held.name), identifier="10")
-    _apply(link)
-    assert held.is_file()
-    assert not free.exists()
-
-
-def test_a_row_naming_another_host_neither_blocks_nor_protects(collected):
-    """A remote location has no local path, so it protects no local file, and
-    one such row in a library must not stop the verb for every other file."""
-    folder = _folder(collected)
-    held, free = _pair(folder)
-    _record(collected, f"file://elsewhere.invalid{held}", identifier="10")
-    _apply(folder)
-    assert not held.exists() and not free.exists()
-
-
-def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
-    collected, monkeypatch
-):
-    """The open succeeds and the query does not, which is a failure no open
-    side check classifies. It still refuses rather than reading as empty."""
+def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(collected, monkeypatch):
+    """The open succeeds and the query does not, a failure no open side check classifies."""
     folder = _folder(collected)
     held, free = _pair(folder)
 
@@ -1114,67 +731,35 @@ def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
 
     monkeypatch.setattr(rb_writer, "open_db", lambda *args, **kwargs: _Broken())
     monkeypatch.setattr(rb_writer, "close_db", lambda handle: None)
-    code, envelope = _refusal(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert envelope["cause"]["remediation"]["remedy"] == "report-defect"
     assert held.is_file() and free.is_file()
 
 
 def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
-    """Two files that render to one name. The padded one is already in
-    convention, and the unpadded one would be renamed onto it, which on this
-    platform replaces the file silently. The claim on the target is what
-    stops that, and nothing drove it until the U67 mutation table asked.
-
-    R-172 added the second half: the file that stays put is NAMED. The target
-    is a file on disk that nothing is moving, so the collision is known while
-    the plan is built and the rename is never promised.
-    """
+    """The unpadded file would be renamed onto its padded namesake, which replaces it silently."""
     folder = _folder(configured)
     kept = _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="01A")
     other = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
     tags.write_tags(kept, {"artist": "the one already in place"})
     assert _actions(_plan(folder)) == {other.name: "collides"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "rename-incomplete"
     assert other.name in envelope["cause"]["message"]
     assert other.is_file()
     assert tags.read_tag(kept, "artist") == "the one already in place"
 
 
-# ---------------------------------------------------------------------------
-# R-172: a rename the plan promised is never skipped in silence
-# ---------------------------------------------------------------------------
-#
-# The recorded cost: "An operator sweeping the library is told a rename happened
-# when it did not, with nothing in the report naming which file stayed put."
-# Every test below drives the real dispatcher over real audio files.
-
-
 def _colliding_pair(folder: Path) -> tuple[Path, Path]:
-    """Two files that render to one name, each of which needs a rename.
-
-    The dedupe rule drops a trailing body segment repeating the lead, so these
-    two differ on disk and render identically. This is the ledger's own driven
-    case, with the dedupe standing in for its 05A song.
-    """
-    first = _track(
-        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
-    )
+    """Two files that render to one name, each needing a rename; neither is skipped silently (R-172)."""
+    first = _track(folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A")
     second = _track(folder, "5A - 120 - Song - Artist.flac", title="5A - 120 - Song", key="5A")
     return first, second
 
 
 def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured):
-    """The plan pass owns the collision, which is where the ledger put it.
-
-    Before this, the plan promised both renames, the apply performed one, the
-    other file was skipped at the claim and the envelope still answered ok.
-    Neither is promised now, both are named, and ``totals.count`` is the number
-    of renames that can actually happen.
-    """
+    """The plan pass owns the collision, which is where the ledger put it."""
     folder = _folder(configured)
     first, second = _colliding_pair(folder)
     plan = _plan(folder)
@@ -1184,16 +769,10 @@ def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured
 
 
 def test_a_collision_answers_with_the_files_that_stayed_put(configured):
-    """The apply over that plan renames nothing and says so.
-
-    Answering ok here is the whole finding: every later sweep detects the same
-    collision, so a library that can never converge would report success for
-    ever. The cause names both files and the remediation says what to do.
-    """
+    """The apply over that plan renames nothing and says so."""
     folder = _folder(configured)
     first, second = _colliding_pair(folder)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     cause = envelope["cause"]
     assert cause["reason"] == "rename-incomplete"
     assert sorted(cause["detail"]["incomplete"], key=lambda item: item["from"]) == [
@@ -1208,114 +787,52 @@ def test_a_collision_answers_with_the_files_that_stayed_put(configured):
             "why": f"{first.name} renders to the same name, and neither is renamed",
         },
     ]
-    assert envelope["data"]["totals"] == {
-        "count": 0,
-        "referenced": 0,
-        "collides": 2,
-        "unnamed": 0,
-        "renamed": 0,
-        "incomplete": 2,
-    }
+    totals = {"count": 0, "referenced": 0, "collides": 2, "unnamed": 0, "renamed": 0, "incomplete": 2}
+    assert envelope["data"]["totals"] == totals
     assert first.is_file() and second.is_file()
 
 
 def test_a_target_a_collider_holds_is_held_back_too(configured):
-    """The collision detection runs to a fixpoint, which the review found.
-
-    ``third`` renders onto the name ``first`` carries, and ``first`` is one of a
-    colliding pair, both marked lossy and both rendering to one marked name, so
-    it is not going anywhere. Asking once whether a target belongs to a mover
-    counted the pair as movers while holding them back, so
-    ``third`` read as a chain sort order would resolve: the plan promised one
-    rename and no rename was possible. Driven before the fix at
-    ``totals.count`` of 1 with zero renames performed.
-    """
+    """The collision detection runs to a fixpoint, which the review found."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
-    first = _track(
-        folder,
-        "05A - 120 - Song - Artist.flac",
-        title=f"05A - 120 - Song {marker}",
-        key="05A",
-    )
-    second = _track(
-        folder,
-        "5A - 120 - Song - Artist.flac",
-        title=f"5A - 120 - Song {marker}",
-        key="5A",
-    )
-    third = _track(
-        folder, "05A - 120 - Song - Artist - Song.flac", title="05A - 120 - Song", key="05A"
-    )
+    first = _track(folder, "05A - 120 - Song - Artist.flac", title=f"05A - 120 - Song {marker}", key="05A")
+    second = _track(folder, "5A - 120 - Song - Artist.flac", title=f"5A - 120 - Song {marker}", key="5A")
+    third = _track(folder, "05A - 120 - Song - Artist - Song.flac", title="05A - 120 - Song", key="05A")
     plan = _plan(folder)
-    assert _actions(plan) == {
-        first.name: "collides",
-        second.name: "collides",
-        third.name: "collides",
-    }
+    assert _actions(plan) == {first.name: "collides", second.name: "collides", third.name: "collides"}
     assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 3, "unnamed": 0}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["data"]["totals"]["renamed"] == 0
     assert first.is_file() and second.is_file() and third.is_file()
 
 
 def test_two_targets_differing_only_in_case_are_one_name(configured):
-    """The collision is keyed through ``_key``, NFC and casefolded.
-
-    The two names on disk differ by more than case, since a volume that ignores
-    case cannot hold two that do not, and their RENDERED names differ only in
-    case. That is one name on the volume this product ships for: the first would
-    take it and the second's claim would fail against the file the first just
-    created. Comparing the targets as written promises both renames there. On a
-    volume that respects case the cost is two files left unrenamed, which is the
-    direction ``_key`` already chose for the referenced guard.
-    """
+    """The collision is keyed through ``_key``, NFC and casefolded."""
     folder = _folder(configured)
-    upper = _track(
-        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
-    )
+    upper = _track(folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A")
     lower = _track(folder, "5A - 120 - song - artist.flac", title="5A - 120 - song", key="5A")
     assert _actions(_plan(folder)) == {upper.name: "collides", lower.name: "collides"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["data"]["totals"]["renamed"] == 0
     assert upper.is_file() and lower.is_file()
 
 
 def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
-    """A file the collection references is not a mover, so it cannot collide.
-
-    Both of these render to one name and the referenced one is never going to be
-    renamed, so the name is free and its sibling takes it. Passing the held back
-    file to the collision pass would lose that rename to a file that is not
-    moving, which is the same cost this unit exists to stop, with the sign
-    reversed.
-    """
+    """A file the collection references is not a mover, so it cannot collide."""
     folder = _folder(collected)
-    held = _track(
-        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
-    )
+    held = _track(folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A")
     free = _track(folder, "5A - 120 - Song - Artist.flac", title="5A - 120 - Song", key="5A")
     _record(collected, str(held), identifier="10")
     plan = _plan(folder)
     assert _actions(plan) == {held.name: "referenced", free.name: "rename"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    _exited(_answer(folder))
     assert held.is_file()
     assert (folder / "05A - 120 - Song - Artist.flac").is_file()
 
 
-def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
-    configured, monkeypatch
-):
-    """A collision is the one reason a person has to name a file themselves.
-
-    The review drove the sort-order chain and was told to hand-rename a file
-    whose target was free by the time the run ended, over a run a second attempt
-    completes. The step now sends a person to the report, and the collision
-    sentence is added only when a name really is in use.
-    """
+def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(configured, monkeypatch):
+    """A collision is the one reason a person has to name a file themselves."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
@@ -1334,14 +851,11 @@ def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
 
 
 def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
-    """The other half of the outcome, so the new answer cannot swallow the old
-    one. Two files with nothing in each other's way both land and the envelope
-    is ok at exit 0, which is what every earlier test in this file drives."""
+    """The other half of the outcome, so the new answer cannot swallow the old one."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     _track(folder, "2A - 124 - Beta.flac", title="2A - 124 - Beta", key="2A")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _exited(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert envelope["cause"] is None
     assert envelope["data"]["totals"] == {
@@ -1357,15 +871,7 @@ def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
 
 
 def test_a_target_another_mover_still_holds_is_promised_and_then_reported(configured):
-    """The collision the plan CANNOT rule out, driven with nothing faked.
-
-    ``lead`` dedupes onto the name ``marked`` currently holds, and ``marked`` is
-    itself moving because its title carries the lossy marker. Sort order decides
-    whether the chain resolves: a hyphen sorts before a dot, so ``lead`` is
-    attempted first and its target is still occupied. Holding it back in the
-    plan would lose a rename that succeeds whenever the order runs the other
-    way, so it stays promised and the apply reports what happened.
-    """
+    """The collision the plan CANNOT rule out, driven with nothing faked."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     lead = _track(
@@ -1381,8 +887,7 @@ def test_a_target_another_mover_still_holds_is_promised_and_then_reported(config
         key="01A",
     )
     assert _actions(_plan(folder)) == {lead.name: "rename", marked.name: "rename"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [lead.name]
     assert "already taken" in incomplete[0]["why"]
@@ -1392,9 +897,7 @@ def test_a_target_another_mover_still_holds_is_promised_and_then_reported(config
 
 
 def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, monkeypatch):
-    """A file moved or deleted while the gate waits on a person. The plan
-    promised its rename, and a report that shows the promise with no mark on it
-    is the cost R-172 names."""
+    """A file moved or deleted while the gate waits on a person."""
     folder = _folder(configured)
     vanishing = _track(folder, "1A - 124 - Gone.flac", title="1A - 124 - Gone", key="1A")
     staying = _track(folder, "2A - 124 - Here.flac", title="2A - 124 - Here", key="2A")
@@ -1406,8 +909,7 @@ def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, mon
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", _plan_then_delete)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [vanishing.name]
     assert "no longer there" in incomplete[0]["why"]
@@ -1415,8 +917,7 @@ def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, mon
 
 
 def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured, monkeypatch):
-    """The ``OSError`` branch. The claim it created is removed, which was
-    already true, and the file it could not rename is now named as well."""
+    """The ``OSError`` branch removes its claim and names the file it could not rename."""
     folder = _folder(configured)
     track = _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     original = Path.rename
@@ -1427,8 +928,7 @@ def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured
         return original(self, target)
 
     monkeypatch.setattr(Path, "rename", _refuse_rename)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [track.name]
     assert "no space left on device" in incomplete[0]["why"]
@@ -1437,50 +937,22 @@ def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured
 
 
 def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch):
-    """The same shape one file over, which METHOD's fifth pattern asks for.
-
-    ``write_tags`` returns False on any failure rather than raising, and nothing
-    read the answer, so a file whose title never got the head was reported as a
-    rename that happened in full. The rename itself stands and is counted.
-
-    IT IS NAMED WHERE IT IS, not where the plan found it. This branch runs after
-    a successful rename, so reporting the plan's own ``from`` would send a person
-    to a filename that no longer exists.
-    """
+    """The same shape one file over, which METHOD's fifth pattern asks for."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     renamed = folder / "01A - 124 - Alpha.flac"
     monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert incomplete == [
-        {
-            "from": renamed.name,
-            "path": str(renamed),
-            "why": "it was renamed and its title tag could not be written",
-        }
-    ]
+    why = "it was renamed and its title tag could not be written"
+    assert incomplete == [{"from": renamed.name, "path": str(renamed), "why": why}]
     assert envelope["data"]["totals"]["renamed"] == 1
     assert renamed.is_file()
 
 
-# ---------------------------------------------------------------------------
-# R-669: an identifier stem is composed from the artist and title tags.
-#
-# The vendored downloader names every file it lands for its provider
-# identifier and defers naming to this verb, and this verb carried the
-# identifier as the body (R-168), so a landed batch was fifty four numbers on
-# disk for life (R-407). The one stem this verb composes is one with no letters
-# at all; every stem carrying text is still carried as it is.
-# ---------------------------------------------------------------------------
-
-
 def _acquired(folder: Path, name: str, **fields: str) -> Path:
-    """A file the way the downloader leaves it: named for its identifier, tagged."""
-    made = synth_container(folder, ".flac")
-    target = folder / name
-    made.rename(target)
+    """A file as the downloader leaves it, named for its identifier and tagged (R-669)."""
+    target = _silence(folder / name)
     if fields:
         assert tags.write_tags(target, dict(fields))
     return target
@@ -1494,35 +966,50 @@ def _renames(plan: dict) -> list[tuple[str, str]]:
     return [(item["from"], item["to"]) for item in plan["items"] if item["action"] == "rename"]
 
 
+def _shown(folder: Path) -> dict:
+    """What the gate shows before any answer."""
+    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    return json.loads(out)["cause"]["detail"]["shown"]
+
+
 def test_an_identifier_stem_is_composed_from_the_artist_and_title_tags(configured):
-    """The brief's first scenario: a key the wheel does not hold, no tempo, so
-    no head, and a body carrying both tags in the library's own order."""
+    """A key the wheel does not hold and no tempo give no head, and the body is both tags."""
     folder = _folder(configured)
-    _acquired(
-        folder, "92654769.flac",
-        artist="Tirzah", title="Affection", isrc="GBCEL1800129", initialkey="Bb",
-    )
+    _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", isrc="GBCEL1800129", initialkey="Bb")
     plan = _plan(folder)
     assert _moves(plan) == [("92654769.flac", "Tirzah - Affection.flac")]
     assert plan["totals"] == {"count": 1, "referenced": 0, "collides": 0, "unnamed": 0}
 
 
-def test_a_camelot_key_tag_without_a_tempo_still_renders_no_head(configured):
-    """The state every file is in before rekordbox analysis. The head stays
-    all or nothing, and the composed body is not given half a head."""
+@pytest.mark.parametrize(
+    ("name", "fields", "to"),
+    [
+        pytest.param(
+            "92654769.flac", {"artist": "Tirzah", "title": "Affection", "initialkey": "7A"},
+            "Tirzah - Affection.flac", id="a-camelot-key-without-a-tempo-renders-no-head",
+        ),
+        pytest.param(
+            "12345.flac", {"artist": "Tirzah", "title": "07A - 126 - Affection"},
+            "07A - 126 - Tirzah - Affection.flac", id="a-head-in-the-title-tag-stays-out-of-the-body",
+        ),
+        pytest.param(
+            "12345.flac", {"artist": "AC/DC", "title": "Affection"},
+            "AC-DC - Affection.flac", id="a-slash-takes-the-body-form-of-a-segment",
+        ),
+    ],
+)  # fmt: skip
+def test_an_identifier_stem_composes_its_one_name(configured, name, fields, to):
+    """Before analysis there is no tempo; a head belongs to the head derivation, a slash to a segment."""
     folder = _folder(configured)
-    _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
-    assert _moves(_plan(folder)) == [("92654769.flac", "Tirzah - Affection.flac")]
+    _acquired(folder, name, **fields)
+    assert _moves(_plan(folder)) == [(name, to)]
 
 
 def test_a_stem_carrying_text_is_not_recomposed_from_its_tags(configured):
-    """R-168 stands: the artist and title tags are there and disagree with the
-    filename, and the plan pads the head and touches nothing else."""
+    """R-168: tags that disagree with the filename change nothing but the padded head."""
     folder = _folder(configured)
-    _acquired(
-        folder, "4A - 126 - Burning (Extended Mix).flac",
-        artist="Someone Else", title="Burning", initialkey="4A",
-    )
+    _acquired(folder, "4A - 126 - Burning (Extended Mix).flac", artist="Someone Else", title="Burning", initialkey="4A")
     assert _moves(_plan(folder)) == [
         ("4A - 126 - Burning (Extended Mix).flac", "04A - 126 - Burning (Extended Mix).flac")
     ]
@@ -1530,18 +1017,12 @@ def test_a_stem_carrying_text_is_not_recomposed_from_its_tags(configured):
 
 def test_a_padded_text_stem_with_tags_plans_nothing(configured):
     folder = _folder(configured)
-    _acquired(
-        folder, "04A - 126 - Burning (Extended Mix).flac",
-        artist="Someone Else", title="Burning (Extended Mix)",
-    )
-    plan = _plan(folder)
-    assert plan["items"] == []
+    _acquired(folder, "04A - 126 - Burning (Extended Mix).flac", artist="Someone Else", title="Burning (Extended Mix)")
+    assert _plan(folder)["items"] == []
 
 
 def test_an_identifier_with_no_artist_tag_is_held_and_named_in_the_plan(configured):
-    """Never renamed to its title alone, and never silently left out: the file
-    is in the plan under its own action with the reason, and the digest covers
-    it, so a tag written while the gate waits changes the plan a person saw."""
+    """Never renamed to its title alone nor left out: held with its reason, under the digest."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", title="Affection")
     plan = _plan(folder)
@@ -1556,52 +1037,34 @@ def test_an_identifier_with_no_artist_tag_is_held_and_named_in_the_plan(configur
     assert _plan(folder)["digest"] != before
 
 
-def test_an_identifier_with_no_tags_at_all_is_held_with_its_own_reason(configured):
+@pytest.mark.parametrize(
+    ("fields", "phrases"),
+    [
+        pytest.param({}, ("neither an artist tag nor a title tag",), id="no-tags-at-all"),
+        pytest.param({"artist": "Tirzah", "title": "07A - 126 - "}, ("title tag is only a head",), id="title-only-a-head-R-664"),
+        pytest.param({"artist": "Tirzah"}, ("no title tag", "artist alone"), id="an-artist-and-no-title"),
+    ],
+)
+def test_an_identifier_it_cannot_name_is_held_with_its_own_reason(configured, fields, phrases):
     folder = _folder(configured)
-    _acquired(folder, "12345.flac")
+    _acquired(folder, "12345.flac", **fields)
     why = _held(_plan(folder))["12345.flac"]
-    assert "neither an artist tag nor a title tag" in why
+    assert all(phrase in why for phrase in phrases), why
 
 
-def test_an_identifier_whose_title_tag_is_only_a_head_is_held(configured):
-    """R-664's shape: the live system writes the head into the tag. A tag that
-    is nothing but a head has no body to give, and the artist alone is not a
-    name."""
-    folder = _folder(configured)
-    _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - ")
-    why = _held(_plan(folder))["12345.flac"]
-    assert "title tag is only a head" in why
-
-
-def test_a_head_inside_the_title_tag_is_not_composed_into_the_body(configured):
-    """The head belongs to the head derivation and the body is the tag's body.
-    The head the live system wrote into the tag (R-664) is rendered onto the
-    filename through the same title fallback every file has had since U39, as
-    text, and the composed body carries none of it."""
-    folder = _folder(configured)
-    _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - Affection")
-    moves = _moves(_plan(folder))
-    assert moves == [("12345.flac", "07A - 126 - Tirzah - Affection.flac")]
-
-
-def test_every_credited_artist_reaches_the_composed_body(configured):
-    """A Vorbis comment can hold the credit as several fields, and the single
-    value reader answers with the first. The library writes the credits into
-    one segment separated by a comma, so the composed body does the same."""
-    import mutagen
-
+@pytest.mark.parametrize(
+    ("credits", "body"),
+    [(["Tirzah", "Coby Sey"], "Tirzah, Coby Sey"), (["", "Tirzah"], "Tirzah")],
+    ids=["every-credited-artist", "an-empty-value-leads-with-no-comma"],
+)
+def test_every_credited_artist_reaches_the_composed_body(configured, credits, body):
+    """A Vorbis comment can hold the credit as several fields; the single value reader takes the first."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", title="Affection")
     handle = mutagen.File(path)
-    handle["ARTIST"] = ["Tirzah", "Coby Sey"]
+    handle["ARTIST"] = credits
     handle.save()
-    assert _moves(_plan(folder)) == [("12345.flac", "Tirzah, Coby Sey - Affection.flac")]
-
-
-def test_a_slash_in_a_tag_takes_the_body_form_of_a_segment(configured):
-    folder = _folder(configured)
-    _acquired(folder, "12345.flac", artist="AC/DC", title="Affection")
-    assert _moves(_plan(folder)) == [("12345.flac", "AC-DC - Affection.flac")]
+    assert _moves(_plan(folder)) == [("12345.flac", f"{body} - Affection.flac")]
 
 
 def test_a_composed_body_over_the_ceiling_is_fitted_not_left_as_a_number(configured):
@@ -1617,75 +1080,54 @@ def test_a_composed_body_over_the_ceiling_is_fitted_not_left_as_a_number(configu
 
 
 def test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher(configured):
-    """The brief's driven scenario: the composed names exist, the text stems
-    are untouched, and the title tag body is the tag's own (R-168's second
-    half), never the composed filename body."""
+    """Composed names land, text stems stay, and the title tag keeps its own body (R-168)."""
     folder = _folder(configured)
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
     _acquired(folder, "4A - 126 - Burning (Extended Mix).flac", artist="Someone", title="Burning")
     _acquired(folder, "12345.flac", title="Nameless")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["data"]["totals"] == {
-        "count": 2,
-        "referenced": 0,
-        "collides": 0,
-        "unnamed": 1,
-        "renamed": 2,
-        "incomplete": 1,
-    }
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
+    totals = {"count": 2, "referenced": 0, "collides": 0, "unnamed": 1, "renamed": 2, "incomplete": 1}
+    assert envelope["data"]["totals"] == totals
     assert sorted(p.name for p in folder.glob("*.flac")) == [
         "04A - 126 - Burning (Extended Mix).flac",
         "12345.flac",
         "Tirzah - Affection.flac",
     ]
     assert tags.read_tag(folder / "Tirzah - Affection.flac", "title") == "Affection"
-    assert tags.read_tag(folder / "04A - 126 - Burning (Extended Mix).flac", "title") == (
-        "04A - 126 - Burning"
-    )
+    assert tags.read_tag(folder / "04A - 126 - Burning (Extended Mix).flac", "title") == "04A - 126 - Burning"
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == ["12345.flac"]
     assert "no artist tag" in incomplete[0]["why"]
 
 
 def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, monkeypatch):
-    """The apply pass re-reads the tags after the gate rather than trusting the
-    plan's, so a body composed from a tag that is gone is not written."""
+    """The apply re-reads the tags after the gate, so a body from a tag that is gone is not written."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
     real = naming_cli._plan_for
 
     def plan_then_strip(root, *, cfg):
         plan = real(root, cfg=cfg)
-        import mutagen
-
         handle = mutagen.File(path)
         del handle["ARTIST"]
         handle.save()
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", plan_then_strip)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert path.is_file()
     assert not (folder / "Tirzah - Affection.flac").exists()
     assert "no artist tag" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
 def test_the_gate_shows_the_totals_and_every_item(configured):
-    """R-670: the screen carried the question and not one rename. The blocked
-    envelope's ``shown`` carries the counts, each planned rename and each held
-    file with its reason, the way the landing gate shows its files."""
+    """R-670: the screen carried the question and not one rename."""
     folder = _folder(configured)
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection")
     _acquired(folder, "12345.flac", title="Nameless")
-    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
-    assert code == int(ExitCode.DECISION_REQUIRED), out
-    shown = json.loads(out)["cause"]["detail"]["shown"]
+    shown = _shown(folder)
     assert shown["root"] == str(folder)
-    assert (shown["renames"], shown["referenced"], shown["collides"], shown["unnamed"]) == (
-        1, 0, 0, 1
-    )
+    assert (shown["renames"], shown["referenced"], shown["collides"], shown["unnamed"]) == (1, 0, 0, 1)
     assert shown["planned"] == [{"from": "92654769.flac", "to": "Tirzah - Affection.flac"}]
     assert shown["held"] == [
         {"from": "12345.flac", "as": "unnamed", "why": (
@@ -1700,45 +1142,22 @@ def test_the_gate_names_a_referenced_file_among_the_held(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, str(held), identifier="10")
-    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
-    assert code == int(ExitCode.DECISION_REQUIRED), out
-    shown = json.loads(out)["cause"]["detail"]["shown"]
+    shown = _shown(folder)
     assert shown["held"] == [
         {"from": held.name, "as": "referenced", "why": "the rekordbox collection references it"}
     ]
     assert [item["from"] for item in shown["planned"]] == [free.name]
 
 
-def test_an_identifier_with_an_artist_and_no_title_tag_is_held_with_its_own_reason(configured):
-    folder = _folder(configured)
-    _acquired(folder, "12345.flac", artist="Tirzah")
-    why = _held(_plan(folder))["12345.flac"]
-    assert "no title tag" in why and "artist alone" in why
-
-
 def test_a_letterless_stem_that_is_not_a_number_is_carried_as_it_is(configured):
-    """Digits only, not "no letters". A name a person chose can be all symbols
-    and R-168's rule stands over it: nothing planned, nothing owed."""
+    """An identifier is digits only; a name of symbols a person chose stands under R-168."""
     folder = _folder(configured)
     _acquired(folder, "2 + 2 = 5.flac")
-    plan = _plan(folder)
-    assert plan["items"] == []
-
-
-def test_an_empty_artist_value_does_not_lead_the_body_with_a_comma(configured):
-    import mutagen
-
-    folder = _folder(configured)
-    path = _acquired(folder, "12345.flac", title="Affection")
-    handle = mutagen.File(path)
-    handle["ARTIST"] = ["", "Tirzah"]
-    handle.save()
-    assert _moves(_plan(folder)) == [("12345.flac", "Tirzah - Affection.flac")]
+    assert _plan(folder)["items"] == []
 
 
 def test_the_digest_covers_a_held_identifier_file(configured):
-    """A folder holding one held file and an empty folder are different plans,
-    so a person who approved one has not approved the other."""
+    """One held file and an empty folder are different plans to approve."""
     folder = _folder(configured)
     empty = _plan(folder)["digest"]
     _acquired(folder, "12345.flac", title="Nameless")
@@ -1746,24 +1165,20 @@ def test_the_digest_covers_a_held_identifier_file(configured):
 
 
 def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(collected):
-    """An imported identifier file is one this verb can never rename (R-407),
-    whatever its tags say. It is held as referenced, not unnamed, and the sweep
-    answers ok rather than sending a person to write a tag that changes nothing."""
+    """An imported identifier file is never renamed (R-407), whatever its tags say."""
     folder = _folder(collected)
     path = _acquired(folder, "12345.flac", title="Nameless")
     _record(collected, str(path), identifier="10")
     plan = _plan(folder)
     assert _actions(plan) == {"12345.flac": "referenced"}
     assert plan["totals"] == {"count": 0, "referenced": 1, "collides": 0, "unnamed": 0}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _exited(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert path.is_file()
 
 
 def test_a_held_identifier_file_reads_the_collection_even_with_nothing_to_rename(collected, monkeypatch):
-    """The collection decides between referenced and unnamed, so it is read for
-    a held file alone, where a plan with no rename candidate used to skip it."""
+    """The collection decides referenced from unnamed, so a held file alone still reads it."""
     folder = _folder(collected)
     _acquired(folder, "12345.flac", title="Nameless")
     reads: list[int] = []
@@ -1773,11 +1188,8 @@ def test_a_held_identifier_file_reads_the_collection_even_with_nothing_to_rename
     assert reads == [1]
 
 
-def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(
-    configured, monkeypatch
-):
-    """The plan showed one name and the tags now render another. The rename is
-    owed rather than performed, because approval was of the name shown."""
+def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(configured, monkeypatch):
+    """The plan showed one name and the tags now render another."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
     real = naming_cli._plan_for
@@ -1788,27 +1200,23 @@ def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", plan_then_edit)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac"]
     why = envelope["cause"]["detail"]["incomplete"][0]["why"]
     assert "Tirza - Affection.flac" in why and "Tirzah - Affection.flac" in why
 
 
 def test_the_report_over_a_held_identifier_says_to_tag_it(configured):
-    """The generic step, run this again, is the one action that cannot fix an
-    unnamed file, so the cause carries the step that can."""
+    """Running it again cannot fix an unnamed file, so the cause carries the step that can."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", title="Nameless")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     steps = envelope["cause"]["remediation"]["steps"]
     assert any("artist tag and a title tag" in step for step in steps), steps
 
 
 def test_the_gate_screen_lists_no_more_than_the_bound_and_counts_the_rest():
-    """A sweep of the library root is thousands of items and the screen is
-    printed and parsed, so the lists stop at the bound and the totals carry on."""
+    """A sweep of the library root is thousands of items, so the lists stop at the bound."""
     bound = naming_cli.PLAN_SHOWN
     items = [
         {"action": "rename", "from": f"{n}.flac", "to": f"A - {n}.flac", "path": f"/x/{n}.flac"}
@@ -1817,10 +1225,7 @@ def test_the_gate_screen_lists_no_more_than_the_bound_and_counts_the_rest():
         {"action": "unnamed", "from": f"h{n}.flac", "path": f"/x/h{n}.flac", "why": "held"}
         for n in range(bound + 1)
     ]
-    plan = {
-        "items": items,
-        "totals": {"count": bound + 3, "referenced": 0, "collides": 0, "unnamed": bound + 1},
-    }
+    plan = {"items": items, "totals": {"count": bound + 3, "referenced": 0, "collides": 0, "unnamed": bound + 1}}
     shown = naming_cli._shown(plan, root=Path("/x"))
     assert len(shown["planned"]) == bound and shown["planned not listed"] == 3
     assert len(shown["held"]) == bound and shown["held not listed"] == 1

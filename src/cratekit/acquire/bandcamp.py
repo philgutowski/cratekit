@@ -1,39 +1,15 @@
 """Bandcamp: the account's purchases, read from the account's own endpoints (U176).
 
-Sitting 46 brought 45 releases from one seller into staging by hand, through a
-third party tool, a cookie pasted into a file, a name match on file paths, an
-ignore file kept by hand and a flatten with ``mv``. This module is the part of
-that lane that talks to Bandcamp: it lists what the account holds and fetches
-one release. Deciding what to fetch, and where the files go, is
-:mod:`cratekit.acquire.bandcamp_cli`'s.
+Lists what the account holds and fetches one release; what to fetch and where
+it goes is :mod:`cratekit.acquire.bandcamp_cli`'s. Two endpoints are written here
+rather than taking ``bandcampsync``, whose state file is a checkpoint and whose
+log carries part of the session.
 
-WHY A CLIENT OF TWO ENDPOINTS AND NOT ``bandcampsync``. The tool sitting 46 ran
-does three things this product cannot have: its state file is a checkpoint, so
-a purchase skipped once is never offered again; a missing ignore file makes it
-copy a template that exists only in its container image and crash; and it logs
-the first twenty characters of the session at INFO. Taking it in meant guarding
-against all three to use two requests, so the two requests are written here.
-
-WHAT THE ENDPOINTS ARE, as sitting 46 measured them. The collection summary
-names the fan; the collection is ``collection_items``, a POST of the fan, an
-``older_than_token`` and a count, a page at a time, newest first; the purchases
-the fan hid come from ``hidden_items`` in the same shape. Each item carries its
-seller's account in the host of its address, since the ``label`` field was
-empty on every release of the seller measured. A release downloads from a
-signed page whose data blob names one link per format.
-
-THE SESSION AND EVERY SIGNED LINK ARE CREDENTIALS. The session is the browser's
-cookie and its ``identity`` value is the login; a signed link fetches a release
-without one. So neither is put in a message, a ``repr``, a log line or anything
-that serializes: :class:`Purchase` holds its signed page apart from its
-``to_json``, the transport's own exceptions are replaced rather than chained,
-because their text carries the address they failed on, and nothing here logs.
-
-THE TRANSPORT IS A SEAM. :class:`Transport` is three calls, and the one that
-reaches the network, :class:`CurlTransport`, imports ``curl_cffi`` only when it
-is built, so the suite never loads it and a test hands in a fake. Bandcamp sits
-behind a bot check that refuses an ordinary client, so the real transport
-presents a browser's TLS fingerprint, which is what ``curl_cffi`` is for.
+The session and every signed link are credentials, so neither reaches a message,
+a ``repr``, a log line or anything serialized, and transport exceptions are
+replaced rather than chained, since their text names the address. The network
+seam is :class:`Transport`; :class:`CurlTransport` imports ``curl_cffi``, for a
+browser's fingerprint past the bot check, only when built.
 """
 
 from __future__ import annotations
@@ -58,20 +34,17 @@ SUMMARY_PATH = "/api/fan/2/collection_summary"
 ITEMS_PATH = "/api/fancollection/1/collection_items"
 HIDDEN_PATH = "/api/fancollection/1/hidden_items"
 
-#: Purchases a page, the count sitting 46 measured the endpoint answering.
+#: Purchases asked for a page.
 PAGE_SIZE = 100
 
-#: The most pages one listing reads before it refuses. A page whose token does
-#: not move is refused on its own; this bounds a token that moves forever.
+#: The most pages one listing reads, bounding a token that moves forever.
 MAX_PAGES = 1000
 
-#: The formats asked for. FLAC is lossless and is what the strict policy calls
-#: for; MP3 at 320 is the lossy fallback a permissive policy may take, marked.
+#: FLAC is the lossless format asked for; MP3 at 320 the marked lossy fallback.
 LOSSLESS_ENCODING = "flac"
 LOSSY_ENCODING = "mp3-320"
 
-#: Every lossless format a release may offer, in the order one is taken. FLAC
-#: first, since it carries its tags the way the rest of the library does.
+#: Every lossless format a release may offer, in the order one is taken.
 LOSSLESS_ENCODINGS = (LOSSLESS_ENCODING, "alac", "aiff-lossless", "wav")
 
 #: Statuses that judge the SESSION, as against the request.
@@ -80,14 +53,10 @@ REJECTED_STATUSES = frozenset({401, 403})
 #: The suffix of a seller account's own address.
 _ACCOUNT_HOST = ".bandcamp.com"
 
-#: The hosts the session is ever sent to: Bandcamp itself and the file servers
-#: its download pages name. A link anywhere else, or over plain http, is never
-#: requested, because every request carries the session.
+#: The only hosts, over https, a request may go to, since every request carries the session.
 TRUSTED_HOSTS = ("bandcamp.com", "bcbits.com")
 
-#: Suffixes a release may carry that are audio. Everything else in a release's
-#: archive, the cover image above all, stays in the holding folder and goes
-#: with it.
+#: Audio suffixes; anything else in a release stays in the holding folder.
 AUDIO_SUFFIXES = frozenset({".flac", ".mp3", ".aiff", ".aif", ".wav", ".m4a", ".ogg"})
 
 _BLOB = re.compile(r"""data-blob\s*=\s*(["'])(?P<blob>.*?)\1""", re.DOTALL)
@@ -103,14 +72,6 @@ class SessionRejected(BandcampError):
 
 class BandcampUnavailable(BandcampError):
     """Bandcamp did not answer, or answered in a shape this client cannot read."""
-
-
-class FormatUnavailable(BandcampError):
-    """The release offers no download in the format asked for."""
-
-    def __init__(self, message: str, *, offered: Sequence[str]) -> None:
-        super().__init__(message)
-        self.offered = tuple(offered)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,12 +109,7 @@ class Track:
 
 @dataclass(frozen=True, slots=True)
 class Purchase:
-    """One purchase in the account, everything about it that is not a credential.
-
-    ``download_page`` IS A CREDENTIAL. It is the signed page a release is
-    fetched from, so it stays out of :meth:`to_json`, out of the ``repr`` and
-    out of equality, and is read only by the worker that fetches.
-    """
+    """One purchase; ``download_page`` is a credential, kept out of ``to_json``, repr and ==."""
 
     item_id: str
     seller: str
@@ -174,17 +130,10 @@ class Purchase:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "item_id": self.item_id,
-            "seller": self.seller,
-            "artist": self.artist,
-            "title": self.title,
-            "item_type": self.item_type,
-            "purchased": self.purchased,
-            "item_url": self.item_url,
-            "hidden": self.hidden,
-            "preorder": self.preorder,
-            "downloadable": self.downloadable,
-            "tracks": [track.to_json() for track in self.tracks],
+            "item_id": self.item_id, "seller": self.seller, "artist": self.artist,
+            "title": self.title, "item_type": self.item_type, "purchased": self.purchased,
+            "item_url": self.item_url, "hidden": self.hidden, "preorder": self.preorder,
+            "downloadable": self.downloadable, "tracks": [track.to_json() for track in self.tracks],
         }
 
 
@@ -196,18 +145,8 @@ class Collection:
     purchases: tuple[Purchase, ...]
 
 
-# ---------------------------------------------------------------------------
-# Reading answers
-# ---------------------------------------------------------------------------
-
-
 def _json(response: Response, what: str) -> Any:
-    """The body of a JSON answer, or the failure it is.
-
-    A status that judges the session is :class:`SessionRejected`, never an
-    empty collection: a logged out cookie must not read as an account that
-    holds nothing.
-    """
+    """The body of a JSON answer; a rejected session raises, never reads as an empty account."""
     if response.status in REJECTED_STATUSES:
         raise SessionRejected(f"Bandcamp refused the session when asked for {what}")
     if response.status != 200:
@@ -219,11 +158,7 @@ def _json(response: Response, what: str) -> Any:
 
 
 def seller_of(item_url: str) -> str:
-    """The seller account a purchase belongs to: the host of its address.
-
-    ``pulsromania.bandcamp.com`` is ``pulsromania``. A seller on a domain of its
-    own keeps the whole host, which is the only name the address gives.
-    """
+    """The seller account of a purchase, its address's host less ``.bandcamp.com``."""
     host = (urlsplit(item_url).hostname or "").lower()
     if host.endswith(_ACCOUNT_HOST):
         return host[: -len(_ACCOUNT_HOST)]
@@ -260,8 +195,7 @@ def _tracks(listed: object) -> tuple[Track, ...]:
         found.append(
             Track(
                 number=_number(entry.get("track_number")),
-                artist=str(entry.get("artist") or "").strip(),
-                title=title,
+                artist=str(entry.get("artist") or "").strip(), title=title,
             )
         )
     return tuple(found)
@@ -274,15 +208,11 @@ def _purchase(item: Mapping[str, Any], page: Mapping[str, Any], *, hidden: bool)
     tralbum = f"{item.get('tralbum_type') or ''}{item.get('tralbum_id') or ''}"
     item_url = str(item.get("item_url") or "")
     return Purchase(
-        item_id=str(item.get("item_id") or tralbum or sale),
-        seller=seller_of(item_url),
+        item_id=str(item.get("item_id") or tralbum or sale), seller=seller_of(item_url),
         artist=str(item.get("band_name") or "").strip(),
-        title=str(item.get("item_title") or "").strip(),
-        item_type=str(item.get("item_type") or ""),
-        purchased=str(item.get("purchased") or ""),
-        item_url=item_url,
-        tracks=_tracks(listed.get(tralbum) if isinstance(listed, Mapping) else None),
-        hidden=hidden,
+        title=str(item.get("item_title") or "").strip(), item_type=str(item.get("item_type") or ""),
+        purchased=str(item.get("purchased") or ""), item_url=item_url,
+        tracks=_tracks(listed.get(tralbum) if isinstance(listed, Mapping) else None), hidden=hidden,
         preorder=bool(item.get("is_preorder")),
         download_page=str(links.get(sale) or "") if isinstance(links, Mapping) else "",
     )
@@ -291,21 +221,15 @@ def _purchase(item: Mapping[str, Any], page: Mapping[str, Any], *, hidden: bool)
 def _pages(
     transport: Transport, cookie: str, fan_id: str, path: str, *, hidden: bool, start: str
 ) -> Iterator[Purchase]:
-    """Every purchase one listing holds, a page at a time, until an empty page.
-
-    NO CHECKPOINT. Every run reads the whole account from the newest purchase
-    back, because the record of what was fetched is kept by purchase, and a
-    listing that started where the last one stopped would hide every purchase
-    older than that point, which is the trap ``bandcampsync``'s state file sets.
-    """
+    """Every purchase one listing holds, a page at a time. No checkpoint: resuming
+    where the last run stopped would hide every older purchase."""
     token = start
     seen = {token}
     what = "the hidden purchases" if hidden else "the collection"
     for _ in range(MAX_PAGES):
         page = _json(
             transport.post_json(
-                BASE + path,
-                {"fan_id": fan_id, "older_than_token": token, "count": PAGE_SIZE},
+                BASE + path, {"fan_id": fan_id, "older_than_token": token, "count": PAGE_SIZE},
                 cookie=cookie,
             ),
             what,
@@ -328,8 +252,7 @@ def _pages(
             return
         token = str(page.get("last_token") or "")
         if not token or token in seen:
-            # A page with items and no way on: reading it as the end would call
-            # every older purchase absent, so it is refused instead.
+            # Read as the end, it would call every older purchase absent.
             raise BandcampUnavailable(
                 f"a page of {what} names no next page, so the purchases older than "
                 f"it could not be read"
@@ -349,8 +272,7 @@ def _when(purchase: Purchase) -> float | None:
 
 
 def newest_first(purchases: Sequence[Purchase]) -> tuple[Purchase, ...]:
-    """Newest purchase first. A date that cannot be read keeps its listed place
-    after every dated one, since the listing itself is newest first."""
+    """Newest first; an unreadable date keeps its listed place after every dated one."""
     order = []
     for position, purchase in enumerate(purchases):
         stamp = _when(purchase)
@@ -358,14 +280,9 @@ def newest_first(purchases: Sequence[Purchase]) -> tuple[Purchase, ...]:
     return tuple(purchase for *_key, purchase in sorted(order, key=lambda row: row[:2]))
 
 
-def read_collection(
-    transport: Transport, cookie: str, *, now: float | None = None
-) -> Collection:
-    """Every purchase the account holds, hidden ones marked, newest first.
-
-    A cookie the summary does not answer with a fan is :class:`SessionRejected`:
-    the summary is how a logged out cookie is told from an empty account.
-    """
+def read_collection(transport: Transport, cookie: str, *, now: float | None = None) -> Collection:
+    """Every purchase, hidden ones marked, newest first. A summary naming no fan is
+    :class:`SessionRejected`, telling a logged out cookie from an empty account."""
     summary = _json(transport.get(BASE + SUMMARY_PATH, cookie=cookie), "the collection summary")
     fan_id = str(summary.get("fan_id") or "") if isinstance(summary, Mapping) else ""
     if not fan_id:
@@ -376,11 +293,6 @@ def read_collection(
     known = {purchase.item_id for purchase in shown}
     merged = shown + [purchase for purchase in hidden if purchase.item_id not in known]
     return Collection(fan_id=fan_id, purchases=newest_first(merged))
-
-
-# ---------------------------------------------------------------------------
-# Fetching one release
-# ---------------------------------------------------------------------------
 
 
 def _blob(text: str) -> Mapping[str, Any]:
@@ -395,16 +307,10 @@ def _blob(text: str) -> Mapping[str, Any]:
 
 
 def download_offers(transport: Transport, cookie: str, page_url: str) -> dict[str, str]:
-    """Format to signed link, for the release behind one signed download page.
+    """Format to signed link (a credential) for one signed download page.
 
-    THE RETURN VALUE IS A CREDENTIAL. A caller reads one link out of it and
-    hands that to :func:`fetch`, and keeps it out of every message.
-
-    THE PAGE IS CHECKED BEFORE IT IS ASKED, the way every file link is, because
-    this is the first request of a fetch that carries the session. A page that
-    lists no formats, or only formats whose links lead outside Bandcamp, is
-    :class:`BandcampUnavailable`: read as an empty offer it would tell the
-    person to relax the lossless policy over a release that offers FLAC.
+    A page offering no trusted link raises rather than read as an empty offer, which
+    would ask the person to relax the lossless policy over a release offering FLAC.
     """
     if not trusted(page_url):
         raise BandcampUnavailable("the release's download page does not lead to Bandcamp over https")
@@ -439,8 +345,7 @@ def download_offers(transport: Transport, cookie: str, page_url: str) -> dict[st
     return offers
 
 
-#: The object inside the stat answer, which arrives as plain JSON or wrapped in
-#: the page's own callback, ``if ( window.Downloads ) { Downloads.statResult ( {...} ) };``.
+#: The stat answer's object, plain or wrapped in the page's ``statResult`` callback.
 _STAT_CALL = re.compile(r"statResult\s*\(\s*(?P<answer>\{.*\})\s*\)", re.DOTALL)
 
 
@@ -458,24 +363,15 @@ def _stat_answer(text: str) -> Any:
 
 
 def _prepared(transport: Transport, cookie: str, link: str) -> str:
-    """The link to stream, after asking Bandcamp whether the file is ready.
-
-    A release is built into its archive on request, and Bandcamp's own page asks
-    the ``statdownload`` twin of the link before it fetches. An answer that says
-    the file is not ready is a retry, never a download of whatever came back.
-    An answer this client cannot read leaves the link as it was, which is the
-    link a browser follows, and the archive is checked when it arrives.
-    """
+    """The link to stream, once its ``statdownload`` twin says the archive is built.
+    Not ready is a retry; an unreadable answer leaves the link a browser follows."""
     parts = urlsplit(link)
     if "/download/" not in parts.path or not trusted(link):
         return link
     stat = urlunsplit(
         (
-            parts.scheme,
-            parts.netloc,
-            parts.path.replace("/download/", "/statdownload/", 1),
-            f"{parts.query}&.vrs=1" if parts.query else ".vrs=1",
-            "",
+            parts.scheme, parts.netloc, parts.path.replace("/download/", "/statdownload/", 1),
+            f"{parts.query}&.vrs=1" if parts.query else ".vrs=1", "",
         )
     )
     response = transport.get(stat, cookie=cookie)
@@ -493,11 +389,7 @@ def _prepared(transport: Transport, cookie: str, link: str) -> str:
 
 
 def fetch(transport: Transport, cookie: str, link: str, holding: Path) -> Path:
-    """Stream one release into ``holding`` and return the file that arrived.
-
-    A link that is not :func:`trusted` is refused before any request, since the
-    request would carry the session to it.
-    """
+    """Stream one release into ``holding``; an untrusted link is never requested."""
     if not trusted(link):
         raise BandcampUnavailable("the release's link does not lead to Bandcamp over https")
     holding.mkdir(parents=True, exist_ok=True)
@@ -505,14 +397,8 @@ def fetch(transport: Transport, cookie: str, link: str, holding: Path) -> Path:
 
 
 def unpack(landed: Path, into: Path) -> tuple[Path, ...]:
-    """The audio files of one release, extracted flat into ``into``.
-
-    A release arrives as one archive, a single track as the file itself. Each
-    member of an archive is reduced to its base name, so a member naming a
-    folder, or a path outside ``into``, lands inside ``into`` or nowhere. A name
-    that arrives twice in one archive is refused, since keeping either copy
-    would be a guess about which one the release meant.
-    """
+    """The audio files of one release, flat in ``into``. A member keeps only its base
+    name, so none lands outside; a name twice in one archive is refused as a guess."""
     into.mkdir(parents=True, exist_ok=True)
     if not zipfile.is_zipfile(landed):
         if landed.suffix.lower() not in AUDIO_SUFFIXES:
@@ -546,23 +432,14 @@ def unpack(landed: Path, into: Path) -> tuple[Path, ...]:
     return tuple(sorted(extracted))
 
 
-# ---------------------------------------------------------------------------
-# The transport that reaches the network
-# ---------------------------------------------------------------------------
-
-#: The browser ``curl_cffi`` presents. Bandcamp answers a plain client with a
-#: bot check, which this product never works around any other way.
+#: The browser ``curl_cffi`` presents, past the bot check a plain client meets.
 IMPERSONATE = "chrome"
 
 #: Seconds to wait for an answer to begin.
 TIMEOUT_S = 60
 
 def _disposition_name(headers: Mapping[str, str]) -> str:
-    """The file name a download's ``Content-Disposition`` gives, as a base name.
-
-    Read by the standard library's header parser, which knows the quoted and the
-    encoded forms, so a name holding an apostrophe or a semicolon arrives whole.
-    """
+    """The base name a ``Content-Disposition`` gives, parsed by the standard library."""
     for key, value in headers.items():
         if key.lower() != "content-disposition":
             continue
@@ -576,12 +453,7 @@ def _disposition_name(headers: Mapping[str, str]) -> str:
 
 
 class CurlTransport:
-    """The real transport: ``curl_cffi`` with a browser's fingerprint.
-
-    EVERY EXCEPTION IS REPLACED, NOT CHAINED. A ``curl_cffi`` error names the
-    address it failed on, and an address here is a signed link, so its text
-    must not reach a message, a cause or a traceback.
-    """
+    """The real transport; exceptions are replaced, not chained, as they name a signed link."""
 
     def __init__(self) -> None:
         from curl_cffi import requests as curl_requests  # noqa: PLC0415 - the network seam
@@ -637,31 +509,9 @@ class CurlTransport:
 
 
 __all__ = [
-    "AUDIO_SUFFIXES",
-    "BASE",
-    "BandcampError",
-    "BandcampUnavailable",
-    "Collection",
-    "CurlTransport",
-    "FormatUnavailable",
-    "HIDDEN_PATH",
-    "ITEMS_PATH",
-    "LOSSLESS_ENCODING",
-    "LOSSLESS_ENCODINGS",
-    "LOSSY_ENCODING",
-    "PAGE_SIZE",
-    "Purchase",
-    "Response",
-    "SUMMARY_PATH",
-    "SessionRejected",
-    "Track",
-    "TRUSTED_HOSTS",
-    "Transport",
-    "download_offers",
-    "fetch",
-    "newest_first",
-    "read_collection",
-    "seller_of",
-    "trusted",
-    "unpack",
+    "AUDIO_SUFFIXES", "BASE", "BandcampError", "BandcampUnavailable", "Collection", "CurlTransport",
+    "HIDDEN_PATH", "ITEMS_PATH", "LOSSLESS_ENCODING", "LOSSLESS_ENCODINGS",
+    "LOSSY_ENCODING", "PAGE_SIZE", "Purchase", "Response", "SUMMARY_PATH", "SessionRejected",
+    "Track", "TRUSTED_HOSTS", "Transport", "download_offers", "fetch", "newest_first",
+    "read_collection", "seller_of", "trusted", "unpack",
 ]
