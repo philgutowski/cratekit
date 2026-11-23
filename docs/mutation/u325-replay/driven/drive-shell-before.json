@@ -1,0 +1,264 @@
+{
+ "head": "539638eb",
+ "worktree_commit": "539638eb",
+ "rows": [
+  {
+   "id": "r227.S1_unknown_is_within_limit",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_outbound_workers.py::test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S2_no_sentence_at_the_gate",
+   "status": "killed",
+   "deaths": 5,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be",
+    "tests/test_outbound_workers.py::test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows[export.playlist]",
+    "tests/test_outbound_workers.py::test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_date_reaches_a_person_who_is_not_reading_json[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_date_reaches_a_person_who_is_not_reading_json[sync.favorites]"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S3_utc_date_in_the_sentence",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_outbound_workers.py::test_the_date_is_the_persons_own_and_not_greenwichs"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_date_is_the_persons_own_and_not_greenwichs",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S4_utc_instant_in_the_block",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_outbound_workers.py::test_the_date_is_the_persons_own_and_not_greenwichs"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_date_is_the_persons_own_and_not_greenwichs",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S5_envelope_drops_the_age",
+   "status": "killed",
+   "deaths": 2,
+   "killed": [
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[sync.favorites]"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[sync.favorites]",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S6_no_stale_sentence",
+   "status": "killed",
+   "deaths": 8,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows[export.playlist]",
+    "tests/test_outbound_workers.py::test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_date_is_the_persons_own_and_not_greenwichs",
+    "tests/test_outbound_workers.py::test_the_date_reaches_a_person_who_is_not_reading_json[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_date_reaches_a_person_who_is_not_reading_json[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_sentence_does_not_say_seven_is_past_seven"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_sentence_does_not_say_seven_is_past_seven",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r227.S7_floored_age_in_the_sentence",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_outbound_workers.py::test_the_sentence_does_not_say_seven_is_past_seven"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_sentence_does_not_say_seven_is_past_seven",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r228-operator.D10_pink_warning_gone",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_favorites_pink.py::test_pink_missing_is_warned_beside_dangling"
+   ],
+   "unmutated": ".............                                                            [100%]",
+   "mutated": "FAILED tests/test_favorites_pink.py::test_pink_missing_is_warned_beside_dangling",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r290-author.S13_outbound_shell_call_removed",
+   "status": "killed",
+   "deaths": 18,
+   "killed": [
+    "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[export.playlist]",
+    "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[sync.favorites]",
+    "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[export.playlist]",
+    "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[sync.favorites]",
+    "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[export.playlist]",
+    "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[sync.favorites]",
+    "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[export.playlist]",
+    "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[sync.favorites]",
+    "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[export.playlist]",
+    "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[sync.favorites]",
+    "tests/test_job_outcome.py::test_every_function_that_drives_a_job_maps_its_ending_afterwards",
+    "tests/test_outbound_workers.py::test_a_cancelled_job_does_not_report_a_clean_resume",
+    "tests/test_outbound_workers.py::test_a_failed_favourite_leaves_the_sweep_resumable",
+    "tests/test_outbound_workers.py::test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it",
+    "tests/test_outbound_workers.py::test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_recorded",
+    "tests/test_outbound_workers.py::test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing",
+    "tests/test_outbound_workers.py::test_the_resume_of_a_half_failed_export_does_not_exit_ok",
+    "tests/test_outbound_workers.py::test_the_resume_of_a_half_failed_sweep_does_not_exit_ok"
+   ],
+   "unmutated": "...................................                                      [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_a_failed_favourite_leaves_the_sweep_resumable",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r850-a.E10_concluded_not_called",
+   "status": "killed",
+   "deaths": 4,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_filing_failure_is_a_warning_on_a_finished_export",
+    "tests/test_outbound_workers.py::test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a_warning",
+    "tests/test_outbound_workers.py::test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_renderers",
+    "tests/test_outbound_workers.py::test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers"
+   ],
+   "unmutated": "....................                                                     [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_a_filing_failure_is_a_warning_on_a_finished_export",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r856-a.S1_tally_zero",
+   "status": "killed",
+   "deaths": 7,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_created_playlist_is_filed_in_exports_as_its_gate_showed",
+    "tests/test_outbound_workers.py::test_a_filing_failure_is_a_warning_on_a_finished_export",
+    "tests/test_outbound_workers.py::test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a_warning",
+    "tests/test_outbound_workers.py::test_a_sweep_where_every_favourite_matches_answers_with_no_unmatched_line",
+    "tests/test_outbound_workers.py::test_an_export_where_every_track_matches_answers_with_no_unmatched_line",
+    "tests/test_outbound_workers.py::test_the_sweep_warning_counts_only_whole_numbers",
+    "tests/test_outbound_workers.py::test_the_unmatched_warning_reads_only_whole_counts[none-left-out]"
+   ],
+   "unmutated": "....................................                                     [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_a_filing_failure_is_a_warning_on_a_finished_export",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "r856-a.S2_tally_bool",
+   "status": "killed",
+   "deaths": 3,
+   "killed": [
+    "tests/test_outbound_workers.py::test_the_sweep_warning_counts_only_whole_numbers",
+    "tests/test_outbound_workers.py::test_the_unmatched_warning_reads_only_whole_counts[bool-is-no-count]",
+    "tests/test_outbound_workers.py::test_the_unmatched_warning_reads_only_whole_counts[bool-unmatched]"
+   ],
+   "unmutated": "....................................                                     [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_the_unmatched_warning_reads_only_whole_counts[bool-unmatched]",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "u51-item-derivation.S3_empty_job_driven",
+   "status": "killed",
+   "deaths": 1,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success"
+   ],
+   "unmutated": ".....................................................                    [100%]",
+   "mutated": "FAILED tests/test_outbound_workers.py::test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success",
+   "restored_equal_to_head": true
+  },
+  {
+   "id": "u51-item-derivation.S5_payload_shape",
+   "status": "killed",
+   "deaths": 65,
+   "killed": [
+    "tests/test_outbound_workers.py::test_a_cancelled_job_does_not_report_a_clean_resume",
+    "tests/test_outbound_workers.py::test_a_confirmed_adoption_does_not_authorise_a_create",
+    "tests/test_outbound_workers.py::test_a_crate_dragged_into_a_folder_updates_its_remote_playlist",
+    "tests/test_outbound_workers.py::test_a_crate_the_export_still_carries_is_never_adopted_from",
+    "tests/test_outbound_workers.py::test_a_created_playlist_is_filed_in_exports_as_its_gate_showed",
+    "tests/test_outbound_workers.py::test_a_dangling_track_is_named_in_the_queued_envelope",
+    "tests/test_outbound_workers.py::test_a_failed_favourite_leaves_the_sweep_resumable",
+    "tests/test_outbound_workers.py::test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it",
+    "tests/test_outbound_workers.py::test_a_favourite_whose_isrc_names_several_tracks_is_listed_with_that_reason",
+    "tests/test_outbound_workers.py::test_a_favourites_sweep_runs_to_done_and_hearts_every_matched_row",
+    "tests/test_outbound_workers.py::test_a_filing_failure_is_a_warning_on_a_finished_export",
+    "tests/test_outbound_workers.py::test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a_warning",
+    "tests/test_outbound_workers.py::test_a_fresh_export_shows_its_date_and_warns_of_nothing[export.playlist]",
+    "tests/test_outbound_workers.py::test_a_fresh_export_shows_its_date_and_warns_of_nothing[sync.favorites]",
+    "tests/test_outbound_workers.py::test_a_half_driven_job_resumed_after_its_crate_moved_creates_nothing",
+    "tests/test_outbound_workers.py::test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success",
+    "tests/test_outbound_workers.py::test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success",
+    "tests/test_outbound_workers.py::test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating",
+    "tests/test_outbound_workers.py::test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all",
+    "tests/test_outbound_workers.py::test_a_path_reused_for_a_different_crate_is_said_at_the_gate",
+    "tests/test_outbound_workers.py::test_a_provider_that_already_hearts_a_row_is_reported_rather_than_written",
+    "tests/test_outbound_workers.py::test_a_queued_export_holds_one_item_per_track",
+    "tests/test_outbound_workers.py::test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_once",
+    "tests/test_outbound_workers.py::test_a_relative_export_argument_still_resumes",
+    "tests/test_outbound_workers.py::test_a_renamed_crate_updates_its_remote_playlist",
+    "tests/test_outbound_workers.py::test_a_resumed_export_counts_across_both_runs_and_each_item_once",
+    "tests/test_outbound_workers.py::test_a_second_export_counts_what_the_playlist_already_held",
+    "tests/test_outbound_workers.py::test_a_second_export_of_the_same_playlist_adds_nothing_and_creates_nothing",
+    "tests/test_outbound_workers.py::test_a_second_sweep_writes_nothing_because_the_ledger_remembers",
+    "tests/test_outbound_workers.py::test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database",
+    "tests/test_outbound_workers.py::test_a_sweep_where_every_favourite_matches_answers_with_no_unmatched_line",
+    "tests/test_outbound_workers.py::test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_renderers",
+    "tests/test_outbound_workers.py::test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_recorded",
+    "tests/test_outbound_workers.py::test_an_export_runs_pending_to_done_and_its_artifact_reads_back",
+    "tests/test_outbound_workers.py::test_an_export_the_provider_matches_nothing_of_says_so_in_the_envelope",
+    "tests/test_outbound_workers.py::test_an_export_where_every_track_matches_answers_with_no_unmatched_line",
+    "tests/test_outbound_workers.py::test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers",
+    "tests/test_outbound_workers.py::test_an_item_report_carries_no_empty_colored_list",
+    "tests/test_outbound_workers.py::test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing",
+    "tests/test_outbound_workers.py::test_an_unmatched_favourite_is_reported_and_does_not_fail_its_item",
+    "tests/test_outbound_workers.py::test_job_show_reports_the_bound_worker_for_a_queued_export",
+    "tests/test_outbound_workers.py::test_job_show_reports_the_bound_worker_for_a_queued_sweep",
+    "tests/test_outbound_workers.py::test_new_playlist_declines_the_adoption_and_creates",
+    "tests/test_outbound_workers.py::test_new_playlist_does_not_hide_a_record_the_crate_already_has",
+    "tests/test_outbound_workers.py::test_no_colour_writer_reaches_the_engine_from_a_queued_sweep",
+    "tests/test_outbound_workers.py::test_the_envelope_names_the_tracks_the_provider_could_not_match",
+    "tests/test_outbound_workers.py::test_the_gate_and_the_envelope_both_say_which_playlist_is_adopted",
+    "tests/test_outbound_workers.py::test_the_gate_says_create_and_update_when_nothing_is_adopted",
+    "tests/test_outbound_workers.py::test_the_handler_runs_against_the_frozen_configuration_not_the_current_one[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_handler_runs_against_the_frozen_configuration_not_the_current_one[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_queued_envelope_names_a_missing_and_a_repeated_track",
+    "tests/test_outbound_workers.py::test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound[bound]",
+    "tests/test_outbound_workers.py::test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound[unbound]",
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[export.playlist]",
+    "tests/test_outbound_workers.py::test_the_queueing_envelope_warns_that_the_export_is_old[sync.favorites]",
+    "tests/test_outbound_workers.py::test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers",
+    "tests/test_outbound_workers.py::test_the_resume_of_a_half_failed_export_does_not_exit_ok",
+    "tests/test_outbound_workers.py::test_the_resume_of_a_half_failed_sweep_does_not_exit_ok",
+    "tests/test_outbound_workers.py::test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happens",
+    "tests/test_outbound_workers.py::test_the_sweep_reaches_nothing_outside_the_add_only_protocol",
+    "tests/test_outbound_workers.py::test_two_crates_offered_one_orphan_do_not_both_get_it",
+    "tests/test_outbound_workers.py::test_two_orphaned_records_that_could_each_be_it_adopt_neither",
+    "tests/test_queued_resume_contract.py::test_the_favorites_intake_run_and_its_gate_run_are_separate_fields",
+    "tests/test_queued_resume_contract.py::test_the_resume_the_job_driver_spawns_can_actually_proceed[export.playlist]",
+    "tests/test_queued_resume_contract.py::test_the_resume_the_job_driver_spawns_can_actually_proceed[sync.favorites]"
+   ],
+   "unmutated": ".                                                                        [100%]",
+   "mutated": "FAILED tests/test_queued_resume_contract.py::test_the_favorites_intake_run_and_its_gate_run_are_separate_fields",
+   "restored_equal_to_head": true
+  }
+ ]
+}

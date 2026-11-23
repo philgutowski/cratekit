@@ -20,6 +20,11 @@ it. Each id named by `--superseded` must stand in exactly one `--again`
 table; its row in every other table is left out, the `--again` row stands,
 and the header lists each row left out with its table and status, so nothing
 is replaced silently. A superseded id no `--again` table holds is refused.
+
+What it does not see: a table left off the command line, a table's own
+`dropped` list, and a measurement that never finished (U325's first
+`u325-after-l-24`, kept beside the batches as a partial). The record names
+each table that went in and each that did not.
 """
 
 from __future__ import annotations

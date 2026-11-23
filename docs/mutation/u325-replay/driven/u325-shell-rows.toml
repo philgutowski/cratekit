@@ -1,0 +1,168 @@
+name = "u325-shell"
+pass_kind = "replay"
+
+[[rows]]
+id = "r227.S1_unknown_is_within_limit"
+source = { table = "r227.json", id = "S1_unknown_is_within_limit" }
+description = "An age that could not be read is called within the limit"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''
+    if not age.known:
+        return AGE_UNKNOWN'''
+new = '''
+    if not age.known:
+        return AGE_WITHIN_LIMIT'''
+
+[[rows]]
+id = "r227.S2_no_sentence_at_the_gate"
+source = { table = "r227.json", id = "S2_no_sentence_at_the_gate" }
+description = "The shown block carries no warning sentence, so the advice arrives only after the answer"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '        export["warning"] = warning["message"]'
+new = '        pass'
+
+[[rows]]
+id = "r227.S3_utc_date_in_the_sentence"
+source = { table = "r227.json", id = "S3_utc_date_in_the_sentence" }
+description = "The warning names the UTC date rather than the person's own"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '    return moment.astimezone().date().isoformat()'
+new = '    return moment.date().isoformat()'
+
+[[rows]]
+id = "r227.S4_utc_instant_in_the_block"
+source = { table = "r227.json", id = "S4_utc_instant_in_the_block" }
+description = "The shown block spells the instant in UTC rather than in the machine's zone"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '            age.written.astimezone().replace(microsecond=0).isoformat()'
+new = '            age.written.replace(microsecond=0).isoformat()'
+
+[[rows]]
+id = "r227.S5_envelope_drops_the_age"
+source = { table = "r227.json", id = "S5_envelope_drops_the_age" }
+description = "queue_warnings takes the age and says nothing about it"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '    warnings: list[dict[str, str]] = [*age_warnings(age)]'
+new = '    warnings: list[dict[str, str]] = []'
+
+[[rows]]
+id = "r227.S6_no_stale_sentence"
+source = { table = "r227.json", id = "S6_no_stale_sentence" }
+description = "A stale export produces no warning at all"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''
+    if age.stale:
+        return ('''
+new = '''
+    if False:
+        return ('''
+
+[[rows]]
+id = "r227.S7_floored_age_in_the_sentence"
+source = { table = "r227.json", id = "S7_floored_age_in_the_sentence" }
+description = "The age is spelled in whole days only, so the sentence says seven is past seven"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '    return f"{elapsed.days} days {hours} hours"'
+new = '    return f"{elapsed.days} days"'
+
+[[rows]]
+id = "r228-operator.D10_pink_warning_gone"
+source = { table = "r228-operator.json", id = "D10_pink_warning_gone" }
+description = "queue_warnings: drop the pink missing warning"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''
+    if resolved.pink_missing:
+        warnings.append(
+            {
+                "code": "favorites-pink-export-missing",
+                "message": (
+                    f"{len(resolved.pink_missing)} pink row(s) the library "
+                    f"carries are not in the export's collection and are not "
+                    f"queued: {', '.join(resolved.pink_missing)}"
+                ),
+            }
+        )
+'''
+new = ''
+
+[[rows]]
+id = "r290-author.S13_outbound_shell_call_removed"
+source = { table = "r290-author.json", id = "S13_outbound_shell_call_removed" }
+description = "Remove the one jobs.raise_for_state call from modules/outbound/shell.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_outbound_workers.py"]
+old = 'jobs.raise_for_state(job)'
+new = 'jobs.get  # the mapping call, removed'
+
+[[rows]]
+id = "r850-a.E10_concluded_not_called"
+source = { table = "r850-a.json", id = "E10_concluded_not_called" }
+description = "shell.resume: never ask the verb what its finished run says, so the unmatched warning is never given"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '        said = concluded(data["progress"]["outbound"]) if concluded is not None else ()'
+new = '        said = ()'
+
+[[rows]]
+id = "r856-a.S1_tally_zero"
+source = { table = "r856-a.json", id = "S1_tally_zero" }
+description = "shell.unmatched_tally: report a tally when nothing went unmatched, so a clean sweep and a clean export carry the warning"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '    if not _whole(missed) or missed <= 0:'
+new = '    if not _whole(missed) or missed < 0:'
+
+[[rows]]
+id = "r856-a.S2_tally_bool"
+source = { table = "r856-a.json", id = "S2_tally_bool" }
+description = "shell._whole: take a bool for a count, so True reads as one unmatched and as one in the total"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '    return isinstance(value, int) and not isinstance(value, bool)'
+new = '    return isinstance(value, int)'
+
+[[rows]]
+id = "u51-item-derivation.S3_empty_job_driven"
+source = { table = "u51-item-derivation.json", id = "S3_empty_job_driven" }
+description = "Drive a job with no items, which core.jobs reports as SUCCEEDED"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '            if not jobs.items(store, job.job_id):'
+new = '            if False:'
+
+[[rows]]
+id = "u51-item-derivation.S5_payload_shape"
+source = { table = "u51-item-derivation.json", id = "S5_payload_shape" }
+description = "Put the outbound summary back at the top level, off the declared schema"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py"]
+old = '''
+        "progress": {
+            **jobs.progress(store, job.job_id),
+            "outbound": dict(summary(cfg, job.job_id)),
+        },'''
+new = '''
+        "progress": jobs.progress(store, job.job_id),
+        "outbound": dict(summary(cfg, job.job_id)),'''

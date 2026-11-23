@@ -72,3 +72,10 @@ ways, each measured there:
 - **A row #855 left killed only by an inode bound test**, under no scratch
   copy, is measured again against one before it is believed (see the inode
   entry beside this one). U325's one such row read zero then, on both sides.
+  The other way round costs too: the copy lists the second inode test, which
+  passes alone, so a row only it kills reads zero under the copy and is
+  driven by hand instead (`u115.F17` in U325).
+- **Write the row files from the final diff.** A fix round that edits one
+  more file after the row files are written leaves its kills out of the
+  replay; compare `killset.py rows` over the merge's own diff with the row
+  files before the after side is measured.
