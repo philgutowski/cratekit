@@ -86,6 +86,17 @@ def _column(
     return destined
 
 
+def _shown(named: dict[str, str], key: str, place: str) -> None:
+    """Put one place in a track's column, BESIDE any place already there.
+
+    A column holds two places only for a track filed into a second genre's
+    folder too (U340), so the gate names both rather than the last written.
+    """
+    held = named.get(key, "")
+    if place not in held.split("; "):
+        named[key] = f"{held}; {place}" if held else place
+
+
 def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
     """How many track items file somewhere, under a vocal sub and under a genre sub."""
     return {
@@ -477,7 +488,7 @@ def _decide(
         named = _column(declared, placement, destined=destined, vocal=vocal, genre=genre)
         for key in files[placement.location]:
             plan.setdefault((folder, sub), []).append(key)
-            named[key] = f"{folder}/{sub}"
+            _shown(named, key, f"{folder}/{sub}")
     return Decision(plan, destined, vocal, files, readings, placements, gaps, genre)
 
 
