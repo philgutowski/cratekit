@@ -1,8 +1,7 @@
 """U211, review round two: a backup job is never offered as a run to continue.
 
-A job's database item that met the scan's refusal cannot be retaken under
-``--run``, so its cause is the job's verdict, never a kept run. The fixtures
-are ``tests/test_backup_cli.py``'s, apart because both suites name one ``cfg``.
+Its cause is the job's verdict. The fixtures are ``tests/test_backup_cli.py``'s,
+apart because both suites name one ``cfg``.
 """
 
 from __future__ import annotations

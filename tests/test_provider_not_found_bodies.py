@@ -1,14 +1,9 @@
 """R-1313. A 404 whose body is not JSON is still the provider saying it has nothing.
 
-The provider client decodes an error answer's body inside its own handler of the HTTP
-error, so a 404 whose body is a page surfaces as the decode error with the 404 down its
-context chain. Four readers of a not found must read through that chain, or a track the
-provider had nothing for is retried and called unavailable every run.
-
-Every failure is raised by the installed client's own request handler
-(``tests.provider_answers``), not built by hand. The readers: ``adapter.classify_unavailable``,
-the outbound account's ``_not_found``, ``isrc_cache.said_not_found`` and the catalogue's
-``_gone``."""
+The client decodes an error body inside its own HTTP error handler, so a 404 page
+surfaces as a decode error with the 404 down its context chain; four readers must
+read through it. Every failure is raised by the installed client's own handler
+(``tests.provider_answers``)."""
 
 from __future__ import annotations
 
@@ -66,10 +61,7 @@ READER_IDS = list(READERS)
 
 
 def while_handling(first: Callable[[], Exception], later: Callable[[], Exception]) -> Exception:
-    """``later``'s failure, raised while ``first``'s is being handled.
-
-    A failure the client already raised is returned as it came, since raising inside a handler
-    would reset its context and cut the client's own chain off."""
+    """``later``'s failure, raised while ``first``'s is handled, keeping the client's own chain."""
     try:
         raise first()
     except Exception:  # noqa: BLE001 - the context is the point
@@ -84,10 +76,9 @@ def while_handling(first: Callable[[], Exception], later: Callable[[], Exception
 
 
 def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
-    """``later``'s failure, raised while a product refusal raised from a 404 page is handled.
+    """``later``'s failure, raised while a refusal raised from a 404 page is handled.
 
-    The shape ``core.cause._chain`` refuses to read context over: only the walk's refusal limit
-    keeps the 404 under the refusal out."""
+    Only the walk's refusal limit keeps the 404 under the refusal out."""
     gone = client_failure(404, HTML)
     refusal = outbound_account.provider_failure(gone, "look up the track 8")
     assert isinstance(refusal, CratekitError)
@@ -157,10 +148,7 @@ def test_the_nearest_status_is_the_first_the_walk_reaches():
 
 
 def a_wrapper_of_a_404_raised_while_handling_a_503() -> Exception:
-    """A wrapper raised FROM a 404 page while a 503 page was handled.
-
-    The wrapper says it is the 404, so the walk reads a link's declared cause before what it
-    was handling; the other order reads the 503 first and calls the not found an outage."""
+    """A wrapper raised FROM a 404 page while a 503 page was handled: its cause is read first."""
     outage = client_failure(503, HTML)
     gone = client_failure(404, HTML)
     try:

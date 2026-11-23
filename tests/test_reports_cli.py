@@ -1,10 +1,7 @@
 """The four report verbs, driven through the real dispatcher on a real export.
 
-The conformance suite drives each verb only against an absent export. This
-drives the answers over a real one, that truncation is visible, and that a
-second run of the adjudicating verb re-offers rather than duplicates. No fixture
-builds a database: the reports package may import none, and zero writes are
-asserted against the filesystem.
+Truncation is visible, a rerun re-offers rather than duplicates, and no fixture
+builds a database, since the reports package may import none.
 """
 
 from __future__ import annotations
@@ -329,9 +326,7 @@ def test_the_thresholds_come_from_configuration_and_are_reported(configured, exp
 def test_an_as_of_that_is_not_a_date_refuses_rather_than_answering_for_today(
     configured, exported, as_of
 ):
-    """Defaulting would band every grouping against a value nobody typed; an
-    empty string was typed too, so it is not an absent flag.
-    """
+    """An empty string was typed, so it is not an absent flag to default."""
     code, document = envelope_of(["report", "intake-aging", str(exported()), "--as-of", as_of])
     assert code == int(ExitCode.PRECONDITION)
     assert document["cause"]["reason"] == "report-as-of-invalid"
@@ -353,9 +348,7 @@ def test_an_export_with_no_intake_flow_refuses(configured, library):
     ids=lambda argv: ".".join(argv),
 )
 def test_a_read_only_report_changes_nothing_on_the_volume(configured, exported, argv):
-    """Asserted against the filesystem. ``audit.duplicates`` persists into the
-    review queue (R12), which the queue tests above assert.
-    """
+    """Against the filesystem; ``audit.duplicates`` persists into the queue (R12)."""
     path = exported()
     before = _fingerprint(configured.library.root)
     code, _document = envelope_of([*argv, str(path)])

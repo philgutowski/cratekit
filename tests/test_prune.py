@@ -38,9 +38,8 @@ EXPORT_PRUNE = "export.prune.confirm"
 OK = int(ExitCode.OK)
 ASKED = int(ExitCode.DECISION_REQUIRED)
 
-#: The build's catalogue less the release the provider no longer has, so every
-#: confirmed release's tracks are read. Years 2021 (pl-1: t1 t2), 2022 (pl-2:
-#: t3), 2023 (pl-3: t4 to t7).
+#: The catalogue less the release the provider no longer has. Years 2021 (pl-1: t1 t2),
+#: 2022 (pl-2: t3), 2023 (pl-3: t4 to t7).
 YEARS = {"r1": "2021", "r2": "2022", "r3": "2023", "r4": "2023", "r5": "", "r6": "2023"}
 LISTED = [FakeRelease(release, year=year) for release, year in YEARS.items()]
 CONFIRMED = frozenset({"r1", "r2", "r3", "r4", "r5"})

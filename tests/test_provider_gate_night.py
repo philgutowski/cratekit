@@ -1,10 +1,7 @@
 """U293: the night pass's line in the provider gate, and its night's ledger.
 
-The night pass runs with nobody watching, so its budget is held where every
-call is held, in :class:`cratekit.core.provider_gate.Gate`, under the lock and
-before the send, off the gate's running total so every process counts. These
-tests drive the gate with the doubles its own suite uses: a fake clock and a
-transport that records what it was asked to send.
+The unwatched night's budget is held in :class:`cratekit.core.provider_gate.Gate`,
+under the lock, before the send. Driven on a fake clock and a recording transport.
 """
 
 from __future__ import annotations
@@ -48,9 +45,7 @@ def clock() -> Clock:
     return Clock()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The line, call by call
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_call_past_the_nights_line_is_never_sent_and_parks_naming_the_night(
@@ -107,9 +102,7 @@ def test_a_total_below_the_mark_is_a_spend_nobody_can_read_and_stops(tmp_path, c
 
 
 def test_the_nights_line_is_held_to_what_is_left_of_the_command_ceiling(tmp_path, clock):
-    """Review round one: the night's line once stood in for the ceiling, and a
-    firing sent 1,200 calls where a command stops at 500. The line is now the
-    lower of the two, met first, so the stop names the night."""
+    """Round one: the line is the lower of it and the ceiling, so the stop names the night."""
     gate = _gate(tmp_path, clock, calls_per_command=2)
     transport = Transport()
 
@@ -127,8 +120,7 @@ def test_the_nights_line_is_held_to_what_is_left_of_the_command_ceiling(tmp_path
 
 
 def test_the_line_is_held_to_what_the_command_has_left_of_its_ceiling(tmp_path, clock):
-    """Review round two's zero row: calls the command made before the night
-    opened come off the line."""
+    """Round two: calls made before the night opened come off the line."""
     gate = _gate(tmp_path, clock, calls_per_command=5)
     transport = Transport()
     with provider_gate.command():
@@ -139,8 +131,7 @@ def test_the_line_is_held_to_what_the_command_has_left_of_its_ceiling(tmp_path, 
 
 
 def test_a_ceiling_raised_through_the_environment_never_widens_a_firing(monkeypatch):
-    """Review round two, finding 6: the night refuses --calls, and the variable
-    it cannot see is held to the configured ceiling."""
+    """Round two, finding 6: the night refuses --calls and the unseen variable is held."""
     monkeypatch.setenv(provider_gate.CALLS_ENV, "600")
     settings = GateSettings(calls_per_command=500)
     with provider_gate.command():
@@ -149,8 +140,7 @@ def test_a_ceiling_raised_through_the_environment_never_widens_a_firing(monkeypa
 
 
 def test_the_ceiling_still_holds_beside_a_line_above_it(tmp_path, clock):
-    """Asked beside the night's line, so even a line handed past the ceiling
-    by a parent's environment cannot widen a command."""
+    """A line handed past the ceiling by a parent's environment cannot widen a command."""
     gate = _gate(tmp_path, clock, calls_per_command=2)
     transport = Transport()
 
@@ -167,8 +157,7 @@ def test_the_ceiling_still_holds_beside_a_line_above_it(tmp_path, clock):
 def test_a_line_read_off_the_environment_is_held_beside_the_ceiling(
     tmp_path, clock, monkeypatch
 ):
-    """A detached child, or a variable a shell set, can only lower: the ceiling
-    still holds beside a night line it inherited."""
+    """An inherited night line can only lower: the ceiling still holds beside it."""
     gate = _gate(tmp_path, clock, calls_per_command=2)
     transport = Transport()
     monkeypatch.setenv(provider_gate.NIGHT_ENV, "0:100:n")
@@ -264,9 +253,7 @@ def test_the_nights_reason_is_a_policy_refusal():
     assert REASONS[provider_gate.NIGHT] is ExitCode.REFUSED_BY_POLICY
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The night's ledger
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _set_total(calls: int) -> None:

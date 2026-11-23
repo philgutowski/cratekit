@@ -1,11 +1,7 @@
 """U241: the pool's third seam, results read one position at a time.
 
-On real spawned children wherever a child is the claim: a plan of one is the
-loop it replaced; a wider plan answers what ``map_workers`` answers, in any
-read order, each position once; a raise reaches only its position's reader; a
-dead worker is ``StreamBroken``; an interrupt kills no worker, a close waits
-for no unread work, and a killed parent leaves no workers. Every plan is
-planned from an injected reading, never built by hand.
+On real spawned children wherever a child is the claim; every plan is planned
+from an injected reading, never built by hand.
 """
 
 from __future__ import annotations

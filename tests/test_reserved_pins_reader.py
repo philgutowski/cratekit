@@ -1,16 +1,8 @@
 """The reserved cause pins are read from one file per package (U296).
 
-U125 keyed the pins by module so that two cards touching different modules
-edit different lines. U296 holds them one file per package, under
-``tests/ratchets/reserved_causes/``, so that a card splitting a module edits
-no register another package's card edits. ``tests/_pinned_reserved_populations.py``
-merges those files into the tables ``tests/test_reserved_causes.py`` reads.
-
-That suite still compares every table with the tree, which is what holds the
-merged pins equal to what was pinned before the split: the tree did not
-change, so a pin lost or misfiled in the move fails there by its module's
-name. What is proven here is the reader: that it merges, and that it refuses
-a file it would otherwise read wrongly, at import, where nobody can miss it.
+``tests/_pinned_reserved_populations.py`` merges ``tests/ratchets/reserved_causes/``
+into the tables ``tests/test_reserved_causes.py`` compares with the tree. Proven
+here: the reader merges, and refuses at import a file it would read wrongly.
 """
 
 from __future__ import annotations

@@ -1,10 +1,7 @@
 """U250: a derivation reads each library file through one container open.
 
-The proof is the count of ``mutagen.File`` calls, exact on any machine, and
-every reading equals what the three single field readers it replaced give,
-since these derivations decide what the library is written to.
-
-D1 applies: nothing below names a real volume, person or track.
+The proof is the count of ``mutagen.File`` calls, and every reading equals what
+the three single field readers gave. D1 applies.
 """
 
 from __future__ import annotations
@@ -63,9 +60,7 @@ def _tagged(folder: Path, suffix: str, name: str, fields: dict[str, object]) -> 
     return target
 
 
-# The tag sets each container is read under. A numeric energy and level, a non
-# numeric energy, a non numeric level, padded numbers, decimals, a genre alone,
-# and no tags at all.
+# The tag sets each container is read under, from whole numbers to no tags at all.
 READINGS = {
     "numeric": {"genre": "Deep House", "energylevel": 7, "voxlevel": 55},
     "energy-word": {"genre": "Techno", "energylevel": "high", "voxlevel": 20},
@@ -110,8 +105,7 @@ def test_a_numeric_reading_converts_the_way_the_single_readers_convert(tmp_path)
     assert rebuild.read_truth(padded) == rebuild.Truth(
         location=str(padded), genre="Garage", energy=6, voxlevel=40
     )
-    # A decimal is not a whole number, for the energy reader and read_truth
-    # alike, so a conversion that learned decimals in one place shows here.
+    # A decimal is not a whole number, for the energy reader and read_truth alike.
     decimal = _tagged(tmp_path / "lib", ".ogg", "decimal", READINGS["decimal"])
     assert tags.read_energy_from_file(decimal) is None
     assert rebuild.read_truth(decimal) == rebuild.Truth(
@@ -120,10 +114,7 @@ def test_a_numeric_reading_converts_the_way_the_single_readers_convert(tmp_path)
 
 
 def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path, opens):
-    """An MP4 freeform atom whose bytes are not text: that field alone reads None.
-
-    The strict single reader and the lenient one open must agree, and the genre
-    beside it must survive."""
+    """An undecodable MP4 freeform atom reads None alone; the genre beside it survives."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
     path = _tagged(tmp_path / "lib", ".m4a", "broken", {"genre": "House", "voxlevel": 30})

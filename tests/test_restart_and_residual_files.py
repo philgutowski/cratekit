@@ -1,8 +1,7 @@
 """U124: the restart state and the residuals are per unit files.
 
-A restart paragraph is ``docs/restart/<unit>.md``, and a residual waits in
-``docs/residuals/`` until ``scripts/board.py residuals --land`` numbers it on
-main. ``scripts/scan_repo.py`` guards the restart state.
+``docs/restart/<unit>.md`` and ``docs/residuals/``, numbered on main by
+``scripts/board.py residuals --land``; ``scripts/scan_repo.py`` guards the former.
 """
 
 from __future__ import annotations
@@ -262,8 +261,7 @@ def test_the_shipped_residual_folder_holds_only_files_that_can_land(board):
 
 # U314: the ledger archived by number range in docs/ledger/.
 
-#: Every separator shape the real ledger carries: none, a rule with no blank
-#: line, a doubled rule, a comment, and a section that is not a finding.
+#: Every separator shape the ledger carries, and a section that is not a finding.
 _SEPARATORS = ("\n---\n\n", "\n", "\n---\n", "\n---\n\n---\n\n", "\n<!-- x -->\n\n---\n\n")
 
 
@@ -505,11 +503,9 @@ class Rewording(NamedTuple):
     new: str
 
 
-#: The deliberate rewordings of moved text since the split, applied before the
-#: byte for byte comparison and checked first, so a stale entry fails.
+#: Deliberate rewordings since the split, applied first, so a stale entry fails.
 REWORDINGS = (
-    # U195 (#469) stopped the public prose naming the service beside the
-    # vendored downloader; restoring the old sentence would undo that unit.
+    # U195 (#469) stopped naming the service beside the vendored downloader.
     Rewording(
         unit="U195",
         fragment="r301.md",

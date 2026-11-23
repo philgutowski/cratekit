@@ -1,8 +1,7 @@
 """U173: the rekordbox visit skill says what the code it drives says.
 
-Every value it spells is read from the module that owns it, it passes the
-shipped skills lint, and its settings table is pinned to the brief and to
-``crate sync land``.
+Each value it spells is read from its owning module, it passes the skills lint,
+and its settings table is pinned to the brief and ``crate sync land``.
 """
 
 from __future__ import annotations

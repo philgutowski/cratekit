@@ -1,8 +1,7 @@
 """The rekordbox process guard has one name list and one matching rule.
 
-Two guards that answer "is rekordbox running" once drifted on Windows' ``.exe``
-suffix, invisible to each module's own tests, so this file puts them side by
-side. Every set is derived by walking or introspecting, never hand listed.
+Two guards once drifted on Windows' ``.exe`` suffix, so they sit side by side
+here; every set is derived, never hand listed.
 """
 
 from __future__ import annotations
@@ -21,8 +20,7 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "cratekit"
 
 @functools.cache
 def _scanned() -> tuple[list[str], list[tuple[str, int, object]]]:
-    """One pass over every module: each assignment to ``REKORDBOX_PROCESSES``, and
-    every constant a tuple, list, set or comparison encloses, with its place."""
+    """Every ``REKORDBOX_PROCESSES`` assignment and every enclosed constant, with its place."""
     definers: list[str] = []
     enclosed: list[tuple[str, int, object]] = []
     containers = (ast.Tuple, ast.List, ast.Set, ast.Compare)
@@ -55,10 +53,7 @@ def test_the_process_name_list_is_defined_exactly_once_in_the_tree():
 
 
 def test_no_module_hardcodes_a_rekordbox_process_name_outside_the_one_list():
-    """The process names as literals in comparisons and collections are the list's
-    job, and ``core.processes`` alone defines them. The writer's probe table
-    moved to ``core/rb_probes.py`` as a mapping this scan does not flag, so the
-    writer's old exemption is gone (R-1890) and every part of it is held."""
+    """Only ``core.processes`` spells the process names; the writer has no exemption (R-1890)."""
     exempt = {"core/processes.py"}
     offenders = [
         f"{rel}:{line}"
@@ -108,8 +103,7 @@ def test_matching_is_exact_after_the_suffix_strip_and_never_a_substring():
 
 
 def test_the_two_mechanisms_agree_on_the_same_machine_state(monkeypatch):
-    """The writer (pyrekordbox, faked at its seam) and the backup module (the
-    platform) agree on every combination of processes in both platform forms."""
+    """The writer and the backup module agree on every process combination, both platforms."""
     names = processes.REKORDBOX_PROCESSES
     for bits in range(2 ** len(names)):
         up = tuple(n for i, n in enumerate(names) if bits >> i & 1)

@@ -1,6 +1,7 @@
 """U222: the mirror's apply after a library write between its acts holds the gate's plan.
 
-Sitting 66 on U204's library: the gate freezes, ``mirror-edits`` writes, the decided run rebuilds. D1 applies.
+Sitting 66 on U204's library: the gate freezes, ``mirror-edits`` writes, the decided
+run rebuilds. D1 applies.
 """
 
 from __future__ import annotations
@@ -209,8 +210,7 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         "the sets step, which the gate showed and this run did not plan",
     ]
     assert mirror_frozen.moved(then, frozen) == ["the sets step, which the gate showed and this run did not plan"]
-    # A step refused now shows no lines, so it is named alone, never by every
-    # line the gate showed (review round one).
+    # A step refused now shows no lines, so it is named alone (review round one).
     refused = [One("mirror:A", "mirror A onto the account", digest="refused")]
     assert mirror_frozen.moved(refused, frozen) == [
         "mirror A onto the account", "the sets step, which the gate showed and this run did not plan",

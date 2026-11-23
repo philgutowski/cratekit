@@ -1,11 +1,8 @@
 """U226: an account playlist read after a write reads it as it stands, not the window that lags it.
 
-Sitting 84 measured the client's unpaged read (``playlist.tracks()``) showing a
-move at once while the window read (``acquire.listing.playlist_tracks``) lagged
-for minutes. Driven against the U220 stand in with ``window_only`` set: an
-unpaged read holding the whole playlist is the one judged; an unpaged first page
-that disagrees with the window is a lag, read again and then refused. R-1360
-walks the unpaged read past a capped first page. D1 applies.
+Sitting 84 saw the unpaged read show a move at once while the window lagged for
+minutes. On the U220 stand in with ``window_only``: a whole unpaged read is judged,
+a disagreeing first page is a lag, and R-1360 walks past a capped first page. D1.
 """
 
 from __future__ import annotations
@@ -24,10 +21,9 @@ from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 
 def _window_lagging(
     members: list[str], lag: int, *, unpaged: int | None = None, walk_lags: bool = False
 ) -> Provider:
-    """A provider whose window read lags each write ``lag`` readings, its unpaged read not.
+    """A provider whose window lags each write ``lag`` readings and whose unpaged read does not.
 
-    ``unpaged`` is how many tracks the unpaged read serves, a first page; None
-    serves a hundred. ``walk_lags`` makes its later pages lag too (R-1360).
+    ``unpaged`` caps the unpaged first page (None serves a hundred); ``walk_lags`` lags the rest.
     """
     provider = Provider(members, lag=lag)
     provider.window_only = True
@@ -64,8 +60,7 @@ FIRST_PAGE = {"unpaged": 2, "walk_lags": True}
         # The unpaged read a first part of a window short of the declared count.
         (["a", "b", "c"], ["a", "b"], 4, listing.WINDOW_AGREES),
         (["a", "b", "c"], [], 4, listing.WINDOW_AGREES),
-        # R-1360. A first part of a window holding every declared track: the
-        # window may lag a change past where the unpaged read reached.
+        # R-1360: a window part holding every declared track may lag past the unpaged read.
         (["a", "b", "c", "d"], ["a", "b"], 4, listing.WINDOW_LAGS),
         (["a", "b", "c", "d"], [], 4, listing.WINDOW_LAGS),
         (["a", "b", "c", "d", "e"], ["a", "b"], 4, listing.WINDOW_LAGS),
@@ -187,8 +182,7 @@ def test_a_removal_whose_window_lags_and_unpaged_read_does_not_is_taken_as_done(
 
 
 def test_a_removal_whose_window_lags_beside_a_first_page_refuses_after_the_bound(installed):
-    # The removal changes the unpaged read's first page, so the two disagree,
-    # and the walk past it lags as the window does, so it is never whole.
+    # The removal changes the unpaged first page and the walk lags too, so never whole.
     provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=2, walk_lags=True)
     slept: list[float] = []
     cause = _refused(lambda: _adapter(installed, provider, slept).remove_tracks("mine", ("a",)))
@@ -270,10 +264,8 @@ def test_the_pause_after_a_412_is_counted_in_the_moves_record(installed):
     assert account.read_backs()[1]["stale"] == 1
 
 
-# ── R-1360: past the unpaged read's first page ──────────────────────────────
-# The client's unpaged read is most likely capped at the provider's page of a
-# hundred, so it walks on past its first page, and a first part read beside a
-# whole window is a lag.
+# R-1360: past the unpaged read's first page, likely capped at a hundred; a first
+# part read beside a whole window is a lag.
 
 CAP = listing.PAGE_SIZES["playlist_tracks"]
 
@@ -406,8 +398,7 @@ def test_each_later_page_goes_through_the_retry_ladder():
 
 
 def _long_lagging(*, walk_lags: bool = False) -> Provider:
-    """150 tracks, the unpaged read capped at 100, the window serving the order before a
-    person put the last track at position 120."""
+    """150 tracks, unpaged capped at 100, the window serving the order before a move to 120."""
     old = _long(150)
     moved = list(old)
     moved.insert(120, moved.pop())

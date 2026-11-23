@@ -1,12 +1,8 @@
-"""R-1694: a login whose refreshed access token the keychain cannot take goes on, and
-the verb says so, the way a download's drive does since U274.
+"""R-1694: a login whose refreshed token the keychain cannot take goes on, and the verb
+says so with one ``provider-session-not-stored`` warning, as a download does (U274).
 
-1. The login goes on: the logged in client is handed back, the stored session is left
-   to log in the next run, and the failure is noted by its class alone.
-2. The verb says so: one ``provider-session-not-stored`` warning on the envelope.
-3. Nothing else is caught: an unchanged session writes and warns nothing, a rejected
-   login and a defect in the capture still raise, and so does a scope that asked for
-   no tolerance.
+Nothing else is caught: an unchanged session warns nothing, and a rejected login, a
+capture defect and a scope asking no tolerance still raise.
 """
 
 from __future__ import annotations

@@ -1,11 +1,8 @@
 """U220: the account adapter puts a playlist it just added to in order, over a provider that lags.
 
-Driven against a stand in for the provider's client that keeps a version tag,
-answers a write on any other tag 412 changing nothing, and can serve a read that
-lags its writes, a move to the length that lands one short, or a stale tag until
-the playlist is read again (Sitting 62). Since U231 the moves are sent with no
-read back between them, a 412 resends the same move, and one later reading
-(``settled_order``) says whether the order landed. D1 applies.
+Driven against a stand in client with a version tag, 412s, lagging reads and stale
+tags (Sitting 62). Since U231 moves are sent without read backs, a 412 resends the
+same move, and one later reading (``settled_order``) judges the order. D1 applies.
 """
 
 from __future__ import annotations
@@ -31,22 +28,12 @@ class Stale(Exception):
 class Provider:
     """The provider's playlists, versioned, shared by every object the client opens.
 
-    ``landing`` is where a move to the length lands, ``"end"`` or ``"short"``.
-    ``lag`` is how many readings after each write serve the playlist as it was,
-    with its old tag, ``whole`` lagging the declared count too; ``stale_tags``
-    how many serve the current tracks with the previous tag; ``elsewhere``
-    lands the next move at position one.
-
-    For a removal (R-1308): ``count_lag`` openings after each write declare the
-    old count; ``wrong`` takes that position instead of the asked ones, once;
-    ``remove_fails`` raises before anything changes; ``shown`` is the
-    ``(num_tracks, num_videos)`` every opening after a removal declares;
-    ``drift`` is what the tracks become once a lag is spent.
-
-    U226 reads every playlist twice, window then unpaged, a lag decided at a
-    reading's first read and held for that object: ``window_only`` lags the
-    window alone, ``unpaged_size`` caps the unpaged first page, ``walk_lags``
-    lags its later pages (R-1360), ``declared`` overrides every opening's count.
+    ``landing``: where a move to the length lands. ``lag``: readings after a write
+    serving the old playlist and tag, ``whole`` the old count too. ``stale_tags``:
+    readings with the previous tag. ``elsewhere``: the next move lands at one.
+    Removals (R-1308): ``count_lag``, ``wrong``, ``remove_fails``, ``shown`` and
+    ``drift``. U226's two readings: ``window_only``, ``unpaged_size``, ``walk_lags``
+    (R-1360) and ``declared``.
     """
 
     def __init__(
@@ -240,8 +227,7 @@ def _refused(call):
 
 
 def _lands(account, order: tuple[str, ...], provider: Provider | None = None, **kwargs) -> None:
-    """Order ``mine`` as ``order``: the order sent comes back and, given ``provider``,
-    the playlist stands in it."""
+    """Order ``mine`` as ``order``; given ``provider``, the playlist stands in it."""
     assert account.order_tracks("mine", order, **kwargs) == order
     if provider is not None:
         assert provider.members == list(order)
@@ -287,8 +273,7 @@ def test_a_move_that_lands_anywhere_else_is_not_read_back_and_the_settle_reading
 
 
 def test_each_planned_move_is_sent_once_however_the_planner_answers(installed, monkeypatch):
-    """A planner that never runs out of moves cannot keep the order writing (U231): each
-    planned move is sent once, so an unbounded write loop on the account cannot happen."""
+    """An endless planner cannot keep the order writing: each planned move is sent once (U231)."""
     monkeypatch.setattr(
         tidal_account, "_to_the_front", lambda before, remote_ids: list(reversed(remote_ids))
     )
@@ -660,8 +645,7 @@ def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
 
 
 def _one_move_in_then_added(installed, *, lag: int):
-    """A stopped order one move in, b, a, c, then x added, its next readings serving a, b, c, x:
-    every track the write left, in the order from before the move."""
+    """A stopped order then an add: every track the write left, in the order from before."""
     provider = Provider(["b", "a", "c"])
     account = _adapter(installed, provider)
     assert account.add_tracks("mine", ("x",)) == ("x",)

@@ -1,16 +1,8 @@
 """Tests for ``scripts/refactor_measure.py``, the one measure of U290's refactor (U296).
 
-The duplication check and the import rules have their own files, each with
-the fixtures that prove its rule bites. This file holds what is left: the
-line classifier, the file list, the package a file belongs to, the names used
-from outside a set of files, and the six commands driven end to end over a
-small repository written into a temporary directory, so that what a command
-prints is asserted rather than assumed.
-
-Nothing here reads the real tree. The numbers the script prints on it are
-set beside U290's baseline in the unit's record, and reading every file of
-the package and the suite a second time here would cost the suite more than
-the checks themselves.
+The line classifier, the file list, packages, outside names, and the six commands
+end to end over a small repository in a temporary directory. Nothing reads the
+real tree: its numbers sit in the unit's record, and a second read would cost more.
 """
 
 from __future__ import annotations
@@ -95,9 +87,7 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Lines
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_line_is_blank_then_comment_then_docstring_then_code():
@@ -141,9 +131,7 @@ def test_test_functions_are_counted_at_module_level_and_in_classes():
     assert measure.count_test_functions(source) == 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Files and packages
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -190,9 +178,7 @@ def test_one_file_can_be_named_as_a_scope(repo):
     assert measure.python_files(repo, f"{SOURCE}/core/config.py") == [f"{SOURCE}/core/config.py"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Names used from outside a set of files
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_outside_lists_every_form_of_use_and_marks_the_private_ones(repo):
@@ -214,9 +200,7 @@ def test_a_name_used_only_inside_the_named_files_is_not_listed(repo):
     assert measure.outside_uses(sources, owned) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The commands, end to end
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_lines_prints_each_package_the_total_and_the_large_files(repo):

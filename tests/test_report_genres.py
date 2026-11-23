@@ -1,14 +1,8 @@
 """R-797: the report that names a genre which has outgrown having no folder.
 
-``crate report genres`` counts the live collection by genre, names every genre
-holding fifty or more tracks that no top level folder answers for, and creates
-nothing. The resolver's answer, then the count, then the verb through the real
-dispatcher with every file under the library root compared byte for byte.
-
-Every folder and sub is derived from the shipped taxonomy; the unclaimed words
-are made up and checked to be unclaimed.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+``crate report genres`` names every genre of fifty or more tracks no top level
+folder answers for, and creates nothing. Folders come from the shipped taxonomy;
+the unclaimed words are made up and checked. D1 APPLIES.
 """
 
 from __future__ import annotations
@@ -112,14 +106,12 @@ def test_the_fixture_words_are_what_they_claim_to_be():
     ],
 )
 def test_where_routing_files_a_genre_is_whether_it_has_a_folder_of_its_own(genre, expected):
-    """A top level folder's own names have a folder; a source string filed in a
-    style sub, or a word in a default sub, has none of its own."""
+    """A folder's own names have a folder; a style sub source or default sub word has none."""
     assert routing.folder_of(DECLARED, genre) == expected, genre
 
 
 def test_the_source_routed_folders_own_name_has_that_folder():
-    """The tagger writes the folder's name onto a file, and a track carrying it
-    has a top level folder by name whatever sub it sits in."""
+    """A track carrying a folder's name has that top level folder, whatever its sub."""
     assert routing.folder_of(DECLARED, STYLE.display).kind is routing.Folder.OWN
 
 
@@ -191,9 +183,7 @@ def test_a_word_in_a_default_sub_is_counted_apart_from_that_subs_own_genre():
 
 
 def test_another_spelling_of_a_style_subs_own_name_is_counted_with_it():
-    """Routing matches a source string exactly, so the lowercase spelling lands in
-    a default sub or nowhere, and counted apart neither row reached a threshold
-    the genre had passed (found by the review, with these numbers)."""
+    """A lowercase spelling still counts as its genre, or neither row reaches the threshold."""
     lowered = SHARED_SUB.display.lower()
     assert lowered != SHARED_SUB.display
     assert routing.folder_of(DECLARED, lowered).kind is not routing.Folder.SUB
@@ -228,8 +218,7 @@ def test_another_spelling_of_a_source_string_is_counted_with_its_sub():
 
 
 def test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre():
-    """A sub whose lowercase name no keyword rule claims falls to the fallback,
-    and is the sub's genre all the same."""
+    """A sub no keyword rule claims in lowercase falls back, and is still the sub's genre."""
     unrouted = next(
         sub
         for sub in STYLE.subs
@@ -257,8 +246,7 @@ def test_tracks_with_no_genre_are_counted_apart_and_never_named():
 
 
 def test_a_word_the_taxonomy_calls_too_coarse_is_counted_apart_as_adoption_reads_it():
-    """Routing sends such a word to the catch all bucket by an alias, and adoption
-    files none of those tracks."""
+    """Routing sends such a word to the catch all by alias; adoption files none of it."""
     coarse = next(word for word in DECLARED.fallback.too_coarse_as_source if word)
     assert routing.folder_of(DECLARED, coarse).kind is routing.Folder.OWN
     assert adopt_scan.classify_genre(DECLARED, coarse)[0] is adopt_scan.Disposition.NEEDS_GENRE
