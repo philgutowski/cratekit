@@ -1041,6 +1041,20 @@ def test_the_agent_alone_refuses_and_an_unrelated_process_named_rekordbox_does_n
     assert plan.portion(backup_facts.Portion.DATABASE).will_run is True
 
 
+def test_the_emptied_flag_passes_on_the_files_record_and_not_on_the_fact_file_alone(cfg):
+    """A database item writes the facts file at a mount point too, so only the
+    files portion's own record lets an emptied library past the census."""
+    from cratekit.modules.tools import backup_proof
+
+    moment = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    backup_facts.record(cfg, backup_facts.Portion.DATABASE, completed_at=moment, destination="d")
+    assert backup_facts.path_for(cfg).is_file()
+    why, first = backup_proof._unproven(cfg, anything=True, held=0, emptied=True)
+    assert backup_proof.EMPTIED_FLAG in why and first is False
+    backup_facts.record(cfg, backup_facts.Portion.FILES, completed_at=moment, destination="d")
+    assert backup_proof._unproven(cfg, anything=True, held=0, emptied=True) == ("", False)
+
+
 def test_the_engine_helpers_keep_their_shapes(cfg):
     """A warning's keys in envelope order, a refused portion never runs, the log
     reader keeps only objects, and each destination is required up front."""

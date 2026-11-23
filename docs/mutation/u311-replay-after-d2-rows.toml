@@ -103,8 +103,8 @@ source = { table = "r1761.json", id = "P9_emptied_passes_on_the_fact_file" }
 description = "_unproven: the emptied flag passes on the fact file alone, which a database item writes at a mount point (round two's N2)"
 file = "src/cratekit/modules/tools/backup_proof.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
-tests = ["tests/test_import_rules.py"]
+moved = "U311 moved the census proof out of backup.py into backup_proof.py with this line unchanged. On the base the row was killed only by the seam allowance test, which the mutant tripped by an incidental reach into the facts module from backup.py, and the guard's own tests need rclone and are this container's failures; from backup_proof.py the same reach crosses no seam, so U311 added test_the_emptied_flag_passes_on_the_files_record_and_not_on_the_fact_file_alone in tests/modules/test_tools.py, which writes a database record alone and asserts the emptied flag is still refused, the guard round two's N2 named"
+tests = ["tests/modules/test_tools.py", "tests/test_import_rules.py"]
 old = '''
         if carried is not None:
             return "", False'''
