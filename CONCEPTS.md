@@ -871,6 +871,18 @@ measured under still stand; otherwise the item is measured in the driver.
 *Avoid:* reading "ahead" as writing ahead: no worker writes a tag, a name, a
 report or a row. The pool a run had is its **`analyze.pool`** check line.
 
+### Head adopt
+`crate analyze adopt` (U327): after the rekordbox visit, a landed title whose
+head names another key than rekordbox's Key column, or a tempo more than one
+beat from its BPM column, takes rekordbox's, spliced into the head's own two
+spans of the row's `Title`, the file's title tag and its `initialkey`. The file
+name keeps its old head, so every reader that would put it back (`name apply`,
+the library index) reads the title tag's head first. Never writes `KeyID`, the
+BPM column, a grid or a tempo tag.
+
+*Avoid:* adoption, `crate adopt`, which takes a library's playlists over; and
+re-stamping, which is `analyze restamp`'s energy tag alone.
+
 ### Handler key
 The string a job stores instead of a function, the verb's dotted name
 (`profile.show`). A declared key is not a runnable one: `cli/handlers.py`

@@ -82,9 +82,8 @@ Every one of these holds, or the visit does not start.
    - It must exit 12 with `data.summary.not_analysed` above zero for the
      visit to go on, or 27 with a `data.summary.grids` count above zero under
      `variable`, `absent`, `missing` or `unreadable`, which is a run on the
-     wrong settings that the visit's Normal run analyses again. A 27 for key
-     agreement alone, with none of those grids, means the rows are analysed
-     and were never cleared: skip to step 7, which clears them.
+     wrong settings that the visit's Normal run analyses again. A title key
+     or tempo that differs from rekordbox's never reads 27 (U327).
    - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
      are analysed, or gone from the collection (`data.summary.gone`), and
      were never cleared, so skip to the clear in step 7; with none there is
@@ -286,31 +285,48 @@ playlist was emptied while rekordbox was open, by another session or a clear
 nobody here ran, so its verdict is over other rows: stop and report it.
 Otherwise the exit status is the verdict:
 
-- **0, done.** Every row analysed, every grid one tempo (or moving on a row
-  marked `dyn`), and the title keys agreeing with rekordbox's at the
-  recorded rate. The check reports the Key column and does not judge it, so
+- **0, done.** Every row analysed and every grid one tempo (or moving on a row
+  marked `dyn`). Titles whose key or tempo differs from rekordbox's are
+  counted in `data.summary.differs` and never hold the visit; the adopt below
+  gives them rekordbox's. The check reports the Key column and does not judge it, so
   read it here: `data.summary.key_filled` must equal
   `data.summary.analysed`. A row with the Key column empty was analysed with
   KEY off, by an Auto Analysis on other fields or a run before this visit:
   stop and report the rows its message names, and clear nothing. Otherwise
-  go on to the clear below.
+  go on to the adopt below.
 - **12, waiting.** Rows are still not analysed. Stop and report the rows it
   names. Nothing is cleared, and the playlist keeps them for the next visit.
 - **27, suspect.** What rekordbox wrote looks wrong: a variable grid on a row
-  not marked `dyn`, a grid the check could not read, or keys agreeing far
-  below the rate. For either grid, stop and report its message and its
-  steps, and clear nothing. **For the keys alone it is not a stop**: Phillip
-  decided on 2026-11-22 that where a title's key or tempo differs from
-  rekordbox's, rekordbox's wins. It is the keys alone when
-  `data.summary.key_suspect` is true and `data.summary.not_analysed`,
-  `data.summary.variable_not_dyn` and the `data.summary.grids` counts
-  `absent`, `missing` and `unreadable` are all zero. Read the Key column as
-  done does, `data.summary.key_filled` against `data.summary.analysed`,
-  record the agreement, and go on to the clear below. The titles keep
-  Cratekit's answer until U327's verb lands, and Reload Tags is never run on
-  these rows, since it puts the file's key over rekordbox's.
+  not marked `dyn`, or a grid the check could not read. Stop and report its
+  message and its steps, and clear nothing. Keys that differ never read 27:
+  Phillip decided on 2026-11-22 that where a title's key or tempo differs
+  from rekordbox's, rekordbox's wins, and the adopt below writes it. Reload
+  Tags is never run on these rows, since it puts the file's key over
+  rekordbox's.
 
-On done, take the analysed rows out of the playlist:
+On done, give every title that differs rekordbox's key and tempo, before the
+clear, while the rows are still in INBOX / Analyze:
+
+    crate --output json analyze adopt
+
+It needs the backup acknowledgment, as the clear below does, and stops at its
+own gate, `analyze.adopt.confirm`, listing every row before and after with
+its key relation and tempo. It writes the row's title in the database and the
+file's title tag and key tag, and never the Key or BPM columns, a grid or a
+file name. That gate is a database write, so it is answered by CLAUDE.md's
+rehearsal rule as the clear's is, with one difference: **the rehearsal stops
+at the gate and never goes past it**, since the copy's rows name the real
+files and an apply on the copy would write their tags. The rehearsed digest
+names no path, so it equals the live plan's when the rows are the same; then
+answer the live gate as the session:
+
+    crate run decide --actor session --continue RUN_ID analyze.adopt.confirm apply
+
+Read the answer: `data.totals.written` rows took rekordbox's, and every row
+left is named with why in the warnings. A file it could not write keeps its
+row's old title and is named; report it. With `data.summary.differs` at zero
+the plan is empty, and the gate is still answered, ending as a no op. Then
+take the analysed rows out of the playlist:
 
     crate inbox analyzed
 
@@ -348,6 +364,8 @@ equal, or one cancelled, with the field that differed or went unread, and
 whether rekordbox wrote after Cancel); the settings read back from the
 dialog, field by field; the
 wait's result and how long it took; the second run if there was one; both
-processes confirmed gone; `crate analyze check`'s verdict, grids and key
-agreement; the clear's rehearsed and live digests and what it read back. A
+processes confirmed gone; `crate analyze check`'s verdict, grids, key
+agreement and the titles that differ; `crate analyze adopt`'s rehearsed and
+live digests, the rows written and the rows left; the clear's rehearsed and
+live digests and what it read back. A
 visit that stopped records where and what the screen or the verb said.
