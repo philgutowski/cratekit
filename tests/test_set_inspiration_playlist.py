@@ -1,8 +1,7 @@
 """U121: a set intake leaves a permanent playlist of the set under INSPIRATION.
 
-A set job is queued as ``intake set`` queues one and run, so its reports say
-what the library owns, then landed with ``--set`` on the disposable database,
-or backfilled after a landing without it. D1 applies.
+A set job is queued as ``intake set`` queues one and run, then landed with
+``--set`` on the disposable database, or backfilled after a landing. D1 applies.
 """
 
 from __future__ import annotations
@@ -62,11 +61,7 @@ APPROVE = inspiration_cli.APPROVE_GATE
 
 @pytest.fixture
 def machine(library, monkeypatch):
-    """The native landing suite's machine on the FULL profile, which carries ``intake set``.
-
-    On the default profile the set verb is not enabled and a set job cannot be
-    resumed through the driver.
-    """
+    """The native landing suite's machine on the FULL profile, which carries ``intake set``."""
     return _machine(library, monkeypatch, profile={"name": "full"})
 
 
@@ -415,11 +410,7 @@ def test_a_posted_flag_that_is_not_a_day_is_refused_by_name(given):
 def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_rows_in_job_order(
     native_library, silence
 ):
-    """In the set's order, which here is not the titles', so a sort by title shows.
-
-    No beat grid, tempo or rating is written: the owned row is untouched to the
-    byte, and the landed rows are the landing's own.
-    """
+    """In the set's order, not the titles'; the owned row is untouched to the byte (no grid)."""
     cfg, root_id = native_library
     folder_id = _inspiration_folder_id(_with_folder(native_library))
     _owned(cfg, silence, "Three", content_id="held-3")
@@ -499,9 +490,7 @@ def test_a_landing_names_the_playlist_for_the_posted_day(native_library, silence
 def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_a_warning(
     native_library, silence
 ):
-    """U136: a job queued since U129 keeps the name it froze, so ``--posted``
-    naming another day is not used, and the landing says so once, naming the
-    flag's day and the frozen name's."""
+    """U136: a job queued since U129 keeps its frozen name over ``--posted``, said once."""
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One",), page=PAGE)
     _freeze_name(job_id, NAME)
@@ -623,9 +612,7 @@ def test_two_root_folders_of_the_name_are_refused_rather_than_one_chosen(native_
 
 
 def test_a_row_neither_owned_nor_landed_is_counted_and_named_and_not_added(native_library, silence):
-    """And a row that resolves only to a different version is not guessed: the
-    account playlists' rule (U113), a file that is only close claims nothing, so
-    the batch lands the extended mix and the set leaves its row out."""
+    """A row resolving only to a different version is not guessed (U113): the set leaves it out."""
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One", "Four", "Two", "Six"))
     _staged(cfg, silence, "One", "Two", "Six (Extended Mix)")
@@ -757,9 +744,7 @@ def test_the_backfill_refuses_a_job_that_is_not_a_set_and_an_unfinished_one(nati
 def test_a_folder_that_went_between_the_plan_and_the_write_is_refused_as_stale(
     native_library, silence, verb
 ):
-    """The acting drive plans again on the write handle and the gate compares
-    the digest, so a folder rekordbox removed after the approval is a changed
-    plan. A landing is refused before the first move, the files still in staging."""
+    """A folder removed after the approval changes the digest; nothing moves out of staging."""
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One",))
     _stage(cfg, silence, "One")
@@ -803,9 +788,7 @@ def _unresolved(cfg: config.Config) -> int:
 def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_landing(
     native_library, silence
 ):
-    """A row the report called offered was never downloaded: the person
-    answered that the library's other version is the one, so it is owned and
-    the landing reads that answer back rather than leaving it out."""
+    """An offered row answered as the library's other version is owned, not left out."""
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
     job_id = set_job(cfg, ("One", "Two"))
@@ -818,9 +801,7 @@ def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_la
 
 
 def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_library, silence):
-    """The plan reads the worker's item and writes none of its own: a question
-    nobody answered leaves the row out, and the review queue is as it was
-    before the plan, before the gate and after an abort alike."""
+    """An unanswered question leaves the row out, and the plan writes no review item of its own."""
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
     job_id = set_job(cfg, ("One",))
@@ -861,13 +842,10 @@ def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked
 
 
 def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_library, silence):
-    """The playlist is found by its name and rekordbox appends what it lacked,
-    so the track that became owned since sits last; every asked id is read
-    back live and the write is reported as what it was, one track added.
+    """The playlist found by name gains only what it lacked, last, reported as one track added.
 
-    The first write is given ``--posted`` equal to the landing day on a
-    pageless job, which must not flip the posted fallback on the re-plan, and a
-    rerun on one day adds nothing and records no commit.
+    ``--posted`` equal to the landing day must not flip the fallback on the re-plan,
+    and a rerun on one day adds nothing and records no commit.
     """
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "One", content_id="held-1")
@@ -913,10 +891,7 @@ def _backfill_inputs(cfg: config.Config, job_id: str):
 def test_the_engine_refuses_a_plan_whose_collection_moved_even_with_no_gate_in_front(
     native_library, silence
 ):
-    """The gate re-plans on every drive and catches this first, so the engine's
-    own re-plan on the write handle is reached only by a caller with no gate.
-    Driven here as that caller, since a guard held by another guard is a guard
-    nothing covers; and then through the gate, whose answer is stale."""
+    """The engine's own re-plan is driven as a caller with no gate, then through the stale gate."""
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
@@ -1036,10 +1011,10 @@ def test_a_removed_namesake_under_the_folder_is_not_written_into(native_library,
 def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
     native_library, silence
 ):
-    """The write's own answer carries the members whose files did not land,
-    not only the plan's left rows, so the count is not zero over the set. A
-    landing where every file is refused refuses as a whole before the write,
-    so the file outside the set is what lets the batch land here."""
+    """The write's answer counts members whose files did not land, not only the plan's left rows.
+
+    The file outside the set is what lets the batch land at all.
+    """
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One", "Two"))
     # The batch landed into again by its own name goes back to its filed
@@ -1221,10 +1196,7 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
 
 
 def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str, str, dict]:
-    """A set landed under NAME, its account playlist recorded, its INSPIRATION renamed.
-
-    A person's rename in rekordbox, as the attended tail made it.
-    """
+    """A set landed under NAME, its account playlist recorded, its INSPIRATION renamed by hand."""
     job_id, remote_id = _frozen_set(cfg, held, silence, record=record_first)
     landed, _shown = _ok(_land("--set", job_id, *WORDS))
     if not record_first:
@@ -1259,9 +1231,7 @@ def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_da
 def test_a_landing_archives_the_account_playlist_as_taken_in_its_year_folder(
     account_on_native, silence
 ):
-    """U242: held as taken under the pass, no title written. So the rename that
-    follows has no mark to take off, and the record holds the set by its id
-    whatever it is now called."""
+    """U242: held as taken by id under the pass, no title written, whatever it is called now."""
     cfg, _root_id, held = account_on_native
     job_id, remote_id, landed = _landed_and_renamed(cfg, held, silence, record_first=True)
     assert held.renamed == [], held.renamed
@@ -1298,11 +1268,7 @@ def test_export_set_rename_refuses_a_playlist_a_legacy_archive_prefixed(account_
 
 
 def test_a_filled_playlist_holding_a_row_it_found_still_reads_back_in_set_order():
-    """U246: a playlist found by its name keeps what it held ahead of the set's rows.
-
-    The commit added every member, so the order is held; a row the playlist
-    already held before them is not a member and does not break it.
-    """
+    """U246: a playlist found by name keeps what it held ahead of the set's rows, in order."""
     written = set_playlist.Written(
         name="a set",
         playlist_id="p",

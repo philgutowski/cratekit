@@ -1,10 +1,8 @@
 """U231: an account playlist put in rekordbox's order finishes despite the provider's read lag.
 
-The moves are sent with no read back between them, since the provider's reads
-lag them for minutes. One judged reading after a settle window decides the
-order, and an order the provider does not yet serve is left pending until two
-readings agree. The fake account's served order is made to lag. D1 applies,
-nothing here names a real account, person or track.
+Moves are sent blind, since the provider's reads lag for minutes; one reading
+after a settle window decides, and an order not yet served stays pending until
+two readings agree. The fake account's served order is made to lag. D1 applies.
 """
 
 from __future__ import annotations
@@ -240,8 +238,7 @@ def _stopping_after(
 ) -> list[int]:
     """Make the order on one playlist send ``moves`` moves and then refuse, as a failed move does.
 
-    Counts are told before each move as the adapter tells them (R-1394);
-    ``known`` tells the failed move as not landed, otherwise its fate is unknown.
+    Counts are told as the adapter tells them (R-1394); ``known=False`` leaves the last unknown.
     """
     from cratekit.modules.outbound import tidal_account
 
@@ -335,15 +332,20 @@ def _three_moves(world, opener) -> None:
     _reordered(world, opener, "4", "3", "2", "1")
 
 
+def _stopped_three(world, monkeypatch, opener, account_id, moves: int, *, known=True) -> None:
+    """Three moves owed, readings agreeing at once, and the write stopped after ``moves``."""
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, moves, known=known)
+    failed(sync())
+
+
 def test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees(
     world, owed, cfg, monkeypatch
 ):
     """Two readings agreeing on the order before the moves are a lag."""
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 1)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 1)
     reached = list(world.account.playlists[account_id])
     assert reached == _ids("2", "1", "3", "4")
     # The provider serves the order from before any move, for longer than AGREE_AFTER.
@@ -362,10 +364,7 @@ def test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished
     world, owed, cfg, monkeypatch
 ):
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 1)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 1)
     world.account.served[account_id] = _ids("1", "2", "3", "4")
     code, envelope = sync()
     assert pair_cli.LEFT_OUT in _codes(envelope)
@@ -383,10 +382,7 @@ def test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the
     world, owed, cfg, monkeypatch
 ):
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 1, known=False)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 1, known=False)
     reached = list(world.account.playlists[account_id])
     ordered = len(world.account.ordered)
     for _ in range(3):
@@ -427,10 +423,7 @@ def test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending(
     """The refused finish's record does not hide the stopped write it finishes,
     or the lagging order would be read as the person's reorder."""
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 1)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 1)
     reached = list(world.account.playlists[account_id])
     stopping = world.account.order_tracks
     refusals: list[tuple[str, ...] | None] = []
@@ -470,10 +463,7 @@ def test_a_first_move_refused_on_its_412s_is_sent_again_from_the_start_once(
     world, owed, cfg, monkeypatch
 ):
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 0)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 0)
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
     ordered = len(world.account.ordered)
     for _ in range(2):
@@ -706,11 +696,7 @@ def test_a_pair_document_from_before_u231_reads_with_no_reading_kept(cfg):
 def test_a_continue_whose_steps_cannot_be_read_still_sends_no_move_again(
     world, owed, cfg, monkeypatch, damage
 ):
-    """The carried record says the moves went when the run's steps cannot.
-
-    Parked in its settle reading with every move sent, so the continue's check
-    finds the playlist as the plan read it and passes.
-    """
+    """The carried record says the moves went when the run's steps cannot."""
     from cratekit.core import jobs
 
     _opener, account_id = owed
@@ -775,12 +761,10 @@ def test_a_rekordbox_side_to_be_made_is_under_gig_ready_only_inside_the_folder(c
 
 
 def _adapter_reading(world, monkeypatch, playlist_id: str, reading: list[str]) -> list[object]:
-    """Make the adapter's own reading before the order serve ``reading``, and plan its moves from it.
+    """The adapter's own reading before the order serves ``reading``, judged against ``agreed``.
 
-    Judged against the ``agreed`` reading by the adapter's rule, it is refused
-    with nothing moved; passed, each move goes by that reading's position onto
-    the playlist as it really stands. Answers the ``agreed`` each order was
-    asked with.
+    Refused, nothing moves; passed, each move goes by that reading's positions.
+    Answers the ``agreed`` each order was asked with.
     """
     from cratekit.modules.outbound import tidal_account
 
@@ -827,10 +811,7 @@ def _stopped_then_added(world, owed, monkeypatch):
     """A stop after one of three moves, served as that move left it, then track 5 added in rekordbox,
     so the finish also adds it."""
     opener, account_id = owed
-    _three_moves(world, opener)
-    _agreeing_at_once(monkeypatch)
-    _stopping_after(world, monkeypatch, account_id, 1)
-    failed(sync())
+    _stopped_three(world, monkeypatch, opener, account_id, 1)
     reached = list(world.account.playlists[account_id])
     assert reached == _ids("2", "1", "3", "4")
     world.rekordbox_add(opener, "5")
@@ -1014,11 +995,7 @@ def longer(world):
 
 
 def _stopping_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
-    """Three moves told as accepted, the fourth ending on its 412s, the account off the path.
-
-    Counts are told as the adapter tells them (R-1394). A move that landed
-    under its 412 was sent again, so no count of the moves leaves the order.
-    """
+    """Three moves told as accepted, the fourth ending on its 412s, off the path (R-1394)."""
     real = world.account.order_tracks
     stops: list[int] = []
 
@@ -1094,11 +1071,7 @@ def _listed_unread(monkeypatch, *remote_ids: str) -> None:
 def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place(
     world, owed, cfg, monkeypatch
 ):
-    """R-1418: the one move that landed put a track the provider cannot read in front.
-
-    A lagging reading differs only by where t9 stands, so a finish held to the
-    readable tracks alone would take the lag and move by position from it.
-    """
+    """R-1418: the one move that landed put a track the provider cannot read in front."""
     opener, account_id = owed
     _reordered(world, opener, "2", "3", "4", "1")
     _listed_unread(monkeypatch, "t9")
@@ -1130,11 +1103,7 @@ def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_pl
 def _finished_after_one_move(
     world, monkeypatch, account_id: str, envelopes: list[dict] | None = None
 ) -> list[str]:
-    """Stop the account order after its first move, then sync until the stopped write finishes.
-
-    Answers the playlist as the stopped move left it, keeping each later
-    sync's answer in ``envelopes`` when given.
-    """
+    """Stop the order after its first move, sync until it finishes; answers where it stopped."""
     _agreeing_at_once(monkeypatch)
     _stopping_after(world, monkeypatch, account_id, 1)
     failed(sync())
@@ -1164,10 +1133,7 @@ def _synced_keeping_gates(envelopes: list[dict] | None):
 def test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it(
     world, owed, cfg, monkeypatch
 ):
-    """R-1432: the stopped write's first move put t9, which the provider cannot read, in front.
-
-    The finish places t9 by the write's own target, behind t4, not at the front.
-    """
+    """R-1432: the stopped write put unread t9 in front; the finish places it behind t4."""
     opener, account_id = owed
     _reordered(world, opener, "2", "3", "4", "1")
     _listed_unread(monkeypatch, "t9")
@@ -1271,8 +1237,7 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
 ):
     """R-1432 with U234: only a finish places an unread track by the target.
 
-    Settled readings show the person's move of t9 alone (R-1446), so t9 keeps
-    the place the person gave it, behind t3, while rekordbox still leads.
+    Settled readings show the person's move of t9 alone (R-1446), so it stays behind t3.
     """
     opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch, rekordbox="skip")
     world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
@@ -1326,10 +1291,9 @@ def _settled_then_moved(world, cfg, account_id: str, settled: list[str], moved: 
 def test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_write(
     world, owed, cfg, monkeypatch
 ):
-    """R-1446: the person moves only t9, which neither side's merge reads, after a stop whose rekordbox side was written.
+    """R-1446: only unread t9 is moved by hand after a stop whose rekordbox side was written.
 
-    No readable track moved, so no reorder is shown: the stopped write is
-    finished in rekordbox's order and t9 kept where the person put it.
+    No reorder is shown: the write finishes and t9 stays where the person put it.
     """
     opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch)
     _settled_then_moved(
@@ -1404,10 +1368,9 @@ def test_a_settled_move_of_a_readable_track_beside_an_unread_one_still_leads(
 def test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_reorder(
     world, owed, cfg, monkeypatch
 ):
-    """R-1446: an order refused before its first move, then only t9 moved by hand.
+    """R-1446: an order refused before its first move, then only unread t9 moved by hand.
 
-    Off the path only by t9, which the merge does not read, so it is no
-    reorder (R-1420 aside): the write is finished and t9 stays where it was put.
+    No reorder (R-1420 aside): the write is finished and t9 stays where it was put.
     """
     opener, account_id = owed
     _reordered(world, opener, "2", "3", "4", "1")
@@ -1452,11 +1415,7 @@ def test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_r
 def test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place(
     world, owed, cfg, monkeypatch
 ):
-    """R-1446: t8 and t9 listed untitled, only t8 moved after a settled reading.
-
-    t8 keeps the place the person gave it, and t9, which nobody moved, goes
-    where the stopped order was taking it, not left at the front.
-    """
+    """R-1446: of untitled t8 and t9 only t8 is moved; t9 goes where the stopped order took it."""
     opener, account_id = owed
     _reordered(world, opener, "2", "3", "4", "1")
     _listed_unread(monkeypatch, "t8", "t9")
@@ -1501,11 +1460,7 @@ def test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place(
 def test_two_unread_tracks_dragged_together_both_keep_the_place_the_person_gave_them(
     world, owed, cfg, monkeypatch
 ):
-    """R-1446: t7, t8 and t9 listed untitled, t7 and t8 dragged as a block.
-
-    Both stay together where the person put them, since a block moves whole;
-    t9, which nobody moved, goes where the stopped order was taking it.
-    """
+    """R-1446: untitled t7 and t8 dragged as a block stay together; unmoved t9 follows the order."""
     opener, account_id = owed
     _reordered(world, opener, "2", "3", "4", "1")
     _listed_unread(monkeypatch, "t7", "t8", "t9")
@@ -1567,8 +1522,7 @@ class _InMemorySteps(pair_cli.PairSteps):
 def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     """R-1418: ``agreed`` is passed only when the plan read the account it finishes.
 
-    A stand in that does not take ``agreed`` is asked as before. No sync makes
-    such a plan, so it is built by hand.
+    A stand in that does not take it is asked as before; the plan is built by hand.
     """
     from cratekit.sync import pair_merge, pair_write
     from cratekit.write import playlist_pair
@@ -1716,10 +1670,9 @@ def _moved(world, account_id: str, remote_id: str, at: int) -> None:
 
 
 def _moved_twice_and_synced(world, account_id: str, remote_id: str, *, plans: int, syncs: int):
-    """The person moves ``remote_id`` behind t1, ``plans`` plans read it, then behind t2, and ``syncs`` syncs run.
+    """``remote_id`` moved behind t1, ``plans`` plans, behind t2, then ``syncs`` syncs' envelopes.
 
     Two moves read the agreement window apart are the person's reorder (U234).
-    Answers each sync's envelope, in order.
     """
     _moved(world, account_id, remote_id, 1)
     for _ in range(plans):
@@ -1747,11 +1700,7 @@ def test_a_stop_before_the_first_send_with_nothing_moved_is_finished_from_its_st
 def test_an_unread_track_moved_after_a_stop_before_the_first_send_is_kept_where_it_was_put(
     world, owed, cfg, monkeypatch
 ):
-    """R-1434: a move of a track the plan cannot read is never read as a reorder of the tracks it can.
-
-    Judged with t9 in the path, the move would read off the path and the old
-    readable order would undo rekordbox's reorder.
-    """
+    """R-1434: a move of a track the plan cannot read is never a reorder of those it can."""
     _agreeing_at_once(monkeypatch)
     opener, account_id = _stopped_before_the_first_send(world, owed, monkeypatch)
     _moved_twice_and_synced(world, account_id, "t9", plans=2, syncs=2)
@@ -1788,11 +1737,7 @@ def test_an_unread_track_moved_after_a_stop_part_way_is_kept_where_it_was_put(
 def test_a_track_unread_at_the_stop_and_read_since_is_read_as_the_persons_when_moved(
     world, owed, cfg, monkeypatch
 ):
-    """R-1434: the ordering step's start keeps the unread ids, so a track read since is judged by its place.
-
-    Readable now, t9's move by the person leads; a start without it would read
-    every move of t9 as on the path and put it back.
-    """
+    """R-1434: the step's start keeps unread ids, so a track read since is judged by its place."""
     from tests.test_sync_pair_discover import LivePlaylist
 
     _agreeing_at_once(monkeypatch)
@@ -1827,11 +1772,7 @@ def _order_dropped_once(world, monkeypatch, playlist_id: str) -> None:
 
 
 def test_a_reorder_after_a_track_read_at_the_stop_turned_unread_leads(world, cfg, monkeypatch):
-    """R-1434: the path is the stopped write's own, read on the tracks the plan reads.
-
-    It is the whole start's path cut to the readable tracks, never one worked
-    out again without t5, on which the person's move would read as on the path.
-    """
+    """R-1434: the path is the stopped write's own, cut to the readable tracks, not worked anew."""
     _agreeing_at_once(monkeypatch)
     opener, account_id = _five_owed(world)
     _reordered(world, opener, "1", "3", "2", "5", "4")
@@ -1871,10 +1812,9 @@ def test_a_reorder_after_a_finish_stopped_before_its_first_send_leads(world, cfg
 
 @pytest.mark.parametrize("unread", [False, True], ids=["all-read", "t9-unread"])
 def test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads(world, owed, cfg, monkeypatch, unread):
-    """R-1434: a write known to have sent no move left the account where it began.
+    """R-1434: a write that sent no move left the account where it began; any other order leads.
 
-    Any other order is the person's (R-1420), even a drag to the top that
-    stands where the write's first move would have put it.
+    Even a drag to the top where the write's first move would have put it (R-1420).
     """
     _agreeing_at_once(monkeypatch)
     opener, account_id = owed
