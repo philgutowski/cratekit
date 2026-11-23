@@ -1,0 +1,3867 @@
+{
+  "name": "u325-before-l-02",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "539638eb",
+  "when": "2026-11-22 22:24 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22663,
+  "baseline_exit": 1,
+  "pytest_runs": 110,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-22 22:21 UTC for commit `539638ebe629`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 5,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/restore.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/restore.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "97c297fec09d8788",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22663,
+    "baseline_collected": 22663,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u95-c.C6_staging_store_rule_removed",
+      "description": "Inside the guard, drop the store rule, so an authorised staging directory such as the library root hands the closing prune the directory ABOVE the library",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0545c884d4319422",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 498,
+      "baseline_collected": 498,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_u95_staging_inside_the_library_but_not_under_its_store_is_refused[a-directory-in-the-library]",
+        "tests/test_restore.py::test_u95_staging_inside_the_library_but_not_under_its_store_is_refused[the-library-root]",
+        "tests/test_restore.py::test_u95_staging_inside_the_library_but_not_under_its_store_is_refused[the-staging-store-itself]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if pre_restore_root.parent != store:",
+      "new": "    if False:",
+      "source": {
+        "table": "u95-c.json",
+        "id": "C6_staging_store_rule_removed"
+      }
+    },
+    {
+      "id": "u95-c.C7_staging_store_itself_admitted",
+      "description": "A nearby value: admit the store itself as the staging directory, which makes the prune run one level up, inside the database directory",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3afc7c6e12eb21d9",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 498,
+      "baseline_collected": 498,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_u95_staging_inside_the_library_but_not_under_its_store_is_refused[the-staging-store-itself]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if pre_restore_root.parent != store:",
+      "new": "    if pre_restore_root.parent != store and pre_restore_root != store:",
+      "source": {
+        "table": "u95-c.json",
+        "id": "C7_staging_store_itself_admitted"
+      }
+    },
+    {
+      "id": "u95-c.C8_plan_root_assertion_removed",
+      "description": "plan drops its assertion on the rooted root, which is also where it asks whether the session is still open and is a recovery",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "39ddc0c4cc4eaa89",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 498,
+      "baseline_collected": 498,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_u95_a_library_session_still_refuses_a_configuration_for_another_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    assert_gates_are_open(held, writing=cfg.library.root)\n    _assert_rekordbox_closed(process_lister)\n    record = session.read_record(session_id, cfg)",
+      "new": "    _assert_rekordbox_closed(process_lister)\n    record = session.read_record(session_id, cfg)",
+      "source": {
+        "table": "u95-c.json",
+        "id": "C8_plan_root_assertion_removed"
+      }
+    },
+    {
+      "id": "u95-c.S1_authorises_everything",
+      "description": "EXISTING GUARD, fixed sample: Held.authorises_path answers yes to every path, which is the original bypass",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66820b2c48100d50",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 498,
+      "baseline_collected": 498,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refused",
+        "tests/test_restore.py::test_u95_a_database_outside_the_library_refuses_a_bare_metal_plan_by_name",
+        "tests/test_restore.py::test_u95_a_library_session_still_refuses_a_configuration_for_another_library",
+        "tests/test_restore.py::test_u95_a_plan_built_for_the_library_is_refused_under_a_bare_metal_session",
+        "tests/test_restore.py::test_u95_a_plan_built_for_the_target_is_refused_under_a_library_session",
+        "tests/test_restore.py::test_u95_plan_checks_its_own_answer_rather_than_trusting_the_derivation",
+        "tests/test_restore.py::test_u95_the_staging_directory_is_a_write_location_and_is_authorised_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return where == root or root in where.parents",
+      "new": "        return True",
+      "source": {
+        "table": "u95-c.json",
+        "id": "S1_authorises_everything"
+      }
+    },
+    {
+      "id": "u95-c.S2_issued_terms_not_compared",
+      "description": "EXISTING GUARD, fixed sample: still_open stops comparing the claim to what the guard issued, so a live token can be rebuilt around another directory",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ce494ed72137eb85",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 498,
+      "baseline_collected": 498,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_round2_a_held_rebuilt_around_a_live_token_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):\n            return False",
+      "new": "",
+      "source": {
+        "table": "u95-c.json",
+        "id": "S2_issued_terms_not_compared"
+      }
+    },
+    {
+      "id": "r351.A2_unresolved_seed_skipped",
+      "description": "crawl the seeds that resolved and skip the one that did not",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9333dbc119770da5",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unresolved:\n            bits = []\n",
+      "new": "        if unresolved and not artists:\n            bits = []\n",
+      "source": {
+        "table": "r351.json",
+        "id": "A2_unresolved_seed_skipped"
+      }
+    },
+    {
+      "id": "r351.A3_empty_roster_returned",
+      "description": "return an empty roster for a label nothing resolved",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e77b4f24ec02dcec",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers",
+        "tests/test_label_tidal_catalogue.py::test_a_near_name_is_not_the_label",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolvable_label_raises_and_never_returns_none",
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range",
+        "tests/test_label_tidal_catalogue.py::test_the_absence_contract_holds_through_the_sweep"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not artists:\n            raise LabelUnresolvable(",
+      "new": "        if not artists:\n            return LabelRoster([])\n            raise LabelUnresolvable(",
+      "source": {
+        "table": "r351.json",
+        "id": "A3_empty_roster_returned"
+      }
+    },
+    {
+      "id": "r351.A5_ambiguity_takes_first",
+      "description": "take the first of two artists named exactly the same",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "807d6274659010fa",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_colliding_name_seed_still_refuses",
+        "tests/test_label_tidal_catalogue.py::test_two_artists_named_exactly_the_label_refuse_rather_than_guess"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(distinct) > 1:",
+      "new": "        if len(distinct) > 2:",
+      "source": {
+        "table": "r351.json",
+        "id": "A5_ambiguity_takes_first"
+      }
+    },
+    {
+      "id": "r351.G10_identifier_message_says_named",
+      "description": "an unresolved identifier is reported as a name the provider does not carry",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f0da76f1cd8ba11a",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if seed_identifier(seed) is not None:\n                    bits.append(f\"no artist with identifier {seed!r}\")\n                else:\n                    bits.append(f\"no artist named exactly {seed!r}\")\n",
+      "new": "                bits.append(f\"no artist named exactly {seed!r}\")\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G10_identifier_message_says_named"
+      }
+    },
+    {
+      "id": "r351.G3_unresolved_id_skipped",
+      "description": "a seed that does not resolve is skipped rather than refusing the label",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b899564646f80b57",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it",
+        "tests/test_label_tidal_catalogue.py::test_an_id_lookup_that_returns_none_is_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_name_seed_refuses_even_when_discovery_would_find_albums",
+        "tests/test_label_tidal_catalogue.py::test_the_client_object_not_found_is_an_unresolved_id_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if artist is None:\n                unresolved.append(seed)\n",
+      "new": "            if artist is None:\n                continue\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G3_unresolved_id_skipped"
+      }
+    },
+    {
+      "id": "r351.G4_any_remainder_is_an_id",
+      "description": "treat anything after id: as an identifier, including a name",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac46696191be1b2e",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_is_not_digits_after_the_prefix_is_still_a_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_ID_SEED = re.compile(r\"^id:(\\d+)$\")\n",
+      "new": "_ID_SEED = re.compile(r\"^id:(.+)$\")\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G4_any_remainder_is_an_id"
+      }
+    },
+    {
+      "id": "r351.G5_except_everything",
+      "description": "a provider outage looking up an identifier is read as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c6682c67e0201769",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_a_session_dead_during_discovery_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except tidalapi.exceptions.ObjectNotFound:\n            return None\n        except LookupError as exc:\n            # Bare LookupError is the fake's not found. KeyError and IndexError\n            # are subclasses, and those are parse failures, not a missing id.\n            if type(exc) is not LookupError:\n                raise\n            return None\n",
+      "new": "        except Exception:\n            return None\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G5_except_everything"
+      }
+    },
+    {
+      "id": "r351.G7_drop_object_not_found",
+      "description": "the live client's ObjectNotFound is no longer treated as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "222663630e9a8eda",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_the_client_object_not_found_is_an_unresolved_id_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except tidalapi.exceptions.ObjectNotFound:\n            return None\n        except LookupError as exc:\n",
+      "new": "        except LookupError as exc:\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G7_drop_object_not_found"
+      }
+    },
+    {
+      "id": "r351.G8_id_prefix_case_insensitive",
+      "description": "ID:99 is treated as an identifier, against the locked id:<digits> shape",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55c383269c7b29a6",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_uppercase_id_prefix_is_still_a_name_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_ID_SEED = re.compile(r\"^id:(\\d+)$\")\n",
+      "new": "_ID_SEED = re.compile(r\"^id:(\\d+)$\", re.IGNORECASE)\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G8_id_prefix_case_insensitive"
+      }
+    },
+    {
+      "id": "r351.G9_all_lookuperror_is_absence",
+      "description": "KeyError and IndexError from the identifier lookup are read as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f090dacbc7f43dbf",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if type(exc) is not LookupError:\n                raise\n            return None\n",
+      "new": "            return None\n",
+      "source": {
+        "table": "r351.json",
+        "id": "G9_all_lookuperror_is_absence"
+      }
+    },
+    {
+      "id": "r352.A2_empty_roster_returned",
+      "description": "return an empty roster for a label nothing resolved",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f37e818911dc2f24",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers",
+        "tests/test_label_tidal_catalogue.py::test_a_near_name_is_not_the_label",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolvable_label_raises_and_never_returns_none",
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range",
+        "tests/test_label_tidal_catalogue.py::test_the_absence_contract_holds_through_the_sweep"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not artists:\n            raise LabelUnresolvable(\n",
+      "new": "        if False and not artists:\n            raise LabelUnresolvable(\n",
+      "source": {
+        "table": "r352.json",
+        "id": "A2_empty_roster_returned"
+      }
+    },
+    {
+      "id": "r352.G10_no_collaborator_enqueue",
+      "description": "BFS does not enqueue credited artists from listed matching releases",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "702fa58e88d0b0e9",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_enqueues_collaborators_from_listed_matching_releases"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            for release in releases:\n                if _credits_label(release, needle):\n                    for identity in _credited_ids(release):\n                        enqueue(identity)\n",
+      "new": "            for release in releases:\n                if _credits_label(release, needle):\n                    pass\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G10_no_collaborator_enqueue"
+      }
+    },
+    {
+      "id": "r352.G11_discovered_not_added",
+      "description": "credited artists are walked but never appended to the roster",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76ba81479bab55e0",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_crawl_that_read_everything_still_succeeds",
+        "tests/test_label_tidal_catalogue.py::test_a_credit_starting_with_p_or_c_is_resolved_whole",
+        "tests/test_label_tidal_catalogue.py::test_a_listing_failure_on_one_discovered_artist_skips_that_artist",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist",
+        "tests/test_label_tidal_catalogue.py::test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered",
+        "tests/test_label_tidal_catalogue.py::test_discovery_enqueues_collaborators_from_listed_matching_releases",
+        "tests/test_label_tidal_catalogue.py::test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist",
+        "tests/test_label_tidal_catalogue.py::test_discovery_matches_copyright_against_the_entry_match_needle",
+        "tests/test_label_tidal_catalogue.py::test_discovery_runs_when_the_label_already_has_an_artist_page"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if identity not in held_ids:\n                discovered.append(artist)\n                held_ids.add(identity)\n",
+      "new": "            if identity not in held_ids:\n                held_ids.add(identity)\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G11_discovered_not_added"
+      }
+    },
+    {
+      "id": "r352.G13_duplicate_roster_member",
+      "description": "a discovered artist already on the roster is appended again",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "529a9a63c3ae8e18",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_discovered_artist_already_on_the_roster_is_not_added_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if identity not in held_ids:\n                discovered.append(artist)\n                held_ids.add(identity)\n",
+      "new": "            discovered.append(artist)\n            held_ids.add(identity)\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G13_duplicate_roster_member"
+      }
+    },
+    {
+      "id": "r352.G2_skip_when_roster_nonempty",
+      "description": "discovery does not run when the label already has an artist page",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "433a7eb151998f7b",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_crawl_that_read_everything_still_succeeds",
+        "tests/test_label_tidal_catalogue.py::test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_an_authentication_error_on_album_search_still_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_discovery_runs_when_the_label_already_has_an_artist_page"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        needle = entry.match or entry.name\n        seen: set[str] = set()\n",
+      "new": "        if held:\n            return []\n        needle = entry.match or entry.name\n        seen: set[str] = set()\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G2_skip_when_roster_nonempty"
+      }
+    },
+    {
+      "id": "r352.G4_empty_message_omits_discovery",
+      "description": "an empty roster still says only that the label names no seed artists",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e552de5858f152bd",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"the provider has no artist named exactly {entry.name!r}, the \"\n                f\"label names no seed artists, and discovery found nothing\"\n",
+      "new": "                f\"the provider has no artist named exactly {entry.name!r} and the \"\n                f\"label names no seed artists to crawl instead\"\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G4_empty_message_omits_discovery"
+      }
+    },
+    {
+      "id": "r352.G5_compilation_range_shrunk",
+      "description": "numbered compilation searches stop at 001",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e7411484279a9d60",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "COMPILATION_RANGE = range(1, 80)\n",
+      "new": "COMPILATION_RANGE = range(1, 2)\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G5_compilation_range_shrunk"
+      }
+    },
+    {
+      "id": "r352.G6_name_query_only",
+      "description": "discovery searches the bare label name and no numbered compilations",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6d4cc89fa7fcaca6",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (name, *(f\"{name} {number:03d}\" for number in COMPILATION_RANGE))\n",
+      "new": "    return (name,)\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G6_name_query_only"
+      }
+    },
+    {
+      "id": "r352.G7_ignore_match_needle",
+      "description": "copyright match uses the display name and ignores entry.match",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "29d62e91563e6bb5",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_matches_copyright_against_the_entry_match_needle"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        needle = entry.match or entry.name\n",
+      "new": "        needle = entry.name\n",
+      "source": {
+        "table": "r352.json",
+        "id": "G7_ignore_match_needle"
+      }
+    },
+    {
+      "id": "r504-a.A1_lt_to_le",
+      "description": "Adapter compares with <= instead of <, so a listing that reached its count raises a shortfall of zero",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4e806bb55b4008bc",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_complete_hearts_listing_reports_no_shortfall",
+        "tests/test_label_tidal_catalogue.py::test_the_hearts_listing_pages_to_the_declared_total_through_the_listing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if declared is not None and len(rows) < declared:",
+      "new": "        if declared is not None and len(rows) <= declared:",
+      "source": {
+        "table": "r504-a.json",
+        "id": "A1_lt_to_le"
+      }
+    },
+    {
+      "id": "r504-a.A2_lt_to_gt",
+      "description": "Adapter compares the wrong way round, so a short listing returns and a long one raises",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "405de42d6145b32c",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_listing_longer_than_its_count_is_not_a_shortfall",
+        "tests/test_label_tidal_catalogue.py::test_a_listing_short_of_the_declared_count_raises_the_shortfall_with_its_rows",
+        "tests/test_label_tidal_catalogue.py::test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall",
+        "tests/test_label_tidal_catalogue.py::test_the_verb_boundary_keeps_the_rows_and_hands_back_the_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if declared is not None and len(rows) < declared:",
+      "new": "        if declared is not None and len(rows) > declared:",
+      "source": {
+        "table": "r504-a.json",
+        "id": "A2_lt_to_gt"
+      }
+    },
+    {
+      "id": "r504-a.A3_no_none_guard",
+      "description": "Adapter drops the guard for a count the provider did not publish",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "127a85c2b65d0399",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare[-1]",
+        "tests/test_label_tidal_catalogue.py::test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare[0]",
+        "tests/test_label_tidal_catalogue.py::test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare[None]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if declared is not None and len(rows) < declared:",
+      "new": "        if len(rows) < declared:",
+      "source": {
+        "table": "r504-a.json",
+        "id": "A3_no_none_guard"
+      }
+    },
+    {
+      "id": "r504-a.A4_no_raise",
+      "description": "Adapter never raises the shortfall, which is the pre R-504 behaviour",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cc92b8fa21dde20d",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_listing_short_of_the_declared_count_raises_the_shortfall_with_its_rows",
+        "tests/test_label_tidal_catalogue.py::test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall",
+        "tests/test_label_tidal_catalogue.py::test_the_verb_boundary_keeps_the_rows_and_hands_back_the_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise HeartsShortfall(rows, declared)",
+      "new": "            pass",
+      "source": {
+        "table": "r504-a.json",
+        "id": "A4_no_raise"
+      }
+    },
+    {
+      "id": "r515-operator.S7_adapter_no_count",
+      "description": "The release adapter ignores the album's num_tracks",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e1c5f99f694afdf0",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        short = ListingShortfall.of(tracks, getattr(album, \"num_tracks\", None))",
+      "new": "        short = None",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S7_adapter_no_count"
+      }
+    },
+    {
+      "id": "r840-c.C3_the_adapter_reads_a_name",
+      "description": "TidalCatalogue.release_artist: answer with the text of the album's artist object, which is its address, the defect R-379 named",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "460a6c65f3e6e9d2",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limited_artist_read_waits_and_is_asked_again",
+        "tests/test_label_tidal_catalogue.py::test_a_releases_artist_is_its_name_and_never_the_objects_address",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held2-]",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held3-]",
+        "tests/test_label_tidal_catalogue.py::test_the_sweep_files_the_name_the_artist_read_returns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return artist_name(self._album(release_id))",
+      "new": "        return str(getattr(self._album(release_id), \"artist\", \"\") or \"\")",
+      "source": {
+        "table": "r840-c.json",
+        "id": "C3_the_adapter_reads_a_name"
+      }
+    },
+    {
+      "id": "r879-b.T2_offset_not_sent",
+      "description": "TidalCatalogue.search_tracks: send offset 0 to the client whatever page was asked",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd8edabc1143fe42",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_track_search_asks_for_the_page_its_offset_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                query, models=[tidalapi.media.Track], limit=limit, offset=offset",
+      "new": "                query, models=[tidalapi.media.Track], limit=limit, offset=0",
+      "source": {
+        "table": "r879-b.json",
+        "id": "T2_offset_not_sent"
+      }
+    },
+    {
+      "id": "u62.A1_missing_playlist_returns_none",
+      "description": "Return None for a playlist the client returned nothing for",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f74f94ae17add6dc",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_playlist_the_client_returns_nothing_for_raises_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if playlist is None:\n            raise PlaylistUnresolvable(",
+      "new": "        if playlist is None:\n            return None\n            raise PlaylistUnresolvable(",
+      "source": {
+        "table": "u62.json",
+        "id": "A1_missing_playlist_returns_none"
+      }
+    },
+    {
+      "id": "u62.A4_first_hit_not_exact",
+      "description": "Take any hit the search returned rather than an exact name",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5afa239a23b556ac",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_near_name_is_not_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if label_verify.fold_label(str(getattr(artist, \"name\", \"\") or \"\")) == wanted",
+      "new": "            if label_verify.fold_label(str(getattr(artist, \"name\", \"\") or \"\"))",
+      "source": {
+        "table": "u62.json",
+        "id": "A4_first_hit_not_exact"
+      }
+    },
+    {
+      "id": "u62.A6_no_reread_for_missing_copyright",
+      "description": "Judge a release with no copyright line unconfirmed instead of re-reading it",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96fd694c459f2e19",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_confirms_from_its_own_copyright_line_or_a_re_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not resolved and identity:",
+      "new": "        if not resolved and not identity:",
+      "source": {
+        "table": "u62.json",
+        "id": "A6_no_reread_for_missing_copyright"
+      }
+    },
+    {
+      "id": "u62.A7_any_search_hit_confirms",
+      "description": "Confirm a harvested label on any album with a copyright line",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "44a664d5ffde213e",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_harvested_name_is_confirmed_only_by_a_matching_copyright_line",
+        "tests/test_label_tidal_catalogue.py::test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if resolved and label_verify.labels_match(name, resolved):",
+      "new": "            if resolved:",
+      "source": {
+        "table": "u62.json",
+        "id": "A7_any_search_hit_confirms"
+      }
+    },
+    {
+      "id": "u70.A1_no_favourites_refused",
+      "description": "A client exposing no favourites is not refused by name, so the read fails as an attribute error",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4f283db7b226e1c0",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_client_that_exposes_no_favourites_refuses_rather_than_holding_no_hearts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if getattr(user, \"favorites\", None) is None:",
+      "new": "        if False:",
+      "source": {
+        "table": "u70.json",
+        "id": "A1_no_favourites_refused"
+      }
+    },
+    {
+      "id": "u75-c.C1_gone_is_never_retried",
+      "description": "Stop classifying a not found answer first, so a withdrawn release climbs the whole retry ladder",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b71c5d2baf8132e7",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_404_status_is_gone_whatever_the_class_is_called",
+        "tests/test_label_tidal_catalogue.py::test_a_gone_release_has_no_artist_to_read_and_is_asked_about_once",
+        "tests/test_label_tidal_catalogue.py::test_a_release_that_is_gone_raises_at_once_and_is_never_retried",
+        "tests/test_label_tidal_catalogue.py::test_the_adapter_and_the_verb_meet_over_a_gone_release"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if _gone(exc):\n                    return _GONE\n                raise",
+      "new": "                raise",
+      "source": {
+        "table": "u75-c.json",
+        "id": "C1_gone_is_never_retried"
+      }
+    },
+    {
+      "id": "u75-c.C5_none_album_raises",
+      "description": "Let a client that returned nothing for a release through to the listing",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b001b5fb5afba18b",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_the_client_returns_nothing_for_raises_too",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_read_the_client_returns_nothing_for_raises_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if album is _GONE or album is None:",
+      "new": "        if album is _GONE:",
+      "source": {
+        "table": "u75-c.json",
+        "id": "C5_none_album_raises"
+      }
+    },
+    {
+      "id": "u75-c.C7_tracks_through_the_paging_wrapper",
+      "description": "List the tracks with one direct call instead of the paging wrapper, which serves one page",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f154f6fcd582478f",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_is_paged_to_its_declared_count_and_carries_its_year",
+        "tests/test_label_tidal_catalogue.py::test_a_short_window_in_the_middle_of_a_release_does_not_end_it",
+        "tests/test_label_tidal_catalogue.py::test_the_adapter_pages_nothing_by_hand"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tracks = listing.playlist_tracks(album, shape=\"release_tracks\", sleep=_pause)",
+      "new": "        tracks = album.tracks()",
+      "source": {
+        "table": "u75-c.json",
+        "id": "C7_tracks_through_the_paging_wrapper"
+      }
+    },
+    {
+      "id": "u78-c.D2_blank_isrc",
+      "description": "A blank ISRC is sent to the provider",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "01e88a41377b5252",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[   ]",
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[None]",
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not wanted:\n            raise ValueError(\"no ISRC was given to look up\")",
+      "new": "",
+      "source": {
+        "table": "u78-c.json",
+        "id": "D2_blank_isrc"
+      }
+    },
+    {
+      "id": "u78-c.D3_no_lookup_method",
+      "description": "A client with no ISRC lookup climbs the whole ladder before failing",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5f23274dbcc5ed7a",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not callable(lookup):\n            # A client without the method cannot be asked, and waiting on the\n            # ladder cannot grow one.\n            raise LookupError(\"the provider client exposes no ISRC lookup\")",
+      "new": "",
+      "source": {
+        "table": "u78-c.json",
+        "id": "D3_no_lookup_method"
+      }
+    },
+    {
+      "id": "u79-c.D1_search_shape_read_as_empty",
+      "description": "A search answer with no track listing is read as no candidate",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dcf9a501fc2a5973",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_search_answer_with_no_track_listing_is_raised_at_once_and_is_not_empty"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not present:\n            raise LookupError(\"the provider's search answer carries no track listing\")",
+      "new": "        if False:\n            raise LookupError(\"the provider's search answer carries no track listing\")",
+      "source": {
+        "table": "u79-c.json",
+        "id": "D1_search_shape_read_as_empty"
+      }
+    },
+    {
+      "id": "r515-operator.S1_of_takes_bool",
+      "description": "Let ListingShortfall.of trust a bool as a declared count",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8417ff3c4558dc6b",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare[True]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:",
+      "new": "        if not isinstance(declared, int) or declared <= 0:",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S1_of_takes_bool"
+      }
+    },
+    {
+      "id": "r515-operator.S2_of_takes_non_int",
+      "description": "Let ListingShortfall.of trust a count that is not an integer",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cae954ee19b18085",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare[10]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:",
+      "new": "        if isinstance(declared, bool) or declared is None or declared <= 0:",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S2_of_takes_non_int"
+      }
+    },
+    {
+      "id": "r515-operator.S4_of_short_at_count",
+      "description": "Mint a shortfall when the listing reaches the count exactly",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "005d324fd04fb7ea",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_full_release_carries_no_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if listed >= declared:",
+      "new": "        if listed > declared:",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S4_of_short_at_count"
+      }
+    },
+    {
+      "id": "r515-operator.S5_of_short_over_count",
+      "description": "Mint a shortfall when the listing runs past the count",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66da7ddadfef4a50",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 174,
+      "baseline_collected": 174,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if listed >= declared:",
+      "new": "        if listed == declared:",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S5_of_short_over_count"
+      }
+    },
+    {
+      "id": "r1114.M10_message_reworded_many",
+      "description": "_unlisted_cause: reword the many label message so it no longer says none could be read",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bfb914a81fa11c74",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        else f\"none of the {len(entries)} labels asked about could be read ({names}), \"",
+      "new": "        else f\"the {len(entries)} labels asked about were skipped ({names}), \"",
+      "source": {
+        "table": "r1114.json",
+        "id": "M10_message_reworded_many"
+      }
+    },
+    {
+      "id": "r1114.M11_message_reworded_one",
+      "description": "_unlisted_cause: reword the single label message so it no longer says the label could not be read",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff2e9eda8414e3cc",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"the label asked about could not be read ({names}), so whether it has\"",
+      "new": "        f\"the label asked about was skipped ({names}), so whether it has\"",
+      "source": {
+        "table": "r1114.json",
+        "id": "M11_message_reworded_one"
+      }
+    },
+    {
+      "id": "r1114.M12_match_step_dropped",
+      "description": "_UNLISTED_STEPS: drop the step naming the registry's --match needle, the remedy for a listing that confirmed nothing, from the cause and the line",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "53b942f681bfc340",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"a listing that confirmed nothing: check the label's --match needle \"\n    \"with: crate label registry\",\n",
+      "new": "",
+      "source": {
+        "table": "r1114.json",
+        "id": "M12_match_step_dropped"
+      }
+    },
+    {
+      "id": "r1114.M13_detail_labels_empty",
+      "description": "_unlisted_cause: carry no label identifiers in the detail, so a script cannot tell which labels failed",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "86e7ea8ff1db464a",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        detail={\"labels\": [entry.label_id for entry in entries]},",
+      "new": "        detail={\"labels\": []},",
+      "source": {
+        "table": "r1114.json",
+        "id": "M13_detail_labels_empty"
+      }
+    },
+    {
+      "id": "r1114.M14_withheld_reads_no_op",
+      "description": "_next, existing guard sampled: a run whose gate withheld an item ends no_op though it wrote",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e314fd25715ad14a",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_walk_whose_gate_took_back_every_open_item_is_not_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        # back has left review even when no question was left to ask.\n        outcome=Outcome.OK if withheld else Outcome.NO_OP,\n    )\n\n\n#: What to do about a label",
+      "new": "        # back has left review even when no question was left to ask.\n        outcome=Outcome.NO_OP,\n    )\n\n\n#: What to do about a label",
+      "source": {
+        "table": "r1114.json",
+        "id": "M14_withheld_reads_no_op"
+      }
+    },
+    {
+      "id": "r1114.M15_skipped_line_not_fail",
+      "description": "_skipped_check, existing guard sampled: a skipped label's line is a note rather than a fail",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9bbac8cf40ed3607",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_catalogue_that_confirms_nothing_is_not_a_label_with_nothing_new",
+        "tests/test_label_sync.py::test_next_closing_line_names_only_the_label_that_was_listed",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither",
+        "tests/test_label_sync.py::test_next_with_one_label_skipped_and_the_next_asked_still_asks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _check(f\"label.{entry.label_id}\", \"fail\", f\"{entry.name}: not asked; {why}\")",
+      "new": "    return _check(f\"label.{entry.label_id}\", \"info\", f\"{entry.name}: not asked; {why}\")",
+      "source": {
+        "table": "r1114.json",
+        "id": "M15_skipped_line_not_fail"
+      }
+    },
+    {
+      "id": "r1114.M16_remedy_line_dropped",
+      "description": "_next: refuse without the info line naming what to do, so the human rendering shows no remedy, the review's round one finding",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d98e9a2188e54e3d",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        checks.append(_check(\"next\", \"info\", _UNLISTED_REMEDY))",
+      "new": "        pass",
+      "source": {
+        "table": "r1114.json",
+        "id": "M16_remedy_line_dropped"
+      }
+    },
+    {
+      "id": "r1114.M17_remedy_line_only_doctor",
+      "description": "_UNLISTED_REMEDY: the line carries only the first step, so a listing that confirmed nothing is told to run doctor",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c8ea7a0e62c8da2",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_UNLISTED_REMEDY = \"; \".join(_UNLISTED_STEPS)",
+      "new": "_UNLISTED_REMEDY = _UNLISTED_STEPS[0]",
+      "source": {
+        "table": "r1114.json",
+        "id": "M17_remedy_line_only_doctor"
+      }
+    },
+    {
+      "id": "r1114.M1_every_skipped_not_refused",
+      "description": "_next: drop the refusal of a run whose every label was skipped, so it ends no_op with exit 0 again, the defect R-1114 names",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "53184368cdffd7ad",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_catalogue_that_confirms_nothing_is_not_a_label_with_nothing_new",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not nothing:",
+      "new": "    if False:",
+      "source": {
+        "table": "r1114.json",
+        "id": "M1_every_skipped_not_refused"
+      }
+    },
+    {
+      "id": "r1114.M2_single_label_not_refused",
+      "description": "_next: refuse only the walk over every label, so --next --label on a label whose listing failed ends no_op with exit 0",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "333d877fbfc92456",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not nothing:",
+      "new": "    if not nothing and only is None:",
+      "source": {
+        "table": "r1114.json",
+        "id": "M2_single_label_not_refused"
+      }
+    },
+    {
+      "id": "r1114.M3_mixed_run_refused",
+      "description": "_next: refuse whenever any label was skipped, so a run with one label listed and nothing new also fails",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ca45439f0901380c",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_closing_line_names_only_the_label_that_was_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not nothing:",
+      "new": "    if len(nothing) < len(entries):",
+      "source": {
+        "table": "r1114.json",
+        "id": "M3_mixed_run_refused"
+      }
+    },
+    {
+      "id": "r1114.M4_closing_line_ignores_skips",
+      "description": "_next: say no label has anything new whatever was skipped, the false closing line on a mixed run",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e12e226ffe1dd3c4",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_closing_line_names_only_the_label_that_was_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if len(nothing) == len(entries)",
+      "new": "            if True",
+      "source": {
+        "table": "r1114.json",
+        "id": "M4_closing_line_ignores_skips"
+      }
+    },
+    {
+      "id": "r1114.M5_closing_line_names_every_label",
+      "description": "_next: name every label in the mixed closing line, the skipped ones included, as having nothing new",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ba7489eba18cd1f5",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_closing_line_names_only_the_label_that_was_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "{', '.join(nothing)}\"",
+      "new": "{', '.join(one.name for one in entries)}\"",
+      "source": {
+        "table": "r1114.json",
+        "id": "M5_closing_line_names_every_label"
+      }
+    },
+    {
+      "id": "r1114.M6_nothing_new_not_counted",
+      "description": "_next: stop counting a label listed with nothing new, so every run with no question refuses as unlisted",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b33930c0125ed511",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 13,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_label_with_nothing_new_is_not_asked_and_a_run_with_nothing_to_ask_says_so",
+        "tests/test_label_sync.py::test_a_label_with_three_new_releases_is_asked_once",
+        "tests/test_label_sync.py::test_a_release_the_sweep_filed_while_its_question_waited_is_settled_by_the_answer",
+        "tests/test_label_sync.py::test_a_walk_whose_gate_took_back_every_open_item_is_not_a_no_op",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[all]",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[not-now]",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[pick]",
+        "tests/test_label_sync.py::test_next_closing_line_names_only_the_label_that_was_listed",
+        "tests/test_label_sync.py::test_next_label_then_answer_then_next_label_says_nothing_new",
+        "tests/test_label_sync.py::test_next_label_with_nothing_new_says_so_in_one_check",
+        "tests/test_label_sync.py::test_next_over_two_labels_both_listed_with_nothing_new_is_unchanged",
+        "tests/test_label_sync.py::test_nothing_new_after_an_answer_says_the_count_past_the_window",
+        "tests/test_label_sync.py::test_open_review_items_are_offered_once_and_settled_by_the_answer"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    nothing.append(entry.name)\n",
+      "new": "",
+      "source": {
+        "table": "r1114.json",
+        "id": "M6_nothing_new_not_counted"
+      }
+    },
+    {
+      "id": "r1114.M7_refusal_drops_the_lines",
+      "description": "_next: refuse without the run's checks as data, so the per label fail lines vanish from the refusal",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6c7ac7ff9cf74f65",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_catalogue_that_confirms_nothing_is_not_a_label_with_nothing_new",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            cause=_unlisted_cause(entries),\n            data=data,",
+      "new": "            cause=_unlisted_cause(entries),\n            data=None,",
+      "source": {
+        "table": "r1114.json",
+        "id": "M7_refusal_drops_the_lines"
+      }
+    },
+    {
+      "id": "r1114.M8_refusal_not_retryable",
+      "description": "_unlisted_cause: mark the refusal not retryable, though a provider answering later clears it",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "228fdae5bea7f685",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        retryable=True,\n        origin=(\"label.sync\",),\n        detail={\"labels\": [entry.label_id for entry in entries]},",
+      "new": "        retryable=False,\n        origin=(\"label.sync\",),\n        detail={\"labels\": [entry.label_id for entry in entries]},",
+      "source": {
+        "table": "r1114.json",
+        "id": "M8_refusal_not_retryable"
+      }
+    },
+    {
+      "id": "u108-a.G01_unsettled_skips_settled",
+      "description": "sync_cli.unsettled: read every saved answer as unsettled, so a go summarises answers an earlier go already took",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2045506963934a73",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_go_job_whose_track_was_refused_for_good_is_not_resumed",
+        "tests/test_label_sync_go.py::test_a_job_stopped_halfway_resumes_and_downloads_only_the_rest",
+        "tests/test_label_sync_go.py::test_a_settled_answer_is_not_summarised_again",
+        "tests/test_label_sync_go.py::test_answers_saved_beside_a_finished_go_wait_and_are_not_landed_with_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(entry, Mapping) and not entry.get(SETTLED)\n    ]",
+      "new": "        if isinstance(entry, Mapping)\n    ]",
+      "source": {
+        "table": "u108-a.json",
+        "id": "G01_unsettled_skips_settled"
+      }
+    },
+    {
+      "id": "u108-c.G19_settle_keeps",
+      "description": "sync_cli.settle_in: an answer holding a release named in keep is settled anyway",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "811012c6103a4944",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for_the_next_go"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(taken, list) and any(one in keep for one in taken):\n            continue",
+      "new": "        if False:\n            continue",
+      "source": {
+        "table": "u108-c.json",
+        "id": "G19_settle_keeps"
+      }
+    },
+    {
+      "id": "u108-c.G24_walk_ends_at_gate",
+      "description": "sync_cli._walk: a walk that answered every label ends without asking the gate",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a5a5327018e2053",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_label_whose_catalogue_cannot_be_listed_fails_its_line_and_the_walk_goes_on",
+        "tests/test_label_sync.py::test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again",
+        "tests/test_label_sync.py::test_a_pick_outside_the_numbers_is_asked_again",
+        "tests/test_label_sync.py::test_stopping_after_two_of_five_labels_resumes_at_the_third",
+        "tests/test_label_sync.py::test_the_structured_path_asks_the_same_question_and_takes_the_same_answer",
+        "tests/test_label_sync_go.py::test_a_walk_under_a_landed_run_that_records_an_answer_is_not_a_no_op",
+        "tests/test_label_sync_go.py::test_the_walk_ends_at_the_gate_and_a_yes_downloads_what_it_answered",
+        "tests/test_label_sync_go.py::test_the_walk_refused_beside_a_download_keeps_what_it_answered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stopped_at is None:\n        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED",
+      "new": "    if False:\n        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED",
+      "source": {
+        "table": "u108-c.json",
+        "id": "G24_walk_ends_at_gate"
+      }
+    },
+    {
+      "id": "u108-d.G18_settle_matches_identity_again",
+      "description": "sync_cli.settle_in: an answer is settled by its place alone, without checking it is the answer the summary covered",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bbf553ed744b4519",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_settling_leaves_an_answer_whose_place_now_holds_a_different_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if (\n            _text(entry.get(\"label_id\")) != label_id\n            or _text(entry.get(\"answered_at\")) != answered_at\n        ):\n            continue",
+      "new": "        if False:\n            continue",
+      "source": {
+        "table": "u108-d.json",
+        "id": "G18_settle_matches_identity_again"
+      }
+    },
+    {
+      "id": "u108-d.G20_settle_skips_settled_again",
+      "description": "sync_cli.settle_in: an answer already settled is settled again, its first marker overwritten",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1a60112818395236",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_settling_an_answer_already_settled_keeps_its_first_marker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not isinstance(entry, Mapping) or entry.get(SETTLED):\n            continue\n        if (",
+      "new": "        if not isinstance(entry, Mapping):\n            continue\n        if (",
+      "source": {
+        "table": "u108-d.json",
+        "id": "G20_settle_skips_settled_again"
+      }
+    },
+    {
+      "id": "u189.M11_answer_remedy_plain_next",
+      "description": "record_answer: the remedy of an answer with nothing waiting names the plain --next again",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cdcc6ee4e80242e8",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    else f\"ask it first with: crate label sync --next --label {entry.label_id}\"",
+      "new": "                    else \"ask it first with: crate label sync --next\"",
+      "source": {
+        "table": "u189.json",
+        "id": "M11_answer_remedy_plain_next"
+      }
+    },
+    {
+      "id": "u189.M12_pick_remedy_plain_next",
+      "description": "record_answer: the remedy of a pick outside the question names the plain --next again",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f39c5e007c738f0e",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_outside_the_question_names_next_label_for_its_identifiers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    f\"take the identifiers from: crate label sync --next --label \"\n                    f\"{entry.label_id}\",",
+      "new": "                    \"take the identifiers from: crate label sync --next\",",
+      "source": {
+        "table": "u189.json",
+        "id": "M12_pick_remedy_plain_next"
+      }
+    },
+    {
+      "id": "u189.M13_walk_remedy_plain_next",
+      "description": "_walk: the unanswerable refusal's remedy names the plain --next and a placeholder label again",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd6a79749c59de72",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_walk_nobody_can_answer_names_next_label_for_the_label_it_stopped_at"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        f\"sync --next --label {entry.label_id}, then crate label sync \"\n                        f\"--answer ANSWER --label {entry.label_id}\",",
+      "new": "                        f\"sync --next, then crate label sync \"\n                        f\"--answer ANSWER --label NAME\",",
+      "source": {
+        "table": "u189.json",
+        "id": "M13_walk_remedy_plain_next"
+      }
+    },
+    {
+      "id": "u189.M14_pick_no_release_remedy_plain_next",
+      "description": "label_sync: the remedy of --answer pick with no --release names the plain --next again",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74aed18ec060cbad",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[Beta Works-'Beta Works']",
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[Kit's Works-\"Kit's Works\"]",
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[beta-works-'beta-works']"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"--next --label {args.label!r}\",",
+      "new": "                f\"--next\",",
+      "source": {
+        "table": "u189.json",
+        "id": "M14_pick_no_release_remedy_plain_next"
+      }
+    },
+    {
+      "id": "u189.M15_pick_remedy_unquoted",
+      "description": "label_sync: the pick remedy names the label unquoted, so a name with a space pastes as two words",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9628dde54f967f0e",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[Beta Works-'Beta Works']",
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[Kit's Works-\"Kit's Works\"]",
+        "tests/test_label_sync.py::test_a_pick_with_no_release_names_next_label_for_the_label_it_named[beta-works-'beta-works']"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"--next --label {args.label!r}\",",
+      "new": "                f\"--next --label {args.label}\",",
+      "source": {
+        "table": "u189.json",
+        "id": "M15_pick_remedy_unquoted"
+      }
+    },
+    {
+      "id": "u189.M16_empty_label_alone_walks",
+      "description": "label_sync: test --label for truth again, so an empty --label alone runs the whole walk",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6ecb7fbf9bf8eb7b",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv2]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif not args.next_question and (args.label is not None or args.releases):",
+      "new": "    elif not args.next_question and (args.label or args.releases):",
+      "source": {
+        "table": "u189.json",
+        "id": "M16_empty_label_alone_walks"
+      }
+    },
+    {
+      "id": "u189.M1_next_label_refused_again",
+      "description": "label_sync: restore the old refusal of --label without --answer, so --next --label is refused and no single label can be asked",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "17415c0895ba2e04",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_outside_the_question_names_next_label_for_its_identifiers",
+        "tests/test_label_sync.py::test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label",
+        "tests/test_label_sync.py::test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted",
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[Nobody Works]",
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[nobody-works]",
+        "tests/test_label_sync.py::test_next_label_human_output_names_the_one_label",
+        "tests/test_label_sync.py::test_next_label_leaves_another_labels_saved_question_exactly_as_it_was",
+        "tests/test_label_sync.py::test_next_label_prints_a_question_the_plain_next_saved_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_prints_a_saved_question_again_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_then_answer_then_next_label_says_nothing_new",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_label_with_nothing_new_says_so_in_one_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif not args.next_question and (args.label is not None or args.releases):",
+      "new": "    elif args.label is not None or args.releases:",
+      "source": {
+        "table": "u189.json",
+        "id": "M1_next_label_refused_again"
+      }
+    },
+    {
+      "id": "u189.M2_label_alone_not_refused",
+      "description": "label_sync: drop the refusal of --label or --release alone, so they fall through to the interactive walk and name nothing",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "32b5dd9dcef9f602",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_half_shaped_invocation_is_refused_and_records_nothing[argv2-go with --answer]",
+        "tests/test_label_sync.py::test_a_half_shaped_invocation_is_refused_and_records_nothing[argv3-go with --answer]",
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv0]",
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv1]",
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv2]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif not args.next_question and (args.label is not None or args.releases):",
+      "new": "    elif False:",
+      "source": {
+        "table": "u189.json",
+        "id": "M2_label_alone_not_refused"
+      }
+    },
+    {
+      "id": "u189.M3_next_release_not_refused",
+      "description": "label_sync: drop the refusal of --next with --release, so the named releases are silently ignored",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e2fe4a3de28b42dc",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_half_shaped_invocation_is_refused_and_records_nothing[argv6---next would ignore the releases]",
+        "tests/test_label_sync.py::test_a_half_shaped_invocation_is_refused_and_records_nothing[argv7---next would ignore the releases]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif args.next_question and args.releases:",
+      "new": "    elif False:",
+      "source": {
+        "table": "u189.json",
+        "id": "M3_next_release_not_refused"
+      }
+    },
+    {
+      "id": "u189.M4_empty_name_not_refused",
+      "description": "label_sync: drop the refusal of --next with an empty --label, so a blank name reaches the registry as an unfollowed label",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb3e3122949f98b2",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_label_with_an_empty_name_is_refused_as_no_name_given[   ]",
+        "tests/test_label_sync.py::test_next_label_with_an_empty_name_is_refused_as_no_name_given[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif args.next_question and args.label is not None and not args.label.strip():",
+      "new": "    elif False:",
+      "source": {
+        "table": "u189.json",
+        "id": "M4_empty_name_not_refused"
+      }
+    },
+    {
+      "id": "u189.M5_alone_hint_drops_the_label",
+      "description": "label_sync: reword the --label alone hint to the plain --next, which walks from the top",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "beaa61b24984d765",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv0]",
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv1]",
+        "tests/test_label_sync.py::test_label_or_release_alone_refuses_and_names_next_label[argv2]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"to ask about one label: crate label sync --next --label NAME\",",
+      "new": "            \"to ask about one label: crate label sync --next\",",
+      "source": {
+        "table": "u189.json",
+        "id": "M5_alone_hint_drops_the_label"
+      }
+    },
+    {
+      "id": "u189.M6_label_not_passed",
+      "description": "label_sync: call _next without the named label, so --next --label walks every label from the top",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6023e89ebc1613f8",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_outside_the_question_names_next_label_for_its_identifiers",
+        "tests/test_label_sync.py::test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label",
+        "tests/test_label_sync.py::test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted",
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[Nobody Works]",
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[nobody-works]",
+        "tests/test_label_sync.py::test_next_label_human_output_names_the_one_label",
+        "tests/test_label_sync.py::test_next_label_leaves_another_labels_saved_question_exactly_as_it_was",
+        "tests/test_label_sync.py::test_next_label_prints_a_saved_question_again_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_then_answer_then_next_label_says_nothing_new",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_label_with_nothing_new_says_so_in_one_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return _next(ctx, cfg, args.label)",
+      "new": "        return _next(ctx, cfg)",
+      "source": {
+        "table": "u189.json",
+        "id": "M6_label_not_passed"
+      }
+    },
+    {
+      "id": "u189.M7_unknown_name_not_refused",
+      "description": "_next: resolve the name without refusing, so an unfollowed name walks every label",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "650f5a1c460bd46e",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[Nobody Works]",
+        "tests/test_label_sync.py::test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing[nobody-works]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    only = _entry_or_refuse(followed, name) if name is not None else None",
+      "new": "    only = followed.resolve(name) if name is not None else None",
+      "source": {
+        "table": "u189.json",
+        "id": "M7_unknown_name_not_refused"
+      }
+    },
+    {
+      "id": "u189.M8_entries_ignore_the_one",
+      "description": "_next: walk every followed label even when one is named",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cef5cfb307101490",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_outside_the_question_names_next_label_for_its_identifiers",
+        "tests/test_label_sync.py::test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label",
+        "tests/test_label_sync.py::test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted",
+        "tests/test_label_sync.py::test_next_label_human_output_names_the_one_label",
+        "tests/test_label_sync.py::test_next_label_leaves_another_labels_saved_question_exactly_as_it_was",
+        "tests/test_label_sync.py::test_next_label_prints_a_saved_question_again_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_then_answer_then_next_label_says_nothing_new",
+        "tests/test_label_sync.py::test_next_label_whose_listing_fails_reports_the_failure_in_one_check",
+        "tests/test_label_sync.py::test_next_label_with_nothing_new_says_so_in_one_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    entries = [only] if only is not None else list(followed.labels.values())",
+      "new": "    entries = list(followed.labels.values())",
+      "source": {
+        "table": "u189.json",
+        "id": "M8_entries_ignore_the_one"
+      }
+    },
+    {
+      "id": "u189.S1_saved_question_relisted",
+      "description": "_next, sample of the unit's existing guards: never reuse a saved question, so every --next lists the label again",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df1875b2bd415626",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_saved_question_is_printed_again_with_no_provider_call",
+        "tests/test_label_sync.py::test_next_label_leaves_another_labels_saved_question_exactly_as_it_was",
+        "tests/test_label_sync.py::test_next_label_prints_a_question_the_plain_next_saved_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_prints_a_saved_question_again_with_no_catalogue_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if isinstance(pending, Mapping) and pending.get(\"releases\"):\n                question = Question.from_json(pending)\n            else:\n                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))",
+      "new": "            if False:\n                question = Question.from_json(pending)\n            else:\n                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))",
+      "source": {
+        "table": "u189.json",
+        "id": "S1_saved_question_relisted"
+      }
+    },
+    {
+      "id": "u189.S2_question_not_saved",
+      "description": "_next, sample of the unit's existing guards: print a new question without saving it, so no answer can apply to it",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "73274c2c537efda9",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 119,
+      "collected": 204,
+      "baseline_collected": 204,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_half_shaped_invocation_is_refused_and_records_nothing[argv5-goes with --answer pick]",
+        "tests/test_label_sync.py::test_a_label_with_three_new_releases_is_asked_once",
+        "tests/test_label_sync.py::test_a_later_answer_files_its_releases_under_the_run_that_asked",
+        "tests/test_label_sync.py::test_a_pick_naming_a_release_the_question_did_not_offer_is_refused",
+        "tests/test_label_sync.py::test_a_pick_outside_the_question_names_next_label_for_its_identifiers",
+        "tests/test_label_sync.py::test_a_release_answered_not_now_is_not_filed_by_the_labels_sweep",
+        "tests/test_label_sync.py::test_a_release_the_genre_gate_holds_never_appears_in_a_question",
+        "tests/test_label_sync.py::test_a_release_the_sweep_filed_while_its_question_waited_is_settled_by_the_answer",
+        "tests/test_label_sync.py::test_a_saved_question_is_printed_again_with_no_provider_call",
+        "tests/test_label_sync.py::test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall",
+        "tests/test_label_sync.py::test_a_superseded_item_is_not_counted_as_waiting_by_label_approved",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[all]",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[not-now]",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[pick]",
+        "tests/test_label_sync.py::test_after_any_answer_a_second_run_asks_nothing_about_those_releases[stop]",
+        "tests/test_label_sync.py::test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label",
+        "tests/test_label_sync.py::test_an_item_decided_between_the_question_and_the_answer_is_left_as_decided",
+        "tests/test_label_sync.py::test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted",
+        "tests/test_label_sync.py::test_next_label_leaves_another_labels_saved_question_exactly_as_it_was",
+        "tests/test_label_sync.py::test_next_label_prints_a_question_the_plain_next_saved_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_prints_a_saved_question_again_with_no_catalogue_call",
+        "tests/test_label_sync.py::test_next_label_then_answer_then_next_label_says_nothing_new",
+        "tests/test_label_sync.py::test_not_now_moves_the_marker_and_a_release_published_after_is_asked_next_run",
+        "tests/test_label_sync.py::test_nothing_new_after_an_answer_says_the_count_past_the_window",
+        "tests/test_label_sync.py::test_open_review_items_are_offered_once_and_settled_by_the_answer",
+        "tests/test_label_sync.py::test_pick_records_exactly_the_chosen_releases_and_no_others",
+        "tests/test_label_sync.py::test_stop_following_removes_the_label_and_records_no_download",
+        "tests/test_label_sync.py::test_the_record_is_library_state_coupled_with_the_review_queue",
+        "tests/test_label_sync.py::test_the_structured_path_asks_the_same_question_and_takes_the_same_answer",
+        "tests/test_label_sync_go.py::test_a_declined_go_runs_no_tail",
+        "tests/test_label_sync_go.py::test_a_download_failed_only_by_a_track_refused_for_good_runs_the_tail_on_the_rest",
+        "tests/test_label_sync_go.py::test_a_download_half_failed_by_a_track_a_retry_may_clear_is_retried_under_its_run",
+        "tests/test_label_sync_go.py::test_a_download_landed_while_the_fresh_go_downloaded_refuses_its_tail",
+        "tests/test_label_sync_go.py::test_a_download_of_another_verb_with_its_track_in_the_folder_refuses_the_go",
+        "tests/test_label_sync_go.py::test_a_download_queued_by_hand_is_not_resumed_or_held_by_a_go",
+        "tests/test_label_sync_go.py::test_a_download_that_ended_half_failed_is_retried_by_the_next_go_and_only_its_failures",
+        "tests/test_label_sync_go.py::test_a_download_that_finished_during_the_tail_is_not_kept_as_the_gos",
+        "tests/test_label_sync_go.py::test_a_download_that_finished_while_a_go_resumed_another_refuses_the_resumes_tail",
+        "tests/test_label_sync_go.py::test_a_download_whose_every_track_failed_for_good_runs_no_tail_and_says_so",
+        "tests/test_label_sync_go.py::test_a_failing_analyze_run_stops_the_go_and_plans_no_landing",
+        "tests/test_label_sync_go.py::test_a_file_under_a_name_the_tail_left_but_not_the_same_file_is_not_the_gos",
+        "tests/test_label_sync_go.py::test_a_fresh_go_that_landed_another_runs_download_records_it_on_that_run",
+        "tests/test_label_sync_go.py::test_a_fresh_go_with_nothing_new_names_an_unlanded_download_rather_than_end_quietly",
+        "tests/test_label_sync_go.py::test_a_go_job_whose_track_was_refused_for_good_is_not_resumed",
+        "tests/test_label_sync_go.py::test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twice",
+        "tests/test_label_sync_go.py::test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate",
+        "tests/test_label_sync_go.py::test_a_go_parked_by_a_rate_limit_names_its_own_go_for_after_the_park",
+        "tests/test_label_sync_go.py::test_a_go_resumed_under_another_run_names_the_run_that_queued_it_to_continue",
+        "tests/test_label_sync_go.py::test_a_go_resuming_an_earlier_download_lands_it_under_that_gos_manifest_and_pass",
+        "tests/test_label_sync_go.py::test_a_go_stopped_at_the_ceiling_finishes_and_lands_on_the_next_go_under_its_run",
+        "tests/test_label_sync_go.py::test_a_go_stopped_at_the_ceiling_names_its_own_go_to_continue_not_the_job",
+        "tests/test_label_sync_go.py::test_a_go_that_ran_its_tail_once_names_its_landing_when_run_again",
+        "tests/test_label_sync_go.py::test_a_go_under_its_run_over_a_download_that_refused_every_track_runs_no_tail",
+        "tests/test_label_sync_go.py::test_a_go_whose_every_track_was_refused_runs_no_tail_and_says_so",
+        "tests/test_label_sync_go.py::test_a_go_whose_job_was_cancelled_still_refuses_and_lands_nothing",
+        "tests/test_label_sync_go.py::test_a_go_whose_job_was_finished_by_hand_lands_on_the_next_go_with_no_new_decision",
+        "tests/test_label_sync_go.py::test_a_go_whose_pass_landed_reads_nothing_by_its_tails_record",
+        "tests/test_label_sync_go.py::test_a_go_whose_tail_ran_still_refuses_a_file_more_than_its_own_renamed",
+        "tests/test_label_sync_go.py::test_a_go_whose_tail_reached_its_landing_names_that_landing_and_runs_nothing_again",
+        "tests/test_label_sync_go.py::test_a_go_whose_tail_renamed_its_tracks_and_stopped_runs_its_tail_again_under_its_run",
+        "tests/test_label_sync_go.py::test_a_go_whose_tracks_another_tail_renamed_does_not_read_them_as_its_own",
+        "tests/test_label_sync_go.py::test_a_go_whose_tracks_left_reads_no_file_put_there_since_as_its_own",
+        "tests/test_label_sync_go.py::test_a_go_whose_tracks_were_recorded_in_another_folder_is_not_named_for_this_one",
+        "tests/test_label_sync_go.py::test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_new",
+        "tests/test_label_sync_go.py::test_a_go_with_every_track_already_owned_runs_no_tail",
+        "tests/test_label_sync_go.py::test_a_go_with_tracks_in_the_folder_is_named_once_beside_files_no_download_names",
+        "tests/test_label_sync_go.py::test_a_job_stopped_halfway_resumes_and_downloads_only_the_rest",
+        "tests/test_label_sync_go.py::test_a_landing_another_runs_record_cannot_keep_is_a_warning_and_the_go_still_ends_at_it",
+        "tests/test_label_sync_go.py::test_a_landing_proof_of_another_pass_proves_nothing",
+        "tests/test_label_sync_go.py::test_a_landing_recorded_for_one_download_never_answers_for_the_runs_next_one",
+        "tests/test_label_sync_go.py::test_a_landing_that_planned_nothing_ends_the_go_with_its_own_outcome",
+        "tests/test_label_sync_go.py::test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail",
+        "tests/test_label_sync_go.py::test_a_later_gos_download_in_the_same_folder_refuses_the_tail_and_names_its_commands",
+        "tests/test_label_sync_go.py::test_a_plain_download_a_tail_renamed_refuses_a_fresh_go_before_its_gate",
+        "tests/test_label_sync_go.py::test_a_plain_download_a_tail_renamed_refuses_the_runs_own_tail",
+        "tests/test_label_sync_go.py::test_a_plain_download_already_landed_refuses_nothing",
+        "tests/test_label_sync_go.py::test_a_plain_download_in_the_folder_refuses_a_fresh_go_before_the_gate",
+        "tests/test_label_sync_go.py::test_a_plain_download_into_the_folder_refuses_the_runs_own_tail",
+        "tests/test_label_sync_go.py::test_a_proven_pass_whose_tracks_are_still_at_their_download_names_is_still_waiting",
+        "tests/test_label_sync_go.py::test_a_rate_limit_refusal_parks_the_job",
+        "tests/test_label_sync_go.py::test_a_release_accepted_by_hand_and_answered_for_by_nobody_is_not_downloaded",
+        "tests/test_label_sync_go.py::test_a_release_cleared_after_answering_is_named_and_not_downloaded",
+        "tests/test_label_sync_go.py::test_a_release_gone_from_the_provider_does_not_refuse_every_go_after_it",
+        "tests/test_label_sync_go.py::test_a_release_whose_second_track_lands_lossy_runs_the_tail_on_the_first_and_names_it",
+        "tests/test_label_sync_go.py::test_a_resumed_download_failed_only_by_a_refusal_lands_under_the_first_gos_manifest",
+        "tests/test_label_sync_go.py::test_a_resumed_download_whose_every_track_was_refused_runs_no_tail_and_says_so",
+        "tests/test_label_sync_go.py::test_a_retired_intake_file_proves_the_pass",
+        "tests/test_label_sync_go.py::test_a_runs_own_tail_refused_beside_a_download_names_its_tracks_refused_for_good",
+        "tests/test_label_sync_go.py::test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again",
+        "tests/test_label_sync_go.py::test_a_settled_answer_is_not_summarised_again",
+        "tests/test_label_sync_go.py::test_a_staging_folder_not_there_holds_nothing_waiting",
+        "tests/test_label_sync_go.py::test_a_staging_folder_that_cannot_be_listed_refuses_rather_than_hold_nothing",
+        "tests/test_label_sync_go.py::test_a_stale_tag_job_over_the_staging_folder_is_replaced_not_resumed",
+        "tests/test_label_sync_go.py::test_a_stop_at_a_gate_before_the_landing_records_no_landing_and_the_next_go_runs_the_tail",
+        "tests/test_label_sync_go.py::test_a_tail_refused_beside_a_download_still_names_the_tracks_refused_for_good",
+        "tests/test_label_sync_go.py::test_a_tail_step_stopped_at_a_gate_names_its_answer_and_the_rest_of_the_tail",
+        "tests/test_label_sync_go.py::test_a_tails_record_that_cannot_be_read_reads_nothing_as_the_gos_own",
+        "tests/test_label_sync_go.py::test_a_track_already_held_in_another_version_goes_to_the_match_queue_and_is_not_downloaded",
+        "tests/test_label_sync_go.py::test_a_track_no_download_names_refuses_the_fresh_go_and_only_an_unproven_go_is_named[bridge]",
+        "tests/test_label_sync_go.py::test_a_track_no_download_names_refuses_the_fresh_go_and_only_an_unproven_go_is_named[native]",
+        "tests/test_label_sync_go.py::test_a_transient_failure_still_ends_the_go_on_its_refusal_with_no_tail",
+        "tests/test_label_sync_go.py::test_aborting_at_the_gate_downloads_nothing_and_keeps_the_answers",
+        "tests/test_label_sync_go.py::test_an_abort_recorded_after_the_stop_is_not_taken_on",
+        "tests/test_label_sync_go.py::test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for_the_next_go",
+        "tests/test_label_sync_go.py::test_an_answer_saved_after_the_decision_makes_the_decision_stale",
+        "tests/test_label_sync_go.py::test_an_earlier_download_the_fresh_go_resumes_alone_is_asked_about",
+        "tests/test_label_sync_go.py::test_an_earlier_download_the_fresh_go_resumes_is_its_own_and_a_plain_one_is_not",
+        "tests/test_label_sync_go.py::test_an_earlier_go_whose_tail_renamed_its_tracks_at_the_landings_gate_still_refuses",
+        "tests/test_label_sync_go.py::test_an_earlier_gos_download_finished_by_hand_refuses_a_fresh_go_before_it_queues",
+        "tests/test_label_sync_go.py::test_an_earlier_gos_download_once_landed_lets_the_fresh_go_ask_and_download[bridge]",
+        "tests/test_label_sync_go.py::test_an_earlier_gos_download_once_landed_lets_the_fresh_go_ask_and_download[native]",
+        "tests/test_label_sync_go.py::test_an_earlier_gos_landed_download_does_not_refuse_a_later_runs_tail",
+        "tests/test_label_sync_go.py::test_an_unreadable_library_root_refuses_rather_than_read_the_pass_as_landed",
+        "tests/test_label_sync_go.py::test_answers_saved_beside_a_finished_go_wait_and_are_not_landed_with_it",
+        "tests/test_label_sync_go.py::test_name_apply_has_its_confirm_answered_inline_over_the_absolute_staging_folder",
+        "tests/test_label_sync_go.py::test_the_download_lands_as_an_intake_under_the_runs_one_batch",
+        "tests/test_label_sync_go.py::test_the_landing_gates_run_is_named_in_the_envelope_with_the_commands_that_answer_it",
+        "tests/test_label_sync_go.py::test_the_tail_keeps_what_it_left_whichever_way_it_ends",
+        "tests/test_label_sync_go.py::test_two_labels_answered_all_and_one_picked_produce_one_summary_and_one_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                question = listed.question\n                _save_pending(cfg, question)",
+      "new": "                question = listed.question",
+      "source": {
+        "table": "u189.json",
+        "id": "S2_question_not_saved"
+      }
+    },
+    {
+      "id": "r598-a.A1_state_check_widened_to_non_terminal",
+      "description": "orphaned: accept any non terminal record rather than only open, so awaiting-import and committed-unverified records with a dead holder are abandoned and their own remedies hidden",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9754fe320b3639cf",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_the_two_states_with_their_own_remedy_are_never_abandoned[awaiting-import]",
+        "tests/test_session_cli.py::test_the_two_states_with_their_own_remedy_are_never_abandoned[committed-unverified]",
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[awaiting-import-gone-False]",
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[committed-unverified-gone-False]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if record.state is not SessionState.OPEN:\n        return False\n    recorded = record.detail.get(HOLDER_KEY)",
+      "new": "    if record.terminal:\n        return False\n    recorded = record.detail.get(HOLDER_KEY)",
+      "source": {
+        "table": "r598-a.json",
+        "id": "A1_state_check_widened_to_non_terminal"
+      }
+    },
+    {
+      "id": "r598-a.A2_no_holder_read_as_gone",
+      "description": "orphaned: read a record with no recorded holder as orphaned, so every intake landing left open for a deferred placement is abandoned",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4f9c1bcd555d40c6",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_an_open_record_that_names_no_holder_is_never_abandoned",
+        "tests/test_write_session.py::test_abandon_orphaned_sessions_ends_only_the_orphans",
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[open-None-False]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(recorded, Mapping):\n        return False",
+      "new": "    if not isinstance(recorded, Mapping):\n        return True",
+      "source": {
+        "table": "r598-a.json",
+        "id": "A2_no_holder_read_as_gone"
+      }
+    },
+    {
+      "id": "r598-a.A3_liveness_not_consulted",
+      "description": "orphaned: skip holder_alive and judge every open record with a holder orphaned, so a running write's record is ended behind it",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e0f1656a98a67b6",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it",
+        "tests/test_session_cli.py::test_a_record_from_another_boot_not_proven_this_machines_is_kept[another-machine-with-this-host-name]",
+        "tests/test_session_cli.py::test_a_record_from_another_boot_not_proven_this_machines_is_kept[recorded-before-the-machine-identity]",
+        "tests/test_session_cli.py::test_a_record_whose_holder_is_alive_is_kept_open",
+        "tests/test_write_session.py::test_abandon_orphaned_sessions_ends_only_the_orphans",
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[open-here-False]",
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[open-other-host-False]",
+        "tests/test_write_session.py::test_the_record_names_the_holder_the_lock_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return not holder_alive(holder, here=here)",
+      "new": "    return True",
+      "source": {
+        "table": "r598-a.json",
+        "id": "A3_liveness_not_consulted"
+      }
+    },
+    {
+      "id": "r598-a.A4_unreadable_holder_read_as_gone",
+      "description": "orphaned: judge a holder this build cannot parse as gone rather than alive",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ee72e3f12e69b001",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone[open-unreadable-False]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (TypeError, ValueError):\n        return False\n    return not holder_alive(holder, here=here)",
+      "new": "    except (TypeError, ValueError):\n        return True\n    return not holder_alive(holder, here=here)",
+      "source": {
+        "table": "r598-a.json",
+        "id": "A4_unreadable_holder_read_as_gone"
+      }
+    },
+    {
+      "id": "r598-a.A5_holder_never_recorded",
+      "description": "open_session: drop the holder instead of recording it, so no record is ever provably orphaned and a hard kill is a dead end again",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac3ffa2748432705",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it",
+        "tests/test_session_cli.py::test_a_hard_killed_gated_write_blocks_cutover_until_release_abandons_it",
+        "tests/test_session_cli.py::test_a_power_loss_blocks_cutover_until_release_abandons_it",
+        "tests/test_session_cli.py::test_a_release_that_only_abandons_is_a_change_and_passes_the_contract",
+        "tests/test_write_session.py::test_a_supplied_holder_reaches_the_record_as_well_as_the_lock",
+        "tests/test_write_session.py::test_abandon_orphaned_sessions_ends_only_the_orphans",
+        "tests/test_write_session.py::test_the_record_names_the_holder_the_lock_names",
+        "tests/test_write_session.py::test_the_sweep_ends_only_the_orphans_it_was_shown"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        detail={HOLDER_KEY: holder.to_json()} if holder is not None else {},",
+      "new": "        detail={},",
+      "source": {
+        "table": "r598-a.json",
+        "id": "A5_holder_never_recorded"
+      }
+    },
+    {
+      "id": "r647-a.B10_live_identifier_not_asked",
+      "description": "_gone_since_an_earlier_boot: skip the live process check, so a live holder read through a moved clock has its claim cleared mid write",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "740a7dc4ad2832a7",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_live_process_read_through_a_moved_clock_is_kept",
+        "tests/test_write_session.py::test_a_live_process_whose_start_time_moved_with_the_clock_is_kept",
+        "tests/test_write_session.py::test_a_platform_that_cannot_say_whether_the_process_exists_keeps_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return process_exists(holder.pid) is False",
+      "new": "    return True",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B10_live_identifier_not_asked"
+      }
+    },
+    {
+      "id": "r647-a.B11_start_time_compared_again",
+      "description": "_gone_since_an_earlier_boot: the review's defect restored, a live identifier keeps the claim only when its start time matches, so the Linux shape of a stepped clock clears a live claim",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "22fe398d9c2e9ba5",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_live_process_whose_start_time_moved_with_the_clock_is_kept"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return process_exists(holder.pid) is False",
+      "new": "    exists = process_exists(holder.pid)\n    if exists is None:\n        return False\n    return not (exists and process_started(holder.pid) == holder.started)",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B11_start_time_compared_again"
+      }
+    },
+    {
+      "id": "r647-a.B12_cross_boot_never_judged",
+      "description": "holder_alive: every other boot judged alive again, the state before this unit, so a power loss stays a dead end",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0ca72f8ba80d8c5f",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_a_power_loss_blocks_cutover_until_release_abandons_it",
+        "tests/test_write_session.py::test_a_boot_just_past_the_drift_margin_is_gone",
+        "tests/test_write_session.py::test_a_holder_from_an_earlier_boot_of_this_machine_is_gone",
+        "tests/test_write_session.py::test_the_lock_left_by_this_machines_earlier_boot_is_releasable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if holder.boot != reference.boot:\n        return not _gone_since_an_earlier_boot(holder, reference)",
+      "new": "    if holder.boot != reference.boot:\n        return True",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B12_cross_boot_never_judged"
+      }
+    },
+    {
+      "id": "r647-a.B13_current_holder_names_no_machine",
+      "description": "current_holder: record the declared unknown instead of the machine identity, so no holder is ever provably this machine's",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3caee0de34f6540c",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_a_power_loss_blocks_cutover_until_release_abandons_it",
+        "tests/test_write_session.py::test_the_lock_left_by_this_machines_earlier_boot_is_releasable",
+        "tests/test_write_session.py::test_this_platform_names_its_machine_as_a_digest_not_the_serial"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        machine=machine_identity(),",
+      "new": "        machine=UNKNOWN_IDENTITY,",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B13_current_holder_names_no_machine"
+      }
+    },
+    {
+      "id": "r647-a.B14_machine_not_read_back",
+      "description": "Holder.from_json: ignore the recorded machine, so a record or lock read from disk never names one",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9c5288030207e732",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_a_live_holders_claim_is_refused_and_the_lock_file_is_untouched",
+        "tests/test_session_cli.py::test_a_power_loss_blocks_cutover_until_release_abandons_it",
+        "tests/test_write_session.py::test_the_holder_carries_all_five_identifying_fields",
+        "tests/test_write_session.py::test_the_lock_left_by_this_machines_earlier_boot_is_releasable",
+        "tests/test_write_session.py::test_the_record_names_the_holder_the_lock_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            machine=str(data.get(\"machine\", UNKNOWN_IDENTITY)),",
+      "new": "            machine=UNKNOWN_IDENTITY,",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B14_machine_not_read_back"
+      }
+    },
+    {
+      "id": "r647-a.B15_machine_not_written",
+      "description": "Holder.to_json: omit the machine, so nothing on disk carries it",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9495362b099fac08",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_a_live_holders_claim_is_refused_and_the_lock_file_is_untouched",
+        "tests/test_session_cli.py::test_a_power_loss_blocks_cutover_until_release_abandons_it",
+        "tests/test_write_session.py::test_the_holder_carries_all_five_identifying_fields",
+        "tests/test_write_session.py::test_the_lock_left_by_this_machines_earlier_boot_is_releasable",
+        "tests/test_write_session.py::test_the_record_names_the_holder_the_lock_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"machine\": self.machine,\n",
+      "new": "",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B15_machine_not_written"
+      }
+    },
+    {
+      "id": "r647-a.B1_unknown_machine_not_refused",
+      "description": "_gone_since_an_earlier_boot: drop the unknown machine check, so two holders that both name no machine compare equal as text and a holder recorded before the field existed is cleared on a machine that cannot name itself",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d571caf57e0864f",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_two_unknown_machine_identities_are_not_one_machine"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if UNKNOWN_IDENTITY in (holder.machine, reference.machine):\n        return False\n    if holder.machine != reference.machine:",
+      "new": "    if holder.machine != reference.machine:",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B1_unknown_machine_not_refused"
+      }
+    },
+    {
+      "id": "r647-a.B2_machine_equality_dropped",
+      "description": "_gone_since_an_earlier_boot: stop comparing machine identities, so another machine sharing the host name and the library drive has its claim cleared on the host name alone",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "987d419bfd0adcdb",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_a_record_from_another_boot_not_proven_this_machines_is_kept[another-machine-with-this-host-name]",
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[another machine with this host name-changes0]",
+        "tests/test_write_session.py::test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if holder.machine != reference.machine:\n        return False",
+      "new": "    if holder.machine is None:\n        return False",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B2_machine_equality_dropped"
+      }
+    },
+    {
+      "id": "r647-a.B3_unparsable_boot_read_as_gone",
+      "description": "_gone_since_an_earlier_boot: judge a boot that is not a number as proof of an earlier boot rather than as no proof",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9e84330143f281f4",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[a boot that is not a number-changes5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except ValueError:\n        return False\n    if not math.isfinite(earlier_by)",
+      "new": "    except ValueError:\n        return process_exists(holder.pid) is False\n    if not math.isfinite(earlier_by)",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B3_unparsable_boot_read_as_gone"
+      }
+    },
+    {
+      "id": "r647-a.B4_infinite_boot_accepted",
+      "description": "_gone_since_an_earlier_boot: drop the finiteness check, so a boot recorded as minus infinity reads as infinitely earlier",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b1fc466528f8b5b6",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[a boot that is not finite-changes6]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not math.isfinite(earlier_by) or earlier_by <= BOOT_DRIFT_SECONDS:",
+      "new": "    if earlier_by <= BOOT_DRIFT_SECONDS:",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B4_infinite_boot_accepted"
+      }
+    },
+    {
+      "id": "r647-a.B5_drift_margin_halved",
+      "description": "BOOT_DRIFT_SECONDS: 60 to 30, a realistic nearby value, so a clock adjustment of forty seconds reads as a restart",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0a0c45e52d7e8baf",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_boot_just_past_the_drift_margin_is_gone",
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[a boot exactly at the drift margin-changes3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "BOOT_DRIFT_SECONDS = 60.0",
+      "new": "BOOT_DRIFT_SECONDS = 30.0",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B5_drift_margin_halved"
+      }
+    },
+    {
+      "id": "r647-a.B6_drift_margin_doubled",
+      "description": "BOOT_DRIFT_SECONDS: 60 to 120, so a restart a minute and a half apart is kept for no reason",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e84d86b9cc436180",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_boot_just_past_the_drift_margin_is_gone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "BOOT_DRIFT_SECONDS = 60.0",
+      "new": "BOOT_DRIFT_SECONDS = 120.0",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B6_drift_margin_doubled"
+      }
+    },
+    {
+      "id": "r647-a.B7_margin_boundary_exclusive",
+      "description": "_gone_since_an_earlier_boot: less than instead of less than or equal, so a boot exactly at the margin is judged earlier",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "131183aa8b3c11eb",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[a boot exactly at the drift margin-changes3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "earlier_by <= BOOT_DRIFT_SECONDS:",
+      "new": "earlier_by < BOOT_DRIFT_SECONDS:",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B7_margin_boundary_exclusive"
+      }
+    },
+    {
+      "id": "r647-a.B8_direction_ignored",
+      "description": "_gone_since_an_earlier_boot: take the distance between the boots rather than which came first, so a LATER boot reading reads as an earlier boot",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b0ef63656533e7ba",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine[a later boot-changes4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        earlier_by = float(reference.boot) - float(holder.boot)",
+      "new": "        earlier_by = abs(float(reference.boot) - float(holder.boot))",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B8_direction_ignored"
+      }
+    },
+    {
+      "id": "r647-a.B9_platform_silence_read_as_gone",
+      "description": "_gone_since_an_earlier_boot: read a platform declining to say whether the process exists as gone",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6115f65367dde405",
+      "subset": [
+        "tests/test_write_session.py",
+        "tests/test_session_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 600,
+      "baseline_collected": 600,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_write_session.py::test_a_platform_that_cannot_say_whether_the_process_exists_keeps_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return process_exists(holder.pid) is False",
+      "new": "    return process_exists(holder.pid) is not True",
+      "source": {
+        "table": "r647-a.json",
+        "id": "B9_platform_silence_read_as_gone"
+      }
+    },
+    {
+      "id": "r187-a.C1_blank_not_key",
+      "description": "names_something: ask the text and not the comparison key, so a name of punctuation alone is searched for",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "49a1c9ac56e08525",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_name_with_nothing_in_it_is_an_unknown_anchor[ - ]",
+        "tests/test_setbuilder_cli.py::test_an_empty_name_refuses_before_any_scan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return bool(setbuilder.match_key(\"\", text))",
+      "new": "    return bool(text.strip())",
+      "source": {
+        "table": "r187-a.json",
+        "id": "C1_blank_not_key"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
