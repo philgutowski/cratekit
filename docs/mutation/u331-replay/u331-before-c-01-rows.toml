@@ -1,0 +1,893 @@
+name = "u331-before-c-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "u12-independent-round-6.C2_reserve_halved"
+source = { table = "u12-independent-round-6.json", id = "C2_reserve_halved" }
+description = "Halve the absolute memory reserve coefficient, two gibibytes to one. A reserve that can be halved with a green suite is a reserve nothing pins."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DEFAULT_MEMORY_RESERVE_BYTES = 2 * 1024**3'
+new = 'DEFAULT_MEMORY_RESERVE_BYTES = 1 * 1024**3'
+
+[[rows]]
+id = "u12-independent-round-6.C4_darwin_headroom"
+source = { table = "u12-independent-round-6.json", id = "C4_darwin_headroom" }
+description = "Raise the darwin headroom share from half to three quarters, which is the value the measured inactive-queue split says is too optimistic."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DARWIN_HEADROOM_PERCENT = 50'
+new = 'DARWIN_HEADROOM_PERCENT = 75'
+
+[[rows]]
+id = "u12-independent-round-6.C5_swap_threshold"
+source = { table = "u12-independent-round-6.json", id = "C5_swap_threshold" }
+description = "Raise the swap pressure threshold from one gibibyte to four, so the machine the documented kill happened on is no longer refused a pool."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DEFAULT_SWAP_PRESSURE_BYTES = 1 * 1024**3'
+new = 'DEFAULT_SWAP_PRESSURE_BYTES = 4 * 1024**3'
+
+[[rows]]
+id = "u12-independent-round-6.C6_used_percent_ceiling"
+source = { table = "u12-independent-round-6.json", id = "C6_used_percent_ceiling" }
+description = "Raise the used-percent ceiling from eighty five to ninety five."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DEFAULT_USED_PERCENT_CEILING = 85'
+new = 'DEFAULT_USED_PERCENT_CEILING = 95'
+
+[[rows]]
+id = "u12-independent-round-6.C7_max_tasks_per_child"
+source = { table = "u12-independent-round-6.json", id = "C7_max_tasks_per_child" }
+description = "Two and a half times the recycle budget, one hundred to two hundred fifty, so a child holds an allocator two and a half times longer before retiring."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DEFAULT_MAX_TASKS_PER_CHILD = 100'
+new = 'DEFAULT_MAX_TASKS_PER_CHILD = 250'
+
+[[rows]]
+id = "u12-independent-round-6.C8_probe_deadline"
+source = { table = "u12-independent-round-6.json", id = "C8_probe_deadline" }
+description = "Cut the probe deadline from two minutes to forty five seconds, below the twice-the-reference floor the docstring claims the suite states."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = 'DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0'
+new = 'DEFAULT_PROBE_TIMEOUT_SECONDS = 45.0'
+
+[[rows]]
+id = "u12-independent-round-6.C9_reap_budget"
+source = { table = "u12-independent-round-6.json", id = "C9_reap_budget" }
+description = "Halve the reaping budget, one second to half a second, which the round six docstring names as the value that makes the terminate rung a race."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '_PROBE_REAP_SECONDS = 1.0'
+new = '_PROBE_REAP_SECONDS = 0.5'
+
+[[rows]]
+id = "u12-independent-round-6.G1_dotdot_not_refused"
+source = { table = "u12-independent-round-6.json", id = "G1_dotdot_not_refused" }
+description = "Drop the refusal of a cgroup path containing dot dot, so a climbing path is rewritten into a real sibling cgroup and its tighter cap binds."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if ".." in fields:
+        candidates = [mount]
+    else:
+'''
+new = '''
+    if False:
+        candidates = [mount]
+    else:
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G2_containment_dropped"
+source = { table = "u12-independent-round-6.json", id = "G2_containment_dropped" }
+description = "Stop checking that a resolved level is still inside the mount, so a symlink out of the mount is read as a level of this process's cgroup."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if resolved is None or not resolved.is_relative_to(anchor):
+        return None
+'''
+new = '''
+    if resolved is None:
+        return None
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G3_headroom_can_go_negative"
+source = { table = "u12-independent-round-6.json", id = "G3_headroom_can_go_negative" }
+description = "Report a negative headroom for a cgroup already over its cap."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    return max(0, limit - used)
+'''
+new = '''
+    return limit - used
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G4_controller_substring_match"
+source = { table = "u12-independent-round-6.json", id = "G4_controller_substring_match" }
+description = "Match the memory controller by substring, so a controller named memoryfoo sends the walk to an unrelated cgroup."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        elif "memory" in controllers.split(","):
+'''
+new = '''
+        elif "memory" in controllers:
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G5_loosest_cap_wins"
+source = { table = "u12-independent-round-6.json", id = "G5_loosest_cap_wins" }
+description = "Take the loosest cap on the chain rather than the tightest, so a generous unit inside a tight slice reports the unit's number."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    return min(found) if found else None
+'''
+new = '''
+    return max(found) if found else None
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G6_cgroup_cap_ignored"
+source = { table = "u12-independent-round-6.json", id = "G6_cgroup_cap_ignored" }
+description = "Ignore the cgroup cap entirely and return the host reading, which is the defect that sizes a container by its host."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    return reading if capped is None else min(reading, capped)
+'''
+new = '''
+    return reading
+'''
+
+[[rows]]
+id = "u12-independent-round-6.G7_valueerror_escapes_the_reader"
+source = { table = "u12-independent-round-6.json", id = "G7_valueerror_escapes_the_reader" }
+description = "Narrow the kernel-file reader back to OSError, so undecodable bytes and an embedded null byte raise out of a function that promises a number."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    except (OSError, ValueError):
+        return None
+'''
+new = '''
+    except OSError:
+        return None
+'''
+
+[[rows]]
+id = "u12-independent-round-6.M1_measurement_below_the_floor"
+source = { table = "u12-independent-round-6.json", id = "M1_measurement_below_the_floor" }
+description = "Return the measurement even when it is below the declared floor, so the floor becomes a fallback rather than a floor."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    return max(measured, floor_bytes)
+'''
+new = '''
+    return measured
+'''
+
+[[rows]]
+id = "u12-independent-round-6.M2_nonsense_measurement_accepted"
+source = { table = "u12-independent-round-6.json", id = "M2_nonsense_measurement_accepted" }
+description = "Accept a boolean, a float or a zero from the probe as a byte count."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if not isinstance(measured, int) or isinstance(measured, bool) or measured < 1:
+        return floor_bytes
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.M3_zero_deadline_allowed"
+source = { table = "u12-independent-round-6.json", id = "M3_zero_deadline_allowed" }
+description = "Allow a probe deadline of zero or less, which is a probe that can never answer reporting the floor as though it had measured."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must leave the probe some time to answer")
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.M4_model_freed_before_the_reading"
+source = { table = "u12-independent-round-6.json", id = "M4_model_freed_before_the_reading" }
+description = "Free the loaded object before the resident set is read, the allocator retention defect the probe was rewritten to fix."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        model = loader()
+        try:
+            measured = resident_bytes()
+        finally:
+'''
+new = '''
+        loader()
+        try:
+            measured = resident_bytes()
+        finally:
+'''
+
+[[rows]]
+id = "u12-independent-round-6.M5_terminate_rung_removed"
+source = { table = "u12-independent-round-6.json", id = "M5_terminate_rung_removed" }
+description = "Remove the terminate rung alone, so every abandoned probe child meets an unconditional kill with no chance to unwind."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if worker.is_alive():
+        worker.terminate()
+        worker.join(_PROBE_REAP_SECONDS)
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.M6_kill_rung_removed"
+source = { table = "u12-independent-round-6.json", id = "M6_kill_rung_removed" }
+description = "Remove the kill backstop alone, so a child that ignores its terminate is left running and still allocating."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if worker.is_alive():
+        worker.kill()
+        worker.join(_PROBE_REAP_SECONDS)
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.M7_parent_keeps_the_write_end"
+source = { table = "u12-independent-round-6.json", id = "M7_parent_keeps_the_write_end" }
+description = "Leave the parent's copy of the pipe write end open, so a child that dies without answering is indistinguishable from a slow one."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    # exactly like a slow one until the timeout expired.
+    writer.close()
+'''
+new = '''
+    # exactly like a slow one until the timeout expired.
+'''
+
+[[rows]]
+id = "u12-independent-round-6.M8_no_reap_after_the_probe"
+source = { table = "u12-independent-round-6.json", id = "M8_no_reap_after_the_probe" }
+description = "Remove the reap from the probe's finally, so an abandoned child keeps its allocation on a machine already declared tight."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        reader.close()
+        _reap(worker)
+'''
+new = '''
+        reader.close()
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P10_recycle_reported_for_in_process"
+source = { table = "u12-independent-round-6.json", id = "P10_recycle_reported_for_in_process" }
+description = "Report a recycle count on a plan that runs in the calling process and has no child to retire."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        max_tasks_per_child=None if workers == 1 else max_tasks_per_child,
+'''
+new = '''
+        max_tasks_per_child=max_tasks_per_child,
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P12_unreadable_falls_back_to_ceiling"
+source = { table = "u12-independent-round-6.json", id = "P12_unreadable_falls_back_to_ceiling" }
+description = "Make the unreadable-memory fallback the declared ceiling rather than one worker, which is the exact fallback the brief forbids."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        return PoolPlan(
+            workers=1,
+            items=items,
+            bound=Bound.MEMORY_UNREADABLE,
+'''
+new = '''
+        return PoolPlan(
+            workers=ceiling,
+            items=items,
+            bound=Bound.MEMORY_UNREADABLE,
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P1_reserve_not_applied"
+source = { table = "u12-independent-round-6.json", id = "P1_reserve_not_applied" }
+description = "Drop the absolute reserve from the budget entirely, so the whole reading is claimable before the percent scales it."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    budget = max(0, available - reserve_bytes)
+'''
+new = '''
+    budget = max(0, available)
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P2_order_reversed"
+source = { table = "u12-independent-round-6.json", id = "P2_order_reversed" }
+description = "Reverse the last two steps: divide into workers first and then scale the count, which the docstring says differs only at the boundaries."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    affordable = budget * headroom_percent // 100 // worker_bytes
+'''
+new = '''
+    affordable = budget // worker_bytes * headroom_percent // 100
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P3_budget_can_go_negative"
+source = { table = "u12-independent-round-6.json", id = "P3_budget_can_go_negative" }
+description = "Remove the floor at zero so a reading smaller than the reserve produces a negative budget and a negative affordable count."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    budget = max(0, available - reserve_bytes)
+'''
+new = '''
+    budget = available - reserve_bytes
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P4_no_floor_of_one_worker"
+source = { table = "u12-independent-round-6.json", id = "P4_no_floor_of_one_worker" }
+description = "Remove the floor of one worker, so a machine that affords none plans a pool of zero."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    workers = max(1, smallest)
+'''
+new = '''
+    workers = smallest
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P5_tie_goes_to_the_ceiling"
+source = { table = "u12-independent-round-6.json", id = "P5_tie_goes_to_the_ceiling" }
+description = "Put the ceiling ahead of available memory in the precedence list, so a tie is reported as the ceiling rather than as memory."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        (Bound.AVAILABLE_MEMORY, affordable),
+        (Bound.CEILING, ceiling),
+'''
+new = '''
+        (Bound.CEILING, ceiling),
+        (Bound.AVAILABLE_MEMORY, affordable),
+'''
+
+[[rows]]
+id = "u12-independent-round-6.P6_no_insufficient_memory_bound"
+source = { table = "u12-independent-round-6.json", id = "P6_no_insufficient_memory_bound" }
+description = "Remove the reclassification that tells a machine affording exactly one from a machine affording none."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        bound = Bound.INSUFFICIENT_MEMORY
+'''
+new = '''
+        bound = Bound.AVAILABLE_MEMORY
+'''
+
+[[rows]]
+id = "u12-independent-round-6.R1_available_type_check"
+source = { table = "u12-independent-round-6.json", id = "R1_available_type_check" }
+description = "Accept a non-integer or negative available reading as a real reading."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
+'''
+new = '''
+    return value
+'''
+
+[[rows]]
+id = "u12-independent-round-6.R2_available_never_raises"
+source = { table = "u12-independent-round-6.json", id = "R2_available_never_raises" }
+description = "Remove the catch around the injected available reader, so a reader that raises raises out of plan_pool."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    try:
+        value = reader()
+    except Exception:
+        return None
+    if not isinstance(value, int)'''
+new = '''
+    value = reader()
+    if not isinstance(value, int)'''
+
+[[rows]]
+id = "u12-independent-round-6.R3_pressure_percent_range"
+source = { table = "u12-independent-round-6.json", id = "R3_pressure_percent_range" }
+description = "Accept a used-percent outside zero to one hundred as a real reading."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if not 0 <= used <= 100:
+        return None
+    return value
+'''
+new = '''
+    return value
+'''
+
+[[rows]]
+id = "u12-independent-round-6.R4_pressure_type_check"
+source = { table = "u12-independent-round-6.json", id = "R4_pressure_type_check" }
+description = "Accept anything at all as a pressure reading, not only a Pressure."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if not isinstance(value, Pressure):
+        return None
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.X1_pool_of_one_built"
+source = { table = "u12-independent-round-6.json", id = "X1_pool_of_one_built" }
+description = "Let executor_arguments build a pool for a plan of one worker instead of refusing at the seam."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if plan.in_process:
+        raise ValueError(
+            "a plan of one worker runs in the calling process; there is no pool "
+            "to build. Branch on plan.in_process before asking for a pool."
+        )
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.X3_generation_boundary_removed"
+source = { table = "u12-independent-round-6.json", id = "X3_generation_boundary_removed" }
+description = "Give one executor all of the work rather than one generation of it, which is the deadlock the generation boundary exists to prevent."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    generation = plan.tasks_per_generation or len(ordered) or 1
+'''
+new = '''
+    generation = len(ordered) or 1
+'''
+
+[[rows]]
+id = "u12-independent-round-6.X4_initargs_not_refused"
+source = { table = "u12-independent-round-6.json", id = "X4_initargs_not_refused" }
+description = "Stop holding initializer arguments to the picklability rule, so the same call means two things on two machines again."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    for position, argument in enumerate(initargs):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.X5_in_process_path_removed"
+source = { table = "u12-independent-round-6.json", id = "X5_in_process_path_removed" }
+description = "Build a pool even for a plan of one worker, which is the brief's third requirement inverted."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+    if plan.in_process:
+        if initializer is not None:
+            initializer(*initargs)
+        return [function(item) for item in ordered]
+'''
+new = ''
+
+[[rows]]
+id = "u12-independent-round-6.X7_generation_size_drops_the_width"
+source = { table = "u12-independent-round-6.json", id = "X7_generation_size_drops_the_width" }
+description = "Size a generation by one child's budget rather than by the whole set of children, so the executor is rebuilt workers times too often."
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py"]
+old = '''
+        return self.workers * self.max_tasks_per_child
+'''
+new = '''
+        return self.max_tasks_per_child
+'''
+
+[[rows]]
+id = "u241.M01_worker_takes_the_interrupt"
+source = { table = "u241.json", id = "M01_worker_takes_the_interrupt" }
+description = "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+'''
+new = '''
+    _leave_when_the_parent_does()
+'''
+
+[[rows]]
+id = "u241.M02_worker_outlives_its_parent"
+source = { table = "u241.json", id = "M02_worker_outlives_its_parent" }
+description = "stream worker: do not watch the parent, so a killed driver leaves its workers holding their memory"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+'''
+new = '''
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+'''
+
+[[rows]]
+id = "u241.M03_close_waits_for_unread_work"
+source = { table = "u241.json", id = "M03_close_waits_for_unread_work" }
+description = "WorkStream._stop: do not end the workers, so a close waits for every item nobody will read"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''
+        _end_workers(executor)
+        executor.shutdown(wait=True, cancel_futures=True)
+'''
+new = '''
+        executor.shutdown(wait=True, cancel_futures=True)
+'''
+
+[[rows]]
+id = "u241.M07_used_percent_gate_is_strict"
+source = { table = "u241.json", id = "M07_used_percent_gate_is_strict" }
+description = "_gates_refusing: the used percent gate refuses only above its limit, not at it"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py", "tests/test_pool_sizing.py"]
+old = '''
+    if pressure.used_percent >= used_percent_ceiling:
+        refused.append(
+'''
+new = '''
+    if pressure.used_percent > used_percent_ceiling:
+        refused.append(
+'''
+
+[[rows]]
+id = "u241.M08_plan_forgets_which_gate"
+source = { table = "u241.json", id = "M08_plan_forgets_which_gate" }
+description = "plan_pool: a plan refused by pressure no longer carries which gate refused it"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py", "tests/test_analysis_ahead.py"]
+old = '''
+            ceiling=ceiling,
+            refused_by=refused,
+'''
+new = '''
+            ceiling=ceiling,
+'''
+
+[[rows]]
+id = "u301.P1_initargs_refused_without_an_initializer"
+source = { table = "u301.json", id = "P1_initargs_refused_without_an_initializer" }
+description = "_refuse_unsendable: check the initializer's arguments only when there is an initializer, so map_workers and WorkStream pass a lambda argument on an in process plan"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py", "tests/test_pool_stream.py"]
+old = '''
+    for position, argument in enumerate(initargs):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+'''
+new = '''
+    for position, argument in enumerate(initargs if initializer is not None else ()):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+'''
+
+[[rows]]
+id = "u301.P2_initializer_held_to_the_rule"
+source = { table = "u301.json", id = "P2_initializer_held_to_the_rule" }
+description = "_refuse_unsendable: never check the initializer, so an unpicklable one passes an in process plan and fails a pooled one"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py", "tests/test_pool_stream.py"]
+old = '''
+    if initializer is not None:
+        _refuse_what_no_child_could_receive(initializer, "initializer")
+    for position, argument in enumerate(initargs):'''
+new = '    for position, argument in enumerate(initargs):'
+
+[[rows]]
+id = "r1372.K19_passed_by_strict"
+source = { table = "r1372.json", id = "K19_passed_by_strict" }
+description = "passed_by: a write that began at the snapshot's very moment is not passed"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '            if began is not None and not began > moment:'
+new = '            if began is not None and began < moment:'
+
+[[rows]]
+id = "r1372.K20_passed_by_any_pair"
+source = { table = "r1372.json", id = "K20_passed_by_any_pair" }
+description = "passed_by: a snapshot lets go of every pair's carried records, not its own"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '''
+            if _account_of(key, steps, new=new, made=made) != account_id:
+                continue
+            began = placeholders.parse_hearted(steps.get(account))
+            if began is not None'''
+new = '''
+            began = placeholders.parse_hearted(steps.get(account))
+            if began is not None'''
+
+[[rows]]
+id = "r1372.K21_made_pair_unmapped"
+source = { table = "r1372.json", id = "K21_made_pair_unmapped" }
+description = "_account_of: a made pair is read under its key, not the account playlist it was made as"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '''
+    if key.startswith(new):
+        return steps.get(made) if isinstance(steps.get(made), str) else ""
+    return key'''
+new = '    return key'
+
+[[rows]]
+id = "r1376.F14_finished_filter_gone"
+source = { table = "r1376.json", id = "F14_finished_filter_gone" }
+description = "stopped_writes (sample, U225): a stop a later run finished is still read, by a first sync among others"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '        if account_id not in finished or not finished[account_id] > began'
+new = '        if True'
+
+[[rows]]
+id = "r1394.S10_later_unsent_write_hides_the_pending"
+source = { table = "r1394.json", id = "S10_later_unsent_write_hides_the_pending" }
+description = "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):'
+new = '            if held is None or write.at > held[1].at:'
+
+[[rows]]
+id = "r1394.S1_counts_beyond_the_moves_trusted"
+source = { table = "r1394.json", id = "S1_counts_beyond_the_moves_trusted" }
+description = "stopped write: counts larger than the write's moves are trusted rather than read as nothing known"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if sent is None or landed is None or not landed <= sent <= total:'
+new = '    if sent is None or landed is None or not landed <= sent:'
+
+[[rows]]
+id = "r1394.S2_missing_counts_read_as_none_sent"
+source = { table = "r1394.json", id = "S2_missing_counts_read_as_none_sent" }
+description = "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+        return 0, total
+    return landed, sent'''
+new = '''
+        return 0, 0
+    return landed, sent'''
+
+[[rows]]
+id = "r1394.S5_sent_read_as_landed"
+moved = "Same return in _moving; U298 replaced the module's _count with cli.output.count_of"
+source = { table = "r1394.json", id = "S5_sent_read_as_landed" }
+description = "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))'
+new = '    return at, start, end, count_of(value.get(LANDED)), count_of(value.get(LANDED))'
+
+[[rows]]
+id = "r1394.S6_counts_not_wired"
+source = { table = "r1394.json", id = "S6_counts_not_wired" }
+description = "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+        landed=landed,
+        sent=reached_by,'''
+new = '''
+        landed=0,
+        sent=0,'''
+
+[[rows]]
+id = "r1394.S8_positions_first_only"
+source = { table = "r1394.json", id = "S8_positions_first_only" }
+description = "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )'''
+new = '''
+    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )[:1]'''
+
+[[rows]]
+id = "r1394.S9_moving_step_counts_dropped"
+source = { table = "r1394.json", id = "S9_moving_step_counts_dropped" }
+description = "moving step: the record written carries a sent count of 0 whatever it is told"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '        SENT: int(sent),'
+new = '        SENT: 0,'
+
+[[rows]]
+id = "r1418.F7_composite_ordering_start_unread"
+source = { table = "r1418.json", id = "F7_composite_ordering_start_unread" }
+description = "what F7 holds: a stopped write with no moving step reads no start from its ordering step, so the start F7 narrows is never read"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    begin = sent[1] if sent is not None else start'
+new = '    begin = sent[1] if sent is not None else ()'
+
+[[rows]]
+id = "r1434.S2_positions_compare_every_track_listed"
+source = { table = "r1434.json", id = "S2_positions_compare_every_track_listed" }
+description = "existing guard, U225: the path compares every track listed now, a track added since included, so an addition reads the account off the path"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    common = set(current) & set(start)'
+new = '    common = set(current)'
+
+[[rows]]
+id = "u220.A3_keep_head"
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same tail match"
+source = { table = "u220.json", id = "A3_keep_head" }
+description = "_to_the_front: match the asked order's head rather than its tail, the old to the end rule"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = 'one == wanted[len(wanted) - 1 - keep]'
+new = 'one == wanted[keep]'
+
+[[rows]]
+id = "u220.A4_first_first"
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same reversal of the moves"
+source = { table = "u220.json", id = "A4_first_first" }
+description = "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '    return list(reversed(wanted[: len(wanted) - keep]))'
+new = '    return wanted[: len(wanted) - keep]'
+
+[[rows]]
+id = "u225.M6_front_keeps_nothing"
+source = { table = "u225.json", id = "M6_front_keeps_nothing" }
+description = "front_moves: no tail is kept, every asked track is moved"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '''
+            keep += 1
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+new = '''
+            keep += 0
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+
+[[rows]]
+id = "u225.M8_reached_strict_membership"
+source = { table = "u225.json", id = "M8_reached_strict_membership" }
+description = "reached: a track added or taken off since is compared too"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '    common = set(current) & set(start)'
+new = '    common = set(current) | set(start)'
+
+[[rows]]
+id = "u225.M9_finish_ignored"
+source = { table = "u225.json", id = "M9_finish_ignored" }
+description = "stopped_writes: a later run that finished the pair does not hide the stopped write"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '''
+            if done in steps:
+                if account_id not in finished'''
+new = '''
+            if False:
+                if account_id not in finished'''
+
+[[rows]]
+id = "u234.O15_reordered_counts_additions"
+source = { table = "u234.json", id = "O15_reordered_counts_additions" }
+description = "reordered compares the readings whole, so a track added between them is read as a reorder"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+    return [one for one in current if one in common] != [
+        one for one in dict.fromkeys(kept) if one in common
+    ]
+
+
+__all__'''
+new = '''
+    return current != list(dict.fromkeys(kept))
+
+
+__all__'''
