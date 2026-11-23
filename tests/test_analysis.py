@@ -25,9 +25,7 @@ def _touch_audio(folder: Path, name: str) -> Path:
 class _FakeModel:
     """Deterministic stand-in: frame count tracks input length, values track mean.
 
-    Carries a label table naming the three targets at the columns it fills,
-    because the scorer resolves columns by name and scores nothing by number
-    (R-370).
+    Its label table names the targets, since the scorer resolves by name (R-370).
     """
 
     labels = ("Singing", "Male singing", "Female singing")
@@ -142,12 +140,8 @@ def test_a_killed_batch_resumes_skipping_completed_tracks(tmp_path):
 
 
 class _LabelledModel(_FakeModel):
-    """A fake whose targets sit at columns 3, 4 and 5, behind three speech columns.
-
-    The speech columns are left at zero and the singing columns carry a
-    level, so a read by number scores nothing and a read by name scores a
-    sung, male lead. The two reads cannot agree.
-    """
+    """A fake whose targets sit at columns 3 to 5, behind three zero speech columns,
+    so a read by number scores nothing and a read by name a sung male lead."""
 
     labels = (
         "Speech",
@@ -174,11 +168,7 @@ class _LabelledModel(_FakeModel):
 
 
 def _fake_panns(monkeypatch, *, built: list | None = None):
-    """A stand in for the extra: records the frame wrapper, refuses the clip one.
-
-    torch is stubbed too, so the readiness check neither needs nor loads the
-    real one.
-    """
+    """A stand in for the extra: records the frame wrapper, refuses the clip one, torch stubbed."""
     import sys
     import types
 

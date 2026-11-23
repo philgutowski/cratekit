@@ -1,13 +1,9 @@
 """R-788: adoption files a vox tagged track under its bucket's vocal sub.
 
-The pure halves: which buckets declare the sub, what the plan does with a
-track that carries the tag, what the digest covers, how a tree already read
-becomes the value the plan takes, and how the tag is read off a database. The
-read off a real database and the approved apply are driven in
-``tests/test_adopt_workers.py``. Expected identifiers are derived from the
-shipped taxonomy's declarations rather than spelled.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The pure halves: which buckets declare the sub, what the plan does with a tagged
+track, what the digest covers, and how the tree and the tag are read; the apply
+is in ``tests/test_adopt_workers.py``. Identifiers are derived from the shipped
+taxonomy. D1 applies.
 """
 
 from __future__ import annotations
@@ -266,9 +262,8 @@ def test_a_tree_nobody_read_plans_no_vocal_membership():
 
 
 def test_a_library_with_no_calibrated_cut_plans_no_vocal_membership():
-    """The routing pass files nothing under the vocal sub without a cut. A tag
-    written from the default cut is the product's answer, so adoption files
-    nothing from it either, and says why."""
+    """Without a cut adoption files nothing under the vocal sub, from a default cut
+    tag either, and says why."""
     uncalibrated = replace(_vocals("t"), calibrated=False)
     plan = _plan([_scanned("t")], uncalibrated)
 
@@ -297,9 +292,7 @@ def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
 
 
 def test_an_entry_the_plan_does_not_place_has_no_bucket_whatever_bucket_it_is_handed():
-    """The function's own contract, asked directly. The plan blanks the bucket
-    of an entry it does not place before it asks, and a caller that did not
-    must get the same answer and not an addition."""
+    """Asked directly, an entry the plan does not place gets no addition."""
     for disposition in adopt_scan.Disposition:
         placed = disposition in (
             adopt_scan.Disposition.ROUTE,

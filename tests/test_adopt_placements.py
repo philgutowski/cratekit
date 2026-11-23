@@ -1,12 +1,9 @@
 """R-731: adoption withholds a track that already holds a competing place.
 
-The three pure halves: what the taxonomy says competes, what the plan does
-with a track that holds one, and how a tree already read becomes the value the
-plan takes. The read off a real database and the approved apply are driven in
-``tests/test_adopt_workers.py``. Every expected identifier is derived from the
-shipped taxonomy's own declarations rather than spelled.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The pure halves: what competes, what the plan does with a track holding one,
+and how a tree already read becomes the plan's value; the database read and the
+apply are in ``tests/test_adopt_workers.py``. Identifiers are derived from the
+shipped taxonomy. D1 applies.
 """
 
 from __future__ import annotations
@@ -61,9 +58,8 @@ def test_the_style_subs_compete_where_a_bucket_has_no_energy_dimension():
     bucket = _style_bucket()
     kind, subs = routing.competing_subs(DECLARED, bucket.id)
     assert kind is routing.Competing.STYLE
-    # R-797: a playlist this folder still holds for a bucket that left it
-    # competes here too. Its own tests are in test_adopt_former_place.py.
-    # Read off the declarations and not through the function under test.
+    # R-797: a former place still held for a bucket that left competes too
+    # (test_adopt_former_place.py), read off the declarations.
     former = {
         place.id
         for declarer in DECLARED.buckets
@@ -507,11 +503,7 @@ def test_the_digest_covers_every_field_the_review_list_shows():
 
 
 def _clashing() -> taxonomy.Taxonomy:
-    """The shipped taxonomy with a sub class added under a band's identifier.
-
-    Nothing in the shipped template does this, which is why the two guards
-    below measured zero against it. A person's own template can.
-    """
+    """The shipped taxonomy with a sub class under a band's identifier, as a person's can be."""
     clash = taxonomy.SubClass(id=HIGH, display="Peak", policy=taxonomy.SubPolicy.MANUAL)
     return replace(DECLARED, sub_classes=(*DECLARED.sub_classes, clash))
 
