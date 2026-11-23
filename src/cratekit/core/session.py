@@ -598,21 +598,23 @@ def assert_gates(
     # One claimant, so the record names the process the lock names.
     claimant = holder or current_holder()
     with session_lock(resolved, path=lock, holder=claimant) as held:
-        keeping = (
-            _recorded(
+        # The record a gated session keeps (R-12, R-375) ENDS TERMINAL ON EVERY
+        # PATH THAT CAN STILL WRITE THE LOG: a raise or a refused close abandons
+        # it, a kill is left to :func:`abandon_orphaned_sessions` (R-598).
+        # Abandoning is an attempt that never replaces the session's own error.
+        record = (
+            open_session(
                 resolved,
                 workflow=workflow,
-                acknowledgment=acknowledgment,
+                actor=acknowledgment.actor,
+                acknowledged_at=acknowledgment.recorded_at.isoformat(),
                 holder=claimant,
-                intent=intent,
-                identity_provider=identity_provider,
-                mount_enumerator=mount_enumerator,
                 now=now,
             )
             if keep is Keep.RECORD
-            else nullcontext()
+            else None
         )
-        with keeping as record:
+        try:
             with analysis_files_unmoved(watched) if watched else nullcontext():
                 yield Gates(
                     workflow=workflow,
@@ -622,6 +624,27 @@ def assert_gates(
                     intent=intent,
                     record=record,
                 )
+            if record is not None:
+                close_session(
+                    record,
+                    resolved,
+                    state=SessionState.CLOSED,
+                    intent=intent,
+                    identity_provider=identity_provider,
+                    mount_enumerator=mount_enumerator,
+                    now=now,
+                )
+        except BaseException:
+            if record is not None:
+                try:
+                    close_session(record, resolved, state=SessionState.ABANDONED, now=now)
+                except Exception:  # noqa: BLE001 - the session's own error is the one to surface
+                    logger.warning(
+                        "session %s could not be recorded as abandoned",
+                        record.session_id,
+                        exc_info=True,
+                    )
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -692,16 +715,15 @@ def commit_sources(
         except CratekitError as exc:
             record.sources[source] = str(SourceState.REFUSED)
             write_record(record, cfg)
+            # The reason, remediation and retryability carried over from the source's cause.
             raise CratekitError(
-                Cause(
-                    reason=exc.cause.reason,
+                replace(
+                    exc.cause,
                     message=(
                         f"session {record.session_id} refused at source {source!r}; "
                         f"sources already committed are untouched"
                     ),
-                    remediation=exc.cause.remediation,
                     scope=widest_scope(exc.cause.scope, Scope.SOURCE),
-                    retryable=exc.cause.retryable,
                     origin=(*exc.cause.origin, "session"),
                     detail={
                         "session_id": record.session_id,
@@ -752,60 +774,6 @@ def close_session(
     record.ended = output.timestamp(now)
     write_record(record, cfg)
     return record
-
-
-# ---------------------------------------------------------------------------
-# The record a gated session keeps (R-12, R-375)
-# ---------------------------------------------------------------------------
-
-
-@contextmanager
-def _recorded(
-    cfg: config.Config,
-    *,
-    workflow: str,
-    acknowledgment: Acknowledgment,
-    holder: Holder,
-    intent: Intent,
-    identity_provider: preflight.IdentityProvider | None,
-    mount_enumerator: preflight.MountEnumerator | None,
-    now: datetime | None,
-) -> Iterator[SessionRecord]:
-    """Hold an open session record for the body of one gated session.
-
-    Private, reached only through ``assert_gates(keep=Keep.RECORD)``, so it
-    records what the gates passed. IT ENDS TERMINAL ON EVERY PATH THAT CAN STILL
-    WRITE THE LOG: a raise or a refused close abandons it, a kill is left to
-    :func:`abandon_orphaned_sessions` (R-598). Abandoning is an attempt that
-    never replaces the session's own error.
-    """
-    record = open_session(
-        cfg,
-        workflow=workflow,
-        actor=acknowledgment.actor,
-        acknowledged_at=acknowledgment.recorded_at.isoformat(),
-        holder=holder,
-        now=now,
-    )
-    try:
-        yield record
-        close_session(
-            record,
-            cfg,
-            state=SessionState.CLOSED,
-            intent=intent,
-            identity_provider=identity_provider,
-            mount_enumerator=mount_enumerator,
-            now=now,
-        )
-    except BaseException:
-        try:
-            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
-        except Exception:  # noqa: BLE001 - the session's own error is the one to surface
-            logger.warning(
-                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
-            )
-        raise
 
 
 def record_commit(
@@ -974,13 +942,10 @@ def verify_commit(
     try:
         handle = open_fresh()
         agreed = bool(expect(handle))
-    except CratekitError as exc:
-        # Kept, since a typed failure says what to do (KTD25).
-        logger.warning("the post-commit read-back could not run: %s", exc)
-        failure = exc.cause
     except Exception as exc:  # noqa: BLE001 - a read-back that cannot run has not agreed
         logger.warning("the post-commit read-back could not run: %s", exc)
-        failure = Cause(
+        # A typed failure is kept, since it says what to do (KTD25).
+        failure = exc.cause if isinstance(exc, CratekitError) else Cause(
             reason="internal-error",
             message=f"the post-commit read-back could not run: {exc}",
             remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
