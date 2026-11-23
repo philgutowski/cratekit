@@ -1,11 +1,8 @@
 """U45: ``crate backup run``, the shell over the backup engine (row 31).
 
-``tests/modules/test_tools.py`` proves the engine publishes an age per portion;
-this proves the shell keeps that promise, read back through
-:func:`cratekit.core.backup_facts.ages`, the function a destructive session
-reads. A failed backup leaves the age at ``never-recorded``; it does not itself
-make a session refuse. The stand-in rclone sits on ``CRATEKIT_BIN_RCLONE``; where
-a test is about the shell's reading of a result, the ``runner`` seam is used.
+The engine publishes an age per portion; this proves the shell keeps that
+promise, read back through :func:`cratekit.core.backup_facts.ages`, the function
+a destructive session reads. The stand-in rclone sits on ``CRATEKIT_BIN_RCLONE``.
 No name here is a real volume, person or remote account (D1).
 """
 
@@ -29,8 +26,7 @@ from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 
-#: A fixed instant, so an age is a computation rather than a race. Far enough
-#: from any real clock that a test reading a real one would fail loudly.
+#: A fixed instant far from any real clock, so an age is a computation, not a race.
 MOMENT = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -40,8 +36,7 @@ def cfg(tmp_path, monkeypatch):
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     (root / "db").mkdir(parents=True)
-    # R-1761. A library holds its music: an empty folder at the root is what an
-    # unmounted volume leaves, and a backup now refuses it.
+    # R-1761. An empty folder at the root is what an unmounted volume leaves.
     (root / "Music" / "fixture.flac").write_bytes(b"one track")
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
@@ -75,36 +70,32 @@ def _nothing_is_running(monkeypatch):
     monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
 
 
-@pytest.fixture
-def rclone(monkeypatch, tmp_path) -> Path:
-    """A stand-in for rclone on the ONE seam the product ships for it."""
-    log = tmp_path / "rclone-invocations.log"
-    program = tmp_path / "fake-rclone"
+def _stand_in_rclone(monkeypatch, tmp_path, name: str, lsf: str) -> Path:
+    """A logging rclone on the ONE seam the product ships, answering ``lsf`` with ``lsf``."""
+    log = tmp_path / f"{name}-invocations.log"
+    program = tmp_path / f"fake-{name}"
     program.write_text(
         "#!/bin/sh\n"
         f'printf "%s\\n" "$*" >> "{log}"\n'
-        'case " $* " in *" lsf "*) echo "2026-08-01T000000Z/"; echo "2026-08-02T000000Z/" ;; esac\n'
+        f'case " $* " in *" lsf "*) {lsf} ;; esac\n'
         "exit 0\n"
     )
     program.chmod(0o755)
     monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(program))
     return log
+
+
+@pytest.fixture
+def rclone(monkeypatch, tmp_path) -> Path:
+    lsf = 'echo "2026-08-01T000000Z/"; echo "2026-08-02T000000Z/"'
+    return _stand_in_rclone(monkeypatch, tmp_path, "rclone", lsf)
 
 
 @pytest.fixture
 def rclone_that_cannot_list(monkeypatch, tmp_path) -> Path:
     """The same stand-in, except that ``lsf`` fails and everything else does not."""
-    log = tmp_path / "rclone-nolist-invocations.log"
-    program = tmp_path / "fake-rclone-nolist"
-    program.write_text(
-        "#!/bin/sh\n"
-        f'printf "%s\\n" "$*" >> "{log}"\n'
-        'case " $* " in *" lsf "*) echo "the remote refused the listing" >&2; exit 3 ;; esac\n'
-        "exit 0\n"
-    )
-    program.chmod(0o755)
-    monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(program))
-    return log
+    lsf = 'echo "the remote refused the listing" >&2; exit 3'
+    return _stand_in_rclone(monkeypatch, tmp_path, "rclone-nolist", lsf)
 
 
 @pytest.fixture
@@ -175,9 +166,7 @@ def _ages(cfg) -> dict[str, backup_facts.PortionAge]:
     return {str(entry.portion): entry for entry in backup_facts.ages(cfg, now=MOMENT)}
 
 
-# ---------------------------------------------------------------------------
 # The surface, and the module toggle
-# ---------------------------------------------------------------------------
 
 
 def test_the_verb_is_declared_landed_and_names_this_module():
@@ -214,9 +203,7 @@ def test_queueing_needs_no_rclone_no_remote_and_no_volume(cfg, no_rclone, monkey
     assert envelope["schema"] == "job_state/1", envelope
 
 
-# ---------------------------------------------------------------------------
 # The resume, which is the only other thing a queued verb owes
-# ---------------------------------------------------------------------------
 
 
 def test_the_resume_rebuilds_the_rehearsal_flag_and_never_carries_a_run():
@@ -265,8 +252,7 @@ def test_the_frozen_payload_and_the_parser_agree_about_the_flag(cfg):
 
 
 def test_the_emptied_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
-    """R-1761's flag, through the real parser for the reason the test above
-    gives, and a second ask with it told that the open job lacks it."""
+    """R-1761's flag through the real parser, and a second ask told the open job lacks it."""
     code, envelope = _drive(["backup", "run", "--dry-run", "--library-emptied"])
     assert code == int(ExitCode.OK), envelope
     with jobs.open_store() as store:
@@ -283,9 +269,7 @@ def test_the_emptied_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg)
     assert "--library-emptied" in twin["message"], twin["message"]
 
 
-# ---------------------------------------------------------------------------
 # The age, which is the half of this unit that is not a shell
-# ---------------------------------------------------------------------------
 
 
 def test_a_run_that_succeeded_publishes_an_age_the_session_reads_back(cfg, rclone):
@@ -461,9 +445,7 @@ def test_the_report_is_built_from_the_outcome_and_never_from_the_plan(cfg, rclon
     assert set(excinfo.value.cause.detail["portions"]) == {"files", "database"}
 
 
-# ---------------------------------------------------------------------------
 # Refusals, each with a code from the vocabulary
-# ---------------------------------------------------------------------------
 
 
 def test_a_machine_with_no_rclone_refuses_by_name(cfg, no_rclone):
@@ -483,8 +465,7 @@ def test_a_machine_with_no_rclone_refuses_by_name(cfg, no_rclone):
 
 def test_two_portions_refused_for_different_reasons_name_both(cfg, rclone, tmp_path):
     """No single remedy exists, so the summary slug carries every reason as a step."""
-    # Unmounted by moving the whole tree aside, so the engine produces both
-    # refusals rather than this file assembling them.
+    # Unmounted by moving the tree aside, so the engine produces both refusals.
     cfg.library.root.rename(tmp_path / "unplugged")
 
     with pytest.raises(CratekitError) as excinfo:
@@ -545,9 +526,7 @@ def test_the_remedy_for_an_unreadable_fact_file_travels_from_the_exception(cfg):
     )
 
 
-# ---------------------------------------------------------------------------
 # The classifier, held at its own altitude
-# ---------------------------------------------------------------------------
 
 
 def test_nothing_that_ran_is_never_reported_as_a_refusal():
@@ -624,9 +603,7 @@ def test_the_shell_never_writes_the_backup_fact_itself():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Round two: one test per user facing zero the round one table found
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_transfer_failure_says_no_age_was_published(cfg, rclone):
@@ -691,9 +668,7 @@ def test_the_outcome_answers_not_ok_when_a_portion_failed(cfg, rclone):
     assert [p.ran for p in one_failed.portions] == [True, False], one_failed
 
 
-# ---------------------------------------------------------------------------
 # U50: the portion is the item, and the item is what the driver claims
-# ---------------------------------------------------------------------------
 
 
 def _labels(runner) -> list[str]:
@@ -722,8 +697,7 @@ def test_a_named_portion_runs_only_its_own_half(cfg):
     backup_cli.perform_backup(
         {}, portion=backup_facts.Portion.DATABASE, cfg=cfg, runner=database, now=MOMENT
     )
-    # The snapshot and the marker that says whose it is, which belongs to the
-    # database portion because it describes the database in that dated folder.
+    # The snapshot and its marker describe the database, so they are its portion's.
     assert _labels(database) == [backup.SNAPSHOT_DATABASE, backup.SNAPSHOT_IDENTITY], (
         f"the database portion ran {_labels(database)}, not the snapshot and its marker"
     )
@@ -817,20 +791,7 @@ def test_the_queued_caller_does_not_read_the_age_back_inside_the_item(cfg, rclon
 
 def test_an_item_naming_something_that_is_not_a_portion_refuses_by_name(cfg):
     """A job queued by a build with a different portion vocabulary, diagnosed."""
-    job = jobs.Job(
-        job_id="J1",
-        handler_key="backup.run",
-        payload={},
-        config_fingerprint="",
-        config_toml="",
-        library_id="",
-        state=jobs.JobState.RUNNING,
-        created=MOMENT.isoformat(),
-        updated=MOMENT.isoformat(),
-    )
-    item = jobs.Item(
-        job_id="J1", item_id="playlists", ordinal=0, state=jobs.ItemState.CLAIMED
-    )
+    job, item = _claimed("J1", "playlists")
     with pytest.raises(CratekitError) as caught:
         backup_cli.handle(job, item, cfg)
     assert caught.value.cause.reason == "internal-error"
@@ -848,23 +809,9 @@ def test_the_handler_uses_the_configuration_it_was_handed(cfg, tmp_path, rclone)
     config.save(replace(cfg, backup=replace(cfg.backup, dest="remote:the-later-one")))
     config.reset_cache()
 
-    job = jobs.Job(
-        job_id="J2",
-        handler_key="backup.run",
-        payload={},
-        config_fingerprint="",
-        config_toml="",
-        library_id="",
-        state=jobs.JobState.RUNNING,
-        created=MOMENT.isoformat(),
-        updated=MOMENT.isoformat(),
-    )
-    item = jobs.Item(
-        job_id="J2", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
-    )
+    job, item = _claimed("J2", "files")
     produced = backup_cli.handle(job, item, frozen)
-    # R-349 reversed the "returns nothing" half of this test: the outcome record
-    # is now the item's artifact. What stays is that it is the only one.
+    # The outcome record is the item's artifact (R-349), and the only one.
     assert produced == jobs.Produced(
         staged=produced.staged, final=backup_facts.outcome_path("J2", "files")
     ), produced
@@ -876,9 +823,7 @@ def test_the_handler_uses_the_configuration_it_was_handed(cfg, tmp_path, rclone)
     )
 
 
-# ---------------------------------------------------------------------------
 # U50: the queued backup runs, and the queue never reports an empty success
-# ---------------------------------------------------------------------------
 
 
 def _item_states(job_id: str) -> dict[str, str]:
@@ -986,8 +931,7 @@ def _identity_warnings(envelope: dict) -> list[dict]:
 
 def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
     """At queue and at resume, for the reason the share warning above is."""
-    # Not a missing identity, which cannot be saved: a value with a space in
-    # it passes validation and cannot be a marker's filename.
+    # A value with a space passes validation and cannot be a marker's filename.
     config.save(replace(cfg, library=replace(cfg.library, volume_id="not a plain name")))
     config.reset_cache()
 
@@ -999,10 +943,8 @@ def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
 def test_a_queued_real_backup_runs_every_portion_and_reports_what_it_did(cfg, rclone):
     """One queued real backup, driven through the real resume end to end (R-198).
 
-    Every portion runs, the engine publishes each age and the shell reports it
-    (R9, R15), ``job show`` names the argv rclone ran (R-349), and the envelopes
-    carry no rehearsal word, share warning or identity warning, which the
-    drives of those warnings rely on as their companion.
+    Every portion runs and publishes its age (R9, R15), ``job show`` names the
+    argv (R-349), and no warning word appears, which the warning drives rely on.
     """
     code, queued = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), queued
@@ -1147,22 +1089,8 @@ def test_the_handler_does_not_fail_an_item_over_the_age_read_back(cfg, rclone):
     backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
     backup_facts.path_for(cfg).mkdir()
 
-    job = jobs.Job(
-        job_id="J3",
-        handler_key="backup.run",
-        payload={backup_cli.DRY_RUN: True},
-        config_fingerprint="",
-        config_toml="",
-        library_id="",
-        state=jobs.JobState.RUNNING,
-        created=MOMENT.isoformat(),
-        updated=MOMENT.isoformat(),
-    )
-    item = jobs.Item(
-        job_id="J3", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
-    )
-    # Returning at all is the claim: a read back would have raised. The
-    # ``Produced`` is R-349's outcome record, asserted in its own tests.
+    job, item = _claimed("J3", "files", payload={backup_cli.DRY_RUN: True})
+    # Returning at all is the claim: a read back would have raised.
     produced = backup_cli.handle(job, item, cfg)
     assert produced is not None and produced.staged.is_file(), (
         "the handler read the age back, so an unreadable fact file fails an item "
@@ -1170,9 +1098,7 @@ def test_the_handler_does_not_fail_an_item_over_the_age_read_back(cfg, rclone):
     )
 
 
-# ---------------------------------------------------------------------------
 # U50 review round: what a second look, an old job and a broken fact file do
-# ---------------------------------------------------------------------------
 
 
 def test_asking_twice_about_a_half_failed_backup_answers_the_same_way_twice(
@@ -1290,18 +1216,14 @@ def test_the_ages_reported_are_the_ones_this_job_published(
         )
 
 
-# ---------------------------------------------------------------------------
 # One run is one rotation slot, through the queue (R-222)
-# ---------------------------------------------------------------------------
 
 
 class _ArchiveRemote:
-    """A runner that HOLDS the dated archive folders, the way a remote does.
+    """A runner that holds the dated archive folders, the way a remote does.
 
-    The stand-in program answers every listing with the same two names, so it
-    cannot show a purge taking a folder an earlier attempt wrote. Here a mirror
-    writes the folder its ``--backup-dir`` names, a listing reads the set back and
-    a purge removes from it.
+    A mirror writes the folder its ``--backup-dir`` names, a listing reads the
+    set back and a purge removes from it, which the stand-in cannot show.
     """
 
     def __init__(self, *folders: str) -> None:
@@ -1377,9 +1299,7 @@ def test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote(
     assert "2026-08-01T000000Z" not in remote.folders
 
 
-# ---------------------------------------------------------------------------
 # Asking twice is one backup (R-223)
-# ---------------------------------------------------------------------------
 
 
 def _codes(envelope: dict) -> list[str]:
@@ -1392,8 +1312,7 @@ def _job_count() -> int:
 
 
 def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg):
-    """R-223: the second ask is handed the open job, and a real twin is not told it
-    copies nothing."""
+    """R-223: the second ask is handed the open job; a real twin is not told it copies nothing."""
     code, first = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), first
     assert backup_cli.ALREADY_QUEUED not in _codes(first), first
@@ -1410,9 +1329,7 @@ def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg
 
 
 def test_a_rehearsal_and_a_real_run_are_two_jobs(cfg):
-    """A rehearsal copies nothing, so it cannot interleave with a transfer, and
-    answering a request for a real backup with an open rehearsal would report a
-    job that will never copy a byte as the backup the person asked for."""
+    """An open rehearsal copies nothing, so it never answers a request for a real backup."""
     _, rehearsal = _drive(["backup", "run", "--dry-run"])
     _, real = _drive(["backup", "run"])
     assert real["data"]["job_id"] != rehearsal["data"]["job_id"]
@@ -1421,9 +1338,8 @@ def test_a_rehearsal_and_a_real_run_are_two_jobs(cfg):
 
 
 def test_a_backup_to_a_destination_nobody_is_backing_up_to_is_its_own_job(cfg):
-    """The open job is read by its FROZEN destinations. Another mirror and another
-    archive cannot interleave with this one, and a person who reconfigured on
-    purpose is owed the job they asked for."""
+    """The open job is read by its frozen destinations; another mirror and archive
+    cannot interleave with it."""
     _, first = _drive(["backup", "run"])
     config.save(
         replace(
@@ -1441,8 +1357,7 @@ def test_a_backup_to_a_destination_nobody_is_backing_up_to_is_its_own_job(cfg):
 
 @pytest.mark.parametrize("shared", ["dest", "archive_root"])
 def test_either_shared_destination_is_the_same_backup(cfg, shared):
-    """Two syncs into one mirror interleave, and two rotations over one archive
-    root prune each other, so sharing EITHER is enough."""
+    """Two syncs into one mirror or two rotations over one archive collide, so either."""
     _, first = _drive(["backup", "run"])
     moved = {"dest": "remote:second-mirror", "archive_root": "remote:second-archive"}
     del moved[shared]
@@ -1473,8 +1388,7 @@ def test_a_backup_that_is_over_does_not_stand_in_for_a_new_one(cfg, ending):
 
 @pytest.mark.parametrize("stranger", ["itemless", "another-verb", "another-library"])
 def test_an_open_job_that_is_not_this_backup_does_not_stand_in_for_it(cfg, stranger):
-    """An itemless job a previous build queued can never run, another verb's job is
-    not a backup, and another library's backup is not this library's."""
+    """An itemless old job, another verb's job, or another library's backup is not it."""
     enqueued = {
         "handler_key": "master.run" if stranger == "another-verb" else "backup.run",
         "payload": backup_cli.frozen_payload(False),
@@ -1514,9 +1428,8 @@ def test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhe
 def test_a_defect_in_rebuilding_a_configuration_is_not_reported_as_a_queued_backup(
     cfg, monkeypatch
 ):
-    """Only the configuration's own failures mean "could not read". Anything else
-    is a defect in this program, and reporting it as an open backup with exit 0
-    is how it would stay unfound."""
+    """Only the configuration's own failures mean "could not read"; anything else is a
+    defect, not an open backup with exit 0."""
     _drive(["backup", "run"])
 
     def broken(job):
@@ -1529,8 +1442,7 @@ def test_a_defect_in_rebuilding_a_configuration_is_not_reported_as_a_queued_back
 
 
 def test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger(cfg):
-    """The rehearsal flag is compared the way the work body reads it. A job queued
-    by a build that froze one more key is still the same backup."""
+    """The rehearsal flag is compared as the work body reads it, ignoring extra keys."""
     with jobs.open_store() as store:
         older = jobs.enqueue(
             store,
@@ -1545,9 +1457,7 @@ def test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger(cfg):
 
 
 def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
-    """The open job was frozen with its analysis share off the volume, and the
-    configuration on disk has since moved it back. The job reported will still run
-    under the first, so that is the one the envelope describes."""
+    """The envelope describes the open job's frozen analysis share, not the current one."""
     home = tmp_path / "home" / "rekordbox"
     home.mkdir(parents=True)
     config.save(
@@ -1571,9 +1481,7 @@ def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
     assert len(_share_warnings(second)) == 1, second
 
 
-# ---------------------------------------------------------------------------
 # R-221: the queued path says which kind of run it was
-# ---------------------------------------------------------------------------
 
 
 def _rehearsal_said(envelope: dict) -> list[dict]:
@@ -1581,12 +1489,7 @@ def _rehearsal_said(envelope: dict) -> list[dict]:
 
 
 def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg, rclone):
-    """R-221's named cost on both exits, on the declared surface, and in its record.
-
-    The flag rides under ``progress`` on both envelopes, the resume says it
-    copied nothing, and the persisted outcome is flagged and names the
-    neutralized transfer (R-349).
-    """
+    """R-221's named cost on both exits, on the declared surface, and in its record (R-349)."""
     code, queued = _drive(["backup", "run", "--dry-run"])
     assert code == int(ExitCode.OK), queued
     job_id = queued["data"]["job_id"]
@@ -1620,9 +1523,7 @@ def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg
 
 
 def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(cfg):
-    """Every branch that hands back an identifier says what that identifier will
-    do, because a person who queues a rehearsal and never resumes it by hand
-    would otherwise learn what it was only from the run that copied nothing."""
+    """Every branch that hands back an identifier says what it will do."""
     code, first = _drive(["backup", "run", "--dry-run"])
     assert code == int(ExitCode.OK), first
     assert len(_rehearsal_said(first)) == 1, first
@@ -1638,9 +1539,7 @@ def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(c
 def test_the_ages_a_rehearsal_reports_are_the_previous_real_runs_and_it_says_so(
     cfg, rclone
 ):
-    """The exact state the entry describes, built rather than asserted: a real
-    backup first, so the fact file holds true ages, then a rehearsal over it.
-    """
+    """A real backup first, so the fact file holds true ages, then a rehearsal over it."""
     _, real = _drive(["backup", "run"])
     code, _ = _drive(["backup", "run", "--job", real["data"]["job_id"]])
     assert code == int(ExitCode.OK)
@@ -1732,8 +1631,7 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     )
     steps = refused["cause"]["remediation"]["steps"]
     assert any("copies nothing" in step for step in steps), refused
-    # A transfer exit is retryable, so the job cause is the engine's transient
-    # verdict with the portion's refusal nested inside it (R-380, R-390).
+    # A transfer exit is retryable, so the cause nests the portion's (R-380, R-390).
     assert refused["cause"]["reason"] == "unavailable-transient", refused
     assert refused["cause"]["retryable"] is True, refused
     assert refused["cause"]["inner"]["reason"] == "backup-transfer-failed", refused
@@ -1852,9 +1750,7 @@ def test_a_refusal_this_verb_re_raises_is_never_its_own_cause(cfg):
 
 
 def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch):
-    """The companion for the second exit. A failed real run attempted transfers,
-    and telling that person nothing was copied is false in the direction that
-    stops them looking for the half that was."""
+    """A failed real run attempted transfers, so it is never told nothing was copied."""
     monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
     _, queued = _drive(["backup", "run"])
     code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
@@ -1865,13 +1761,11 @@ def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch
 
 
 def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
-    """ONE FILE OVER, at the engine, which is where the two runs first became
-    indistinguishable. ``BackupOutcome`` carried a stamp and portions and no word
-    about the run, so every renderer of one had to be handed the flag separately
-    and the queued renderer was not. The value is read off the outcome the engine
-    returned rather than off the argument it was called with, because the engine
-    couples ``dry_run`` to publishing and the outcome is meant to record the run
-    that happened."""
+    """The flag lives on ``BackupOutcome``, read off the outcome the engine returned.
+
+    The engine couples ``dry_run`` to publishing, so the outcome records the run
+    that happened, and no renderer needs the flag handed to it separately.
+    """
     plan = backup.plan_backup(cfg, now=MOMENT)
     rehearsed = backup.run_backup(
         cfg, plan, runner=_answering(0), now=MOMENT, dry_run=True
@@ -1885,9 +1779,7 @@ def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
     assert backup.outcome_payload(performed)["dry_run"] is False
 
 
-# ---------------------------------------------------------------------------
 # R-349: what each backup item ran reaches the job record, on both channels
-# ---------------------------------------------------------------------------
 
 
 def _shown_outcomes(job_id: str) -> dict | None:
@@ -2039,12 +1931,12 @@ def test_every_command_the_engine_ran_is_paired_with_its_own_return_code(cfg, rc
     assert all(c["returncode"] == 0 for c in commands if "lsf" not in c["argv"]), commands
 
 
-def _claimed(job_id: str, item_id: str) -> tuple[jobs.Job, jobs.Item]:
+def _claimed(job_id: str, item_id: str, payload=None) -> tuple[jobs.Job, jobs.Item]:
     """A running job and one claimed item, built by hand for the handler seam."""
     job = jobs.Job(
         job_id=job_id,
         handler_key="backup.run",
-        payload={},
+        payload={} if payload is None else payload,
         config_fingerprint="",
         config_toml="",
         library_id="",
@@ -2097,8 +1989,7 @@ def test_a_record_that_cannot_be_staged_does_not_fail_a_completed_backup(
     real = config.atomic_write_bytes
 
     def cannot_stage(payload, path, **kwargs):
-        # Only the staged record: the age publish shares this writer, and
-        # failing it would be a different condition from the one under test.
+        # Only the staged record: the age publish shares this writer.
         if path.name.endswith(".staged"):
             raise PermissionError("the outcome directory is read only")
         return real(payload, path, **kwargs)
