@@ -5,10 +5,10 @@
   "head": "fd78d188",
   "when": "2026-11-23 02:28 UTC",
   "valid": true,
-  "invalid_reason": "in progress",
+  "invalid_reason": "",
   "baseline_collected": 22911,
   "baseline_exit": 1,
-  "pytest_runs": 225,
+  "pytest_runs": 234,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -8442,6 +8442,379 @@
       "source": {
         "table": "r1404.json",
         "id": "M6_disagreement_read_against_the_account_now"
+      }
+    },
+    {
+      "id": "r1404.S1_default_leader",
+      "description": "sample: the account no longer leads by default, so a first sync and a both reordered pair take rekordbox's order",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96495d2cc00ec3f6",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 16,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_when_both_sides_reorder_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_a_base_is_read_as_before_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_into_an_empty_rekordbox_side_is_led_by_the_account_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account",
+        "tests/test_sync_pair_merge.py::test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_a_base_whose_sides_disagree_still_leads",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now",
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_when_both_sides_reordered_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_when_the_account_alone_reordered_its_order_wins",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    leader = ACCOUNT\n    if stopped is not None:",
+      "new": "    leader = REKORDBOX\n    if stopped is not None:",
+      "source": {
+        "table": "r1404.json",
+        "id": "S1_default_leader"
+      }
+    },
+    {
+      "id": "r1404.S2_stopped_leader_again",
+      "description": "sample, U225: with no change since a stopped write, the side that led it no longer leads again",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66e7fb4c169351f9",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif not account_moved and stopped.leader == REKORDBOX:",
+      "new": "        elif False:",
+      "source": {
+        "table": "r1404.json",
+        "id": "S2_stopped_leader_again"
+      }
+    },
+    {
+      "id": "r1416.M1_rekordbox_does_not_lead",
+      "description": "merge: a first sync whose account order is not kept is led by the account again, the defect R-1416 names",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1fdbdf1ee4ecd104",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_not_kept_leads_with_rekordbox"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        # order rekordbox stands in, or the DJ's arrangement is lost for good.\n        leader = REKORDBOX",
+      "new": "        # order rekordbox stands in, or the DJ's arrangement is lost for good.\n        leader = ACCOUNT",
+      "source": {
+        "table": "r1416.json",
+        "id": "M1_rekordbox_does_not_lead"
+      }
+    },
+    {
+      "id": "r1416.M2_order_kept_ignored",
+      "description": "merge: the flag is ignored, so a first sync under GIG READY or with every pair's order kept is led by rekordbox",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "69a95d733d9ae66b",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif base is None and rekordbox.keys:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M2_order_kept_ignored"
+      }
+    },
+    {
+      "id": "r1416.M3_empty_rekordbox_leads",
+      "description": "merge: an empty rekordbox side leads its first sync, so the gate says the order follows rekordbox's where it takes the account's",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "19d97ee98493f6e8",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_into_an_empty_rekordbox_side_is_led_by_the_account_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif base is None and not order_kept:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M3_empty_rekordbox_leads"
+      }
+    },
+    {
+      "id": "r1416.M4_first_sync_unguarded",
+      "description": "merge: a pair whose order is not kept is led by rekordbox whatever its base, so an account reorder after the first sync no longer reaches rekordbox",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "213df8cba9306704",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_base_is_read_as_before_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif not order_kept and rekordbox.keys:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M4_first_sync_unguarded"
+      }
+    },
+    {
+      "id": "r1416.M5_stopped_write_yields",
+      "description": "merge: outside the scope a stopped write no longer decides the order, so the new first sync rule takes its place",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d78814250167ec1",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stopped is not None:\n        # U225.",
+      "new": "    if stopped is not None and order_kept:\n        # U225.",
+      "source": {
+        "table": "r1416.json",
+        "id": "M5_stopped_write_yields"
+      }
+    },
+    {
+      "id": "r1416.M6_default_not_kept",
+      "description": "merge: the keyword's default reads the order as not kept, so a caller that says nothing is led by rekordbox on a first sync",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4a85d29a18c258ec",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    order_kept: bool = True,",
+      "new": "    order_kept: bool = False,",
+      "source": {
+        "table": "r1416.json",
+        "id": "M6_default_not_kept"
+      }
+    },
+    {
+      "id": "r1416.S2_placed_after_neighbour",
+      "description": "sample, U130: a track only the following side holds goes to the start rather than after its neighbour",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56f115d256642418",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 22,
+      "collected": 225,
+      "baseline_collected": 225,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_short_account_listing_reads_nothing_as_removed",
+        "tests/test_sync_pair.py::test_a_skipped_account_side_is_finished_by_the_next_sync",
+        "tests/test_sync_pair.py::test_a_track_added_in_rekordbox_only_lands_on_the_account",
+        "tests/test_sync_pair.py::test_an_unmatched_rekordbox_track_is_named_and_stays_in_rekordbox",
+        "tests/test_sync_pair.py::test_the_first_sync_marks_the_pair_and_adds_only",
+        "tests/test_sync_pair_back.py::test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_call",
+        "tests/test_sync_pair_back.py::test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment",
+        "tests/test_sync_pair_back.py::test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was",
+        "tests/test_sync_pair_hold.py::test_a_held_plan_other_than_the_offer_is_planned_again",
+        "tests/test_sync_pair_hold.py::test_a_no_change_sync_of_a_linked_pair_makes_no_isrc_lookup",
+        "tests/test_sync_pair_hold.py::test_a_two_gate_sync_makes_one_plans_lookups",
+        "tests/test_sync_pair_hold.py::test_an_unreadable_held_plan_is_planned_again_and_says_why",
+        "tests/test_sync_pair_hold.py::test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved",
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours",
+        "tests/test_sync_pair_merge.py::test_a_run_of_new_tracks_at_the_head_of_the_other_side_keeps_its_own_order",
+        "tests/test_sync_pair_merge.py::test_a_track_added_in_rekordbox_only_is_added_on_the_account",
+        "tests/test_sync_pair_merge.py::test_a_track_added_mid_list_on_the_other_side_keeps_its_place",
+        "tests/test_sync_pair_merge.py::test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds",
+        "tests/test_sync_pair_merge.py::test_the_first_sync_adds_only_and_keeps_every_track_either_side_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        anchor += 1\n        result.insert(anchor, key)",
+      "new": "        result.insert(0, key)",
+      "source": {
+        "table": "r1416.json",
+        "id": "S2_placed_after_neighbour"
       }
     }
   ],
