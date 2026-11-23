@@ -1462,37 +1462,59 @@ def test_a_wrong_document_is_never_read_as_an_empty_one(cfg, document, why):
     assert excinfo.value.cause.reason == "restore-record-unusable", why
 
 
-def test_the_reconciliation_record_survives_eight_concurrent_writers(cfg):
-    """The read-modify-write is locked, proven with real processes, since a thread
-    shares this interpreter's locks. Unlocked, over half the markers were lost."""
-    script = (
+def _run_side_by_side(script: str, argument_lists) -> None:
+    """Run one worker process per argument list and wait for each to succeed.
+
+    Each worker imports, says it is ready, and waits for its standard input to
+    close, so every worker starts writing at once rather than in the order its
+    interpreter happened to start, which is what lets a few writes each collide.
+    """
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(SRC_ROOT)
+    preamble = (
         "import sys\n"
         "from cratekit.core import config, reconcile\n"
-        "worker = sys.argv[1]\n"
         "cfg = config.load()\n"
-        "for index in range(25):\n"
+        "print('ready', flush=True)\n"
+        "sys.stdin.read()\n"
+    )
+    running = [
+        subprocess.Popen(
+            [sys.executable, "-c", preamble + script, *arguments],
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for arguments in argument_lists
+    ]
+    for process in running:
+        process.stdout.readline()
+    for process in running:
+        process.stdin.close()
+    for process in running:
+        with process:
+            err = process.stderr.read()
+        assert process.returncode == 0, err
+
+
+def test_the_reconciliation_record_survives_eight_concurrent_writers(cfg):
+    """The read-modify-write is locked, proven with real processes, since a thread
+    shares this interpreter's locks. Unlocked, over half the markers were lost
+    when the workers started as they pleased, and about four in five with the start
+    lined up."""
+    script = (
+        "worker = sys.argv[1]\n"
+        "for index in range(8):\n"
         "    reconcile.record_markers(\n"
         "        cfg,\n"
         "        reconcile.tree_markers([f'tree-{worker}-{index}'], session_id='s'),\n"
         "    )\n"
     )
-    environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(SRC_ROOT)
-    running = [
-        subprocess.Popen(
-            [sys.executable, "-c", script, str(worker)],
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        for worker in range(8)
-    ]
-    for process in running:
-        out, err = process.communicate()
-        assert process.returncode == 0, err or out
+    _run_side_by_side(script, [[str(worker)] for worker in range(8)])
 
-    assert len(reconcile.records(cfg)) == 200
+    assert len(reconcile.records(cfg)) == 64
 
 
 def test_a_disposition_is_not_lost_under_concurrency(cfg):
@@ -1501,33 +1523,18 @@ def test_a_disposition_is_not_lost_under_concurrency(cfg):
         cfg, reconcile.tree_markers([f"tree-{index}" for index in range(20)], session_id="s")
     )
     script = (
-        "import sys\n"
-        "from cratekit.core import config, reconcile\n"
-        "cfg = config.load()\n"
         "for marker_id in sys.argv[1:]:\n"
         "    reconcile.close_marker(\n"
         "        cfg, marker_id, disposition=reconcile.Disposition.ACCEPTED, actor='t'\n"
         "    )\n"
     )
-    environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(SRC_ROOT)
-    halves = [
-        [entry.marker.marker_id for entry in recorded[:10]],
-        [entry.marker.marker_id for entry in recorded[10:]],
-    ]
-    running = [
-        subprocess.Popen(
-            [sys.executable, "-c", script, *half],
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        for half in halves
-    ]
-    for process in running:
-        out, err = process.communicate()
-        assert process.returncode == 0, err or out
+    _run_side_by_side(
+        script,
+        [
+            [entry.marker.marker_id for entry in recorded[:10]],
+            [entry.marker.marker_id for entry in recorded[10:]],
+        ],
+    )
 
     assert reconcile.outstanding(cfg) == ()
 
@@ -2653,7 +2660,7 @@ def test_round2_three_attempts_stage_their_logs_side_by_side(cfg):
 
 def test_round2_a_restore_that_fits_is_not_refused(cfg, held):
     """P7: a restore the volume can hold is not refused by summing every source."""
-    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
     record, _captured = completed_session(cfg)
 
     decided = restore.plan(cfg, record.session_id, held=held)
@@ -2669,10 +2676,17 @@ def test_round2_a_restore_that_fits_is_not_refused(cfg, held):
     assert outcome.converged
 
 
+#: The database heavy shape the capacity rule was measured against, a sixteenth of
+#: the 8 MiB, 4 MiB and 2,000 document original. Every ratio these tests compare
+#: (estimate to peak, to the sum, to one step) reads the same at both scales to
+#: three places, since a 120 byte document still takes a whole block either way.
+_CAPACITY_SHAPE = {"database": 512, "wal": 256, "items": 125}
+
+
 def _build_capacity_shape(cfg, *, database: int, wal: int, items: int) -> None:
-    """One of the shapes the capacity rule was measured against. Sizes in MiB."""
-    config.state_path("rekordbox_db", cfg).write_bytes(b"d" * (database * 1024 * 1024))
-    _wal_path(cfg).write_bytes(b"w" * (wal * 1024 * 1024))
+    """One of the shapes the capacity rule was measured against. Sizes in KiB."""
+    config.state_path("rekordbox_db", cfg).write_bytes(b"d" * (database * 1024))
+    _wal_path(cfg).write_bytes(b"w" * (wal * 1024))
     queue = config.state_path("review_queue", cfg)
     queue.mkdir(parents=True, exist_ok=True)
     for index in range(items):
@@ -2736,9 +2750,9 @@ class _PeakSampler:
 @pytest.mark.parametrize(
     "shape, wipe_live",
     [
-        ({"database": 8, "wal": 4, "items": 2000}, False),
-        ({"database": 8, "wal": 4, "items": 2000}, True),
-        ({"database": 1, "wal": 8, "items": 2000}, False),
+        (_CAPACITY_SHAPE, False),
+        (_CAPACITY_SHAPE, True),
+        ({"database": 64, "wal": 512, "items": 125}, False),
     ],
 )
 def test_round3_the_capacity_estimate_is_above_the_measured_peak(
@@ -2771,7 +2785,7 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
 
     The seam goes through ``monkeypatch`` so a stubbed probe cannot leak.
     """
-    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
     record, _captured = completed_session(cfg)
     decided = restore.plan(cfg, record.session_id, held=held)
 
@@ -2793,7 +2807,7 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
 
 def test_round3_a_staged_log_is_counted_as_permanent_growth(cfg, held):
     """A CLEAR is a rename, so the restored companion's size is never given back."""
-    _build_capacity_shape(cfg, database=1, wal=8, items=10)
+    _build_capacity_shape(cfg, database=1024, wal=8192, items=10)
     record, _captured = completed_session(cfg)
     decided = restore.plan(cfg, record.session_id, held=held)
 
@@ -3244,7 +3258,7 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
 
     This cannot see the headroom's value; the next test pins it with literals.
     """
-    _build_capacity_shape(cfg, database=8, wal=4, items=2000)
+    _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
     record, _captured = completed_session(cfg)
     decided = restore.plan(cfg, record.session_id, held=held)
 
