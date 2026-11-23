@@ -1039,7 +1039,7 @@ def _branch_commit(tmp_path):
 
 
 def test_a_pull_request_range_closing_a_unit_still_owed_is_refused(tmp_path, monkeypatch):
-    """The merge writes the trailer after CI, so the card a ``cloud/N-slug`` head names is judged."""
+    """The merge writes the trailer after CI, so the ``cloud/N-slug`` head's card is judged."""
     board = _board()
     repo, base = _branch_commit(tmp_path)
     _owed_36(board, monkeypatch)

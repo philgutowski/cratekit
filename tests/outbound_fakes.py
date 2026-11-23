@@ -229,7 +229,7 @@ class FakeAccount:
         return tuple(self.playlists.get(playlist_id, ()))
 
     def rename_playlist(self, playlist_id: str, name: str) -> None:
-        """Retitle, keyed by identifier, one write; ``fail_on`` names the playlist, not the title."""
+        """Retitle, keyed by identifier, one write; ``fail_on`` names the playlist."""
         self._bump(playlist_id)
         self.titles[playlist_id] = name
         self.renamed.append((playlist_id, name))

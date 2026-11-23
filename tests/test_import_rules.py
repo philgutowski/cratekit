@@ -548,7 +548,7 @@ def test_a_package_initializer_is_loaded_with_any_module_inside_it():
 
 
 def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
-    """An import past the switched off package never runs: with ``labels`` off, ``label``'s ``export`` import is not reached."""
+    """An import past the switched off package never runs, so it is no cause."""
     tree = _tree(
         export__cli="",
         label__registry="from cratekit.export import cli\n",
@@ -601,7 +601,7 @@ def test_a_name_bound_in_an_except_branch_is_a_name_the_module_defines():
 
 
 def test_a_local_variable_named_as_an_imported_module_is_not_a_use_of_it():
-    """A local ``source.name`` beside an imported module ``source`` is not a use: the module does not define it."""
+    """A local ``source.name`` beside an imported module ``source`` is not a use of it."""
     tree = _tree(
         core__config="def load(): ...\n",
         sync__run=(
@@ -700,7 +700,7 @@ def test_a_planned_entry_is_not_a_landed_verb():
 
 
 def test_no_package_crosses_a_seam_beyond_its_allowance():
-    """All four rules and the ceiling over one reading of the tree, so the package is parsed once."""
+    """All four rules and the ceiling over one reading, so the package is parsed once."""
     sources = measure.read_sources(REPO_ROOT, [measure.SOURCE])
     tree = measure.Tree(sources)
     rules = measure.Rules(CORE_INTERFACE, TOGGLE_HOMES, CORE_NAMES_CEILING)

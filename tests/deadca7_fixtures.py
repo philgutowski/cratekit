@@ -131,7 +131,7 @@ def push(db_path: Path | str, content_ids: tuple[str, ...], *, stamp: str = STAM
 
 
 def written(db_path: Path | str, pushed: Pushed) -> dict[str, list[tuple]]:
-    """Every row the push wrote, whole and sorted by identifier: equal readings mean nothing moved."""
+    """Every row the push wrote, sorted by identifier: equal readings mean nothing moved."""
     nodes = (pushed.folder_id, *pushed.playlist_ids)
     marks = ", ".join("?" for _ in nodes)
     conn = sqlite3.connect(db_path)

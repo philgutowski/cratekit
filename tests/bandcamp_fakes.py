@@ -108,7 +108,7 @@ class FakeAccount:
         self.posted: list[tuple[str, dict[str, Any]]] = []
         self.downloaded: list[str] = []
 
-    # -- the three calls --------------------------------------------------
+    # ── the three calls ──────────────────────────────────────────────────
 
     def _signed_in(self, cookie: str) -> bool:
         return not self.expired and cookie == self.cookie
@@ -167,7 +167,7 @@ class FakeAccount:
         target.write_bytes(self.archives[item_id])
         return target
 
-    # -- shaping a page ----------------------------------------------------
+    # ── shaping a page ───────────────────────────────────────────────────
 
     def _page(self, items: list[dict[str, Any]], end: int, *, more: bool) -> dict[str, Any]:
         served = [{k: v for k, v in one.items() if not k.startswith("_")} for one in items]
