@@ -2232,3 +2232,106 @@ change, since no card may touch it.
 **Measured cost.** None to a person and none to a guard: the test time target is met (the summed time of the 42 files down 43 and 38 percent in two alternated runs), every verb's behaviour compares equal, and every recorded kill is kept. The cost is #847's line target read on intake's tests, about two percent over.
 
 **Closes when:** a later card that touches the set verbs' suites folds their remaining repeated setups (the account playlist and inspiration fixtures each file repeats) while the kill set replay stays at zero lost, or the final audit (#872) accepts the figure. Ledger only.
+
+---
+
+## R-1895. The catalogue URL guard in test_locations now passes on a docstring line in searchers.py, not on the URLs, which moved to shops.py
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/test_locations.py`, in
+`test_the_one_permitted_call_is_still_there_and_is_still_a_query_string`,
+asserts that `src/cratekit/tagging/searchers.py` holds `https://` and no
+`file://`, to keep the one permitted `quote_plus` building a query string. U306
+split `searchers.py` by source: the catalogue search URLs now live in
+`tagging/shops.py`, and the only `https://` left in `searchers.py` is a line of
+`_query`'s docstring. The round one reviewer set `BANDCAMP_SEARCH` in
+`shops.py` to a `file://` path and the test passed; the same edit in the base
+`searchers.py` fails it. Rewording the docstring fails it with no behaviour
+change.
+
+**Measured cost.** None to a person today: the URLs are unchanged and the
+behaviour comparison is clean. The guard has lost its object, so a later
+`file://` search URL in `shops.py` would pass it.
+
+**Closes when:** the guard reads the module that builds the URLs (`shops.py`,
+or whatever module `_query`'s callers take their bases from). `tests/test_locations.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1896. scripts/title_differential.py in titles base mode compares the tree's Beatport scorer with itself after the searchers split
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** In titles base mode the script loads a base revision's
+`searchers` and sets `base.titles = base_titles` so the base's Beatport scorer,
+`_beatport_best`, reads the base's titles. U306 moved `_beatport_best` to
+`tagging/shops.py` and re-exports it from `searchers`, so the function the
+script reaches resolves `titles` in `shops`' globals and the reroute no longer
+bites: the round one reviewer set a tripwire module as `base.titles`, which
+`c9192091` reaches and `511cb4be` never touches, and round two found
+`_title_matches` the same. The comment at `scripts/title_differential.py:393`
+("so Beatport's scorer is held to it as well") is now untrue. The default base
+mode, which the solutions entry on a strip that can empty a title describes,
+still builds its base side as it did, driven at its default base.
+
+**Measured cost.** A developer tool, not a verb: a session holding a future
+`titles` change against its base is told there are no Beatport differences
+when there may be some. Driven to the mechanism, not through a whole script
+run over a real change.
+
+**Closes when:** the script also sets the base's `shops.titles` (and
+`catalogues.titles`) when it loads a base, or loads the base package whole. `scripts/` is #870 (U313)'s. Ledger only.
+
+---
+
+## R-1897. U306 left tagging, analysis and vocals short of their line, code line and test targets, and with eleven seam lines other cards own
+
+**Found:** at the landing of #863, U306, 2026-11-22.
+
+**The mechanism.** #863's brief set, for the 40 source files and 36 test
+files of `tagging`, `analysis` and `vocals`, at most 17,444 source lines,
+10,189 code lines, 23,357 test lines and 30 percent less test time. Measured
+on the merged head by `scripts/refactor_measure.py lines` against the base
+`c9192091`: source 23,494 to 18,785, code lines 13,104 to 12,718, test lines
+31,668 to 29,619, and the test time not told apart on this container. No file is over
+1,500 lines and no copied block is left. The code that remains is mostly code
+the recorded kill set finds by its exact text, so cutting it means rewriting
+guarded code with every replayed row re-anchored by hand, which this card did
+not do. Eleven import allowance lines stay because the modules they name are
+another card's: `core.art` and `core.taxonomy_word` from tagging and
+`core.cores`, `core.discovery`, `core.drift`, `core.pool` from analysis, and
+`core.discovery` from vocals, all core modules off the interface list, which
+is full at 25 and which U301 (#858), merged in before this card landed, left
+as it was; the registry loading `analysis.check_cli` for a verb the analysis
+toggle does not gate (#860, U303); and vocals importing `analysis.artifacts`,
+`analysis.cli` and `analysis.vocals` at top level, which a lazy import would
+change for a person running the vocals verb with analysis off.
+
+**Measured cost.** None to a person: behaviour is unchanged. The cost is to
+#847's definition of done, points 2, 4 and 5, which the final audit measures.
+
+**Closes when:** the final audit, #872 (U315), measures the epic and files a
+further card for the gap, as #847 says a point that falls short gets. Ledger
+only.
+
+---
+
+## R-1898. The done verdict of analyze check has no behaviour scenario, since reaching it needs a beat grid file on disk
+
+**Found:** at the build of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/analysis_check.py` drives `crate analyze
+check` to waiting (exit 12), suspect (exit 27), the fallback scope, nothing in
+scope and its refusals. The done verdict (exit 0) needs an analysis file that
+holds a readable grid, which no scenario may write under the standing rule
+against beat grids. Patching the grid reader would reach it, but a patch that
+stops biting after a later move would read as a false difference.
+
+**Measured cost.** None today: the verdict's code is covered by
+`tests/test_analyze_check.py`. The behaviour comparison cannot see a change to
+what the done verdict prints.
+
+**Closes when:** a scenario reaches the done verdict through a fake the
+product itself reads at call time, kept where the reader lives. Ledger only.
