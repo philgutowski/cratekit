@@ -51,16 +51,10 @@ def _macos_app_version(app_path: Path) -> str | None:
     return str(value) if value else None
 
 
-def _windows_app_version(app_path: Path) -> str | None:  # pragma: no cover - needs Windows
-    """Placeholder probe for Windows: None degrades like an uninstalled application."""
-    return None
-
-
 def _default_app_probe() -> Callable[[Path], str | None]:
     if sys.platform == "darwin":
         return _macos_app_version
-    if sys.platform.startswith("win"):
-        return _windows_app_version
+    # No probe elsewhere, Windows included: None degrades like an uninstalled application.
     return lambda _path: None
 
 

@@ -353,10 +353,7 @@ def default_protected_snapshot_paths(
 
 def snapshot_database_in(directory: Path) -> Path | None:
     """The database file inside a snapshot directory, by shape since its name is the user's, or None."""
-    for candidate in sorted(directory.glob("*.db")):
-        if candidate.is_file():
-            return candidate
-    return None
+    return next((found for found in sorted(directory.glob("*.db")) if found.is_file()), None)
 
 
 def prune_snapshots(
