@@ -3016,3 +3016,110 @@ which stops the sitting by CLAUDE.md's rehearsal rule.
 **Closes when:** a rehearsal environment the verb can recognise refuses the
 file half, or the rehearsal tooling redirects the library root for this verb.
 Ledger only: the skill holds the rule and a mistake stops rather than harms.
+
+---
+
+## R-1928. The write path's code lines fall 8 percent under U953, not 15, and its fifteen test files stay above their line target
+
+**Found:** at the build of #953, U953, 2026-11-23.
+
+**The mechanism.** #953 (R-1887) asked the write path's 27 files to fall from
+9,287 code lines to 7,688 or fewer, and the fifteen test files #857 lists to
+10,655 lines or fewer, with behaviour frozen. Measured by
+`scripts/refactor_measure.py lines` on the merged head, the code is at 8,549
+(7.9 percent fewer) and the tests at 11,562 lines (3.7 percent fewer); their
+summed test time, the third target, is met (23.9 and 26.7 seconds on the base
+with two workers, 11.8 and 13.5 on the branch). Five builders cut disjoint
+files and each stopped at the same floor: every `__all__` nothing read, every
+re-export nothing reads through its facade, the dead names, and every
+repeated refusal and parallel branch were folded, and what is left is
+distinct message text, cause detail and guards, which only reflowing lines
+would shorten, and the brief puts reflowing out of scope. In the tests, about
+2,800 of the remaining lines are blank separators inside tests and 800 are
+docstrings.
+
+**Measured cost.** None to a person using the verbs: the behaviour comparison
+over 215 scenarios shows no difference. Point 4 of #847's definition of done
+reads short for this area, for the audit #872 to weigh.
+
+**Closes when:** Phillip settles the question on #953 (recommended: land with
+the miss named and no further card for the same count), or a later card finds
+a simplification these five did not. Ledger only: maintainer facing, not on
+the board bar.
+
+---
+
+## R-1929. The reports guard's qualified mutations still name session._recorded, which U953 inlined into assert_gates
+
+**Found:** at the review of #953, U953, 2026-11-23.
+
+**The mechanism.** `tests/modules/test_reports.py` lists `session._recorded`
+among its `QUALIFIED_MUTATIONS`, the calls a report must never make. U953
+inlined that private function into `session.assert_gates`, which the list
+also names, so the entry names a function that no longer exists. The guard
+never checks that a listed name exists, so it passes, and a call of
+`assert_gates` is still caught.
+
+**Measured cost.** None today: found by a syntax tree scan for strings naming
+deleted names, the only hit in src, tests and scripts. A later reader may
+trust the entry as a live call.
+
+**Closes when:** the suite card that holds `tests/modules/test_reports.py`
+drops the entry, and the guard learns to fail on a listed name that does not
+resolve. Ledger only.
+
+---
+
+## R-1930. Eight test files import private helpers from tests/test_restore.py rather than from a helper module
+
+**Found:** at the review of #953, U953, 2026-11-23.
+
+**The mechanism.** U953 folded each `pytest.raises` block that makes one call
+into `_refusal`, `_refused` and `_raised`, defined once in
+`tests/test_restore.py`. `test_snapshot.py`, `test_snapshot_flush_u272.py`,
+`test_snapshot_wal_r1665.py`, `test_snapshot_check_room_r1677.py`,
+`test_rb_writer_db.py`, `test_tombstones.py`, `test_tree_registry.py` and
+`test_write_session.py` import them from there, and `test_snapshot_flush_u272.py`
+imports its `cfg` fixture from `test_snapshot.py`. `tests/_containers.py` calls
+such a cross module private import an undeclared coupling and keeps shared
+helpers in a helper module. The card's files did not include a new helper
+module, so none was added.
+
+**Measured cost.** None to a person: collection is 22,479 cases on base and
+branch alike, no autouse fixture travels with the import, and no assertion
+was weakened. A maintainer moving `test_restore.py` breaks eight files.
+
+**Closes when:** the helpers move to a module such as `tests/_raises.py`,
+by the suite card (#869) or a later one. Ledger only.
+
+---
+
+## R-1931. The scope, origin and detail fields U953 folded into refusal helpers, and the full check's own age, are asserted by no test this container runs
+
+**Found:** at the mutation table of #953, U953, 2026-11-23.
+
+**The mechanism.** U953's table (`docs/mutation/u953.md`) broke each refusal
+helper the cut wrote, and eight rows that change only a field the suite does
+not read killed nothing on the full suite: the run scope or the origin of
+every refusal from `tree_registry._refuse` (M1), `convergence._refuse` (M3),
+`reconcile._refuse` (M4) and `restore._refuse_run` (M12); the writer's
+default session scope in `rb_writer._cause` (M10); the detail key under which
+`_row_removed` files a membership's or a node's id (M9); `read_lock_holder`
+naming a holder from a record whose holder is an empty object (M25); and
+`_held_age` reading the full comparison's held key for the full check (M21).
+Each field was spelled at every call site on `main` and was unasserted there
+too: the cut moved the literal into one place and lost no kill (the kill set
+replay keeps all 366 recorded, and M21's composite on the base kills nothing either,
+`docs/mutation/u953-m21-composite.md`). Three more zeros, M15, M18 and M24,
+are equivalent mutants, since `internal-error`'s default remedy is already
+report a defect.
+
+**Measured cost.** Not driven to a person. A refusal's scope, origin and
+detail travel in the JSON envelope a verb prints, and the full check age is
+shown by the backup verb and doctor; a defect in one of them would pass the
+suite. M21's tests mostly need `rclone`, absent here, so the Mac may kill it.
+
+**Closes when:** a test asserts each refusal's envelope fields once per
+helper, and one asserts that a full check age differs from a full comparison
+age when the two held keys differ. Ledger only: no wrong value is produced
+today.
