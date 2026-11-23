@@ -1,5 +1,5 @@
-# commit 4d1ff8b9 host vm temp disk history full ids whole
-# 132 failed, 22538 passed, 17 skipped, 3038 warnings, 116 errors in 402.97s (0:06:42)
+# commit c84dc4ac host vm temp disk history full ids whole
+# 132 failed, 22635 passed, 18 skipped, 3042 warnings, 116 errors in 409.98s (0:06:49)
 tests/modules/test_reports.py::test_every_report_runs_with_the_library_directory_read_only
 tests/modules/test_reports.py::test_the_lock_probe_sees_a_directory_that_was_not_locked
 tests/test_acquire_cli.py::test_a_directory_it_cannot_list_is_reported
