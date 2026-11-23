@@ -1420,16 +1420,24 @@ def test_a_rows_isrc_is_folded_before_it_is_asked(music, tmp_path):
     assert found.matches[0].why is match.Why.ISRC_EXACT
 
 
-def test_an_isrc_hit_whose_artist_tag_credits_nobody_the_row_names_still_asks_about_the_key_alone(
-    music, tmp_path
-):
-    """The ISRC clause alone: a ``Various Artists`` copy names no member."""
-    credited(
-        music, tmp_path, "07B - 126 - Various Artists - Burning (Extended Mix)",
-        artist="Various Artists", title="07B - 126 - Burning (Extended Mix)", isrc="USNRS2644532",
-    )
+@pytest.mark.parametrize(
+    ("stem", "artist", "title", "key"),
+    [
+        pytest.param(
+            "07B - 126 - Various Artists - Burning (Extended Mix)", "Various Artists",
+            "07B - 126 - Burning (Extended Mix)", "07A", id="artist_tag_credits_nobody",
+        ),
+        pytest.param(
+            "04A - 126 - Malive - Burning (Original Mix)", "Malive",
+            "04A - 126 - Burning (Original Mix)", "04B", id="another_version_spelling",
+        ),
+    ],
+)
+def test_an_isrc_hit_asks_about_the_key_alone(music, tmp_path, stem, artist, title, key):
+    """The ISRC settles recording and version however the file spells them or credits nobody."""
+    credited(music, tmp_path, stem, artist=artist, title=title, isrc="USNRS2644532")
     found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="07A")],
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key=key)],
         index_of(music),
     )
     (one_match,) = found.matches
@@ -1527,22 +1535,6 @@ def test_an_isrc_hit_whose_title_disagrees_is_a_question_not_a_match(music, tmp_
         "09A - 124 - Nova Reef - Tide.flac"
     ]
     assert [c.difference for c in one_match.candidates] == [match.Why.TITLE_APPROXIMATE]
-
-
-def test_an_isrc_hit_at_another_version_spelling_asks_about_the_key_alone(music, tmp_path):
-    """The ISRC settles the version however the file spells it, so only the key is asked."""
-    credited(
-        music, tmp_path, "04A - 126 - Malive - Burning (Original Mix)",
-        artist="Malive", title="04A - 126 - Burning (Original Mix)", isrc="USNRS2644532",
-    )
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04B")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.NEEDS_REVIEW
-    assert one_match.why is match.Why.KEY_RELATIVE
-    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
 
 
 def test_an_isrc_settled_row_lists_the_files_carrying_the_isrc_and_no_other(music, tmp_path):
@@ -3653,15 +3645,17 @@ def test_a_boolean_is_not_a_format_number(tmp_path):
     assert _refusal(tmp_path, json.dumps({"list": True, "tracks": []}))
 
 
-def test_a_top_level_array_is_refused_rather_than_read_as_no_tracks(tmp_path):
+@pytest.mark.parametrize(
+    ("body", "name"),
+    [
+        pytest.param("  [1, 2, 3]  ", "arr.json", id="top_level_array"),
+        pytest.param('["Aurora Bloom - Sun Path"]', "arr2.json", id="array_of_strings"),
+    ],
+)
+def test_a_json_array_is_refused_rather_than_read_as_a_tracklist(tmp_path, body, name):
+    """A leading bracket counts as JSON, never no tracks nor one track with punctuation."""
     with pytest.raises(CratekitError):
-        match_cli.read_list(Path(write_list(tmp_path, "  [1, 2, 3]  ", "arr.json")))
-
-
-def test_a_json_array_of_strings_is_not_quietly_read_as_a_tracklist(tmp_path):
-    """A leading bracket counts as JSON, never one track with punctuation."""
-    with pytest.raises(CratekitError):
-        match_cli.read_list(Path(write_list(tmp_path, '["Aurora Bloom - Sun Path"]', "arr2.json")))
+        match_cli.read_list(Path(write_list(tmp_path, body, name)))
 
 
 def test_a_null_tracks_field_is_refused_rather_than_read_as_an_empty_list(tmp_path):
