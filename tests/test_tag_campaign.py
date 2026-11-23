@@ -31,6 +31,7 @@ from cratekit.write import metadata
 from tests import test_tag_backlog as _backlog_suite
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive, drive_human
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 machine = _backlog_suite.machine
 acknowledged = _suggest_suite.acknowledged

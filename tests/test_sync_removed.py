@@ -10,6 +10,7 @@ D1 applies. Nothing here names a real volume, person or track.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import shutil
 import socket
@@ -51,6 +52,7 @@ from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 VERB = ["sync", "removed"]
 SUNSET = "Sunset Warmup"
@@ -1246,6 +1248,29 @@ def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
         assert Path(path).exists(), title
 
 
+@functools.cache
+def _package_calls() -> tuple[tuple[str, str, tuple[str | None, ...]], ...]:
+    """Every call in the package outside ``_vendor``: its module, its callee's name, its keywords.
+
+    Parsed once per worker for the two source guards that sweep for callers.
+    """
+    import ast
+
+    root = Path(rb_writer.__file__).resolve().parents[1]
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
+                    node.func, "id", ""
+                )
+                module = path.relative_to(root).as_posix()
+                found.append((module, name, tuple(keyword.arg for keyword in node.keywords)))
+    return tuple(found)
+
+
 def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
     """A source guard, as the creation's is: who may ask is the property.
 
@@ -1253,24 +1278,16 @@ def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
     ``deletions``, or hands one of its three judges a ``**`` mapping that
     could carry it.
     """
-    import ast
     import re
 
     judges = {"commit_guarded", "assert_session_whitelisted", "guard_violations"}
     root = Path(rb_writer.__file__).resolve().parents[1]
-    askers: list[str] = []
-    for path in sorted(root.rglob("*.py")):
-        if "_vendor" in path.parts:
-            continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Call):
-                continue
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
-                node.func, "id", ""
-            )
-            for keyword in node.keywords:
-                if keyword.arg == "deletions" or (keyword.arg is None and name in judges):
-                    askers.append(f"{path.relative_to(root).as_posix()}::{name}")
+    askers = [
+        f"{module}::{name}"
+        for module, name, keywords in _package_calls()
+        for arg in keywords
+        if arg == "deletions" or (arg is None and name in judges)
+    ]
     assert sorted(set(askers)) == [
         "core/rb_writer.py::assert_session_whitelisted",
         "core/rb_writer.py::commit_guarded",
@@ -1956,18 +1973,7 @@ def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(
 
 def test_only_the_collection_removal_renumbers_memberships():
     """The one TrackNo write the whitelist does not see has one caller."""
-    import ast
-
-    root = Path(rb_writer.__file__).resolve().parents[1]
-    callers: list[str] = []
-    for path in sorted(root.rglob("*.py")):
-        if "_vendor" in path.parts:
-            continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Call):
-                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-                if name == "renumber_memberships":
-                    callers.append(path.relative_to(root).as_posix())
+    callers = [module for module, name, _keywords in _package_calls() if name == "renumber_memberships"]
     assert callers == ["core/rb_writer.py"], callers
 
 

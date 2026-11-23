@@ -20,6 +20,7 @@ from tests import cutover_fixtures
 from tests import test_intake_land_native as land_native
 from tests import test_set_inspiration_playlist as inspiration
 from tests.test_intake_land_native import _query, _two_acts
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_set_inspiration_playlist import (
     BATCH,
     FOLDER,

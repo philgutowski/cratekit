@@ -34,6 +34,7 @@ from cratekit.sync import playlists, removed, removed_cli, unavailable
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist
 from tests.test_label_tidal_catalogue import PLAYLIST, FakeClient
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_sync_removed import (
     DEEP,
     SUNSET,

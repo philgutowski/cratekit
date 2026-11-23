@@ -22,6 +22,7 @@ from cratekit.intake import account_playlists, batch_name
 from cratekit.tagging import guess, guess_cli, suggest
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 # The row verb's fixtures, shared through the suggest suite rather than copied.
 machine = _suggest_suite.machine

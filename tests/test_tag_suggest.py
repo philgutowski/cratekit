@@ -25,6 +25,7 @@ from cratekit.tagging import suggest, suggest_cli
 from cratekit.tagging.tag import SearchHit
 from tests import test_tag_rows as _rows_suite
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database, _row
 
 # The row verb's fixtures, shared rather than copied: the machine, its

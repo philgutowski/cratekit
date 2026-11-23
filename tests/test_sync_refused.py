@@ -27,6 +27,7 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_discogs_searcher import SENT, results, routed
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_sync_land import Tail
 from tests.test_tag_folder_copyright import MINIMAL, RAWAX, downloaded, five_labels
 from tests.test_tag_workers import general, item_causes, item_states, resume_argv, tag_job

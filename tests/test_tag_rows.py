@@ -43,6 +43,7 @@ from cratekit.write import metadata, metadata_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 DECLARED = taxonomy.default_taxonomy()

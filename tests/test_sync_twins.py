@@ -26,6 +26,7 @@ from cratekit.write import playlist_pair
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414

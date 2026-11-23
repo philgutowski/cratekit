@@ -24,6 +24,7 @@ from cratekit.tagging import artifacts, remap, remap_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 DECLARED = taxonomy.default_taxonomy()
 VERB = ["tag", "remap"]

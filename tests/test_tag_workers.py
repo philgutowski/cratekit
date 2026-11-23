@@ -31,6 +31,7 @@ from tests.test_catalogue_searcher import _beatport_page as beatport_page
 from tests.test_catalogue_searcher import _beatport_track as beatport_track
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_published_genre import (
     ISRC,
     RATE_LIMITED,

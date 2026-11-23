@@ -20,6 +20,7 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_analysis import _FakeModel
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 
 @pytest.fixture

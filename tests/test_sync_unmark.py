@@ -22,6 +22,7 @@ from cratekit.intake import land_cli
 from cratekit.sync import mark_record
 from tests import outbound_fakes
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_sync_all import _playlist, _tracks
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture, re-exported

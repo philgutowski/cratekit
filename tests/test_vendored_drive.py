@@ -36,6 +36,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.acquire_fakes import tidal_list, wav_bytes
 from tests.cli_drive import drive
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 #: The stored session: PKCE, and obviously not a real one.
 STORED = {

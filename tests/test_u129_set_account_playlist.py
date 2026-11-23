@@ -33,6 +33,7 @@ from tests.intake.test_workers import job_of, recording, three_tracks
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 
 # Fixture aliases so pytest finds them from this module.
