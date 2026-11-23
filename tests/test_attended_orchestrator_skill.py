@@ -1,14 +1,8 @@
 """U316: the attended-orchestrator skill is a project skill that lints clean.
 
-The skill is the text one attended session on Phillip's Mac follows to drive
-every open attended card with worker sessions. It is text, so nothing breaks
-when it rots, and what it must never do is say a step another skill owns, name
-a card the board should be read for, or carry a personal literal into a
-public repository. Each of those is read here from the files themselves: the
-shipped skills lint over the folder (frontmatter, every crate line parsed by
-the real parser, the portability scan), the description's length, the three
-skills it points to by name, the worker rules beside it, the ignored state
-folder, the only card numbers it may name, and no dash in its prose.
+It is text, so nothing breaks when it rots: it must never say a step another
+skill owns, name a card the board should be read for, or carry a personal
+literal into a public repository. Each is read here from the files themselves.
 """
 
 from __future__ import annotations
@@ -37,9 +31,8 @@ WORKER = SKILL_DIR / "WORKER.md"
 #: The one length a skill description is held to by the harness that loads it.
 DESCRIPTION_LIMIT = 1024
 
-#: The card numbers the skill may name, whose rules are about them by nature:
-#: U29, the cutover, by unit and issue, and A5, the live proofs it reads, by
-#: attended number and issue. Anything else is a card the board should be read for.
+#: The card numbers the skill may name, whose rules are about them by nature: U29,
+#: the cutover, and A5, the live proofs it reads, each by number and issue.
 ALLOWED_CARDS = {"U29", "#29", "A5", "#178"}
 
 #: A card in any of the forms a brief or a record writes one: U29, u287, A 178,
@@ -61,11 +54,7 @@ def flat(text) -> str:
 
 
 def _frontmatter(text: str) -> tuple[dict[str, str], list[str]]:
-    """The frontmatter's keys, one per line as the loader reads them, and its lines.
-
-    PyYAML is not a declared dependency, so the block is read line by line, and
-    the test below holds it to one line a key, where that reading is YAML's.
-    """
+    """The frontmatter's keys and lines, read line by line since PyYAML is not declared."""
     block = _FRONTMATTER.match(text)
     assert block, "no frontmatter"
     lines = block.group(1).splitlines()
@@ -86,10 +75,8 @@ def test_the_skill_passes_the_shipped_skills_lint(tmp_path):
 def test_every_crate_command_it_names_parses(text):
     """Anti vacuity for the lint, whose parse reads only fenced and indented lines.
 
-    The skill and its worker rules name their crate commands inline and leave
-    the steps that run them to the skills that own them, so each inline span is
-    put through the lint's own parse instead, and a verb or a flag renamed
-    under it fails.
+    Each inline crate span goes through the lint's own parse, so a renamed verb
+    or flag under it fails.
     """
     spans = _spans(text)
     worker = _spans(WORKER.read_text())
@@ -131,9 +118,8 @@ def test_it_points_to_the_skills_that_own_their_steps(flat):
     for skill in ("rekordbox-visit", "crate-sync", "file-card"):
         assert f"`{skill}` skill" in flat, skill
         assert (REPO_ROOT / ".claude" / "skills" / skill / "SKILL.md").is_file(), skill
-    # Not repeated: each owning skill's steps, by the commands and fields
-    # that spell them, none of them here. The original prompt carried the
-    # first four, and the skill points to their owners instead.
+    # Not repeated: each owning skill's steps, by the commands and fields that
+    # spell them; the skill points to their owners instead.
     owned = (
         "crate job list",  # both preflights
         "pgrep -x",  # the visit's check that rekordbox is gone
@@ -212,12 +198,8 @@ def test_it_says_the_four_things_it_never_does(flat):
 
 
 def _prose(body: str) -> str:
-    """The text with its frontmatter fences and every code block and span taken out.
-
-    A flag is code, and its double hyphen is the parser's; the house rule is
-    about the prose around it. A span may wrap across a line, as markdown
-    allows, so the span pattern crosses one.
-    """
+    """The text without frontmatter fences, code blocks and spans, which may wrap a
+    line; a flag's double hyphen is code, and the house rule is about prose."""
     body = re.sub(r"\A---\n|\n---\n", "\n", body, count=2)
     body = re.sub(r"(?:```|~~~).*?(?:```|~~~)", "", body, flags=re.DOTALL)
     body = re.sub(r"^ {4,}\S.*$", "", body, flags=re.M)
@@ -262,11 +244,7 @@ def test_the_docs_name_it_as_how_a_whole_sitting_runs():
 
 
 def _section(text: str, heading: str) -> str:
-    """One bold headed paragraph of the skill, from its heading to the next one.
-
-    A paragraph ends at the next bold heading or the next section heading,
-    whichever comes first, so a sentence moved into another section leaves it.
-    """
+    """One bold headed paragraph of the skill, to the next bold or section heading."""
     start = text.index(heading)
     ends = [i for i in (text.find(m, start + len(heading)) for m in ("\n\n**", "\n## ")) if i != -1]
     return " ".join(text[start : min(ends) if ends else None].split())

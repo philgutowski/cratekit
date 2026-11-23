@@ -1,10 +1,8 @@
 """U2: external binary resolution, and the lint that keeps every call site honest.
 
-An app launched from a file manager inherits a minimal PATH, so a bare-name
-call that works in a shell fails inside the packaged app. Two fixes over the
-source: ``BinaryNotFound`` is an ordinary exception, not a ``SystemExit``
-(KTD25), and a binary the operating system provides carries no install hint.
-The bare-name lint is widened to every binary the package runs.
+An app launched from a file manager inherits a minimal PATH, so a bare-name call
+fails there. ``BinaryNotFound`` is an ordinary exception, not ``SystemExit``
+(KTD25), and the bare-name lint covers every binary the package runs.
 """
 
 from __future__ import annotations
@@ -40,11 +38,8 @@ def _resolve_missing(monkeypatch, tmp_path, name: str):
 
 
 def _unplaceable(monkeypatch, tmp_path, name: str = "ffmpeg"):
-    """A user-installable binary the hint table has no row for on this platform.
-
-    The row is emptied: patching ``sys.platform`` instead sends ``shutil.which``
-    down a Windows branch, testing the standard library rather than this module.
-    """
+    """A user-installable binary with its hint row emptied, rather than a patched
+    ``sys.platform`` that tests the standard library."""
     monkeypatch.setitem(binaries._INSTALL_HINTS, name, {})
     return _resolve_missing(monkeypatch, tmp_path, name)
 

@@ -1,9 +1,7 @@
 """U281: Beatport's refusal is read as one, and a run stops asking a catalogue that refused it.
 
 Sitting 97 measured every Beatport lookup answering 403 with ``Cf-Mitigated:
-challenge``, each recorded ``unreachable``. This is the searcher's half: the
-read of the refusal, the run count that stops asking, a refused file never a
-miss, and a catalogue that answered never stopped. The sweep's half is in
+challenge``. This is the searcher's half; the sweep's is in
 ``tests/test_tag_workers.py``. Nothing touches the network.
 """
 
@@ -50,8 +48,7 @@ class _Response:
 def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
     """The shipped fetch over a getter answering Beatport and Discogs by URL.
 
-    ``beatport`` is one reply, or a list taken one per Beatport request.
-    ``discogs`` answers the search and the one release it names, and is a miss
+    ``beatport`` is one reply or a list, one per request; ``discogs`` is a miss
     when not given.
     """
     replies = list(beatport) if isinstance(beatport, list) else None
@@ -161,9 +158,8 @@ def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
 
 
 def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
-    """A page that carries Beatport's payload is a results page, whatever script Cloudflare put
-    on it, so a match or a miss is never read as a refusal (U281's review): a bot managed site
-    can carry the detection script on every ordinary page."""
+    """A page carrying Beatport's payload is a results page whatever script Cloudflare
+    put on it, so a match or a miss is never a refusal."""
     script = '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
     found = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]) + script
     empty = _beatport_page([]) + script
@@ -252,11 +248,7 @@ def test_a_beatport_answer_with_results_still_matches():
 
 
 def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
-    """``count`` files searched as a worker searches them, one searcher per file.
-
-    That is why the count is handed in: a count kept by the searcher would
-    start again at every file.
-    """
+    """``count`` files searched one searcher per file, so the count is handed in."""
     seen: list[str] = []
     fetch = _over_the_wire(list(replies), discogs=discogs, seen=seen)
     asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)

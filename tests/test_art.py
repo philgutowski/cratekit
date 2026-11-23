@@ -1,9 +1,8 @@
 """The art engine: a CDJ safe encoder, and a picture reader and writer per container.
 
-Expected values come from a second reader, never from the code under test:
-Pillow judges the encoder's bytes, mutagen judges what the writer stored. The
-files are real containers made by the tag suite's synthesizer, because a bare
-ID3 stream at the front of an AIFF or a WAV only shows in a real chunk table.
+Expected values come from a second reader, Pillow or mutagen, never the code
+under test, over real containers, since a bare ID3 stream in an AIFF or a WAV
+only shows in a real chunk table.
 """
 
 from __future__ import annotations
@@ -361,9 +360,8 @@ def test_a_chunk_container_never_receives_a_bare_id3_stream(container, suffix, m
 
 
 def test_an_mp3_id3v1_trailer_survives_the_write(container):
-    # Both tags, disagreeing: a lone v1 trailer survives even a plain save,
-    # while a v1 genre byte beside a v2 genre outside the v1 list is what a
-    # plain save rewrites to 255.
+    # Both tags, disagreeing: a lone v1 trailer survives a plain save, which
+    # rewrites a v1 genre byte beside an unlisted v2 genre to 255.
     import mutagen.id3 as id3
     from mutagen.mp3 import MP3
 

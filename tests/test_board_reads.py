@@ -87,11 +87,8 @@ def _card_page(issues, by_number, extra, args, total):
 
 
 def _fake_gh(issues: list[dict], items: list[dict], *, total=TRUE, issue_total=TRUE, extra=None):
-    """A `gh` that honours `--limit` by cutting short and pages the cards by cursor.
-
-    `extra` maps an issue number to further memberships, another project's or
-    another owner's.
-    """
+    """A `gh` that cuts short at `--limit` and pages the cards by cursor; `extra` maps
+    an issue to further memberships."""
     calls: list[tuple[str, ...]] = []
     by_number = {item["number"]: item for item in items}
 
