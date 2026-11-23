@@ -121,9 +121,21 @@ removed` removal left, a genre a retag had emptied), so orphan album and genre
 rows are pruned by rekordbox itself at launch.
 **Imitated since #925 (R-1830):** `rb_writer.CollectionRemoval` lowers the
 `TrackNo` of each live membership after a removed live one, in every playlist
-the removal deletes a row from, by one per removed live row below it, writing
-that one column from SQL so no `updated_at` or `rb_local_usn` moves, and the
-SQL confinement admits exactly those rows. A row marked `rb_local_deleted` is
+the removal deletes a row from, by one per removed live row below it, from SQL,
+and the SQL confinement admits exactly those rows. **Corrected by A202 at
+sitting 104, 2026-11-23 (U955):** A197 had read only `TrackNo`, and the
+renumbered row also takes `rb_local_usn`, set to `localUpdateCount` after the
+removal, and `updated_at`, set to the removal's time in rekordbox's form
+`YYYY-MM-DD HH:MM:SS.fff +00:00`; every other column, and every row before
+the removed one, is untouched, and `localUpdateCount` stepped 13 for one
+throwaway. Since U955 the one UPDATE per row writes those three columns: the
+count is read before the commit as the count now plus one per entry of the
+binding's update buffer, which is what pyrekordbox 0.4.4's commit adds, the
+confinement refuses a planned row with any of the three wrong or unmoved and
+reads the count again before the commit, and the read back refuses a
+committed count other than the stamp's. Calling the binding's own increment
+before the guard would have cleared the buffer the whitelist reads, blinding
+it to the deletes. A row marked `rb_local_deleted` is
 neither counted nor moved: this product's own membership writers leave a
 marked row at a number a live row also holds, and counting it put two live
 rows on one place (review round one). The binding's `remove_from_playlist`
@@ -132,6 +144,6 @@ stamps `updated_at` and `rb_local_usn` on every row it moves, and an ORM
 write of `TrackNo` adds `updated_at` through the binding's `onupdate`.
 **Still unmeasured:** a history list holding other tracks (left numbered as it
 was), a playlist already holding a gap or a row marked removed below the
-renumbered one (the rule is applied there unmeasured), how far
-`localUpdateCount` moves for a renumbering, label rows, and My Tag and
+renumbered one (the rule is applied there unmeasured), why rekordbox's count
+steps 13 where this product's steps one per row it deletes, label rows, and My Tag and
 sampler rows.
