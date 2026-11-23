@@ -1,0 +1,3870 @@
+{
+  "name": "u311-replay-after-b",
+  "pass_kind": "replay",
+  "branch": "cloud/868-tools-backup-refactor",
+  "head": "706ef5c9",
+  "when": "2026-11-23 01:12 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22858,
+  "baseline_exit": 1,
+  "pytest_runs": 118,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 149,
+  "known_source": "a scratch baseline measured on the base with a stand in rclone on the path",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: it is for commit `870c16715174`, and this tree is at `706ef5c94b03`",
+  "subset_baselines": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/session/restore_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/session/restore_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "75425845a3c9423d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22858,
+    "baseline_collected": 22858,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r154-c.C1_digest_the_word",
+      "description": "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddc9bb6eacc6ca09",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_between_the_two_acts_moves_the_digest",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled_and_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"snapshot\": snapshot.stamp,",
+      "new": "                \"snapshot\": \"newest\",",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C1_digest_the_word"
+      }
+    },
+    {
+      "id": "r154-c.C2_expected_volume_outside_the_digest",
+      "description": "Leave the stated volume out of the offer, so an answer given without the flag is honoured against a run carrying it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "942d3b43d6064dcf",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_expected_volume_is_stated",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"expected_volume\": snapshot_volume,",
+      "new": "                \"expected_volume\": None,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C2_expected_volume_outside_the_digest"
+      }
+    },
+    {
+      "id": "r154-c.C3_hand_down_the_flag",
+      "description": "Hand the engine the flag instead of the stamp that was offered, so it resolves the newest snapshot again after the approval",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fd8db2d9f9065f3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot=pulling.stamp if pulling is not None else None,",
+      "new": "        snapshot=ctx.args.snapshot,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C3_hand_down_the_flag"
+      }
+    },
+    {
+      "id": "r154-c.C4_pull_flags_dropped",
+      "description": "Never refuse a flag about the pull typed without the pull, so it is dropped in silence ahead of a capture rollback",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "692c3f5938164377",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags0]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags1]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags2]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_pull_flags_without_the_pull(ctx.args)\n    requested = ctx.args.session_id",
+      "new": "    requested = ctx.args.session_id",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C4_pull_flags_dropped"
+      }
+    },
+    {
+      "id": "r154-c.C5_stated_volume_stops_at_the_verb",
+      "description": "Show and digest the stated volume and never pass it to the engine, so the replaced drive restore is approved and then refused under the gates",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fed29622194abb84",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot_volume=ctx.args.snapshot_volume,\n        accept_unrecorded=pulling.named if pulling is not None else None,",
+      "new": "        snapshot_volume=None,\n        accept_unrecorded=pulling.named if pulling is not None else None,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C5_stated_volume_stops_at_the_verb"
+      }
+    },
+    {
+      "id": "r367.G10_the_report_drops_the_absent_field",
+      "description": "the off machine half ran and the person is not told the sidecar was missing",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1419929a91067f7",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            missing = pulled.absent_sidecars",
+      "new": "            missing = ()",
+      "source": {
+        "table": "r367.json",
+        "id": "G10_the_report_drops_the_absent_field"
+      }
+    },
+    {
+      "id": "r368-round-2.G7_composite",
+      "description": "what the resolution does hold now that samefile answers the comparison: report the word somebody typed rather than the directory it named",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "700ff21a10d3c32f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            target=str(resolved),\n            library_root=str(root),\n",
+      "new": "            target=str(raw),\n            library_root=str(root),\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G7_composite"
+      }
+    },
+    {
+      "id": "r368-round-2.G7_target_not_resolved",
+      "description": "re-measured: compare the raw argument, leaving samefile to answer for a relative spelling",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "837dbb51adb108c7",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    resolved = Path(raw).expanduser().resolve()\n",
+      "new": "    resolved = Path(raw).expanduser()\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G7_target_not_resolved"
+      }
+    },
+    {
+      "id": "r368-round-2.R1_the_live_root_refusal_is_reworded",
+      "description": "re-measured: reword the destination refusal rather than appending to it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f802ec9ce1b8021b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"the database would land on {landing}, which is this library's live \"\n            f\"database; the target is outside the library root and the database \"\n            f\"is too, so naming its directory restores over it in place\",\n",
+      "new": "            f\"the chosen folder resolves to somewhere this installation already \"\n            f\"reads from, so the copy would replace what is there\",\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "R1_the_live_root_refusal_is_reworded"
+      }
+    },
+    {
+      "id": "r368.A1_the_detail_check_is_one_value",
+      "description": "an existing guard in the sample: report both destination refusals under one detail, so the two cannot be told apart",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a5750c525e9c18c9",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            check=\"destination\",\n",
+      "new": "            check=\"containment\",\n",
+      "source": {
+        "table": "r368.json",
+        "id": "A1_the_detail_check_is_one_value"
+      }
+    },
+    {
+      "id": "r368.G10_the_default_capture_survives_a_target",
+      "description": "let a rehearsal roll the newest spendable session back on the live library",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "511bd11ad4857542",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if target is not None:\n        chosen = None\n    elif requested is None:\n",
+      "new": "    if requested is None:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G10_the_default_capture_survives_a_target"
+      }
+    },
+    {
+      "id": "r368.G11_the_target_is_dropped_before_the_engine",
+      "description": "read the flag, refuse on it, and then restore to the live root anyway",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c038f753a4cb3ee1",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        include_mirror=ctx.args.include_mirror,\n        target=target,\n    )\n    return ctx.envelope(data=_performed(report, offered))\n",
+      "new": "        include_mirror=ctx.args.include_mirror,\n    )\n    return ctx.envelope(data=_performed(report, offered))\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G11_the_target_is_dropped_before_the_engine"
+      }
+    },
+    {
+      "id": "r368.G12_the_target_leaves_the_digest",
+      "description": "a decision recorded against a rehearsal is honoured against the live restore",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9f718027e4f58f67",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_restore_is_pointed_somewhere_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"target\": str(target) if target is not None else \"library\",\n",
+      "new": "",
+      "source": {
+        "table": "r368.json",
+        "id": "G12_the_target_leaves_the_digest"
+      }
+    },
+    {
+      "id": "r368.G13_the_rehearsal_flag_leaves_the_digest",
+      "description": "the review's second finding, restored: an approved preview authorises the real run",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e38d4452b522f2e",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_mirror_half_or_the_rehearsal_flag_is_added"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"digest\": digest_of(\n            {\"kind\": \"restore.run\", \"items\": items, \"dry_run\": dry_run}\n        ),\n",
+      "new": "        \"digest\": digest_of({\"kind\": \"restore.run\", \"items\": items}),\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G13_the_rehearsal_flag_leaves_the_digest"
+      }
+    },
+    {
+      "id": "r368.G1_no_live_database_destination_check",
+      "description": "the row the brief names: drop the check that the database would land on the live one",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "021c2d4a8bfb0bbc",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _same_place(landing, live) or (\n        landing.name == live.name and _same_place(landing.parent, live.parent)\n    ):\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G1_no_live_database_destination_check"
+      }
+    },
+    {
+      "id": "r368.G2_no_containment_check",
+      "description": "drop the check that the target is the library root, holds it, or sits inside it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e3eb9c3bdb959243",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[above-the directory the library root sits in]",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[inside-a directory underneath the library root]",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[root-the library root itself]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G2_no_containment_check"
+      }
+    },
+    {
+      "id": "r368.G3_containment_one_direction_only",
+      "description": "keep the target inside the root and drop the root inside the target, the mirror over the library's parent",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "177fa120a9170d31",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[above-the directory the library root sits in]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):\n",
+      "new": "    if _holds_or_is(root, resolved):\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G3_containment_one_direction_only"
+      }
+    },
+    {
+      "id": "r368.G4_containment_is_equality_only",
+      "description": "refuse only the root itself, so a directory underneath it passes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e64dc2d712d0cd62",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[above-the directory the library root sits in]",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[inside-a directory underneath the library root]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if place == root or place.is_relative_to(root):\n        return True\n    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))\n",
+      "new": "    if place == root:\n        return True\n    return _same_place(place, root)\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G4_containment_is_equality_only"
+      }
+    },
+    {
+      "id": "r368.G8_target_without_the_off_machine_pull_is_allowed",
+      "description": "accept a target with no mirror pull to fill it, which silently becomes a live rollback",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0623083bb1936977",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused[no-pull]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not args.from_backup:\n        raise _target_invalid(\n",
+      "new": "    if False:\n        raise _target_invalid(\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G8_target_without_the_off_machine_pull_is_allowed"
+      }
+    },
+    {
+      "id": "r368.G9_target_beside_a_capture_rollback_is_allowed",
+      "description": "accept a target next to a named session or a discard, which puts two halves on two volumes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "abb5992a3fb64aa8",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused[beside-a-discard]",
+        "tests/test_restore_cli.py::test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused[beside-a-named-session]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if args.session_id is not None or args.discard:\n        raise _target_invalid(\n",
+      "new": "    if False:\n        raise _target_invalid(\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G9_target_beside_a_capture_rollback_is_allowed"
+      }
+    },
+    {
+      "id": "r592-b.B1_step_on_every_failure",
+      "description": "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "83379ecaa5579801",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not dry_run and half == DATABASE_HALF:",
+      "new": "    if not dry_run:",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B1_step_on_every_failure"
+      }
+    },
+    {
+      "id": "r592-b.B2_step_on_the_wrong_half",
+      "description": "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "07943d8571c8811c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not dry_run and half == DATABASE_HALF:",
+      "new": "    if not dry_run and half == MIRROR_HALF:",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B2_step_on_the_wrong_half"
+      }
+    },
+    {
+      "id": "r592-b.B4_step_names_the_wrong_directory",
+      "description": "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c411fba0cfdffcd3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"companion of it in {database_target.parent} if one is there, because a \"",
+      "new": "        f\"companion of it in {database_target.parent.parent} if one is there, because a \"",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B4_step_names_the_wrong_directory"
+      }
+    },
+    {
+      "id": "r592-b.B5_step_names_no_file",
+      "description": "rerun_step: say the database rather than its file name, so the step does not say which file to remove",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ed2455aa7e8f73c6",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"before running the recovery again, remove {database_target.name} and any \"",
+      "new": "        f\"before running the recovery again, remove the database and any \"",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B5_step_names_no_file"
+      }
+    },
+    {
+      "id": "r592-b.B7_sample_halves_split",
+      "description": "SAMPLE, existing guard: _halves hands the whole plan to the mirror half, so a failed mirror lands the database behind it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9696d68a5f6db67c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_mirror_still_carrying_the_database_does_not_land_it",
+        "tests/test_restore_cli.py::test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target",
+        "tests/test_restore_cli.py::test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_both_halves_run_inside_one_holding_of_the_recovery_lock",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)",
+      "new": "    mirror = tuple(decided.commands)",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B7_sample_halves_split"
+      }
+    },
+    {
+      "id": "r592-c.C1_step_on_a_rehearsal_remeasured",
+      "description": "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing (B3 of r592-b, re-measured)",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a2805e7ce68bb3b8",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not dry_run and half == DATABASE_HALF:",
+      "new": "    if half == DATABASE_HALF:",
+      "source": {
+        "table": "r592-c.json",
+        "id": "C1_step_on_a_rehearsal_remeasured"
+      }
+    },
+    {
+      "id": "u211.R1_restore_says_what_the_mirror_left",
+      "description": "restore session database half: raise the scan's refusal as it came, without the half, the completed mirror or the rerun step",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fda92483dcd37460",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        raise _absence_unconfirmed(\n                            exc, completed, decided, dry_run=dry_run\n                        ) from exc",
+      "new": "                        raise",
+      "source": {
+        "table": "u211.json",
+        "id": "R1_restore_says_what_the_mirror_left"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.G3_abort_restores_anyway",
+      "description": "Treat an aborted confirmation as an approval",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7b2d3b8bec0e0028",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_aborted_confirmation_restores_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option == \"abort\":\n        return ctx.envelope(data=offered, outcome=Outcome.NO_OP)\n    if chosen is None and not ctx.args.from_backup:",
+      "new": "    if option == \"never-an-option\":\n        return ctx.envelope(data=offered, outcome=Outcome.NO_OP)\n    if chosen is None and not ctx.args.from_backup:",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "G3_abort_restores_anyway"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.L1_an_unusable_capture_is_filtered_out_of_the_listing",
+      "description": "Drop the sessions a person is most likely to be looking for",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0cefae08c3908f0e",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect",
+        "tests/test_restore_cli.py::test_a_session_whose_capture_is_gone_is_listed_and_says_why"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"items\": [_listed(entry) for entry in listed],",
+      "new": "            \"items\": [_listed(e) for e in listed if e.restorable],",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "L1_an_unusable_capture_is_filtered_out_of_the_listing"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.N1_the_default_takes_the_newest_unusable_capture",
+      "description": "Choose the newest session regardless of whether its capture can be spent",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6edc9348fde22fda",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_bare_run_takes_the_newest_spendable_capture_and_not_merely_the_newest",
+        "tests/test_restore_cli.py::test_a_capture_that_exists_but_is_unverified_is_not_spendable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for entry in restore.list_sessions(cfg):\n        if entry.restorable:\n            return entry\n    return None",
+      "new": "    for entry in restore.list_sessions(cfg):\n        return entry\n    return None",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "N1_the_default_takes_the_newest_unusable_capture"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.P1_the_report_recomputes_the_digest",
+      "description": "Report a digest computed here rather than the one the decision was recorded against",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d85e863876bdc85f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_report_keeps_the_digest_the_decision_was_recorded_against"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return {\"digest\": offered[\"digest\"], \"items\": items, \"totals\": totals, \"chunk\": None}",
+      "new": "    return {\"digest\": digest_of(items), \"items\": items, \"totals\": totals, \"chunk\": None}",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "P1_the_report_recomputes_the_digest"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.P2_a_mirror_pull_is_reported_as_nothing",
+      "description": "Leave the off-machine transfers out of the report, which is the defect this shape fixed",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d39d64109cf803b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    items: list[dict[str, Any]] = [\n        {\"half\": \"off-machine\", \"transfer\": label} for label in report.pulled\n    ]",
+      "new": "    items: list[dict[str, Any]] = []",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "P2_a_mirror_pull_is_reported_as_nothing"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.P3_convergence_is_reported_for_a_run_that_spent_no_capture",
+      "description": "Answer the capture restore's own question when no capture restore happened",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd83a232cfeba290",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if outcome is not None:\n        totals[\"converged\"] = outcome.converged\n        totals[\"outstanding\"] = len(outcome.outstanding)",
+      "new": "    totals[\"converged\"] = outcome.converged if outcome is not None else True\n    if outcome is not None:\n        totals[\"outstanding\"] = len(outcome.outstanding)",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "P3_convergence_is_reported_for_a_run_that_spent_no_capture"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.R1_a_backup_refusal_becomes_an_internal_error",
+      "description": "Flatten every off-machine diagnosis into report-a-defect",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ebfe1c7af797c9b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_recovery_is_refused_underneath_a_running_rekordbox",
+        "tests/test_restore_cli.py::test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes",
+        "tests/test_restore_cli.py::test_the_ledgers_traversal_value_is_refused_at_the_verb",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            reason=slug,\n            message=exc.detail,\n            remediation=reservations.remediation_for(slug),",
+      "new": "            reason=\"internal-error\",\n            message=exc.detail,\n            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "R1_a_backup_refusal_becomes_an_internal_error"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.S6_the_named_decision_is_withdrawn",
+      "description": "Tell the off-machine restore no decision exists, which R33 makes it refuse on",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5517713540e13111",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 22,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled",
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean",
+        "tests/test_restore_cli.py::test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_rehearsal_neutralizes_the_mirror_transfers_too",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[-pulled1-absent]",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[PIONEER/\\n-pulled0-pulled]",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default",
+        "tests/test_restore_cli.py::test_a_transfer_that_succeeds_is_still_reported",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock",
+        "tests/test_restore_cli.py::test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out",
+        "tests/test_restore_cli.py::test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher",
+        "tests/test_restore_cli.py::test_the_mirror_is_pulled_before_the_capture_is_spent",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest",
+        "tests/test_restore_cli.py::test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled_and_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    confirmed=True,",
+      "new": "                    confirmed=False,",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "S6_the_named_decision_is_withdrawn"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.S8_a_rehearsal_performs_the_capture_restore",
+      "description": "Ignore dry_run on the capture half, so a preview replaces the live database",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df922edf8492887f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_dry_run_walks_every_step_and_performs_none_of_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            outcome=restore.run(\n                decided,\n                cfg,\n                held=held,\n                dry_run=dry_run,",
+      "new": "            outcome=restore.run(\n                decided,\n                cfg,\n                held=held,\n                dry_run=False,",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "S8_a_rehearsal_performs_the_capture_restore"
+      }
+    },
+    {
+      "id": "u27-restore-cli-round-2.O2_the_discard_set_leaves_the_digest",
+      "description": "Digest without the sessions being discarded, so an approval covers a wider destruction",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c846b66431e78e1",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_discard_set_moves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"discarding\": list(discarding),\n            }",
+      "new": "            }",
+      "source": {
+        "table": "u27-restore-cli-round-2.json",
+        "id": "O2_the_discard_set_leaves_the_digest"
+      }
+    },
+    {
+      "id": "u27-restore-cli-round-2.R2_the_reserved_remediation_is_replaced_by_the_class_default",
+      "description": "Discard the per-slug remediation the reservation table holds",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "30f35ab923ec7019",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default",
+        "tests/test_restore_cli.py::test_the_ledgers_traversal_value_is_refused_at_the_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            remediation=reservations.remediation_for(slug),",
+      "new": "            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),",
+      "source": {
+        "table": "u27-restore-cli-round-2.json",
+        "id": "R2_the_reserved_remediation_is_replaced_by_the_class_default"
+      }
+    },
+    {
+      "id": "u27-restore-cli-round-2.S7_a_rehearsal_performs_the_mirror_pull",
+      "description": "Ignore dry_run on the off-machine half, so a preview transfers for real",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "108b5a1081a0387f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_rehearsal_neutralizes_the_mirror_transfers_too",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    pulled,\n                    cfg,\n                    dry_run=dry_run,",
+      "new": "                    pulled,\n                    cfg,\n                    dry_run=False,",
+      "source": {
+        "table": "u27-restore-cli-round-2.json",
+        "id": "S7_a_rehearsal_performs_the_mirror_pull"
+      }
+    },
+    {
+      "id": "u96-a.A12_which_half_failed",
+      "description": "_half_failed: swap the two failure sentences, so a failed mirror is reported as a failed database half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2ca106ec79b38ccb",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif half == MIRROR_HALF:\n        message = (",
+      "new": "    elif half == DATABASE_HALF:\n        message = (",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A12_which_half_failed"
+      }
+    },
+    {
+      "id": "u96-a.A13_completed_halves_recorded",
+      "description": "Never record a completed half, so a database failure does not say the mirror arrived",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93b304df030550ac",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            completed.append(half)",
+      "new": "            pass",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A13_completed_halves_recorded"
+      }
+    },
+    {
+      "id": "u96-a.A14_target_is_required",
+      "description": "build_bare_metal: make --target optional, so the verb can be typed with no destination",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "150834d807d0c53a",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_verb_cannot_be_typed_without_naming_a_target"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"--target\",\n        required=True,\n        metavar=\"DIRECTORY\",",
+      "new": "        \"--target\",\n        metavar=\"DIRECTORY\",",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A14_target_is_required"
+      }
+    },
+    {
+      "id": "u96-a.A15_report_names_where_the_database_is",
+      "description": "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "13fc5ebe48f29b4b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"database_target\": str(report.database_elsewhere or report.database_target),",
+      "new": "            \"database_target\": str(report.database_target),",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A15_report_names_where_the_database_is"
+      }
+    },
+    {
+      "id": "u96-a.A16_no_absent_companion_for_a_half_that_did_not_run",
+      "description": "Report the plan's absent companions even when the database half was skipped",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "38d11177736866de",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            absent=decided.absent_sidecars if elsewhere is None else (),",
+      "new": "            absent=decided.absent_sidecars,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A16_no_absent_companion_for_a_half_that_did_not_run"
+      }
+    },
+    {
+      "id": "u96-a.A1_acceptance_reaches_the_engine",
+      "description": "recover_under_bare_metal_session: hand the engine acknowledged=True whatever the caller accepted, so the replacement is never a person's decision",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "82efb3c673f732bb",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_refusal_before_the_lock_leaves_the_disk_untouched[the replacement was not accepted]",
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_the_verb_refuses_without_the_acceptance_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        acknowledged=accepted,",
+      "new": "        acknowledged=True,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A1_acceptance_reaches_the_engine"
+      }
+    },
+    {
+      "id": "u96-a.A2_flag_reaches_the_function",
+      "description": "perform_bare_metal: pass accepted=True instead of the flag, so the verb recovers without --accept-replacement",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43fac9377ff0cd84",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_verb_refuses_without_the_acceptance_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        accepted=ctx.args.accept_replacement,",
+      "new": "        accepted=True,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A2_flag_reaches_the_function"
+      }
+    },
+    {
+      "id": "u96-a.A4_run_inside_the_held_session",
+      "description": "Drop gates=held.guard from the run_restore call of each half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ae30a02efba521f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_failed_rehearsal_says_nothing_was_written",
+        "tests/test_restore_cli.py::test_a_mirror_still_carrying_the_database_does_not_land_it",
+        "tests/test_restore_cli.py::test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target",
+        "tests/test_restore_cli.py::test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_both_halves_run_inside_one_holding_of_the_recovery_lock",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    portion,\n                    cfg,\n                    dry_run=dry_run,\n                    gates=held.guard,",
+      "new": "                    portion,\n                    cfg,\n                    dry_run=dry_run,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A4_run_inside_the_held_session"
+      }
+    },
+    {
+      "id": "u96-a.A5_the_mirror_is_pulled",
+      "description": "Plan with include_mirror=False, so a recovery onto an empty drive brings a database and no music",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bcf1da5cc251a20c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_failed_rehearsal_says_nothing_was_written",
+        "tests/test_restore_cli.py::test_a_mirror_still_carrying_the_database_does_not_land_it",
+        "tests/test_restore_cli.py::test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target",
+        "tests/test_restore_cli.py::test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_both_halves_run_inside_one_holding_of_the_recovery_lock",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                include_mirror=True,",
+      "new": "                include_mirror=False,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A5_the_mirror_is_pulled"
+      }
+    },
+    {
+      "id": "u96-a.A6_a_half_at_a_time",
+      "description": "_halves: put every command in the mirror half, which is spending the plan whole, so a failed mirror still lands the database",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6fea5f3923e219ab",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step",
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one",
+        "tests/test_restore_cli.py::test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove",
+        "tests/test_restore_cli.py::test_a_failed_mirror_stops_the_recovery_before_the_database",
+        "tests/test_restore_cli.py::test_a_mirror_still_carrying_the_database_does_not_land_it",
+        "tests/test_restore_cli.py::test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target",
+        "tests/test_restore_cli.py::test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed",
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything",
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_both_halves_run_inside_one_holding_of_the_recovery_lock",
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)",
+      "new": "    mirror = decided.commands",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A6_a_half_at_a_time"
+      }
+    },
+    {
+      "id": "u96-a.A7_rekordbox_asked_again",
+      "description": "Disarm the second rekordbox check, the one before the database half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d79aee7f31415466",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if running:\n                        raise backup.BackupRefused(",
+      "new": "                    if False:\n                        raise backup.BackupRefused(",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A7_rekordbox_asked_again"
+      }
+    },
+    {
+      "id": "u96-a.A8_database_elsewhere_is_skipped",
+      "description": "Run the database half even when the configured database was never on the lost volume",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "94648b4f2d17fbe3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if half == DATABASE_HALF and elsewhere is not None:",
+      "new": "            if False:",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A8_database_elsewhere_is_skipped"
+      }
+    },
+    {
+      "id": "u96-a.A9_a_rehearsal_stays_a_rehearsal",
+      "description": "Pass dry_run=False to run_restore whatever was asked, so a rehearsal transfers",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a310f3c4bc34f3ae",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_rehearsal_passes_the_same_gates_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    portion,\n                    cfg,\n                    dry_run=dry_run,",
+      "new": "                    portion,\n                    cfg,\n                    dry_run=False,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A9_a_rehearsal_stays_a_rehearsal"
+      }
+    },
+    {
+      "id": "u317.Q10_token_not_struck",
+      "description": "run_backup: the record's token stays in the library's fact while a run sends, so a failed run of another installation leaves its record trusted (round two's finding)",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96c7a1651c609690",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_run_that_fails_strikes_the_token_from_the_library_fact"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    _strike_token(cfg)",
+      "new": "                    pass",
+      "source": {
+        "table": "u317.json",
+        "id": "Q10_token_not_struck"
+      }
+    },
+    {
+      "id": "u317.Q14_no_invalidation",
+      "description": "run_backup: the record is not removed before a transfer, so a failed run leaves it to be trusted",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6b949f640ce24dee",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_full_run_that_fails_leaves_no_record_behind",
+        "tests/test_backup_quick.py::test_a_quick_run_that_fails_midway_resets_no_age_and_leaves_no_record[quick-archive]",
+        "tests/test_backup_quick.py::test_a_quick_run_that_fails_midway_resets_no_age_and_leaves_no_record[quick-send]",
+        "tests/test_backup_quick.py::test_a_record_that_cannot_be_removed_stops_the_run_before_it_sends"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                backup_record.invalidate(_record_path(entry.portion))",
+      "new": "                pass",
+      "source": {
+        "table": "u317.json",
+        "id": "Q14_no_invalidation"
+      }
+    },
+    {
+      "id": "u317.Q15_archive_not_rechecked",
+      "description": "run_backup: the quick archive runs without asking still_removed first",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5fe869bb69ccf625",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_send_runs_only_while_the_root_is_the_volume_walked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if stale:\n                    failed = CommandResult(",
+      "new": "                if False:\n                    failed = CommandResult(",
+      "source": {
+        "table": "u317.json",
+        "id": "Q15_archive_not_rechecked"
+      }
+    },
+    {
+      "id": "u317.Q16_token_not_asked",
+      "description": "_plan_files: the library's files fact is not asked for the record's token, so another writer's run is not seen (round one's B1)",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "03d74d1f572ec547",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_fact_published_by_a_build_before_u317_makes_the_next_run_full"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if manifest is not None and not why:\n        why = _record_unpublished(cfg, manifest)",
+      "new": "    if manifest is not None and not why:\n        why = \"\"",
+      "source": {
+        "table": "u317.json",
+        "id": "Q16_token_not_asked"
+      }
+    },
+    {
+      "id": "u317.Q19_self_written_empty",
+      "description": "_self_written: the fact file counts as a change, so no run after a backup is ever skipped",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c8180d09bd13389e",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_skip_carries_the_record_on_so_the_run_after_it_trusts_it",
+        "tests/test_backup_quick.py::test_an_excluded_system_folder_that_cannot_be_listed_is_never_entered",
+        "tests/test_backup_quick.py::test_doctor_names_the_last_run_and_the_next_full_check",
+        "tests/test_backup_quick.py::test_nothing_changed_is_a_skip_that_sends_nothing_and_resets_both_ages",
+        "tests/test_backup_quick.py::test_the_fact_file_alone_changed_is_still_a_skip",
+        "tests/test_backup_quick.py::test_the_last_full_check_eight_days_old_makes_a_full_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return frozenset({rel.as_posix()})",
+      "new": "    return frozenset()",
+      "source": {
+        "table": "u317.json",
+        "id": "Q19_self_written_empty"
+      }
+    },
+    {
+      "id": "u317.Q22_flags_do_not_force_a_snapshot",
+      "description": "plan_backup: --check and --full do not force a snapshot of an unchanged database",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c2542866d2d31b09",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_the_check_flag_makes_a_full_run_and_a_snapshot_over_an_unchanged_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                snapshot_anyway=check or full,",
+      "new": "                snapshot_anyway=False,",
+      "source": {
+        "table": "u317.json",
+        "id": "Q22_flags_do_not_force_a_snapshot"
+      }
+    },
+    {
+      "id": "u317.Q24_marker_failure_kept",
+      "description": "_settle_record: a snapshot whose marker failed keeps its fingerprint, so it is never retaken (round one's R2)",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0df19c9883037a4c",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_snapshot_whose_marker_failed_is_taken_again_next_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if marker_failed:\n                why = \"the snapshot's identity marker could not be written\"\n            elif _not_confirmed_gone(lister):",
+      "new": "            if _not_confirmed_gone(lister):",
+      "source": {
+        "table": "u317.json",
+        "id": "Q24_marker_failure_kept"
+      }
+    },
+    {
+      "id": "u317.Q25_second_read_without_scan",
+      "description": "_settle_record: the database is read again with no second process scan (round one's R4)",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "75848a7d144f163a",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_the_second_reading_of_the_database_waits_on_a_second_scan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif _not_confirmed_gone(lister):\n                why = \"rekordbox was not confirmed gone after the copy\"\n            elif",
+      "new": "            elif",
+      "source": {
+        "table": "u317.json",
+        "id": "Q25_second_read_without_scan"
+      }
+    },
+    {
+      "id": "u317.Q11_line_break_carried",
+      "description": "_carriable: a name holding a line break is put on rclone's list of paths",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c1088839ced54eac",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_name_holding_a_line_break_makes_a_full_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if \"\\n\" in rel or \"\\r\" in rel:",
+      "new": "    if False:",
+      "source": {
+        "table": "u317.json",
+        "id": "Q11_line_break_carried"
+      }
+    },
+    {
+      "id": "u317.Q12_root_volume_not_rechecked",
+      "description": "still_removed: a quick run's archive runs over a root that went away or changed volume (round one's B2)",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a10b8b4c31d8ea1d",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_send_runs_only_while_the_root_is_the_volume_walked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if os.stat(root).st_dev != root_dev:\n            return f\"the library root {root} is on another volume than the one walked\"\n    except OSError as exc:\n        return f\"the library root {root} could not be read before the archive: {exc}\"",
+      "new": "        pass\n    except OSError:\n        pass",
+      "source": {
+        "table": "u317.json",
+        "id": "Q12_root_volume_not_rechecked"
+      }
+    },
+    {
+      "id": "u317.Q1_unlisted_folder_is_absence",
+      "description": "walk: a listed folder that is gone is skipped as absent, so its files read as removed (round one's B2)",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "35bd1352f44b21c2",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_folder_gone_between_being_listed_and_being_read_makes_a_full_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise WalkRefused(\n                f\"{directory} was listed and then was not there, so the walk did \"\n                f\"not see the whole library\"\n            ) from None",
+      "new": "            continue",
+      "source": {
+        "table": "u317.json",
+        "id": "Q1_unlisted_folder_is_absence"
+      }
+    },
+    {
+      "id": "u317.Q2_unreadable_folder_is_absence",
+      "description": "walk: a folder that cannot be listed is skipped, so its files read as removed",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "410b48c5ea7bfe6d",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_folder_that_cannot_be_listed_makes_a_full_run_and_never_an_archive"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise WalkRefused(f\"{directory} could not be listed: {exc}\") from exc",
+      "new": "            continue",
+      "source": {
+        "table": "u317.json",
+        "id": "Q2_unreadable_folder_is_absence"
+      }
+    },
+    {
+      "id": "u317.Q6_removed_not_found",
+      "description": "difference: a path in the record and not in the walk is not removed",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8539d15ba56e2c81",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_quick_run_that_fails_midway_resets_no_age_and_leaves_no_record[quick-archive]",
+        "tests/test_backup_quick.py::test_no_skip_while_anything_changed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    removed = [rel for rel in recorded if rel not in walked]",
+      "new": "    removed = []",
+      "source": {
+        "table": "u317.json",
+        "id": "Q6_removed_not_found"
+      }
+    },
+    {
+      "id": "u317.Q7_only_additions_count",
+      "description": "Difference.anything: only added paths count, so a change or a removal is skipped",
+      "file": "src/cratekit/modules/tools/backup_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0471d4aff83dae9d",
+      "subset": [
+        "tests/test_backup_quick.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_quick.py::test_a_changed_name_in_decomposed_form_makes_a_full_run",
+        "tests/test_backup_quick.py::test_no_skip_while_anything_changed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return any(path not in self.self_written for path in self.paths)",
+      "new": "        return any(path not in self.self_written for path in self.added)",
+      "source": {
+        "table": "u317.json",
+        "id": "Q7_only_additions_count"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_A10_an_off_machine_refusal_is_swallowed",
+      "description": "Continue past a refused off-machine half instead of translating it, so the capture half runs over a mirror that never landed",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b5c26cf6ec1a046",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            except backup.BackupRefused as exc:\n                raise _refused(exc) from exc",
+      "new": "            except backup.BackupRefused:\n                pulled = None",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_A10_an_off_machine_refusal_is_swallowed"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_A3_platform_seams_never_reach_the_session",
+      "description": "Drop the identity and mount seams from recovery_session, so the volume gate answers from this machine rather than from the caller",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7657422cf2ca6d6b",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean",
+        "tests/test_restore_cli.py::test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened",
+        "tests/test_restore_cli.py::test_a_rehearsal_neutralizes_the_mirror_transfers_too",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[-pulled1-absent]",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[PIONEER/\\n-pulled0-pulled]",
+        "tests/test_restore_cli.py::test_a_transfer_that_succeeds_is_still_reported",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default",
+        "tests/test_restore_cli.py::test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock",
+        "tests/test_restore_cli.py::test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out",
+        "tests/test_restore_cli.py::test_the_mirror_is_pulled_before_the_capture_is_spent",
+        "tests/test_restore_cli.py::test_the_session_watches_the_whole_library_and_not_a_folder_inside_it",
+        "tests/test_restore_cli.py::test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        analysis_roots=watched,\n        identity_provider=identity_provider,\n        mount_enumerator=mount_enumerator,\n    ) as held:",
+      "new": "        analysis_roots=watched,\n    ) as held:",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_A3_platform_seams_never_reach_the_session"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_A8_discard_set_never_reaches_the_engine",
+      "description": "Plan with an empty discard set, so the override a person typed is dropped between the verb and the engine",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e411dfe53ed791e",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_discard_override_reaches_the_engine_as_identifiers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        decided = restore.plan(\n            cfg,\n            session_id,\n            held=held,\n            discarding=discarding,\n            process_lister=process_lister,\n        )",
+      "new": "        decided = restore.plan(\n            cfg,\n            session_id,\n            held=held,\n            discarding=(),\n            process_lister=process_lister,\n        )",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_A8_discard_set_never_reaches_the_engine"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_B2_the_named_session_never_reaches_the_engine",
+      "description": "Pass no session identifier at all, so a named restore performs only the off-machine half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1fb9f9e65567f9b",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_dry_run_walks_every_step_and_performs_none_of_them",
+        "tests/test_restore_cli.py::test_the_confirmation_is_two_acts_and_then_the_database_comes_back",
+        "tests/test_restore_cli.py::test_the_discard_override_reaches_the_engine_as_identifiers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        session_id=chosen.session_id if chosen is not None else None,\n        discarding=tuple(ctx.args.discard),",
+      "new": "        session_id=None,\n        discarding=tuple(ctx.args.discard),",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_B2_the_named_session_never_reaches_the_engine"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_B3_the_discard_flag_is_dropped_at_the_call",
+      "description": "Hand the engine an empty discard set from the handler, the argument-side twin of I_A8",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "151e9eb2be2dca81",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_discard_override_reaches_the_engine_as_identifiers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        session_id=chosen.session_id if chosen is not None else None,\n        discarding=tuple(ctx.args.discard),",
+      "new": "        session_id=chosen.session_id if chosen is not None else None,\n        discarding=(),",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_B3_the_discard_flag_is_dropped_at_the_call"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_B7_the_rehearsal_flag_is_dropped_at_the_call",
+      "description": "Perform for real whatever --dry-run said, the argument-side twin of the author's two in-function rehearsal rows",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d30b3e2bd5f2c463",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_dry_run_walks_every_step_and_performs_none_of_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        dry_run=ctx.args.dry_run,\n        from_backup=ctx.args.from_backup,",
+      "new": "        dry_run=False,\n        from_backup=ctx.args.from_backup,",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_B7_the_rehearsal_flag_is_dropped_at_the_call"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_C1_discard_stops_being_repeatable",
+      "description": "Take a single discard identifier rather than an appended list, so a person discarding two sessions names one and the string is iterated character by character",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a82371b77bf32b3c",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_discard_override_reaches_the_engine_as_identifiers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"--discard\",\n        action=\"append\",\n        default=[],",
+      "new": "        \"--discard\",\n        default=\"\",",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_C1_discard_stops_being_repeatable"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_C4_the_session_identifier_becomes_required",
+      "description": "Make the positional mandatory, so a bare crate restore run is a usage error rather than the newest spendable capture",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "314e63fd459ce4c4",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 30,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_conformance_1_structured_output_is_actually_emitted[restore.run]",
+        "tests/test_cli_contract.py::test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two[restore.run]",
+        "tests/test_cli_contract.py::test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds[restore.run]",
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled",
+        "tests/test_restore_cli.py::test_a_backup_landing_between_the_two_acts_moves_the_digest",
+        "tests/test_restore_cli.py::test_a_database_that_is_not_on_disk_yet_is_still_the_live_database",
+        "tests/test_restore_cli.py::test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library",
+        "tests/test_restore_cli.py::test_a_differently_cased_database_directory_is_still_the_live_database",
+        "tests/test_restore_cli.py::test_a_differently_cased_library_root_is_still_the_library",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[above-the directory the library root sits in]",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[inside-a directory underneath the library root]",
+        "tests/test_restore_cli.py::test_a_target_that_is_holds_or_sits_in_the_library_is_refused[root-the library root itself]",
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused",
+        "tests/test_restore_cli.py::test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused[beside-a-discard]",
+        "tests/test_restore_cli.py::test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused[no-pull]",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes",
+        "tests/test_restore_cli.py::test_nothing_to_restore_is_an_outcome_and_opens_no_session",
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_expected_volume_is_stated",
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_restore_is_pointed_somewhere_else",
+        "tests/test_restore_cli.py::test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher",
+        "tests/test_restore_cli.py::test_the_ledgers_traversal_value_is_refused_at_the_verb",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled_and_reported",
+        "tests/test_restore_cli.py::test_without_the_flag_no_transfer_is_attempted_at_all"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"session_id\",\n        nargs=\"?\",\n        default=None,",
+      "new": "        \"session_id\",",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_C4_the_session_identifier_becomes_required"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_C6_the_listing_verb_runs_the_restore",
+      "description": "Bind the read-only listing to the destructive handler",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5fcec1067de29a8d",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect",
+        "tests/test_restore_cli.py::test_a_session_whose_capture_is_gone_is_listed_and_says_why",
+        "tests/test_restore_cli.py::test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    parser.set_defaults(_handler=list_restorable)",
+      "new": "    parser.set_defaults(_handler=perform_restore)",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_C6_the_listing_verb_runs_the_restore"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_E4_the_reason_a_capture_cannot_be_spent_is_blanked",
+      "description": "List an unusable capture with no sentence saying why, which is the silence the field exists to avoid",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d78c6b2ed86aa8e7",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect",
+        "tests/test_restore_cli.py::test_a_session_whose_capture_is_gone_is_listed_and_says_why"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"unusable\": entry.unusable,",
+      "new": "        \"unusable\": \"\",",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_E4_the_reason_a_capture_cannot_be_spent_is_blanked"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.I_F4_the_refusal_stops_naming_the_identifier",
+      "description": "Reword the refusal so it never repeats what was typed, which is what makes a typo diagnosable",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3af48f5b5f0e455a",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_session_identifier_nothing_recorded_is_refused_by_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"no write session on this library is recorded under \"\n                f\"{session_id!r}; the listing verb shows every one that is\"",
+      "new": "                \"no such write session is recorded on this library; the \"\n                \"listing verb shows every one that is\"",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "I_F4_the_refusal_stops_naming_the_identifier"
+      }
+    },
+    {
+      "id": "u27-restore-cli-independent.X5_the_refusal_reason_is_flattened",
+      "description": "What the refusal-message zero DOES leave held: fold the off-machine slug into an internal error, which is the half a drive does assert. Paired with I_F1, which replaced the sentence and killed nothing",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3973b3c1c05632ab",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 1250,
+      "baseline_collected": 1250,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_recovery_is_refused_underneath_a_running_rekordbox",
+        "tests/test_restore_cli.py::test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes",
+        "tests/test_restore_cli.py::test_the_ledgers_traversal_value_is_refused_at_the_verb",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            reason=slug,\n            message=exc.detail,",
+      "new": "            reason=\"internal-error\",\n            message=exc.detail,",
+      "source": {
+        "table": "u27-restore-cli-independent.json",
+        "id": "X5_the_refusal_reason_is_flattened"
+      }
+    },
+    {
+      "id": "u105-b.S10_settings_to_engine",
+      "description": "Call the engine without the settings built from the frozen target",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c1c8852d6d4994bf",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume",
+        "tests/test_master_cli.py::test_the_target_reaches_every_loudnorm_filter"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            settings=settings,\n            output_dir=Path(output_dir) if output_dir else None,",
+      "new": "            output_dir=Path(output_dir) if output_dir else None,",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S10_settings_to_engine"
+      }
+    },
+    {
+      "id": "u105-b.S1_parts_only_when_several",
+      "description": "Freeze the parts key for a single recording too",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "edb9c0b9ad6bc15c",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_job_seam.py::test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_item",
+        "tests/test_job_seam.py::test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destination",
+        "tests/test_master_cli.py::test_one_input_freezes_queues_and_resumes_exactly_as_before"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(frozen) > 1:",
+      "new": "    if frozen:",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S1_parts_only_when_several"
+      }
+    },
+    {
+      "id": "u105-b.S2_lufs_frozen",
+      "description": "Do not freeze --lufs into the payload",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4dfeccb4b36d39aa",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume",
+        "tests/test_master_cli.py::test_the_target_reaches_every_loudnorm_filter"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        payload[TARGET_LUFS] = float(lufs)",
+      "new": "        pass",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S2_lufs_frozen"
+      }
+    },
+    {
+      "id": "u105-b.S3_lufs_in_argv",
+      "description": "Drop --lufs from the resume command line",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a9ae3847283aab6",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_split_recording_and_its_target_survive_the_resume_argv"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        argv.append(f\"--lufs={lufs}\")",
+      "new": "        pass",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S3_lufs_in_argv"
+      }
+    },
+    {
+      "id": "u105-b.S4_parts_in_argv",
+      "description": "Rebuild the resume command line from the first part alone",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6c701ae8bb686038",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_split_recording_and_its_target_survive_the_resume_argv"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    argv = [\"master\", *frozen_parts(payload)]",
+      "new": "    argv = [\"master\", str(payload.get(SOURCE) or \"\")]",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S4_parts_in_argv"
+      }
+    },
+    {
+      "id": "u105-b.S5_queue_time_refusal",
+      "description": "Stop validating --lufs at queue time",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "16b9580e52de70cb",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_an_out_of_range_target_refuses_and_queues_nothing[-4]",
+        "tests/test_master_cli.py::test_an_out_of_range_target_refuses_and_queues_nothing[-71]",
+        "tests/test_master_cli.py::test_an_out_of_range_target_refuses_and_queues_nothing[nan]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    settings_for(ctx.args.lufs)",
+      "new": "    pass",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S5_queue_time_refusal"
+      }
+    },
+    {
+      "id": "u105-b.S6_join_order_notice",
+      "description": "Queue a split recording without saying its order back",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56b9a9ca479c9c72",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_the_order_printed_is_the_order_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        notices = (join_order_warning(frozen_parts(payload)),) if PARTS in payload else ()",
+      "new": "        notices = ()",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S6_join_order_notice"
+      }
+    },
+    {
+      "id": "u105-b.S7_staged_parts",
+      "description": "Stage a split recording's run without its parts, mastering part one alone",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "781e83c82dba584e",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        staged[PARTS] = [str(p) for p in parts]",
+      "new": "        pass",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S7_staged_parts"
+      }
+    },
+    {
+      "id": "u105-b.S8_staged_target",
+      "description": "Stage the run without the frozen target, mastering at the default",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97e6b3114488f495",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        staged[TARGET_LUFS] = payload[TARGET_LUFS]",
+      "new": "        pass",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S8_staged_target"
+      }
+    },
+    {
+      "id": "u105-b.S9_precheck_name",
+      "description": "Pre-check the destination with part one's master name instead of the joined one",
+      "file": "src/cratekit/master/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab5c38c8583b60b3",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py",
+        "tests/test_tagging_engine.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 129,
+      "baseline_collected": 129,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume",
+        "tests/test_master_cli.py::test_an_existing_joined_master_is_refused_on_the_real_destination"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    final = mastering.planned_output(\n        parts, output_dir=Path(str(output_dir)) if output_dir else None\n    )",
+      "new": "    final = mastering.output_path(\n        parts[0], output_dir=Path(str(output_dir)) if output_dir else None\n    )",
+      "source": {
+        "table": "u105-b.json",
+        "id": "S9_precheck_name"
+      }
+    },
+    {
+      "id": "u28-skills-independent.K1_composite",
+      "description": "What K1 does hold: break the packaged root's package name so the shipped assets cannot be resolved",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff70c4f0cb528a39",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_clean_directory_gets_every_shipped_skill_with_a_stamp",
+        "tests/test_skills_install.py::test_a_file_a_previous_install_wrote_and_this_build_withdrew_disappears",
+        "tests/test_skills_install.py::test_a_file_the_product_never_wrote_survives_a_refresh",
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run",
+        "tests/test_skills_install.py::test_an_unstamped_copy_is_drift_rather_than_damage",
+        "tests/test_skills_install.py::test_an_up_to_date_install_writes_nothing_at_all",
+        "tests/test_skills_install.py::test_every_shipped_skill_is_installed_and_the_set_is_walked_not_listed",
+        "tests/test_skills_install.py::test_install_one_reports_which_of_the_three_things_happened",
+        "tests/test_skills_install.py::test_running_it_twice_reports_current_and_not_installed",
+        "tests/test_skills_install.py::test_the_copies_are_copies_and_not_symlinks",
+        "tests/test_skills_install.py::test_the_packaged_root_resolves_through_the_package"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return resources.files(\"cratekit.skills\") / \"assets\"",
+      "new": "    return resources.files(\"cratekit.skills\") / \"skills\"",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "K1_composite"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S11_typed_cause_lost",
+      "description": "install_skills stops converting the mkdir OSError into a typed cause, so an unwritable target arrives as an internal error",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b070b9007347d5bc",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_refusal_leaves_no_half_written_target",
+        "tests/test_skills_install.py::test_a_target_that_cannot_be_created_refuses_with_a_typed_cause"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        into.mkdir(parents=True, exist_ok=True)\n    except OSError as exc:\n        raise CratekitError(\n            Cause(\n                reason=\"path-permission-denied\",",
+      "new": "    if True:\n        into.mkdir(parents=True, exist_ok=True)\n    if False:\n        raise CratekitError(\n            Cause(\n                reason=\"path-permission-denied\",",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S11_typed_cause_lost"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S12_reason_slug",
+      "description": "the refusal's reason slug is changed to a neighbouring one, so the typed cause names the wrong condition",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ea5989778774174",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_refusal_leaves_no_half_written_target",
+        "tests/test_skills_install.py::test_a_target_that_cannot_be_created_refuses_with_a_typed_cause"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                reason=\"path-permission-denied\",",
+      "new": "                reason=\"path-not-found\",",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S12_reason_slug"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S14_into_ignored",
+      "description": "--into is ignored and the default target is always used, so a caller's chosen destination is silently overridden",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fc9a7cfbc906fe5f",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_clean_directory_gets_every_shipped_skill_with_a_stamp",
+        "tests/test_skills_install.py::test_a_file_a_previous_install_wrote_and_this_build_withdrew_disappears",
+        "tests/test_skills_install.py::test_a_file_the_product_never_wrote_survives_a_refresh",
+        "tests/test_skills_install.py::test_a_refusal_leaves_no_half_written_target",
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run",
+        "tests/test_skills_install.py::test_a_target_that_cannot_be_created_refuses_with_a_typed_cause",
+        "tests/test_skills_install.py::test_an_unstamped_copy_is_drift_rather_than_damage",
+        "tests/test_skills_install.py::test_an_up_to_date_install_writes_nothing_at_all",
+        "tests/test_skills_install.py::test_every_shipped_skill_is_installed_and_the_set_is_walked_not_listed",
+        "tests/test_skills_install.py::test_the_copies_are_copies_and_not_symlinks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    into = Path(ctx.args.into).expanduser() if ctx.args.into else default_target()",
+      "new": "    into = default_target()",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S14_into_ignored"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S15_drift_never_warns",
+      "description": "every check reports ok, so a refreshed copy no longer tells the person their agent was reading an older build",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b88003b1e2eb0566",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"status\": \"ok\" if was in {\"installed\", \"current\"} else \"info\",",
+      "new": "                \"status\": \"ok\",",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S15_drift_never_warns"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S16_counts_miscounted",
+      "description": "every skill is counted as installed, so the summary claims a first install on every re-run",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "48c87658d298d700",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_file_the_product_never_wrote_survives_a_refresh",
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run",
+        "tests/test_skills_install.py::test_an_unstamped_copy_is_drift_rather_than_damage",
+        "tests/test_skills_install.py::test_an_up_to_date_install_writes_nothing_at_all",
+        "tests/test_skills_install.py::test_running_it_twice_reports_current_and_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        counts[was] += 1",
+      "new": "        counts[\"installed\"] += 1",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S16_counts_miscounted"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S18_detail_reworded",
+      "description": "the refreshed detail sentence is reworded, dropping the phrase the drift test reads",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d0d65ffb13a344cd",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"the copy at {where} was written by a different build and has been \"\n        f\"replaced; anything reading it was following older instructions\"",
+      "new": "        f\"the copy at {where} came from another release of this tool and was \"\n        f\"overwritten; whatever read it was following older instructions\"",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S18_detail_reworded"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S19_default_target_literal",
+      "description": "default_target stops composing from home and returns a relative path, which R1 exists to forbid",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0ab78baeba6d4fb4",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_the_default_target_is_composed_from_home_and_is_not_a_literal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return Path.home().joinpath(*DEFAULT_TARGET)",
+      "new": "    return Path(*DEFAULT_TARGET)",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S19_default_target_literal"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S5_stamp_quote_strip",
+      "description": "installed_version stops stripping the TOML quotes, so every stamped copy reads as a different version",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f3378b39adf229ee",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_clean_directory_gets_every_shipped_skill_with_a_stamp",
+        "tests/test_skills_install.py::test_a_file_the_product_never_wrote_survives_a_refresh",
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run",
+        "tests/test_skills_install.py::test_an_unstamped_copy_is_drift_rather_than_damage",
+        "tests/test_skills_install.py::test_an_up_to_date_install_writes_nothing_at_all",
+        "tests/test_skills_install.py::test_install_one_reports_which_of_the_three_things_happened",
+        "tests/test_skills_install.py::test_running_it_twice_reports_current_and_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            return value.strip().strip('\"')",
+      "new": "            return value.strip()",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S5_stamp_quote_strip"
+      }
+    },
+    {
+      "id": "u28-skills-independent.S9_previous_always_none",
+      "description": "install_one never reads the existing stamp, so a copy from this same build reports as refreshed",
+      "file": "src/cratekit/skills/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "009622dcc9c04d5c",
+      "subset": [
+        "tests/test_skills_install.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_skills_install.py::test_a_file_the_product_never_wrote_survives_a_refresh",
+        "tests/test_skills_install.py::test_a_stale_stamp_warns_and_is_repaired_in_the_same_run",
+        "tests/test_skills_install.py::test_an_up_to_date_install_writes_nothing_at_all",
+        "tests/test_skills_install.py::test_install_one_reports_which_of_the_three_things_happened",
+        "tests/test_skills_install.py::test_running_it_twice_reports_current_and_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    previous = installed_version(destination) if destination.exists() else None",
+      "new": "    previous = None",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "S9_previous_always_none"
+      }
+    },
+    {
+      "id": "u323.I5_provider_dropped_by_the_plan",
+      "description": "plan_backup: the caller's identity provider is not handed to the files portion, so the platform's own is read",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "56e434b00b9f6cbb",
+      "subset": [
+        "tests/test_backup_unproven_root.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_unproven_root.py::test_a_root_on_another_volume_refuses_before_the_walk",
+        "tests/test_backup_unproven_root.py::test_the_identity_holds_whatever_the_flag_says",
+        "tests/test_backup_unproven_root.py::test_the_recorded_volume_at_the_root_backs_up"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                emptied=emptied,\n                identity_provider=identity_provider,\n                mount_enumerator=mount_enumerator,\n            )\n        )\n    if backup_facts.Portion.DATABASE in wanted:",
+      "new": "                emptied=emptied,\n                identity_provider=None,\n                mount_enumerator=mount_enumerator,\n            )\n        )\n    if backup_facts.Portion.DATABASE in wanted:",
+      "source": {
+        "table": "u323.json",
+        "id": "I5_provider_dropped_by_the_plan"
+      }
+    },
+    {
+      "id": "u323.I6_provider_dropped_at_the_gate",
+      "description": "_not_the_recorded_volume: the volume gate is asked with no provider, so the platform's own identity read answers",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4231124c15e68164",
+      "subset": [
+        "tests/test_backup_unproven_root.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_unproven_root.py::test_a_root_on_another_volume_refuses_before_the_walk",
+        "tests/test_backup_unproven_root.py::test_the_identity_holds_whatever_the_flag_says",
+        "tests/test_backup_unproven_root.py::test_the_recorded_volume_at_the_root_backs_up"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        session.assert_volume_identity(\n            cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator\n        )",
+      "new": "        session.assert_volume_identity(\n            cfg, identity_provider=None, mount_enumerator=mount_enumerator\n        )",
+      "source": {
+        "table": "u323.json",
+        "id": "I6_provider_dropped_at_the_gate"
+      }
+    },
+    {
+      "id": "r290-author.R2_backup_rebuild_drops_the_type",
+      "description": "Rebuild the backup rehearsal refusal as a plain CratekitError again, so a rehearsal the worker parked says failed",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e26f6ff8bb4f78e",
+      "subset": [
+        "tests/test_job_outcome.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 215,
+      "baseline_collected": 215,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_parked_rehearsal_is_still_blocked_after_the_rehearsal_word_is_added",
+        "tests/test_job_outcome.py::test_a_reworded_refusal_is_rebuilt_in_one_place_only"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return rebuilt(\n        error,\n        replace(",
+      "new": "    return CratekitError(\n        replace(",
+      "source": {
+        "table": "r290-author.json",
+        "id": "R2_backup_rebuild_drops_the_type"
+      }
+    },
+    {
+      "id": "r290-author.S04_backup_call_removed",
+      "description": "Remove the one jobs.raise_for_state call from backup/cli.py, so this shell reports a parked or half failed job and exits 0",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8476b91ab154040d",
+      "subset": [
+        "tests/test_job_outcome.py",
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 215,
+      "baseline_collected": 215,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion",
+        "tests/test_backup_cli.py::test_a_failed_transfer_leaves_the_item_failed_and_job_show_names_its_argv",
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_parked_rehearsal_is_still_blocked_after_the_rehearsal_word_is_added",
+        "tests/test_backup_cli.py::test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote",
+        "tests/test_backup_cli.py::test_asking_twice_about_a_half_failed_backup_answers_the_same_way_twice",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[backup.run]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[backup.run]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[backup.run]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[backup.run]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[backup.run]",
+        "tests/test_job_outcome.py::test_every_function_that_drives_a_job_maps_its_ending_afterwards"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "jobs.raise_for_state(job)",
+      "new": "jobs.get  # the mapping call, removed",
+      "source": {
+        "table": "r290-author.json",
+        "id": "S04_backup_call_removed"
+      }
+    },
+    {
+      "id": "r338-c.C4_bare_metal_asks_about_the_share",
+      "description": "recover_under_bare_metal_session: let the plan ask the remote about a share the skipped database half will never pull",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bf7e4653a08ff456",
+      "subset": [
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 253,
+      "baseline_collected": 253,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                pull_share=False,",
+      "new": "                pull_share=True,",
+      "source": {
+        "table": "r338-c.json",
+        "id": "C4_bare_metal_asks_about_the_share"
+      }
+    },
+    {
+      "id": "r338-c.C5_report_loses_the_word",
+      "description": "restore_under_one_session: stop carrying the plan's share word onto the report, so the totals say null whatever happened to the grids",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d6f6520e603db45",
+      "subset": [
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 253,
+      "baseline_collected": 253,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[-pulled1-absent]",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[PIONEER/\\n-pulled0-pulled]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"share\": str(pulled.share),\n",
+      "new": "",
+      "source": {
+        "table": "r338-c.json",
+        "id": "C5_report_loses_the_word"
+      }
+    },
+    {
+      "id": "r592-b.B6_restore_mirror_carries_the_database",
+      "description": "_plan_restore_inside_the_gates: exclude volume clutter only from the restore mirror, so a mirror still holding the database lands it where the database half writes",
+      "file": "src/cratekit/modules/tools/backup_snapshot.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90f64b54e19c8450",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_backup_cli.py",
+        "tests/test_restore.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 342,
+      "baseline_collected": 342,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_mirror_still_carrying_the_database_does_not_land_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    rclone, \"copy\", str(cfg.backup.dest), str(target),\n                    *_exclude_args(_mirror_excludes(cfg)),",
+      "new": "                    rclone, \"copy\", str(cfg.backup.dest), str(target),\n                    *_exclude_args(VOLUME_EXCLUDES),",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B6_restore_mirror_carries_the_database"
+      },
+      "moved": "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+    },
+    {
+      "id": "u27-restore-cli-author.S1_plan_takes_its_own_lock",
+      "description": "Let the off-machine PLAN acquire the library lock itself instead of taking the open guard",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5021ef01119ff36",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 22,
+      "collected": 253,
+      "baseline_collected": 253,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled",
+        "tests/test_restore_cli.py::test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen",
+        "tests/test_restore_cli.py::test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean",
+        "tests/test_restore_cli.py::test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_rehearsal_neutralizes_the_mirror_transfers_too",
+        "tests/test_restore_cli.py::test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass",
+        "tests/test_restore_cli.py::test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[-pulled1-absent]",
+        "tests/test_restore_cli.py::test_a_restore_in_the_outside_layout_says_whether_the_share_came_back[PIONEER/\\n-pulled0-pulled]",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default",
+        "tests/test_restore_cli.py::test_a_transfer_that_succeeds_is_still_reported",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock",
+        "tests/test_restore_cli.py::test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out",
+        "tests/test_restore_cli.py::test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher",
+        "tests/test_restore_cli.py::test_the_mirror_is_pulled_before_the_capture_is_spent",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest",
+        "tests/test_restore_cli.py::test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled_and_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    include_mirror=include_mirror,\n                    gates=held.guard,",
+      "new": "                    include_mirror=include_mirror,",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "S1_plan_takes_its_own_lock"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
