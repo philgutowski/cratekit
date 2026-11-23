@@ -1,33 +1,8 @@
 """U8's capture half: the database and its coupled state, taken as one set (KTD21b).
 
-Four properties are asserted here, and each one is asserted because getting it
-wrong is silent:
-
-1. **The capture set is DERIVED.** Every path comes from the state inventory. A
-   companion list in the capture unit is the drift the inventory exists to
-   abolish, and its cost is a database copied without the committed transactions
-   the storage engine is still holding outside the main file: a copy that opens
-   cleanly and is quietly behind. ``tests/test_config.py`` already asserts this
-   module reaches for the derivation and spells no file suffix of its own; what
-   is asserted HERE is that the capture actually covers every declared source.
-
-2. **Absence is a recorded outcome, not an error.** A database with nothing
-   outstanding beside it, and a library that has never run a sweep, are both
-   normal. The manifest has to say which sources were there, because a restore
-   that cannot tell "nothing to put back" from "we never looked" will do the
-   wrong one.
-
-3. **Everything the capture creates is private under any umask** (P1). Asserted
-   by WALKING the capture rather than by naming the files in it (P3): the version
-   of that test which hand-listed two files missed a third written by the same
-   code in the same directory, and stayed green.
-
-4. **The integrity verdict is part of the record and it gates.** No session
-   commits behind a capture that did not verify.
-
-Fully hermetic: an ordinary file standing in for the database, a stand-in
-verifier, and no library volume anywhere.
-"""
+The set is derived from the state inventory, absence is recorded rather than an
+error, everything created is private under any umask (P1, P3), and the integrity
+verdict gates."""
 
 from __future__ import annotations
 
@@ -47,7 +22,6 @@ from tests.test_config import valid_data
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A configured library whose database and coupled state exist on disk."""
     library = tmp_path / "library"
     (library / "Music").mkdir(parents=True)
     (library / "db").mkdir(parents=True)
@@ -59,12 +33,7 @@ def cfg(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _permissive_umask():
-    """Run with every permission bit available.
-
-    The whole point of an explicit mode is that it does not depend on the
-    process umask, and a test running under a restrictive one would pass without
-    the code setting anything at all.
-    """
+    """Run with every permission bit available, so only an explicit mode passes."""
     previous = os.umask(0)
     try:
         yield
@@ -81,7 +50,6 @@ def _fails(_path):
 
 
 def _write_coupled_state(cfg) -> Path:
-    """Put a real file inside the coupled directory the inventory declares."""
     coupled = config.library_coupled_dir(cfg)
     coupled.mkdir(parents=True, exist_ok=True)
     marker = coupled / "declines.json"
@@ -89,18 +57,11 @@ def _write_coupled_state(cfg) -> Path:
     return marker
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The set is derived, and it covers everything the inventory declares
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_declared_source_appears_in_the_capture_record(cfg):
-    """P4. A derivation that covers most of the real set is a list in disguise.
-
-    The assertion iterates ``snapshot_sources`` rather than naming the paths, so
-    a coupled entry added to the inventory later is covered on the day it is
-    added and nobody has to remember this file exists.
-    """
+    """P4: iterates ``snapshot_sources``, so a later inventory entry is covered the day it lands."""
     _write_coupled_state(cfg)
     record = snapshot.capture(cfg, verifier=_passes)
 
@@ -124,12 +85,7 @@ def test_the_database_and_the_coupled_directory_land_under_one_stamp(cfg):
 
 
 def test_the_files_the_engine_keeps_beside_the_database_travel_with_it(cfg):
-    """The failure this prevents is a database missing everything still outstanding.
-
-    The companion paths are composed by the inventory, so this test composes them
-    the same way rather than spelling a suffix, which is the exact drift the
-    schema removed.
-    """
+    """The engine's companion files travel with it, composed by the inventory, never a suffix."""
     written = []
     for companion in config.sidecar_paths("rekordbox_db", cfg):
         companion.write_bytes(b"outstanding")
@@ -170,12 +126,7 @@ def test_the_capture_store_is_never_captured_by_a_capture(cfg):
 
 
 def test_a_source_that_would_nest_the_store_refuses(cfg, monkeypatch):
-    """The runtime half of the check above, which the schema alone cannot give.
-
-    The schema is asserted by ``tests/test_config.py``, and a schema assertion
-    proves the DECLARATION is sound. This proves the capture refuses if it is
-    ever handed a set that is not, which is the case that costs unbounded disk.
-    """
+    """The runtime half of the schema check, refusing a set that would nest the store."""
     store = snapshot.store_root(cfg)
     monkeypatch.setattr(config, "snapshot_sources", lambda _cfg: (store.parent,))
     with pytest.raises(CratekitError) as excinfo:
@@ -183,18 +134,11 @@ def test_a_source_that_would_nest_the_store_refuses(cfg, monkeypatch):
     assert "nest" in excinfo.value.cause.message
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Permissions, derived by walking (P1, P3)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_file_and_directory_in_a_capture_is_private_under_any_umask(cfg):
-    """A 0600 file inside a 0777 directory is not a private file.
-
-    Directory write permission governs unlink and rename, so any local account
-    can replace the file whatever its own mode says. Both are checked, and the
-    set is derived by walking the capture rather than by listing what was copied.
-    """
+    """Directories too, since directory write permission lets any account replace a 0600 file."""
     _write_coupled_state(cfg)
     for companion in config.sidecar_paths("rekordbox_db", cfg):
         companion.write_bytes(b"outstanding")
@@ -223,9 +167,7 @@ def test_a_world_readable_source_does_not_produce_a_world_readable_capture(cfg):
     assert stat.S_IMODE(record.database.stat().st_mode) == config.PRIVATE_FILE_MODE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The verdict is part of the record, and it gates
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_capture_that_verifies_is_the_only_one_anything_may_commit_behind(cfg):
@@ -261,9 +203,7 @@ def test_the_verdict_survives_a_round_trip_through_the_manifest(cfg):
     assert not reread.verified
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Stamps, manifests, and the things that refuse
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_stamp_is_sortable_and_carries_no_character_a_filesystem_rejects():
@@ -273,38 +213,12 @@ def test_a_stamp_is_sortable_and_carries_no_character_a_filesystem_rejects():
 
 
 def test_a_stamps_random_tail_is_sixty_four_bits():
-    """The tail is an IDENTITY, not decoration, and its width is pinned as one.
-
-    ``restore`` derives one staged-companion directory per ATTEMPT from this
-    string, and a restore repeated after a failure runs several attempts inside
-    one second, so the second-resolution prefix is identical across them and the
-    whole of the distinctness rests on the tail. A collision has one attempt's
-    ``os.replace`` put its write-ahead log over another's, and those bytes are in
-    no capture: it is precisely the loss the staging exists to prevent. At the
-    original sixteen bits a run of eight attempts collides about once in two
-    thousand runs, which is a rate a person meets.
-
-    Written as a LITERAL sixteen hexadecimal characters rather than as
-    ``len(secrets.token_hex(n))``, because an expected value computed from the
-    thing under test is an assertion that passes at every width.
-    """
+    """The tail alone keeps restore attempts in one second apart, so its width is a LITERAL."""
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{6}Z-[0-9a-f]{16}", snapshot.new_stamp())
 
 
 def test_a_sparse_file_is_charged_the_room_its_copy_will_actually_need(tmp_path):
-    """``ALLOCATION_UNIT`` is observable on exactly one shape, so drive that shape.
-
-    ``_allocated_file`` returns the larger of ``st_blocks * 512`` and the length
-    rounded up to :data:`snapshot.ALLOCATION_UNIT`. For an ordinary file on a
-    filesystem whose block size is also 4,096 those two agree, which is why the
-    constant survived being changed to 1 with nothing red. They differ only for a
-    SPARSE file, whose ``st_blocks`` under-reports what the destination will
-    occupy because this module's copier does not preserve holes, and that is the
-    case the ``max`` exists for.
-
-    The length is deliberately not a multiple of the unit: at 10 MiB exactly, both
-    candidate answers are the same number and the test would prove nothing.
-    """
+    """Only a sparse file shows ``ALLOCATION_UNIT``, as its ``st_blocks`` under-reports the copy."""
     sparse = tmp_path / "sparse.bin"
     with sparse.open("wb") as handle:
         handle.truncate(10 * 1024 * 1024 + 1)
@@ -313,11 +227,8 @@ def test_a_sparse_file_is_charged_the_room_its_copy_will_actually_need(tmp_path)
         "the rounding term to be larger than"
     )
 
-    # 10,485,761 bytes rounds up to 2,561 units of 4,096, which is 10,489,856,
-    # plus one 2,048-byte directory entry: 10,491,904. Written as a LITERAL rather
-    # than as 10,489,856 plus DIRECTORY_ENTRY_OVERHEAD, because an expected value
-    # that reads the constant it is meant to pin is satisfied at every value that
-    # constant can take. With the unit at 1 the answer is 10,485,761.
+    # 2,561 units of 4,096 plus one 2,048-byte directory entry, a LITERAL so it pins
+    # the constants rather than reading them.
     assert snapshot.incoming_bytes(sparse) == 10491904
     assert snapshot.freed_bytes(sparse) == 10489856
 
@@ -354,13 +265,7 @@ def test_a_manifest_from_a_later_build_is_refused_rather_than_guessed_at(cfg):
 
 
 def test_a_capture_is_a_snapshot_directory_as_far_as_pruning_is_concerned(cfg):
-    """The capture and the retention it is protected by must agree on what one IS.
-
-    Pruning finds a capture by looking for a database file inside a directory. A
-    capture layout that put the database somewhere else would be invisible to
-    retention, which sounds safe and is not: an invisible capture is also one
-    nothing can spare deliberately.
-    """
+    """Pruning must see a capture as a snapshot, or nothing could spare it deliberately."""
     from cratekit.core import rb_writer
 
     record = snapshot.capture(cfg, verifier=_passes)

@@ -2061,3 +2061,277 @@ base from its own tree will meet the same refusal.
 **Closes when:** the capture refuses with the import named, or scenario
 fixtures live in a module that imports only what every revision has. Ledger
 only.
+
+---
+
+## R-1887. The write path's code lines rose under U300 instead of falling 15 percent, and its tests stay above their line and time targets
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** Phillip's answer A on #847 says every card must still
+remove at least 15 percent of its code lines. #857 set the fourteen files of
+the write path at most 7,189 code lines (8,458 at the survey, 9,045 on U300's
+base `c9192091`) and its fifteen test files at most 10,655 lines (14,553 on
+the base). U300 cut prose to its rule and its reason, by that answer, and split
+the three files over 1,500 lines, so the area's source fell from 18,806 lines
+to 13,872, under its 14,256 target, and no file is over 1,500. Its code lines
+rose, from 9,045 to 9,287: each split adds imports, a re-export block and a
+three line call-time accessor in each part, so a test that patches the facade
+still bites. The tests fell to 11,992 lines, prose only, and their summed time 25
+percent (35 seconds to 26), short of the 30 percent the card asks. The area held no
+copied block of six logical lines to fold (the survey's own count was 0).
+Reflowing message fragments or call arguments onto fewer lines would meet the
+count without simplifying anything, and was not done.
+
+**Measured cost.** None to a person. The area misses the 15 percent code rule
+by 1,599 lines (7,688 is 15 percent under the base) and the card's code target
+by 2,098; its tests miss their line target by 1,337. U300 asked Phillip on
+#857 and took the recommended option, land with the miss named.
+
+**Closes when:** a unit cuts this area's code lines to 7,688 or fewer, with
+behaviour frozen, the behaviour comparison and the kill set replay, likely by
+narrowing the parts' re-export blocks, folding the accessors into one shared
+reader per module, and shortening the longest guards named on #857
+(`guard_violations`, `node_change_violations`, `assert_app_version`,
+`assert_gates`, `verify_commit`, restore's `plan`).
+
+---
+
+## R-1888. Splitting a module needs one entry in three guards no area card owns, the scenario list, the layer ladder and the reports allowlist
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py`. Three guards outside the card's own files pin what the split
+moves: `tests/test_behaviour_compare.py` names every shipped scenario, so the
+card's ten new scenarios joined its list; `tests/test_layering.py` places a part
+of a write-ranked core module only by a line of its own, so restore's three
+parts were placed beside it; and `tests/modules/test_reports.py` asks every
+writer its allowlist's closure reaches to be named, so the moved writers were
+named under their parts. Each edit is the mechanism the guard's own message
+gives, one entry per name, but each file belongs to another card's list
+(the suite card #869 for the first two, #868 for the reports guard), and every
+area card that adds a scenario or splits a module edits the same lists.
+
+**Measured cost.** None to a person; a merge conflict between two area cards
+in a list, which git resolves line by line.
+
+**Closes when:** the suite card (#869) decides whether these three lists stay
+hand-kept or are derived. Ledger only.
+
+---
+
+## R-1889. The tree registry and the backup facts each read their JSON document with the same shape and different words
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** #857's brief notes that `core/tree_registry.py`'s path
+reader repeats `core/backup_facts.py`'s by shape (read the bytes, absent is
+empty, unreadable and not JSON and not an object each refuse). The two differ
+in their exception types, their messages, and a permission branch only the
+backup facts have, so a shared home would take each message and type as a
+parameter. U300 left both where they are rather than fold text a person
+reads into arguments.
+
+**Measured cost.** None; a maintainer reads two readers where one shape would do.
+
+**Closes when:** a card that may change these refusals' wording gives them one
+reader with the two vocabularies as data. Ledger only.
+
+---
+
+## R-1890. Guards that scan the split modules by file or by module name do not read their parts, so a forbidden shape in a part passes them
+
+**Found:** at review rounds one and two of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py` into parts that each module re-exports. Guards that scan a
+module's own file, its `inspect.getsource`, or an import of its exact dotted
+name read the module and not the code that moved to its parts. The two review
+rounds drove each by injecting the forbidden shape into a part: it failed the
+guard on the base and passed it on the branch.
+
+- `tests/test_rb_writer_guard.py`: the writer raises no bare `RuntimeError(`
+  or `SystemExit`, and `_raised_reasons`' scan of the refusals the writer
+  raises, both over `rb_writer.py` alone; the soft-delete guard does not
+  resolve the parts' call-time spelling `_writer().SOFT_DELETE_COLUMN`.
+- `tests/test_cli_contract.py`: the writer never learns the gate's name or a
+  flag string, over `rb_writer.py` alone.
+- `tests/test_sync_night.py`: the night module may not import
+  `cratekit.core.session`, matched with a following dot, so
+  `cratekit.core.session_holders` and its siblings pass.
+- `tests/test_config.py` and `tests/test_process_guard.py`, one scan each.
+
+U300 kept what it could inside its own files: the one part function raising a
+slug `_raised_reasons` reads went back into `rb_writer.py`, the parts read the
+soft-delete column as `rb_writer.SOFT_DELETE_COLUMN` from a local binding,
+which the soft-delete guard resolves (a permissive read written that way in a
+part is caught), and the restore and session scans in `tests/test_restore.py`
+and `tests/test_write_session.py` read the parts. The files above are not
+U300's: `tests/test_rb_writer_guard.py` no card may edit, and the rest are on
+other cards' lists.
+
+**Measured cost.** None today: the reviews grepped every part for each scan's
+forbidden text and found none, and five of the driven injections are still
+caught by a wider guard. The cost is a guard on a path that writes or deletes
+that kills nothing for code in the parts (board bar (d)): a permissive read
+of the soft-delete marker on the removal path written in the parts'
+`_writer()` spelling, or the unattended night job taking the library lock
+through `session_holders`, would pass the guard written to stop it.
+
+**Closes when:** each scan reads its module and its parts (by glob of the
+module's file name, or by every module whose dotted name starts with the
+module's own), the soft-delete guard resolves a call-time accessor, and the
+night ban matches the parts. The writer guard file needs Phillip's leave to
+change, since no card may touch it.
+
+---
+
+## R-1891. Intake still reaches three core modules off the named interface, so its import allowance is not empty
+
+**Found:** at the build and round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/intake.txt` still holds three lines: `off-interface cratekit.core.binary_refusal` (imported by `intake/cli_identify.py` for the missing downloader refusal), `off-interface cratekit.core.drift` (by `native.py` and `native_plan.py`, the dynamics tag) and `off-interface cratekit.core.rehearsal` (by `land_cli.py` and `land_native.py`, the landing's rehearsal). U307's brief asks for the allowance empty. The named interface in `tests/test_import_rules.py` is at its cap of 25, so none of the three can join it without another leaving, and the modules are #857's (`rehearsal`, `drift`) and #858's (`binary_refusal`). Re-exporting them through an interface module from intake would hide the reach rather than remove it, so U307 left them and names them for the audit.
+
+**Measured cost.** None to a person: the imports work and nothing dangles with a toggle off. The cost is point 4 of #847's definition of done read on intake: three seam items left of the fifteen the survey counted.
+
+**Closes when:** the core cards or the final audit (#872) decide where the three live: a module on the interface list that carries what intake needs, the reach moved into intake where only intake uses it (`rehearsal` has no other feature package user), or the list changed by the card that owns it. Then `scripts/refactor_measure.py prune intake` empties the file. Ledger only.
+
+---
+
+## R-1892. A native landing that fails after its commit landed says no row was added, though the rows were committed
+
+**Found:** at the round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** In `native.apply_rows`, a failure raised after `rb_writer.commit_guarded` has committed (the witness reads the commit as landed) is recorded in the session record with the rows the commit wrote, and then raised. The landing's refusal for it reads "the collection could not be written (after the commit); no row was added and N file(s) were already moved". The reviewer drove it on base `c919209` and on the branch by making `commit_guarded` commit and then raise: both printed that sentence while the database held the two landed rows and the session record named them. Behaviour is unchanged by U307; the sentence is the base's.
+
+**Measured cost.** A person reading the refusal is told nothing landed when the rows did, the shape of METHOD's first defect pattern. Reachability is unmeasured beyond the reviewer's fault injection: no producer of a real failure between the commit and the end of the apply was driven.
+
+**Closes when:** the refusal past a landed commit names what the session record holds (the rows committed, the files moved) and a test drives a failure after the commit and reads the sentence. Ledger only, since the reachability is unmeasured.
+
+---
+
+## R-1893. The monkeypatch undo ban reads only files whose text spells the call in ASCII, so an NFKC spelling passes it
+
+**Found:** at the round two review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/test_isolation_survives_undo.py` bans a test that calls `monkeypatch.undo()`, which would undo the suite's isolation. U307 narrowed the files its syntax tree walk reads from every test file holding the text "undo" to those matching an ASCII regex (`_CALL`), for speed. Python folds identifiers with NFKC, so `ｍonkeypatch.undo()` (a fullwidth m) or `monkeypatch.ｕndo()` parses to the same attribute; the reviewer planted five files and the base ban flagged three of them, the branch's one. Neither version catches an aliased fixture (`mp = monkeypatch; mp.undo()`) or `pytest.MonkeyPatch().undo()`.
+
+**Measured cost.** None to a person: no test in the repository spells the call that way, and the producer is contrived. The guard is narrower than it was.
+
+**Closes when:** the prefilter folds the text with NFKC before matching, or the walk reads every file again, and a planted fullwidth spelling is refused by the ban's self check. Ledger only.
+
+---
+
+## R-1894. Intake's 42 owned test files are 402 lines over the card's target, the rest in the set verbs' suites
+
+**Found:** at the record of #864, U307, 2026-11-23.
+
+**The mechanism.** U307's brief asks the 42 test files it owns to come to at most 21,521 lines, from 29,083 on `c919209`. They stand at 21,923 on the branch head: 7,160 lines out, 402 short. The shortfall is in the set verbs' suites (`tests/test_set_inspiration_playlist.py`, `tests/test_u129_set_account_playlist.py`, `tests/test_u135_set_inbox_join.py`, `tests/intake/test_set_fetch.py`, `tests/intake/test_set_progress.py` and the three account playlist suites, 5,367 lines before and 4,416 after against 3,971 for their share), where the builder that trimmed them judged the rest to carry assertions the recorded kills need. The last 34 lines came back when `test_a_fetch_that_raises_still_stops_the_watcher` was made deterministic so r924's F5 is killed every time.
+
+**Measured cost.** None to a person and none to a guard: the test time target is met (the summed time of the 42 files down 43 and 38 percent in two alternated runs), every verb's behaviour compares equal, and every recorded kill is kept. The cost is #847's line target read on intake's tests, about two percent over.
+
+**Closes when:** a later card that touches the set verbs' suites folds their remaining repeated setups (the account playlist and inspiration fixtures each file repeats) while the kill set replay stays at zero lost, or the final audit (#872) accepts the figure. Ledger only.
+
+---
+
+## R-1895. The catalogue URL guard in test_locations now passes on a docstring line in searchers.py, not on the URLs, which moved to shops.py
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/test_locations.py`, in
+`test_the_one_permitted_call_is_still_there_and_is_still_a_query_string`,
+asserts that `src/cratekit/tagging/searchers.py` holds `https://` and no
+`file://`, to keep the one permitted `quote_plus` building a query string. U306
+split `searchers.py` by source: the catalogue search URLs now live in
+`tagging/shops.py`, and the only `https://` left in `searchers.py` is a line of
+`_query`'s docstring. The round one reviewer set `BANDCAMP_SEARCH` in
+`shops.py` to a `file://` path and the test passed; the same edit in the base
+`searchers.py` fails it. Rewording the docstring fails it with no behaviour
+change.
+
+**Measured cost.** None to a person today: the URLs are unchanged and the
+behaviour comparison is clean. The guard has lost its object, so a later
+`file://` search URL in `shops.py` would pass it.
+
+**Closes when:** the guard reads the module that builds the URLs (`shops.py`,
+or whatever module `_query`'s callers take their bases from). `tests/test_locations.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1896. scripts/title_differential.py in titles base mode compares the tree's Beatport scorer with itself after the searchers split
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** In titles base mode the script loads a base revision's
+`searchers` and sets `base.titles = base_titles` so the base's Beatport scorer,
+`_beatport_best`, reads the base's titles. U306 moved `_beatport_best` to
+`tagging/shops.py` and re-exports it from `searchers`, so the function the
+script reaches resolves `titles` in `shops`' globals and the reroute no longer
+bites: the round one reviewer set a tripwire module as `base.titles`, which
+`c9192091` reaches and `511cb4be` never touches, and round two found
+`_title_matches` the same. The comment at `scripts/title_differential.py:393`
+("so Beatport's scorer is held to it as well") is now untrue. The default base
+mode, which the solutions entry on a strip that can empty a title describes,
+still builds its base side as it did, driven at its default base.
+
+**Measured cost.** A developer tool, not a verb: a session holding a future
+`titles` change against its base is told there are no Beatport differences
+when there may be some. Driven to the mechanism, not through a whole script
+run over a real change.
+
+**Closes when:** the script also sets the base's `shops.titles` (and
+`catalogues.titles`) when it loads a base, or loads the base package whole. `scripts/` is #870 (U313)'s. Ledger only.
+
+---
+
+## R-1897. U306 left tagging, analysis and vocals short of their line, code line and test targets, and with eleven seam lines other cards own
+
+**Found:** at the landing of #863, U306, 2026-11-22.
+
+**The mechanism.** #863's brief set, for the 40 source files and 36 test
+files of `tagging`, `analysis` and `vocals`, at most 17,444 source lines,
+10,189 code lines, 23,357 test lines and 30 percent less test time. Measured
+on the merged head by `scripts/refactor_measure.py lines` against the base
+`c9192091`: source 23,494 to 18,785, code lines 13,104 to 12,718, test lines
+31,668 to 29,619, and the test time not told apart on this container. No file is over
+1,500 lines and no copied block is left. The code that remains is mostly code
+the recorded kill set finds by its exact text, so cutting it means rewriting
+guarded code with every replayed row re-anchored by hand, which this card did
+not do. Eleven import allowance lines stay because the modules they name are
+another card's: `core.art` and `core.taxonomy_word` from tagging and
+`core.cores`, `core.discovery`, `core.drift`, `core.pool` from analysis, and
+`core.discovery` from vocals, all core modules off the interface list, which
+is full at 25 and which U301 (#858), merged in before this card landed, left
+as it was; the registry loading `analysis.check_cli` for a verb the analysis
+toggle does not gate (#860, U303); and vocals importing `analysis.artifacts`,
+`analysis.cli` and `analysis.vocals` at top level, which a lazy import would
+change for a person running the vocals verb with analysis off.
+
+**Measured cost.** None to a person: behaviour is unchanged. The cost is to
+#847's definition of done, points 2, 4 and 5, which the final audit measures.
+
+**Closes when:** the final audit, #872 (U315), measures the epic and files a
+further card for the gap, as #847 says a point that falls short gets. Ledger
+only.
+
+---
+
+## R-1898. The done verdict of analyze check has no behaviour scenario, since reaching it needs a beat grid file on disk
+
+**Found:** at the build of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/analysis_check.py` drives `crate analyze
+check` to waiting (exit 12), suspect (exit 27), the fallback scope, nothing in
+scope and its refusals. The done verdict (exit 0) needs an analysis file that
+holds a readable grid, which no scenario may write under the standing rule
+against beat grids. Patching the grid reader would reach it, but a patch that
+stops biting after a later move would read as a false difference.
+
+**Measured cost.** None today: the verdict's code is covered by
+`tests/test_analyze_check.py`. The behaviour comparison cannot see a change to
+what the done verdict prints.
+
+**Closes when:** a scenario reaches the done verdict through a fake the
+product itself reads at call time, kept where the reader lives. Ledger only.

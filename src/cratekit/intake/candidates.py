@@ -1,39 +1,29 @@
 """Provider candidates for a missing row nothing names exactly (U79, R-302).
 
-A typed tracklist line, a transcribed screenshot and a recognised set track
-with no usable ISRC carry an artist and a title and nothing a provider can be
-asked for by identifier. This module asks the catalogue's text search about one
-such row and decides what the answer is allowed to mean.
+A typed tracklist line, a transcribed screenshot or a set track with no usable
+ISRC carries an artist and a title and nothing a provider can be asked for by
+identifier. This module asks the catalogue's text search about such a row and
+decides what the answer is allowed to mean.
 
-A SEARCH IS A PROPOSAL, NEVER A PICK. A provider ranks by its own relevance: it
-returns the remix beside the original, the radio edit beside the extended mix,
-and an unrelated act of the same name beside all of them. A wrong pick downloads
-the wrong track and spends a download, and an offer costs a person one answer,
-so every doubt lands on the offer side:
+A SEARCH IS A PROPOSAL, NEVER A PICK. A provider ranks by its own relevance,
+and a wrong pick spends a download where an offer costs one answer, so every
+doubt lands on the offer side:
 
 - A row is LISTED without a person only when the answer holds candidates that
-  fold to exactly the row, artist, title and version, under ``match``'s own fold,
-  all of them carry ONE distinct identifier, every row of the answer could be
-  read, the answer's last page is shorter than the seam's page, and the row's
-  title reads one way only. ``export set`` reads a full page on to the next
-  through :func:`search_pages`, within a bound, so a full first page is ruled
-  out rather than refused (R-879). A row of the answer that could not be read, an exact candidate
-  carrying no identifier, and a page that came back full could each hide a
-  second exact candidate nobody can see, and a title whose dash tail may be a
-  version or the end of the title is a row nobody can call exact, so each of
-  those sends the row to review.
-- Anything else with a candidate worth showing is OFFERED into the review queue,
-  exact candidates first and then by score, keyed on the folded row, so the
-  same line in two lists is one question and a second run re-offers nothing.
-- A SCORE NEVER LISTS ANYTHING. It orders the screen and it drops hits that do
-  not resemble the row at all, and that is the whole of what it does.
-- No candidate is REPORTED, with how many hits the provider returned and the
-  best score among them, never folded into "nothing to do".
+  fold to exactly the row under ``match``'s own fold, all carry ONE distinct
+  identifier, every row of the answer was read, the answer's last page is
+  shorter than the seam's page, and the row's title reads one way only. A full
+  page is read on to the next within a bound (R-879). Anything that could hide
+  a second exact candidate sends the row to review.
+- Anything else with a candidate worth showing is OFFERED into the review
+  queue, exact candidates first and then by score, keyed on the folded row.
+- A SCORE NEVER LISTS ANYTHING. It orders the screen and drops hits that do
+  not resemble the row at all.
+- No candidate is REPORTED, with the hit count and the best score.
 
-An ACCEPTED item is read back on the next run, before any search is spent, and
-the candidate the person chose is the track that is listed. A rejected item
-stays rejected until somebody clears it, and an open one is not searched again,
-because the question is already in front of a person.
+An ACCEPTED item is read back on the next run before any search is spent. A
+rejected item stays rejected until cleared, and an open one is not searched
+again, because the question is already in front of a person.
 
 Layer: modules. Nothing here writes a file or composes a download.
 """
@@ -47,40 +37,41 @@ from typing import Any
 from cratekit.acquire import match
 from cratekit.core import review
 from cratekit.intake import cli as intake_cli
-from cratekit.label.catalogue import TRACK_SEARCH_PAGE
 
-#: The queue. The version confirm gate's own surface: its legacy file is the
-#: source system's review of what a provider text search resolved a wanted
-#: recording to, which is this question exactly, so it is not a new surface.
+#: The queue: the version confirm gate's own surface, whose legacy file is this
+#: question exactly, what a provider text search resolved a recording to.
 QUEUE = review.Queue.VERSION_MATCH
 
-#: The kind, distinct from ``match.QUESTION_KIND`` on the same queue. That one
-#: asks about a copy the LIBRARY holds and its payload is a ``TrackMatch``; this
-#: one asks about tracks the PROVIDER holds, and neither reader reads the other.
+#: The kind, distinct from ``match.QUESTION_KIND`` on the same queue, which asks
+#: about a copy the LIBRARY holds; this one asks about tracks the PROVIDER holds.
 KIND = "provider-candidate"
 
-#: How many candidates one item offers. A person choosing between ten is still
-#: choosing. Twice the library's ``APPROXIMATE_LIMIT``, because one ISRC is
-#: commonly on a provider as a single, an album cut and a compilation (R-356)
-#: and those are all exact, before any near miss is shown.
+#: How many candidates one item offers: twice the library's limit, because one
+#: ISRC is commonly a single, an album cut and a compilation, all exact (R-356).
 OFFER_LIMIT = 2 * match.APPROXIMATE_LIMIT
 
 #: The score under which a hit that is not exact is not shown. NOT MEASURED
-#: AGAINST A LIVE PROVIDER, and recorded as such in the ledger. It drops hits
-#: that share a word with the row and nothing else. It never lists anything and
-#: it never hides an exact candidate, so the cost of it being wrong is a near
-#: miss a person has to find by hand, which the report names.
+#: AGAINST A LIVE PROVIDER. It never lists anything and never hides an exact
+#: candidate, so being wrong costs a near miss a person finds by hand.
 CANDIDATE_FLOOR = 60.0
 
 #: The most rows the provider's client says one search serves, across pages.
 SEARCH_CEILING = 300
 
-#: How many pages of one search :func:`search_pages` reads at most: as many
-#: whole pages as fit under :data:`SEARCH_CEILING`, so the walk never asks past
-#: the listing's ceiling, where an empty page would be the provider declining
-#: to serve and not the end of what it holds (R-879). NOT MEASURED AGAINST A
-#: LIVE PROVIDER: how often a real query runs to the ceiling.
-SEARCH_PAGES = SEARCH_CEILING // TRACK_SEARCH_PAGE
+
+def __getattr__(name: str) -> int:
+    """``SEARCH_PAGES``, worked out when asked for, since the page size is a toggle's.
+
+    How many pages :func:`search_pages` reads at most: as many whole pages as
+    fit under :data:`SEARCH_CEILING`, past which an empty page would be the
+    provider declining to serve, not the end of what it holds (R-879).
+    """
+    if name == "SEARCH_PAGES":
+        from cratekit.label.catalogue import TRACK_SEARCH_PAGE  # noqa: PLC0415 - a toggle's
+
+        return SEARCH_CEILING // TRACK_SEARCH_PAGE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 #: What became of one row, one word a script can switch on.
 LISTED = "listed"
@@ -128,11 +119,9 @@ class Answer:
 
     @property
     def full(self) -> bool:
-        """The last page read filled the seam's page, so the listing may go on.
+        """The last page read filled the seam's page: a full then a short page is the end."""
+        from cratekit.label.catalogue import TRACK_SEARCH_PAGE  # noqa: PLC0415 - a toggle's
 
-        THE LAST PAGE, NOT THE TOTAL. A walk that read a full page and then a
-        short one has read the listing to its end, and nothing sits past it.
-        """
         last = self.hits if self.last_page is None else self.last_page
         return last >= TRACK_SEARCH_PAGE
 
@@ -154,26 +143,17 @@ class Proposal:
     offered: int = 0
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "artist": self.wanted.artist,
-            "title": self.wanted.listed,
-            "state": self.state,
-            "reason": self.reason,
-            "id": self.track.ref if self.track is not None else None,
-            "item_id": self.item_id,
-            "candidates": self.offered,
-        }
+        return {"artist": self.wanted.artist, "title": self.wanted.listed, "state": self.state,
+                "reason": self.reason, "id": self.track.ref if self.track is not None else None,
+                "item_id": self.item_id, "candidates": self.offered}
 
 
 def identity(wanted: match.Wanted) -> dict[str, str]:
     """What a row's question is addressed by: the folded row and nothing else.
 
-    KEYED ON THE ROW, not on the list it arrived in and not on its position, so
-    the same line typed into two tracklists is one question with one answer.
-    The three fields are the ones the exact test compares. The title is its
-    :func:`match.title_identity`, the fold for every title that folds to
-    something, so two titles of emoji alone by one artist are two questions:
-    one answer about ``💧`` listed its track for a later ``🌊`` row.
+    KEYED ON THE ROW, not its list or position, so the same line in two
+    tracklists is one question. The title is its :func:`match.title_identity`,
+    so two titles of emoji alone by one artist are two questions.
     """
     return wanted.folded_row()
 
@@ -185,10 +165,8 @@ def item_id(wanted: match.Wanted) -> str:
 def query_title(wanted: match.Wanted) -> str:
     """The title half of the search: the title, and the version when it names one.
 
-    A provider searches one string, and a remix asked for by its plain title is
-    ranked under the original and can fall off the page. A qualifier that means
-    no version at all, original mix, is left out, since a provider that spells
-    the record without it would rank it lower for the extra words.
+    A remix asked for by its plain title ranks under the original and can fall
+    off the page. A qualifier meaning no version, original mix, is left out.
     """
     return f"{wanted.title} {wanted.version}".strip() if wanted.version_key else wanted.title
 
@@ -196,18 +174,10 @@ def query_title(wanted: match.Wanted) -> str:
 def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str]]:
     """Every (recording, version) the row reads as, the ambiguous reading too.
 
-    BOTH READINGS MARK A CANDIDATE EXACT, AND NEITHER LISTS IT. A title whose
-    dash tail may be a version or the end of the title is two rows to the exact
-    test, and a candidate matching either one is a candidate a person might have
-    meant, so it leads the screen. ``match.Wanted.readings`` says the second
-    reading is for what to OFFER and that nothing identifying is derived from
-    it, and the string cannot say which reading is the first, so a row with two
-    readings is never listed without a person: see :func:`sole_exact`.
-
-    THE RECORDING'S IDENTITY, NOT ITS TOKEN. Two titles that fold to nothing,
-    ``🔥`` and ``💧`` by one artist, share a recording token, so a search for
-    one answered only by the other was exact, listed without a person, and the
-    record nobody asked for downloaded. See :func:`match.recording_identity`.
+    BOTH READINGS MARK A CANDIDATE EXACT, AND NEITHER LISTS IT: a candidate
+    matching either leads the screen, and a row with two readings is never
+    listed without a person (:func:`sole_exact`). THE RECORDING'S IDENTITY, NOT
+    ITS TOKEN, since two titles that fold to nothing share a token.
     """
     return frozenset((one.distinct, one.version_key) for one in wanted.readings)
 
@@ -223,8 +193,8 @@ def _album_of(row: object) -> str:
 def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
     """The provider's rows as candidates, in the provider's order.
 
-    A ROW THAT CANNOT BE READ IS COUNTED. Dropped, an answer of one exact track
-    and one unreadable row would read as one exact candidate and list a guess.
+    A ROW THAT CANNOT BE READ IS COUNTED, or one exact track and one unreadable
+    row would read as one exact candidate and list a guess.
     """
     from rapidfuzz import fuzz
 
@@ -237,20 +207,11 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
         except match.UnreadableList:
             unreadable += 1
             continue
-        candidates.append(
-            Candidate(
-                track=track,
-                exact=(track.distinct, track.version_key) in exact_tokens,
-                score=round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1),
-                album=_album_of(row),
-            )
-        )
-    return Answer(
-        candidates=tuple(candidates),
-        hits=len(rows),
-        unreadable=unreadable,
-        ambiguous=wanted.other_reading is not None,
-    )
+        score = round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1)
+        exact = (track.distinct, track.version_key) in exact_tokens
+        candidates.append(Candidate(track=track, exact=exact, score=score, album=_album_of(row)))
+    return Answer(candidates=tuple(candidates), hits=len(rows), unreadable=unreadable,
+                  ambiguous=wanted.other_reading is not None)
 
 
 def read_pages(wanted: match.Wanted, pages: Sequence[tuple[Any, ...]]) -> Answer:
@@ -262,10 +223,8 @@ def read_pages(wanted: match.Wanted, pages: Sequence[tuple[Any, ...]]) -> Answer
 def _settled_early(answer: Answer) -> bool:
     """Whether another page could change what :func:`sole_exact` says. ``True`` if not.
 
-    Each of these refuses the row however many pages follow: two readings of
-    the title, a row of the answer that could not be read, an exact candidate
-    with no identifier, and two distinct exact ones. Reading on would spend a
-    provider call on a question already answered.
+    Each of these refuses the row however many pages follow, so reading on
+    would spend a provider call on a question already answered.
     """
     exact = [one for one in answer.candidates if one.exact]
     return (
@@ -276,25 +235,19 @@ def _settled_early(answer: Answer) -> bool:
     )
 
 
-def search_pages(
-    search: Callable[[int], Iterable[Any]],
-    wanted: match.Wanted,
-    *,
-    bound: int = SEARCH_PAGES,
-) -> Answer:
+def search_pages(search: Callable[[int], Iterable[Any]], wanted: match.Wanted, *,
+                 bound: int | None = None) -> Answer:
     """One search read page by page, until what past the cut is ruled in or out.
 
-    ``search`` is handed the offset of each page and returns its rows (R-879).
-    The provider fills its page of 50 for any common query, so a first page is
-    almost always full, and a full page alone would refuse nearly every row. The
-    walk stops at the first of: a page shorter than the seam's, which is the end
-    of the listing; an answer no further page can make listable, see
-    :func:`_settled_early`; or ``bound`` pages read, after which the answer is
-    still full and :func:`sole_exact` refuses it as it always did.
-
-    NOTHING IS LOWERED. The walk only reads more of what the provider holds;
-    the exact test and its five conditions are the same.
+    ``search`` is handed the offset of each page (R-879). A common query fills
+    its first page, and a full page alone would refuse nearly every row. The
+    walk stops at a short page, the end of the listing; at an answer no further
+    page can make listable; or at ``bound`` pages, default ``SEARCH_PAGES``,
+    still full and refused. NOTHING IS LOWERED: the exact test is the same.
     """
+    from cratekit.label.catalogue import TRACK_SEARCH_PAGE  # noqa: PLC0415 - a toggle's
+
+    bound = SEARCH_CEILING // TRACK_SEARCH_PAGE if bound is None else bound
     pages: list[tuple[Any, ...]] = []
     while True:
         pages.append(tuple(search(len(pages) * TRACK_SEARCH_PAGE)))
@@ -306,10 +259,9 @@ def search_pages(
 def sole_exact(answer: Answer) -> Candidate | None:
     """The one candidate the row may be listed as without a person, or ``None``.
 
-    FIVE CONDITIONS, EACH REMOVABLE ALONE. The row's title reads one way. The
-    answer's last page did not fill the page, since a second exact candidate
-    could sit past the cut. Every row of the answer was read. Every exact
-    candidate carries an identifier. Those identifiers are one.
+    FIVE CONDITIONS, EACH REMOVABLE ALONE: one reading of the title, a last page
+    that did not fill (a second exact one could sit past the cut), every row
+    read, every exact candidate identified, and those identifiers one.
     """
     exact = [one for one in answer.candidates if one.exact]
     if answer.ambiguous or answer.full:
@@ -326,8 +278,8 @@ def sole_exact(answer: Answer) -> Candidate | None:
 def shown(answer: Answer) -> tuple[Candidate, ...]:
     """The candidates an item offers: exact first, then best score, one per id.
 
-    A candidate with no identifier cannot be downloaded and is not an option.
-    The provider's own order breaks a tie, so a repeat run offers the same list.
+    One with no identifier cannot be downloaded and is not an option. The
+    provider's order breaks a tie, so a repeat run offers the same list.
     """
     ranked = sorted(
         (
@@ -355,62 +307,45 @@ def _summary(one: Candidate) -> str:
 
 
 def _option(one: Candidate) -> review.Option:
-    return review.Option(
-        option_id=one.track.ref,
-        summary=_summary(one),
-        detail={
-            "track": intake_cli.frozen(one.track),
-            "exact": one.exact,
-            "score": one.score,
-            "album": one.album,
-        },
-    )
+    detail = {"track": intake_cli.frozen(one.track), "exact": one.exact, "score": one.score,
+              "album": one.album}
+    return review.Option(option_id=one.track.ref, summary=_summary(one), detail=detail)
 
 
 def _why_offered(answer: Answer, offered: tuple[Candidate, ...]) -> str:
     exact = len({one.track.ref for one in offered if one.exact})
     if exact and answer.ambiguous:
-        return (
-            "its title reads two ways, as a version or as the end of the title, so "
-            "no candidate can be called the exact one without a person"
-        )
+        return ("its title reads two ways, as a version or as the end of the title, so "
+            "no candidate can be called the exact one without a person")
     if exact > 1:
-        return (
-            f"the provider holds {exact} tracks that match it exactly, and which "
-            f"release to download is not something the row decides"
-        )
+        return (f"the provider holds {exact} tracks that match it exactly, and which "
+            f"release to download is not something the row decides")
     if exact and answer.full:
-        return (
-            f"one candidate matches it exactly and the provider's answer filled its "
-            f"page of {answer.hits}, so another exact one may sit past the cut"
-        )
+        return (f"one candidate matches it exactly and the provider's answer filled its "
+            f"page of {answer.hits}, so another exact one may sit past the cut")
     if exact and answer.unreadable:
-        return (
-            f"one candidate matches it exactly and {answer.unreadable} row(s) of the "
-            f"answer could not be read, so it may not be the only one"
-        )
+        return (f"one candidate matches it exactly and {answer.unreadable} row(s) of the "
+            f"answer could not be read, so it may not be the only one")
     if exact:
-        return (
-            "one candidate matches it exactly and another exact one carries no "
-            "identifier, so it may not be the only one"
-        )
+        return ("one candidate matches it exactly and another exact one carries no "
+            "identifier, so it may not be the only one")
     return "no candidate matches it exactly, and a near miss is never picked from a score"
 
 
 def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
     """What the queue already says about this row, or ``None`` when it says nothing.
 
-    READ BEFORE ANY SEARCH, so an answered row and a row already in front of a
-    person spend no provider call.
-
-    AN ACCEPTANCE NAMES ITS CANDIDATE OR IT IS NOT ONE. Accepted with no option
-    over an item that offered one candidate is that candidate, since nothing
-    else was on the screen. Over several it is a yes to nobody knows which, and
-    the row stalls with clearing named as the way through, never the first.
+    READ BEFORE ANY SEARCH, so an answered or open row spends no provider call.
+    AN ACCEPTANCE NAMES ITS CANDIDATE OR IT IS NOT ONE: with no option over one
+    candidate it is that one, over several it stalls, never taking the first.
     """
     held = review.find(items, item_id(wanted))
     if held is None:
         return None
+
+    def held_as(state: str, reason: str, track: match.Wanted | None = None) -> Proposal:
+        return Proposal(wanted, state, reason, track, held.item_id, len(held.options))
+
     if held.verdict is None:
         return Proposal(
             wanted,
@@ -420,79 +355,48 @@ def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
             offered=len(held.options),
         )
     if held.verdict is review.Verdict.REJECTED:
-        return Proposal(
-            wanted,
+        return held_as(
             REJECTED,
             "every provider candidate was rejected in review, so it is not searched "
             "for again until that answer is cleared",
-            item_id=held.item_id,
-            offered=len(held.options),
         )
     chosen = held.option
     if chosen is None and len(held.options) == 1:
         chosen = held.options[0].option_id
     option = next((one for one in held.options if one.option_id == chosen), None)
     if option is None:
-        return Proposal(
-            wanted,
+        return held_as(
             STALLED,
             f"accepted in review without naming which of its {len(held.options)} "
             f"candidates, so there is nothing to list",
-            item_id=held.item_id,
-            offered=len(held.options),
         )
     said = (option.detail or {}).get("track")
     track = intake_cli.thawed(said) if isinstance(said, Mapping) else None
     if track is None or not track.ref or track.ref != option.option_id:
-        return Proposal(
-            wanted,
+        return held_as(
             STALLED,
             f"the accepted candidate {option.option_id} does not carry the track it "
             f"was offered as, so there is nothing to list",
-            item_id=held.item_id,
-            offered=len(held.options),
         )
-    return Proposal(
-        wanted,
-        ACCEPTED,
-        f"accepted in review as {option.summary}",
-        track=track,
-        item_id=held.item_id,
-        offered=len(held.options),
-    )
+    return held_as(ACCEPTED, f"accepted in review as {option.summary}", track)
 
 
-def propose(
-    items: review.ReviewStore,
-    wanted: match.Wanted,
-    answer: Answer,
-    *,
-    handler_key: str,
-) -> Proposal:
+def propose(items: review.ReviewStore, wanted: match.Wanted, answer: Answer, *,
+            handler_key: str) -> Proposal:
     """List the row, offer its candidates, or say there are none. Never pick."""
     sole = sole_exact(answer)
     if sole is not None:
-        return Proposal(
-            wanted,
-            LISTED,
-            f"the provider's search holds exactly one track matching it, {_summary(sole)}",
-            track=sole.track,
-        )
+        return Proposal(wanted, LISTED, f"the provider's search holds exactly one track "
+                        f"matching it, {_summary(sole)}", track=sole.track)
     offered = shown(answer)
     if not offered:
-        # A MATCH WITH NO IDENTIFIER IS SAID AS THAT. It resembles the row and
-        # cannot be downloaded, and "none resembles it" over a hit scoring 100
-        # would send a person looking for a spelling problem they do not have.
-        unnamed = sum(
-            1
-            for one in answer.candidates
-            if not one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)
-        )
+        # A MATCH WITH NO IDENTIFIER IS SAID AS THAT, not as "none resembles it",
+        # which would send a person after a spelling problem they do not have.
+        unnamed = sum(1 for one in answer.candidates
+                      if not one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR))
         best = max((one.score for one in answer.candidates if one.track.ref), default=None)
         return Proposal(
-            wanted,
-            NO_CANDIDATES,
-            (
+            wanted, NO_CANDIDATES, (
                 "the provider's search returned nothing for it"
                 if not answer.hits
                 else f"the provider's search returned {answer.hits} hit(s) and none "
@@ -508,69 +412,20 @@ def propose(
         )
     withheld = len(offered) - OFFER_LIMIT if len(offered) > OFFER_LIMIT else 0
     on_screen = offered[:OFFER_LIMIT]
-    held = review.offer(
-        items,
-        queue=QUEUE,
-        kind=KIND,
-        identity=identity(wanted),
-        payload={
-            "wanted": intake_cli.frozen(wanted),
-            "why": _why_offered(answer, offered),
-            "hits": answer.hits,
-            "unreadable": answer.unreadable,
-            "withheld": withheld,
-            "candidates": [
-                {
-                    "id": one.track.ref,
-                    "artist": one.track.artist,
-                    "title": one.track.listed,
-                    "album": one.album,
-                    "exact": one.exact,
-                    "score": one.score,
-                }
-                for one in on_screen
-            ],
-        },
-        options=[_option(one) for one in on_screen],
-        handler_key=handler_key,
-    )
-    return Proposal(
-        wanted,
-        OFFERED,
-        _why_offered(answer, offered),
-        item_id=held.item_id,
-        offered=len(on_screen),
-    )
+    why = _why_offered(answer, offered)
+    shown_rows = [{"id": one.track.ref, "artist": one.track.artist, "title": one.track.listed,
+                   "album": one.album, "exact": one.exact, "score": one.score} for one in on_screen]
+    payload = {"wanted": intake_cli.frozen(wanted), "why": why, "hits": answer.hits,
+               "unreadable": answer.unreadable, "withheld": withheld, "candidates": shown_rows}
+    held = review.offer(items, queue=QUEUE, kind=KIND, identity=identity(wanted), payload=payload,
+                        options=[_option(one) for one in on_screen], handler_key=handler_key)
+    return Proposal(wanted, OFFERED, why, item_id=held.item_id, offered=len(on_screen))
 
 
 __all__ = [
-    "ACCEPTED",
-    "ASKED",
-    "CANDIDATE_FLOOR",
-    "HELD",
-    "KIND",
-    "LISTED",
-    "NAMED",
-    "NO_CANDIDATES",
-    "OFFERED",
-    "OFFER_LIMIT",
-    "QUEUE",
-    "REJECTED",
-    "SEARCH_CEILING",
-    "SEARCH_PAGES",
-    "STALLED",
-    "WAITING",
-    "Answer",
-    "Candidate",
-    "Proposal",
-    "identity",
-    "item_id",
-    "propose",
-    "query_title",
-    "read_answer",
-    "read_pages",
-    "search_pages",
-    "settled",
-    "shown",
-    "sole_exact",
+    "ACCEPTED", "ASKED", "CANDIDATE_FLOOR", "HELD", "KIND", "LISTED", "NAMED", "NO_CANDIDATES",
+    "OFFERED", "OFFER_LIMIT", "QUEUE", "REJECTED", "SEARCH_CEILING",
+    "SEARCH_PAGES",  # noqa: F822 - served by __getattr__
+    "STALLED", "WAITING", "Answer", "Candidate", "Proposal", "identity", "item_id", "propose",
+    "query_title", "read_answer", "read_pages", "search_pages", "settled", "shown", "sole_exact",
 ]

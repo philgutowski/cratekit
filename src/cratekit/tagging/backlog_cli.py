@@ -1,27 +1,12 @@
 """``crate tag backlog``: the needs genre backlog sorted by cause, writing nothing (U292).
 
-WHAT IT ANSWERS. Of the rows adoption files nowhere for want of a genre,
-which ``tag rows`` writes from their file, which ``tag suggest`` would give a
-genre at the floor and from what evidence, which carry a word no folder takes,
-grouped by word with one question each, and which are left by hand and why.
-Then the campaign: the existing gated verbs in the order they settle it, with
-the rows each moves, and needs genre now and after.
-
-A PERSON READS IT AS CHECK ROWS, on doctor's diagnostic surface as ``report
-genres`` is read: one row per cause, the proposals, one per word with its
-question and its answers, one per campaign step, one per reason a row is left,
-and the projection. The summary carries every row and every count.
-
-IT WRITES NOTHING, AND ASKS NOTHING. No gate, no session, no acknowledgment:
-the database is opened to read, as ``report genres`` and ``tag suggest``'s
-plan open it, and closed before the envelope. With ``--catalogue`` the
-catalogue answers are kept in ``tag suggest``'s own state entry for a week,
-which is what lets ``tag suggest --catalogue`` read the same answers rather
-than ask every catalogue again.
-
-A LIBRARY MOST OF WHOSE ROWS ARE UNDER NO PREFIX RULE REFUSES, as ``tag
-rows`` and ``tag suggest`` refuse, since every row would read as excluded and
-the backlog would be reported empty over rows nobody could find.
+Which rows ``tag rows`` writes, which ``tag suggest`` would give a genre and on
+what evidence, which carry a word no folder takes, one question per word, and
+which are left by hand; then the campaign of gated verbs that settles them.
+A person reads it as check rows on doctor's diagnostic surface. IT WRITES AND
+ASKS NOTHING; ``--catalogue`` answers are kept in ``tag suggest``'s state entry
+so ``tag suggest --catalogue`` reads the same ones. A library mostly under no
+prefix rule refuses, as ``tag rows`` does.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -33,10 +18,10 @@ from collections import Counter
 from typing import Any
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import active_taxonomy, config, rb_writer
-from cratekit.core.cause import CratekitError, Outcome
-from cratekit.tagging import backlog, published, rows, searchers, suggest
-from cratekit.write import metadata_cli
+from cratekit.core import active_taxonomy, config
+from cratekit.core.cause import Outcome
+from cratekit.tagging import backlog, plan_verbs, rows, searchers, suggest
+from cratekit.tagging.plan_verbs import named, warning
 
 #: The notes the verb carries on its warnings channel.
 WORDS_ASKED = "backlog-words-asked"
@@ -49,8 +34,8 @@ ROWS_JOINING = "backlog-rows-joining"
 #: What the majority refusal says cannot be done until a prefix rule exists.
 _BLOCKED = "the needs genre backlog cannot be read"
 
-#: How many words or identifiers a sentence names. The payload carries all.
-_NAMED = 5
+#: How many words or identifiers a sentence names, :func:`named`'s.
+_NAMED = plan_verbs.NAMED
 
 
 def build(parser, entry) -> None:
@@ -66,81 +51,39 @@ def build(parser, entry) -> None:
 
 
 def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
-    """The backlog over the library as it stands, through a handle opened to read.
-
-    THE ONE PLAN, this report's and ``tag campaign``'s (U294), so the campaign
-    applies the backlog this verb shows.
-
-    THE COPY'S TEXT IS READ HERE, the way ``taxonomy alias`` reads it, so each
-    word's answers are planned on the copy those verbs would edit.
-    """
+    """The backlog over the library as it stands, through a handle opened to read:
+    the one plan, this report's and ``tag campaign``'s (U294)."""
     _path, text = active_taxonomy.read_text(cfg)
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        totals = metadata_cli.resolution_totals(cfg, db)
-        if totals.majority_unmapped:
-            raise CratekitError(
-                metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED)
-            )
+    with plan_verbs.reading(cfg, _BLOCKED) as db:
         if not catalogue:
             return backlog.plan_backlog(cfg, db, declared, text=text, progress=progress)
-        lookup = suggest.catalogue_lookup(
-            searchers.for_taxonomy(declared), published.for_suggestions(declared)
-        )
-        # WHAT THIS RUN CANNOT ASK, as ``tag suggest`` reads it (U244), so a
-        # row kept as passed over is asked again once a token is recorded.
-        unasked = frozenset(
-            {searchers.DISCOGS} if searchers.for_discogs().token is None else ()
-        )
-        with suggest.KeptCatalogue(cfg, lookup, unasked=unasked) as kept:
+        with plan_verbs.kept(cfg, declared) as kept:
             return backlog.plan_backlog(
                 cfg, db, declared, text=text, catalogue=kept, progress=progress
             )
-    finally:
-        rb_writer.close_db(db)
-
-
-def named(values: list[str]) -> str:
-    """The first few of ``values`` as a clause, and how many more there are."""
-    shown = ", ".join(values[:_NAMED])
-    more = len(values) - _NAMED
-    return shown + (f" and {more} more" if more > 0 else "")
 
 
 def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     asked = [word for word in plan.words if word.options]
     if asked:
-        found.append(
-            {
-                "code": WORDS_ASKED,
-                "message": (
-                    f"{len(asked)} genre word(s) no folder takes are carried by "
-                    f"{sum(word.rows for word in asked)} row(s): "
-                    f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
-                    f"each has one question, an alias, its own folder or left by "
-                    f"hand, with the recommendation first"
-                ),
-            }
-        )
+        found.append(warning(
+            WORDS_ASKED,
+            f"{len(asked)} genre word(s) no folder takes are carried by "
+            f"{sum(word.rows for word in asked)} row(s): "
+            f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
+            f"each has one question, an alias, its own folder or left by "
+            f"hand, with the recommendation first",
+        ))
     no_genre = plan.counts[backlog.NO_GENRE]
     if no_genre and not plan.catalogue:
-        found.append(
-            {
-                "code": LIBRARY_ALONE,
-                "message": (
-                    f"the {no_genre} row(s) with no genre were weighed from their "
-                    f"artist and folder alone; --catalogue asks Discogs, then "
-                    f"Beatport when Discogs gives no genre, then Deezer by ISRC"
-                ),
-            }
-        )
-    # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
-    # how to have it asked, as ``tag suggest`` says it (U244). A ROW ANOTHER
-    # CATALOGUE ANSWERED is said apart, naming the one that could not be read,
-    # whatever was then proposed for it (U322).
+        found.append(warning(
+            LIBRARY_ALONE,
+            f"the {no_genre} row(s) with no genre were weighed from their "
+            f"artist and folder alone; --catalogue asks Discogs, then "
+            f"Beatport when Discogs gives no genre, then Deezer by ISRC",
+        ))
+    # Said apart as ``tag suggest`` says them (U244, U322).
     unread = suggest.sort_unread(
         (row.content_id, row.asked) for row in plan.rows if row.asked is not None
     )
@@ -171,43 +114,31 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
             f"{searchers.DISCOGS_LOGIN_STEPS}"
         )
     if parts:
-        found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})
+        found.append(warning(CATALOGUE_UNREAD, "; ".join(parts)))
     excluded = sum(plan.unread.values())
     if excluded:
-        found.append(
-            {
-                "code": FILES_UNREAD,
-                "message": (
-                    f"{excluded} row(s) are in no cause, because their file is not "
-                    f"here or could not be read ({_counts(plan.unread)}), so adoption "
-                    f"excludes them and whether they need a genre is unknown; a volume "
-                    f"that is not mounted reads as {rows.FILE_MISSING}"
-                ),
-            }
-        )
+        found.append(warning(
+            FILES_UNREAD,
+            f"{excluded} row(s) are in no cause, because their file is not "
+            f"here or could not be read ({_counts(plan.unread)}), so adoption "
+            f"excludes them and whether they need a genre is unknown; a volume "
+            f"that is not mounted reads as {rows.FILE_MISSING}",
+        ))
     if plan.joining:
-        found.append(
-            {
-                "code": ROWS_JOINING,
-                "message": (
-                    f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
-                    f"{len(plan.joining)} row(s) adoption files today, "
-                    f"{named(list(plan.joining))}, moving them into needs genre; the "
-                    f"projection counts them, and --leave holds a row out"
-                ),
-            }
-        )
+        found.append(warning(
+            ROWS_JOINING,
+            f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
+            f"{len(plan.joining)} row(s) adoption files today, "
+            f"{named(list(plan.joining))}, moving them into needs genre; the "
+            f"projection counts them, and --leave holds a row out",
+        ))
     left = plan.statuses[backlog.LEFT]
     if left:
-        found.append(
-            {
-                "code": REMAINDER,
-                "message": (
-                    f"{left} row(s) are left by hand, each counted with its reason "
-                    f"and what would settle it in the remainder"
-                ),
-            }
-        )
+        found.append(warning(
+            REMAINDER,
+            f"{left} row(s) are left by hand, each counted with its reason "
+            f"and what would settle it in the remainder",
+        ))
     return found
 
 
@@ -392,16 +323,6 @@ def tag_backlog(ctx) -> Envelope:
 
 
 __all__ = [
-    "CATALOGUE_UNREAD",
-    "FILES_UNREAD",
-    "LIBRARY_ALONE",
-    "REMAINDER",
-    "ROWS_JOINING",
-    "WORDS_ASKED",
-    "advisories",
-    "build",
-    "checks",
-    "named",
-    "read_plan",
-    "tag_backlog",
+    "CATALOGUE_UNREAD", "FILES_UNREAD", "LIBRARY_ALONE", "REMAINDER", "ROWS_JOINING", "WORDS_ASKED",
+    "advisories", "build", "checks", "named", "read_plan", "tag_backlog",
 ]

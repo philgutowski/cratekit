@@ -28,7 +28,7 @@ U161 took the database path out of the native landing's digest (R-922), so a reh
 
 ## Guidance
 
-A digest does two jobs at once: it is what two runs are compared by, and it is what one run's answer is bound to. Removing a fact from it for the first job removes it from the second. When a fact must be left out so two runs can compare equal, keep it bound within the run: pass it to `Gates.require` as `pinned`, which records it on `RunState.pins` while the gate is open and refuses the recorded answer `decision-stale` when the continuation reads another value or none. `land_cli.ask_then_write` is the worked example; it pins the file its handle opened.
+A digest does two jobs at once: it is what two runs are compared by, and it is what one run's answer is bound to. Removing a fact from it for the first job removes it from the second. When a fact must be left out so two runs can compare equal, keep it bound within the run: pass it to `Gates.require` as `pinned`, which records it on `RunState.pins` while the gate is open and refuses the recorded answer `decision-stale` when the continuation reads another value or none. `land_native.ask_then_write` is the worked example; it pins the file its handle opened.
 
 Check both sides when you do it: the comparison must run before anything replaces the pin (the offer is overwritten on every call, the pin must not be), and a pin absent on either side is a difference, not agreement.
 

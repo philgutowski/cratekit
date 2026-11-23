@@ -2,7 +2,7 @@
 title: "A refusal asserted by a substring can be held up by a different refusal, and only a mutation row shows it"
 date: 2026-09-20
 category: workflow-issues
-module: "src/cratekit/core/restore.py, src/cratekit/session/restore_cli.py, tests/test_restore.py, tests/test_restore_cli.py"
+module: "src/cratekit/core/restore.py, src/cratekit/session/restore_cli.py, tests/test_restore.py, tests/test_restore_cli.py, src/cratekit/core/restore_recovery.py"
 problem_type: workflow_issue
 component: restore
 root_cause: unverified_assumption

@@ -1,20 +1,15 @@
 """Place new files into a Fresh Export and record routing intents.
 
-New-track intake still arrives as an XML import. This module reads tags,
-builds TRACK elements, splices them into a named Fresh Export, and records
-each placement through ``routing_pass.record_intents`` at the moment the
-destination is decided. U19's deferred-routing mechanism hangs off that
-call. Closing a run that still holds a deferred track goes through
-``routing_pass.close_run``, never ``session.close_session``.
+Reads tags, builds TRACK elements, splices them into a named Fresh Export, and
+records each placement through ``routing_pass.record_intents`` as its
+destination is decided (U19's deferred routing). A run that still holds a
+deferred track closes through ``routing_pass.close_run``, never
+``session.close_session``.
 
-THE INTAKE TREE HAS TWO MEDIA AND THIS MODULE WRITES ONE (R-746, R-770). On
-the xml bridge a file is spliced into an export, here. On a library whose
-intake tree has cut over a file becomes a content row through
-:mod:`cratekit.intake.native`, and nothing here may splice for it.
-:func:`intake_medium` is the one switch every intake verb reads, and
-:func:`assert_intake_on_the_bridge` is what a splice asks before its first
-byte, so a caller that did not read the switch is refused in this writer's
-words and never as a defect. This module does not flip a tree.
+TWO MEDIA, AND THIS MODULE WRITES ONE (R-746, R-770). :func:`intake_medium` is
+the switch every intake verb reads; a native intake tree takes a file through
+:mod:`cratekit.intake.native`, and :func:`assert_intake_on_the_bridge` refuses
+a splice for it in this writer's words, never as a defect.
 """
 
 from __future__ import annotations
@@ -23,11 +18,13 @@ import contextlib
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from functools import partial
 from pathlib import Path
 
 from cratekit.cli import output
 from cratekit.core import (
     active_taxonomy,
+    cause,
     config,
     locations,
     naming,
@@ -37,7 +34,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Remedy, refuse
+from cratekit.core.cause import Remedy
 from cratekit.core.naming import AUDIO_EXTS, NameSpec, NameTemplate
 from cratekit.intake import collection_xml
 from cratekit.write import rbxml, routing_pass
@@ -45,23 +42,20 @@ from cratekit.write.routing_pass import RoutingIntent
 
 INTAKE_WORKFLOW = "intake"
 
-#: The verb that proves an intake file imported, and the one a person runs to
-#: say so. SPELLED ONCE, HERE, beside the session it is persisted on, because
-#: both callers of :func:`place_files` owe the same action and two spellings is
-#: how one of them goes stale. It was ``route.pending``, which before a cutover
-#: answers without reading anything (R-436).
+#: Every refusal here carries this module's origin.
+refuse = partial(cause.refuse, origin=("intake.ingest",))
+
+#: The verb that proves an intake file imported, spelled once for both callers
+#: of :func:`place_files` (R-436).
 VERIFY_VERB = "intake.imported"
 
 #: The session record field listing the INBOX playlists a landing wrote for the
-#: playlists the author made on the account (U113), so ``inbox rotate`` ages
-#: each from the day it landed, never from its name, whose date at the end
-#: (U175) is for a person to read. A native
-#: landing lists each by ``id`` and ``name``; an intake file's playlist has no
-#: identifier until rekordbox imports it, so its entry is the ``name`` and the
-#: ``batch`` folder it landed in. Both media add the account's identifier and
-#: the pass since U128, which is how a rerun of a pass finds what it mirrored.
+#: account playlists (U113), so ``inbox rotate`` ages each from the day it
+#: landed. A native entry has ``id`` and ``name``; an intake file's has ``name``
+#: and ``batch``, since its playlist has no id until imported.
 INBOX_PLAYLISTS_KEY = "inbox_playlists"
-#: The keys each entry carries since U128, the one spelling both media write.
+#: The account and pass keys both media write on each entry (U128), how a
+#: rerun of a pass finds what it mirrored.
 INBOX_ACCOUNT_KEY = "account"
 INBOX_PASS_KEY = "pass"
 
@@ -70,9 +64,8 @@ INBOX_PASS_KEY = "pass"
 class InboxPlaylist:
     """One account playlist an intake file writes (U113, U128).
 
-    ``members`` are in the account playlist's order: a :class:`Path` is a file
-    this call places, and a string is the TrackID of the export's own entry
-    for a track the library already held, found by path before the call.
+    ``members`` in the account's order: a :class:`Path` is a file this call
+    places, a string the export's TrackID of a track the library held.
     """
 
     name: str
@@ -96,10 +89,8 @@ class InboxPlaylist:
 class IntakeMedium:
     """What was read to choose the intake tree's medium, and the choice.
 
-    ``declared`` and ``registry`` are both None when the library root is not
-    there. The registry lives under the root, so an unreachable root decides
-    nothing: the bridge path is taken as it was before the second medium
-    existed, and its own checks name the library.
+    Both None when the library root is not there: the registry lives under it,
+    so the bridge path is taken and its own checks name the library.
     """
 
     declared: taxonomy.Taxonomy | None
@@ -114,11 +105,7 @@ class IntakeMedium:
 
     @property
     def files_natively(self) -> bool:
-        """Whether the routing tree a landing files into is recorded database native (U165).
-
-        Asked of the same read as :attr:`native`, so the landing's two
-        questions about the medium are answered from one registry.
-        """
+        """Whether the routing tree a landing files into is recorded database native (U165)."""
         if self.declared is None or self.registry is None:
             return False
         return self.registry.is_database_native(self.declared.tree.id)
@@ -127,14 +114,9 @@ class IntakeMedium:
 def intake_medium(cfg: config.Config) -> IntakeMedium:
     """THE ONE SWITCH (R-770). Every verb that writes the intake tree reads it.
 
-    The intake tree's recorded mode chooses, the way the routing verbs choose
-    theirs: native takes a file into the collection through the guarded
-    writer, the bridge splices it into an export. One function, so two verbs
-    cannot come to read two rules. ``intake file`` hands what this read to its
-    splice, so its check and its write are one read. The bridge landing's
-    engine reads both again before its first move, by its own contract
-    (R-677), and :func:`assert_intake_on_the_bridge` is what refuses there if
-    a cutover was recorded in between.
+    The intake tree's recorded mode chooses: native writes through the guarded
+    writer, the bridge splices into an export. One function, so two verbs
+    cannot read two rules.
     """
     if not Path(cfg.library.root).is_dir():
         return IntakeMedium(declared=None, registry=None)
@@ -146,11 +128,8 @@ def assert_intake_on_the_bridge(
 ) -> None:
     """Refuse a splice for an intake tree the database owns, in this writer's words.
 
-    THE CHECKING PATH, AHEAD OF THE EMITTER GUARD (R-770). The emitter refuses
-    the same tree with ``report-defect``, which is true of a writer that arrived
-    at the wrong medium by mistake and false of a person who cut the intake tree
-    over and then ran a verb that splices. A cutover is a choice, so the refusal
-    names the verbs that take the other medium and asks for no bug report.
+    Ahead of the emitter guard, whose ``report-defect`` is false of a person
+    who chose a cutover (R-770), so this names the verbs that take the medium.
     """
     if not IntakeMedium(declared=declared, registry=registry).native:
         return
@@ -163,12 +142,9 @@ def assert_intake_on_the_bridge(
         f"collection through the database, and crate intake file adds one file",
         remedy=Remedy.FIX_COMMAND_LINE,
         steps=(
-            "run crate intake land without --export to add a staged folder to "
-            "the collection",
-            "or run crate intake file without --export for one file already in "
-            "the library",
+            "run crate intake land without --export to add a staged folder to the collection",
+            "or run crate intake file without --export for one file already in the library",
         ),
-        origin=("intake.ingest",),
         detail={"tree_id": tree_id, "mode": str(registry.mode(tree_id))},
     )
 
@@ -178,11 +154,8 @@ def bridge_intake_tree(
 ) -> rbxml.Tree:
     """The intake tree a splice is handed, refused first when the database owns it.
 
-    THE ONE PLACE IN ``src`` THAT BUILDS IT. The write layer names no verb, so
-    the refusal that names the landing cannot live beside the emitter guard; it
-    lives here, one layer up, in the function every splicer has to go through to
-    get a tree to pass the emitter at all. A third splicer therefore meets this
-    refusal and not the guard's, without anybody remembering to ask.
+    THE ONE PLACE IN ``src`` THAT BUILDS IT, so every splicer meets this
+    refusal, which names verbs the write layer cannot, before the guard's.
     """
     assert_intake_on_the_bridge(declared, registry)
     return rbxml.intake_tree(declared, registry)
@@ -196,52 +169,31 @@ def spoken(names: Sequence[str]) -> str:
 
 
 def import_steps(
-    destination: Path,
-    intake: str,
-    playlist: str | None = None,
-    *,
-    playlists: Sequence[str] = (),
+    destination: Path, intake: str, playlist: str | None = None, *, playlists: Sequence[str] = ()
 ) -> tuple[str, ...]:
-    """What a person does with an intake file, end to end, in order.
+    """What a person does with an intake file, end to end, in order (R-501).
 
-    ``playlist`` is the batch playlist the file holds, the intake file's stem
-    when none is named, which is what a single file's intake names it.
-    ``playlists``, when given, is every playlist the file holds instead, which
-    is a landing whose account playlists each have their own (U113); each is
-    imported and dragged on its own, for the reason the batch's one is.
-
-    END TO END IS THE REQUIREMENT. The steps used to stop at the import, and a
-    person who followed every one of them was left with a session and a file
-    that each refused the cutover precheck (R-501).
-
-    THE BATCH PLAYLIST LANDS AT THE PLAYLIST ROOT, whatever folder the file puts
-    it in, and a routing pass reads only the intake folder, so the drag is a
-    step (R-687). The folder itself is never imported: an existing folder
-    imported from the file keeps every child it had and appends the file's
-    copies, doubling each batch already in it.
+    ``playlist`` is the batch playlist, the stem when none is named; several
+    ``playlists`` (U113) are each imported and dragged on their own. A playlist
+    lands at the playlist root and a routing pass reads only the intake folder,
+    so the drag is a step (R-687); the folder itself is never imported, since
+    an import appends copies of every batch already in it.
     """
     if len(playlists) > 1:
         said = spoken(playlists)
-        return (
-            f"import {destination} into rekordbox as a rekordbox xml library",
-            f"import each of the {said} playlists from it on its own, never the "
-            f"{intake} folder, which would add a second copy of every batch already "
-            f"in it",
-            f"the {said} playlists land at the playlist root, so drag each one "
-            f"into the {intake} folder, where a routing pass reads its batches",
-            "take a Fresh Export of the collection from rekordbox",
-            "run crate intake imported --export with that Fresh Export, which "
-            "proves the import, retires the intake file and settles this run",
+        which, lands = f"each of the {said} playlists", f"the {said} playlists land"
+        drag = "drag each one"
+    else:
+        named = (
+            playlists[0] if playlists else playlist if playlist is not None else destination.stem
         )
-    named = (
-        playlists[0] if playlists else playlist if playlist is not None else destination.stem
-    )
+        which, lands, drag = f"the {named} playlist", f"the {named} playlist lands", "drag it"
     return (
         f"import {destination} into rekordbox as a rekordbox xml library",
-        f"import the {named} playlist from it on its own, never the "
+        f"import {which} from it on its own, never the "
         f"{intake} folder, which would add a second copy of every batch already "
         f"in it",
-        f"the {named} playlist lands at the playlist root, so drag it "
+        f"{lands} at the playlist root, so {drag} "
         f"into the {intake} folder, where a routing pass reads its batches",
         "take a Fresh Export of the collection from rekordbox",
         "run crate intake imported --export with that Fresh Export, which "
@@ -260,8 +212,7 @@ class PlacedTrack:
     bucket: str
     sub: str
     xml: str
-    #: The intake session this placement was recorded under, which is where its
-    #: pending action is persisted. Every track of one call carries the same one.
+    #: The intake session this placement was recorded under, holding its pending action.
     session_id: str = ""
 
 
@@ -279,7 +230,6 @@ def assert_not_staging(path: Path, cfg: config.Config) -> None:
             f"{path} is still under download staging at {staging}, so a "
             f"Location stamped from it would die the moment staging is "
             f"cleaned",
-            origin=("intake.ingest",),
             detail={"path": str(path), "staging": str(staging)},
         )
 
@@ -287,16 +237,11 @@ def assert_not_staging(path: Path, cfg: config.Config) -> None:
 def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     """COLLECTION metadata from a file already on disk. No network.
 
-    THE NAME CARRIES THE HEAD THE FILE CARRIES (R-740). The head is read from
-    the title tag, and from the filename stem when the title has none, as text
-    through the head parser and never from a tempo tag, since none is written.
-    Its key wins over the key tag so the Name equals the title tag rekordbox
-    would read on Reload Tags; the key tag only fills a head that has none. A
-    file headed nowhere lands with the bare title, as it always did, because
-    nothing here may invent a tempo. ``tonality`` stays the key tag's value.
-    A lossy marker inside that head marks the track, and ``lossy`` reports the
-    flag the Name was rendered from; a marker in the body is text, and marks
-    nothing, so the Name never gains a second marker the title tag lacks.
+    THE NAME CARRIES THE HEAD THE FILE CARRIES (R-740), parsed from the title
+    tag or else the stem, never a tempo tag. Its key wins over the key tag, so
+    the Name equals what rekordbox reads on Reload Tags; ``tonality`` stays the
+    key tag's. A lossy marker in the head marks the track; one in the body is
+    text, so the Name never gains a marker the title tag lacks.
     """
     assert_not_staging(path, cfg)
     return file_meta(path, cfg=cfg, lossy=lossy)
@@ -305,11 +250,8 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
 def file_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     """:func:`read_meta` without the staging refusal, for a file about to move.
 
-    The native landing (R-746) plans a row's Title while the file is still in
-    download staging and stamps it on the row once the file is in the library.
-    The name is a function of the tags and the stem, which the move does not
-    change, so reading it here is reading the same answer early. Every other
-    caller wants the refusal and goes through :func:`read_meta`.
+    The native landing (R-746) plans a row's Title while the file is staged;
+    the move changes neither tags nor stem, so the answer is the same.
     """
     stat = path.stat()
     artist = tags.read_tag(path, "artist") or ""
@@ -351,20 +293,11 @@ def file_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     }
 
 
-def decide_placement(
-    meta: dict, declared: taxonomy.Taxonomy
-) -> tuple[str, str, str] | None:
-    """(tree, bucket, sub) ids, or None when the taxonomy declares no sub.
-
-    ``declared`` is the library's active taxonomy (R-685), read once by the
-    caller rather than once per file.
-    """
+def decide_placement(meta: dict, declared: taxonomy.Taxonomy) -> tuple[str, str, str] | None:
+    """(tree, bucket, sub) ids, or None when the active taxonomy (R-685) declares no sub."""
     resolved = routing.resolve_bucket(declared, meta.get("genre"))
     sub = routing.energy_sub(
-        declared,
-        resolved.bucket_id,
-        meta.get("energy"),
-        source_genre=str(meta.get("genre") or ""),
+        declared, resolved.bucket_id, meta.get("energy"), source_genre=str(meta.get("genre") or "")
     )
     if sub is None:
         return None
@@ -376,11 +309,8 @@ def persisted_pending(
 ) -> output.PendingHumanAction:
     """The pending action :func:`place_files` persisted on its intake session.
 
-    READ BACK RATHER THAN BUILT AGAIN, so an envelope cannot say one thing while
-    the session log holds another. A call that returned with no such record is
-    a defect here, and it is reported as one: the intake file is written by now,
-    and an envelope claiming an action nothing holds would be the tool saying
-    something and forgetting it.
+    READ BACK RATHER THAN BUILT AGAIN, so the envelope cannot differ from the
+    session log; no record by now is a defect.
     """
     session_id = placed[0].session_id if placed else ""
     record = session.read_record(session_id, cfg) if session_id else None
@@ -389,7 +319,6 @@ def persisted_pending(
             "internal-error",
             f"the intake file was written and its intake session {session_id!r} "
             f"holds no pending import, so nothing durable says the file is waiting",
-            origin=("intake.ingest",),
             detail={"session_id": session_id},
         )
     return record.pending
@@ -411,32 +340,16 @@ def place_files(
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
 
-    ``playlist`` names the batch playlist the file carries. A landing names it
-    for its batch (U110); with none it is the intake file's stem, which is what
-    a single file's intake has always called it.
-
-    ``split`` is a landing's account playlists (U113): each name and its
-    members, files of ``paths`` and the TrackIDs of owned tracks already in the
-    export (U128), in the account playlist's order. Each is its own playlist
-    under the intake tree, the batch playlist keeps only the files none of them
-    holds, and a batch playlist that would hold nothing is not written. A
-    playlist holding nothing here is not written either. The session record
-    lists each one written under :data:`INBOX_PLAYLISTS_KEY`.
-
-    The Fresh Export is a path the caller names. This function does not hunt
-    for one: a hunt that picked the newest XML would pick a pending intake
-    file, including a U22 stub listing.
-
-    ``declared`` is the library's active taxonomy and ``registry`` the tree
-    registry, when the caller already read them to check what this writes, so
-    the check and the write agree; with none each is read here, the taxonomy
-    from the library and never from the shipped template.
+    ``playlist`` names the batch playlist, the stem when none (U110). ``split``
+    is the account playlists (U113, U128), each its own playlist; the batch
+    playlist keeps the rest and an empty playlist is not written. Each written
+    is listed under :data:`INBOX_PLAYLISTS_KEY`. The Fresh Export is named by
+    the caller, never hunted, since the newest XML may be a pending intake
+    file. ``declared`` and ``registry`` are the caller's read, so its check and
+    this write agree; with none each is read from the library.
 
     A NATIVE INTAKE TREE IS REFUSED FIRST (R-770), before the export is looked
-    for, because on that medium there is no export to find and "export the
-    collection again" would be the wrong thing to tell anybody. So the taxonomy
-    and the registry are read ahead of every other check here, and one that
-    cannot be read refuses with its own cause before a missing export does.
+    for, since "export the collection again" would be wrong on that medium.
     """
     if declared is None or registry is None:
         medium = intake_medium(cfg)
@@ -448,18 +361,13 @@ def place_files(
         raise refuse(
             "library-export-unusable",
             f"no Fresh Export at {export}",
-            steps=(
-                "export the collection again from rekordbox and pass that file",
-            ),
-            origin=("intake.ingest",),
+            steps=("export the collection again from rekordbox and pass that file",),
         )
     for path in paths:
         assert_not_staging(path, cfg)
         if path.suffix.lower() not in AUDIO_EXTS:
             raise refuse(
-                "intake-list-unusable",
-                f"{path.name} is not an audio file this pipeline ingests",
-                origin=("intake.ingest",),
+                "intake-list-unusable", f"{path.name} is not an audio file this pipeline ingests"
             )
 
     content = bytearray(export.read_bytes())
@@ -472,7 +380,6 @@ def place_files(
                 "take a Fresh Export from rekordbox",
                 "do not treat a U22 stub listing as an importable splice",
             ),
-            origin=("intake.ingest",),
         )
 
     added = date_added or date.today().isoformat()
@@ -489,7 +396,6 @@ def place_files(
                 "intake-list-unusable",
                 f"{path.name} resolved to a bucket with no declared sub, so "
                 f"there is nowhere to record a routing intent for it",
-                origin=("intake.ingest",),
             )
         tree_id, bucket_id, sub_id = placement
         tid = next_id + offset
@@ -534,19 +440,13 @@ def place_files(
                     "export the collection again from rekordbox so the intake "
                     "folder is present, then retry",
                 ),
-                origin=("intake.ingest",),
             )
-    # OPENED AFTER THE LAST REFUSAL THAT NEEDS NO SESSION, so a file with a
-    # bad tag or an export with no intake folder leaves no record at all. It
-    # cannot move below the write, because the intents carry its identifier.
-    record = session.open_session(
-        cfg,
-        workflow=INTAKE_WORKFLOW,
-        session_id=session_id,
-    )
+    # OPENED AFTER THE LAST REFUSAL THAT NEEDS NO SESSION, so those leave no
+    # record, and before the write, since the intents carry its identifier.
+    record = session.open_session(cfg, workflow=INTAKE_WORKFLOW, session_id=session_id)
     placed = [replace(item, session_id=record.session_id) for item in placed]
     if accounts:
-        # PERSISTED WITH THE AWAITING STATE BELOW, by the write that persists it.
+        # Persisted by the awaiting state's write below.
         record.detail[INBOX_PLAYLISTS_KEY] = [
             {
                 "name": one.name,
@@ -556,9 +456,8 @@ def place_files(
             }
             for one, _ids in accounts
         ]
-    # WHAT THE ROLLBACK MAY REMOVE IS DECIDED BEFORE THE WRITE. The write is a
-    # plain overwrite, and a file already here is an earlier run's intake file
-    # that run's steps still name, so a failure below must not take it away.
+    # DECIDED BEFORE THE WRITE: a file already here is an earlier run's intake
+    # file its steps still name, so a rollback must not take it away.
     fresh = not destination.exists()
     wrote = False
     try:
@@ -585,11 +484,8 @@ def place_files(
             cfg,
         )
 
-        # Recorded at the moment the placement is decided, not at the end of a
-        # later verb. U19's ledger is the only subject the deferred-routing
-        # suite has. LAST, AND NOTHING FOLLOWS IT: the ledger has no way to
-        # withdraw an intent, so a step that could fail after this one would
-        # leave an abandoned run's tracks outstanding for ever.
+        # LAST, AND NOTHING FOLLOWS IT: the ledger cannot withdraw an intent,
+        # so a later failure would leave an abandoned run's tracks outstanding.
         routing_pass.record_intents(
             cfg,
             [
@@ -606,13 +502,10 @@ def place_files(
             ],
         )
     except BaseException:
-        # THE CALL REFUSED, SO THE RUN IS GIVEN UP, AND THE RECORD SAYS SO.
-        # Abandoning is the ungated close, which is what makes it reachable
-        # from here whatever state the run or the ledger is in. The file goes
-        # too when this call made it: an intake file with no run behind it
-        # refuses the cutover precheck and no verb retires it. Both are
-        # attempts. The refusal being raised is the one the caller has to see,
-        # and a second failure while cleaning up must not replace it.
+        # THE RUN IS GIVEN UP through the ungated close, reachable whatever its
+        # state, and a file this call made goes too, since one with no run
+        # behind it refuses the cutover precheck. Both are attempts, so the
+        # refusal raised is the one the caller sees.
         if wrote and fresh:
             with contextlib.suppress(OSError):
                 destination.unlink(missing_ok=True)

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.acquire import fallback
-from cratekit.core import binaries, config, jobs
+from cratekit.core import binaries, config
 from cratekit.core.cause import Outcome
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import acrcloud, fetch
@@ -23,7 +23,14 @@ from cratekit.intake import cli as intake_cli
 from tests.cli_drive import drive
 from tests.intake import test_workers as workers
 from tests.intake.test_recognition import FakeCarver, miss
-from tests.intake.test_workers import items_of, job_of, recording, resume_argv, three_tracks
+from tests.intake.test_workers import (
+    items_of,
+    job_of,
+    no_jobs,
+    recording,
+    resume_argv,
+    three_tracks,
+)
 
 # The three fixtures the worker tests already build a configured, recognition
 # ready machine with. Bound by assignment so the names are this module's own.
@@ -62,6 +69,18 @@ class FakeFetcher:
         return landed
 
 
+class Ghost:
+    """Answers with a file it never wrote."""
+
+    def fetch(self, url, directory):
+        return directory / "fetched.mp3"
+
+
+class Unmeasurable(FakeCarver):
+    def duration(self, source):
+        raise OSError("ffprobe could not read it")
+
+
 @pytest.fixture
 def fetcher(monkeypatch) -> FakeFetcher:
     fake = FakeFetcher()
@@ -78,6 +97,11 @@ def nothing_left() -> bool:
     return not root.exists() or not any(root.iterdir())
 
 
+def _set_over_url(monkeypatch, fake) -> tuple[int, dict]:
+    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
+    return drive(["intake", "set", URL])
+
+
 # ---------------------------------------------------------------------------
 # The brief's four scenarios
 # ---------------------------------------------------------------------------
@@ -86,9 +110,18 @@ def nothing_left() -> bool:
 def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     cfg, library, recognised, fetcher
 ):
+    """Over a scratch folder cleared first, since a killed process can leave one.
+
+    A fetch that left no info document freezes an empty page, and a resume of
+    the job fetches nothing.
+    """
     three_tracks(recognised)
+    stale = fetch.scratch_for(URL)
+    stale.mkdir(parents=True)
+    (stale / "fetched.mp3").write_bytes(b"what a killed process left")
     code, envelope = drive(["intake", "set", URL])
     assert code == int(ExitCode.OK), envelope
+    assert fetcher.seen_inside == []
     job_id = envelope["data"]["job_id"]
     assert len(items_of(job_id)) == 3
     assert envelope["data"]["progress"]["calls"] == 3
@@ -105,7 +138,11 @@ def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     # The job freezes the ADDRESS, because the file is gone, and the resume
     # argv is rebuilt from it.
     assert job_of(job_id).payload[intake_cli.SOURCE] == URL
+    assert job_of(job_id).payload[intake_cli.PAGE] == {}
     assert resume_argv(job_id) == ["intake", "set", URL, "--job", job_id]
+    assert nothing_left()
+    drive(resume_argv(job_id))
+    assert len(fetcher.asked) == 1
     assert nothing_left()
 
 
@@ -121,7 +158,6 @@ def test_a_missing_yt_dlp_refuses_a_url_with_the_install_hint(
             remedy=binaries.Remedy.INSTALL_BINARY,
             hint=binaries.InstallHint(binaries.PackageManager.HOMEBREW, ("yt-dlp",)),
         )
-
     monkeypatch.setattr(fetch, "fetcher", absent)
     code, envelope = drive(["intake", "set", URL])
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -135,66 +171,63 @@ def test_a_missing_yt_dlp_refuses_a_url_with_the_install_hint(
     assert nothing_left()
 
 
+@pytest.mark.parametrize(
+    ("failure", "said", "code", "reason", "words", "step"),
+    [
+        # NOT CALLED RETRYABLE. A dead address and a dead network both end the
+        # download non zero, and nobody watches a session, so a driver that
+        # trusted the flag would re-run a 404 for ever.
+        (
+            fetch.SetFetchFailed,
+            "the download failed with exit status 1 (HTTP Error 404)",
+            ExitCode.PRECONDITION,
+            "intake-list-unusable",
+            ["HTTP Error 404", URL],
+            "intake playlist",
+        ),
+        # A download that timed out is the one fetch failure called retryable.
+        (
+            fetch.SetFetchTimedOut,
+            "the download did not finish within 3600 seconds",
+            ExitCode.UPSTREAM_UNAVAILABLE,
+            "unavailable-transient",
+            [],
+            None,
+        ),
+        # A playlist address is refused as more than one recording.
+        (
+            fetch.SeveralRecordings,
+            "the address is a playlist of more than one recording",
+            ExitCode.PRECONDITION,
+            "intake-list-unusable",
+            ["more than one recording"],
+            "one recording on that page",
+        ),
+    ],
+    ids=["failed", "timed-out", "several"],
+)
 def test_a_fetch_failure_refuses_and_leaves_no_scratch_file(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch, failure, said, code, reason, words, step
 ):
     three_tracks(recognised)
-    fake = FakeFetcher(fail="the download failed with exit status 1 (HTTP Error 404)")
-    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.PRECONDITION), envelope
+    fake = FakeFetcher(fail=said, failure=failure)
+    got, envelope = _set_over_url(monkeypatch, fake)
+    assert got == int(code), envelope
     cause = envelope["cause"]
-    # NOT CALLED RETRYABLE. A dead address and a dead network both end the
-    # download non zero, and nobody watches a session, so a driver that
-    # trusted the flag would re-run a 404 for ever.
-    assert cause["reason"] == "intake-list-unusable"
-    assert cause["retryable"] is False
-    assert "HTTP Error 404" in cause["message"]
-    assert URL in cause["message"]
-    assert "intake playlist" in " ".join(cause["remediation"]["steps"])
+    assert cause["reason"] == reason
+    retryable = failure is fetch.SetFetchTimedOut
+    assert cause["retryable"] is retryable
+    if retryable:
+        assert cause["remediation"]["remedy"] == "retry-later"
+    for word in words:
+        assert word in cause["message"]
+    if step is not None:
+        assert step in " ".join(cause["remediation"]["steps"])
     assert recognised.requests == []
     # The partial the fake left is gone with its folder.
     assert len(fake.asked) == 1
     assert nothing_left()
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
-
-
-def test_a_download_that_timed_out_is_the_one_fetch_failure_called_retryable(
-    cfg, library, recognised, monkeypatch
-):
-    three_tracks(recognised)
-    fake = FakeFetcher(
-        fail="the download did not finish within 3600 seconds", failure=fetch.SetFetchTimedOut
-    )
-    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
-    cause = envelope["cause"]
-    assert cause["reason"] == "unavailable-transient"
-    assert cause["retryable"] is True
-    assert cause["remediation"]["remedy"] == "retry-later"
-    assert nothing_left()
-
-
-def test_a_playlist_address_is_refused_as_more_than_one_recording(
-    cfg, library, recognised, monkeypatch
-):
-    three_tracks(recognised)
-    fake = FakeFetcher(
-        fail="the address is a playlist of more than one recording",
-        failure=fetch.SeveralRecordings,
-    )
-    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    cause = envelope["cause"]
-    assert cause["reason"] == "intake-list-unusable"
-    assert cause["retryable"] is False
-    assert "more than one recording" in cause["message"]
-    assert "one recording on that page" in " ".join(cause["remediation"]["steps"])
-    assert recognised.requests == []
-    assert nothing_left()
+    assert no_jobs()
 
 
 def test_a_scratch_folder_that_cannot_be_made_is_a_fact_about_this_machine(
@@ -217,13 +250,17 @@ def test_a_scratch_folder_that_cannot_be_made_is_a_fact_about_this_machine(
 
 
 def test_a_local_path_never_consults_the_fetch_seam(cfg, library, recognised):
-    """The conftest's refusing fetcher is in force, so reaching the seam fails."""
+    """The conftest's refusing fetcher is in force, so reaching the seam fails.
+
+    A local recording freezes an empty page.
+    """
     three_tracks(recognised)
     path = recording(library)
     code, envelope = drive(["intake", "set", str(path)])
     assert code == int(ExitCode.OK), envelope
-    job_id = envelope["data"]["job_id"]
-    assert job_of(job_id).payload[intake_cli.SOURCE] == str(path)
+    job = job_of(envelope["data"]["job_id"])
+    assert job.payload[intake_cli.SOURCE] == str(path)
+    assert job.payload[intake_cli.PAGE] == {}
     assert path.is_file()
     assert not scratch_root().exists()
 
@@ -281,14 +318,8 @@ def test_the_library_guard_reads_resolved_paths(tmp_path, where):
 
 
 def test_the_library_guard_asks_the_filesystem_and_not_only_the_strings(tmp_path, monkeypatch):
-    """Two spellings of one folder that ``resolve`` does not settle.
-
-    Found on a case insensitive volume, where ``resolve`` leaves the letter
-    case as typed, so a lower case spelling of a mixed case library is not
-    textually inside it. Built here so it holds on any volume: where the other
-    spelling is not already the same folder it is made one, and ``resolve`` is
-    held still so only the ``samefile`` layer can answer.
-    """
+    """Two spellings of one folder that ``resolve`` does not settle, as on a case
+    insensitive volume; ``resolve`` is held still so only ``samefile`` can answer."""
     root = tmp_path / "Library"
     (root / "Music" / "state").mkdir(parents=True)
     other = tmp_path / "library"
@@ -316,47 +347,20 @@ def test_a_library_that_is_not_there_is_still_refused_by_name(tmp_path):
         fetch.assert_outside_library(absent / "state" / "mix_scratch" / "abc", absent)
 
 
-def test_a_fetcher_that_answers_with_a_file_that_is_not_there_is_a_failed_fetch(
-    cfg, library, recognised, monkeypatch
-):
-    three_tracks(recognised)
-
-    class Ghost:
-        def fetch(self, url, directory):
-            return directory / "fetched.mp3"
-
-    monkeypatch.setattr(fetch, "fetcher", lambda: Ghost())
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert "not a file inside" in envelope["cause"]["message"]
-    assert recognised.requests == []
-    assert nothing_left()
-
-
+@pytest.mark.parametrize("where", ["not-there", "outside"])
 def test_a_fetcher_that_lands_outside_its_folder_is_a_failed_fetch(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch, where
 ):
+    """Its answer must be a file, and inside the folder it was handed."""
     three_tracks(recognised)
-    stray = library / "Music" / "stray.mp3"
-    fake = FakeFetcher(land_at=stray)
-    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
-    code, envelope = drive(["intake", "set", URL])
+    fake = Ghost() if where == "not-there" else FakeFetcher(land_at=library / "Music" / "stray.mp3")
+    code, envelope = _set_over_url(monkeypatch, fake)
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     assert envelope["cause"]["retryable"] is False
     assert "not a file inside" in envelope["cause"]["message"]
     assert recognised.requests == []
     assert nothing_left()
-
-
-def test_the_scratch_folder_is_cleared_before_every_attempt(cfg, library, recognised, fetcher):
-    three_tracks(recognised)
-    stale = fetch.scratch_for(URL)
-    stale.mkdir(parents=True)
-    (stale / "fetched.mp3").write_bytes(b"what a killed process left")
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.OK), envelope
-    assert fetcher.seen_inside == []
 
 
 def test_identification_that_raises_still_removes_the_fetched_mix(
@@ -379,11 +383,6 @@ def test_a_refusal_from_inside_the_identifier_names_the_address_and_not_the_scra
     cfg, library, recognised, fetcher, monkeypatch
 ):
     """The identifier names what it was handed, and that file is gone."""
-
-    class Unmeasurable(FakeCarver):
-        def duration(self, source):
-            raise OSError("ffprobe could not read it")
-
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: Unmeasurable(85.0))
     code, envelope = drive(["intake", "set", URL])
     assert code != int(ExitCode.OK), envelope
@@ -399,10 +398,6 @@ def test_a_refusal_from_inside_the_identifier_names_the_address_and_not_the_scra
 def test_the_same_refusal_over_a_local_recording_still_names_the_file(
     cfg, library, recognised, monkeypatch
 ):
-    class Unmeasurable(FakeCarver):
-        def duration(self, source):
-            raise OSError("ffprobe could not read it")
-
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: Unmeasurable(85.0))
     path = recording(library)
     code, envelope = drive(["intake", "set", str(path)])
@@ -421,18 +416,7 @@ def test_a_mix_nobody_recognised_is_an_honest_zero_that_names_the_address(
     assert envelope["data"]["state"] == "nothing-identified"
     assert envelope["data"]["progress"]["source"] == URL
     assert envelope["data"]["progress"]["calls"] == 3
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
-    assert nothing_left()
-
-
-def test_a_resume_of_a_url_job_fetches_nothing(cfg, library, recognised, fetcher):
-    three_tracks(recognised)
-    code, envelope = drive(["intake", "set", URL])
-    job_id = envelope["data"]["job_id"]
-    assert len(fetcher.asked) == 1
-    code, envelope = drive(resume_argv(job_id))
-    assert len(fetcher.asked) == 1
+    assert no_jobs()
     assert nothing_left()
 
 
@@ -524,6 +508,10 @@ def test_a_tracklist_stem_is_the_last_segment_reduced_to_a_safe_name(url, stem):
 # ---------------------------------------------------------------------------
 
 
+def _shipped(run, **kwargs) -> fetch.YtDlpSetFetcher:
+    return fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run, **kwargs)
+
+
 def test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound(tmp_path):
     calls: list[tuple[list[str], dict]] = []
 
@@ -531,8 +519,7 @@ def test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound(tmp_path
         calls.append((argv, kwargs))
         (tmp_path / "fetched-00001.mp3").write_bytes(b"ID3")
         return SimpleNamespace(returncode=0, stderr="")
-
-    landed = fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run).fetch(URL, tmp_path)
+    landed = _shipped(run).fetch(URL, tmp_path)
     assert landed == tmp_path / "fetched-00001.mp3"
     argv, kwargs = calls[0]
     assert argv[0] == "/opt/bin/yt-dlp"
@@ -566,16 +553,19 @@ def test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound(tmp_path
     ],
 )
 def test_the_shipped_fetcher_says_every_failure_in_this_seams_own_exception(tmp_path, run, said):
+    """An ordinary failed download is neither a timeout nor a playlist."""
     with pytest.raises(fetch.SetFetchFailed, match=said.replace("(", r"\(").replace(")", r"\)")):
-        fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run).fetch(URL, tmp_path)
+        _shipped(run).fetch(URL, tmp_path)
+    with pytest.raises(fetch.SetFetchFailed) as caught:
+        _shipped(run).fetch(URL, tmp_path)
+    assert type(caught.value) is fetch.SetFetchFailed
 
 
 def test_the_shipped_fetcher_says_a_timeout_as_the_one_retryable_kind(tmp_path):
     def run(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-
     with pytest.raises(fetch.SetFetchTimedOut, match="did not finish within 5 seconds"):
-        fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run, timeout=5).fetch(URL, tmp_path)
+        _shipped(run, timeout=5).fetch(URL, tmp_path)
 
 
 def test_the_shipped_fetcher_refuses_a_playlist_that_landed_two_recordings(tmp_path):
@@ -583,16 +573,8 @@ def test_the_shipped_fetcher_refuses_a_playlist_that_landed_two_recordings(tmp_p
         (tmp_path / "fetched-00001.mp3").write_bytes(b"ID3")
         (tmp_path / "fetched-00002.mp3").write_bytes(b"ID3")
         return SimpleNamespace(returncode=0, stderr="")
-
     with pytest.raises(fetch.SeveralRecordings, match="fetched-00001.mp3, fetched-00002.mp3"):
-        fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run).fetch(URL, tmp_path)
-
-
-def test_an_ordinary_failed_download_is_neither_a_timeout_nor_a_playlist(tmp_path):
-    run = lambda argv, **k: SimpleNamespace(returncode=1, stderr="ERROR: 404\n")  # noqa: E731
-    with pytest.raises(fetch.SetFetchFailed) as caught:
-        fetch.YtDlpSetFetcher("/opt/bin/yt-dlp", run=run).fetch(URL, tmp_path)
-    assert type(caught.value) is fetch.SetFetchFailed
+        _shipped(run).fetch(URL, tmp_path)
 
 
 def test_the_suite_cannot_reach_the_shipped_fetcher():
@@ -650,23 +632,6 @@ def test_the_page_a_mix_came_from_is_frozen_on_the_set_job(cfg, library, recogni
         "upload_date": "20260503",
     }
     assert nothing_left()
-
-
-def test_a_fetch_that_left_no_info_document_freezes_an_empty_page(
-    cfg, library, recognised, fetcher
-):
-    three_tracks(recognised)
-    code, envelope = drive(["intake", "set", URL])
-    assert code == int(ExitCode.OK), envelope
-    assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {}
-
-
-def test_a_local_recording_freezes_an_empty_page(cfg, library, recognised):
-    three_tracks(recognised)
-    path = recording(library)
-    code, envelope = drive(["intake", "set", str(path)])
-    assert code == int(ExitCode.OK), envelope
-    assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {}
 
 
 def test_page_of_reads_the_three_words_and_nothing_a_document_cannot_say(tmp_path):
