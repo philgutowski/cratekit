@@ -89,11 +89,20 @@ def _compare(
         )
     except CratekitError as exc:
         return NOT_COMPARED, exc.cause.message
+    present = f"{report.derived} declared placement(s) all present"
     if report.converged:
-        detail = f"{report.derived} declared placement(s) all present"
         if report.not_compared:
-            detail += f"; not compared: {', '.join(report.not_compared)}"
-        return MATCHING, detail
+            present += f"; not compared: {', '.join(report.not_compared)}"
+        return MATCHING, present
+    if report.unidentified and not report.differences and not report.doubled:
+        # Nothing differs that was compared, and these could not be (R-1991).
+        return NOT_COMPARED, (
+            f"{present}; not compared: {', '.join(report.unidentified)}, under a "
+            f"folder whose name is no genre's and that no adopt apply, rebuild or "
+            f"route resort recorded, so which genre's playlist it is cannot be "
+            f"read; rename the folder back to its genre's name and converge "
+            f"compares it"
+        )
     return DIFFERING, "; ".join(report.summaries()[:20])
 
 
