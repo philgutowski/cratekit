@@ -313,8 +313,10 @@ plans nothing and says why (`adopt-scope-empty`). The scope is
 the check's: INBOX / Analyze by default, `--pass` or `--session` for a landing
 already cleared from it, never the back catalogue. The run's session record
 keeps each file's old title and key tag beside the database capture; a restore
-of that session puts the rows back, and the files are put back by hand from
-the record.
+of that session puts the rows back and then each file's title tag and key tag,
+read back, a key tag the file did not have before removed again. A file it
+cannot put back is named, and the restore ends refused under
+`restore-tags-unwritten` after the database and every other file landed.
 
 **A night pass.** `crate sync night` is the same pass with nobody watching,
 for a schedule to run overnight, so the time at the Mac is the landing's
@@ -1582,7 +1584,13 @@ it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 `db_dest_root`.
 
 **Restore** puts the database and its coupled state back to a recorded write
-session. It does not undo values written into audio files. It asks
+session. It does not undo values written into audio files, with one
+exception: the title tag and key tag an `analyze adopt` session kept are put
+back, for that session and for every later one the restore discards, the
+earliest kept value winning, and a dry run writes none of them. A file that
+does not take its old tags back is named and the restore ends refused under
+`restore-tags-unwritten`; the answer's `file_tags` totals count the files
+planned and read back. It asks
 `restore.run.confirm`, and reaching past a later session that committed work
 needs `--discard SESSION_ID` for each.
 
