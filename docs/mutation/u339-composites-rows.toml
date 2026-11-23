@@ -17,10 +17,9 @@ new = '''        if move.target_bucket:'''
 
 [[rows]]
 id = "C6_census_tombstone"
-description = "scan_rows: a tombstoned row is read as live by the census, the layer M6's guard sits on"
+description = "scan_rows: a tombstoned row is read as live by the census, the layer M6_tombstone_row's guard sits on (its composite)"
 file = "src/cratekit/adopt/scan.py"
 surface = "user"
-pairs_with = "M6_tombstone_row"
 tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
 old = '''        if row.deleted:
             continue'''
@@ -28,10 +27,9 @@ new = ''''''
 
 [[rows]]
 id = "C20_still_moved_names"
-description = "still_moved: a bucket the track's genre names again stays in the moves, the layer M20's guard sits behind"
+description = "still_moved: a bucket the track's genre names again stays in the moves, the layer M20_moved_back_names's guard sits behind (its composite)"
 file = "src/cratekit/adopt/move.py"
 surface = "user"
-pairs_with = "M20_moved_back_names"
 tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
 old = '''        held -= {bucket for bucket in held if genre_names(entry, bucket, declared)}
 '''
