@@ -1,0 +1,74 @@
+name = "u312"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_library_root_redirected"
+description = "_block_real_library_paths: leave CRATEKIT_LIBRARY_ROOT as the process found it, a null edit of the no real library path detonator"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_isolation_survives_undo.py", "tests/test_outbound_workers.py", "tests/test_label_workers.py"]
+old = '''        monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))'''
+new = '''        pass'''
+
+[[rows]]
+id = "D2_live_provider_refused"
+description = "_no_live_provider_client: leave the shipped provider client factory in place, a null edit of the no live provider detonator"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_isolation_survives_undo.py", "tests/test_provider_session_hold.py", "tests/test_label_tidal_catalogue.py", "tests/test_catalogue_app.py"]
+old = '''        monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)'''
+new = '''        pass'''
+
+[[rows]]
+id = "D3_host_process_table"
+description = "_no_host_process_table: leave core.processes._platform as psutil, a null edit of the no host process table detonator"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py", "tests/test_sync_bandcamp.py", "tests/test_process_scan_jobs.py"]
+old = '''        monkeypatch.setattr(processes, "_platform", lambda: empty)'''
+new = '''        pass'''
+
+[[rows]]
+id = "P1_presence_cached_as_absent"
+description = "_module_if_present: remember every dotted name as absent after its first lookup, so from the second test on the config roots are not re-pointed"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_isolation_survives_undo.py", "tests/test_preflight.py"]
+old = '''        _PRESENT[dotted] = present'''
+new = '''        _PRESENT[dotted] = False'''
+
+[[rows]]
+id = "L1_parser_cache_ignores_membership"
+description = "_less_work: key the cached command tree on nothing, so a tree built with one set of modules answers a test run under another"
+file = "tests/test_outbound_workers.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_workers.py", "tests/test_export_set_rename.py", "tests/test_sync_removed.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py", "tests/test_taxonomy_upgrade.py"]
+old = '''        membership = cli._membership()'''
+new = '''        membership = ()'''
+
+[[rows]]
+id = "E1_exited_ignores_expected"
+description = "exited: hold every drive to exit OK whatever code the test expects, so a refusal the test expects reads as a failure and an OK the test forbids passes"
+file = "tests/_sync_builders.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_resume_one.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
+old = '''    assert code == int(expected), f"exited {code}, expected {int(expected)}: {envelope!r}"'''
+new = '''    assert code == int(ExitCode.OK), f"exited {code}, expected {int(expected)}: {envelope!r}"'''
+
+[[rows]]
+id = "C1_citation_prefilter"
+description = "the citation sweep: look only at texts that say residuals, so a citation written with the singular word is never read"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py"]
+old = '''        if "residual" in text and CITATION.search(text):'''
+new = '''        if "residuals" in text and CITATION.search(text):'''
+
+[[rows]]
+id = "N1_prefilter_unfolded"
+description = "the job driver guard's prefilter: read the raw text rather than its NFKC fold, the round one finding put back"
+file = "tests/test_handlers.py"
+surface = "maintainer"
+tests = ["tests/test_handlers.py"]
+old = '''        if "_vendor" in path.parts or "drive" not in unicodedata.normalize("NFKC", text):'''
+new = '''        if "_vendor" in path.parts or "drive" not in text:'''
