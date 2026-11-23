@@ -235,7 +235,7 @@ def features_from_path(path: Path) -> dict[str, float] | None:
 
     The run, restamp and calibrate path (U344). ONLY THE SLICE IS DECODED for
     a file librosa reads, off the header's duration; one decoded through ffmpeg
-    has no such seek (U263).
+    has no such seek (U263), so it is decoded whole once and cut (R-1556).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
@@ -249,18 +249,9 @@ def features_from_path(path: Path) -> dict[str, float] | None:
     # measured a head first and one that measured energy first, so a run
     # scored in a worker and a restamp in the driver could disagree.
     warm.kernels()
-    # THROUGH THE ONE DECODER (U263).
+    # THROUGH THE ONE DECODER (U263), which decodes an M4A once (R-1556).
     try:
-        offset = 0.0
-        try:
-            duration = decode.duration(path)
-        except Exception:
-            duration = 0.0
-        if duration > SEGMENT_SECONDS:
-            offset = (duration - SEGMENT_SECONDS) / 2.0
-        samples, decoded_rate = decode.load(
-            path, MEASURE_RATE, offset=offset, duration=SEGMENT_SECONDS
-        )
+        samples, decoded_rate = decode.centred(path, MEASURE_RATE, SEGMENT_SECONDS)
     except Exception:
         return None
     return features_from_samples(samples, int(decoded_rate))
