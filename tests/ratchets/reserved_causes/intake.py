@@ -29,26 +29,30 @@ KEBAB_LITERALS = {
     # set-account-unnamed and set-account-unreachable (WARNING codes) plus
     # intake-set-account (the account gate's name-only digest kind).
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
     'intake/cli.py': [
         'intake-artifacts',
         'intake-hearts-withheld',
-        'intake-list-unusable',
         'intake-playlist-withheld',
-        'intake-recognition-failed',
         'intake-set-account',
         'intake-staging',
         'internal-error',
         'job-unknown',
-        'library-volume-unmounted',
-        'mix-scratch-left',
         'no-tracks',
         'nothing-identified',
+        'set-account-unnamed',
+        'set-account-unreachable',
+    ],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/cli_identify.py': [
+        'intake-list-unusable',
+        'intake-recognition-failed',
+        'library-volume-unmounted',
+        'mix-scratch-left',
         'recognition-cache-unwritten',
         'recognition-cached',
         'recognition-in-parts',
         'recognition-incomplete',
-        'set-account-unnamed',
-        'set-account-unreachable',
         'tracklist-unwritten',
         'tracklist-written',
         'unavailable-transient',
@@ -75,7 +79,26 @@ KEBAB_LITERALS = {
         'not-filed',
         'nothing-to-file',
     ],
-    'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/file_cli.py': ['intake-list-unusable'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/land_native.py': [
+        'account-archive',
+        'custom-playlist-twins-left',
+        'dyn-not-written',
+        'favorites-colour-held',
+        'favorites-placed',
+        'favorites-placement-skipped',
+        'intake-land-archive-failed',
+        'internal-error',
+        'land-native',
+        'rows-await-analysis',
+        'vox-mostly-unscored',
+        'vox-not-written',
+        'vox-unscored',
+    ],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/native_plan.py': ['collection-unreadable', 'intake-list-unusable', 'tree-unconverged'],
     # 2026-10-26, U154: the shelve engine and its shell joined.
     'intake/shelve.py': ['decision-stale', 'intake-list-unusable', 'intake-staging-refused', 'internal-error', 'whitelist-violation'],
     # 2026-10-31, U164: a batch a landing filed is reported as already filed.
@@ -118,31 +141,16 @@ KEBAB_LITERALS = {
         'label-filing',
         'session-committed-unverified',
     ],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
     'intake/land_cli.py': [
-        # 2026-10-16, U153: the held colour warning joined.
-        'account-archive',
-        # 2026-11-01, U149: a landing's custom playlist twin left and named.
-        'custom-playlist-twins-left',
         'decision-stale',
-        # 2026-11-01, U157: a variable row the commit could not mark dyn.
-        'dyn-not-written',
-        'favorites-colour-held',
-        'favorites-placed',
-        'favorites-placement-skipped',
-        'intake-land-archive-failed',
         'intake-list-unusable',
-        # 2026-10-31, U162: the rehearsal's archive warning and its read back.
         'intake-rehearsal-archive-skipped',
         'internal-error',
         'land-native',
         'library-export-unusable',
-        # 2026-10-28, U156: --label on an unreachable library root.
         'library-root-unreachable',
-        'rows-await-analysis',
         'snapshot-integrity-failed',
-        'vox-mostly-unscored',  # 2026-11-01, U181
-        'vox-not-written',
-        'vox-unscored',
     ],
     'intake/landing.py': [
         'decision-stale',
@@ -167,16 +175,10 @@ KEBAB_LITERALS = {
         'unavailable-transient',
         'utf-8',
     ],
-    'intake/native.py': [
-        'collection-unreadable',
-        'decision-stale',
-        'intake-list-unusable',
-        'internal-error',
-        'land-native',
-        'tree-unconverged',
-        'whitelist-violation',
-    ],
-    'intake/normalize.py': ['intake-list-unusable', 'utf-8-sig'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/native.py': ['decision-stale', 'internal-error', 'land-native', 'whitelist-violation'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/normalize.py': ['intake-list-unusable'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
     # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
@@ -188,13 +190,13 @@ KEBAB_LITERALS = {
         'analyzed-rows-waiting',
     ],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
     'intake/refill.py': [
         'decision-stale',
         'inbox-refill',
         'job-unknown',
         'refill-playlist-outside-inbox',
         'session-committed-unverified',
-        'tree-unconverged',
     ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/refill_cli.py': [
@@ -263,11 +265,12 @@ LITERAL_HOLDERS = {
         'intake-recognition-unready',
     ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
-    'intake/cli.py': [
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/cli.py': ['internal-error', 'job-unknown'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/cli_identify.py': [
         'intake-list-unusable',
         'intake-recognition-failed',
-        'internal-error',
-        'job-unknown',
         'library-volume-unmounted',
         'unavailable-transient',
     ],
@@ -278,7 +281,12 @@ LITERAL_HOLDERS = {
     'intake/beside.py': ['intake-list-unusable', 'refused-by-policy'],
     # 2026-10-31, U165: the landing's filing after its commit joined.
     'intake/filing.py': ['adopt-entries-failed'],
-    'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/file_cli.py': ['intake-list-unusable'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/land_native.py': ['internal-error'],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/native_plan.py': ['collection-unreadable', 'intake-list-unusable', 'tree-unconverged'],
     # 2026-10-26, U154: the shelve engine and its shell joined.
     'intake/shelve.py': ['decision-stale', 'intake-list-unusable', 'intake-staging-refused', 'internal-error', 'whitelist-violation'],
     'intake/shelve_cli.py': ['intake-list-unusable'],
@@ -333,26 +341,20 @@ LITERAL_HOLDERS = {
         'library-volume-unmounted',
         'unavailable-transient',
     ],
-    'intake/native.py': [
-        'collection-unreadable',
-        'decision-stale',
-        'intake-list-unusable',
-        'internal-error',
-        'tree-unconverged',
-        'whitelist-violation',
-    ],
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
+    'intake/native.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     'intake/normalize.py': ['intake-list-unusable'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
     # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
     'intake/analyzed.py': ['decision-stale', 'session-committed-unverified'],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
+    # 2026-11-22, U307: re-measured after the intake split: literals moved with their code or left with dead code, none joined.
     'intake/refill.py': [
         'decision-stale',
         'job-unknown',
         'refill-playlist-outside-inbox',
         'session-committed-unverified',
-        'tree-unconverged',
     ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/repair_cli.py': ['rename-incomplete'],
@@ -377,7 +379,7 @@ LITERAL_HOLDERS = {
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/acrcloud.py',
-    'intake/cli.py',
+    'intake/cli_identify.py',  # 2026-11-22, U307: the recognition counts moved with their code.
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
 })

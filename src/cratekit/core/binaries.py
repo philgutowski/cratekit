@@ -1,34 +1,17 @@
 """Absolute-path resolution for the external binaries Cratekit shells out to.
 
-WHY THIS EXISTS. A desktop app launched from a graphical file manager inherits a
-minimal PATH: none of the directories a package manager installs into are on it.
-So a bare-name subprocess call that works in a login shell fails inside the
-packaged app, and it fails as "yt-dlp: command not found" deep inside a download,
-naming nothing that would help. Every subprocess call site resolves its binary
-through here instead.
+A desktop app launched from a graphical file manager inherits a minimal PATH,
+so every subprocess call site resolves its binary through here rather than by
+bare name.
 
-TWO THINGS THE PORT CHANGES, both from a defect found in the source system.
+A missing binary raises an ordinary exception, never ``SystemExit``, so the
+caller can classify and report it (KTD25). A platform binary has no install
+command, so its absence gets its own message and remedy.
 
-**1. A missing binary is not a process exit.** The source system's exception
-subclasses ``SystemExit``, so raising it terminates the process with the message
-as the payload. That is one of three unrelated exit vocabularies KTD25 says to
-unify: a foundation module that can end the process removes any chance for a
-caller to catch, classify, and report the failure with its own remediation. Here
-it is an ordinary exception.
+``find`` returns None for a broken override and ``resolve`` raises for it:
+``find`` is doctor's probe and must report every binary in one pass.
 
-**2. A platform binary is a different kind of missing.** The source system
-resolves one binary that ships with the operating system and has no install
-command at all. Its non-raising probe degrades gracefully, so no crash results,
-but the raising path would have produced "install <it> and put it on PATH",
-which is wrong and unactionable for something the platform owns. Platform
-binaries are a separate category here, with a message that says the truth: this
-should already be present, and its absence means something else.
-
-THE CONTRACT ASYMMETRY IS DELIBERATE. ``find`` returns None for a broken
-override; ``resolve`` raises for it. ``find`` is doctor's probe and must report
-on every binary in one pass without aborting on the first one.
-
-No filesystem side effects at import, same rule as the config module.
+No filesystem side effects at import.
 """
 
 from __future__ import annotations
@@ -42,14 +25,10 @@ from pathlib import Path
 
 from cratekit.core import secrets
 
-#: Every platform the tables below answer for. Named so an audit can walk them
-#: rather than checking only whichever one it happens to be running on.
+#: Every platform the tables below answer for, so an audit can walk them all.
 SUPPORTED_PLATFORMS: tuple[str, ...] = ("darwin", "linux", "win32")
 
-#: Directories a graphical launcher does not put on PATH, per platform. R1 keeps
-#: the code portable, so this is a table lookup rather than a constant: the
-#: source system's list is macOS-only, and hardcoding it makes the Windows
-#: adapter a rewrite rather than a row.
+#: Directories a graphical launcher does not put on PATH, per platform (R1).
 _FALLBACK_DIRS_BY_PLATFORM: dict[str, tuple[str, ...]] = {
     "darwin": ("/opt/homebrew/bin", "/usr/local/bin", "~/.local/bin"),
     "linux": ("/usr/local/bin", "~/.local/bin", "~/bin"),
@@ -64,15 +43,10 @@ def fallback_dirs() -> tuple[Path, ...]:
 
 
 class PackageManager(StrEnum):
-    """Where a binary comes from, as a TOKEN rather than a command line (D2).
+    """Where a binary comes from, as a token rather than a command line (D2).
 
-    The module in the same unit that got this right says it verbatim:
-    ``profiles.install_command`` returns the extras NAME, not a command, "because
-    this layer must not contain the text a user types". The same argument holds
-    here and the cost of ignoring it is concrete. A rendered command line baked in
-    below the CLI takes three choices away from the layer that can actually make
-    them: which package manager the user really has, whether the interface is a
-    terminal at all, and whether to link to instructions instead.
+    The text a user types belongs to the CLI, which knows their package
+    manager and whether there is a terminal at all.
     """
 
     HOMEBREW = "homebrew"
@@ -83,21 +57,15 @@ class PackageManager(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class InstallHint:
-    """What to install and where from. Data, not a sentence.
-
-    ``packages`` is a tuple because one binary can need two of them, and two
-    package names is still data; "A && B" would be a shell fragment, which is the
-    thing this type exists to stop.
-    """
+    """What to install and where from. Data, not a sentence or shell fragment."""
 
     manager: PackageManager
     packages: tuple[str, ...]
 
 
-#: Where each user-installable binary comes from, per platform. A hint that names
-#: the wrong package manager is worse than no hint: it sends the user to a
-#: command that fails for a second, unrelated reason. Platforms with no answer are
-#: absent rather than guessed.
+#: Where each user-installable binary comes from, per platform. Platforms with
+#: no answer are absent rather than guessed: a wrong package manager is worse
+#: than no hint.
 _INSTALL_HINTS: dict[str, dict[str, InstallHint]] = {
     "yt-dlp": {
         "darwin": InstallHint(PackageManager.HOMEBREW, ("yt-dlp",)),
@@ -121,40 +89,20 @@ _INSTALL_HINTS: dict[str, dict[str, InstallHint]] = {
     },
 }
 
-#: Every binary a user can install themselves. Derived from the table above so the
-#: two cannot drift, and named so an audit can walk the whole table.
+#: Every binary a user can install, derived from the table so the two cannot drift.
 INSTALLABLE_BINARIES: tuple[str, ...] = tuple(_INSTALL_HINTS)
 
-#: Binaries the operating system provides. They have no install command, and
-#: telling a user to install one is a dead end. Their absence means the platform
-#: is not the one we think it is, so the message says that instead.
+#: Binaries the operating system provides; their absence means the wrong platform.
 PLATFORM_BINARIES: frozenset[str] = frozenset({"caffeinate"})
 
 ENV_PREFIX = "CRATEKIT_BIN_"
 
 
 class Remedy(StrEnum):
-    """What to do about a missing binary, as a TOKEN rather than a command.
+    """What to do about a missing binary, as a token so callers never match text.
 
-    D2 removed the shell command strings from this module, which was right, and
-    left every failure here raising one undifferentiated signature. Four
-    situations reach ``BinaryNotFound``, and each needs a different sentence from
-    the CLI:
-
-    * an override the user set points at something that is not executable, so
-      the answer is to fix or unset that one variable and nothing else;
-    * the operating system owns the binary, so there is nothing to install and
-      its absence means this is not the platform it ships with;
-    * the user installs it and this table knows where from, so the CLI renders
-      the hint into a command line for the package manager they actually have;
-    * the user installs it and this table has NO row for their platform, so the
-      honest answer names the binary and stops, rather than guessing a package
-      manager and sending them to a command that fails for a second reason.
-
-    Without a token a caller separates those by matching on the message text,
-    which is the KTD25 failure this vocabulary exists to prevent. ``config.py``
-    and ``secrets.py`` grew the same enum in the same pass; these are this
-    module's contribution to the reservation U5 owns (S4), not a rival scheme.
+    Fix the override, nothing to install (platform binary), install from the
+    known source, or install from a source this table does not know (KTD25, S4).
     """
 
     FIX_BINARY_OVERRIDE = "fix-binary-override"
@@ -166,24 +114,12 @@ class Remedy(StrEnum):
 class BinaryNotFound(Exception):
     """A required external binary is missing, or its override points at nothing.
 
-    Ordinary exception, NOT a ``SystemExit``. See the module docstring: a
-    foundation-layer failure that ends the process cannot be caught, classified,
-    or reported by the layer that knows what the user was trying to do.
-
-    Carries TWO structured pieces, and they answer different questions.
-    ``remedy`` says which KIND of failure this is, so a caller can branch without
-    reading the message. ``hint`` says what to install and where from, and is
-    None whenever installing is not the remediation at all, which is an answer
-    rather than a gap. The command line stays with the CLI (D2).
+    ``remedy`` says which kind of failure; ``hint`` says what to install, and
+    is None whenever installing is not the remediation (D2).
     """
 
     def __init__(
-        self,
-        message: str,
-        *,
-        binary: str,
-        remedy: Remedy,
-        hint: InstallHint | None = None,
+        self, message: str, *, binary: str, remedy: Remedy, hint: InstallHint | None = None
     ) -> None:
         super().__init__(message)
         self.binary = binary
@@ -201,12 +137,10 @@ def _executable(path: Path) -> bool:
 
 
 def find(name: str) -> str | None:
-    """Absolute path for ``name``, or None. NEVER raises.
+    """Absolute path for ``name``, or None. Never raises.
 
-    Resolution order, first hit wins: the per-binary override, then the caller's
-    PATH, then the fallback directories. A set-but-broken override returns None
-    here rather than falling through to PATH, because silently using a different
-    binary than the one the user named is worse than finding none.
+    Order: the override, then PATH, then the fallback directories. A broken
+    override returns None rather than silently using a different binary.
     """
     override = os.environ.get(env_var(name))
     if override:
@@ -222,19 +156,13 @@ def find(name: str) -> str | None:
 
 
 def override_problem(name: str) -> str | None:
-    """The override that is SET and is not an executable file, or None.
+    """The override that is set and is not an executable file, or None.
 
-    One rule with two callers, which is why it is a function rather than an
-    ``if`` repeated in each. ``find`` returns None for a broken override, which
-    is correct and is also indistinguishable from "not installed anywhere", so
-    every caller that wants to tell a user what to DO has to ask this separately:
-    "install it" and "the override you set points at nothing" are opposite
-    instructions, and doctor was giving the first for the second.
+    ``find`` cannot tell this from "not installed", and the two need opposite
+    instructions.
     """
     override = os.environ.get(env_var(name))
-    if override and not _executable(Path(override)):
-        return override
-    return None
+    return override if override and not _executable(Path(override)) else None
 
 
 def resolve(name: str) -> str:
@@ -261,15 +189,8 @@ def resolve(name: str) -> str:
             binary=name,
             remedy=Remedy.UNSUPPORTED_PLATFORM,
         )
-    # The message STATES what happened and where it looked. What to do about it
-    # travels as `remedy` and `hint`, and the CLI renders those into whatever a
-    # command looks like from where the user is standing (D2).
-    #
-    # No hint means this table has no row for this platform, which is a DIFFERENT
-    # remediation from "install it, here is where from": the CLI can name the
-    # binary and stop instead of guessing a package manager the user may not
-    # have. Leaving both cases on one token would push that distinction back into
-    # a None-check on a second attribute.
+    # The message states what happened; what to do travels as remedy and hint
+    # (D2). No hint is its own remedy, not a None-check on a second attribute.
     hint = install_hint(name)
     raise BinaryNotFound(
         f"{name} was not found (checked {checked}).",
@@ -280,16 +201,9 @@ def resolve(name: str) -> str:
 
 
 def install_hint(name: str, *, platform: str | None = None) -> InstallHint | None:
-    """Where ``name`` comes from on this platform, as data. None when there is none.
+    """Where ``name`` comes from on ``platform``, this one by default, or None.
 
-    None is an ANSWER, not a gap, and it covers two different cases the CLI
-    renders differently: a binary the operating system provides, where "install
-    it" is not the remediation at all, and a platform this table has no answer
-    for, where guessing a package manager would send the user to a command that
-    fails for an unrelated reason.
-
-    ``platform`` is a parameter so an audit can walk every row rather than only
-    the row for the machine it happens to be running on.
+    None covers a platform binary and a platform this table has no row for.
     """
     if name in PLATFORM_BINARIES:
         return None
@@ -299,17 +213,9 @@ def install_hint(name: str, *, platform: str | None = None) -> InstallHint | Non
 def subprocess_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """The environment with the fallback directories prepended to PATH.
 
-    Spawned jobs get this so their own children resolve too: a downloader that
-    invokes an encoder by name is a second lookup, in a process this code never
-    touches, and it fails the same way for the same reason.
-
-    Opted-in environment credentials are STRIPPED. The secrets module names the
-    risk it guards against as a credential the user discovers "after it leaks into
-    a process listing", and this is the exact hop where that would happen: the
-    binaries on the other side are third parties Cratekit does not control, and
-    none of them has any use for a Cratekit credential. Opting the fallback in
-    means Cratekit may read a credential from its own environment; it does not
-    mean yt-dlp, ffmpeg, and rclone each get a copy.
+    Spawned jobs get this so their own children resolve too. Opted-in Cratekit
+    credentials are stripped: third-party binaries have no use for them, and a
+    credential in a child environment can leak into a process listing.
     """
     env = {
         key: value
@@ -325,19 +231,7 @@ def subprocess_env(base: dict[str, str] | None = None) -> dict[str, str]:
 
 
 __all__ = [
-    "ENV_PREFIX",
-    "INSTALLABLE_BINARIES",
-    "PLATFORM_BINARIES",
-    "SUPPORTED_PLATFORMS",
-    "BinaryNotFound",
-    "InstallHint",
-    "PackageManager",
-    "Remedy",
-    "env_var",
-    "fallback_dirs",
-    "find",
-    "install_hint",
-    "override_problem",
-    "resolve",
-    "subprocess_env",
+    "ENV_PREFIX", "INSTALLABLE_BINARIES", "PLATFORM_BINARIES", "SUPPORTED_PLATFORMS",
+    "BinaryNotFound", "InstallHint", "PackageManager", "Remedy", "env_var", "fallback_dirs",
+    "find", "install_hint", "override_problem", "resolve", "subprocess_env",
 ]

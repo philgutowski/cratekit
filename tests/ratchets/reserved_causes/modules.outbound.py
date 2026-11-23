@@ -10,7 +10,9 @@ KEBAB_LITERALS = {
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging'],
     'modules/outbound/folders.py': ['label-playlists', 'label-playlists-ambiguous', 'unavailable-transient'],
-    'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved', 'utf-8'],
+    # 2026-11-22, U309: the reservations left the ledger for their own module.
+    'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'utf-8'],
+    'modules/outbound/ledger_reserve.py': ['outbound-record-moved'],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': [
         'account-mirror',
@@ -42,8 +44,8 @@ KEBAB_LITERALS = {
         'not-listed',
         'retitled-since-built',
     ],
+    # 2026-11-22, U309: config-unusable left with load_config, which calls cli.output's.
     'modules/outbound/shell.py': [
-        'config-unusable',
         'favorites-pink-export-missing',
         'future-dated',
         'internal-error',
@@ -94,7 +96,9 @@ NAMED_WITH_OWN = {
 LITERAL_HOLDERS = {
     'modules/outbound/account.py': ['credential-missing', 'outbound-account-unbound', 'unavailable-transient'],
     'modules/outbound/folders.py': ['label-playlists-ambiguous', 'unavailable-transient'],
-    'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved'],
+    # 2026-11-22, U309: the reservations left the ledger for their own module.
+    'modules/outbound/ledger.py': ['outbound-ledger-unusable'],
+    'modules/outbound/ledger_reserve.py': ['outbound-record-moved'],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': [
         'account-mirror-ambiguous',
@@ -105,7 +109,8 @@ LITERAL_HOLDERS = {
     'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable'],
     'modules/outbound/prune.py': ['internal-error', 'outbound-remove-refused', 'unavailable-transient'],
     'modules/outbound/sets.py': ['export-set-ambiguous'],
-    'modules/outbound/shell.py': ['config-unusable', 'internal-error', 'outbound-account-unbound'],
+    # 2026-11-22, U309: config-unusable left with load_config, which calls cli.output's.
+    'modules/outbound/shell.py': ['internal-error', 'outbound-account-unbound'],
     'modules/outbound/source.py': [
         'export-playlist-ambiguous',
         'export-playlist-empty',

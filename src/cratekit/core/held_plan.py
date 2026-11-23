@@ -1,52 +1,12 @@
 """A run's plan, held between the commands that answer its gates (U209).
 
-WHY THIS EXISTS. An explicit gate is answered by a separate act, so a verb
-with two of them runs three times: once to show the first gate, once after
-each answer. Each run planned again from the top, and the gates' digest
-comparison was the only thing that noticed a list moving. Sitting 54 measured
-what that costs on the playlist pair sync over 101 playlists: the plan was 2,500
-to 4,200 provider calls, and every answer paid it again. So the command that
-plans holds its plan here under its run, and every later command of the run
-reads it back instead of planning.
-
-**THE CODEC IS CLOSED.** A plan is a graph of dataclasses. It is written as
-tagged JSON, and read back only through the classes the caller names in a
-``registry``, by name, never imported by name and never unpickled, so a held
-file can build nothing the verb did not list. This module names no feature
-package, which the layering forbids; the registry is the caller's.
-
-**A PLAN IS HELD ONLY WHEN IT READS BACK EQUAL TO ITSELF.** ``hold`` encodes,
-decodes, and compares, so a class with a field the codec cannot carry is
-caught at the moment it is held rather than when a later command reads a
-plan that is not the one shown. A value of a type the codec does not know
-refuses the hold the same way.
-
-**WHAT IS READ BACK IS CHECKED, AND EVERY FAILURE IS A REASON, NEVER A
-GUESS.** :func:`load` answers the plan, or None and why: no file, a file of
-another version, kind or run, one that does not decode, or one whose plan
-digests other than the digest held beside it. The caller compares that
-digest with the offers its run recorded and plans again on any reason, so a
-plan that cannot be held costs a plan, never a write the person did not see.
-
-**AND THE WRITE'S STEPS, AS EACH LANDS (U210).** A write over a hundred
-playlists can stop part way, on the call ceiling or anything else that parks
-it. :class:`Steps` records each step of each item the moment it lands, in a
-sibling file bound to the held plan's digest, so a continue of the run starts
-each item at its first unfinished step under the plan and the answers already
-given. Steps that cannot be read are no steps, and the reason is said: the
-continue then reads every list as the plan read it, so anything already
-written refuses stale rather than being written twice.
-
-**AND ONE ITEM'S STEPS, CARRIED PAST ITS RUN (R-1372).** A run's steps go
-with its plan: released when the run ends, pruned once older than
-:data:`KEEP`. A later plan that must know what a write left half done, for
-as long as nothing has written over it, cannot read that from a record
-which ages out. So the caller carries an item's steps into a record of its
-own (:func:`carry`), in a directory neither :func:`prune` nor
-:func:`release` reaches, read back whatever its age (:func:`carried`) and
-kept until the caller lets it go (:func:`let_go`).
-
-Layer: core.
+Planning again at every gate answer cost thousands of provider calls, so the
+planning command holds its plan here and later commands read it back.
+**THE CODEC IS CLOSED**, decoding only through the caller's ``registry``, never
+by import or unpickling. **A PLAN IS HELD ONLY WHEN IT READS BACK EQUAL TO
+ITSELF**, and every failed read is a reason on which the caller plans again.
+:class:`Steps` records each write step as it lands (U210), and :func:`carry`
+keeps one item's steps past its run (R-1372).
 """
 
 from __future__ import annotations
@@ -70,8 +30,7 @@ STATE_KEY = "held_plans"
 #: The held document's own schema version.
 VERSION = 1
 
-#: How long a held plan whose run never finished is kept. A run answered
-#: within it reads its plan back; one answered after it plans again.
+#: A run answered within it reads its plan back; one answered after it plans again.
 KEEP = timedelta(days=30)
 
 #: The key a tagged value carries, and its value's key.
@@ -170,13 +129,7 @@ def hold(
     digest: str,
     extra: Mapping[str, Any] | None = None,
 ) -> str:
-    """Hold ``plan`` for ``run_id``, and answer why not, or the empty string when held.
-
-    ``digest`` is the plan's digest as its gates offer it, and ``extra`` is
-    plain JSON the verb reads back beside the plan. A plan that does not read
-    back equal to itself is not held. A held plan older than :data:`KEEP` is
-    pruned here, the one moment this directory is written.
-    """
+    """Hold ``plan`` for ``run_id``, answering why not, or the empty string when held."""
     try:
         encoded = encode(plan, registry)
         if decode(encoded, registry) != plan:
@@ -208,12 +161,7 @@ def load(
     registry: Mapping[str, type],
     digest_of: Callable[[Any], str],
 ) -> tuple[Any, str, dict[str, Any], str]:
-    """The plan held for ``run_id``, its digest, its extra, and why not when there is none.
-
-    Answers ``(plan, digest, extra, "")`` or ``(None, "", {}, why)``. The
-    digest is checked against ``digest_of(plan)`` here; comparing it with the
-    run's offers is the caller's, which knows its gates.
-    """
+    """The held plan as ``(plan, digest, extra, "")``, or ``(None, "", {}, why)``."""
     where = path(run_id)
     try:
         age = time.time() - where.stat().st_mtime
@@ -255,12 +203,7 @@ def release(run_id: str) -> None:
 
 
 def prune(*, keep: str = "", now: float | None = None) -> int:
-    """Remove held plans older than :data:`KEEP`, except ``keep``'s. Returns how many.
-
-    The carried records (R-1372) are in a directory of their own beneath
-    this one, which the listing here does not descend into, so no age takes
-    them.
-    """
+    """Remove held plans older than :data:`KEEP`, except ``keep``'s. Returns how many."""
     directory = config.state_path(STATE_KEY)
     cutoff = (time.time() if now is None else now) - KEEP.total_seconds()
     removed = 0
@@ -281,9 +224,7 @@ def prune(*, keep: str = "", now: float | None = None) -> int:
     return removed
 
 
-# ---------------------------------------------------------------------------
 # The write's steps, recorded as each one lands (U210)
-# ---------------------------------------------------------------------------
 
 #: What a run's steps file is named by, beside its held plan.
 STEPS_SUFFIX = ".steps.json"
@@ -300,17 +241,8 @@ def steps_path(run_id: str) -> Path:
 class Steps:
     """The steps one run's write has finished, by item and step (U210).
 
-    WHY. A write over a hundred playlists can stop part way, on the call
-    ceiling or anything else that parks it, and a continue of the run must
-    start each item at its first unfinished step rather than plan again. So
-    each step is recorded the moment it lands and before the next starts,
-    written whole and atomically, and a step whose record could not be
-    written stops the write: a step done and not recorded is read by the
-    continue as not done, which the check before the write refuses stale
-    rather than doing it twice.
-
-    ``digest`` is the held plan's, so steps recorded against one plan are
-    never read for another.
+    Each is recorded atomically before the next starts and an unrecordable one
+    stops the write, so a continue never repeats a step. ``digest`` binds them to one plan.
     """
 
     def __init__(
@@ -356,14 +288,7 @@ class Steps:
 
 
 def load_steps(run_id: str, digest: str) -> tuple[Steps, str]:
-    """The steps recorded for ``run_id`` against the plan of ``digest``, and why none when unusable.
-
-    No file is no step yet, and says nothing. A file that cannot be read, of
-    another version or run, or recorded against another plan answers no steps
-    AND the reason, which the caller says: the continue then reads every list
-    as the plan read it, so anything already written refuses stale rather
-    than being written again.
-    """
+    """The steps recorded for ``run_id`` against ``digest``, or none and why when unusable."""
     fresh = Steps(run_id, digest)
     where = steps_path(run_id)
     try:
@@ -384,14 +309,9 @@ def load_steps(run_id: str, digest: str) -> tuple[Steps, str]:
 
 
 def recorded_steps(*, now: float | None = None) -> tuple[list[Steps], list[str]]:
-    """Every run's steps still kept, whatever plan each was recorded against, and why any could not be read (U225).
+    """Every run's steps still kept, and why any could not be read (U225).
 
-    A later plan of the same verb reads what a run's write did, to tell a write
-    stopped part way from the person's own edit. A record older than
-    :data:`KEEP` is no record, as its plan is none. A record that cannot be
-    read, of another version or of another run is NAMED in the second list,
-    never read as no write, so the caller can say it did not look there. A
-    record released between the listing and the read was never there.
+    An unreadable record is NAMED in the second list, never read as no write.
     """
     directory = config.state_path(STATE_KEY)
     cutoff = (time.time() if now is None else now) - KEEP.total_seconds()
@@ -435,9 +355,7 @@ def recorded_steps(*, now: float | None = None) -> tuple[list[Steps], list[str]]
     return records, problems
 
 
-# ---------------------------------------------------------------------------
 # One item's steps, carried past its run (R-1372)
-# ---------------------------------------------------------------------------
 
 #: The directory, beneath the held plans, that carried records are kept in.
 CARRIED_DIR = "carried"
@@ -458,11 +376,7 @@ def carried_path(run_id: str, key: str) -> Path:
 
 
 def carry(steps: Steps, key: str) -> None:
-    """Keep the steps ``steps`` holds for ``key`` past its run, until :func:`let_go`.
-
-    Written whole and atomically, and a carry again replaces it. An
-    ``OSError`` writing it is the caller's to refuse, as a step's is.
-    """
+    """Keep ``steps`` for ``key`` past its run, atomically, until :func:`let_go`."""
     document = {
         "version": CARRIED_VERSION,
         "run_id": steps.run_id,
@@ -496,16 +410,11 @@ def carried_step(run_id: str, key: str, step: str) -> Any:
 
 
 def carried() -> tuple[list[Steps], list[str]]:
-    """Every carried record whatever its age, each as its run's steps holding that one item, and why any could not be read.
+    """Every carried record whatever its age, and why any could not be read.
 
-    A record that cannot be read, of another version, or not at the place its
-    run and key name, is NAMED in the second list, never read as no record,
-    so the caller can say it did not look there. One let go between the
-    listing and the read was never there.
+    An unreadable record is NAMED in the second list, never read as no record.
     """
-    # LISTED WITH ``iterdir``, which raises what it meets: ``glob`` swallows
-    # an OSError and answers an unlistable directory as an empty one (the
-    # round one review), which would read a stop it could not see as none.
+    # LISTED WITH ``iterdir``, since ``glob`` answers an unlistable directory as empty.
     try:
         found = sorted(
             one for one in carried_dir().iterdir() if one.name.endswith(".json")

@@ -1,70 +1,29 @@
 """The one adjudication surface: persisted review items, and the decision stores.
 
-R12 says every state the product asks a person to adjudicate is a persisted,
-addressable review item, never a file the user must hand edit. The source system
-answers that question with a spread of comma-separated files a person opens in a
-spreadsheet, edits, and saves. Three properties of that shape are the reason this
-module exists, and each one is a defect rather than a preference:
+Every state the product asks a person to adjudicate is a persisted, addressable
+review item, never a file the user must hand edit (R12). So a decision is
+recorded once and never re-asked, REJECTED is a first class verdict that
+suppresses an item until it is cleared, and the queue is library scoped (KTD21)
+and coupled to the database (KTD21b), so a decision made on one installation
+holds on another.
 
-1. **Nothing is recorded, so everything is re-asked.** A decision lives in the
-   edited file, the file lives in a per set directory, and the next run rebuilds
-   the file from scratch. So a person answers the same question every time, and
-   an item nobody has got to yet is indistinguishable from one they already
-   looked at and turned down.
-2. **There is no rejected state at all.** A row a person considered and declined
-   simply stays in the file, which is why unresolved items roll forward forever.
-   A verdict here is first class, and REJECTED suppresses the item until it is
-   explicitly cleared.
-3. **A decision is invisible from anywhere else.** The file is beside one set on
-   one machine. An item adjudicated on one installation must not be re-asked on
-   another, which is why the queue is library scoped (KTD21) and coupled to the
-   database (KTD21b).
+Outputs stay files. ``SURFACES`` declares which side each legacy file is on and
+why, and ``offer`` refuses a queue that is not on the adjudicated side.
 
-**The split, stated rather than assumed.** Not every file a person can open is an
-adjudication surface. A match result, a dropped list, a reconciliation report:
-those are OUTPUTS, and outputs stay files. ``SURFACES`` declares which side each
-one is on and why, and ``offer`` refuses a queue name that is not on the
-adjudicated side, so the split has teeth rather than being documentation. The
-plan counts the source system's hand edited files at fourteen; the enumeration
-below is derived from the source tree rather than transcribed from that number,
-because a stated count is not a checksum (seam decisions, Part 3).
+An item identifier is a function of the queue, the kind and an identity the
+producer supplies, never a display name (D5) or a row number, so two producers
+meaning one candidate agree without coordinating.
 
-**Identity.** An item identifier is a function of the queue, the kind, and an
-identity mapping the producer supplies. It is never a display name (D5), and it
-is never a row number in a file, because both change under the person who made
-the decision. Two producers that mean the same candidate therefore agree without
-coordinating, which is what makes "the same decision is never re-asked" true
-across sources rather than only within one.
-
-**Storage.** SQLite in write ahead log mode, the same shape and the same pragmas
-as the job engine, for the same reasons: a claim or a verdict is a transaction, a
-second process is a first class case rather than an accident, and paging is a
-query rather than a slice of a list somebody already read into memory. The
-decision stores for declines and tombstones share the RECORD shape, and are
-written as the single documents the state inventory declares them to be, because
-each is a small revocable set rather than a queue anything pages through.
+Storage is SQLite in write ahead log mode on the job engine's pragmas: a verdict
+is a transaction, a second process is a normal case, and paging is a query.
 
 Layer note: INFRASTRUCTURE. It reads configuration and touches the disk, and it
-names no verb: the key of whatever produced an item arrives as a value, exactly
-as the job engine's handler key does.
+names no verb: a producer's key arrives as a value.
 
-TWO NAMING DECISIONS, RECORDED because the repository hunts for one symbol
-meaning two things and these are the two this module could have produced.
-
-``Suppression`` is the record a decision store holds, and it is deliberately NOT
-called ``Decision``. That name already means two things in this package, in
-``core.rb_writer`` and in ``cli.gates``, and the collision is recorded rather
-than fixed. A third meaning would turn a recorded annoyance into a genuine trap,
-and the better name was available: what these records do is suppress something.
-
-``Item`` DOES collide, with ``jobs.Item``, and it stays. Both are "one
-addressable unit inside this module's own store", which is the same shape as
-``TERMINAL_STATES`` and ``lock_path`` already judged correct in this repository:
-one idea specialised per module. Every call site in this codebase spells the
-module, so the two are never ambiguous where they are used. The hazard, stated so
-the next reader does not have to rediscover it: a caller importing the bare name
-from the wrong module gets a dataclass with entirely different fields, and the
-failure is an attribute error rather than anything this module can catch.
+Naming: ``Suppression`` is not called ``Decision``, a name already meaning two
+things in this package (``core.rb_writer``, ``cli.gates``). ``Item`` does
+collide with ``jobs.Item`` and stays, since every call site spells the module;
+importing the bare name from the wrong module yields different fields.
 """
 
 from __future__ import annotations
@@ -75,10 +34,9 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
@@ -88,110 +46,74 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.core.private_store import PrivateStore
 
 #: The queue's own schema version. A cross version read REFUSES rather than
-#: guessing, for the reason the job engine states: an unversioned state file
-#: cannot be migrated without reverse engineering whatever wrote it.
-#:
-#: 2 stores the IDENTITY each item was addressed by. A content addressed
-#: identifier with no record of what it was derived from can be audited by
-#: nobody: two candidates that hash alike are indistinguishable from one
-#: candidate offered twice, and a normalization that merged two things it should
-#: not have leaves no evidence at all.
+#: guessing. 2 stores the identity each item was addressed by, so an identifier
+#: can be audited back to what it was derived from.
 SCHEMA_VERSION = 2
 
 #: The database inside the declared ``review_queue`` state directory. The
-#: DIRECTORY is the declared entry, not this file, because the queue keeps its
-#: write ahead sidecars beside the database and all of them belong to one root.
+#: directory is the declared entry, because the write ahead sidecars live beside it.
 QUEUE_FILENAME = "queue.db"
 
-#: The version stamped into an exported document. Separate from the store's own
-#: schema on purpose: an export is a wire format that other people's tooling may
-#: read, and coupling it to the storage version would force a bump on anyone
-#: holding a file whenever an index changed.
+#: The version stamped into an exported document. Separate from the store's
+#: schema, since an export is a wire format other tooling may read.
 EXPORT_VERSION = 1
 
-#: The prefix every item identifier carries, so an identifier is recognizable in
-#: a log or a bug report without a lookup.
+#: The prefix every item identifier carries, so one is recognizable in a log.
 ID_PREFIX = "rv"
 
-#: The prefix a decision store's records carry. DIFFERENT from the item prefix on
-#: purpose: the two identifier spaces are addressed by different verbs, and one
-#: pasted into the other must fail to resolve rather than silently miss.
+#: The prefix a decision store's records carry. Different from the item prefix,
+#: so an identifier pasted into the wrong verb fails to resolve.
 SUPPRESSION_ID_PREFIX = "dc"
 
 
 class Queue(StrEnum):
     """The declared adjudication surfaces, as stable slugs.
 
-    A queue name is an identifier and never a display name (R19). It is declared
-    here rather than passed in freely so that a producer cannot invent a queue
-    nobody agreed on, which is exactly how the source system ended up with one
-    review file per feature and no shared surface at all.
+    A queue name is an identifier, never a display name (R19), and is declared
+    here so no producer can invent a queue nobody agreed on.
     """
 
-    #: R11's third state. A candidate that is a DIFFERENT version of the wanted
-    #: recording: a remix, an edit, a live take, a clean cut.
-    #:
-    #: TWO KINDS SHARE IT since U79, and they are told apart by kind and never
-    #: by payload. ``version-match`` asks about a copy the LIBRARY holds.
-    #: ``provider-candidate`` asks which track the PROVIDER's text search found
-    #: is the wanted recording, which is the question the legacy file this
-    #: surface was ported from asked, so it is the same surface and not a new
-    #: one. Each kind has one producer and one reader, and neither reads the
-    #: other's items.
+    #: R11's third state: a candidate that is a DIFFERENT version of the wanted
+    #: recording (a remix, an edit, a live take). Two kinds share it, told apart
+    #: by kind and never by payload (U79): ``version-match`` asks about a copy
+    #: the library holds, ``provider-candidate`` about a provider search hit.
     VERSION_MATCH = "version-match"
 
-    #: A candidate from somewhere other than the configured provider, offered
-    #: because the wanted recording is not available there at all.
-    #:
-    #: ONE KIND since U80, ``fallback-candidate``: which SoundCloud or YouTube
-    #: upload, if any, is the wanted recording. Its producer is
-    #: ``crate acquire fallback`` and each option is the upload's page URL.
+    #: A candidate from somewhere other than the configured provider. One kind,
+    #: ``fallback-candidate`` (U80), filed by ``crate acquire fallback`` with each
+    #: option an upload's page URL.
     FALLBACK_SOURCE = "fallback-source"
 
-    #: A proposed genre value for a track, which decides where the routing tree
-    #: puts it.
+    #: A proposed genre value for a track, which decides where routing puts it.
     GENRE = "genre"
 
     #: A release a label sweep proposes taking into the library.
     LABEL_RELEASE = "label-release"
 
-    #: Two library entries that may be one recording, or may be an intentional
-    #: alternate somebody keeps on purpose (R26's audit half).
+    #: Two library entries that may be one recording or a kept alternate (R26).
     DUPLICATES = "duplicates"
 
     #: A file left behind by a row the user removed from the collection (R35).
     DELETION = "deletion"
 
-    #: A proposed mapping from an existing library structure into the declared
-    #: taxonomy (R26).
+    #: A proposed mapping from an existing library structure into the taxonomy (R26).
     ADOPTION = "adoption"
 
-    #: A recorded location the library can no longer resolve, and the candidate
-    #: the repair pass believes it now points at.
+    #: A recorded location the library cannot resolve, and the repair's candidate.
     PATH_REPAIR = "path-repair"
 
 
 class Verdict(StrEnum):
     """How an item was settled. Two of these a person writes, and one the product.
 
-    ACCEPTED means the item is settled in favour of a candidate. REJECTED means
-    the item is settled AGAINST every candidate, and it suppresses the item until
-    somebody explicitly clears it. The source system has no representation for the
-    second at all, which is the whole reason its unresolved items roll forward.
+    ACCEPTED settles the item in favour of a candidate. REJECTED settles it
+    against every candidate and suppresses it until somebody clears it.
 
-    SUPERSEDED means the question was never answered because it stopped being
-    one: a later resolution owned the row the item asked about under a rule that
-    never consults the queue, so there is nothing left for a person to decide.
-    R-679 is the shape it retires. 85 of 88 open version questions on the live
-    library asked about rows the ISRC and credited rules had since settled, and
-    the vocabulary had no honest way to say so: ``rejected`` records a decision
-    against every candidate that nobody made, and reads as exactly wrong when the
-    candidate is the very file the rule now owns. So it is a third value, NOT a
-    suppression, since :attr:`Item.suppressed` stays a rejection alone, and
-    revocable by ``clear`` like any verdict. It is written by :func:`supersede`
-    and nothing a person types: ``PERSON_VERDICTS`` is the command line's
-    vocabulary, because a person recording "a rule settled this" would be
-    recording something that did not happen.
+    SUPERSEDED (R-679) means a later resolution owned the row under a rule that
+    never consults the queue, so nothing is left to decide. It is not a
+    suppression, ``clear`` revokes it like any verdict, and only
+    :func:`supersede` writes it: ``PERSON_VERDICTS`` is the command line's
+    vocabulary, because a person cannot truthfully record "a rule settled this".
     """
 
     ACCEPTED = "accepted"
@@ -199,258 +121,22 @@ class Verdict(StrEnum):
     SUPERSEDED = "superseded"
 
 
-#: The verdicts a PERSON records. The command line offers these and no other,
-#: so the machine's verdict cannot be typed by hand. Derived as a subtraction
-#: rather than spelled, so a fourth person verdict is added in one place.
+#: The verdicts a PERSON records, the only ones the command line offers.
+#: Derived as a subtraction, so a fourth person verdict is added in one place.
 PERSON_VERDICTS: tuple[Verdict, ...] = tuple(
     member for member in Verdict if member is not Verdict.SUPERSEDED
 )
 
 
-@dataclass(frozen=True, slots=True)
-class Surface:
-    """One place the source system asks a person something, and which side it is on.
-
-    ``why`` is not decoration. The question "is this an adjudication surface or an
-    output" is the one a porting unit has to answer for every file it inherits,
-    and an answer with no reasoning attached is a coin toss somebody will re-flip.
-    """
-
-    legacy_file: str
-    adjudicated: bool
-    why: str
-    #: The queue this surface becomes, for an adjudicated one. None for an output,
-    #: and the constructor of the queue refuses anything that is not a member here.
-    queue: str | None = None
-
-
-#: The split, declared. Derived by reading the source tree on 2026-08-02 rather
-#: than transcribed from the plan's count, per Part 3 of the seam decisions: a
-#: stated count is not a checksum, and two of the plan's counts were already off.
-#: New surfaces join this table; a unit that needs a queue declares it here and in
-#: ``Queue`` together, because a queue with no recorded reasoning is the shape
-#: this table exists to replace.
-SURFACES: tuple[Surface, ...] = (
-    Surface(
-        legacy_file="tidal_review.csv",
-        adjudicated=True,
-        queue=Queue.VERSION_MATCH,
-        why=(
-            "The version confirm gate. A text search resolves a wanted recording "
-            "to something that may be a remix, an edit, or a live take, and only "
-            "a person can say whether that is the same record. R11 names this as "
-            "its own state precisely so it stops being silently treated as matched."
-        ),
-    ),
-    Surface(
-        legacy_file="fetch_review.csv",
-        adjudicated=True,
-        queue=Queue.FALLBACK_SOURCE,
-        why=(
-            "Candidates from another platform for a recording the configured "
-            "provider does not carry. Ranked by a heuristic that the source "
-            "system's own notes say grabs the wrong track as readily as the "
-            "provider search does, so the ranking proposes and a person decides."
-        ),
-    ),
-    Surface(
-        legacy_file="genre_review.csv",
-        adjudicated=True,
-        queue=Queue.GENRE,
-        why=(
-            "A proposed genre per track, with a gate column the person edits by "
-            "hand and the next stage reads back. It decides where the routing "
-            "tree puts the track, so a wrong value is not cosmetic."
-        ),
-    ),
-    Surface(
-        legacy_file="batch_genre_review.csv",
-        adjudicated=True,
-        queue=Queue.GENRE,
-        why=(
-            "The same decision as the file above, accumulated across a batch. It "
-            "is not a second surface: two files for one question is how a person "
-            "answers in one and the other keeps asking. It folds into the genre "
-            "queue, which is what makes batch resolution a predicate rather than "
-            "a separate file."
-        ),
-    ),
-    Surface(
-        legacy_file="genre_research_review.csv",
-        adjudicated=True,
-        queue=Queue.GENRE,
-        why=(
-            "A third file asking the genre question, produced by the research "
-            "pass. Same queue for the same reason as the batch file above."
-        ),
-    ),
-    Surface(
-        legacy_file="label_review.csv",
-        adjudicated=True,
-        queue=Queue.LABEL_RELEASE,
-        why=(
-            "Releases a label sweep proposes taking in. A person decides per "
-            "release, and the decision has to survive the sweep that produced it "
-            "or the next sweep offers the same releases again."
-        ),
-    ),
-    Surface(
-        legacy_file="batch_label_review.csv",
-        adjudicated=True,
-        queue=Queue.LABEL_RELEASE,
-        why=(
-            "The batch form of the label decision. Folds into the same queue, for "
-            "the same reason the batch genre file does."
-        ),
-    ),
-    Surface(
-        legacy_file="missing_full.csv",
-        adjudicated=True,
-        queue=Queue.VERSION_MATCH,
-        why=(
-            "The missing list once a person has curated it by hand. Curation IS "
-            "adjudication: the rows a person struck out are rejections, and with "
-            "no rejected state to record them in they come back on the next run. "
-            "It folds into the version match queue, which is where the candidate "
-            "that provoked the curation already lives."
-        ),
-    ),
-    Surface(
-        legacy_file="not_acquired.csv",
-        adjudicated=True,
-        queue=Queue.VERSION_MATCH,
-        why=(
-            "The other half of the hand curated missing list, and the same "
-            "decision recorded under a second name. Folds into the same queue."
-        ),
-    ),
-    Surface(
-        legacy_file="owned.csv",
-        adjudicated=False,
-        why=(
-            "An OUTPUT. The matched half of a match result, which R32 already "
-            "carries on the match surface with its three states. Nobody edits it "
-            "to decide anything, and turning a result into a queue item would ask "
-            "a person to confirm what the library already proves."
-        ),
-    ),
-    Surface(
-        legacy_file="missing.csv",
-        adjudicated=False,
-        why=(
-            "An OUTPUT, and the missing half of the same match result. It becomes "
-            "adjudication only once a person curates it, which is the separate "
-            "surface declared above."
-        ),
-    ),
-    Surface(
-        legacy_file="tidal_matched.csv",
-        adjudicated=False,
-        why="An OUTPUT: what the provider resolved, before anyone judges it.",
-    ),
-    Surface(
-        legacy_file="tidal_unmatched.csv",
-        adjudicated=False,
-        why="An OUTPUT: what the provider did not resolve at all.",
-    ),
-    Surface(
-        legacy_file="other_platforms.csv",
-        adjudicated=False,
-        why=(
-            "An OUTPUT, and specifically a WORK queue rather than a review queue: "
-            "the fallback pass reads it and produces candidates. A machine "
-            "consumes it, so making a person adjudicate it would insert a "
-            "decision where there is no question yet. The pass is "
-            "acquire.fallback since U80, and its input is the unlisted text "
-            "list rather than this file; the candidates it produces are the "
-            "adjudicated half, on the fallback-source queue."
-        ),
-    ),
-    Surface(
-        legacy_file="download_dropped.csv",
-        adjudicated=False,
-        why="An OUTPUT: a report of what an acquisition pass did not take.",
-    ),
-    Surface(
-        legacy_file="label_review_dropped.csv",
-        adjudicated=False,
-        why=(
-            "An OUTPUT: what the label filter removed before a person saw it. It "
-            "explains a decision the software already made rather than asking for "
-            "one."
-        ),
-    ),
-    Surface(
-        legacy_file="download_reconcile.csv",
-        adjudicated=False,
-        why="An OUTPUT: a reconciliation report between what was asked for and what landed.",
-    ),
-    Surface(
-        legacy_file="catalog_unmatched.csv",
-        adjudicated=False,
-        why="An OUTPUT: catalog rows a crawl could not resolve, reported rather than asked about.",
-    ),
-    Surface(
-        legacy_file="",
-        adjudicated=True,
-        queue=Queue.DUPLICATES,
-        why=(
-            "NEW. The source system's duplicate audit prints and never records, "
-            "so a pair somebody has already judged an intentional alternate is "
-            "reported again on every run."
-        ),
-    ),
-    Surface(
-        legacy_file="",
-        adjudicated=True,
-        queue=Queue.DELETION,
-        why=(
-            "NEW, required by R35: a removed row's file is presented for review "
-            "and a declined file is never offered again until the decline is "
-            "revoked, which is impossible without a persisted rejected state."
-        ),
-    ),
-    Surface(
-        legacy_file="",
-        adjudicated=True,
-        queue=Queue.ADOPTION,
-        why=(
-            "NEW, required by R26: adoption presents its whole plan for review and "
-            "applies it incrementally and resumably, which needs the verdicts to "
-            "outlive the process that collected them."
-        ),
-    ),
-    Surface(
-        legacy_file="",
-        adjudicated=True,
-        queue=Queue.PATH_REPAIR,
-        why=(
-            "NEW. A recorded location the library cannot resolve, paired with the "
-            "candidate a repair pass believes it now points at. A wrong answer "
-            "here re-points a library row at somebody else's file, so it is never "
-            "applied without a decision."
-        ),
-    ),
-)
-
-
-def adjudicated_queues() -> tuple[str, ...]:
-    """Every declared queue, sorted. DERIVED from the split, never listed twice."""
-    return tuple(sorted({s.queue for s in SURFACES if s.adjudicated and s.queue is not None}))
-
-
-# ---------------------------------------------------------------------------
 # The records
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Option:
     """One candidate a person may choose, addressed by a stable identifier.
 
-    ``summary`` is for a screen and is never the key. That separation is the same
-    one R19 makes for taxonomy: a candidate's description is allowed to be
-    rewritten, and rewriting it must not orphan the decision somebody made.
+    ``summary`` is for a screen and never the key, so rewriting a description
+    does not orphan the decision made on it (R19).
     """
 
     option_id: str
@@ -477,14 +163,9 @@ class Option:
 class Item:
     """One thing a person has to decide, and the decision once they have.
 
-    ``handler_key`` names whatever produced the item, in the registry's own
-    vocabulary, and it arrives as a VALUE. This module never spells one, exactly
-    as the job engine never spells the command line it re-invokes.
-
-    ``ordinal`` is the insertion order, and it is what paging keys on. Paging on
-    an offset instead would shift every later page whenever an item is inserted,
-    which for a queue that grows while somebody is working through it means
-    silently skipping items.
+    ``handler_key`` names the producer, in the registry's vocabulary, as a value.
+    ``ordinal`` is the insertion order and what paging keys on, so an item
+    inserted mid walk never shifts a later page.
     """
 
     item_id: str
@@ -500,13 +181,10 @@ class Item:
     option: str | None = None
     actor: str | None = None
     decided: str | None = None
-    #: The verdict column AS STORED, which is the same text as ``verdict`` except
-    #: when a newer build wrote a value this one has no representation for. Kept
-    #: so an EXPORT can carry it: rendering it as "no verdict" would hand the next
-    #: installation a document saying nobody had decided, and the decision would
-    #: be gone with nobody told. Every reader that acts on a verdict reads
-    #: ``verdict`` and therefore treats an unknown one as undecided, which is the
-    #: direction ``_coerce_verdict`` argues for.
+    #: The verdict column AS STORED, which differs from ``verdict`` only when a
+    #: newer build wrote a value this one cannot represent. An export carries
+    #: it, so that decision is not handed on as "nobody decided"; every reader
+    #: that acts reads ``verdict`` and treats the unknown one as undecided.
     stored_verdict: str | None = None
 
     @property
@@ -515,12 +193,7 @@ class Item:
 
     @property
     def suppressed(self) -> bool:
-        """True when this item is settled AGAINST every candidate.
-
-        A suppressed item stays in the queue rather than being deleted. Deleting
-        it would make the next producer offer it again, which is the roll forward
-        this module exists to end.
-        """
+        """True when settled AGAINST every candidate. The item stays, so it is not re-offered."""
         return self.verdict is Verdict.REJECTED
 
     def to_json(self) -> dict[str, Any]:
@@ -545,9 +218,7 @@ class Item:
 class Page:
     """One page of items, and the cursor that continues it.
 
-    ``next_cursor`` is the last ordinal on the page rather than a count, so a
-    caller resumes from a POSITION and never from an offset that other writers
-    have moved underneath it.
+    ``next_cursor`` is the last ordinal on the page, a position, never an offset.
     """
 
     items: tuple[Item, ...]
@@ -563,17 +234,10 @@ class Page:
 def _same_value(stored: Any, wanted: Any) -> bool:
     """Whether a stored payload value satisfies a predicate's wanted one.
 
-    Equal, OR equal once both are rendered as text. The second half is not
-    sloppiness, it is the difference between a filter that works and one that
-    silently matches nothing: a predicate typed at a command line arrives as
-    TEXT, and a payload field a producer wrote as a number is a number. Comparing
-    those two with ``==`` gives False for every row, and a filter that matches
-    nothing is indistinguishable from a queue that is already empty, which is the
-    exact failure this module refuses everywhere else.
-
-    Deliberately not a general coercion. ``None`` never matches the string
-    ``"None"``, because "this field is absent" and "this field says None" are
-    different facts and matching them would let a typo select the absent ones.
+    Equal, or equal once both are text: a predicate typed at a command line is
+    text and a stored field may be a number, and a filter matching nothing reads
+    as an empty queue. ``None`` never matches ``"None"``, since absent and "says
+    None" are different facts.
     """
     if stored == wanted:
         return True
@@ -586,9 +250,8 @@ def _same_value(stored: Any, wanted: Any) -> bool:
 class Predicate:
     """A declarative selection, so batch resolution crosses a process boundary.
 
-    A callable predicate cannot be typed at a command line and cannot be recorded
-    against a run, and both are requirements here rather than conveniences. So the
-    selection is DATA: a queue, a kind, and equality on named payload fields.
+    Data rather than a callable, so it can be typed at a command line and
+    recorded against a run: a queue, a kind, and equality on payload fields.
     """
 
     queue: str | None = None
@@ -601,10 +264,7 @@ class Predicate:
     def matches(self, item: Item) -> bool:
         if self.queue is not None and item.queue != self.queue:
             return False
-        # The kind is normalized on both sides, exactly as the stored one is. A
-        # predicate typed with one spelling of a kind must not silently match
-        # nothing in a queue full of the other spelling, which is the failure
-        # ``_same_value`` exists to prevent one field along.
+        # The kind is normalized on both sides, as the stored one is.
         if self.kind is not None and item.kind != normalize_kind(self.kind):
             return False
         for field_name, value in (self.payload_equals or {}).items():
@@ -613,24 +273,15 @@ class Predicate:
         return True
 
 
-# ---------------------------------------------------------------------------
 # Identity
-# ---------------------------------------------------------------------------
 
 
 def normalize_kind(kind: str) -> str:
     """One spelling of a kind, so two producers naming one thing agree.
 
-    A kind is an identifier and never a display name (R19, D5), and it is
-    free-form producer input: nothing declares the set the way ``Queue`` declares
-    the surfaces. Two producers that wrote ``version-difference`` and
-    ``version_difference`` therefore meant one kind and produced two items for
-    one candidate, which is the exact re-asking this module exists to end.
-
-    The stored kind is the normalized one, and so is a predicate's. Normalizing
-    only the identifier would leave ``--where kind=version_difference`` matching
-    nothing while the queue is full of the other spelling, which is the failure
-    ``_same_value`` already exists to prevent one field along.
+    A kind is free form producer input and an identifier, never a display name
+    (R19, D5), so ``version_difference`` and ``version-difference`` are one kind.
+    Both the stored kind and a predicate's are normalized.
     """
     collapsed = "-".join(str(kind).replace("_", "-").replace(" ", "-").casefold().split("-"))
     return collapsed.strip("-")
@@ -639,24 +290,11 @@ def normalize_kind(kind: str) -> str:
 def normalize_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     """The identity as it is HASHED: one spelling per value, types folded.
 
-    ``canonical_json`` distinguishes ``7`` from ``"7"``, and every producer of a
-    review item takes its identity from somewhere that has an opinion about the
-    difference: a database column is a number, a parsed comma separated file is
-    text, a command line argument is always text. Hashing the raw values made the
-    same candidate two items, so the person was asked twice and the second answer
-    could not be recognized as the first.
-
-    WHAT IS DELIBERATELY NOT FOLDED. ``None`` never becomes the text ``"None"``
-    or the empty string, and ``True`` never becomes ``1``. This is the same line
-    ``_same_value`` draws: "this field is absent" and "this field says None" are
-    different facts, and collapsing them would merge two candidates onto one item
-    and settle a decision nobody made about the second. Surrounding whitespace is
-    kept for the same reason, since a path and a padded copy of it are not
-    obviously the same file.
-
-    A value this cannot recognize is REFUSED rather than stringified. An object
-    whose text happens to collide with another one's would silently merge two
-    candidates, and there is no way to notice afterwards.
+    Producers disagree about ``7`` and ``"7"`` (a column, a parsed file, an
+    argument), so numbers fold to text. NOT folded: ``None`` stays null, ``True``
+    never becomes ``1``, and surrounding whitespace is kept, since merging those
+    would settle a decision nobody made. A value of any other type is REFUSED
+    rather than stringified, because a text collision would merge silently.
     """
     return {str(key): _normalize_identity_value(key, value) for key, value in identity.items()}
 
@@ -665,14 +303,12 @@ def _normalize_identity_value(field: str, value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, bool):
-        # Before the numeric branch: a bool IS an int in Python, and "true" is
-        # what JSON calls it, so a producer writing the JSON spelling agrees.
+        # Before the numeric branch, since a bool is an int; spelled as JSON spells it.
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
-        # An integral float is the same fact as the integer, which is how a value
-        # that went through a spreadsheet comes back.
+        # An integral float is the integer, as a spreadsheet hands it back.
         return str(int(value)) if value.is_integer() else repr(value)
     if isinstance(value, str):
         return value
@@ -685,8 +321,7 @@ def _normalize_identity_value(field: str, value: Any) -> Any:
         f"the identity field {field!r} holds a {type(value).__name__}, which this "
         f"queue cannot address a decision by; an identity is text, numbers, "
         f"booleans, null, and nestings of those",
-        remedy=Remedy.REPORT_DEFECT,
-        origin=("review",),
+        remedy=Remedy.REPORT_DEFECT, origin=("review",),
         detail={"field": str(field), "type": type(value).__name__},
     )
 
@@ -694,16 +329,10 @@ def _normalize_identity_value(field: str, value: Any) -> Any:
 def item_id_for(queue: str, kind: str, identity: Mapping[str, Any]) -> str:
     """The stable identifier for one candidate. A pure function of what it IS.
 
-    Content addressed rather than allocated, which is what makes ``offer``
-    idempotent without a lookup table and what lets two producers agree on the
-    same item without either knowing about the other. The identity mapping is
-    NORMALIZED and then serialized canonically, so neither a different key order
-    nor a different spelling of one value manufactures a second item for the same
-    candidate.
-
-    An EMPTY identity is refused. Every empty mapping hashes to one value, so an
-    empty identity would collapse a whole queue onto one item, and the collapse
-    would look like deduplication working rather than like a defect.
+    Content addressed, so ``offer`` is idempotent without a lookup and two
+    producers agree without knowing of each other. The identity is normalized
+    and serialized canonically. An EMPTY identity is refused, since every empty
+    mapping hashes alike and would collapse a queue onto one item.
     """
     if not identity:
         raise refuse(
@@ -711,8 +340,7 @@ def item_id_for(queue: str, kind: str, identity: Mapping[str, Any]) -> str:
             "a review item needs an identity to be addressed by; an empty one "
             "hashes to a single value, so every item in the queue would collide "
             "onto it and the collision would look like deduplication",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=("review",),
+            remedy=Remedy.REPORT_DEFECT, origin=("review",),
             detail={"queue": str(queue), "kind": kind},
         )
     digest = hashlib.sha256(
@@ -728,12 +356,7 @@ def item_id_for(queue: str, kind: str, identity: Mapping[str, Any]) -> str:
 
 
 def _assert_declared_queue(queue: str) -> str:
-    """Refuse a queue the split does not declare, naming the ones it does.
-
-    This is what gives the split teeth. Without it, ``SURFACES`` would be a
-    comment: anything could be pushed into the queue, including the outputs the
-    table exists to keep OUT of it.
-    """
+    """Refuse a queue the split does not declare, naming the ones it does."""
     value = str(queue)
     if value not in adjudicated_queues():
         raise refuse(
@@ -744,16 +367,13 @@ def _assert_declared_queue(queue: str) -> str:
                 "declare the queue in core.review together with the reason it is "
                 "an adjudication surface rather than an output",
             ),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"queue": value, "declared": list(adjudicated_queues())},
         )
     return value
 
 
-# ---------------------------------------------------------------------------
 # Storage
-# ---------------------------------------------------------------------------
 
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS review_schema (version INTEGER NOT NULL)",
@@ -777,12 +397,9 @@ _SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS review_open ON review_items (queue, verdict, ordinal)",
     "CREATE UNIQUE INDEX IF NOT EXISTS review_order ON review_items (ordinal)",
-    # WHAT A PRODUCER'S ROUND LEFT UNOFFERED, per group (R-790). A label sweep
-    # offers a window of a label's newest releases and counts the rest here, so
-    # a person can see there is more and raise the window for that label. It is
-    # not an item and is never decided. ADDITIVE, SO ``SCHEMA_VERSION`` DOES NOT
-    # MOVE: a build that predates the table never reads it, and a version bump
-    # would refuse every existing queue over a table that changes no verdict.
+    # What a producer's round left unoffered, per group (R-790); never an item.
+    # ADDITIVE, so ``SCHEMA_VERSION`` does not move: an older build never reads
+    # it, and a bump would refuse every existing queue over it.
     """
     CREATE TABLE IF NOT EXISTS offer_rounds (
         queue      TEXT NOT NULL,
@@ -794,16 +411,10 @@ _SCHEMA = (
         PRIMARY KEY (queue, run_id, group_key)
     )
     """,
-    # WHAT A PRODUCER WITHHELD FROM A QUEUE, AND WHY (R-798). A label sweep's
-    # genre gate holds back a release that is not the kind of music its label is
-    # followed for. A hold is not an item: it is never listed for a decision and
-    # never decided. It is not a suppression either: nothing here keeps a
-    # release out for good, and a person can return one to the queue. The row
-    # carries what would have been filed, so returning it needs no producer.
-    # A candidate already filed and still open can be taken back into one
-    # (R-815): its item row is deleted in the transaction that writes the hold.
-    # ADDITIVE, on the reasoning ``offer_rounds`` gives, so ``SCHEMA_VERSION``
-    # does not move.
+    # What a producer withheld from a queue, and why (R-798). Neither an item nor
+    # a suppression: a person can return it, and the row carries what would have
+    # been filed. An open item taken back into a hold (R-815) is deleted in the
+    # same transaction. Additive, as above.
     """
     CREATE TABLE IF NOT EXISTS held_offers (
         queue      TEXT NOT NULL,
@@ -822,14 +433,9 @@ _SCHEMA = (
         PRIMARY KEY (queue, item_id)
     )
     """,
-    # THE HIGHEST ORDINAL A DELETED ITEM EVER HELD (R-815). Until an item could
-    # be taken back into a hold no row was ever deleted, and the next ordinal
-    # was one past the highest in the table. Deleting the newest item would
-    # hand its ordinal to the next one filed, and a reader holding a cursor at
-    # the old highest, ``review list --after``, would never be shown it. One
-    # row, raised and never lowered. ADDITIVE, on the reasoning ``offer_rounds``
-    # gives. A build that predates it allocates from the items alone, which is
-    # the old behaviour and no worse than it was.
+    # The highest ordinal a deleted item ever held (R-815), one row, raised and
+    # never lowered, so a deleted newest item's ordinal is never reused past a
+    # reader's ``after`` cursor. Additive, as above.
     """
     CREATE TABLE IF NOT EXISTS ordinal_floor (
         id      INTEGER PRIMARY KEY CHECK (id = 1),
@@ -839,8 +445,7 @@ _SCHEMA = (
 )
 
 #: The next ordinal, as a scalar subquery: one past the highest any item holds
-#: or ever held. Spelled once, because the two writers that insert an item must
-#: not come to allocate differently.
+#: or ever held. Spelled once, so the two inserting writers agree.
 _NEXT_ORDINAL = (
     "(SELECT MAX(COALESCE((SELECT MAX(ordinal) FROM review_items), 0), "
     "COALESCE((SELECT MAX(ordinal) FROM ordinal_floor), 0)) + 1)"
@@ -848,20 +453,11 @@ _NEXT_ORDINAL = (
 
 
 def _own_only(path: Path) -> None:
-    """Force owner only permissions on one file, tolerating absence.
+    """Force owner only permissions on one file, tolerating absence only.
 
-    SQLite creates the database and its sidecars itself, and everything it
-    creates inherits the umask. Under a permissive umask that is a world readable
-    queue of everything a person has decided about their library, and a world
-    WRITABLE one is worse: the directory mode governs unlink and rename, so the
-    file mode alone would prove nothing (P1).
-
-    Absence is normal rather than exceptional: a database with no uncheckpointed
-    transactions legitimately has no log beside it. ABSENCE ONLY, and that is the
-    whole of the narrowing: tolerating every operating system error meant a chmod
-    the filesystem declined left a world readable queue of everything a person
-    has decided about their library, with nothing raised, on exactly the
-    platforms where the mode is the only protection there is.
+    SQLite creates the database and sidecars under the umask, which could leave
+    a world readable queue of a person's decisions (P1). A missing file is
+    normal (no log beside a checkpointed database); any other failure refuses.
     """
     if not hasattr(os, "chmod"):  # pragma: no cover - platforms without POSIX modes
         return
@@ -881,20 +477,17 @@ def _own_only(path: Path) -> None:
                 "put the library on a filesystem that carries POSIX modes, or "
                 "correct the ownership of the review directory",
             ),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"path": str(path), "mode": config.PRIVATE_FILE_MODE},
         ) from exc
 
 
 class ReviewStore(PrivateStore):
-    """The connection to the queue, on the job engine's pragmas, deliberately.
+    """The connection to the queue, on the job engine's pragmas.
 
-    ``synchronous=FULL`` because a verdict lost to a power cut is a question a
-    person is asked again, and a busy timeout because two processes writing
-    verdicts should serialize rather than raise at a user. Every write here is
-    a read then write, allocate the next ordinal or read a verdict before
-    replacing it, which is what the immediate transaction is for.
+    ``synchronous=FULL`` because a lost verdict is a question asked again, and a
+    busy timeout so two writers serialize. Every write is a read then write,
+    hence the immediate transaction.
     """
 
     _own_only = staticmethod(_own_only)
@@ -910,12 +503,7 @@ def queue_path(cfg: config.Config) -> Path:
 
 
 def open_store(cfg: config.Config | None = None, *, path: Path | None = None) -> ReviewStore:
-    """Open, and create if needed, the queue. Directory mode included.
-
-    The directory goes through the config module's private directory helper
-    rather than through ``Path.mkdir``, which applies the umask to the mode it is
-    given and creates intermediate levels at 0777 regardless.
-    """
+    """Open, and create if needed, the queue, its directory made private by config."""
     resolved = path or queue_path(cfg or config.load())
     config.mkdir_private(resolved.parent)
     store = ReviewStore(resolved)
@@ -941,34 +529,20 @@ def _initialize(store: ReviewStore) -> None:
                 "settle the outstanding items with the version that wrote them, or "
                 "export them and import the export into this one",
             ),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"found": found, "expected": SCHEMA_VERSION},
         )
 
 
-# ---------------------------------------------------------------------------
 # Reading
-# ---------------------------------------------------------------------------
 
 
 def _coerce_verdict(raw: str | None) -> Verdict | None:
     """Read a stored verdict, degrading an unrecognized one into UNRESOLVED.
 
-    The direction is the load bearing half, and it is the opposite of the job
-    engine's for the same reason the job engine's is what it is. There, an
-    unknown state must not become a terminal one, because a false success is
-    undetectable. Here, an unknown verdict must not become a decision, because a
-    decision nobody made is worse than a question asked twice.
-
-    EVERY SQL CONSUMER AGREES WITH THIS, through ``_UNRESOLVED``. They used to ask
-    the raw column whether it was NULL, which is a different question, and the
-    queue is library scoped by KTD21 so two installations at different versions
-    share one queue and the difference is reachable. An item carrying a verdict a
-    newer build wrote was then not listed, not counted, refused a resolution with
-    a message that was factually false, and left unchanged by ``clear``: settled
-    according to the storage and unresolved according to the reader, which is P2
-    exactly, and unreachable by every route.
+    An unknown verdict must not become a decision: a decision nobody made is
+    worse than a question asked twice. Every SQL reader agrees through
+    ``_UNRESOLVED``, because two builds share one library scoped queue (KTD21).
     """
     if not raw:
         return None
@@ -979,9 +553,7 @@ def _coerce_verdict(raw: str | None) -> Verdict | None:
 
 
 #: The SQL predicate for "this build considers the item unresolved", and its
-#: values. DERIVED from ``Verdict`` rather than spelled, so a third verdict is
-#: added in one place: a member added to the enum and forgotten here would make
-#: every listing disagree with every reader again.
+#: values. Derived from ``Verdict``, so a new verdict is added in one place.
 _UNRESOLVED = (
     f"(verdict IS NULL OR verdict NOT IN ({', '.join('?' for _ in Verdict)}))",
     tuple(str(member) for member in Verdict),
@@ -989,12 +561,7 @@ _UNRESOLVED = (
 
 
 def _payload_of(raw: str) -> dict[str, Any]:
-    """A stored payload as every reader is shown it. Never anything but a dict.
-
-    Text that is not JSON, and JSON that is not an object, are both the empty
-    payload. One reader, so a write that starts from the stored payload starts
-    from what a caller listing the item saw.
-    """
+    """A stored payload as every reader is shown it: a dict, else empty."""
     try:
         payload = json.loads(raw)
     except ValueError:
@@ -1029,11 +596,7 @@ def _item_from_row(row: sqlite3.Row) -> Item:
 
 
 def get(store: ReviewStore, item_id: str) -> Item:
-    """One item, or refuse naming the identifier that did not resolve.
-
-    Returning None would make a mistyped identifier indistinguishable from an
-    empty queue, and the user's next move after each of those is different.
-    """
+    """One item, or refuse naming the identifier, so a typo is not an empty queue."""
     row = store.conn.execute(
         "SELECT * FROM review_items WHERE item_id = ?", (item_id,)
     ).fetchone()
@@ -1042,25 +605,17 @@ def get(store: ReviewStore, item_id: str) -> Item:
             "review-item-unknown",
             f"no review item in this library's queue has the identifier {item_id!r}",
             steps=("list the queue and take the identifier from it",),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"item_id": item_id},
         )
     return _item_from_row(row)
 
 
-#: How many items one page holds when a caller does not say. Chosen to be a
-#: screenful rather than a memory limit: the reason paging exists here is that a
-#: person works through a queue a few at a time, and a run that materialized four
-#: hundred items to show ten has already lost the property.
 def find(store: ReviewStore, item_id: str) -> Item | None:
     """The stored item, or ``None`` when nobody has ever been asked this.
 
-    ONLY AN UNKNOWN ITEM IS AN ABSENCE. Every other refusal of :func:`get` is
-    re-raised, because a store that could not be read is not "nobody was asked",
-    and a producer that read it as one would search and offer again over an
-    answer somebody already gave. One spelling, so the two producers that ask
-    this before offering cannot come to disagree about the reason.
+    ONLY AN UNKNOWN ITEM IS AN ABSENCE. Any other refusal of :func:`get` is
+    raised, since a store that cannot be read is not "nobody was asked".
     """
     try:
         return get(store, item_id)
@@ -1070,6 +625,7 @@ def find(store: ReviewStore, item_id: str) -> Item | None:
         return None
 
 
+#: How many items one page holds by default: a screenful, not a memory limit.
 DEFAULT_PAGE = 50
 
 
@@ -1086,20 +642,10 @@ def list_items(
 ) -> Page:
     """One page of the queue, newest LAST, keyed on the insertion order.
 
-    Unresolved only by default, which is the property the plan's second scenario
-    names: a person who quits partway through a set and comes back is presented
-    with what is left, not with the whole set again.
-
-    ``include_suppressed`` is separate from ``include_resolved`` because a
-    rejection is a decision a person may want to review and revoke, while the
-    accepted items are simply done. Folding the two would make a rejected item
-    reachable only by listing everything.
-
-    A NON-POSITIVE limit is refused rather than interpreted. Zero and minus one
-    crashed in the cursor arithmetic; minus two and below silently dropped items
-    and reported success, because a negative LIMIT is unbounded in SQLite, so
-    those paths read the whole queue and then sliced it in Python. That is the
-    shape this function exists to avoid, arrived at by accident.
+    Unresolved only by default, so a person coming back sees what is left.
+    ``include_suppressed`` is separate from ``include_resolved`` so a rejection
+    can be reviewed and revoked without listing everything. A non-positive
+    limit is refused: SQLite reads a negative LIMIT as unbounded.
     """
     if limit is not None and int(limit) <= 0:
         raise refuse(
@@ -1108,8 +654,7 @@ def list_items(
             f"negative limit is unbounded in SQLite, so it reads the entire queue "
             f"and then discards part of what it read",
             steps=("ask for a positive number of items, or omit the limit for every item",),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"limit": int(limit)},
         )
     where = []
@@ -1118,21 +663,18 @@ def list_items(
         where.append("queue = ?")
         values.append(_assert_declared_queue(queue))
     if kinds:
-        # Normalized on BOTH sides, or a filter typed with one spelling of a kind
-        # silently matches a queue full of the other, which is indistinguishable
-        # from a queue that is already empty.
+        # Normalized on both sides, as ``Predicate.matches`` does.
         where.append(f"kind IN ({', '.join('?' for _ in kinds)})")
         values.extend(normalize_kind(kind) for kind in kinds)
     if handler_key is not None:
         where.append("handler_key = ?")
         values.append(handler_key)
     if not include_resolved:
+        unresolved, unresolved_values = _UNRESOLVED
         if include_suppressed:
-            unresolved, unresolved_values = _UNRESOLVED
             where.append(f"({unresolved} OR verdict = ?)")
             values.extend([*unresolved_values, str(Verdict.REJECTED)])
         else:
-            unresolved, unresolved_values = _UNRESOLVED
             where.append(unresolved)
             values.extend(unresolved_values)
     if after is not None:
@@ -1142,8 +684,7 @@ def list_items(
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     query = f"SELECT * FROM review_items{clause} ORDER BY ordinal"
     if limit is not None:
-        # One more than asked for, so "is there another page" is answered by the
-        # query rather than by a second count that can disagree with it.
+        # One more than asked for, so the query itself answers whether another page exists.
         query += " LIMIT ?"
         values.append(int(limit) + 1)
 
@@ -1157,11 +698,7 @@ def list_items(
 
 
 def count_unresolved(store: ReviewStore, *, queue: str | None = None) -> int:
-    """How many items are still open. A query, never a counter kept beside them.
-
-    A counter and the rows it counts can disagree after a crash. A query cannot,
-    and this number is what the structured output reports as outstanding work.
-    """
+    """How many items are still open. A query, never a counter that can drift."""
     unresolved, values = _UNRESOLVED
     if queue is None:
         row = store.conn.execute(
@@ -1182,13 +719,7 @@ def iter_items(
     include_resolved: bool = False,
     page: int = DEFAULT_PAGE,
 ) -> Iterator[Item]:
-    """Walk the queue a page at a time, holding one page in memory at once.
-
-    Used by batch resolution and by export. Both of those are the operations most
-    likely to meet a queue with thousands of items in it, and both would otherwise
-    be written as "read everything, then filter", which is the shape that makes
-    the paging in ``list_items`` decorative.
-    """
+    """Walk the queue a page at a time, holding one page in memory, for batch and export."""
     cursor: int | None = None
     while True:
         current = list_items(
@@ -1208,9 +739,7 @@ def iter_items(
         cursor = current.next_cursor
 
 
-# ---------------------------------------------------------------------------
 # Writing
-# ---------------------------------------------------------------------------
 
 
 def offer(
@@ -1225,20 +754,11 @@ def offer(
 ) -> Item:
     """Put a candidate in the queue, or return the one that is already there.
 
-    IDEMPOTENT, and that is the whole requirement. A producer re-offering an item
-    a person has already decided must not reopen it, must not overwrite the
-    verdict, and must not create a second row. The source system re-prompts
-    unconditionally every run because there is nothing to be idempotent against.
-
-    The payload of an ALREADY RESOLVED item is left alone. Refreshing it would
-    mean the decision on record was made against something the store no longer
-    shows, which is the staleness the plan digest exists to prevent one layer up.
-
-    THE IDENTITY IS STORED, and a second candidate that hashes onto an existing
-    item with a DIFFERENT identity is refused rather than merged. Merging is the
-    failure that looks most like the feature working: the second producer's
-    candidate silently becomes the first one's, and if the first is already
-    settled the second arrives pre-decided by a person who never saw it.
+    IDEMPOTENT: re-offering a decided item never reopens it, overwrites its
+    verdict or adds a row, and a resolved item keeps the payload it was decided
+    on. An open item takes the newest payload. The identity is stored, and a
+    candidate hashing onto an item with a DIFFERENT identity is refused rather
+    than merged, since a merge could arrive pre-decided.
     """
     declared = _assert_declared_queue(queue)
     item_id = item_id_for(declared, kind, identity)
@@ -1258,17 +778,8 @@ def offer(
                 "VALUES (?, ?, ?, ?, ?, ?, ?, "
                 f"{_NEXT_ORDINAL}, "
                 "NULL, NULL, NULL, ?, ?, NULL)",
-                (
-                    item_id,
-                    declared,
-                    stored_kind,
-                    encoded_identity,
-                    encoded_payload,
-                    encoded_options,
-                    handler_key,
-                    now,
-                    now,
-                ),
+                (item_id, declared, stored_kind, encoded_identity, encoded_payload,
+                 encoded_options, handler_key, now, now),
             )
         else:
             if row["identity"] is not None and row["identity"] != encoded_identity:
@@ -1278,20 +789,14 @@ def offer(
                     f"{item_id}; the one already in the queue was offered for "
                     f"{row['identity']} and this one is for {encoded_identity}, so "
                     f"settling either would settle the other",
-                    remedy=Remedy.REPORT_DEFECT,
-                    origin=("review",),
+                    remedy=Remedy.REPORT_DEFECT, origin=("review",),
                     detail={
-                        "item_id": item_id,
-                        "stored": row["identity"],
-                        "offered": encoded_identity,
+                        "item_id": item_id, "stored": row["identity"], "offered": encoded_identity
                     },
                 )
             if row["verdict"] is None:
-                # Still open, so the newest description of the candidate is the
-                # useful one: a producer that learned more about it since the last
-                # run should show a person what it knows now. The identity is
-                # written too, which backfills an item that arrived through an
-                # import, since the export wire format carries no identity.
+                # Still open: show the newest description. Writing the identity
+                # backfills an imported item, since an export carries none.
                 conn.execute(
                     "UPDATE review_items SET identity = ?, payload = ?, options = ?, "
                     "handler_key = ?, updated = ? WHERE item_id = ?",
@@ -1307,23 +812,13 @@ def redescribe(
 ) -> Item | None:
     """Replace the payload of an item that is STILL OPEN, or None when it is not.
 
-    R-815. For a producer that learned something about a candidate it filed
-    earlier and is not offering it again. :func:`offer` does the same rewrite,
-    and it INSERTS when the row is gone, which is right for a producer that is
-    filing and wrong for one that is only describing: a candidate taken back
-    into a hold a moment ago would be filed again beside its own hold.
-
-    ONLY OVER AN EMPTY VERDICT COLUMN, inside the write, on the rule
-    :func:`supersede` states. A decided item keeps the payload it was decided
-    on, an item carrying a verdict this build cannot read keeps its own, and an
-    identifier nothing answers to creates nothing. Each is None.
-
-    A CALLABLE CHANGES THE PAYLOAD AS IT STANDS (R-840). It is handed the open
-    item's payload, read under the write lock this function already takes, and
-    returns the payload to write, or None to write nothing. That is the form
-    for a caller changing some fields and keeping the rest: built from a
-    payload it read earlier, the same write takes back whatever another writer
-    put on the item in between. It is not called for an item that is not open.
+    For a producer describing a candidate it is not offering again (R-815);
+    :func:`offer` would insert a row that is gone, filing a candidate beside its
+    own hold. Only over an empty verdict column, inside the write, as
+    :func:`supersede`: a decided or unreadable verdict and an unknown identifier
+    are each None. A CALLABLE is handed the open item's payload under the write
+    lock and returns the payload to write, or None for nothing (R-840), so a
+    caller changing some fields does not take back another writer's.
     """
     with store.immediate() as conn:
         if callable(payload):
@@ -1346,596 +841,12 @@ def redescribe(
     return get(store, item_id) if changed else None
 
 
-@dataclass(frozen=True, slots=True)
-class Round:
-    """How much one producer's round left unoffered in one group (R-790)."""
-
-    queue: str
-    run_id: str
-    group: str
-    name: str
-    beyond: int
-    created: str
-
-
-def record_round(
-    store: ReviewStore,
-    *,
-    queue: str,
-    run_id: str,
-    group: str,
-    name: str,
-    beyond: int,
-) -> Round:
-    """Record what a round left beyond its offer, replacing that run's earlier answer.
-
-    REPLACED, NOT ADDED. A resumed item runs its round again under the same run
-    id, and its second answer is a count of the same catalogue, so summing the
-    two would report the back catalogue twice.
-    """
-    declared = _assert_declared_queue(queue)
-    now = timestamp()
-    with store.immediate() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO offer_rounds "
-            "(queue, run_id, group_key, group_name, beyond, created) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (declared, run_id, group, name, int(beyond), now),
-        )
-    return Round(
-        queue=declared, run_id=run_id, group=group, name=name, beyond=int(beyond), created=now
-    )
-
-
 #: The payload field a producer stamps with the run that filed an item (R-790).
-#: The label sweep is the one producer that does; an item filed before it did,
-#: or by another producer, carries none and groups as an unrecorded run.
+#: An item without it groups as an unrecorded run.
 RUN_FIELD = "sweep_run"
 
-#: What ``review list --group-by`` can group each queue by: the payload field
-#: holding a group's key, and the one holding its display name, if any.
-GROUPINGS: Mapping[str, Mapping[str, tuple[str, str | None]]] = {
-    "label-release": {"label": ("label_id", "label_name"), "run": (RUN_FIELD, None)},
-}
-
-#: The kinds a grouping counts when the caller names none. The label-release
-#: queue also holds the label NAMES harvest files, ``harvested-label``, which
-#: carry neither a label identifier nor a run and would collapse into one
-#: nameless group beside the releases a person is counting.
-GROUPED_KINDS: Mapping[str, tuple[str, ...]] = {"label-release": ("label-release",)}
-
-
-def grouped(
-    store: ReviewStore,
-    *,
-    queue: str,
-    by: str,
-    kinds: Sequence[str] | None = None,
-    include_resolved: bool = False,
-    include_suppressed: bool = False,
-) -> list[dict[str, Any]]:
-    """One row per group of ``queue``, counting the items the same filters list.
-
-    READS THE WHOLE SELECTION, a page at a time, because a count per group
-    over one page would be a count of the page. Rows also come from recorded
-    rounds, so a label whose window is full of decided items still shows how
-    much of its catalogue it never offered.
-
-    ``beyond`` is the recorded count of releases a round never examined, less
-    each a label sweep read as plainly another label's by its copyright line
-    (U238): for a label, its latest round's; for a run, the sum over the labels
-    it swept.
-    None where nothing was recorded, which is not the same answer as zero.
-
-    ``held`` is how many candidates of the group a producer is withholding from
-    the queue now (R-798): for a label, its holds in force; for a run, the ones
-    that run first held. A group with holds and no items still gets its row,
-    because a label whose every listed release was held is exactly the label a
-    person needs to see.
-    """
-    declared = _assert_declared_queue(queue)
-    fields = GROUPINGS.get(declared, {}).get(by)
-    if fields is None:
-        raise refuse(
-            "review-selection-invalid",
-            f"the {declared} queue cannot be grouped by {by!r}; it groups by "
-            f"{', '.join(sorted(GROUPINGS.get(declared, {}))) or 'nothing'}",
-            steps=("group the label-release queue by label or by run",),
-            scope=Scope.RUN,
-            origin=("review",),
-            detail={"queue": declared, "group_by": by},
-        )
-    key_field, name_field = fields
-    kinds = kinds or GROUPED_KINDS.get(declared)
-    counts: dict[Any, int] = {}
-    names: dict[Any, str] = {}
-    labels_per_run: dict[Any, set[str]] = {}
-    label_key = GROUPINGS[declared].get("label", (None, None))[0]
-    cursor: int | None = None
-    while True:
-        page = list_items(
-            store,
-            queue=declared,
-            kinds=kinds,
-            include_resolved=include_resolved,
-            include_suppressed=include_suppressed,
-            limit=DEFAULT_PAGE,
-            after=cursor,
-        )
-        for item in page.items:
-            key = item.payload.get(key_field) or None
-            counts[key] = counts.get(key, 0) + 1
-            if name_field and item.payload.get(name_field):
-                names.setdefault(key, str(item.payload[name_field]))
-            if by == "run" and label_key and item.payload.get(label_key):
-                labels_per_run.setdefault(key, set()).add(str(item.payload[label_key]))
-        if page.next_cursor is None:
-            break
-        cursor = page.next_cursor
-    recorded = rounds(store, queue=declared)
-    withheld = holds(store, queue=declared)
-    held: dict[Any, int] = {}
-    if by == "label":
-        latest: dict[Any, Round] = {}
-        for found in recorded:
-            latest[found.group] = found
-            names.setdefault(found.group, found.name)
-        for one in withheld:
-            key = one.group or None
-            held[key] = held.get(key, 0) + 1
-            names.setdefault(key, one.name)
-        keys = sorted(
-            set(counts) | set(latest) | set(held),
-            key=lambda k: (names.get(k) or str(k or "")).casefold(),
-        )
-        return [
-            {
-                "label": key,
-                "label_name": names.get(key, ""),
-                "items": counts.get(key, 0),
-                "beyond": latest[key].beyond if key in latest else None,
-                "swept": latest[key].run_id if key in latest else None,
-                "held": held.get(key, 0),
-            }
-            for key in keys
-        ]
-    beyond_per_run: dict[Any, int] = {}
-    for found in recorded:
-        beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id, 0) + found.beyond
-        labels_per_run.setdefault(found.run_id, set()).add(found.group)
-    for one in withheld:
-        key = one.run_id or None
-        held[key] = held.get(key, 0) + 1
-        if one.group:
-            labels_per_run.setdefault(key, set()).add(one.group)
-    keys = list(counts) + [key for key in beyond_per_run if key not in counts]
-    keys += [key for key in held if key not in keys]
-    return [
-        {
-            "run": key,
-            "items": counts.get(key, 0),
-            "labels": len(labels_per_run.get(key, set())),
-            "beyond": beyond_per_run.get(key),
-            "held": held.get(key, 0),
-        }
-        for key in keys
-    ]
-
-
-def rounds(store: ReviewStore, *, queue: str) -> tuple[Round, ...]:
-    """Every recorded round for ``queue``, oldest first."""
-    rows = store.conn.execute(
-        "SELECT * FROM offer_rounds WHERE queue = ? ORDER BY created, run_id, group_key",
-        (_assert_declared_queue(queue),),
-    ).fetchall()
-    return tuple(
-        Round(
-            queue=row["queue"],
-            run_id=row["run_id"],
-            group=row["group_key"],
-            name=row["group_name"],
-            beyond=int(row["beyond"]),
-            created=row["created"],
-        )
-        for row in rows
-    )
-
-
-# ---------------------------------------------------------------------------
-# Held offers: what a producer withheld from a queue, and can be returned
-# ---------------------------------------------------------------------------
-
-#: A hold in force. The producer judges it again on every round that reaches it.
-HOLD_HELD = "held"
-#: A hold a person returned to the queue. Kept, so nothing holds it a second time.
-HOLD_RETURNED = "returned"
-HOLD_STATES: tuple[str, ...] = (HOLD_HELD, HOLD_RETURNED)
-
-
-@dataclass(frozen=True, slots=True)
-class Hold:
-    """One candidate a producer withheld from a queue, with what it would have filed.
-
-    ``item_id`` is the identifier the candidate would carry as an item, so a
-    hold and the item it becomes are addressed by one value. ``reason`` is the
-    sentence a person reads and ``detail`` is what the producer judged on, kept
-    so it can judge again without asking anybody.
-    """
-
-    queue: str
-    item_id: str
-    kind: str
-    identity: dict[str, Any]
-    payload: dict[str, Any]
-    group: str
-    name: str
-    reason: str
-    detail: dict[str, Any]
-    state: str
-    run_id: str
-    created: str
-    updated: str
-
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "queue": self.queue,
-            "item_id": self.item_id,
-            "kind": self.kind,
-            "identity": dict(self.identity),
-            "payload": dict(self.payload),
-            "group": self.group,
-            "name": self.name,
-            "reason": self.reason,
-            "detail": dict(self.detail),
-            "state": self.state,
-            "run": self.run_id,
-            "created": self.created,
-            "updated": self.updated,
-        }
-
-
-def _hold_of(row: sqlite3.Row) -> Hold:
-    def decoded(text: str) -> dict[str, Any]:
-        # A COLUMN THIS BUILD CANNOT READ IS AN EMPTY MAP, NEVER A CRASH. The
-        # row still names the release and says it is held, which is what a
-        # listing needs, and a producer that finds no recorded words judges
-        # nothing from it rather than releasing the hold.
-        try:
-            found = json.loads(text)
-        except ValueError:
-            return {}
-        return found if isinstance(found, dict) else {}
-
-    return Hold(
-        queue=row["queue"],
-        item_id=row["item_id"],
-        kind=row["kind"],
-        identity=decoded(row["identity"]),
-        payload=decoded(row["payload"]),
-        group=row["group_key"],
-        name=row["group_name"],
-        reason=row["reason"],
-        detail=decoded(row["detail"]),
-        state=row["state"],
-        run_id=row["run_id"],
-        created=row["created"],
-        updated=row["updated"],
-    )
-
-
-def _held_row(store: ReviewStore, queue: str, item_id: str) -> sqlite3.Row | None:
-    return store.conn.execute(
-        "SELECT * FROM held_offers WHERE queue = ? AND item_id = ?", (queue, item_id)
-    ).fetchone()
-
-
-#: The payload field a hold carries when its candidate was TAKEN BACK OUT OF THE
-#: QUEUE by :func:`withhold`, where a hold a producer made on a candidate it
-#: never filed carries none (R-815). The difference matters to whoever would
-#: drop a hold: a candidate never filed goes back to being unexamined, and one
-#: that was in front of a person must not vanish from both places.
-WITHHELD_FIELD = "withheld_from_review"
-
-#: The payload fields a refresh carries over from the hold it replaces, when
-#: the new payload does not name them. Both are facts about the candidate's
-#: history that the producer refreshing a hold does not know: it describes
-#: every hold as a candidate it never filed.
-_CARRIED_ACROSS_A_REFRESH: tuple[str, ...] = (RUN_FIELD, WITHHELD_FIELD)
-
-
-def _put_hold(
-    store: ReviewStore,
-    conn: sqlite3.Connection,
-    *,
-    queue: str,
-    item_id: str,
-    kind: str,
-    identity: str,
-    payload: Mapping[str, Any],
-    group: str,
-    name: str,
-    reason: str,
-    detail: Mapping[str, Any],
-    run_id: str,
-    state: str,
-) -> None:
-    """Write one hold row inside the caller's transaction. THE ONE WRITER.
-
-    :func:`hold` and :func:`withhold` both make a hold, and two spellings of
-    one row are how the two come to disagree about a column.
-
-    No row yet: it is inserted in ``state``. A hold IN FORCE is refreshed: what
-    the producer knows now replaces the payload, the reason and what it judged
-    on, and the run and the time it was first made are kept. A hold a person
-    RETURNED is left exactly as it is.
-    """
-    now = timestamp()
-    encoded_detail = json.dumps(dict(detail), sort_keys=True)
-    row = _held_row(store, queue, item_id)
-    if row is None:
-        conn.execute(
-            "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
-            "group_key, group_name, reason, detail, state, run_id, created, updated) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                queue,
-                item_id,
-                kind,
-                identity,
-                json.dumps(dict(payload), sort_keys=True),
-                group,
-                name,
-                reason,
-                encoded_detail,
-                state,
-                run_id,
-                now,
-                now,
-            ),
-        )
-    elif row["state"] == HOLD_HELD:
-        refreshed = dict(payload)
-        replaced = _hold_of(row).payload
-        for carried in _CARRIED_ACROSS_A_REFRESH:
-            if replaced.get(carried) and not refreshed.get(carried):
-                refreshed[carried] = replaced[carried]
-        conn.execute(
-            "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
-            "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-            (
-                json.dumps(refreshed, sort_keys=True),
-                group,
-                name,
-                reason,
-                encoded_detail,
-                now,
-                queue,
-                item_id,
-            ),
-        )
-
-
-def hold(
-    store: ReviewStore,
-    *,
-    queue: str,
-    kind: str,
-    identity: Mapping[str, Any],
-    payload: Mapping[str, Any],
-    group: str,
-    name: str,
-    reason: str,
-    detail: Mapping[str, Any],
-    run_id: str,
-    returned: bool = False,
-) -> Hold:
-    """Withhold one candidate from ``queue``, or refresh the hold already there.
-
-    ``returned`` RECORDS A PERSON'S ANSWER WHERE NO HOLD EXISTS YET: the row is
-    made already returned, in one write, for a candidate that is in the queue
-    and that a later judgment must not hold. It changes nothing about a row
-    that is already there.
-
-    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN. Its row is handed back as it
-    stands, state and all, so the producer that asked can see its hold did not
-    take. Returning is the person overruling the producer, and a later round
-    that overruled them back would undo an answer nobody asked it to revisit.
-
-    THE FIRST ROUND STAYS THE HOLDING ROUND. A refresh rewrites what the
-    producer knows now, the payload, the reason and what it judged on, and
-    keeps the run and the time the hold was first made, so a count of what one
-    round held does not move when a later round looks at the same release.
-
-    A REFRESH KEEPS WHAT THE REPLACED PAYLOAD SAID OF THE CANDIDATE'S HISTORY,
-    when the new payload does not say it (R-815): the run it was filed under,
-    and that it was taken back out of the queue. A candidate :func:`withhold`
-    took back carries both, and the producer that refreshes its hold describes
-    it as a candidate never filed. Dropped, a return would file it under the
-    round that held it, which filed nothing, and nothing could tell it from a
-    candidate no person was ever shown.
-    """
-    declared = _assert_declared_queue(queue)
-    item_id = item_id_for(declared, kind, identity)
-    with store.immediate() as conn:
-        _put_hold(
-            store,
-            conn,
-            queue=declared,
-            item_id=item_id,
-            kind=normalize_kind(kind),
-            identity=canonical_json(normalize_identity(identity)),
-            payload=payload,
-            group=group,
-            name=name,
-            reason=reason,
-            detail=detail,
-            run_id=run_id,
-            state=HOLD_RETURNED if returned else HOLD_HELD,
-        )
-    return _hold_of(_held_row(store, declared, item_id))
-
-
-def withhold(
-    store: ReviewStore,
-    item_id: str,
-    *,
-    group: str,
-    name: str,
-    reason: str,
-    detail: Mapping[str, Any],
-    run_id: str,
-) -> Hold | None:
-    """Move one OPEN item out of its queue and into a hold, or None when it may not.
-
-    R-815. A producer that judges a candidate ALREADY FILED, and finds it would
-    not have filed it, takes it back: the item's row is deleted and a hold is
-    written carrying what the item carried, so returning it files the same
-    thing. Not a verdict. A superseded item would still be an item, and the
-    producer that reads "is there an item" to decide whether a candidate was
-    offered would read this one as offered and drop its hold.
-
-    ONE TRANSACTION, BOTH WRITES. A hold written beside an item still in the
-    queue is a candidate a person can decide while a listing says it is held,
-    and an item deleted with no hold written is a candidate nothing offers and
-    nothing holds.
-
-    ONLY OVER AN EMPTY VERDICT COLUMN, on the rule :func:`supersede` states. An
-    accepted, a rejected and a superseded item stand, and so does one carrying
-    a verdict this build cannot read: on a queue two builds share, that is a
-    decision somebody made. The check is inside the transaction, so an item a
-    person decides while a producer is judging it is theirs.
-
-    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN, the rule :func:`hold` keeps.
-    The item stays where it is and None is the answer.
-
-    None for an identifier nothing answers to, too. Each None means the same
-    thing to a caller: nothing was moved.
-
-    THE HOLD SAYS IT WAS TAKEN BACK, under :data:`WITHHELD_FIELD` on its
-    payload, and a refresh keeps the word. A hold beside an open item, the
-    state two writes of an earlier build can leave, is refreshed and keeps the
-    run that first held it.
-
-    AN ITEM THAT ARRIVED BY IMPORT CARRIES NO IDENTITY, and its hold then
-    carries an empty one. The hold is still found by the item's identifier,
-    which is all a return asks, and its payload still names the candidate.
-    """
-    with store.immediate() as conn:
-        row = conn.execute(
-            "SELECT queue, kind, identity, payload, verdict, ordinal FROM review_items "
-            "WHERE item_id = ?",
-            (item_id,),
-        ).fetchone()
-        if row is None or row["verdict"] is not None:
-            return None
-        queue = row["queue"]
-        standing = _held_row(store, queue, item_id)
-        if standing is not None and standing["state"] == HOLD_RETURNED:
-            return None
-        try:
-            carried = json.loads(row["payload"])
-        except ValueError:
-            carried = {}
-        _put_hold(
-            store,
-            conn,
-            queue=queue,
-            item_id=item_id,
-            kind=row["kind"],
-            identity=row["identity"] if row["identity"] is not None else "{}",
-            payload={**(carried if isinstance(carried, dict) else {}), WITHHELD_FIELD: True},
-            group=group,
-            name=name,
-            reason=reason,
-            detail=detail,
-            run_id=run_id,
-            state=HOLD_HELD,
-        )
-        # THE FLOOR BEFORE THE DELETE, so the ordinal this row held is never
-        # handed to a later item. See ``ordinal_floor`` in the schema.
-        conn.execute(
-            "INSERT INTO ordinal_floor (id, ordinal) VALUES (1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET ordinal = MAX(ordinal, excluded.ordinal)",
-            (int(row["ordinal"]),),
-        )
-        conn.execute(
-            "DELETE FROM review_items WHERE item_id = ? AND verdict IS NULL", (item_id,)
-        )
-    return _hold_of(_held_row(store, queue, item_id))
-
-
-def find_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
-    """The hold on ``item_id`` in any state, or None when nothing ever held it."""
-    row = _held_row(store, _assert_declared_queue(queue), item_id)
-    return _hold_of(row) if row is not None else None
-
-
-def holds(
-    store: ReviewStore,
-    *,
-    queue: str,
-    states: Sequence[str] = (HOLD_HELD,),
-    group: str | None = None,
-) -> tuple[Hold, ...]:
-    """Every hold on ``queue`` in one of ``states``, oldest first.
-
-    ``group`` narrows it to one group's, a label's for the label-release queue.
-    """
-    wanted = tuple(states)
-    marks = ", ".join("?" for _ in wanted)
-    narrowed = " AND group_key = ?" if group is not None else ""
-    rows = store.conn.execute(
-        f"SELECT * FROM held_offers WHERE queue = ? AND state IN ({marks}){narrowed} "
-        f"ORDER BY created, item_id",
-        (_assert_declared_queue(queue), *wanted, *((group,) if group is not None else ())),
-    ).fetchall()
-    return tuple(_hold_of(row) for row in rows)
-
-
-def release_hold(store: ReviewStore, *, queue: str, item_id: str) -> bool:
-    """Drop a hold IN FORCE, because its producer filed the candidate after all.
-
-    True when a row was dropped. A returned hold is kept: it is the record that
-    a person overruled the producer, and the only thing that stops a later
-    round, or a later verb reading the same judgment, from holding it again.
-    """
-    with store.immediate() as conn:
-        dropped = conn.execute(
-            "DELETE FROM held_offers WHERE queue = ? AND item_id = ? AND state = ?",
-            (_assert_declared_queue(queue), item_id, HOLD_HELD),
-        )
-        return dropped.rowcount > 0
-
-
-def return_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
-    """Mark a hold returned by a person, and hand it back, or None for no such hold.
-
-    THE MARK ONLY. Filing the candidate is the caller's, through :func:`offer`
-    and the producer's own key, and it comes FIRST: a hold marked returned whose
-    item was never filed would be a release nothing holds and nothing offers.
-    A hold already returned is handed back unchanged, so a second ask is the
-    same answer.
-    """
-    declared = _assert_declared_queue(queue)
-    with store.immediate() as conn:
-        row = _held_row(store, declared, item_id)
-        if row is None:
-            return None
-        if row["state"] != HOLD_RETURNED:
-            conn.execute(
-                "UPDATE held_offers SET state = ?, updated = ? WHERE queue = ? AND item_id = ?",
-                (HOLD_RETURNED, timestamp(), declared, item_id),
-            )
-    return _hold_of(_held_row(store, declared, item_id))
-
-
 def identity_of(store: ReviewStore, item_id: str) -> dict[str, Any] | None:
-    """What this item was addressed by, or None for one that arrived by import.
-
-    An identifier derived from a value nobody kept can be audited by nobody. This
-    is what makes a duplicate or a collision detectable AFTER the fact rather
-    than only preventable in advance.
-    """
+    """What this item was addressed by, or None for one that arrived by import."""
     row = store.conn.execute(
         "SELECT identity FROM review_items WHERE item_id = ?", (item_id,)
     ).fetchone()
@@ -1958,27 +869,18 @@ def resolve(
 ) -> Item:
     """Record a person's decision, once.
 
-    An ALREADY RESOLVED item refuses rather than being overwritten, and the
-    refusal names clearing as the way through. Silently replacing a verdict would
-    make "the same decision is never re-asked" mean "the last writer wins", and
-    the two are only the same until two processes disagree.
-
-    An option that the item does not offer refuses too. A verdict pointing at a
-    candidate that was never on the list is a decision about something nobody
-    showed the person.
+    An already resolved item refuses rather than being overwritten; clearing is
+    the way through. An option the item does not offer refuses too.
     """
     if verdict not in PERSON_VERDICTS:
         # The machine's verdict has its own writer with its own invariants: no
-        # option, only over an empty column, the rule named. Letting it in here
-        # would let a batch or an import land it with a candidate and a person
-        # as actor, and nothing downstream could tell that from a rule that ran.
+        # option, only over an empty column, the rule named.
         raise refuse(
             "review-selection-invalid",
             f"{verdict} is not a verdict a person records; it is written by the "
             f"resolution that owns a row, through its own path",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.ITEM,
-            origin=("review",),
+            scope=Scope.ITEM, origin=("review",),
             detail={"item_id": item_id, "verdict": str(verdict)},
         )
     current = get(store, item_id)
@@ -1989,13 +891,8 @@ def resolve(
             f"{current.actor!r}; a verdict is replaced by clearing it first, never "
             f"by writing over it",
             steps=("clear the verdict on this item, then record the new one",),
-            scope=Scope.ITEM,
-            origin=("review",),
-            detail={
-                "item_id": item_id,
-                "verdict": str(current.verdict),
-                "actor": current.actor,
-            },
+            scope=Scope.ITEM, origin=("review",),
+            detail={"item_id": item_id, "verdict": str(current.verdict), "actor": current.actor},
         )
     if option is not None and option not in {o.option_id for o in current.options}:
         raise refuse(
@@ -2003,20 +900,15 @@ def resolve(
             f"{option!r} is not a candidate this item offers; it offers "
             f"{', '.join(o.option_id for o in current.options) or 'none'}",
             steps=("choose one of the candidates the item offers, or record no candidate",),
-            scope=Scope.ITEM,
-            origin=("review",),
+            scope=Scope.ITEM, origin=("review",),
             detail={"item_id": item_id, "option": option},
         )
     now = timestamp()
     unresolved, unresolved_values = _UNRESOLVED
     with store.immediate() as conn:
-        # The verdict is re-checked INSIDE the transaction. The read above is what
-        # produces the good refusal message; this is what makes two processes
-        # racing to answer one item resolve to one winner instead of two.
-        #
-        # The condition is the READER's definition of unresolved, not "the column
-        # is NULL". An item carrying a verdict this build cannot read is presented
-        # as a question, so the answer to that question has to be able to land.
+        # Re-checked inside the transaction, so two racing processes yield one
+        # winner, against the reader's unresolved predicate: an item shown as a
+        # question because its verdict is unreadable can take an answer.
         row = conn.execute(
             f"UPDATE review_items SET verdict = ?, option = ?, actor = ?, decided = ?, "
             f"updated = ? WHERE item_id = ? AND {unresolved}",
@@ -2030,30 +922,17 @@ def resolve(
             f"review item {item_id} was resolved by another process while this one "
             f"was deciding; it is {settled.verdict}, recorded by {settled.actor!r}",
             steps=("re-read the item, and clear its verdict if the decision should change",),
-            scope=Scope.ITEM,
-            origin=("review",),
+            scope=Scope.ITEM, origin=("review",),
             detail={"item_id": item_id, "verdict": str(settled.verdict)},
         )
     return get(store, item_id)
 
 
 def clear(store: ReviewStore, item_id: str, *, actor: str) -> Item:
-    """Revoke a verdict, putting the item back in front of a person.
+    """Revoke a verdict, putting the item back in front of a person (R35, R36).
 
-    The named way out of a rejection. R35 and R36 both require exactly this shape
-    for their own stores: a decline is remembered and never offered again UNTIL
-    the decline is revoked, and a tombstone is listable and revocable. An item
-    that could only be rejected would be a one way door.
-
-    ``actor`` becomes the item's recorded actor, so an open item's actor names
-    whoever last touched it rather than whoever decided it. That is the useful
-    answer for an item nobody has decided: the question a person asks about a
-    reopened item is who reopened it.
-
-    THE EARLY RETURN READS THE RAW COLUMN. It used to read the coerced verdict,
-    so an item carrying a value this build cannot read looked unresolved, and
-    ``clear`` returned without touching the row that was the whole reason
-    somebody was clearing it.
+    ``actor`` becomes the item's recorded actor: who reopened it. The early
+    return reads the raw column, so an unreadable verdict is cleared too.
     """
     current = get(store, item_id)
     if current.stored_verdict is None:
@@ -2071,34 +950,13 @@ def supersede(store: ReviewStore, item_ids: Sequence[str], *, rule: str) -> tupl
     """Retire the OPEN items among these, whose question a later resolution has
     answered by owning the row, recording the rule that did. R-679.
 
-    The verdict written is :attr:`Verdict.SUPERSEDED` and the ``actor`` column
-    carries ``rule``, the resolution slug that owned the row, because the rule is
-    what decided and the column is where a reader looks for who did. ``option``
-    stays empty: the rule owned the row on its own evidence and did not choose
-    among the candidates the item offered, and writing one would claim it had.
-
-    ONLY OVER AN EMPTY COLUMN, which is narrower than ``resolve``'s condition
-    and on purpose. ``resolve`` writes over a verdict this build cannot read,
-    because a person answering a question they were shown must be able to land
-    the answer. This is not a person: it runs on every resolution, and a value a
-    newer build wrote on the shared queue is a decision somebody made on a build
-    that could represent it. Overwriting it here would discard that decision
-    silently, so the raw column has to be NULL, and an ``accepted``, a
-    ``rejected`` or an unreadable verdict all stand.
-
-    NEVER A REFUSAL for an item that is settled or unknown, which is the other
-    difference from ``resolve``. The producer is a resolution walking a list of
-    two hundred rows, asking about every question each row COULD have been
-    asked under: most were never filed, and one a person answered before the
-    rule existed is the expected case, not an error on its path.
-
-    Several at once because that is how the producer asks: one read finds
-    which of the four identities are open, and one guarded write inside one
-    transaction retires them, so a queue where nothing is open costs one read
-    and takes no write lock. Returns the items retired HERE, read back by the
-    stamp this call wrote, so a caller counts what it did and not what it
-    tried, and an item a person settled between the read and the write is
-    theirs.
+    Writes :attr:`Verdict.SUPERSEDED` with ``rule`` as the actor and no option,
+    since the rule chose no candidate. ONLY OVER AN EMPTY COLUMN, narrower than
+    ``resolve``: an unreadable verdict a newer build wrote is a decision, so an
+    accepted, rejected or unreadable verdict stands. Never a refusal for an
+    item settled or unknown; the producer asks about every question a row could
+    have raised. One read finds the open ones and one guarded write retires
+    them, and the items retired HERE are returned, read back by this stamp.
     """
     if not rule:
         raise refuse(
@@ -2106,8 +964,7 @@ def supersede(store: ReviewStore, item_ids: Sequence[str], *, rule: str) -> tupl
             "a superseded item names the rule that owned its row; an empty one "
             "would record that something settled the question and not what",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.ITEM,
-            origin=("review",),
+            scope=Scope.ITEM, origin=("review",),
             detail={"item_ids": list(item_ids)},
         )
     wanted = tuple(dict.fromkeys(str(item_id) for item_id in item_ids))
@@ -2152,19 +1009,9 @@ def resolve_where(
 ) -> tuple[Item, ...]:
     """Resolve every UNRESOLVED item the predicate matches, and nothing else.
 
-    Already resolved items are skipped rather than refused, INCLUDING one that
-    another process settles while this sweep is running. The skip used to be
-    implemented only in the collection filter, so it held within one process and
-    failed the moment a second existed: the loser of any single item raised out
-    of the loop after every verdict before it had already been written, and the
-    caller reported nothing at all. Observed: a sweep that settled two hundred
-    items reported zero and exited 30. A batch is a filter over what is
-    outstanding, and a sweep that cannot say what it did is worse than one that
-    did nothing.
-
-    An EMPTY predicate is refused. ``resolve everything`` typed by accident is one
-    keystroke away from ``resolve this queue``, and the second is recoverable
-    while the first is a person's whole backlog answered without them.
+    An item another process settles or removes mid sweep is skipped, not
+    raised, so the sweep reports what it did. An EMPTY predicate is refused, as
+    it would answer a person's whole backlog without them.
     """
     if predicate.is_empty():
         raise refuse(
@@ -2173,14 +1020,11 @@ def resolve_where(
             "one matches the entire queue, which is a decision nobody made about "
             "items nobody looked at",
             steps=("name a queue, a kind, or a payload field to match on",),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={},
         )
     settled: list[Item] = []
-    # The identifiers are collected first and resolved afterwards, because the
-    # walk is a live query over the same rows the resolution updates: mutating
-    # under an open cursor is how a sweep silently skips half its own matches.
+    # Collected before resolving: mutating under an open cursor skips matches.
     targets = [item.item_id for item in iter_items(store, predicate=predicate)]
     for item_id in targets:
         try:
@@ -2188,286 +1032,24 @@ def resolve_where(
         except CratekitError as exc:
             if exc.cause.reason not in _RACED_OUT_OF_THE_SWEEP:
                 raise
-            # Somebody else settled it, or removed it, between the walk and here.
-            # Both mean "no longer outstanding", which is the one thing this
-            # sweep was selecting for, so it is skipped exactly as an item that
-            # was already settled when the walk ran.
+            # Settled or removed by somebody else since the walk: no longer outstanding.
     return tuple(settled)
 
 
-#: The refusals that mean "this identifier stopped being outstanding", which is
-#: the only class a batch may skip. Anything else is about the BATCH rather than
-#: about one item, and swallowing it would turn a real failure into a short
-#: report nobody questions.
+#: The refusals meaning "this identifier stopped being outstanding", the only
+#: class a batch may skip; anything else is about the batch and is raised.
 _RACED_OUT_OF_THE_SWEEP = frozenset({"review-already-resolved", "review-item-unknown"})
 
 
-# ---------------------------------------------------------------------------
-# Export and import, for anyone who genuinely wants a file
-# ---------------------------------------------------------------------------
-
-
-def export_document(store: ReviewStore, *, queue: str | None = None) -> dict[str, Any]:
-    """Every item, resolved ones included, as a versioned document.
-
-    JSON rather than a comma separated file, and the difference is the point: the
-    thing being replaced is a format a person edits by hand and a program reads
-    back, where a stray column break silently changes what somebody decided. This
-    is a transport, not an editing surface, and importing it goes through the same
-    validation every other write does.
-    """
-    predicate = Predicate(queue=queue) if queue is not None else None
-    return {
-        "export": EXPORT_VERSION,
-        "queue": str(queue) if queue is not None else "",
-        "exported": timestamp(),
-        "items": [
-            item.to_json()
-            for item in iter_items(store, predicate=predicate, include_resolved=True)
-        ],
-    }
-
-
-#: Why one item in a document was not applied. A conflict is FOUR conditions
-#: wearing one name, and a caller that reports them all as "somebody else decided
-#: this differently" is lying about three of them. The remedy differs for each:
-#: re-export from the build that wrote it, fix the file, resolve the disagreement
-#: by hand, or simply run it again.
-CONFLICT_LOCAL_VERDICT_STANDS = "local-verdict-stands"
-CONFLICT_VERDICT_UNREADABLE = "verdict-unreadable"
-CONFLICT_ITEM_UNUSABLE = "item-unusable"
-CONFLICT_NOT_APPLIED = "verdict-not-applied"
-
-
-@dataclass(frozen=True, slots=True)
-class ImportResult:
-    """What an import did, per item, so a caller can report rather than guess.
-
-    ``reasons`` carries one entry per conflict, and every conflict has one. A
-    caller that had only the identifiers had to invent a sentence, and the
-    sentence it invented was true of one case in four.
-
-    An identifier may appear in ``inserted`` AND in ``conflicts``: the row was
-    taken in and the verdict on it was not. Both are facts, and a caller showing
-    the concatenation shows one item twice, so the reporting layer folds them.
-    """
-
-    inserted: tuple[str, ...] = ()
-    resolved: tuple[str, ...] = ()
-    unchanged: tuple[str, ...] = ()
-    conflicts: tuple[str, ...] = ()
-    reasons: Mapping[str, str] = MappingProxyType({})
-
-    @property
-    def applied(self) -> tuple[str, ...]:
-        """Everything that CHANGED here, in document order, each one once."""
-        seen: dict[str, None] = {}
-        for item_id in (*self.inserted, *self.resolved):
-            seen[item_id] = None
-        return tuple(seen)
-
-
-def import_document(
-    store: ReviewStore, document: Mapping[str, Any], *, actor: str
-) -> ImportResult:
-    """Take items and verdicts back in, refusing to overwrite a local decision.
-
-    A CONFLICT is reported and not applied. Two people who both resolved the same
-    item differently is a real situation, and picking one silently is how the
-    losing decision disappears with nobody told. Everything else applies: an item
-    the local queue has never seen is inserted whole, and a verdict on an item
-    that is locally still open is recorded.
-
-    THE IMPORT IS TOTAL. Every item the document carries is attempted, and one
-    that cannot be applied joins the conflicts rather than aborting the run. A
-    partial import that stopped at item forty would leave the queue in a state
-    nobody asked for and report nothing about it, which is the same shape as a
-    refusal that has already written something.
-    """
-    version = document.get("export")
-    if version != EXPORT_VERSION:
-        raise refuse(
-            "review-file-unusable",
-            f"this export says version {version!r} and this build reads "
-            f"{EXPORT_VERSION}; importing across versions would guess at what the "
-            f"other one meant by a verdict",
-            steps=("export again from the build that wrote this file",),
-            scope=Scope.RUN,
-            origin=("review",),
-            detail={"found": version, "expected": EXPORT_VERSION},
-        )
-    inserted: list[str] = []
-    applied: list[str] = []
-    unchanged: list[str] = []
-    reasons: dict[str, str] = {}
-    for raw in document.get("items") or ():
-        if not isinstance(raw, Mapping) or not raw.get("id"):
-            continue
-        item_id = str(raw["id"])
-        incoming = _coerce_verdict(raw.get("verdict"))
-        if raw.get("verdict") and incoming is None:
-            # A verdict this build has no representation for. Reported rather
-            # than dropped: reading it as "no verdict" would silently discard a
-            # decision somebody made, and the file would look imported.
-            reasons[item_id] = CONFLICT_VERDICT_UNREADABLE
-            continue
-        unusable = _unusable_reason(raw)
-        if unusable is not None:
-            # Checked BEFORE anything is written. Two of these shapes used to
-            # leave as a type error and a key error, out of the middle of the
-            # loop, after earlier items had already landed: an import that
-            # cannot say what it did, and cannot be re-run because the good half
-            # is already in.
-            reasons[item_id] = CONFLICT_ITEM_UNUSABLE
-            continue
-        row = store.conn.execute(
-            "SELECT * FROM review_items WHERE item_id = ?", (item_id,)
-        ).fetchone()
-        if row is None:
-            try:
-                _insert_imported(store, raw)
-            except CratekitError:
-                reasons[item_id] = CONFLICT_ITEM_UNUSABLE
-                continue
-            inserted.append(item_id)
-            if incoming is not None and not _apply_incoming(store, item_id, raw, incoming, actor):
-                reasons[item_id] = CONFLICT_NOT_APPLIED
-            continue
-        local = _item_from_row(row)
-        if local.stored_verdict is not None and local.verdict is None:
-            # A local verdict this build cannot READ, which is not the same as no
-            # verdict at all. Applying over it would discard a decision somebody
-            # made on a build that could represent it, with nobody told.
-            reasons[item_id] = CONFLICT_LOCAL_VERDICT_STANDS
-            continue
-        if incoming is None or local.verdict is incoming:
-            unchanged.append(item_id)
-            continue
-        if local.resolved:
-            reasons[item_id] = CONFLICT_LOCAL_VERDICT_STANDS
-            continue
-        if _apply_incoming(store, item_id, raw, incoming, actor):
-            applied.append(item_id)
-        else:
-            reasons[item_id] = CONFLICT_NOT_APPLIED
-    return ImportResult(
-        inserted=tuple(inserted),
-        resolved=tuple(applied),
-        unchanged=tuple(unchanged),
-        conflicts=tuple(reasons),
-        reasons=MappingProxyType(dict(reasons)),
-    )
-
-
-def _unusable_reason(raw: Mapping[str, Any]) -> str | None:
-    """Whether this document item is a shape the queue can take in at all.
-
-    Asked once, up front, so a malformed item is REPORTED rather than raised out
-    of the middle of a total import. Every check here is a positive recognition
-    of a field's type rather than a guess at what a wrong one might do, because
-    the two failures this replaces were both an ordinary Python builtin raising
-    on input it was never given a rule for.
-    """
-    payload = raw.get("payload")
-    if payload is not None and not isinstance(payload, Mapping):
-        return "payload"
-    options = raw.get("options")
-    if options is not None:
-        if not isinstance(options, (list, tuple)):
-            return "options"
-        for option in options:
-            if not isinstance(option, Mapping):
-                return "options"
-            if not option.get("option_id"):
-                # A candidate with no identifier cannot be chosen, and a verdict
-                # naming one is a decision about something nobody can address.
-                return "option_id"
-            detail = option.get("detail")
-            if detail is not None and not isinstance(detail, Mapping):
-                return "option detail"
-    return None
-
-
-def _apply_incoming(
-    store: ReviewStore,
-    item_id: str,
-    raw: Mapping[str, Any],
-    verdict: Verdict,
-    actor: str,
-) -> bool:
-    """Record an incoming verdict, reporting rather than raising when it cannot be.
-
-    The refusals ``resolve`` raises are about THIS item: a candidate the item
-    does not offer, or a race with another process. Neither says anything about
-    the ninety-nine items after it in the file, so neither may end the import.
-    """
-    try:
-        if verdict is Verdict.SUPERSEDED:
-            # The machine's verdict travels under the machine's rules: the
-            # document's actor is the rule, an option it carries is dropped
-            # since a rule chooses no candidate, and an empty rule is refused
-            # by the writer and reported here as not applied.
-            return bool(supersede(store, (item_id,), rule=str(raw.get("actor") or "")))
-        resolve(
-            store,
-            item_id,
-            verdict,
-            option=raw.get("option"),
-            actor=str(raw.get("actor") or actor),
-        )
-    except CratekitError:
-        return False
-    return True
-
-
-def _insert_imported(store: ReviewStore, raw: Mapping[str, Any]) -> None:
-    """Insert an item that arrived from a file, at this queue's own ordinal.
-
-    The ordinal is re-allocated rather than carried across, because it is a
-    position in THIS queue. Importing somebody else's positions would interleave
-    two orderings and make paging skip items on both sides of the join.
-    """
-    queue = _assert_declared_queue(str(raw.get("queue", "")))
-    now = timestamp()
-    options = [
-        Option.from_json(option).to_json()
-        for option in raw.get("options") or ()
-        if isinstance(option, Mapping)
-    ]
-    with store.immediate() as conn:
-        conn.execute(
-            "INSERT INTO review_items (item_id, queue, kind, payload, options, "
-            "handler_key, ordinal, verdict, option, actor, created, updated, decided) "
-            "VALUES (?, ?, ?, ?, ?, ?, "
-            f"{_NEXT_ORDINAL}, "
-            "NULL, NULL, NULL, ?, ?, NULL)",
-            (
-                str(raw["id"]),
-                queue,
-                normalize_kind(str(raw.get("kind", ""))),
-                json.dumps(dict(raw.get("payload") or {}), sort_keys=True),
-                json.dumps(options),
-                str(raw.get("handler_key") or ""),
-                str(raw.get("created") or now),
-                now,
-            ),
-        )
-
-
-# ---------------------------------------------------------------------------
-# The decision stores: declines and tombstones
-# ---------------------------------------------------------------------------
+# The decision stores: declines and tombstones, the one JSON file this module writes
 
 
 @dataclass(frozen=True, slots=True)
 class Suppression:
     """One recorded decision that suppresses something, and its revocation.
 
-    The same record shape as a review item, minus the candidates, because the
-    question has already been answered. A revoked decision is KEPT with its
-    revocation recorded rather than deleted: R36 requires a tombstone to be
-    listable and revocable, and a store that forgets a revocation cannot report
-    that the suppression ever existed.
+    A review item's record shape minus the candidates. A revoked record is KEPT
+    with its revocation, so a tombstone stays listable and revocable (R36).
     """
 
     suppression_id: str
@@ -2475,10 +1057,8 @@ class Suppression:
     payload: Mapping[str, Any]
     actor: str
     recorded: str
-    #: What the identifier was derived from, kept for the reason a review item
-    #: keeps its own: an identifier nobody can trace back cannot be audited, so a
-    #: collision and a duplicate look exactly alike afterwards. Optional, because
-    #: a record written before this field existed is still a valid record.
+    #: What the identifier was derived from, so it can be audited. Optional: a
+    #: record written before this field existed is still valid.
     identity: Mapping[str, Any] | None = None
     revoked: bool = False
     revoked_at: str | None = None
@@ -2517,54 +1097,32 @@ class Suppression:
         )
 
 
-#: The version of the DOCUMENT a decision store writes. Its own constant rather
-#: than the export's, for the reason the export has one separate from the queue's
-#: schema: these are three formats with three sets of readers, and coupling any
-#: two of them forces a bump on people holding the third.
+#: The version of the DOCUMENT a decision store writes. Its own constant, apart
+#: from the export's and the queue's, since each format has its own readers.
 DECISION_STORE_VERSION = 1
 
 
 def decision_store_keys() -> tuple[str, ...]:
-    """The state entries that ARE decision stores, read from the inventory.
+    """The state entries that ARE decision stores, derived from the inventory (P3).
 
-    DERIVED, not transcribed. This was a literal pair with a docstring saying it
-    came from the inventory, which is P3's failure exactly: the name claimed a
-    derivation and the code was a list, so a store added to the inventory would
-    not appear here and a store removed from it would leave this module resolving
-    a path nobody declared a root for. R35's declines and R36's tombstones are the
-    two the plan names, and the inventory is where that is now written down.
+    R35's declines and R36's tombstones are the two the plan names.
     """
     return tuple(sorted(entry.key for entry in config.STATE_FILES if entry.decision_store))
 
 
-#: The same set as a constant, for callers that read it as one. Computed once at
-#: import from the inventory rather than spelled, so the two cannot disagree.
+#: The same set as a constant, computed once at import from the inventory.
 DECISION_STORE_KEYS: tuple[str, ...] = decision_store_keys()
 
 
 class DecisionStore:
     """A revocable set of suppressions, on one of the declared state entries.
 
-    It shares the review item's record shape and its identity rule: a decision is
-    addressed by a content derived identifier, never by a display name, so the
-    thing suppressed can be renamed without the suppression being orphaned.
-
-    It is a document rather than a database, and that is a deliberate difference
-    from the queue rather than an inconsistency. The state inventory declares each
-    of these as one file; a queue is paged through by a person and written by two
-    processes at once, while a decision store is read whole by an acquisition pass
-    to answer "is this suppressed".
-
-    A DOCUMENT IS NOT AN EXCUSE FOR A SINGLE WRITER, and this class used to assert
-    one that nothing enforced and nothing in this product establishes. Recording
-    and revoking are both a read then a write over one file, and
-    ``atomic_write_bytes`` makes the RENAME atomic and does nothing for the cycle
-    around it: two processes both read the same set, both add their own record,
-    and the second rename discards the first one's while the call that lost
-    returns a record reporting success. Eight processes recording twenty five
-    decisions each left seventy one of two hundred on the disk. So every cycle
-    here is taken under a sibling lock, which is what the queue next door gets
-    from ``BEGIN IMMEDIATE``.
+    It shares the review item's identity rule: a content derived identifier,
+    never a display name. A document rather than a database, because the
+    inventory declares each as one file read whole to answer "is this
+    suppressed". Every read then write cycle is taken under a sibling lock, as
+    the queue has ``BEGIN IMMEDIATE``: an atomic rename alone lets a second
+    writer discard the first one's record while both report success.
     """
 
     def __init__(self, key: str, cfg: config.Config) -> None:
@@ -2574,34 +1132,25 @@ class DecisionStore:
                 f"{key!r} is not a declared decision store; declared: "
                 f"{', '.join(DECISION_STORE_KEYS)}",
                 steps=("declare the store in the state inventory before writing it",),
-                scope=Scope.RUN,
-                origin=("review",),
+                scope=Scope.RUN, origin=("review",),
                 detail={"key": key, "declared": list(DECISION_STORE_KEYS)},
             )
         self.key = key
         self.path = config.state_path(key, cfg)
-        #: The sibling lock, on a NEVER_RESTORED entry of its own rather than
-        #: beside the document. The stores are COUPLED, so a restore replaces the
-        #: directory holding them, and a lock inside it would have its inode
-        #: swapped under every process holding it, which is exclusion disappearing
-        #: mid-session with nothing raised.
+        #: The sibling lock, on a NEVER_RESTORED entry of its own: a restore
+        #: replaces the coupled stores' directory, and a lock inside it would
+        #: lose its inode under every process holding it.
         self.lock_path = config.state_path("decision_store_locks", cfg) / f"{key}.lock"
 
     def _unusable(self, what: str, exc: BaseException | None = None) -> CratekitError:
-        """One refusal for every way this document is not this document.
-
-        The message is the same sentence in each case on purpose: what a person
-        does about it does not depend on WHICH way the file is wrong, and the
-        specific shape rides on the detail where a bug report can read it.
-        """
+        """One refusal for every way this document is unusable; the shape rides on the detail."""
         return refuse(
             "review-file-unusable",
             f"the {self.key} store at {self.path.name} could not be read ({what}), "
             f"so what it suppresses is unknown; treating it as empty would "
             f"re-acquire exactly what somebody removed on purpose",
             steps=("repair or restore the store before running anything that consults it",),
-            scope=Scope.RUN,
-            origin=("review",),
+            scope=Scope.RUN, origin=("review",),
             detail={"store": self.key, "problem": what},
         )
 
@@ -2609,17 +1158,10 @@ class DecisionStore:
     def _locked(self) -> Iterator[None]:
         """Hold the sibling lock across one read then write cycle.
 
-        BLOCKING, like the queue's busy timeout: two processes recording
-        decisions should serialize rather than raise at a person. The lock file
-        persists after release, deliberately, for the reason the config lock
-        states at length: unlinking the name lets a second process take a lock on
-        a fresh inode while the first still holds the old one, and both then
-        believe they hold the only lock with nothing raised.
-
-        A PLATFORM WITH NO ADVISORY LOCKING REFUSES, which is the config lock's
-        decision and not a new one. Proceeding unlocked is the behaviour being
-        fixed, so degrading to it on the platform where the fix cannot be applied
-        would leave exactly the defect, reachable by anybody on that platform.
+        BLOCKING, so writers serialize rather than raise at a person. The lock
+        file persists after release, as the config lock's does, so no second
+        process locks a fresh inode. A platform with no advisory locking
+        refuses rather than proceeding unlocked.
         """
         config.mkdir_private(self.lock_path.parent)
         try:
@@ -2631,8 +1173,7 @@ class DecisionStore:
                 f"unlocked loses whatever a second process is writing at the same "
                 f"time, silently, while reporting success",
                 steps=("make the library's state directory writable by this account",),
-                scope=Scope.RUN,
-                origin=("review",),
+                scope=Scope.RUN, origin=("review",),
                 detail={"store": self.key, "lock": str(self.lock_path)},
             ) from exc
         try:
@@ -2641,21 +1182,12 @@ class DecisionStore:
             handle.close()
 
     def _read(self) -> dict[str, Suppression]:
-        """Load the store, treating anything it cannot RECOGNIZE as a refusal.
+        """Load the store, refusing anything it cannot RECOGNIZE.
 
-        An unreadable suppression list read as empty un-suppresses everything in
-        it, silently, and the next acquisition pass then re-acquires exactly what
-        somebody deleted on purpose. The gate half of U8's lesson applies here
-        too: a tolerant reader on a path that governs an action fails open.
-
-        REFUSAL IS THE ONLY ALTERNATIVE TO A CORRECT READ, and that is what this
-        was missing. The guard covered the case where ``json.loads`` itself
-        raised, so every document that was good JSON and was not this store fell
-        through to an empty mapping: a top level list, a scalar, a version this
-        build does not know, ``decisions`` present and null, a record whose
-        identifier key had been renamed. Each one reported that the store
-        suppressed nothing, and the empty result was then handed to the writer, so
-        ONE further record deleted every prior decline from the disk.
+        An unreadable store read as empty un-suppresses everything in it, and the
+        next write would delete every prior decline. So refusal is the only
+        alternative to a correct read, for bad JSON and for good JSON that is not
+        this store alike.
         """
         found, raw = config.read_json_as_text(self.path, self._unusable)
         if not found:
@@ -2674,10 +1206,6 @@ class DecisionStore:
             )
         store = raw.get("store")
         if store != self.key:
-            # A version stamped and never read is a version that proves nothing,
-            # which is what this file had: the queue refuses on
-            # review-schema-mismatch and an import refuses on a version mismatch,
-            # and the third sibling wrote a version and ignored it.
             raise self._unusable(f"it is the {store!r} store and this is {self.key!r}")
         entries = raw.get("decisions")
         if not isinstance(entries, list):
@@ -2691,9 +1219,6 @@ class DecisionStore:
             if not entry.get("id"):
                 raise self._unusable(f"record {position} has no identifier")
             if entry.get("payload") is not None and not isinstance(entry["payload"], Mapping):
-                # Outside the try in the previous version, so this left as an
-                # uncaught type error from inside ``suppresses``, which an
-                # acquisition pass asks once per candidate.
                 raise self._unusable(f"record {position} has a payload that is not a mapping")
             if entry.get("identity") is not None and not isinstance(entry["identity"], Mapping):
                 raise self._unusable(f"record {position} has an identity that is not a mapping")
@@ -2703,8 +1228,7 @@ class DecisionStore:
 
     def _write(self, recorded: Mapping[str, Suppression]) -> None:
         payload = {
-            "version": DECISION_STORE_VERSION,
-            "store": self.key,
+            "version": DECISION_STORE_VERSION, "store": self.key,
             "decisions": [recorded[key].to_json() for key in sorted(recorded)],
         }
         config.atomic_write_bytes(
@@ -2712,34 +1236,19 @@ class DecisionStore:
         )
 
     def record(
-        self,
-        *,
-        kind: str,
-        identity: Mapping[str, Any],
-        payload: Mapping[str, Any] | None = None,
-        actor: str,
-        beside: Sequence[tuple[str, Mapping[str, Any], Mapping[str, Any]]] = (),
+        self, *, kind: str, identity: Mapping[str, Any], payload: Mapping[str, Any] | None = None,
+        actor: str, beside: Sequence[tuple[str, Mapping[str, Any], Mapping[str, Any]]] = (),
     ) -> Suppression:
         """Suppress something, idempotently, and return the record.
 
-        Re-recording an already suppressed thing changes nothing, including its
-        timestamp. Re-recording a REVOKED one re-suppresses it, which is the only
-        way a person changes their mind back.
+        Re-recording a suppressing record changes nothing, timestamp included;
+        re-recording a REVOKED one suppresses it again.
 
-        ``beside`` IS FOR ONE DECISION THAT IS SEVERAL RECORDS, each a (kind,
-        identity, payload). They are written IN THE SAME WRITE as this record and
-        ONLY WHEN THIS RECORD IS WRITTEN. One write, because a caller that undoes
-        its work when this raises would otherwise be left with the first record
-        standing and the thing it suppresses put back. Only then, because a
-        record that already stood is a decision already taken, and a companion a
-        person has since lifted on its own must not come back behind their back.
-        A companion that already stands is left exactly as it is.
-
-        THE WHOLE CYCLE IS UNDER THE LOCK. The read decides what the write
-        contains, so a lock taken around only the write protects nothing: the
-        losing process still writes a set it read before the winner's record
-        existed, and the record it drops is a decline that will now be offered
-        again or a tombstone that will now be re-acquired.
+        ``beside`` holds the other records of one decision, each a (kind,
+        identity, payload), written in the SAME write and ONLY when this record
+        is written, so no half state survives a failure and a companion a person
+        lifted alone does not come back. A companion already standing is left as
+        it is. The whole cycle is under the lock, since the read decides the write.
         """
         identifier = suppression_id_for(self.key, kind, identity)
         with self._locked():
@@ -2762,36 +1271,24 @@ class DecisionStore:
                 if standing is not None and standing.suppressing:
                     continue
                 recorded[other_id] = Suppression(
-                    suppression_id=other_id,
-                    kind=normalize_kind(other_kind),
+                    suppression_id=other_id, kind=normalize_kind(other_kind),
                     identity=normalize_identity(other_identity),
-                    payload=dict(other_payload or {}),
-                    actor=actor,
-                    recorded=suppression.recorded,
+                    payload=dict(other_payload or {}), actor=actor, recorded=suppression.recorded,
                 )
             self._write(recorded)
             return suppression
 
     def revoke(
-        self,
-        suppression_id: str,
-        *,
-        actor: str,
+        self, suppression_id: str, *, actor: str,
         also: Callable[[Suppression, Mapping[str, Suppression]], Iterable[str]] | None = None,
     ) -> Suppression:
         """Lift a suppression, keeping the record of it having existed.
 
-        Under the lock for the same reason ``record`` is, and the cost of losing
-        one is worse: a dropped revocation leaves a suppression standing forever,
-        and nothing ever offers the thing again, so nobody finds out.
-
-        ``also`` NAMES THE OTHER RECORDS THAT GO WITH THIS ONE, and it is asked
-        UNDER THE LOCK, with the records this write is about to replace. A caller
-        that read the store, decided, and then revoked twice would be deciding
-        from a set another process may have added to in between, which is the
-        read outside the lock ``record`` argues against. They are lifted in the
-        same write, so there is no half lifted state to be interrupted in. An
-        identifier it names that is unknown or already lifted is passed over.
+        Under the lock, as ``record`` is: a lost revocation leaves a suppression
+        standing forever. ``also`` names the records that go with this one; it is
+        asked UNDER THE LOCK with the records about to be replaced, and they are
+        lifted in the same write. An identifier it names that is unknown or
+        already lifted is passed over.
         """
         with self._locked():
             recorded = self._read()
@@ -2801,8 +1298,7 @@ class DecisionStore:
                     "review-item-unknown",
                     f"no {self.key} record has the identifier {suppression_id!r}",
                     steps=("list the store and take the identifier from it",),
-                    scope=Scope.RUN,
-                    origin=("review",),
+                    scope=Scope.RUN, origin=("review",),
                     detail={"store": self.key, "suppression_id": suppression_id},
                 )
             if not existing.suppressing:
@@ -2810,17 +1306,7 @@ class DecisionStore:
             lifted_at = timestamp()
 
             def lifted(one: Suppression) -> Suppression:
-                return Suppression(
-                    suppression_id=one.suppression_id,
-                    kind=one.kind,
-                    identity=one.identity,
-                    payload=one.payload,
-                    actor=one.actor,
-                    recorded=one.recorded,
-                    revoked=True,
-                    revoked_at=lifted_at,
-                    revoked_by=actor,
-                )
+                return replace(one, revoked=True, revoked_at=lifted_at, revoked_by=actor)
 
             with_it = tuple(also(existing, dict(recorded))) if also is not None else ()
             revoked = lifted(existing)
@@ -2833,55 +1319,39 @@ class DecisionStore:
             return revoked
 
     def suppresses(self, kind: str, identity: Mapping[str, Any]) -> bool:
-        """Whether this store currently suppresses that thing.
+        """Whether this store currently suppresses that thing, refusing if it cannot be read.
 
-        Asked by an acquisition pass per candidate. It reports the suppression
-        rather than omitting the candidate silently (R36), which is the caller's
-        job; what this owes is a truthful answer, including a refusal when the
-        store cannot be read.
+        Reporting a suppressed candidate is the caller's job (R36).
         """
         found = self._read().get(suppression_id_for(self.key, kind, identity))
         return found is not None and found.suppressing
 
     def suppressions(self, *, include_revoked: bool = False) -> tuple[Suppression, ...]:
-        """Every record, suppressing ones only unless asked for the rest.
-
-        R36 says a tombstone is LISTABLE and revocable, and the two halves need
-        each other: a revoked record that vanished from the listing would leave a
-        person unable to tell "never suppressed" from "suppressed and lifted".
-        """
+        """Every record, suppressing ones only unless asked for the rest (R36)."""
         found = self._read()
         return tuple(
-            found[key]
-            for key in sorted(found)
-            if include_revoked or found[key].suppressing
+            found[key] for key in sorted(found) if include_revoked or found[key].suppressing
         )
 
 
 def suppression_id_for(store_key: str, kind: str, identity: Mapping[str, Any]) -> str:
-    """The stable identifier for one suppression. Same rule as a review item.
+    """The stable identifier for one suppression, by the review item's rule.
 
-    Same NORMALIZATION too, and it matters more here: the deletion pass asks
-    ``suppresses`` once per candidate, and a spelling difference between the pass
-    that recorded the decline and the pass that consults it re-offers a file
-    somebody deliberately declined.
+    Normalized the same way, so a spelling difference between the pass that
+    recorded a decline and the pass consulting it never re-offers the file.
     """
     if not identity:
         raise refuse(
             "review-selection-invalid",
             "a suppression needs an identity to be addressed by; an empty one "
             "collapses every record in the store onto a single entry",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=("review",),
+            remedy=Remedy.REPORT_DEFECT, origin=("review",),
             detail={"store": store_key, "kind": kind},
         )
     digest = hashlib.sha256(
         canonical_json(
-            {
-                "store": store_key,
-                "kind": normalize_kind(kind),
-                "identity": normalize_identity(identity),
-            }
+            {"store": store_key, "kind": normalize_kind(kind),
+             "identity": normalize_identity(identity)}
         ).encode()
     ).hexdigest()
     return f"{SUPPRESSION_ID_PREFIX}_{digest[:24]}"
@@ -2890,10 +1360,8 @@ def suppression_id_for(store_key: str, kind: str, identity: Mapping[str, Any]) -
 def unresolved_cause(outstanding: int) -> Cause:
     """The cause a caller raises when it cannot proceed past open review items.
 
-    Built here so every producer reports outstanding adjudication the same way,
-    rather than each inventing its own sentence. It carries the remediation as
-    steps rather than a token, because the fix is to answer questions in the
-    queue and there is no single command that does it for every queue.
+    One spelling for every producer, with steps rather than a token, since no
+    single command answers every queue.
     """
     return Cause(
         reason="awaiting-human-action",
@@ -2911,6 +1379,51 @@ def unresolved_cause(outstanding: int) -> Cause:
         detail={"unresolved": outstanding},
     )
 
+
+# The groups, the holds, the exchange and the surfaces live in modules of
+# their own; each reads this module's names above, so they are imported last.
+from cratekit.core.review_exchange import (  # noqa: E402
+    CONFLICT_ITEM_UNUSABLE,
+    CONFLICT_LOCAL_VERDICT_STANDS,
+    CONFLICT_NOT_APPLIED,
+    CONFLICT_VERDICT_UNREADABLE,
+    ImportResult,
+    export_document,
+    import_document,
+)
+from cratekit.core.review_groups import (  # noqa: E402
+    GROUPED_KINDS,
+    GROUPINGS,
+    Round,
+    grouped,
+    record_round,
+    rounds,
+)
+from cratekit.core.review_holds import (  # noqa: E402
+    HOLD_HELD,
+    HOLD_RETURNED,
+    HOLD_STATES,
+    WITHHELD_FIELD,
+    Hold,
+    find_hold,
+    hold,
+    holds,
+    release_hold,
+    return_hold,
+    withhold,
+)
+from cratekit.core.review_surfaces import (  # noqa: E402
+    SURFACES,
+    Surface,
+    adjudicated_queues,
+)
+
+# Each keeps the module path it had here, so a pickle or a repr reads as before.
+for _moved in (ImportResult, Round, Hold, Surface, export_document, import_document, grouped,
+               record_round, rounds, find_hold, hold, holds, release_hold, return_hold, withhold,
+               adjudicated_queues):
+    _moved.__module__ = __name__
+del _moved
 
 __all__ = [
     "CONFLICT_ITEM_UNUSABLE",

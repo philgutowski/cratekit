@@ -1,25 +1,10 @@
 """U255. Adding a track to an account playlist costs one write and one read.
 
-THE COST WAS FOUR REQUESTS A TRACK, MEASURED AT THE ADAPTER (the speed survey
-of 2026-11-12): the client's ``Session.playlist`` fetches an owned playlist
-twice (a ``Playlist``, then the ``UserPlaylist`` its factory builds),
-``TidalAccount.add_to_playlist`` opened the playlist afresh for every track,
-and the client's own ``add`` reads it a third time after its POST. Every
-provider request waits at the gate and counts against the command's ceiling,
-so the two wasted requests were two seconds a track and half the ceiling.
-
-The adapter now holds the object its membership read opened, per playlist,
-and adds through it. These tests drive the REAL client over a transport that
-keeps the account's playlists, moves each one's version tag on every write,
-answers a write carrying a tag that is not the current one with 412, as the
-provider answers a move (Sitting 62; one live add was answered 412 too, the
-U147 mirror build, and whether every add on a stale tag is refused is owed to
-an attended sitting), and counts every request by method and path. The request count is the assertion, never a wall clock.
-
-Round one's review drove three things the first transport could not serve,
-and the transport serves them now: a write by another writer between the
-open and the tracks read, a playlist read or a tracks read served one write
-behind, and a tracks read that fails after the open.
+It cost four (the speed survey of 2026-11-12); the adapter now holds the object
+its membership read opened and adds through it. Driven on the REAL client over a
+transport that keeps the account's playlists, moves each one's version tag on
+every write, answers a write on a stale tag 412 (Sitting 62), and counts every
+request by method and path. The request count is the assertion, never a clock.
 """
 
 from __future__ import annotations
@@ -35,32 +20,25 @@ from cratekit.core.cause import CratekitError, refuse
 from cratekit.modules.outbound import account, export, ledger
 from cratekit.modules.outbound.tidal_account import TidalAccount
 from tests.test_adapter_listing import OWNER, _logged_in_over, _owned_playlist
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
+from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 requests = pytest.importorskip("requests")
 
 
 class _Data(dict):
-    """A track as the provider serves it: any field the parser asks for and
-    the test did not name reads as absent, as ``tests/test_isrc_cache.py`` builds one."""
+    """A track as the provider serves it: a field the test did not name reads as absent."""
 
     def __missing__(self, key):
         return None
 
 
 def _track(identifier: str) -> _Data:
+    artist = {"id": 1, "name": "Aurora Bloom", "type": "MAIN"}
     return _Data(
-        {
-            "id": int(identifier),
-            "title": f"Track {identifier}",
-            "duration": 300,
-            "allowStreaming": True,
-            "streamReady": True,
-            "trackNumber": 1,
-            "volumeNumber": 1,
-            "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
-            "artists": [{"id": 1, "name": "Aurora Bloom", "type": "MAIN"}],
-            "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
-        }
+        id=int(identifier), title=f"Track {identifier}", duration=300, allowStreaming=True,
+        streamReady=True, trackNumber=1, volumeNumber=1, artist=artist, artists=[dict(artist)],
+        album={"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
     )
 
 
@@ -89,11 +67,10 @@ class _Answer:
 class Account:
     """The provider's side of the account's playlists, served to a real client.
 
-    Each playlist holds its track identifiers in order and a version that every
+    Each playlist holds its track identifiers in order and a version every
     write moves on. A write whose ``If-None-Match`` is not the current tag is
-    answered 412 and changes nothing. An add skips a track the playlist already
-    holds and one in ``missing`` (the provider cannot find it), and answers with
-    the identifiers it added, as the client asks it to.
+    answered 412 and changes nothing. An add skips a track the playlist holds
+    and one in ``missing``, and answers with the identifiers it added.
     """
 
     def __init__(self, *uuids: str) -> None:
@@ -180,10 +157,7 @@ class Account:
             params = params or {}
             start = int(params.get("offset") or 0)
             window = items[start : start + int(params.get("limit") or 100)]
-            body = {
-                "items": [_track(one) for one in window],
-                "totalNumberOfItems": len(items),
-            }
+            body = {"items": [_track(one) for one in window], "totalNumberOfItems": len(items)}
             return _Answer(url, body, tag=tag)
         sent = (headers or {}).get("If-None-Match")
         if method == "POST" and rest == ["items"]:
@@ -222,9 +196,25 @@ def _ids(count: int, start: int = 100) -> list[str]:
     return [str(start + n) for n in range(count)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The request count
-# ═══════════════════════════════════════════════════════════════════════════
+def _added_once(*outside: str) -> tuple[Account, TidalAccount]:
+    """A playlist ``pl0`` holding ``outside``, and an adapter that has added ``100`` to it."""
+    provider = Account("pl0")
+    for one in outside:
+        provider.outside_add("pl0", one)
+    remote = _adapter(provider)
+    remote.add_to_playlist("pl0", "100")
+    return provider, remote
+
+
+def _forms(provider: Account, *keys: str) -> list:
+    """Each add's form fields ``keys``, ``"tag"`` the tag it carried: one value, or a tuple."""
+    rows = [
+        tuple(tag if key == "tag" else form[key] for key in keys) for _u, form, tag in provider.adds
+    ]
+    return [row[0] for row in rows] if len(keys) == 1 else rows
+
+
+# ── the request count ───────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("count", [1, 10, 100])
@@ -233,13 +223,10 @@ def test_k_adds_to_one_owned_playlist_make_k_plus_two_gets_and_k_posts(count):
     provider = Account("pl0")
     remote = _adapter(provider)
     wanted = _ids(count)
-
     for one in wanted:
         remote.add_to_playlist("pl0", one)
-
-    # The one open is two GETs (the client's ``Playlist``, then the
-    # ``UserPlaylist`` its factory builds), and the client reads the playlist
-    # once after each POST for its next tag. Nothing else.
+    # The one open is two GETs (a ``Playlist``, then the ``UserPlaylist`` its
+    # factory builds), and the client reads the playlist once after each POST.
     assert provider.gets("pl0") == count + 2
     assert provider.posts("pl0") == count
     assert provider.track_reads("pl0") == 1
@@ -253,28 +240,20 @@ def test_k_adds_to_one_owned_playlist_make_k_plus_two_gets_and_k_posts(count):
 
 
 def test_each_add_writes_what_it_wrote_before_one_track_at_the_end_on_the_current_tag():
-    """What is written is unchanged: one track a request, at the playlist's
-    length, duplicates and missing tracks skipped, carrying the current tag."""
+    """One track a request, at the playlist's length, skips asked, on the current tag."""
     provider = Account("pl0")
     provider.outside_add("pl0", "7")
     remote = _adapter(provider)
     wanted = _ids(5)
-
     for one in wanted:
         remote.add_to_playlist("pl0", one)
-
     assert [form for _, form, _ in provider.adds] == [
-        {
-            "onArtifactNotFound": "SKIP",
-            "trackIds": one,
-            "toIndex": position,
-            "onDupes": "SKIP",
-        }
+        {"onArtifactNotFound": "SKIP", "trackIds": one, "toIndex": position, "onDupes": "SKIP"}
         for position, one in enumerate(wanted, start=1)
     ]
-    # Each add carried the tag the playlist held when it was sent, so none was
-    # refused: the client's read after each POST is what the next one sends.
-    assert [tag for _, _, tag in provider.adds] == [f'"{n}"' for n in range(2, 7)]
+    # Each add carried the playlist's tag when sent, the client's read after
+    # each POST being what the next one sends, so none was refused.
+    assert _forms(provider, "tag") == [f'"{n}"' for n in range(2, 7)]
     assert provider.items["pl0"] == ["7", *wanted]
 
 
@@ -282,11 +261,9 @@ def test_a_track_already_on_the_playlist_makes_no_request_at_all():
     provider = Account("pl0")
     provider.outside_add("pl0", "100")
     remote = _adapter(provider)
-
     remote.add_to_playlist("pl0", "100")
     before = Counter(provider.requests)
     remote.add_to_playlist("pl0", "100")
-
     assert provider.posts("pl0") == 0
     assert provider.requests == before
 
@@ -296,11 +273,9 @@ def test_two_playlists_added_to_in_turn_each_keep_their_own_held_object():
     provider = Account("pl0", "pl1")
     remote = _adapter(provider)
     first, second = _ids(6), _ids(6, start=200)
-
     for one, other in zip(first, second, strict=True):
         remote.add_to_playlist("pl0", one)
         remote.add_to_playlist("pl1", other)
-
     for uuid, wanted in (("pl0", first), ("pl1", second)):
         assert provider.gets(uuid) == len(wanted) + 2
         assert provider.posts(uuid) == len(wanted)
@@ -310,21 +285,15 @@ def test_two_playlists_added_to_in_turn_each_keep_their_own_held_object():
     assert len(provider.adds) == 12
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A held object the provider has moved on from
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a held object the provider has moved on from ───────────────────────────
 
 
 def test_an_add_refused_for_a_stale_tag_is_sent_once_more_on_a_fresh_open_and_lands():
     """The brief's second scenario: a write outside the adapter moved the tag."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    provider, remote = _added_once()
     provider.outside_add("pl0", "7")
     gets_before = provider.gets("pl0")
-
     remote.add_to_playlist("pl0", "101")
-
     # The refused add, then one open (two GETs) and the add again, which the
     # client reads after: three GETs and two POSTs for this track.
     assert provider.gets("pl0") - gets_before == 3
@@ -339,17 +308,13 @@ def test_an_add_refused_for_a_stale_tag_is_sent_once_more_on_a_fresh_open_and_la
 @pytest.mark.parametrize("status", [412, 503])
 def test_an_add_refused_twice_fails_the_item_with_nothing_more_sent(status):
     """The retry the policy allows is one, and the hold never adds a second."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    provider, remote = _added_once()
     if status == 412:
         provider.always_stale = True
     else:
         provider.refusals = [status, status]
-
     with pytest.raises(CratekitError) as excinfo:
         remote.add_to_playlist("pl0", "101")
-
     assert excinfo.value.cause.scope.name == "ITEM"
     assert provider.posts("pl0") == 3
     assert provider.items["pl0"] == ["100"]
@@ -358,17 +323,13 @@ def test_an_add_refused_twice_fails_the_item_with_nothing_more_sent(status):
 
 def test_a_refused_add_drops_the_hold_so_the_next_track_opens_afresh():
     """An add the provider refused leaves no object behind it to be reused."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    provider, remote = _added_once()
     provider.always_stale = True
     with pytest.raises(CratekitError):
         remote.add_to_playlist("pl0", "101")
     provider.always_stale = False
     gets_before, current = provider.gets("pl0"), provider.tag("pl0")
-
     remote.add_to_playlist("pl0", "102")
-
     # One open, two GETs, then the add and the client's read after it.
     assert provider.gets("pl0") - gets_before == 3
     assert provider.adds[-1][2] == current
@@ -376,55 +337,38 @@ def test_a_refused_add_drops_the_hold_so_the_next_track_opens_afresh():
 
 
 def test_a_track_added_elsewhere_meanwhile_lands_once_and_is_read_back():
-    """A stale held object never lets a duplicate through: the same track put
-    on by another writer is refused 412, sent again on a fresh open, skipped
-    by the provider as a duplicate, and read back as held."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    """Refused 412, sent again on a fresh open, skipped as a duplicate, read back as held."""
+    provider, remote = _added_once()
     provider.outside_add("pl0", "101")
-
     remote.add_to_playlist("pl0", "101")
-
     assert provider.items["pl0"] == ["100", "101"]
     assert remote.playlist_tracks("pl0") == ("100", "101")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The read back, and what drops the hold
-# ═══════════════════════════════════════════════════════════════════════════
+# ── the read back, and what drops the hold ──────────────────────────────────
 
 
 def test_an_add_answered_without_the_track_reads_the_playlist_back_and_refuses():
     """The brief's third scenario: unchanged, and read on a fresh open."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    provider, remote = _added_once()
     provider.missing.add("101")
     gets_before, reads_before = provider.gets("pl0"), provider.track_reads("pl0")
-
     with pytest.raises(CratekitError) as excinfo:
         remote.add_to_playlist("pl0", "101")
-
     assert "added nothing" in excinfo.value.cause.message
     # The client's read after the POST, then the read back's own open (two
-    # GETs) and its read of the tracks, as before this unit.
+    # GETs) and its read of the tracks.
     assert provider.gets("pl0") - gets_before == 3
     assert provider.track_reads("pl0") - reads_before == 1
     assert remote.playlist_tracks("pl0") == ("100",)
 
 
 def test_another_write_through_the_adapter_drops_the_hold():
-    """A rename opens its own object and moves the tag; the next add opens
-    afresh rather than sending the tag the rename made stale."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
-
+    """A rename opens its own object and moves the tag; the next add opens afresh."""
+    provider, remote = _added_once()
     remote.rename_playlist("pl0", "Renamed")
     gets_before = provider.gets("pl0")
     remote.add_to_playlist("pl0", "101")
-
     assert provider.titles["pl0"] == "Renamed"
     assert provider.gets("pl0") - gets_before == 3
     # No add was refused: the one after the rename carried the rename's tag.
@@ -433,67 +377,33 @@ def test_another_write_through_the_adapter_drops_the_hold():
 
 
 def test_a_held_playlist_never_outlives_its_adapter(monkeypatch):
-    """The brief's last scenario: ``forget`` drops the adapter, and with it the
-    hold, so the next adapter opens the playlist again."""
+    """``forget`` drops the adapter, and with it the hold, so the next adapter opens again."""
     provider = Account("pl0")
     session = _logged_in_over(provider)
     first = TidalAccount(session, sleep=lambda _: None)
     first.add_to_playlist("pl0", "100")
     monkeypatch.setattr(account, "_OPENED", first)
-
     account.forget()
     assert account._OPENED is None
     gets_before = provider.gets("pl0")
     TidalAccount(session, sleep=lambda _: None).add_to_playlist("pl0", "101")
-
-    # The next adapter's own open (two GETs), its read of the tracks, the add
-    # and the client's read after it.
+    # The next adapter's own open (two GETs), its tracks read, the add and the read after.
     assert provider.gets("pl0") - gets_before == 3
     assert provider.items["pl0"] == ["100", "101"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The export, end to end at the adapter
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "install"))
-    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(tmp_path / "cfgdir"))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
-    config.save(built)
-    config.reset_cache()
-    return built
+# ── the export, end to end at the adapter ───────────────────────────────────
 
 
 @pytest.mark.parametrize("count", [1, 12, 100])
 def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_requests(
-    cfg, count
+    installed, count
 ):
-    """``export.apply``, the caller the card measured, over the real client:
-    every track recorded, every track added once, in order. U270 sends the
-    tracks the playlist lacks in one ``add_tracks``, so the count no longer
-    grows with the tracks: one open and one tracks read for the membership,
-    then one open, one POST and the client's read after it. U255 left this at
-    K + 2 GETs and K POSTs, 203 requests for 100 tracks.
-    """
+    """``export.apply`` over the real client: one ``add_tracks`` (U270), so seven requests
+    whatever the count: the membership's open and tracks read, an open, a POST, a read."""
     provider = Account("pl0")
     remote = _adapter(provider)
-    ledger.reserve_playlist(cfg, "crate-one", lambda: "pl0")
+    ledger.reserve_playlist(installed, "crate-one", lambda: "pl0")
     wanted = _ids(count)
     planned = export.ExportPlan(
         playlist_key="crate-one",
@@ -501,9 +411,7 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
         matched=tuple((f"row-{one}", one) for one in wanted),
         unmatched=(),
     )
-
-    report = export.apply(cfg, remote, planned)
-
+    report = export.apply(installed, remote, planned)
     assert report.created is False
     assert report.added == tuple(wanted)
     assert provider.items["pl0"] == wanted
@@ -511,7 +419,7 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
     assert provider.track_reads("pl0") == 1
     assert provider.posts("pl0") == 1
     assert sum(provider.requests.values()) == 7
-    recorded = json.loads(config.state_path("outbound_writes", cfg).read_text())
+    recorded = json.loads(config.state_path("outbound_writes", installed).read_text())
     assert recorded["playlists"]["crate-one"]["remote_id"] == "pl0"
     record = recorded["playlists"]["crate-one"]
     assert record["added"] == wanted
@@ -520,74 +428,53 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
 
 
 def test_the_owner_the_transport_serves_is_the_session_user():
-    """The held object is the client's ``UserPlaylist``, the one with ``add``,
-    because the transport serves the playlist as the logged in user's own."""
-    provider = Account("pl0")
-    session = _logged_in_over(provider)
+    """The held object is the client's ``UserPlaylist``, the one with ``add``."""
+    session = _logged_in_over(Account("pl0"))
     assert session.playlist("pl0").creator.id == OWNER
     assert callable(getattr(session.playlist("pl0"), "add", None))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round one's review: the tag and the position come from one answer
-# ═══════════════════════════════════════════════════════════════════════════
+# ── round one's review: the tag and the position come from one answer ─────
 
 
-def _three(provider: Account) -> None:
+def _three() -> tuple[Account, TidalAccount]:
+    provider = Account("pl0")
     for one in ("1", "2", "3"):
         provider.outside_add("pl0", one)
+    return provider, _adapter(provider)
 
 
 def test_a_write_between_the_open_and_the_tracks_read_never_puts_the_add_before_it():
-    """Drive A: another writer adds between the open and the tracks read. The
-    add is refused on the open's tag, sent again on a fresh open, and lands at
-    the end, as main lands it; it is never accepted at the open's length."""
-    provider = Account("pl0")
-    _three(provider)
+    """Drive A: refused on the open's tag, sent again on a fresh open, lands at the end."""
+    provider, remote = _three()
     provider.before_tracks.append(lambda: provider.outside_add("pl0", "7"))
-    remote = _adapter(provider)
-
     remote.add_to_playlist("pl0", "100")
-
     assert provider.items["pl0"] == ["1", "2", "3", "7", "100"]
-    assert [form["toIndex"] for _, form, _ in provider.adds] == [3, 4]
+    assert _forms(provider, "toIndex") == [3, 4]
     assert remote.playlist_tracks("pl0") == ("1", "2", "3", "7", "100")
 
 
 def test_a_playlist_read_one_write_behind_writes_nothing():
-    """Drive B: every playlist read lags one write while the tracks read is
-    current. The add carries the lagging read's tag with its length, so it is
-    refused and refused again, and nothing is written, as on main."""
-    provider = Account("pl0")
-    _three(provider)
+    """Drive B: the add carries the lagging read's tag with its length, refused twice."""
+    provider, remote = _three()
     provider.lag_open = True
-    remote = _adapter(provider)
-
     with pytest.raises(CratekitError):
         remote.add_to_playlist("pl0", "100")
-
     assert provider.items["pl0"] == ["1", "2", "3"]
-    assert [(form["toIndex"], tag) for _, form, tag in provider.adds] == [(2, '"3"')] * 2
+    assert _forms(provider, "toIndex", "tag") == [(2, '"3"')] * 2
 
 
 def test_a_tracks_read_one_write_behind_never_reaches_the_add():
-    """Finding two: the tag the add sends is the open's, not a lagging tracks
-    read's, so one POST lands at the end and nothing is refused."""
-    provider = Account("pl0")
-    _three(provider)
+    """Finding two: the add sends the open's tag, not a lagging tracks read's."""
+    provider, remote = _three()
     provider.lag_window = True
-    remote = _adapter(provider)
-
     remote.add_to_playlist("pl0", "100")
-
-    assert [(form["toIndex"], tag) for _, form, tag in provider.adds] == [(3, '"4"')]
+    assert _forms(provider, "toIndex", "tag") == [(3, '"4"')]
     assert provider.items["pl0"] == ["1", "2", "3", "100"]
 
 
 def test_a_tracks_read_that_fails_after_the_open_holds_nothing():
-    """Drive H: the open succeeded and the read it was made for did not, so no
-    object is held, and the next add after two more writes opens afresh and
-    lands at the end rather than at the old length."""
+    """Drive H: nothing is held, so the next add opens afresh and lands at the end."""
     provider = Account("pl0")
     provider.outside_add("pl0", "7")
     provider.tracks_fail.append(
@@ -598,26 +485,19 @@ def test_a_tracks_read_that_fails_after_the_open_holds_nothing():
         remote.add_to_playlist("pl0", "100")
     provider.outside_add("pl0", "8")
     provider.outside_add("pl0", "9")
-
     remote.add_to_playlist("pl0", "100")
-
     assert provider.items["pl0"] == ["7", "8", "9", "100"]
-    assert [form["toIndex"] for _, form, _ in provider.adds] == [3]
+    assert _forms(provider, "toIndex") == [3]
 
 
 def test_an_open_that_fails_is_refused_on_its_own_retry_before_any_add_is_sent():
-    """The first open, nothing held, is made before the add's attempts, as it
-    always was: two tries of the open, then the open's own refusal, no POST."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    """Nothing held: two tries of the open, then the open's own refusal, and no POST."""
+    provider, remote = _added_once()
     remote.rename_playlist("pl0", "Renamed")
     provider.open_fail = [503, 503]
     gets_before = provider.gets("pl0")
-
     with pytest.raises(CratekitError) as excinfo:
         remote.add_to_playlist("pl0", "101")
-
     assert "open the playlist pl0" in excinfo.value.cause.message
     assert provider.gets("pl0") - gets_before == 2
     assert provider.posts("pl0") == 1
@@ -625,15 +505,10 @@ def test_an_open_that_fails_is_refused_on_its_own_retry_before_any_add_is_sent()
 
 
 def test_the_retrys_open_has_a_retry_of_its_own():
-    """Finding three: an add refused 412 whose fresh open meets one transient
-    failure still opens on the open's own retry and lands, as main's open did."""
-    provider = Account("pl0")
-    remote = _adapter(provider)
-    remote.add_to_playlist("pl0", "100")
+    """Finding three: a fresh open after a 412 meeting one failure retries and lands."""
+    provider, remote = _added_once()
     provider.outside_add("pl0", "7")
     provider.open_fail_after_refusal = [503]
-
     remote.add_to_playlist("pl0", "101")
-
     assert provider.items["pl0"] == ["100", "7", "101"]
     assert provider.posts("pl0") == 3

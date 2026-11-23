@@ -2,7 +2,7 @@
 title: A read only check that opens a WAL database deletes the log on close, so it must never open the copy it vouches for
 date: 2026-11-13
 category: integration-issues
-module: "src/cratekit/core/rb_writer.py, src/cratekit/core/snapshot.py, src/cratekit/core/restore.py"
+module: "src/cratekit/core/rb_writer.py, src/cratekit/core/snapshot.py, src/cratekit/core/restore.py, src/cratekit/core/rb_copies.py"
 problem_type: integration_issue
 component: snapshot
 root_cause: incorrect_assumption

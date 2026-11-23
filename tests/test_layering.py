@@ -118,6 +118,10 @@ _PLACED: dict[str, str] = {
     # boundary underneath reaches ``core.reconcile``, which is infrastructure and
     # deliberately does not touch the registry at all.
     "cratekit.core.restore": "write",
+    # U300: the restore's three parts take its place, one line each.
+    "cratekit.core.restore_perform": "write",
+    "cratekit.core.restore_recovery": "write",
+    "cratekit.core.restore_retention": "write",
     "cratekit.core.routing": "domain",
     "cratekit.core.secrets": "foundation",
     "cratekit.core.state_files": "foundation",
@@ -820,6 +824,9 @@ def test_every_package_module_is_placed_in_the_ladder():
 _WRITE_RANKED_CORE_MODULES: dict[str, frozenset[str]] = {
     "cratekit.core.tree_registry": frozenset(),
     "cratekit.core.restore": frozenset(),
+    "cratekit.core.restore_perform": frozenset(),
+    "cratekit.core.restore_recovery": frozenset(),
+    "cratekit.core.restore_retention": frozenset(),
 }
 
 

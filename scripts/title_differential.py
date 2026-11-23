@@ -1,47 +1,24 @@
 """Run the title matcher of a base revision against the tree's and print every difference.
 
-U280 redesigned the record shop title matcher (`cratekit.tagging.titles`)
-beside the one it replaced, and this is how the two were held to each other:
-every file name of a corpus is matched against every catalogue row of it by
-both matchers, and every pair one matches and the other does not is printed,
-so each difference is read rather than sampled.
+Every file name of a corpus is matched against every catalogue row by both
+matchers (U280), and every pair one matches and the other does not is printed.
+THE BASE is `searchers.py` at ``--base`` (by default the commit before U280),
+or with ``--titles-base REV`` (U324) `titles.py` at that revision, which also
+compares `named_versions`, `writes_version` and `question`; loaded from git, so
+nothing of the base is copied into the tree. THE TREE is `cratekit.tagging.titles`.
 
-THE BASE is `src/cratekit/tagging/searchers.py` at ``--base`` (by default the
-commit before U280's matcher, whose `_readings` and `_meet` it reads), loaded
-from git into a module of its own, so nothing of the base is copied into the
-tree. THE TREE is `cratekit.tagging.titles` as it stands.
-
-WITH ``--titles-base REV`` (U324) the base is `src/cratekit/tagging/titles.py`
-at that revision instead, loaded the same way, so a change inside the new
-matcher is held to the matcher before it. Beside the pairs `matches` decides,
-it then compares, for every pair both sides match, what the file's title names
-as its mix (`named_versions`) and whether the row writes it (`writes_version`,
-both readings), and, for every name, the question a catalogue is asked
-(`question`): every reader of the module's name fold.
-
-THE CORPUS is every short string constant of the tagging tests (title
-positions and every other string, unfiltered, as R-1631's and R-1646's own
-differentials were), wrapped in the name shapes the naming verb and a
-library write, each with the artist written each way a credit is, plus a
-seeded set of generated adversarial names. The rows are the same strings,
-read as a catalogue writes them, and the artists' own names.
-
-EVERY PAIR IS DECIDED by an index: each side's names (word tuples) and
-splits map to the rows that carry them, so a pair either matcher could
-match is found without a quadratic scan, and each candidate is then decided
-by the matcher itself.
+THE CORPUS is every short string constant of the tagging tests, wrapped in the
+name shapes below with each artist credit, plus seeded generated names; the
+rows are the same strings and the artists' own names. An index of each side's
+keys finds the candidates, and the matcher itself decides each.
 
 Usage:
 
     .venv/bin/python scripts/title_differential.py [--base REV] [--out FILE]
         [--generated N] [--beatport N]
 
-Prints a summary per shape and writes every difference, one per line, to
-``--out``: ``lost`` (the base matched, the tree does not) or ``gained``, then
-the shape, the artist tag, the file's name, the row and the tree's outcome
-for the name (titled, ambiguous); Beatport's lines carry the row's mix in
-place of the shape and outcome. Exit 0 always: a difference is a finding to
-read, not a failure.
+Writes every difference to ``--out``: ``lost`` or ``gained``, the shape, the
+artist tag, the name, the row and the tree's outcome. Exit 0 always.
 """
 
 from __future__ import annotations
@@ -56,6 +33,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from types import ModuleType
+from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
@@ -67,85 +45,39 @@ DEFAULT_BASE = "7237b92c"
 
 #: The tagging test files whose string constants are the corpus.
 CORPUS_FILES = (
-    "tests/test_title_matcher.py",
-    "tests/test_catalogue_searcher.py",
-    "tests/test_discogs_searcher.py",
-    "tests/test_tagging_engine.py",
-    "tests/test_tag_suggest.py",
-    "tests/test_tag_workers.py",
-    "tests/test_tag_guess.py",
-    "tests/test_tag_rows.py",
-    "tests/test_tag_remap.py",
-    "tests/test_genre_retag.py",
-    "tests/test_published_genre.py",
-    "tests/test_tag_folder_copyright.py",
-    "tests/test_catalogue_app.py",
-    "tests/test_tags.py",
+    "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py",
+    "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_suggest.py",
+    "tests/test_tag_workers.py", "tests/test_tag_guess.py", "tests/test_tag_rows.py",
+    "tests/test_tag_remap.py", "tests/test_genre_retag.py", "tests/test_published_genre.py",
+    "tests/test_tag_folder_copyright.py", "tests/test_catalogue_app.py", "tests/test_tags.py",
     "tests/test_discogs_version.py",
 )
 
 #: The artists a name is wrapped with: the tag, and the credit as the name
-#: writes it. A differential that wraps titles only in the exact artist string
-#: measures a fixture (R-1636's solution).
+#: writes it, since the exact artist string alone measures a fixture (R-1636), a
+#: letter NFKD leaves alone each way round (U324), and an initial that folds to two.
 ARTISTS = (
-    ("Bernard Badie", "Bernard Badie"),
-    ("Bernard Badie", "Bernard Badie & Tide"),
-    ("Bernard Badie", "B. Badie"),
-    ("Bernard Badie & Tide", "Bernard Badie"),
-    ("The Black Madonna", "Black Madonna"),
-    ("Âme", "Ame"),
-    # A letter NFKD leaves alone, written the other way each side (U324), and
-    # an initial that folds to two letters.
-    ("Trentemøller", "Trentemoller"),
-    ("Trentemoller", "Trentemøller"),
-    ("Þórður Badie", "Þ. Badie"),
-    ("Tide", "Tide"),
+    ("Bernard Badie", "Bernard Badie"), ("Bernard Badie", "Bernard Badie & Tide"),
+    ("Bernard Badie", "B. Badie"), ("Bernard Badie & Tide", "Bernard Badie"),
+    ("The Black Madonna", "Black Madonna"), ("Âme", "Ame"), ("Trentemøller", "Trentemoller"),
+    ("Trentemoller", "Trentemøller"), ("Þórður Badie", "Þ. Badie"), ("Tide", "Tide"),
     ("", "Bernard Badie"),
 )
 
-#: The name shapes a file's title tag or its name takes, {a} the credit and
-#: {t} the title: the library's head, the naming verb's marker, an artist
-#: before or after, an album, a track number alone or glued, a feature credit
-#: on either side, a version part, a trailing head.
+#: The name shapes a file's title tag or its name takes, {a} the credit and {t} the title.
 SHAPES = (
-    "{t}",
-    "08A - 124 - {t}",
-    "{a} - {t}",
-    "08A - 124 - {a} - {t}",
-    "{t} - {a}",
-    "{t} - {a} - Sun Path",
-    "08A - 124 - {t} - {a} - Sun Path",
-    "{a} - Sun Path - 02 {t}",
-    "{a} - Sun Path - 02 - {t}",
-    "{a} - Summer Mix - 01 {t}",
-    "01 - {a} - {t}",
-    "01 {a} - {t}",
-    "[MP3] {a} - {t}",
-    "08A - 124 - [MP3] {a} - {t}",
-    "{a} feat. Tide - {t}",
-    "{t} feat. Tide - {a}",
-    "{a} - Tide - {t}",
-    "{a} - {a} - {t}",
-    "{t} - Original Mix",
-    "08A - 124 - {t} - Vocal Mix",
-    "{a} - {t} - Original Mix",
-    "{t} - 08A - 124",
+    "{t}", "08A - 124 - {t}", "{a} - {t}", "08A - 124 - {a} - {t}", "{t} - {a}",
+    "{t} - {a} - Sun Path", "08A - 124 - {t} - {a} - Sun Path", "{a} - Sun Path - 02 {t}",
+    "{a} - Sun Path - 02 - {t}", "{a} - Summer Mix - 01 {t}", "01 - {a} - {t}", "01 {a} - {t}",
+    "[MP3] {a} - {t}", "08A - 124 - [MP3] {a} - {t}", "{a} feat. Tide - {t}",
+    "{t} feat. Tide - {a}", "{a} - Tide - {t}", "{a} - {a} - {t}", "{t} - Original Mix",
+    "08A - 124 - {t} - Vocal Mix", "{a} - {t} - Original Mix", "{t} - 08A - 124",
 )
 
-#: Rows every corpus carries beside its strings: the artists' self titled
-#: rows, and their versions written each way a catalogue writes one.
+#: Rows every corpus carries: the artists' self titled rows and their versions.
 EXTRA_ROWS = (
-    "Bernard Badie",
-    "Bernard Badie (Extended Mix)",
-    "Bernard Badie - Vocal Mix",
-    "Tide",
-    "Black Madonna",
-    "Ame",
-    "Sun Path",
-    "Summer Mix",
-    "Original Mix",
-    "Vocal",
-    "Vocal Mix",
+    "Bernard Badie", "Bernard Badie (Extended Mix)", "Bernard Badie - Vocal Mix", "Tide",
+    "Black Madonna", "Ame", "Sun Path", "Summer Mix", "Original Mix", "Vocal", "Vocal Mix",
 )
 
 #: The words a generated name is built from.
@@ -157,40 +89,31 @@ GENERATED_WORDS = (
 )
 
 
-def load_base(revision: str) -> ModuleType:
-    """The base's ``searchers`` module, loaded from git as a module of its own."""
+def _load_from_git(revision: str, file: str, name: str) -> ModuleType:
+    """``src/cratekit/tagging/<file>`` at ``revision``, loaded as a module of its own."""
     source = subprocess.run(
-        ["git", "show", f"{revision}:src/cratekit/tagging/searchers.py"],
+        ["git", "show", f"{revision}:src/cratekit/tagging/{file}"],
         cwd=REPO,
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    name = "cratekit.tagging._differential_base"
     spec = importlib.util.spec_from_loader(name, loader=None)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    exec(compile(source, f"{revision}:searchers.py", "exec"), module.__dict__)
+    exec(compile(source, f"{revision}:{file}", "exec"), module.__dict__)
     return module
+
+
+def load_base(revision: str) -> ModuleType:
+    """The base's ``searchers`` module."""
+    return _load_from_git(revision, "searchers.py", "cratekit.tagging._differential_base")
 
 
 def load_titles_base(revision: str) -> ModuleType:
-    """The base's ``titles`` module, loaded from git as a module of its own (U324)."""
-    source = subprocess.run(
-        ["git", "show", f"{revision}:src/cratekit/tagging/titles.py"],
-        cwd=REPO,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    name = "cratekit.tagging._differential_titles_base"
-    spec = importlib.util.spec_from_loader(name, loader=None)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    exec(compile(source, f"{revision}:titles.py", "exec"), module.__dict__)
-    return module
+    """The base's ``titles`` module (U324)."""
+    return _load_from_git(revision, "titles.py", "cratekit.tagging._differential_titles_base")
 
 
 def corpus() -> list[str]:
@@ -228,32 +151,26 @@ def generated(count: int, seed: int = 280) -> list[str]:
 Keys = Callable[[str], Iterable[object]]
 
 
-class Side:
-    """One matcher: how it reads a file and a row, the keys a match needs one
-    of, and the decision itself."""
+class Side(NamedTuple):
+    """One matcher: how it reads a file and a row, the keys a match needs, the decision."""
 
-    def __init__(self, read_file, read_row, file_keys, row_keys, decide) -> None:
-        self.read_file = read_file
-        self.read_row = read_row
-        self.file_keys = file_keys
-        self.row_keys = row_keys
-        self.decide = decide
+    read_file: Callable
+    read_row: Callable
+    file_keys: Keys
+    row_keys: Keys
+    decide: Callable
 
 
 def base_side(base: ModuleType) -> Side:
-    def file_keys(read) -> Iterable[object]:
-        names, shed, splits = read
-        return [*names, *shed, *(("split", split) for split in splits)]
-
-    def row_keys(read) -> Iterable[object]:
+    def keys(read) -> Iterable[object]:
         names, shed, splits = read
         return [*names, *shed, *(("split", split) for split in splits)]
 
     return Side(
         lambda name, artist: base._readings(name, searched=True, artist=artist),
         lambda row: base._readings(row, searched=False),
-        file_keys,
-        row_keys,
+        keys,
+        keys,
         base._meet,
     )
 
@@ -261,21 +178,19 @@ def base_side(base: ModuleType) -> Side:
 def tree_side(module: ModuleType = titles) -> Side:
     """A side reading through a ``titles`` module, the tree's unless another is given."""
 
+    def keys(read_titles, splits) -> list[object]:
+        found: list[object] = []
+        for title in read_titles:
+            found.extend(title.names)
+            found.extend(title.bare)
+        found.extend(("split", split) for split in splits)
+        return found
+
     def file_keys(read: titles.FileName) -> Iterable[object]:
-        keys: list[object] = []
-        for title in (*read.titles, *((read.whole,) if read.whole else ())):
-            keys.extend(title.names)
-            keys.extend(title.bare)
-        keys.extend(("split", split) for split in read.splits)
-        return keys
+        return keys((*read.titles, *((read.whole,) if read.whole else ())), read.splits)
 
     def row_keys(read: titles.Row) -> Iterable[object]:
-        keys: list[object] = []
-        for title in read.titles:
-            keys.extend(title.names)
-            keys.extend(title.bare)
-        keys.extend(("split", split) for split in read.splits)
-        return keys
+        return keys(read.titles, read.splits)
 
     return Side(module.read_file, module.read_row, file_keys, row_keys, module.matches)
 
@@ -334,11 +249,8 @@ def folded_readers(
 ) -> Counter:
     """Every other reader of the name fold, base against tree (U324).
 
-    For each name, the question a catalogue is asked; for each pair both
-    sides match, the mixes the file's title names and whether the row writes
-    them, read for a row that is the file's title and for a single's other
-    track. Every difference is a line: ``question``, ``named``, ``writes``
-    or ``writes-alone``, then the artist, the name, the row and both answers.
+    Each difference is a line: ``question``, ``named``, ``writes`` or
+    ``writes-alone``, then the artist, the name, the row and both answers.
     """
     tally: Counter = Counter()
     lines: list[str] = []

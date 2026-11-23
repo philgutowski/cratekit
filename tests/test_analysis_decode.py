@@ -1,17 +1,9 @@
 """U263: the ffmpeg half of the one decoder, which needs no librosa.
 
-librosa 1.0 reads through libsndfile alone, which cannot open an M4A, so
-every M4A came back ``skipped-undecodable``. ``analysis/decode.py`` hands a
-file to ffmpeg only when librosa raised on it AND libsndfile cannot open it.
-
-This half needs numpy and ffmpeg and nothing of the extra, so it runs on
-every machine the suite runs on: the WAV ffmpeg writes to its pipe is read
-right, the samples of a lossless M4A are the PCM it was made from, a damaged
-one fails, a cover it cannot read does not, and nothing is written to disk.
-The librosa half is ``tests/test_analysis_decode_librosa.py``, skipped where
-the extra is absent as the other analysis suites are.
-
-Every file is generated here; no library is read.
+Needs numpy and ffmpeg only, so it runs everywhere: the piped WAV is read
+right, a lossless M4A is its PCM, a damaged one fails, a bad cover does not,
+and nothing is written to disk. The librosa half is
+``tests/test_analysis_decode_librosa.py``. Every file is generated here.
 """
 
 from __future__ import annotations
@@ -27,11 +19,6 @@ from cratekit.core import binaries
 from tests._containers import NATIVE_RATE, encode_m4a, ffmpeg, pcm16, write_wav
 
 np = pytest.importorskip("numpy")
-
-
-# ---------------------------------------------------------------------------
-# The ffmpeg half, which needs no librosa
-# ---------------------------------------------------------------------------
 
 
 def _wav_header(fmt: bytes, data: bytes, *, between: bytes = b"") -> bytes:
@@ -293,10 +280,6 @@ def test_the_vocal_pass_names_the_missing_decoder(monkeypatch):
     assert scored["vocal_reason"] == vocals.REASON_NO_DECODER == "vocal-no-decoder"
     assert scored["voxlevel"] is None
 
-
-# ---------------------------------------------------------------------------
-# U264: the mono mix, one add, which needs no librosa for its arithmetic
-# ---------------------------------------------------------------------------
 
 #: The smallest float32 subnormal, whose half is a tie that rounds to zero.
 _TINY = np.float32(1.401298464324817e-45)

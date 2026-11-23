@@ -1,18 +1,8 @@
-"""R-799: the genres an older mapping wrote from the general catalogue's words, corrected.
+"""R-799: ``crate tag remap`` corrects the genres an older mapping wrote.
 
-On the author's library the general catalogue's Pop was written as the dance
-bucket's name on 10 tracks and its Alternative as a bucket's bare name on 6,
-before the taxonomy gave that catalogue a table of its own. ``crate tag remap``
-finds those files from what the tagging jobs recorded and plans their rewrite
-behind an explicit gate. These tests drive the engine over real containers and
-committed records, and the verb through the real dispatcher.
-
-EVERY EXPECTED GENRE IS A LITERAL. The words are the general catalogue's and
-the genres are the shipped template's, typed, so a row of the template that
-drifts fails here and is not followed.
-
-NOTHING HERE REACHES A NETWORK OR A DATABASE. The verb asks nobody and opens
-no library. D1 applies: no real artist or track is named.
+The engine over real containers and committed records, and the verb through
+the real dispatcher. EVERY EXPECTED GENRE IS A LITERAL, so a template row that
+drifts fails. Nothing here reaches a network or a database. D1 applies.
 """
 
 from __future__ import annotations
@@ -146,9 +136,7 @@ def did(written: remap.Written) -> remap.Written:
     return replace(written, rewritten=())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The plan: one outcome per file
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_file_tagged_by_the_old_mapping_from_the_catalogues_pop_is_planned(machine, silence):
@@ -489,9 +477,7 @@ def test_the_pairs_are_the_writes_counted_largest_first(machine, silence):
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The records
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_record_that_wrote_no_genre_names_no_file_to_look_at(machine, silence):
@@ -564,9 +550,7 @@ def test_a_record_is_read_whether_or_not_the_queue_still_lists_its_job(machine, 
     counts(planned(machine), write=1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2b. The exact reader that keeps a failed read apart
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture(scope="module")
@@ -656,9 +640,7 @@ def test_an_id3_container_carrying_one_genre_is_planned_and_rewritten(machine, i
     assert genre_of(path) == NEW_POP
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. A taxonomy with no table
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def shipped_text_with_no_vocabulary() -> str:
@@ -679,9 +661,7 @@ def test_a_taxonomy_with_no_table_plans_nothing_and_says_it_declares_none(machin
     assert planned(machine).declared is True
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The digest
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_two_plans_over_one_unchanged_queue_digest_equal(machine, silence):
@@ -723,9 +703,7 @@ def test_the_digest_covers_whether_the_taxonomy_declares_a_table():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The write
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_apply_writes_the_planned_genre_and_no_other_file(machine, silence):
@@ -946,9 +924,7 @@ def test_only_a_planned_write_is_written(machine, silence):
     assert genre_of(path) == "Deep House"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The verb, through the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def two_acts(option: str = "apply") -> tuple[int, dict, dict]:

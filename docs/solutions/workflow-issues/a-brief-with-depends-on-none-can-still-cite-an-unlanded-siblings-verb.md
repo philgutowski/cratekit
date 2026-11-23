@@ -61,7 +61,8 @@ mid build, by trying to write the named test scenario and finding no such CLI
 surface. It did not block the whole unit, and it did not invent the missing
 verb. It pinned the half it owned, `intake.cli.frozen_rows` queuing missing
 hearts with their provider ids, drove that with
-`test_the_missing_hearts_carry_the_provider_id_acquisition_reads`, and
+`test_favorites_lists_the_hearts_resolves_each_and_rereads_the_reasons_on_every_resume`
+(once `test_the_missing_hearts_carry_the_provider_id_acquisition_reads`), and
 recorded the rest as owed to U69 in the R-423 narrowing
 (`docs/residual-findings.md`, "Narrowed 2026-09-18 on relay/115, U70").
 

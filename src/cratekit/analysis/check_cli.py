@@ -1,21 +1,10 @@
 """``crate analyze check``: is the rekordbox visit done, and done right (U167).
 
-The engine is :mod:`cratekit.analysis.rekordbox_check`, whose docstring says
-what each verdict means. This module is how a person and a skill meet it, and
-the one thing a skill needs from it is the exit status:
-
-* **0** when the visit is done: every row in scope analysed, every grid read
-  and constant (or variable on a row marked ``dyn``), and the title keys
-  agreeing with rekordbox's about as often as the recorded agreement says;
-* **12**, a pending action whose verify verb is this one, when rows are still
-  waiting for rekordbox to analyse them;
-* **27**, under ``analysis-suspect``, when what rekordbox wrote looks wrong.
-
-A scope with no row in it ends ``no_op``, exit 0, with a warning saying nothing
-was checked, since there is nothing waiting and nothing to vouch for.
-
-It runs after rekordbox and its agent have quit, as every verb does: the
-database is read through a disposable copy, which refuses while either runs.
+The engine is :mod:`cratekit.analysis.rekordbox_check`. What a skill needs
+from this verb is the exit status: **0** when the visit is done, **12** (a
+pending action verified by this verb) while rows wait for analysis, **27**
+under ``analysis-suspect`` when what rekordbox wrote looks wrong. An empty
+scope ends ``no_op``, exit 0, with a warning that nothing was checked.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -105,9 +94,7 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
     ]
     gone = [row for row in found.rows if row.state == rc.GONE]
     if gone:
-        # NAMED, NOT ONLY COUNTED (review round one): a row the scope held
-        # whose collection row is missing or removed is read by nobody, and a
-        # person reading an ok verdict should see which rows it did not cover.
+        # NAMED, NOT ONLY COUNTED: an ok verdict should say what it did not cover.
         checks.append(
             _check(
                 "check.gone",

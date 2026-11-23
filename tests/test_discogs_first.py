@@ -1,23 +1,11 @@
 """U282: a tag sweep asks Discogs first, and Beatport only when Discogs gives no genre.
 
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* WITH NO DISCOGS TOKEN BEATPORT IS ASKED EXACTLY AS BEFORE, so a person who
-  never recorded one sees no change but the order of a record's answers.
-* A DISCOGS DECLINE GOES ON TO BEATPORT. An unmapped style, or one landing
-  only on the fallback bucket, writes nothing and leaves the question open,
-  so the walk asks the next catalogue; when that one cannot settle it either,
-  the file keeps Discogs' word, never a ``no-hit`` and never an outage.
-* A REFUSED OR UNREAD CATALOGUE IS NEVER A MISS, on the walk and on the
-  picture's ask alike.
-* THE COVER STILL ARRIVES. Discogs names no picture, so a file Discogs tagged
-  and missing one asks Beatport for its row's cover, and only such a file: a
-  file with a picture, ``tag suggest`` and ``tag retag`` send Beatport
-  nothing after a Discogs match.
-* A FILE ALREADY TAGGED IS NEVER RE-TAGGED.
-
-NOTHING HERE TOUCHES THE NETWORK. Every answer is a recorded page or payload
-handed to the fetch seam, and the token is a fixture word.
+Guarded: with no token Beatport is asked exactly as before; a Discogs decline
+goes on to Beatport, and beside a Beatport that cannot settle it keeps
+Discogs' word, never ``no-hit`` or an outage; a refused or unread catalogue is
+never a miss; a file Discogs tagged with no picture still gets Beatport's
+cover, and only such a file; a tagged file is never re-tagged. Nothing
+touches the network.
 """
 
 from __future__ import annotations
@@ -30,7 +18,7 @@ from cratekit.core import routing, secrets, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy
-from cratekit.tagging import searchers, tag
+from cratekit.tagging import searchers, shops, tag
 from cratekit.tagging.tag import SearchHit, SourceAnswer
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
@@ -102,9 +90,7 @@ def beatport_tag() -> str:
     return routing.suggest_tag(TAXONOMY, BUCKET_GENRE).tag
 
 
-# ---------------------------------------------------------------------------
 # A. The order
-# ---------------------------------------------------------------------------
 
 
 def test_the_default_walk_is_discogs_then_beatport():
@@ -214,7 +200,7 @@ def test_two_declines_keep_discogs_word_and_beatport_s_picture():
 
 
 def beatport_row_art() -> str:
-    return searchers._beatport_art({"release": {"release_image_uri": COVER}})
+    return shops._beatport_art({"release": {"release_image_uri": COVER}})
 
 
 def test_with_no_token_beatport_decides_exactly_as_before():
@@ -298,9 +284,7 @@ def test_an_explicit_walk_naming_beatport_first_is_honoured():
     assert hit.ask_picture is None
 
 
-# ---------------------------------------------------------------------------
 # B. The picture's ask, which only a file missing one spends
-# ---------------------------------------------------------------------------
 
 
 def test_a_discogs_match_carries_a_picture_ask_and_spends_nothing_until_asked():
@@ -353,10 +337,7 @@ def test_a_picture_ask_beatport_refuses_is_unread_and_counts_toward_the_stop():
 
 
 def test_a_record_shop_decline_still_ends_an_explicit_walk():
-    """Only a source that names no picture gives way on a decline. A record
-    shop's decline is its own word for the track and carries its row's
-    picture, so on a walk naming Beatport first it settles the file as before
-    and Discogs is not asked."""
+    """Only a source that names no picture gives way on a decline."""
     seen: list[str] = []
     fetch = routed(
         search=results(7),
@@ -372,9 +353,7 @@ def test_a_record_shop_decline_still_ends_an_explicit_walk():
     assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
 
 
-# ---------------------------------------------------------------------------
 # C. Through tag_one: the cover arrives, and only where it is missing
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -402,7 +381,7 @@ class Images:
         from tests.test_tagging_engine import _jpeg
 
         self.asked.append(url)
-        return _jpeg(1000, 1000)
+        return _jpeg(400, 400)
 
 
 def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, silence):
@@ -510,9 +489,7 @@ def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
     assert beatport_asked(seen) == 0
 
 
-# ---------------------------------------------------------------------------
 # D. A rejected token waits for the record shops (round one's finding)
-# ---------------------------------------------------------------------------
 
 
 def test_a_token_refused_on_its_shape_still_lets_beatport_decide_and_lend_its_cover():

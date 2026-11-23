@@ -1,0 +1,248 @@
+name = "u306"
+pass_kind = "light"
+
+# The guards U306 added or rewrote: the shared plumbing of the tagging verbs
+# (tagging/plan_verbs.py, rows.Tallied, rows.scanned), the shared folder walk
+# and zero of analysis.cli that vocals now uses, analysis.artifacts' one item
+# reader, tagging.artifacts' read through jobs.Artifacts, the walk handing the
+# shops their query builder, and the calibrate verb's handler. Code moved
+# verbatim is held by the kill set replay, not here.
+
+[[rows]]
+id = "P1_named_cap"
+description = "plan_verbs.NAMED: a sentence names four rather than five, so every refusal and warning that lists names says one fewer and counts one more"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py", "tests/test_tag_suggest.py", "tests/test_tag_guess.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_shared_homes.py"]
+old = "NAMED = 5\n"
+new = "NAMED = 4\n"
+
+[[rows]]
+id = "P2_named_and_more"
+description = "plan_verbs.named: say 'and N more' only past one more, so a sixth name is silently dropped from the sentence"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py", "tests/test_tag_suggest.py", "tests/test_tag_guess.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_shared_homes.py"]
+old = '''    return shown + (f" and {more} more" if more > 0 else "")'''
+new = '''    return shown + (f" and {more} more" if more > 1 else "")'''
+
+[[rows]]
+id = "P3_counted_zeros"
+description = "plan_verbs.counted: name every outcome, the ones that did not happen with a zero, in each verb's summary line"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    return ", ".join(f"{counts[name]} {name}" for name in names if counts[name])'''
+new = '''    return ", ".join(f"{counts[name]} {name}" for name in names)'''
+
+[[rows]]
+id = "P4_majority_refusal"
+description = "plan_verbs.reading: drop the refusal of a library mostly under no prefix rule, so rows, suggest and backlog plan over a library they cannot read"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py"]
+old = '''        if totals.majority_unmapped:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P5_unasked_discogs"
+description = "plan_verbs.kept: never name Discogs as unasked when no token is recorded, so tag suggest --catalogue reads a Discogs it never asked as answered"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py"]
+old = '''        unasked=frozenset({searchers.DISCOGS} if searchers.for_discogs().token is None else ()),'''
+new = '''        unasked=frozenset(),'''
+
+[[rows]]
+id = "P6_payload_count"
+description = "plan_verbs.payload: count the writes rather than every item, so the totals the gate digests and the envelope carries undercount the plan"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''        "totals": {"count": len(plan.items), **totals, "written": 0, "read_back": 0},'''
+new = '''        "totals": {"count": len(plan.writes), **totals, "written": 0, "read_back": 0},'''
+
+[[rows]]
+id = "P7_applied_noop"
+description = "plan_verbs.applied: take the no op path only for a plan with no items, so an answered plan of rows to leave alone reaches the write"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    if not plan.writes:
+        return ctx.envelope('''
+new = '''    if not plan.items:
+        return ctx.envelope('''
+
+[[rows]]
+id = "P8_applied_read_back"
+description = "plan_verbs.applied: report the read back count as the written count, so a write whose read back fell short reads as whole"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    data["totals"] = {**data["totals"], "written": written.written, "read_back": written.read_back}'''
+new = '''    data["totals"] = {**data["totals"], "written": written.read_back, "read_back": written.read_back}'''
+
+[[rows]]
+id = "P9_applied_advisories"
+description = "plan_verbs.applied: drop the advisories after a write, so what the plan left alone is told only when nothing was written"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    return ctx.envelope(data=data, warnings=[said(written), *advisories(plan)])'''
+new = '''    return ctx.envelope(data=data, warnings=[said(written)])'''
+
+[[rows]]
+id = "T1_tallied_writes"
+description = "rows.Tallied.writes: read the items left alone as the writes, for tag rows and tag suggest both"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_suggest.py"]
+old = '''        return tuple(item for item in self.items if item.action == WRITE)'''
+new = '''        return tuple(item for item in self.items if item.action != WRITE)'''
+
+[[rows]]
+id = "T2_tallied_unread"
+description = "rows.Tallied.unread: count no row as unread, so a plan over files whose genre was never learned reads as complete"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_suggest.py"]
+old = '''        return sum(self.counts[name] for name in UNREAD)'''
+new = '''        return 0'''
+
+[[rows]]
+id = "T3_scanned_root"
+description = "rows.scanned: hand adoption's census the library root's parent, so the walk tag rows, suggest and backlog share resolves rows under the wrong root"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py"]
+old = '''        root=Path(cfg.library.root),
+        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),'''
+new = '''        root=Path(cfg.library.root).parent,
+        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),'''
+
+[[rows]]
+id = "A1_zero_told_apart"
+description = "analysis.cli.nothing_to_queue: read every zero as an empty folder, so a mistyped or unmounted folder says nothing new to do for analyze, restamp and vocals"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    if folder.is_dir():
+        return ctx.envelope(data=no_job(state), outcome=Outcome.NO_OP, warnings=extra)'''
+new = '''    if True:
+        return ctx.envelope(data=no_job(state), outcome=Outcome.NO_OP, warnings=extra)'''
+
+[[rows]]
+id = "A2_zero_state"
+description = "analysis.cli.nothing_to_queue: the default state of an empty folder reworded, so the no job payload names another state"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    ctx, folder: Path, extra: tuple[dict[str, str], ...] = (), *, state: str = "no-audio"'''
+new = '''    ctx, folder: Path, extra: tuple[dict[str, str], ...] = (), *, state: str = "no-audio-found"'''
+
+[[rows]]
+id = "A3_walk_recursive"
+description = "analysis.cli.walk_folder: ignore --recursive, so a nested file is never queued by restamp or vocals"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    recursive = bool(getattr(ctx.args, "recursive", False))'''
+new = '''    recursive = False'''
+
+[[rows]]
+id = "A4_walk_warnings"
+description = "analysis.cli.walk_folder: drop the walk's warnings, so a folder it could not list or a link it declined is never told"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    return folder, recursive, scan, discovery.walk_warnings(scan.skipped_links, scan.unreadable)'''
+new = '''    return folder, recursive, scan, ()'''
+
+[[rows]]
+id = "A5_item_record_owner"
+description = "analysis.artifacts._item_record: take a record written for another item as this one's, so a resume renames or reports by a neighbour's record"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_drift.py", "tests/test_shared_homes.py"]
+old = '''    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:'''
+new = '''    if not isinstance(loaded, dict):'''
+
+[[rows]]
+id = "A6_item_record_unreadable"
+description = "analysis.artifacts._item_record: a record that does not parse raises rather than reading as none"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_drift.py", "tests/test_shared_homes.py"]
+old = '''    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:'''
+new = '''    except OSError:
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:'''
+
+[[rows]]
+id = "A7_calibrate_handler"
+description = "analysis.cli.analyze_calibrate: the handler answers the validate verb's envelope instead of running the calibrate body"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    return calibrate.analyze_calibrate(ctx)'''
+new = '''    return analyze_validate(ctx)'''
+
+[[rows]]
+id = "R1_reports_in_item_order"
+description = "tagging.artifacts.committed: read reports in the home's default order rather than tagging's, so a report named for no ordinal is placed by another rule"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_shared_homes.py"]
+old = '''    return _REPORTS.committed(cfg, job_id, ordered=_in_item_order)'''
+new = '''    return _REPORTS.committed(cfg, job_id)'''
+
+[[rows]]
+id = "S1_shop_query"
+description = "searchers.catalogue_searcher: hand the shops a query builder that does not escape, so every Beatport, Traxsource and Bandcamp URL carries raw spaces and ampersands"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=_query'''
+new = '''            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=lambda *parts: " ".join(parts)'''
+
+[[rows]]
+id = "C1_named_no_suffix"
+description = "What P2 does hold: plan_verbs.named drops the 'and N more' clause altogether, so a sentence past the cap never says names were left out"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+pairs_with = "P2_named_and_more"
+tests = ["tests/test_tag_remap.py", "tests/test_tag_suggest.py", "tests/test_tag_guess.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_shared_homes.py"]
+old = '''    return shown + (f" and {more} more" if more > 0 else "")'''
+new = '''    return shown'''
+
+[[rows]]
+id = "C2_kept_ignores_unasked"
+description = "What P5 does hold: KeptCatalogue never asks again a kept row that passed over a catalogue, so a token recorded later is never used the same day"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+pairs_with = "P5_unasked_discogs"
+tests = ["tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py"]
+old = '''        return not set(kept.passed_over) <= self._unasked'''
+new = '''        return False'''
+
+[[rows]]
+id = "C3_applied_written_zero"
+description = "What P8 does hold: plan_verbs.applied reports nothing written after a write, so a whole write reads as none"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+pairs_with = "P8_applied_read_back"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    data["totals"] = {**data["totals"], "written": written.written, "read_back": written.read_back}'''
+new = '''    data["totals"] = {**data["totals"], "written": 0, "read_back": written.read_back}'''
+
+[[rows]]
+id = "C4_reports_reversed"
+description = "What R1 does hold: tagging.artifacts.committed reads the reports last item first, so the sweep's summary lists its files out of item order"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+pairs_with = "R1_reports_in_item_order"
+tests = ["tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_shared_homes.py"]
+old = '''    return _REPORTS.committed(cfg, job_id, ordered=_in_item_order)'''
+new = '''    return _REPORTS.committed(cfg, job_id, ordered=lambda paths: _in_item_order(paths)[::-1])'''

@@ -1,17 +1,9 @@
 """``crate repair rows``: rekordbox's own defaults on a row that lacks them (R-923),
 and its file's inode on a row the binding numbered at random (U115).
 
-A row the native landing made before it set these columns would not load to a
-deck, and neither does one whose ``rb_file_id`` the binding minted. The repair
-fills each NULL default with rekordbox's value and gives a random file id the
-file's inode, through the guarded writer, and touches nothing else. Every
-library here is disposable and every row is written with plain SQL, so a NULL
-is a NULL and not a binding's substitute.
-
-THE BOUND IS FIXED HERE. The volume's inode bound is a fresh file's inode, and
-on the boot volume these tests run on it is above the binding's whole range, so
-every test would read undecidable. The autouse fixture pins it, one test
-exercises the real measurement, and one the undecidable answer.
+Every library is disposable and every row written with plain SQL, so a NULL is
+a NULL. The volume's inode bound is pinned by an autouse fixture, since on the
+boot volume it is above the binding's range; one test measures it for real.
 """
 
 from __future__ import annotations
@@ -50,11 +42,6 @@ REAL_INODE_BOUND = row_defaults.inode_bound
 WANTED = {column: str(value) for column, value in DEFAULTS.items()}
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(autouse=True)
 def _release_process_locks():
     yield
@@ -79,8 +66,8 @@ def _bound_of(cfg: config.Config, inode: int = BOUND, *, device=None, filesystem
 
 @pytest.fixture(autouse=True)
 def _bound(monkeypatch):
-    """The inode bound, pinned under the binding's range so a random id is seen,
-    on the library's own device and read as APFS."""
+    """The inode bound, pinned under the binding's range so a random id is seen, on the library's
+    own device and read as APFS."""
     monkeypatch.setattr(row_defaults, "inode_bound", lambda cfg: _bound_of(cfg))
 
 
@@ -134,6 +121,9 @@ def acknowledged(machine) -> config.Config:
 
 def _sql(cfg: config.Config, statement: str, *params) -> list[tuple]:
     connection = sqlite3.connect(cfg.library.db_path)
+    # Per connection and never stored in the file: a seeding commit skips the
+    # fsync, which on a slow disk was most of each test's time.
+    connection.execute("PRAGMA synchronous = OFF")
     try:
         found = connection.execute(statement, params).fetchall()
         connection.commit()
@@ -189,16 +179,8 @@ def build(
     zero=("501",),
     missing=("601",),
 ) -> Path:
-    """A disposable library: rows a landing left bare and numbered at random, rows
-    rekordbox made, tombstones, and the rows the file id rule must leave alone.
-
-    The two rows the disposable builder seeds are made whole and carry no file
-    id, so a plan's items are exactly the rows named ``landed`` here: each bare
-    in every default, carrying :data:`RANDOM_ID`, and naming a file on disk.
-    ``stale`` rows carry an id under the bound that is not their file's inode,
-    ``zero`` rows carry 0, ``missing`` rows carry a random id and name no file,
-    and every one of those is left as it is.
-    """
+    """A disposable library: rows a landing left bare and numbered at random, rows rekordbox made,
+    tombstones, and the rows the file id rule must leave alone."""
     db_path = Path(cfg.library.db_path)
     _build_disposable_database(db_path, with_tag_category=False)
     for content_id in ("1", "2"):
@@ -282,11 +264,6 @@ def _as_text(row: dict) -> dict[str, str | None]:
     return {column: None if row[column] is None else str(row[column]) for column in DEFAULTS}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The plan
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_plan_lists_each_live_row_missing_a_default_with_exactly_its_null_columns(machine):
     build(machine)
     _sql(machine, "UPDATE djmdContent SET Rating = 3, Commnt = 'typed' WHERE ID = '102'")
@@ -323,8 +300,8 @@ def test_the_plan_lists_each_live_row_missing_a_default_with_exactly_its_null_co
 
 
 def test_a_random_id_on_a_row_with_every_default_is_an_item_of_its_own(machine):
-    """The A8 row of 2026-09-29, repaired by R-923 and still unplayable: no
-    default to fill, a random file id to replace."""
+    """The A8 row of 2026-09-29, repaired by R-923 and still unplayable: no default to fill, a
+    random file id to replace."""
     build(machine, landed=())
     _row(machine, "701", "A8", path=str(_file(machine, "701")), file_id=RANDOM_ID)
     _whole(machine, "701")
@@ -338,8 +315,8 @@ def test_a_random_id_on_a_row_with_every_default_is_an_item_of_its_own(machine):
 
 
 def test_an_id_above_the_bound_that_is_the_files_inode_is_not_random(machine):
-    """On a volume whose counter has run past the bound a file's own inode is
-    above it too, and reading the file is what tells it from a random id."""
+    """On a volume whose counter has run past the bound a file's own inode is above it too, and
+    reading the file is what tells it from a random id."""
     build(machine, landed=(), missing=())
     path = _file(machine, "801")
     _row(machine, "801", "matching", path=str(path), file_id=path.stat().st_ino)
@@ -378,8 +355,8 @@ def test_past_the_bindings_range_nothing_is_judged_random(machine):
 
 
 def test_off_apfs_nothing_is_judged_random_and_the_plan_says_which_filesystem(machine):
-    """exFAT synthesizes inode numbers and HFS+ can wrap them, so a fresh file's
-    inode bounds nothing there and renumbering would rewrite rekordbox's rows."""
+    """exFAT synthesizes inode numbers and HFS+ can wrap them, so a fresh file's inode bounds
+    nothing there and renumbering would rewrite rekordbox's rows."""
     build(machine)
     for filesystem in ("exfat", "hfs", None):
         plan = _planned(machine, filesystem=filesystem)
@@ -393,8 +370,8 @@ def test_off_apfs_nothing_is_judged_random_and_the_plan_says_which_filesystem(ma
 
 
 def test_a_file_on_another_volume_than_the_bound_is_left_and_names_why(machine):
-    """A prefix rule can place a row's file on a second volume, whose inode
-    numbers the bound says nothing about."""
+    """A prefix rule can place a row's file on a second volume, whose inode numbers the bound says
+    nothing about."""
     build(machine)
     plan = _planned(machine, device=os.stat(machine.library.root).st_dev + 1)
     assert plan.renumbers == 0
@@ -437,15 +414,10 @@ def test_the_digest_moves_when_a_random_id_is_replaced_elsewhere(machine):
 
 
 def test_the_digest_is_equal_across_two_bounds_that_select_the_same_rows(machine):
-    """A copy rehearsal and the live run each create their own file, so their
-    bounds differ by at least one and the approval must not hang on it."""
+    """A copy rehearsal and the live run each create their own file, so their bounds differ by at
+    least one and the approval must not hang on it."""
     build(machine)
     assert _planned(machine, bound=BOUND).digest == _planned(machine, bound=BOUND + 5).digest
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The verb, end to end
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowledged):
@@ -504,8 +476,8 @@ def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowled
 
 
 def test_a_policy_registered_before_the_apply_survives_it(acknowledged):
-    """The restore puts back what was there, not the baseline: a metadata
-    operation enabled earlier in the process keeps its columns afterwards."""
+    """The restore puts back what was there, not the baseline: a metadata operation enabled earlier
+    in the process keeps its columns afterwards."""
     from types import MappingProxyType
 
     build(acknowledged)
@@ -532,9 +504,7 @@ def test_a_library_with_no_row_missing_a_default_still_asks_and_then_writes_noth
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["count"] == 0
     assert acted["outcome"] == "no_op"
-    assert [warning["code"] for warning in acted["warnings"]] == [
-        row_defaults_cli.NOTHING_TO_WRITE
-    ]
+    assert [warning["code"] for warning in acted["warnings"]] == [row_defaults_cli.NOTHING_TO_WRITE]
     assert _content(acknowledged) == before
 
 
@@ -633,51 +603,33 @@ def test_an_abort_writes_nothing(acknowledged):
     assert _content(acknowledged) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The engine's refusals
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_a_planned_column_set_since_the_plan_refuses_stale_and_writes_nothing(acknowledged):
+@pytest.mark.parametrize(
+    ("update", "said"),
+    [
+        pytest.param(
+            "UPDATE djmdContent SET ColorID = '3' WHERE ID = '102'",
+            "102: ColorID set since the plan", id="a-planned-column-set",
+        ),
+        pytest.param(
+            f"UPDATE djmdContent SET {FILE_ID} = 1234 WHERE ID = '101'",
+            f"101: {FILE_ID} changed since the plan", id="a-file-id-renumbered",
+        ),
+        pytest.param(
+            "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '101'",
+            "101: no longer a live row", id="a-row-deleted",
+        ),
+    ],
+)
+def test_a_row_changed_since_the_plan_refuses_stale_and_writes_nothing(acknowledged, update, said):
+    """A row nobody was shown, by rekordbox or a person, writes nothing for any row."""
     build(acknowledged)
     plan = _planned(acknowledged)
-    _sql(acknowledged, "UPDATE djmdContent SET ColorID = '3' WHERE ID = '102'")
+    _sql(acknowledged, update)
     before = _content(acknowledged)
-
     with pytest.raises(CratekitError) as caught:
         _apply(acknowledged, plan)
-
     assert caught.value.cause.reason == "decision-stale"
-    assert "102" in caught.value.cause.message and "ColorID" in caught.value.cause.message
-    assert _content(acknowledged) == before
-
-
-def test_a_file_id_changed_since_the_plan_refuses_stale_and_writes_nothing(acknowledged):
-    """rekordbox, or a person re-importing, may have numbered the row since."""
-    build(acknowledged)
-    plan = _planned(acknowledged)
-    _sql(acknowledged, f"UPDATE djmdContent SET {FILE_ID} = 1234 WHERE ID = '101'")
-    before = _content(acknowledged)
-
-    with pytest.raises(CratekitError) as caught:
-        _apply(acknowledged, plan)
-
-    assert caught.value.cause.reason == "decision-stale"
-    assert f"101: {FILE_ID} changed since the plan" in caught.value.cause.message
-    assert _content(acknowledged) == before
-
-
-def test_a_row_deleted_since_the_plan_refuses_stale_and_writes_nothing(acknowledged):
-    build(acknowledged)
-    plan = _planned(acknowledged)
-    _sql(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '101'")
-    before = _content(acknowledged)
-
-    with pytest.raises(CratekitError) as caught:
-        _apply(acknowledged, plan)
-
-    assert caught.value.cause.reason == "decision-stale"
-    assert "101: no longer a live row" in caught.value.cause.message
+    assert said in caught.value.cause.message
     assert _content(acknowledged) == before
 
 
@@ -695,38 +647,29 @@ def test_rekordbox_running_refuses_at_the_apply_and_writes_nothing(acknowledged,
     assert _content(acknowledged) == before
 
 
-def test_the_guard_refuses_a_default_column_written_without_the_policy(acknowledged):
-    """The policy is what admits these columns: written bare, the guard refuses."""
+@pytest.mark.parametrize(
+    ("column", "value", "kept"),
+    [
+        pytest.param("SamplerGain", lambda cfg: 0.0, None, id="a-default-column"),
+        pytest.param(FILE_ID, lambda cfg: _inode(cfg, "101"), str(RANDOM_ID), id="the-file-id"),
+    ],
+)
+def test_the_guard_refuses_a_column_written_without_its_policy(acknowledged, column, value, kept):
+    """The policy is what admits these columns, the file id being no bookkeeping column."""
     build(acknowledged)
     from pyrekordbox.db6 import tables
 
     db = rb_writer.open_db(acknowledged.library.db_path, unlock=False, cfg=acknowledged)
     try:
         row = db.session.query(tables.DjmdContent).filter(tables.DjmdContent.ID == "101").one()
-        row.SamplerGain = 0.0
+        setattr(row, column, value(acknowledged))
         with pytest.raises(Exception) as caught:
             rb_writer.commit_guarded(db)
-        assert "SamplerGain" in str(caught.value)
+        assert column in str(caught.value)
     finally:
         rb_writer.close_db(db)
-    assert _content(acknowledged)["101"]["SamplerGain"] is None
-
-
-def test_the_guard_refuses_a_file_id_written_without_the_policy(acknowledged):
-    """The file id is not a bookkeeping column: written bare, the guard refuses."""
-    build(acknowledged)
-    from pyrekordbox.db6 import tables
-
-    db = rb_writer.open_db(acknowledged.library.db_path, unlock=False, cfg=acknowledged)
-    try:
-        row = db.session.query(tables.DjmdContent).filter(tables.DjmdContent.ID == "101").one()
-        setattr(row, FILE_ID, _inode(acknowledged, "101"))
-        with pytest.raises(Exception) as caught:
-            rb_writer.commit_guarded(db)
-        assert FILE_ID in str(caught.value)
-    finally:
-        rb_writer.close_db(db)
-    assert str(_content(acknowledged)["101"][FILE_ID]) == str(RANDOM_ID)
+    now = _content(acknowledged)["101"][column]
+    assert (None if now is None else str(now)) == kept
 
 
 def test_a_plan_that_renumbers_nothing_registers_no_file_id_policy(acknowledged, monkeypatch):
@@ -796,14 +739,12 @@ def test_every_default_is_a_real_column_and_none_is_an_analysis_column():
     assert set(DEFAULTS) <= real
     assert not set(DEFAULTS) & rb_writer.CONTENT_ROW_EMPTY_COLUMNS
     assert rb_writer.ROW_DEFAULTS_POLICY.fields.keys() == DEFAULTS.keys()
-    assert set(rb_writer.ROW_DEFAULTS_POLICY.fields.values()) == {
-        rb_writer.Ownership.FILL_IF_EMPTY
-    }
+    assert set(rb_writer.ROW_DEFAULTS_POLICY.fields.values()) == {rb_writer.Ownership.FILL_IF_EMPTY}
 
 
 def test_the_file_id_is_a_real_column_owned_by_its_policy_and_hidden_from_no_guard():
-    """U115. Owned, since the value replaced is present and wrong; not an analysis
-    column; and NOT bookkeeping, which would blind the guard for every writer."""
+    """U115. Owned, since the value replaced is present and wrong; not an analysis column; and NOT
+    bookkeeping, which would blind the guard for every writer."""
     from pyrekordbox.db6 import tables
 
     assert FILE_ID in tables.DjmdContent.__table__.columns.keys()
@@ -839,11 +780,6 @@ def test_a_file_id_is_judged_against_the_bound_alone(value, state):
     assert row_defaults.file_id_state(value, BOUND) == state
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The read back, pure
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def _item(content_id: str = "101", columns=("SamplerGain", "DJPlayCount")) -> row_defaults.Item:
     return row_defaults.Item(content_id=content_id, title="t", path="p", columns=tuple(columns))
 
@@ -869,10 +805,7 @@ def test_judge_reads_a_planned_renumber_as_written_and_an_unplanned_one_as_moved
         content_id="101", title="t", path="p", columns=(), file_id=4242, file_id_was="200000000"
     )
     plan = row_defaults.DefaultsPlan(items=(renumbered, _item("102", ())), rows=2)
-    before = {
-        "101": {FILE_ID: "200000000", "BPM": 0},
-        "102": {FILE_ID: "200000000", "BPM": 0},
-    }
+    before = {"101": {FILE_ID: "200000000", "BPM": 0}, "102": {FILE_ID: "200000000", "BPM": 0}}
     after = {"101": {FILE_ID: 4242, "BPM": 0}, "102": {FILE_ID: 4242, "BPM": 0}}
     wrong, moved = row_defaults.judge(plan, before, after)
     assert wrong == ()
@@ -891,19 +824,20 @@ def test_judge_names_a_renumber_that_did_not_take():
     assert moved == ()
 
 
-def test_assert_read_back_refuses_a_moved_column_as_the_guards_defect():
-    written = row_defaults.Written(session_id="s", written=1, read_back=1, moved=("101: BPM",))
+@pytest.mark.parametrize(
+    ("found", "reason"),
+    [
+        pytest.param({"moved": ("101: BPM",)}, "whitelist-violation", id="a-moved-column"),
+        pytest.param(
+            {"wrong": ("101: SamplerGain not as the default",)}, "internal-error", id="a-wrong-value"
+        ),
+    ],
+)
+def test_assert_read_back_refuses_and_names_the_undo(found, reason):
+    """A moved column is the guard's defect; either way the durable write names its undo."""
+    written = row_defaults.Written(session_id="s", written=1, read_back=0, **found)
     with pytest.raises(CratekitError) as caught:
         row_defaults.assert_read_back(written)
-    assert caught.value.cause.reason == "whitelist-violation"
+    assert caught.value.cause.reason == reason
     assert "restore session s" in " ".join(caught.value.cause.remediation.steps)
-
-
-def test_assert_read_back_refuses_a_wrong_value():
-    written = row_defaults.Written(
-        session_id="s", written=1, read_back=0, wrong=("101: SamplerGain not as the default",)
-    )
-    with pytest.raises(CratekitError) as caught:
-        row_defaults.assert_read_back(written)
-    assert caught.value.cause.reason == "internal-error"
 

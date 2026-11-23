@@ -1,31 +1,15 @@
 """Routing and tagging over a declared taxonomy. One table, two entry points.
 
-WHY TWO ENTRY POINTS AND NOT ONE RESOLVER. Nine call sites in the system this
-replaces need an answer that ALWAYS lands: they build a plan keyed by (bucket,
-sub), and a missing answer means the track enters the collection with no place in
-the tree and quietly disappears from it. Five other call sites need to be allowed
-to DECLINE: on a decline they write nothing, and one of them actively deletes the
-existing genre tag, because a coarse guess written onto a file outlives the run
-that guessed it. Merging the two either reintroduces the blanket guess into
-tagging or makes routing raise. So they share one table and stay two functions.
+Two entry points, not one resolver: routing must ALWAYS land, because a plan
+keyed by (bucket, sub) loses a track with no answer, while tagging must be able
+to DECLINE, because a coarse guess written onto a file outlives the run that
+guessed it. So they share one table and stay two functions.
 
-WHY NOTHING HERE READS CONFIGURATION. Every function takes the taxonomy as an
-argument (KTD23, seam decisions S3 and D7). Two consequences are load-bearing:
-
-* The vocal threshold is a value the CALLER supplies. The old router reached
-  UPWARD, lazily, into an analysis module to fetch it. That module is an optional
-  extra, so on a slim install the router raised ImportError the first time a
-  track needed vocal routing, and the traceback named an import inside a function
-  rather than the packaging decision behind it. Here, an absent threshold routes
-  no track as vocal and raises nothing.
-* Two taxonomies can be exercised in one process, which is the only way to prove
-  that a friend's differently-named tree routes correctly with no code change.
-
-WHY THE TAG READERS ARE NOT HERE. Four functions that read tags off disk used to
-live beside this logic. They do real input, which the domain layer does not do,
-and they belong with the writer that has to agree with them on container
-dispatch. They now live in the tags module (seam decision S5). Everything here
-takes VALUES, never paths.
+Nothing here reads configuration (KTD23, S3, D7). The taxonomy is an argument,
+so two taxonomies can be exercised in one process, and the vocal threshold is a
+value the caller supplies, so an absent one routes no track as vocal instead of
+raising on a slim install. Tag readers live in the tags module (S5); everything
+here takes VALUES, never paths.
 """
 
 from __future__ import annotations
@@ -52,10 +36,8 @@ from cratekit.core.taxonomy import (
 class Match(str, Enum):
     """How a routing answer was reached.
 
-    Carried on every result so a summary can show the fallback rate instead of
-    hiding it. The old resolver returned a human-readable note for exactly this
-    purpose and two sweeps printed it; a structured value renders the same line
-    without a lower layer writing prose (seam decision D2).
+    Carried on every result so a summary can show the fallback rate, as a value
+    rather than prose from a lower layer (D2).
     """
 
     EXACT = "exact"
@@ -89,10 +71,9 @@ class KindVerdict(str, Enum):
 class KindJudgment:
     """One release judged against the kind its label is followed as.
 
-    ``kind`` is the label's kind as it was judged, the default filled in.
-    ``placed`` is every published word a rule knew, with the kind it named, in
-    the catalogue's order. ``reason`` is the sentence a person reads, for every
-    verdict.
+    ``kind`` is the label's kind as judged, the default filled in. ``placed`` is
+    every published word a rule knew, with its kind, in the catalogue's order.
+    ``reason`` is the sentence a person reads.
     """
 
     verdict: KindVerdict
@@ -114,32 +95,16 @@ class Resolution:
 class Suggestion:
     """A tagging answer, which may decline.
 
-    ``tag`` is the string to write onto the file. It can be present with no
-    bucket: a source vocabulary can name something the taxonomy has no folder
-    for, and preserving the source's own word is better than forcing it into a
-    bucket that does not describe it.
+    ``tag`` is the string to write onto the file, and may come with no bucket
+    when the source names something the taxonomy has no folder for.
+    ``needs_review`` is not a decline: the answer stands but a human should
+    confirm it, as when the tempo rule had no tempo to split on.
 
-    ``needs_review`` is not a decline. It means the answer stands but a human
-    should confirm it, which is how the one tempo-dependent rule reports that it
-    had no tempo to split on.
-
-    ``off_taxonomy`` means the tag above is the source's own word and this
-    template has no place of its own for it. It can only be true on the LAST
-    tier, and it is not true of everything that tier answers: a bucket's own
-    display reaches it as well, and routing recognises that one exactly.
-
-    IT IS NOT A STATEMENT ABOUT WHERE THE TRACK LANDS, and reading it as one
-    goes wrong in both directions. ``Psy-Trance`` is off taxonomy on the shipped
-    template and a fuzzy routing rule still puts it in the trance bucket, while
-    a SUB's display is a declared word that routing leaves in the fallback. This
-    flag is about the WORD written onto the file, which is what decides whether
-    the library's own vocabulary still describes what is on disk.
-
-    It is stated here rather than inferred by a caller because ``bucket_id is
-    None`` does not mean it, twice over. A declared rule carrying a literal tag
-    and no bucket produces exactly that shape on purpose, and so does a bucket
-    display with no alias of its own. A caller that wants to know whether this
-    taxonomy RECOGNIZED the string asks ``not declined and not off_taxonomy``.
+    ``off_taxonomy`` means the tag is the source's own word and this template has
+    no place for it. Only the last tier sets it, and not for a bucket's own
+    display. It is about the WORD on the file, not where the track lands, and
+    ``bucket_id is None`` does not imply it. A caller asking whether the taxonomy
+    recognized the string asks ``not declined and not off_taxonomy``.
     """
 
     bucket_id: str | None = None
@@ -154,9 +119,7 @@ class Suggestion:
         return self.decline is not None
 
 
-# ---------------------------------------------------------------------------
 # Entry point 1: routing. Total. Never raises. Always lands.
-# ---------------------------------------------------------------------------
 
 
 def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
@@ -164,18 +127,11 @@ def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
 
     Four tiers, in order, and the order is behaviour:
 
-    1. an exact declared alias, matched case-sensitively because vendor genre
-       names are exact strings;
-    2. the value already IS a bucket's display name, which happens constantly
-       because the tagger writes bucket names back onto files;
-    3. the first ordered keyword rule whose substring appears in the lowercased
-       value;
-    4. the declared fallback bucket.
-
-    Tier 4 is why this function never returns None and never raises. An empty
-    string, a language this taxonomy has never heard of, and a typo all land in
-    the declared bucket for things that did not resolve, and the caller can see
-    from ``match`` that they did not resolve.
+    1. an exact declared alias, case sensitive, since vendor names are exact;
+    2. the value already IS a bucket's display, as the tagger writes them back;
+    3. the first ordered keyword rule whose substring is in the lowercased value;
+    4. the declared fallback bucket, so this never returns None or raises, and
+       ``match`` shows that it did not resolve.
     """
     value = raw_genre or ""
 
@@ -195,50 +151,26 @@ def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
     return Resolution(taxonomy.fallback.bucket, Match.FALLBACK, None)
 
 
-# ---------------------------------------------------------------------------
 # Entry point 2: tagging. Allowed to decline.
-# ---------------------------------------------------------------------------
 
 
 def suggest_tag(
-    taxonomy: Taxonomy,
-    raw_genre: str | None,
-    *,
-    bpm: float | None = None,
-    source: str | None = None,
+    taxonomy: Taxonomy, raw_genre: str | None, *, bpm: float | None = None, source: str | None = None
 ) -> Suggestion:
     """Suggest the genre tag to write onto a file, or decline.
 
-    ``source`` names whose word this is, as a file's record names that source.
-    WHEN THE TAXONOMY DECLARES A VOCABULARY FOR IT, THAT TABLE IS ASKED FIRST
-    (R-799), ahead of every pass below. A row answers with its tag and the
-    place the loader resolved for it, which is how a general catalogue's Pop
-    stops being filed by an alias written for a record shop's. A word with no
-    row goes on to the passes below, as every word did before. The first build
-    declined it instead, and the review drove what that cost: an album listing
-    a dance word the aliases file correctly and then a broad word with a row
-    was written as the broad word. A source with no table, and a caller that
-    names no source, get the passes below exactly as before.
-
-    Precedence, stated rather than emergent, in three passes:
+    When the taxonomy declares a vocabulary for ``source``, that table is asked
+    first (R-799); a word with no row goes on to the passes below.
 
     1. nothing at all declines as not-found;
-    2. the BETTER-INFORMED pass, which runs before the alias lookup. Two kinds of
-       rule qualify. An EXACT refusal, because the strings it names are catch-all
-       buckets from a source taxonomy and accepting one as a final tag is the
-       blanket-genre bug this entry point exists to prevent. And a rule that
-       reads TEMPO, because it decides on evidence a name lookup does not have;
-    3. an EXACT declared alias, which beats a plain substring rule: a declaration
-       is a statement and a substring is a guess;
-    4. the ordered substring corrections, which fix a source taxonomy's combined
-       buckets;
-    5. otherwise the source's own string passes through unchanged, which is how a
-       genuinely new genre survives long enough for someone to notice it. That
-       tier, and only that tier, sets ``off_taxonomy``, so the noticing has a
-       mechanism behind it rather than a hope (R-650).
+    2. the better-informed rules, before the aliases: an EXACT refusal of a
+       source's catch-all bucket, and a rule that reads TEMPO;
+    3. an exact declared alias, which beats a substring guess;
+    4. the ordered substring corrections;
+    5. otherwise the source's own string passes through, and only this tier
+       sets ``off_taxonomy`` (R-650).
 
-    There is no tier that invents a bucket. That is the difference from routing,
-    and it is enforced: a template declaring otherwise is refused at load.
+    No tier invents a bucket; a template declaring otherwise is refused at load.
     """
     value = (raw_genre or "").strip()
     if not value:
@@ -262,10 +194,8 @@ def suggest_tag(
         bucket_id, sub_id = hit
         genre = _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id)
         if genre is not None:
-            # A GENRE SUB'S OWN SOURCE, IN ITS DECLARED SPELLING (U155). The
-            # sub's display is a name in rekordbox, and routing files a genre
-            # sub by its source exactly and case sensitively, so the word
-            # written onto the file is the source this word matched.
+            # A genre sub is written as the source this word matched, in its
+            # declared spelling, since routing files it by source exactly (U155).
             spelled = next(
                 (source for source in genre.sources if source.lower().strip() == lowered),
                 genre.sources[0],
@@ -279,32 +209,10 @@ def suggest_tag(
         if _rule_matches(rule, lowered):
             return _apply_suggest_rule(taxonomy, rule, lowered, bpm)
 
-    # THE LAST TIER, AND THE ONE STRING IT DOES NOT FLAG. Nothing here claimed
-    # the value, so there is no bucket to return either way, and the tag is the
-    # source's own word. The flag says that word is outside this template, and
-    # there is exactly one kind that is not: a BUCKET's own display, which
-    # ``resolve_bucket``'s second tier recognises byte for byte and places where
-    # the template says. That happens constantly, because this tagger writes
-    # bucket names back onto files and two shipped buckets carry no alias naming
-    # themselves, and reporting it would put the library's own folder names in
-    # front of a person as a gap.
-    #
-    # THE TEST IS THAT TIER, NOT THE VOCABULARY, and the difference was measured
-    # rather than reasoned. A SUB's display is equally a declared word and
-    # routing does NOT recognise it, so a file wearing one lands in the fallback
-    # bucket exactly like a word nobody declared: suppressing it would hide the
-    # very case R-650 is about. The same holds for a display in another case,
-    # which the Bandcamp picker produces because it selects lowercased tags.
-    # So the question this asks is the one that decides where the file ends up.
+    # The last tier flags every word except a BUCKET's own display, which
+    # ``resolve_bucket``'s second tier places byte for byte. A sub's display or
+    # another case lands in the fallback, so it is flagged (R-650).
     return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)
-
-
-def _rule_matches(rule, lowered: str) -> bool:
-    if rule.equals:
-        return lowered in {needle.lower() for needle in rule.equals}
-    if rule.all_of:
-        return all(needle in lowered for needle in rule.all_of)
-    return bool(rule.any_of) and any(needle in lowered for needle in rule.any_of)
 
 
 def display_of(taxonomy: Taxonomy, hit: tuple[str, str | None]) -> str:
@@ -313,10 +221,8 @@ def display_of(taxonomy: Taxonomy, hit: tuple[str, str | None]) -> str:
     bucket = taxonomy.bucket(bucket_id)
     if sub_id is None:
         return bucket.display
-    for sub in bucket.subs:
-        if sub.id == sub_id:
-            return sub.display
-    return bucket.display
+    sub = _sub_by_id(bucket, sub_id)
+    return bucket.display if sub is None else sub.display
 
 
 def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Suggestion:
@@ -326,14 +232,10 @@ def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Sugg
     if rule.split is not None and rule.split.when_contains in lowered:
         split = rule.split
         if bpm is None:
-            # No tempo to split on. Take the declared safe side and ask for a
-            # look rather than guessing, because the two sides of this split are
-            # different rooms of a night, not neighbours.
+            # No tempo to split on: take the declared safe side and ask for a look.
             bucket = taxonomy.bucket(split.unknown_bpm)
             return Suggestion(
-                bucket_id=bucket.id,
-                tag=bucket.display,
-                needs_review=split.unknown_bpm_needs_review,
+                bucket_id=bucket.id, tag=bucket.display, needs_review=split.unknown_bpm_needs_review
             )
         target = split.below if bpm < split.max_bpm else split.at_or_above
         bucket = taxonomy.bucket(target)
@@ -343,44 +245,23 @@ def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Sugg
         bucket = taxonomy.bucket(rule.bucket)
         return Suggestion(bucket_id=bucket.id, tag=bucket.display)
 
-    # A rule with a literal tag and no bucket: the source taxonomy names
-    # something this taxonomy has no folder for. Declared on purpose so the gap
-    # is visible instead of being silently collapsed into a neighbour.
-    #
-    # NOT off taxonomy, and the difference is the whole point of that field. The
-    # template author wrote this tag down and said in a comment why there is no
-    # bucket for it, so nobody needs telling about it. The last tier's string is
-    # one nobody has declared anywhere, which is the one worth reporting.
+    # A literal tag with no bucket, declared on purpose by the template author,
+    # so it is not off taxonomy: nobody needs telling about it.
     return Suggestion(tag=rule.tag)
 
 
-# ---------------------------------------------------------------------------
 # Energy
-# ---------------------------------------------------------------------------
 
 
 def energy_sub(
-    taxonomy: Taxonomy,
-    bucket_id: str,
-    level: int | None,
-    *,
-    source_genre: str = "",
+    taxonomy: Taxonomy, bucket_id: str, level: int | None, *, source_genre: str = ""
 ) -> Sub | None:
     """The sub-playlist a track belongs in, or None to leave it where it is.
 
-    The tier order below reproduces three per-bucket exceptions that used to be
-    three hardcoded branches, and the ORDER is load-bearing rather than
-    stylistic:
-
-    * A bucket that routes by source genre is checked FIRST, so it never
-      consults energy at all.
-    * A bucket with no energy dimension is checked BEFORE the missing-level
-      case, so a track in it with no energy reading lands in its single sub
-      rather than in a sink that bucket does not have.
-
-    Returning None is a real answer. It means this taxonomy declares no place for
-    the track below its bucket, and a caller that treats None as an error would
-    reintroduce the crash the declaration exists to avoid.
+    The tier order is load-bearing: a bucket routing by source genre is checked
+    first and never consults energy, and a bucket with no energy dimension is
+    checked before the missing level, so its track lands in its single sub.
+    None is a real answer, no place declared below the bucket, not an error.
     """
     bucket = taxonomy.bucket(bucket_id)
 
@@ -396,14 +277,11 @@ def energy_sub(
 
     for band in taxonomy.energy.bands:
         if level <= band.max:
-            # The returned id is the BAND's id, deliberately. Two buckets that
-            # split at the same levels then key state identically even when one
-            # of them labels its bands differently, which is the whole reason a
-            # label override is not a second set of cuts.
+            # The BAND's id, so buckets splitting at the same levels key state
+            # identically whatever they label their bands.
             return Sub(band.id, bucket.energy.band_display.get(band.id, band.display))
-    # Unreachable while the loader holds: the last band's bound equals the top of
-    # the scale. Kept explicit so an out-of-range level never returns None and
-    # gets mistaken for "no place declared".
+    # Unreachable while the loader holds; explicit so an out-of-range level
+    # never returns None and reads as "no place declared".
     last = taxonomy.energy.bands[-1]
     return Sub(last.id, bucket.energy.band_display.get(last.id, last.display))
 
@@ -411,17 +289,9 @@ def energy_sub(
 def genre_sub(taxonomy: Taxonomy, bucket_id: str, source_genre: str | None) -> Sub | None:
     """The genre sub a track files into beside its band, or None (U155).
 
-    EXACT AND CASE SENSITIVE, like a ``sub_by_source`` row, since the sources
-    are the exact strings a source vendor, or a label's registry entry, puts
-    on a file. ``Rominimal`` reaches the Rominimal sub and ``Minimal`` never
-    does, though the ``minimal`` keyword rule would have filed both in the
-    bucket.
-
-    ADDITIVE. This is never :func:`energy_sub`'s answer and never one of
-    :func:`competing_subs`: the band a track is filed into is the same with
-    or without it, and a caller adds this place beside that one. The loader
-    allows a genre sub only on a bucket that splits by energy, so on any other
-    bucket the answer is None.
+    Exact and case sensitive, like a ``sub_by_source`` row. Additive: never
+    :func:`energy_sub`'s answer nor one of :func:`competing_subs`, and only on a
+    bucket that splits by energy.
     """
     value = source_genre or ""
     for genre in taxonomy.bucket(bucket_id).genre_subs:
@@ -431,20 +301,12 @@ def genre_sub(taxonomy: Taxonomy, bucket_id: str, source_genre: str | None) -> S
 
 
 def genre_sub_named(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> bool:
-    """Whether a sub identifier is one of a bucket's genre subs (U155).
-
-    What a gate asks of a placement to show it in the genre sub's own column
-    rather than as the track's energy sub.
-    """
+    """Whether a sub identifier is one of a bucket's genre subs (U155)."""
     return _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id) is not None
 
 
 class Competing(str, Enum):
-    """What kind of place a bucket's exclusive subs are.
-
-    A track belongs in ONE of a bucket's competing subs. Which subs those are
-    is the taxonomy's to say, and the kind is what a report splits its count by.
-    """
+    """What kind of place a bucket's exclusive subs are, which a report counts by."""
 
     #: The energy bands and the no reading sub beside them.
     BAND = "band"
@@ -456,51 +318,18 @@ class Competing(str, Enum):
 def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, frozenset[str]]:
     """The subs of one bucket a track may hold only one of, and their kind.
 
-    THE TIER ORDER IS :func:`energy_sub`'S OWN, because this answers the
-    question that function's answer raises: given the sub a track was routed
-    to, which other subs would be a second place for it. A bucket that routes
-    by source genre never consults energy, so its style subs compete. A bucket
-    with no energy dimension holds its style subs and its single sub. Every
-    other bucket splits by energy, so its bands compete, and the no reading
-    sub competes with them, since a track filed under a band has a reading as
-    far as the tree is concerned.
-
-    A SUB CLASS IS NEVER IN THE SET. A manual or derived sub sits beside a
-    track's band rather than instead of it, which is what additive means, so
-    it is removed by identifier even where a bucket happens to declare a sub
-    of the same identifier. NOR IS A GENRE SUB (U155), for the same reason: it
-    sits beside the band its track is filed into, and the loader keeps its
-    identifier apart from every band, so it never enters the set.
-
-    Identifiers, never display names (R19, D5). A bucket that labels its bands
-    differently still competes on the band's identifier.
-
-    A FORMER PLACE COMPETES TOO (R-797), in two buckets and in no other. In
-    the bucket that DECLARES it, because it is the playlist that bucket's
-    tracks were filed in before the bucket had a folder of its own, so a track
-    sitting there and in a band is in two places. And in the bucket whose
-    folder HOLDS it, because it competed there until the promotion and a track
-    in it whose genre names another style of that folder is still in the wrong
-    one of that folder's playlists. Found by the review: competing in the
-    declaring bucket alone, such a track was added to its style and left in
-    the old playlist, with nothing able to settle it. It does not change the
-    kind: the kind says what a reading decides among, and no reading ever
-    names a former place.
-
-    A SPLIT PLACE COMPETES WHERE IT IS DECLARED AND NOWHERE ELSE (U118). It is
-    a band the holder still files into, so in the holder it already competes
-    as that band, and in the declaring bucket it is the band a track whose
-    genre names that bucket still sits in.
+    The tier order is :func:`energy_sub`'s own: a bucket routing by source genre
+    or with no energy dimension competes on its style subs and single sub, any
+    other on its bands and the no reading sub. Identifiers, never displays (R19,
+    D5). A sub class or a genre sub is never in the set, since it sits beside
+    the band (U155). Every place of :func:`left_only` competes too: a former place
+    where declared and where held (R-797), a split place where declared (U118).
     """
     bucket = taxonomy.bucket(bucket_id)
     classes = {entry.id for entry in taxonomy.sub_classes}
     former = left_only(taxonomy, bucket_id)
 
-    if (
-        bucket.sub_by_source is not None
-        or not taxonomy.energy.enabled
-        or not bucket.energy.enabled
-    ):
+    if bucket.sub_by_source is not None or not taxonomy.energy.enabled or not bucket.energy.enabled:
         found = {sub.id for sub in bucket.subs}
         if bucket.single_sub is not None:
             found.add(bucket.single_sub.id)
@@ -515,9 +344,7 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
 def former_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, FormerPlace], ...]:
     """Every former place that competes in one bucket, with the bucket declaring it.
 
-    The ones the bucket declares and the ones its folder holds for another
-    bucket. Declared order, so two plans over one taxonomy agree. Read off the
-    index the loader built, since this is asked per track and per bucket.
+    Declared and held ones, in declared order, read off the loader's index.
     """
     return taxonomy.former_places(bucket_id)
 
@@ -525,11 +352,7 @@ def former_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, Former
 def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace | None:
     """The former place one of a bucket's competing subs is, or None.
 
-    None for a band, a style sub, the no reading sub and anything else a
-    resolver can answer with. A caller that is about to FILE a track asks this
-    to refuse; a caller that is about to read or leave a place asks it to find
-    the playlist. Asked of the declaring bucket or of the holding one, the
-    answer is the same place.
+    The same place whether asked of the declaring bucket or the holding one.
     """
     for _declarer, place in former_places(taxonomy, bucket_id):
         if place.id == sub_id:
@@ -540,10 +363,8 @@ def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace
 def left_only(taxonomy: Taxonomy, bucket_id: str) -> frozenset[str]:
     """The competing subs of one bucket that a track is only ever moved OUT of.
 
-    Every former place competing there and every split place the bucket
-    declares. ONE ANSWER for what competes and for what a track with no
-    reading may still leave, so a third kind of such place is added here once
-    and both askers see it.
+    Every former place competing there and every split place it declares, one
+    answer for what competes and what a track with no reading may still leave.
     """
     return frozenset(
         {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
@@ -552,20 +373,14 @@ def left_only(taxonomy: Taxonomy, bucket_id: str) -> frozenset[str]:
 
 
 def split_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, SplitPlace], ...]:
-    """Every split place one bucket declares or holds, with the declaring bucket.
-
-    A split place competes only in the bucket that declares it. The holder's
-    side is asked to know which of its own bands a declaring bucket settles.
-    """
+    """Every split place one bucket declares or holds, with the declaring bucket."""
     return taxonomy.split_places(bucket_id)
 
 
 def split_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> SplitPlace | None:
     """The split place one of a bucket's competing subs is, or None.
 
-    Only a place the bucket DECLARES, since that is the only bucket it competes
-    in. Asked of the holder with the band's identifier the answer is None:
-    there the band is the holder's own, filed into as any band is.
+    Only a place the bucket DECLARES; in the holder the band is its own.
     """
     for place in taxonomy.bucket(bucket_id).split_from:
         if place.id == sub_id:
@@ -602,17 +417,9 @@ class GenreFolder:
 def folder_of(taxonomy: Taxonomy, raw_genre: str | None) -> GenreFolder:
     """What one genre string has in the tree (R-797).
 
-    THROUGH :func:`resolve_bucket` AND NOTHING ELSE, so the answer is where
-    routing files the track and no second opinion on that can grow here.
-
-    THE FALLBACK TIER IS NO FOLDER. Routing lands there so that it never
-    raises, and a genre that got there was claimed by nothing declared.
-
-    A BUCKET THAT ROUTES BY SOURCE GENRE HOLDS GENRES THAT HAVE NO FOLDER OF
-    THEIR OWN. Each row of its map names the style sub a source string files
-    in, and a string with no row lands in the declared default, which is a
-    place to put it and not a statement about what it is. The bucket's own
-    name is the exception: a track tagged with it has that folder by name.
+    Through :func:`resolve_bucket` alone. The fallback tier is no folder. In a
+    bucket routing by source genre, a map row is a style sub and any other string
+    lands in the default, except the bucket's own name, which is its folder.
     """
     value = raw_genre or ""
     resolution = resolve_bucket(taxonomy, value)
@@ -630,10 +437,8 @@ def folder_of(taxonomy: Taxonomy, raw_genre: str | None) -> GenreFolder:
 def energy_rating(taxonomy: Taxonomy, level: int | None) -> int | None:
     """Map an energy level to a star-rating integer, or None with no reading.
 
-    Deliberately independent of the band cuts. Energy is decile-calibrated, so
-    an even five-way spread lands tracks across all five stars while the tree
-    stays a three-way split. Tying the two together would silently re-rate a
-    library the first time a band boundary moved.
+    Independent of the band cuts, so moving a band boundary never re-rates a
+    library.
     """
     if level is None:
         return None
@@ -644,12 +449,7 @@ def energy_rating(taxonomy: Taxonomy, level: int | None) -> int | None:
 
 
 def no_energy_sub(taxonomy: Taxonomy, bucket_id: str) -> Sub | None:
-    """The sink a bucket sweeps out of, or None when it declares none.
-
-    A bucket with no sink is a bucket nothing gets swept out of. That single
-    declaration replaces two separate hardcoded exclusion lists in the source
-    system, one suppressing the sweep and one suppressing the rating write.
-    """
+    """The sink a bucket sweeps out of, or None when it declares none."""
     bucket = taxonomy.bucket(bucket_id)
     if bucket.sub_by_source is not None or not bucket.energy.enabled:
         return None
@@ -664,52 +464,31 @@ def rates(taxonomy: Taxonomy, bucket_id: str) -> bool:
 def routes_with_vox(voxlevel: int | None, threshold: float | None) -> bool:
     """Whether a vocal-prominence reading clears the cut for the additive sub.
 
-    The threshold is PASSED IN, never fetched. The old version defaulted it by
-    importing an analysis module from inside this layer, which meant a slim
-    install without that module raised on the first vocal track. Here an absent
-    threshold simply routes nothing as vocal, which is what a library with no
-    vocal analysis should do.
+    The threshold is passed in, never fetched; an absent one routes nothing.
     """
     if voxlevel is None or threshold is None:
         return False
     return voxlevel >= threshold
 
 
-# ---------------------------------------------------------------------------
 # Tempo priors
-# ---------------------------------------------------------------------------
 
 
 def bpm_prior(taxonomy: Taxonomy, raw_genre: str | None) -> BpmPrior | None:
     """The tempo detection window for a source genre, via its bucket.
 
-    Resolving through the bucket rather than looking the raw string up in a
-    parallel table is the fix for a silent, total failure: the old table was
-    keyed by folder DISPLAY name, so a user whose folders were named anything
-    else matched none of them and every track in their library detected against
-    one generic window. A window spanning a full octave folds nothing, which
-    disables the octave-error defence the priors exist to provide, with no
-    warning anywhere.
-
-    Returns None when the resolved bucket declares no window, so the caller can
-    refuse rather than quietly detect against a default.
+    Through the bucket, never a table keyed by folder display name, which
+    matched nothing in a library named differently. None when the bucket
+    declares no window, so the caller can refuse rather than use a default.
     """
     return taxonomy.bucket(resolve_bucket(taxonomy, raw_genre).bucket_id).bpm
 
 
-# ---------------------------------------------------------------------------
 # The family projection (a parallel vocabulary, not a merge)
-# ---------------------------------------------------------------------------
 
 
 def family_of(taxonomy: Taxonomy, raw_genre: str | None) -> str | None:
-    """The family of whatever bucket this genre resolves to.
-
-    A projection off the bucket, not a second genre table. It also fixes a live
-    inconsistency for free: the old rules ran on the RAW tag, so a track tagged
-    for two genres could sit in one folder and score as a different family than
-    the folder it sat in.
-    """
+    """The family of whatever bucket this genre resolves to, a projection off it."""
     return taxonomy.bucket(resolve_bucket(taxonomy, raw_genre).bucket_id).family
 
 
@@ -722,8 +501,7 @@ def _supergroup_of(taxonomy: Taxonomy, family: str | None) -> str | None:
 def genre_affinity(taxonomy: Taxonomy, anchor_genre: str | None, cand_genre: str | None) -> float:
     """A soft genre prior for ranking. Never a hard exclude.
 
-    An unknown anchor scores neutral so genre neither helps nor hurts, which is
-    what an unowned anchor track needs.
+    An unknown anchor scores neutral, so genre neither helps nor hurts.
     """
     if not (anchor_genre or "").strip():
         return taxonomy.family.unknown_anchor
@@ -746,22 +524,14 @@ def genre_affinity(taxonomy: Taxonomy, anchor_genre: str | None, cand_genre: str
     return taxonomy.family.unrelated
 
 
-# ---------------------------------------------------------------------------
 # The acquisition gate (keyed on the SOURCE vocabulary, deliberately)
-# ---------------------------------------------------------------------------
 
 
 def gate_family(taxonomy: Taxonomy, source_genre: str | None) -> str | None:
     """Classify a source genre into a candidate-drop family, or None to keep.
 
-    Keyed on the SOURCE taxonomy's own genre, never on the bucket it resolves
-    to, and that is deliberate rather than an oversight. A bucket-level "ask"
-    means the FOLDER is uncertain; a confident source sub-genre is still a
-    confident FAMILY signal. Collapsing the two would undo the softening that
-    stopped this gate dropping most of a legitimate catalogue.
-
-    Timid by construction: an empty string and any string no rule claims are
-    both keep, because absence of evidence is not evidence of a bad fit.
+    Keyed on the SOURCE genre, never its bucket: an uncertain folder can still
+    be a confident family. Timid: an empty or unclaimed string keeps.
     """
     value = (source_genre or "").strip().lower()
     if not value:
@@ -774,11 +544,9 @@ def gate_family(taxonomy: Taxonomy, source_genre: str | None) -> str | None:
 
 
 def _rule_matches(rule: GateRule | PublishedRule, value: str) -> bool:
-    """Whether one gate rule claims a lowercase word. The matcher of both tables.
+    """Whether one rule claims a lowercase word, the one matcher of every table.
 
-    ONE SPELLING, for the share rules and the published ones, so a fix to how a
-    word is matched cannot reach one table and miss the other. Every needle is
-    folded lowercase by the loader, for both, so nothing is folded here.
+    Every needle is folded lowercase by the loader, so nothing is folded here.
     """
     return bool(
         (rule.equals and value in rule.equals)
@@ -795,18 +563,11 @@ def gate_decisions(
 ) -> list[GateVerdict]:
     """Keep or drop each track, judged against the WHOLE catalogue at once.
 
-    The share is computed over tracks the source actually classified. Counting
-    the unclassified ones would dilute every share toward zero and turn a timid
-    gate into an aggressive one, which is the opposite of what it is for.
-
-    A family drops only when it is a small minority of what this label puts out,
-    so a label that genuinely makes that music keeps it and a one-off release in
-    an unrelated style does not drag the whole style in.
+    The share counts only tracks the source classified, so the unclassified do
+    not dilute it. A family drops only as a small minority of the label's output.
     """
     share = (
-        taxonomy.label_gate.out_of_place_share
-        if out_of_place_share is None
-        else out_of_place_share
+        taxonomy.label_gate.out_of_place_share if out_of_place_share is None else out_of_place_share
     )
     families = [gate_family(taxonomy, g) for g in source_genres]
     classified = sum(1 for g in source_genres if (g or "").strip())
@@ -819,17 +580,13 @@ def gate_decisions(
     ]
 
 
-# ---------------------------------------------------------------------------
 # The same gate, asked about KIND, over a general catalogue's vocabulary
-# ---------------------------------------------------------------------------
 
 
 def published_kind(taxonomy: Taxonomy, word: str | None) -> str | None:
     """The kind of music a general catalogue's word is, or None when no rule knows it.
 
-    The first rule that matches wins, so the template's order is the
-    precedence. None is "no rule knows this word" and is never a kind: a word
-    nothing knows neither passes nor holds a release (R-798).
+    The first matching rule wins. None is never a kind (R-798).
     """
     value = (word or "").strip().lower()
     if not value:
@@ -849,10 +606,8 @@ def label_kind(taxonomy: Taxonomy, kind: str | None) -> str:
 def kind_settled(taxonomy: Taxonomy, kind: str | None) -> KindJudgment | None:
     """The judgment no published word could change, or None when the words decide.
 
-    Three labels are settled before anything is read, and a caller that would
-    have to ask a catalogue for the words asks this first: a label followed for
-    ``any`` kind passes, and a taxonomy with no rule for this vocabulary, or a
-    label marked with a kind the taxonomy does not name, is not judged.
+    A label followed for ``any`` kind passes; a taxonomy with no rule for this
+    vocabulary, or a kind it does not name, is not judged.
     """
     gate = taxonomy.label_gate
     judged_as = label_kind(taxonomy, kind)
@@ -862,47 +617,27 @@ def kind_settled(taxonomy: Taxonomy, kind: str | None) -> KindJudgment | None:
         )
     if not gate.published:
         return KindJudgment(
-            KindVerdict.NOT_JUDGED,
-            judged_as,
-            (),
+            KindVerdict.NOT_JUDGED, judged_as, (),
             "the library's taxonomy declares no rule for the general catalogue's "
             "genre words, so the gate has nothing to judge with",
         )
     if judged_as not in gate.kinds:
         return KindJudgment(
-            KindVerdict.NOT_JUDGED,
-            judged_as,
-            (),
+            KindVerdict.NOT_JUDGED, judged_as, (),
             f"its label is marked as kind {judged_as!r}, which the library's taxonomy "
             f"does not name (it names {', '.join(gate.kinds)}, or {ANY_KIND})",
         )
     return None
 
 
-def kind_verdict(
-    taxonomy: Taxonomy, kind: str | None, genres: Sequence[str]
-) -> KindJudgment:
+def kind_verdict(taxonomy: Taxonomy, kind: str | None, genres: Sequence[str]) -> KindJudgment:
     """Pass, hold or decline to judge one release, by what kind of music it is.
 
-    ``genres`` is every word the general catalogue publishes for the release,
-    in its order. ``kind`` is the label's, or None for the default.
-
-    NOT THE SHARE RULE ABOVE, AND NOT A REPLACEMENT FOR IT. :func:`gate_decisions`
-    asks whether a family is a small minority of what a label puts out, which
-    cannot hold the failure R-798 measured: two labels sharing a name put the
-    wrong music at a large share of what the crawl lists. This asks about one
-    release alone, against what its label is followed for.
-
-    ONE WORD OF THE LABEL'S KIND PASSES THE RELEASE, so an album the catalogue
-    files under a dance word and a pop one passes a dance label. HELD NEEDS A
-    KNOWN WORD OF ANOTHER KIND and none of the label's own. Everything else is
-    NOT JUDGED, and each case says which it is: a label of a kind the taxonomy
-    does not name, a taxonomy with no rule for this vocabulary, a release with
-    no published word, and words no rule knows. Absence of a verdict is never
-    a hold, because a hold on a guess is music a person never sees.
-
-    A LABEL OF KIND ``any`` PASSES WITHOUT A WORD BEING READ. Its author said
-    every kind belongs to it. See :func:`kind_settled`.
+    ``genres`` is every word the catalogue publishes, in order; ``kind`` is the
+    label's, or None for the default. Unlike :func:`gate_decisions` this judges
+    one release alone (R-798). One word of the label's kind passes; a hold needs
+    a known word of another kind and none of the label's; everything else is not
+    judged, because a hold on a guess is music a person never sees.
     """
     settled = kind_settled(taxonomy, kind)
     if settled is not None:
@@ -914,45 +649,31 @@ def kind_verdict(
             KindVerdict.NOT_JUDGED, judged_as, (), "the general catalogue publishes no genre for it"
         )
     placed = tuple(
-        (word, found)
-        for word in words
-        if (found := published_kind(taxonomy, word)) is not None
+        (word, found) for word in words if (found := published_kind(taxonomy, word)) is not None
     )
     said = ", ".join(words)
     if any(found == judged_as for _word, found in placed):
         return KindJudgment(
-            KindVerdict.PASS,
-            judged_as,
-            placed,
+            KindVerdict.PASS, judged_as, placed,
             f"the general catalogue calls it {said}, and its label is followed as {judged_as}",
         )
     if placed:
         others = ", ".join(dict.fromkeys(found for _word, found in placed))
         return KindJudgment(
-            KindVerdict.HOLD,
-            judged_as,
-            placed,
+            KindVerdict.HOLD, judged_as, placed,
             f"the general catalogue calls it {said}, which is {others} and not "
             f"{judged_as}, the kind its label is followed as",
         )
     return KindJudgment(
-        KindVerdict.NOT_JUDGED,
-        judged_as,
-        (),
+        KindVerdict.NOT_JUDGED, judged_as, (),
         f"the general catalogue calls it {said}, and no rule of the gate knows "
         f"what kind of music that is",
     )
 
 
 def _genre_sub_by_id(bucket: Bucket, sub_id: str | None) -> GenreSub | None:
-    for genre in bucket.genre_subs:
-        if genre.id == sub_id:
-            return genre
-    return None
+    return next((genre for genre in bucket.genre_subs if genre.id == sub_id), None)
 
 
 def _sub_by_id(bucket: Bucket, sub_id: str) -> Sub | None:
-    for sub in bucket.subs:
-        if sub.id == sub_id:
-            return sub
-    return None
+    return next((sub for sub in bucket.subs if sub.id == sub_id), None)

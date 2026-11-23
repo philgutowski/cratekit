@@ -1,27 +1,9 @@
-"""The quarterly favourites playlists, named once, on both sides.
+"""The favourites playlists named once, on both sides (KTD7: no product imports).
 
-The source system puts the hearts the library does not own into one private
-provider playlist per UTC quarter, ``Favorites 2026-Q2``, and those playlists are
-the favourites source's to sweep. They are account playlists like any other, so
-the playlists source would sweep them a second time unless it can tell them
-apart, and the name is the only thing that tells them apart: no identifier for
-them is recorded anywhere this build reads.
-
-THE REKORDBOX SIDE IS NAMED HERE TOO, since U120. The source system filed an
-owned heart into a playlist named for the UTC quarter it was hearted in,
-``2026-Q4``, under the Favorites folder beside All Favorites, and a heart with
-no date into ``Undated``. Since U145 the library files by MONTH instead,
-``2026-10``, decided by the author on 2026-10-14, and no quarter playlist is
-written again: the month rule below is the only one a placement asks, and
-:data:`QUARTER_LABEL` survives only so ``crate favorites split`` can find the
-quarter playlists it splits and retires. The account side's placeholder names
-keep their quarters, since those are the source system's playlists to sweep.
-
-A MODULE OF ITS OWN, WITH NO IMPORTS FROM THE PRODUCT, so the playlists source,
-which is core and runs on the slim profile, can ask the question without
-importing the favourites CLI or the outbound engines behind it (KTD7).
-``cratekit.favorites.cli`` re-exports both names, which is where a reader of the
-favourites source looks for them.
+The account side: the source system's private quarter playlists, ``Favorites
+2026-Q2``, which the playlists source must tell from other account playlists
+by name. The rekordbox side: a heart filed in its UTC month's playlist,
+``2026-10``, or ``Undated``; :data:`QUARTER_LABEL` survives only for the split.
 
 Layer: modules.
 """
@@ -34,29 +16,22 @@ from datetime import datetime, timezone
 #: The leading word every placeholder name carries, followed by its quarter.
 PLACEHOLDER_PREFIX = "Favorites "
 
-#: The quarter the source system could not date a heart into. Its hearts sit in
-#: this one playlist until a later run resolves a date and moves them, so it is
-#: the favourites source's in exactly the way a dated quarter is.
+#: The quarter the source system could not date a heart into, the source's too.
 BACKLOG = "(undated backlog)"
 
-#: A whole placeholder name, a dated quarter or the backlog. Anchored at both
-#: ends by ``fullmatch`` at the call site, so ``All Favorites`` and
-#: ``Favorites 2026-Q2 copy`` are not placeholders.
+#: A whole placeholder name, a dated quarter or the backlog, by ``fullmatch``.
 PLACEHOLDER_NAME = re.compile(
     re.escape(PLACEHOLDER_PREFIX) + r"(?:" + r"\d{4}-Q[1-4]" + r"|" + re.escape(BACKLOG) + r")"
 )
 
-#: The rekordbox playlist an owned heart with no date goes to, the source
-#: system's own name for it (U120). The account side's is :data:`BACKLOG`.
+#: The rekordbox playlist a heart with no date goes to, the source system's name.
 UNDATED = "Undated"
 
-#: A whole quarter label as rekordbox carried it before U145, ``2026-Q4``,
-#: anchored at both ends by ``fullmatch`` at the call site. READ ONLY: it names
-#: the playlists the month split retires, and nothing makes one any more.
+#: A whole quarter label as rekordbox carried it before U145, ``2026-Q4``, by
+#: ``fullmatch``. READ ONLY: nothing makes one any more.
 QUARTER_LABEL = re.compile(r"\d{4}-Q[1-4]")
 
-#: A whole month label as a placement names it, ``2026-10``, anchored at both
-#: ends by ``fullmatch`` at the call site.
+#: A whole month label as a placement names it, ``2026-10``, by ``fullmatch``.
 MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])")
 
 
@@ -81,10 +56,8 @@ def month_label(hearted: datetime | None) -> str:
 def parse_hearted(said: object) -> datetime | None:
     """The moment a frozen row says a heart was made, in UTC, or None when it says none.
 
-    A datetime is taken as it is; text is read as ISO 8601, which is how a job
-    freezes it; anything else, and text that does not read, is no date rather
-    than a refusal, because a heart with no readable date is an undated heart
-    and the undated playlist exists for exactly that.
+    Text is read as ISO 8601, as a job freezes it; anything that does not read
+    is no date rather than a refusal, since an undated heart has its playlist.
     """
     if isinstance(said, datetime):
         return as_utc(said)
@@ -97,12 +70,7 @@ def parse_hearted(said: object) -> datetime | None:
 
 
 def is_filing(name: str) -> bool:
-    """Whether a playlist beside All Favorites is one a heart is filed in by date.
-
-    A month, :data:`UNDATED`, or a quarter the split has not retired yet
-    (U146): a heart any of them holds already has its date's playlist, and a
-    playlist of any other name beside the source is somebody else's.
-    """
+    """Whether a playlist beside All Favorites files by date: a month, Undated, a quarter (U146)."""
     text = str(name or "")
     return (
         text == UNDATED
@@ -111,8 +79,7 @@ def is_filing(name: str) -> bool:
     )
 
 
-#: Where each kind of child of the folder that holds All Favorites reads,
-#: the lower the higher (U180). A month is ranked within its kind below.
+#: Where each kind of child of the folder holding All Favorites reads, lower first (U180).
 RANK_SOURCE = 0
 RANK_MONTH = 1
 RANK_UNDATED = 2
@@ -122,12 +89,9 @@ RANK_OTHER = 3
 def folder_rank(name: str, *, source: bool, plain: bool) -> tuple[int, int]:
     """Where a child of the folder that holds All Favorites reads, newest month first (U180).
 
-    All Favorites first, by the caller's row rather than by its name; then each
-    plain playlist named as a month, newest first; then a plain playlist named
-    :data:`UNDATED`; then everything else, a quarter, a folder, a smart list or
-    any other name, all of one rank so a stable sort keeps their relative
-    order. A folder or a smart list named as a month is not a month: a heart is
-    filed in a plain playlist and nothing else.
+    All Favorites first, by the caller's row; then each plain playlist named as
+    a month, newest first; then a plain :data:`UNDATED`; then everything else at
+    one rank, so a stable sort keeps their relative order.
     """
     if source:
         return (RANK_SOURCE, 0)

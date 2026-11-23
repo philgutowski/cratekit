@@ -2,7 +2,7 @@
 title: "The shared library view answers an absent music folder with an empty index, so a verb that starts asking the library inherits a false missing"
 date: 2026-09-19
 category: workflow-issues
-module: "src/cratekit/acquire/match.py, src/cratekit/acquire/match_cli.py, src/cratekit/intake/cli.py"
+module: "src/cratekit/acquire/match_library.py, src/cratekit/acquire/match_cli.py, src/cratekit/intake/cli_identify.py"
 problem_type: workflow_issue
 component: seam_design
 severity: high

@@ -1,20 +1,9 @@
 """R-799: the general catalogue's words are filed by a table of their own.
 
-The alias lists on the buckets were written against the record shops' words,
-where Pop is a dance genre. Read through them the general catalogue's Pop was
-written as the dance bucket's name on 10 of the author's tracks, and its
-Alternative as a bucket's bare name on 6. These tests drive the table the
-taxonomy now declares per source: the loader that refuses a row whose tag
-names no folder, the resolver that asks the table first, the chooser that
-writes a word of the buckets' aliases only when it names a folder, and the
-tagger writing the word that files.
-
-EVERY EXPECTED VALUE IS A LITERAL. The shipped rows are written out here and
-never read off the template under test, and the places are pinned by
-identifier and then driven through routing, so a row that drifts fails.
-
-NOTHING HERE REACHES A NETWORK. The general catalogue is a callable over a
-literal answer.
+The loader refusing a row whose tag names no folder, the resolver asking the
+table first, the chooser writing an alias word only when it names a folder,
+and the tagger writing the word that files. EVERY EXPECTED VALUE IS A LITERAL,
+so a template row that drifts fails. Nothing here reaches a network.
 """
 
 from __future__ import annotations

@@ -1,0 +1,3410 @@
+{
+  "name": "u310-replay-after-a",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "3ab6abf3",
+  "when": "2026-11-23 00:33 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22849,
+  "baseline_exit": 1,
+  "pytest_runs": 104,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 254,
+  "known_source": "/tmp/claude-0/sp/known-replay.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 16,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/apply.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/apply.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "412ccf84c0d9ab6e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22849,
+    "baseline_collected": 22849,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u23-round-8-independent.X9_outstanding_returns_everything",
+      "description": "A resume re-applies every entry from the top",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "61df0d9746a1cd0a",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_plan_applied_thirty_percent_through_resumes_from_item_thirty_one",
+        "tests/test_adoption.py::test_a_second_run_over_a_finished_plan_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(entry for entry in plan.applicable() if entry.entry_id not in done)",
+      "new": "    return tuple(plan.applicable())",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X9_outstanding_returns_everything"
+      }
+    },
+    {
+      "id": "u254-m08.M08_never_append",
+      "description": "mark_applied: rewrite the whole ledger on every mark that misses the cache, the square this card ends",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "61ed903fdeb08ecc",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_mark_on_a_journal_this_process_never_wrote_appends"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if appendable:\n                config.append_durable_bytes(line, path)",
+      "new": "            if False:\n                config.append_durable_bytes(line, path)",
+      "source": {
+        "table": "u254-m08.json",
+        "id": "M08_never_append"
+      }
+    },
+    {
+      "id": "u254.M01_mark_validates_record",
+      "description": "mark_applied: drop the reader's field rules on the record before it is written, so a record the reader refuses lands",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d680a78b2695691a",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[actor]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[content_id]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[entry_id]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[tree]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _record_from(\n        entry.to_json(),\n        path=path,\n        where=f\"was refused a record for the entry {entry.entry_id!r}, one\",\n    )",
+      "new": "    pass",
+      "source": {
+        "table": "u254.json",
+        "id": "M01_mark_validates_record"
+      }
+    },
+    {
+      "id": "u254.M02_cache_identity_ignored",
+      "description": "mark_applied: append whenever this process has marked the path before, whatever happened to the file since",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a98992a413cf48cf",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_put_in_place_with_the_same_size_and_time_is_read_again",
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_rewritten_in_place_at_the_same_size_is_read_again",
+        "tests/test_adopt_apply_journal_u254.py::test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark",
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_record_another_process_left_is_cut_before_the_next_append",
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_tail_left_inside_one_clock_tick_is_still_cut"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if known is not None and known == _as_left(path):",
+      "new": "        if known is not None:",
+      "source": {
+        "table": "u254.json",
+        "id": "M02_cache_identity_ignored"
+      }
+    },
+    {
+      "id": "u254.M03_cache_identity_no_size",
+      "description": "_as_left: leave the size out of the identity, so a same inode file another hand changed reads as left",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae90df73f30b03ee",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_tail_left_inside_one_clock_tick_is_still_cut"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)",
+      "new": "    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)",
+      "source": {
+        "table": "u254.json",
+        "id": "M03_cache_identity_no_size"
+      }
+    },
+    {
+      "id": "u254.M04_cache_identity_no_mtime",
+      "description": "_as_left: leave the modification time out of the identity",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ccd89da876ae1ded",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_rewritten_in_place_at_the_same_size_is_read_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)",
+      "new": "    return (found.st_dev, found.st_ino, found.st_size, 0)",
+      "source": {
+        "table": "u254.json",
+        "id": "M04_cache_identity_no_mtime"
+      }
+    },
+    {
+      "id": "u254.M05_cache_identity_no_inode",
+      "description": "_as_left: leave the inode out of the identity, so a replaced file of the same size reads as left",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2046b94f244dc7b4",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_put_in_place_with_the_same_size_and_time_is_read_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)",
+      "new": "    return (found.st_dev, 0, found.st_size, found.st_mtime_ns)",
+      "source": {
+        "table": "u254.json",
+        "id": "M05_cache_identity_no_inode"
+      }
+    },
+    {
+      "id": "u254.M06_never_cache",
+      "description": "mark_applied: never remember what this process left, so every mark reads the whole ledger again",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "91a351e77ba73793",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_mark_does_not_parse_the_ledger_it_appends_to"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if left is not None:\n            _LEFT[key] = left",
+      "new": "        if left is not None:\n            pass",
+      "source": {
+        "table": "u254.json",
+        "id": "M06_never_cache"
+      }
+    },
+    {
+      "id": "u254.M07_always_append",
+      "description": "mark_applied: append even to a torn, absent or schema 1 ledger",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "464097872386260e",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 86,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_put_in_place_with_the_same_size_and_time_is_read_again",
+        "tests/test_adopt_apply_journal_u254.py::test_a_file_rewritten_in_place_at_the_same_size_is_read_again",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[1]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[2]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[3]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[4]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark",
+        "tests/test_adopt_apply_journal_u254.py::test_a_mark_does_not_parse_the_ledger_it_appends_to",
+        "tests/test_adopt_apply_journal_u254.py::test_a_mark_on_a_ledger_written_before_u254_keeps_every_record",
+        "tests/test_adopt_apply_journal_u254.py::test_a_re_mark_replaces_the_earlier_record_as_the_document_did",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_another_process_appended_is_kept",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[actor]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[content_id]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[entry_id]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[tree]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_revert_after_a_partial_apply_restores_what_it_wrote",
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_record_another_process_left_is_cut_before_the_next_append",
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_tail_left_inside_one_clock_tick_is_still_cut",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_the_system_writes_in_pieces_still_lands_whole",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[0]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[4]",
+        "tests/test_adopt_apply_journal_u254.py::test_every_append_is_synced_before_the_mark_returns",
+        "tests/test_adopt_apply_journal_u254.py::test_every_ledger_write_happens_under_the_exclusive_lock",
+        "tests/test_adopt_apply_journal_u254.py::test_four_real_processes_marking_at_once_lose_nothing",
+        "tests/test_adopt_apply_journal_u254.py::test_the_journal_is_a_header_and_one_line_per_record",
+        "tests/test_adopt_apply_journal_u254.py::test_the_ledger_stays_owner_only_after_appends",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[a few bytes of a record]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[a whole record with no newline]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[an empty last line]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[half a record]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[zeros then the record's last page]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[zeros where the record was]",
+        "tests/test_adopt_apply_journal_u254.py::test_twice_the_marks_write_about_twice_the_bytes",
+        "tests/test_adopt_apply_journal_u254.py::test_two_plans_marking_in_turn_keep_both",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat",
+        "tests/test_adopt_workers.py::test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed",
+        "tests/test_adopt_workers.py::test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run",
+        "tests/test_adoption.py::test_a_container_this_build_cannot_write_costs_one_entry_not_the_run",
+        "tests/test_adoption.py::test_a_plan_applied_thirty_percent_through_resumes_from_item_thirty_one",
+        "tests/test_adoption.py::test_a_refusal_about_one_track_still_costs_only_that_track",
+        "tests/test_adoption.py::test_a_second_run_over_a_finished_plan_writes_nothing",
+        "tests/test_adoption.py::test_a_track_DELETED_between_the_census_and_the_apply_costs_one_entry",
+        "tests/test_adoption.py::test_concurrent_marks_from_real_processes_all_survive",
+        "tests/test_adoption.py::test_no_tag_is_written_unless_the_caller_asks_for_one",
+        "tests/test_adoption.py::test_the_ledger_is_marked_only_after_the_write",
+        "tests/test_adoption.py::test_the_original_is_recorded_before_the_file_is_touched",
+        "tests/test_intake_land_filing.py::test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows",
+        "tests/test_intake_land_filing.py::test_five_files_land_and_file_under_one_answer",
+        "tests/test_intake_land_filing.py::test_the_filed_rows_are_what_adopt_apply_then_finds_nothing_to_do_for",
+        "tests/test_mirror_downloads_filed_u227.py::test_a_track_two_rows_own_is_read_by_neither",
+        "tests/test_mirror_downloads_filed_u227.py::test_only_this_librarys_adopt_approvals_are_a_persons",
+        "tests/test_mirror_downloads_filed_u227.py::test_the_earliest_approval_since_the_queue_is_the_landings",
+        "tests/test_mirror_downloads_filed_u227.py::test_the_earliest_job_holding_the_track_dates_its_queue",
+        "tests/test_organize_mirror_edits_u227.py::test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings",
+        "tests/test_organize_mirror_edits_u227.py::test_a_move_made_in_rekordbox_after_the_landing_still_stands",
+        "tests/test_organize_mirror_edits_u227.py::test_a_persons_first_filing_after_a_landing_that_filed_nothing_is_not_the_landings",
+        "tests/test_organize_mirror_edits_u227.py::test_a_queued_track_filed_elsewhere_by_its_tags_is_filed_where_the_account_put_it",
+        "tests/test_organize_mirror_edits_u227.py::test_a_refiling_through_adoption_after_the_landing_is_not_the_landings",
+        "tests/test_organize_mirror_edits_u227.py::test_the_landings_filing_by_the_real_producer_is_read_as_the_landings"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if appendable:\n                config.append_durable_bytes(line, path)",
+      "new": "            if True:\n                config.append_durable_bytes(line, path)",
+      "source": {
+        "table": "u254.json",
+        "id": "M07_always_append"
+      }
+    },
+    {
+      "id": "u254.M09_any_line_torn",
+      "description": "_read_journal: read a damaged line anywhere as torn and stop, so the records after it are lost",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1ade155bf3cc4252",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark",
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a damaged line before the last]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if index == len(body) - 1 and whole:",
+      "new": "            if whole:",
+      "source": {
+        "table": "u254.json",
+        "id": "M09_any_line_torn"
+      }
+    },
+    {
+      "id": "u254.M10_torn_needs_terminated_tail",
+      "description": "_read_journal: read a damaged last whole line as torn even when an unterminated line follows it",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e1d5e92dccd3b92",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[two torn lines at the end]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if index == len(body) - 1 and whole:",
+      "new": "            if index == len(body) - 1:",
+      "source": {
+        "table": "u254.json",
+        "id": "M10_torn_needs_terminated_tail"
+      }
+    },
+    {
+      "id": "u254.M11_unterminated_tail_whole",
+      "description": "_read_journal: call a journal with an unterminated last line appendable",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ce5c32a997ba1c1a",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 23,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_record_another_process_left_is_cut_before_the_next_append",
+        "tests/test_adopt_apply_journal_u254.py::test_a_torn_tail_left_inside_one_clock_tick_is_still_cut",
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[two torn lines at the end]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[a few bytes of a record]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[a whole record with no newline]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[half a record]",
+        "tests/test_adopt_apply_journal_u254.py::test_the_next_mark_cuts_a_torn_record_away[zeros where the record was]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    whole = not tail",
+      "new": "    whole = True",
+      "source": {
+        "table": "u254.json",
+        "id": "M11_unterminated_tail_whole"
+      }
+    },
+    {
+      "id": "u254.M12_header_upgrade",
+      "description": "_read_journal: drop the upgrade refusal of a newer journal header",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7ea21f0f1824535d",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a header from a newer build]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"{SCHEMA_VERSION}\",\n            Remedy.UPGRADE_CRATEKIT,\n        )\n    if version != SCHEMA_VERSION:",
+      "new": "            f\"{SCHEMA_VERSION}\",\n            Remedy.RUN_DOCTOR,\n        )\n    if version != SCHEMA_VERSION:",
+      "source": {
+        "table": "u254.json",
+        "id": "M12_header_upgrade"
+      }
+    },
+    {
+      "id": "u254.M13_header_older_version",
+      "description": "_read_journal: accept a journal header at a schema no build wrote as a journal",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1613d1bd131cfaa1",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a header with an older version]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if version != SCHEMA_VERSION:",
+      "new": "    if version > SCHEMA_VERSION:",
+      "source": {
+        "table": "u254.json",
+        "id": "M13_header_older_version"
+      }
+    },
+    {
+      "id": "u254.M14_header_unterminated",
+      "description": "_read_journal: accept a header with no line ending after it",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ee331ed41bba1c49",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a header alone with no newline]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(lines) < 2:",
+      "new": "    if len(lines) < 1:",
+      "source": {
+        "table": "u254.json",
+        "id": "M14_header_unterminated"
+      }
+    },
+    {
+      "id": "u254.M15_header_string_version",
+      "description": "_read_journal: drop the integer check on the header's schema_version",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b091495f3869aed",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a header with a string version]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    header = json.loads(lines[0].decode(\"utf-8\"))\n    version = header.get(\"schema_version\")\n    if not isinstance(version, int):",
+      "new": "    header = json.loads(lines[0].decode(\"utf-8\"))\n    version = int(header.get(\"schema_version\"))\n    if not isinstance(version, int):",
+      "source": {
+        "table": "u254.json",
+        "id": "M15_header_string_version"
+      }
+    },
+    {
+      "id": "u254.M16_journal_needs_format",
+      "description": "_is_journal: take any object on the first line as a journal header",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4392f8d13c1dc674",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_newer_document_still_asks_for_an_upgrade"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return isinstance(header, dict) and header.get(\"format\") == JOURNAL_FORMAT",
+      "new": "    return isinstance(header, dict)",
+      "source": {
+        "table": "u254.json",
+        "id": "M16_journal_needs_format"
+      }
+    },
+    {
+      "id": "u254.M17_document_at_journal_schema",
+      "description": "_read_document: read a whole document that claims schema 2",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2d6f98b6fafad527",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_document_at_the_journal_schema_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if version > DOCUMENT_SCHEMA_VERSION:",
+      "new": "    if version > SCHEMA_VERSION:",
+      "source": {
+        "table": "u254.json",
+        "id": "M17_document_at_journal_schema"
+      }
+    },
+    {
+      "id": "u254.M18_remark_first_wins",
+      "description": "_read_journal: fold a re-mark first one wins, unlike the document's writer",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e271efca1f54da1",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_re_mark_replaces_the_earlier_record_as_the_document_did"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        folded[record.entry_id] = record",
+      "new": "        folded.setdefault(record.entry_id, record)",
+      "source": {
+        "table": "u254.json",
+        "id": "M18_remark_first_wins"
+      }
+    },
+    {
+      "id": "u254.M19_already_inverted",
+      "description": "apply_plan: report as already applied the entries the ledger does not hold",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f9056fbbf7b4080a",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 33,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[1]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[2]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[3]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_kill_after_the_whole_record_landed_counts_the_mark[4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-newline-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[all-but-two-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[none-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[one-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it[some-4]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[0]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[1]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[2]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[3]",
+        "tests/test_adopt_apply_journal_u254.py::test_an_apply_killed_at_each_mark_resumes_with_exactly_the_marks_before_it[4]",
+        "tests/test_adoption.py::test_a_container_this_build_cannot_write_costs_one_entry_not_the_run",
+        "tests/test_adoption.py::test_a_plan_applied_thirty_percent_through_resumes_from_item_thirty_one",
+        "tests/test_adoption.py::test_a_second_run_over_a_finished_plan_writes_nothing",
+        "tests/test_intake_land_filing.py::test_five_files_land_and_file_under_one_answer"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        entry.entry_id for entry in plan.applicable() if entry.entry_id in done",
+      "new": "        entry.entry_id for entry in plan.applicable() if entry.entry_id not in done",
+      "source": {
+        "table": "u254.json",
+        "id": "M19_already_inverted"
+      }
+    },
+    {
+      "id": "u254.M21_record_needs_actor",
+      "description": "_record_from: drop actor from the fields every record must carry",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4c570920594c579",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 743,
+      "baseline_collected": 743,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_a_record_the_reader_would_refuse_is_never_written[actor]",
+        "tests/test_adopt_apply_journal_u254.py::test_a_wrong_journal_refuses_rather_than_reading_as_empty[a record missing its actor, last]",
+        "tests/test_adoption.py::test_a_wrong_applied_ledger_refuses_rather_than_reading_as_empty[11]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for name in (\"entry\", \"tree\", \"content\", \"actor\"):",
+      "new": "    for name in (\"entry\", \"tree\", \"content\"):",
+      "source": {
+        "table": "u254.json",
+        "id": "M21_record_needs_actor"
+      }
+    },
+    {
+      "id": "r235-b.M25_adoption_refusal_names_no_verb",
+      "description": "the adoption refusal on an uncut library is re-raised as it came, with no step",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4396fc3fd354b2a6",
+      "subset": [
+        "tests/test_cutover_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_an_uncut_library_refuses_adoption_and_names_the_cutover_verb",
+        "tests/test_cutover_cli.py::test_the_steps_the_refused_adoption_names_are_the_steps_that_work"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        named = _naming_the_cutover(exc)\n        if named is None:",
+      "new": "        named = None\n        if named is None:",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M25_adoption_refusal_names_no_verb"
+      }
+    },
+    {
+      "id": "r788-d.A2_vocal_rows_never_written",
+      "description": "planned_memberships: the vocal additions are left out of the write, so the gate lists memberships the apply never performs",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e15fcf99d46ba78",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_one_apply_writes_the_entries_and_the_vocal_subs_in_one_mapping",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for key, rows in vocal_locations(plan, declared).items():",
+      "new": "    for key, rows in ():",
+      "source": {
+        "table": "r788-d.json",
+        "id": "A2_vocal_rows_never_written"
+      }
+    },
+    {
+      "id": "r788-d.A3_present_rows_handed_over",
+      "description": "vocal_locations: every planned membership is handed to the writer, the present ones too",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9afa37230b5c0aff",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_only_the_additions_reach_the_writer_under_the_declared_names",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _locations(plan.vocal_additions(), declared, lambda entry: entry.vocal_sub)",
+      "new": "    return _locations(plan.vocal_memberships(), declared, lambda entry: entry.vocal_sub)",
+      "source": {
+        "table": "r788-d.json",
+        "id": "A3_present_rows_handed_over"
+      }
+    },
+    {
+      "id": "u132.W1_every_apply",
+      "description": "The adoption runs the Favorites step only when it filed a track",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "95ecd05ef069e837",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py",
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_genre_favorites.py",
+        "tests/test_genre_favorites_adoption.py",
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 446,
+      "baseline_collected": 446,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": " or genre_favorites.favorites_class(declared) is None",
+      "new": "",
+      "source": {
+        "table": "u132.json",
+        "id": "W1_every_apply"
+      }
+    },
+    {
+      "id": "u132.W2_coded_note",
+      "description": "A skip over an undeclared class carries favorites-skipped, not its cause code",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "63a3a55d93ccf7b0",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py",
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_genre_favorites.py",
+        "tests/test_genre_favorites_adoption.py",
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 446,
+      "baseline_collected": 446,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_genre_favorites.py::test_the_undeclared_note_states_the_version_the_skip_saw",
+        "tests/test_genre_favorites_adoption.py::test_an_adoption_over_a_taxonomy_without_the_class_names_the_skipped_step"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if skipped and cause == genre_favorites.CLASS_UNDECLARED:\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "u132.json",
+        "id": "W2_coded_note"
+      }
+    },
+    {
+      "id": "u132.W3_version_from_report",
+      "description": "The job's report does not carry the version the skip saw",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac3dae0f0cbfbca0",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py",
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_genre_favorites.py",
+        "tests/test_genre_favorites_adoption.py",
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 446,
+      "baseline_collected": 446,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites_adoption.py::test_an_adoption_over_a_taxonomy_without_the_class_names_the_skipped_step"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"schema_version\": declared.schema_version,\n",
+      "new": "            \"schema_version\": None,\n",
+      "source": {
+        "table": "u132.json",
+        "id": "W3_version_from_report"
+      }
+    },
+    {
+      "id": "u165.A1_scope",
+      "description": "census: ignore the scope and walk the whole collection",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6453b88e209ae858",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_filing.py::test_the_census_a_landing_files_walks_only_the_rows_it_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        rows = tuple(row for row in rows if row.content_id in scope)",
+      "new": "        rows = tuple(rows)",
+      "source": {
+        "table": "u165.json",
+        "id": "A1_scope"
+      }
+    },
+    {
+      "id": "u165.A2_refuse_unplaced_called",
+      "description": "file_plan: skip the unplaced refusal before the ledger is marked",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24464dffc293c4f4",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_track_the_tree_write_could_not_place_is_never_marked_applied"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    refuse_unplaced(membership)\n",
+      "new": "    pass\n",
+      "source": {
+        "table": "u165.json",
+        "id": "A2_refuse_unplaced_called"
+      }
+    },
+    {
+      "id": "u165.A3_grant_first",
+      "description": "file_plan: mint no approval before the memberships are written",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5898325056a8f734",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_collection_that_moved_after_approval_refuses_rather_than_applying"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    grant(plan, actor=actor)\n\n    membership = _write_memberships",
+      "new": "    membership = _write_memberships",
+      "source": {
+        "table": "u165.json",
+        "id": "A3_grant_first"
+      }
+    },
+    {
+      "id": "u27-adopt-apply-author.A1_approval_actor_is_the_process",
+      "description": "Mint the approval under a fixed actor, so the record cannot say who asserted it",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9e5ab549949ca043",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 632,
+      "baseline_collected": 632,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_whole_loop_runs_with_the_library_lock_actually_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            approval=grant(plan, actor=actor),",
+      "new": "            approval=grant(plan, actor=\"cli\"),",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "A1_approval_actor_is_the_process"
+      }
+    },
+    {
+      "id": "u27-adopt-apply-author.A2_gate_found_by_position",
+      "description": "Take the first declared gate rather than the one digested against the plan",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "915adae65a26ef87",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1014,
+      "baseline_collected": 1014,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_approval_gate_is_found_by_digest_source_not_by_position"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for spec in entry.gates:\n        if spec.digest_source == \"plan\":\n            return spec",
+      "new": "    for spec in entry.gates:\n        if True:\n            return spec",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "A2_gate_found_by_position"
+      }
+    },
+    {
+      "id": "u27-adopt-apply-author.S1_no_session_at_all",
+      "description": "Run the apply loop with no destructive session around it (the residual's condition, unchanged)",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1dd29ebadc202f71",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_a_second_run_holding_the_lock_rewrites_no_file",
+        "tests/test_adopt_apply_cli.py::test_a_volume_whose_identity_moved_rewrites_no_file",
+        "tests/test_adopt_apply_cli.py::test_an_unacknowledged_machine_rewrites_no_file",
+        "tests/test_adopt_apply_cli.py::test_the_analysis_watch_is_armed_on_the_library_root",
+        "tests/test_adopt_apply_cli.py::test_the_analysis_watch_reaches_a_share_outside_the_library_root",
+        "tests/test_adopt_apply_cli.py::test_the_whole_loop_runs_with_the_library_lock_actually_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with session.assert_gates(\n        cfg,\n        workflow=WORKFLOW,\n        analysis_roots=watched,\n        identity_provider=identity_provider,\n        mount_enumerator=mount_enumerator,\n    ):",
+      "new": "    if True:",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "S1_no_session_at_all"
+      }
+    },
+    {
+      "id": "u27-adopt-apply-author.S2_analysis_watch_watches_nothing",
+      "description": "Arm the analysis watch on no roots, so it reports a clean session either way",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7201e6f4cd8d6ed1",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_write_session.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 165,
+      "baseline_collected": 165,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_analysis_watch_is_armed_on_the_library_root",
+        "tests/test_adopt_apply_cli.py::test_the_analysis_watch_reaches_a_share_outside_the_library_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        analysis_roots=watched,",
+      "new": "        analysis_roots=(),",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "S2_analysis_watch_watches_nothing"
+      }
+    },
+    {
+      "id": "u27-adopt-apply-author.S4_workflow_is_not_the_verb",
+      "description": "Record the session under a name that is not this verb's",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c7680502bb94d8a4",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_workflow_name_and_the_registry_verb_name_cannot_drift"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "WORKFLOW = \"adopt.apply\"",
+      "new": "WORKFLOW = \"adoption\"",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "S4_workflow_is_not_the_verb"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R10_apply_zero_item_refusal",
+      "description": "The apply queues a job with one item over a plan that can place nothing",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "117eeb0257230e03",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_plan_with_nothing_applicable_queues_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not applicable:",
+      "new": "    if False:",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R10_apply_zero_item_refusal"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R12_apply_item_ids",
+      "description": "The apply enqueues with no items at all",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2a413d5c16e666b0",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_a_resume_reconciles_a_claim_a_dead_driver_left_behind",
+        "tests/test_adopt_apply_cli.py::test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest",
+        "tests/test_adopt_workers.py::test_a_collection_that_moved_after_approval_refuses_rather_than_applying",
+        "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
+        "tests/test_adopt_workers.py::test_a_track_the_tree_write_could_not_place_is_never_marked_applied",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat",
+        "tests/test_adopt_workers.py::test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags",
+        "tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable[None]",
+        "tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable[no-such-root]",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed",
+        "tests/test_adopt_workers.py::test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            item_ids=(plan.digest(),),",
+      "new": "            item_ids=(),",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R12_apply_item_ids"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R19_collector_groups_locations",
+      "description": "The collector groups content identifiers again, which is the seam defect U55 found",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93d5752eee3153c4",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_whole_loop_runs_with_the_library_lock_actually_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            into.setdefault((folder, sub), []).append(entry.path)",
+      "new": "            into.setdefault((folder, sub), []).append(entry.content_id)",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R19_collector_groups_locations"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R20_membership_locations_key",
+      "description": "The written mapping groups content identifiers, so the write matches nothing",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bb08e95e96f56973",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_whole_loop_runs_with_the_library_lock_actually_held",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat",
+        "tests/test_adopt_workers.py::test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed",
+        "tests/test_adopt_workers.py::test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        grouped.setdefault((folder, sub), []).append(entry.path)",
+      "new": "        grouped.setdefault((folder, sub), []).append(entry.content_id)",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R20_membership_locations_key"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R24_worker_digest_check",
+      "description": "The worker applies a plan nobody approved, because the frozen digest is not compared",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f6fa07cf1a5ade7f",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_collection_that_moved_after_approval_refuses_rather_than_applying",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if plan.digest() != frozen_digest:",
+      "new": "    if False:",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R24_worker_digest_check"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R27_apply_no_tag_value",
+      "description": "A tag_value supplier is installed, so the apply writes a genre onto the person's files",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "03e3978b87e95daa",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)",
+      "new": "    report, gathered = apply_outstanding(\n        cfg, plan, declared, actor=actor, tag_value=lambda entry, _d: entry.bucket or None\n    )",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R27_apply_no_tag_value"
+      }
+    },
+    {
+      "id": "u55-round-2.R23_worker_raises_on_failure",
+      "description": "A failed apply returns rather than raising, so the job reaches SUCCEEDED over nothing",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c1d79bbc65a11b51",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if report.failed:\n        _commit(produced)\n        raise refuse(",
+      "new": "    if False:\n        _commit(produced)\n        raise refuse(",
+      "source": {
+        "table": "u55-round-2.json",
+        "id": "R23_worker_raises_on_failure"
+      }
+    },
+    {
+      "id": "r722.P1_level_none",
+      "description": "The original defect: _sub_for resolves with a level of None for every track",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5ec26da6f600272",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_changed_reading_moves_the_digest",
+        "tests/test_adopt_energy.py::test_a_genre_verdict_lands_in_the_band_the_census_read",
+        "tests/test_adopt_energy.py::test_a_tagged_file_lands_in_the_band_its_energy_falls_in",
+        "tests/test_adopt_energy.py::test_adoption_lands_a_track_where_the_routing_pass_would"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    sub = routing.energy_sub(declared, bucket_id, level, source_genre=genre)",
+      "new": "    sub = routing.energy_sub(declared, bucket_id, None, source_genre=genre)",
+      "source": {
+        "table": "r722.json",
+        "id": "P1_level_none"
+      }
+    },
+    {
+      "id": "r722.P3_verdict_drops_level",
+      "description": "with_verdicts resolves an answered genre with no reading",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b62a03dd43c7a74a",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_genre_verdict_lands_in_the_band_the_census_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        sub = _sub_for(declared, chosen, entry.genre, entry.energy)",
+      "new": "        sub = _sub_for(declared, chosen, entry.genre, None)",
+      "source": {
+        "table": "r722.json",
+        "id": "P3_verdict_drops_level"
+      }
+    },
+    {
+      "id": "r722.P7_tally_counts_excluded",
+      "description": "The tally counts entries the census never opened",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "900e7fda92eb22b5",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_an_excluded_file_is_never_opened_for_its_reading"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if entry.category is not Readability.READABLE:\n                continue\n            if entry.energy_unreadable:",
+      "new": "            if entry.energy_unreadable:",
+      "source": {
+        "table": "r722.json",
+        "id": "P7_tally_counts_excluded"
+      }
+    },
+    {
+      "id": "r722.P8_tally_folds_unreadable",
+      "description": "The tally counts an unreadable file as absent",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2af49738d921b8a4",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_file_whose_tags_cannot_be_read_is_reported",
+        "tests/test_adopt_energy.py::test_an_unreadable_file_and_an_untagged_one_are_different_plans"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if entry.energy_unreadable:\n                readings[\"unreadable\"] += 1\n            elif entry.energy is None:",
+      "new": "            if entry.energy is None:",
+      "source": {
+        "table": "r722.json",
+        "id": "P8_tally_folds_unreadable"
+      }
+    },
+    {
+      "id": "r731-a.M01_unread_tree_withholds",
+      "description": "a tree nobody read is treated as read, so held subs a caller carried withhold",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3df877b4d88b98b8",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_an_unread_tree_withholds_nothing_even_when_it_carries_held_subs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not placements.read:\n        return NO_COMPETING_PLACE\n    kind, competing",
+      "new": "    kind, competing",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M01_unread_tree_withholds"
+      }
+    },
+    {
+      "id": "r731-a.M02_held_sub_class_competes",
+      "description": "a held sub is no longer filtered to the bucket's competing subs, so a sub class withholds",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "91a8e9812ebbd905",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_track_sitting_only_in_a_sub_class_is_added_to_its_band[candy]",
+        "tests/test_adopt_placements.py::test_a_track_sitting_only_in_a_sub_class_is_added_to_its_band[favorites]",
+        "tests/test_adopt_placements.py::test_a_track_sitting_only_in_a_sub_class_is_added_to_its_band[with_vox]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))",
+      "new": "    held = tuple(sorted(set(placements.holds(bucket, content_id))))",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M02_held_sub_class_competes"
+      }
+    },
+    {
+      "id": "r731-a.M03_same_sub_withheld",
+      "description": "a track already in the sub the plan names is withheld instead of left to the writer",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "595e6c093f2c692b",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_track_already_in_the_sub_the_plan_names_is_not_withheld",
+        "tests/test_adopt_placements.py::test_a_track_in_two_bands_is_not_withheld_from_the_one_the_plan_names",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not held or (sub in held and sub not in unnamed):",
+      "new": "    if not held:",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M03_same_sub_withheld"
+      }
+    },
+    {
+      "id": "r731-a.M04_renamed_sub_not_withheld",
+      "description": "a track in the planned sub under another name only is routed, so the writer doubles it",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "889a3c7cbe760f13",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_track_in_the_planned_sub_under_another_name_only_is_withheld",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not held or (sub in held and sub not in unnamed):",
+      "new": "    if not held or sub in held:",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M04_renamed_sub_not_withheld"
+      }
+    },
+    {
+      "id": "r731-a.M05_unnamed_without_held",
+      "description": "an unnamed sub is no longer required to be one the track holds",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4739009006553388",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_an_unnamed_sub_the_track_does_not_hold_changes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id)) & set(held)))\n    if not held or (sub in held and sub not in unnamed):",
+      "new": "    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id))))\n    if (not held and not unnamed) or (sub in held and sub not in unnamed):",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M05_unnamed_without_held"
+      }
+    },
+    {
+      "id": "r731-a.M08_digest_blind_to_unread",
+      "description": "the digest no longer covers whether the tree was read",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "59d99b7682a327c2",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_tree_nobody_read_is_a_different_plan_from_a_tree_holding_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"placements\": self.placements.state,\n                \"held_elsewhere\": [",
+      "new": "                \"held_elsewhere\": [",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M08_digest_blind_to_unread"
+      }
+    },
+    {
+      "id": "r731-a.M11_verdict_withheld_on_the_review_list",
+      "description": "an entry a collision verdict withheld is listed as holding a place",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f6ca4413524e9df",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_collision_verdict_withholds_under_its_own_reason_and_own_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.disposition is Disposition.WITHHELD and bool(self.holds)",
+      "new": "        return self.disposition is Disposition.WITHHELD",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M11_verdict_withheld_on_the_review_list"
+      }
+    },
+    {
+      "id": "r731-b.M23_collision_counts_a_listed_track",
+      "description": "a track the plan withheld and listed is counted a stranger in its own folder",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8450121c9fef090e",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_track_the_plan_withheld_is_not_a_stranger_in_its_own_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            - planned_by_bucket[bucket_id]\n            - named_by_bucket.get(bucket_id, set())",
+      "new": "            - planned_by_bucket[bucket_id]",
+      "source": {
+        "table": "r731-b.json",
+        "id": "M23_collision_counts_a_listed_track"
+      }
+    },
+    {
+      "id": "r731-c.M25_planned_sub_outside_the_set",
+      "description": "a planned sub outside the bucket's competing subs is no longer let through unasked",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a11d53e72e3b0c37",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_planned_sub_outside_the_competing_set_is_never_withheld"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sub not in competing:\n        return NO_COMPETING_PLACE\n    held",
+      "new": "    held",
+      "source": {
+        "table": "r731-c.json",
+        "id": "M25_planned_sub_outside_the_set"
+      }
+    },
+    {
+      "id": "r788-a.P1_untagged_is_added",
+      "description": "vocal_place: drop the tag check, so every routed track of a calibrated library is filed under the vocal sub",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "503487ea67e4680e",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_plan_with_no_vocal_addition_hands_the_writer_what_it_always_did",
+        "tests/test_adopt_vocals.py::test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over",
+        "tests/test_adopt_vocals.py::test_a_track_without_the_tag_is_never_added",
+        "tests/test_adopt_vocals.py::test_an_untagged_track_sitting_in_a_vocal_sub_is_left_out_of_the_plan_entirely",
+        "tests/test_adopt_vocals.py::test_one_apply_writes_the_entries_and_the_vocal_subs_in_one_mapping",
+        "tests/test_adopt_vocals.py::test_the_counts_add_up_to_the_tagged_tracks_of_the_census",
+        "tests/test_adopt_vocals.py::test_the_digest_changes_when_a_vocal_membership_is_added_to_the_plan",
+        "tests/test_adopt_vocals.py::test_the_document_names_the_count_and_lists_every_membership_it_may_write",
+        "tests/test_adopt_vocals.py::test_the_gate_shows_what_the_document_says_about_vocals",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not vocals.filing or not vocals.carries(content_id):",
+      "new": "    if not vocals.filing:",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P1_untagged_is_added"
+      }
+    },
+    {
+      "id": "r788-a.P2_blind_plan_files",
+      "description": "vocal_place: drop the filing check, so a tree nobody read, a taxonomy with no vocal sub and an uncalibrated library all file from the tag",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9e2a95dc9c279aed",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_library_with_no_calibrated_cut_plans_no_vocal_membership",
+        "tests/test_adopt_vocals.py::test_a_tree_nobody_read_plans_no_vocal_membership",
+        "tests/test_adopt_vocals.py::test_each_reason_nothing_can_be_filed_plans_nothing_for_a_tagged_track"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not vocals.filing or not vocals.carries(content_id):",
+      "new": "    if not vocals.carries(content_id):",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P2_blind_plan_files"
+      }
+    },
+    {
+      "id": "r788-a.P3_uncalibrated_files",
+      "description": "Vocals.filing: drop the calibration, so tags written from the default cut file a back catalogue",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "caa9f15b0fa6a851",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_library_with_no_calibrated_cut_plans_no_vocal_membership",
+        "tests/test_adopt_vocals.py::test_each_reason_nothing_can_be_filed_plans_nothing_for_a_tagged_track",
+        "tests/test_adopt_vocals.py::test_the_digest_says_whether_the_tag_and_the_tree_were_read",
+        "tests/test_adopt_vocals.py::test_whether_the_library_is_calibrated_is_carried_and_not_assumed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.read and self.has_sub and self.calibrated",
+      "new": "        return self.read and self.has_sub",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P3_uncalibrated_files"
+      }
+    },
+    {
+      "id": "r788-a.P5_withheld_gains",
+      "description": "vocal_place: a withheld track is added to its vocal sub",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f44096a766417ff1",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_track_withheld_over_another_band_stays_withheld_and_gains_no_vocal_sub",
+        "tests/test_adopt_vocals.py::test_the_counts_add_up_to_the_tagged_tracks_of_the_census",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if disposition is Disposition.WITHHELD:\n        return VOCAL_WITHHELD, sub",
+      "new": "    if False:\n        return VOCAL_WITHHELD, sub",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P5_withheld_gains"
+      }
+    },
+    {
+      "id": "r788-a.P6_present_is_added",
+      "description": "vocal_place: a track already in the sub is planned as an addition and handed to the writer",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4d2f5e6ce2125aba",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_keep_separate_verdict_withholds_the_vocal_addition_with_the_entry",
+        "tests/test_adopt_vocals.py::test_a_track_already_in_the_sub_is_counted_present_and_not_added",
+        "tests/test_adopt_vocals.py::test_a_withheld_track_already_in_its_vocal_sub_reads_present_and_is_not_digested",
+        "tests/test_adopt_vocals.py::test_only_the_additions_reach_the_writer_under_the_declared_names",
+        "tests/test_adopt_vocals.py::test_the_counts_add_up_to_the_tagged_tracks_of_the_census",
+        "tests/test_adopt_vocals.py::test_the_digest_does_not_move_when_the_membership_it_approved_lands",
+        "tests/test_adopt_vocals.py::test_the_document_names_the_count_and_lists_every_membership_it_may_write",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if vocals.sits(bucket, content_id):\n        return VOCAL_PRESENT, sub",
+      "new": "    if False:\n        return VOCAL_PRESENT, sub",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P6_present_is_added"
+      }
+    },
+    {
+      "id": "r788-a.P7_renamed_track_reads_present",
+      "description": "vocal_place: a track in the sub under another name only reads present, so it joins the digest as a membership the writer may be handed",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b6ca74c283be7ea",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_track_in_the_sub_under_another_name_only_is_not_added",
+        "tests/test_adopt_vocals.py::test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_added",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if vocals.sits_unnamed(bucket, content_id):\n        return VOCAL_RENAMED, sub",
+      "new": "    if False:\n        return VOCAL_RENAMED, sub",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P7_renamed_track_reads_present"
+      }
+    },
+    {
+      "id": "r788-a.P8_renamed_bucket_doubles",
+      "description": "vocal_place: a bucket whose vocal sub answers under another name only is added to, so the writer makes a second playlist beside it",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c09c2d0732a3f35",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_added",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if bucket in vocals.renamed:\n        return VOCAL_RENAMED, sub",
+      "new": "    if False:\n        return VOCAL_RENAMED, sub",
+      "source": {
+        "table": "r788-a.json",
+        "id": "P8_renamed_bucket_doubles"
+      }
+    },
+    {
+      "id": "r788-b.P10_manual_class_is_vocal",
+      "description": "vocal_sub: a class of the vocal identifier that is not additive is filed under",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f7503e50bc501ef9",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_no_additive_class_of_the_vocal_identifier_is_no_vocal_sub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not entry.additive or entry.id != VOX_SUB_CLASS:",
+      "new": "        if entry.id != VOX_SUB_CLASS:",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P10_manual_class_is_vocal"
+      }
+    },
+    {
+      "id": "r788-b.P12_name_clash_files_into_a_style",
+      "description": "vocal_sub: a bucket whose own sub or band label carries the vocal sub's display name still has a vocal sub, so vocal tracks are filed into that style",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab1a889fd9e52ec3",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_bucket_that_has_no_vocal_sub_is_not_read_for_one",
+        "tests/test_adopt_vocals.py::test_a_bucket_whose_band_is_labelled_with_the_vocal_name_has_no_vocal_sub",
+        "tests/test_adopt_vocals.py::test_a_bucket_whose_own_sub_carries_the_vocal_name_has_no_vocal_sub",
+        "tests/test_adopt_vocals.py::test_a_bucket_with_no_vocal_sub_plans_nothing_for_its_tagged_tracks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if entry.id in ids or entry.display in displays:",
+      "new": "        if entry.id in ids:",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P12_name_clash_files_into_a_style"
+      }
+    },
+    {
+      "id": "r788-b.P14_digest_drops_vocal",
+      "description": "digest: no vocal membership is covered, so a plan that gained vocal additions after the approval is applied under it",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0642091d184fb3a2",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_the_digest_changes_when_a_vocal_membership_is_added_to_the_plan",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"vocal\": [vocal_id(entry) for entry in self.vocal_memberships()],",
+      "new": "                \"vocal\": [],",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P14_digest_drops_vocal"
+      }
+    },
+    {
+      "id": "r788-b.P16_digest_moves_under_its_own_apply",
+      "description": "digest: cover the additions only, so the apply's own write moves the digest and a stopped run refuses its own work",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9e9bbb698d0a77ab",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_every_row_the_writer_may_be_handed_is_on_the_gate_whatever_the_tree_holds_now",
+        "tests/test_adopt_vocals.py::test_the_digest_does_not_move_when_the_membership_it_approved_lands",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"vocal\": [vocal_id(entry) for entry in self.vocal_memberships()],",
+      "new": "                \"vocal\": [vocal_id(entry) for entry in self.vocal_additions()],",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P16_digest_moves_under_its_own_apply"
+      }
+    },
+    {
+      "id": "r788-b.P17_withheld_presence_is_planned",
+      "description": "PlanEntry.vocal_planned: drop applicable, so a withheld track's vocal membership is one an apply may write",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "039ae57fca949edd",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_a_withheld_track_already_in_its_vocal_sub_reads_present_and_is_not_digested"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.applicable and self.vocal in VOCAL_PLANNED",
+      "new": "        return self.vocal in VOCAL_PLANNED",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P17_withheld_presence_is_planned"
+      }
+    },
+    {
+      "id": "r788-b.P9_unplaced_entry_gains",
+      "description": "vocal_place: only an empty bucket is no bucket, so an entry the plan does not place gains a vocal sub when a caller hands its bucket in",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "61428fb45958b8d4",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_an_entry_the_plan_does_not_place_has_no_bucket_whatever_bucket_it_is_handed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not bucket or disposition not in (Disposition.ROUTE, Disposition.WITHHELD):\n        return VOCAL_NO_BUCKET, \"\"",
+      "new": "    if not bucket:\n        return VOCAL_NO_BUCKET, \"\"",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P9_unplaced_entry_gains"
+      }
+    },
+    {
+      "id": "u165.P1_undeclared",
+      "description": "predicted_place: route a band the taxonomy declares no sub for",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d3f6b7154f208a1a",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_filing.py::test_a_band_the_taxonomy_declares_no_sub_for_predicts_undeclared"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return Predicted(disposition=Disposition.UNDECLARED)",
+      "new": "        return Predicted(disposition=disposition, bucket=bucket)",
+      "source": {
+        "table": "u165.json",
+        "id": "P1_undeclared"
+      }
+    },
+    {
+      "id": "u165.P2_vocal_sub",
+      "description": "predicted_place: give every route the vocal sub, vox or not",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "615943db490e5749",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_filing.py::test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows",
+        "tests/test_intake_land_filing.py::test_five_files_land_and_file_under_one_answer",
+        "tests/test_intake_land_filing.py::test_the_filed_rows_are_what_adopt_apply_then_finds_nothing_to_do_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    vocal = (vocal_sub(declared, bucket) or \"\") if vox else \"\"",
+      "new": "    vocal = vocal_sub(declared, bucket) or \"\"",
+      "source": {
+        "table": "u165.json",
+        "id": "P2_vocal_sub"
+      }
+    },
+    {
+      "id": "r239-b.S10_adopt_apply_key_off",
+      "description": "adopt apply's write open passes unlock=False",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0d62f18187523e65",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 723,
+      "baseline_collected": 723,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)",
+      "new": "    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, unlock=False, cfg=cfg)",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S10_adopt_apply_key_off"
+      },
+      "moved": "the write open's arguments were joined onto one line by the formatter; the mutation adds unlock=False to it as before"
+    },
+    {
+      "id": "r722.A1_gate_drops_tally",
+      "description": "The approval gate's facts omit the reading tally",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c9074a991d17aa1",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_the_approval_gate_shows_the_reading_tally"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"counts\",\n    \"energy\",\n",
+      "new": "    \"counts\",\n",
+      "source": {
+        "table": "r722.json",
+        "id": "A1_gate_drops_tally"
+      },
+      "moved": "the gate's facts are now read through the _FACTS key list; dropping energy from it is dropping the energy line from the gate document"
+    },
+    {
+      "id": "r731-b.M13_gate_without_the_review_list",
+      "description": "the gate's facts no longer carry the list of withheld entries",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b0fb0e900bb8fbc6",
+      "subset": [
+        "tests/test_adopt_workers.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"withheld_by_placement\",\n    \"held_elsewhere\",\n",
+      "new": "    \"withheld_by_placement\",\n",
+      "source": {
+        "table": "r731-b.json",
+        "id": "M13_gate_without_the_review_list"
+      },
+      "moved": "the gate's facts are now read through the _FACTS key list; dropping held_elsewhere from it is the same omission"
+    },
+    {
+      "id": "r731-b.M14_gate_without_the_count",
+      "description": "the gate's facts no longer carry the withheld count split by kind",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3aaf543963bf6fd1",
+      "subset": [
+        "tests/test_adopt_workers.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"placements\",\n    \"withheld_by_placement\",\n",
+      "new": "    \"placements\",\n",
+      "source": {
+        "table": "r731-b.json",
+        "id": "M14_gate_without_the_count"
+      },
+      "moved": "the gate's facts are now read through the _FACTS key list; dropping withheld_by_placement from it is the same omission"
+    },
+    {
+      "id": "r731-b.M15_gate_without_the_read_state",
+      "description": "the gate's facts no longer say whether the tree was read",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b053e29fa9fb67c0",
+      "subset": [
+        "tests/test_adopt_workers.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat",
+        "tests/test_adopt_workers.py::test_an_uncut_library_reads_neither_its_tree_nor_its_vocals"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"collisions\",\n    \"placements\",\n",
+      "new": "    \"collisions\",\n",
+      "source": {
+        "table": "r731-b.json",
+        "id": "M15_gate_without_the_read_state"
+      },
+      "moved": "the gate's facts are now read through the _FACTS key list; dropping placements from it is the same omission"
+    },
+    {
+      "id": "u27-adopt-apply-author.A3_missing_gate_refuses_under_the_wrong_reason",
+      "description": "Report a verb declaring no approval gate as a configuration problem",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1d4f4210fb0a6170",
+      "subset": [
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_the_approval_gate_is_found_by_digest_source_not_by_position"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"internal-error\",\n        f\"{entry.name} declares no gate digested against the plan, so \"",
+      "new": "        \"config-unusable\",\n        f\"{entry.name} declares no gate digested against the plan, so \"",
+      "source": {
+        "table": "u27-adopt-apply-author.json",
+        "id": "A3_missing_gate_refuses_under_the_wrong_reason"
+      },
+      "moved": "the refusal is now built through core.cause.refuse, whose first argument is the reason; the same reason is swapped"
+    },
+    {
+      "id": "u55-round-2.R8_census_prefix_map",
+      "description": "The census drops the configured volume rewrites, so an older volume name resolves nowhere",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "15c07002ddbdf72f",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 44,
+      "baseline_collected": 44,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_configured_volume_rewrite_reaches_the_census"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            rows, declared, root=cfg.library.root, prefix_map=collection.prefix_rules(cfg)",
+      "new": "            rows, declared, root=cfg.library.root, prefix_map=()",
+      "source": {
+        "table": "u55-round-2.json",
+        "id": "R8_census_prefix_map"
+      },
+      "moved": "the census's scan_rows arguments were joined onto one line by the formatter; the prefix map is emptied as before"
+    },
+    {
+      "id": "r722.P2_build_drops_level",
+      "description": "build_adoption_plan passes None instead of the scanned track's reading",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e9afec6c12de0ffb",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_changed_reading_moves_the_digest",
+        "tests/test_adopt_energy.py::test_a_tagged_file_lands_in_the_band_its_energy_falls_in",
+        "tests/test_adopt_energy.py::test_adoption_lands_a_track_where_the_routing_pass_would"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            sub = _sub_for(declared, bucket, track.genre, track.energy)",
+      "new": "            sub = _sub_for(declared, bucket, track.genre, None)",
+      "source": {
+        "table": "r722.json",
+        "id": "P2_build_drops_level"
+      },
+      "moved": "the resolved sub is now named sub and handed to _destined; the energy level is dropped from the same call"
+    },
+    {
+      "id": "r722.P4_entry_drops_energy",
+      "description": "The plan entry does not carry the census's level",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aa6863bb266fe7fe",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_genre_verdict_lands_in_the_band_the_census_read",
+        "tests/test_adopt_energy.py::test_a_tagged_file_lands_in_the_band_its_energy_falls_in",
+        "tests/test_adopt_energy.py::test_the_approval_gate_shows_the_reading_tally"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            energy=track.energy,\n            energy_unreadable=track.energy_unreadable,",
+      "new": "            energy_unreadable=track.energy_unreadable,",
+      "source": {
+        "table": "r722.json",
+        "id": "P4_entry_drops_energy"
+      },
+      "moved": "the PlanEntry is now built before _destined routes it, four spaces less indented; the energy field is dropped from it"
+    },
+    {
+      "id": "r722.P5_entry_drops_unreadable",
+      "description": "The plan entry does not carry the unreadable flag",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24ae6ea5ee41ac6a",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_energy.py",
+        "tests/test_adoption.py",
+        "tests/test_adoption_hardware.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 653,
+      "baseline_collected": 653,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_energy.py::test_a_container_the_tag_library_does_not_recognise_is_unreadable",
+        "tests/test_adopt_energy.py::test_a_file_whose_tags_cannot_be_read_is_reported",
+        "tests/test_adopt_energy.py::test_a_value_that_is_not_a_number_is_reported_as_unreadable",
+        "tests/test_adopt_energy.py::test_an_unreadable_file_and_an_untagged_one_are_different_plans"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            energy=track.energy,\n            energy_unreadable=track.energy_unreadable,",
+      "new": "            energy=track.energy,",
+      "source": {
+        "table": "r722.json",
+        "id": "P5_entry_drops_unreadable"
+      },
+      "moved": "the PlanEntry is now built before _destined routes it, four spaces less indented; the unreadable flag is dropped from it"
+    },
+    {
+      "id": "r731-a.M06_competing_place_never_withholds",
+      "description": "the plan reads the competing place and routes the entry anyway",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "62390bfaa7a8ef81",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 13,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_collision_verdict_withholds_under_its_own_reason_and_own_count",
+        "tests/test_adopt_placements.py::test_a_genre_answered_later_is_withheld_over_the_place_the_track_holds",
+        "tests/test_adopt_placements.py::test_a_track_in_a_band_whose_file_has_no_reading_is_withheld_from_the_sink",
+        "tests/test_adopt_placements.py::test_a_track_in_one_band_whose_file_reads_another_is_withheld_and_listed",
+        "tests/test_adopt_placements.py::test_a_track_in_one_style_sub_is_withheld_from_another",
+        "tests/test_adopt_placements.py::test_a_track_in_the_no_reading_sub_whose_file_now_reads_is_withheld",
+        "tests/test_adopt_placements.py::test_a_track_in_the_planned_sub_under_another_name_only_is_withheld",
+        "tests/test_adopt_placements.py::test_a_track_in_two_bands_is_withheld_from_a_third_and_both_are_listed",
+        "tests/test_adopt_placements.py::test_the_digest_covers_every_field_the_review_list_shows",
+        "tests/test_adopt_placements.py::test_the_digest_differs_between_a_plan_with_a_withheld_entry_and_one_without",
+        "tests/test_adopt_placements.py::test_the_digest_moves_when_a_withheld_track_is_moved_to_another_band",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE",
+      "new": "        disposition = Disposition.WITHHELD if False else Disposition.ROUTE",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M06_competing_place_never_withholds"
+      },
+      "moved": "a competing place now withholds in _destined, which build_adoption_plan and with_verdicts share; the competing place is ignored as before"
+    },
+    {
+      "id": "r731-a.M07_withheld_entry_loses_its_bucket",
+      "description": "a withheld entry's bucket is blanked, so its identifier and its review row lose it",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "579c6e78a35125f1",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_genre_answered_later_is_withheld_over_the_place_the_track_holds",
+        "tests/test_adopt_placements.py::test_a_track_in_one_band_whose_file_reads_another_is_withheld_and_listed",
+        "tests/test_adopt_placements.py::test_a_track_the_plan_withheld_is_not_a_stranger_in_its_own_folder",
+        "tests/test_adopt_placements.py::test_a_withheld_entry_keeps_the_identifier_of_the_work_it_was",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE\n",
+      "new": "        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE\n        bucket = \"\" if withheld_by else bucket\n",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M07_withheld_entry_loses_its_bucket"
+      },
+      "moved": "the entry a competing place withholds now keeps its bucket in _destined; the mutation blanks it there, as the old condition did for every withheld entry"
+    },
+    {
+      "id": "r731-a.M09_digest_blind_to_the_review_list",
+      "description": "the digest no longer covers the rows of the review list",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fad2654a3329c640",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_the_digest_covers_every_field_the_review_list_shows",
+        "tests/test_adopt_placements.py::test_the_digest_moves_when_a_withheld_track_is_moved_to_another_band",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    {\"id\": entry.entry_id, **review_row(entry)} for entry in self.held_elsewhere()",
+      "new": "                    {\"id\": entry.entry_id, **review_row(entry)} for entry in ()",
+      "source": {
+        "table": "r731-a.json",
+        "id": "M09_digest_blind_to_the_review_list"
+      },
+      "moved": "the digest's review list comprehension was joined onto one line by the formatter; it is emptied as before"
+    },
+    {
+      "id": "r788-b.P19_answered_genre_files_nothing",
+      "description": "with_verdicts: an answered genre is asked of no vocals, so a tagged track given a bucket is never filed under its vocal sub",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1bb9b5b51d06aecb",
+      "subset": [
+        "tests/test_adopt_vocals.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_vocals.py::test_an_answered_genre_is_filed_under_the_vocal_sub_of_the_bucket_it_was_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _destined(declared, plan.placements, plan.vocals, sub_of, entry, chosen, sub)",
+      "new": "            _destined(declared, plan.placements, NO_VOCALS, sub_of, entry, chosen, sub)",
+      "source": {
+        "table": "r788-b.json",
+        "id": "P19_answered_genre_files_nothing"
+      },
+      "moved": "with_verdicts now routes an answered entry through _destined; the plan's vocals are replaced with none as before"
+    },
+    {
+      "id": "u165.P3_of_vocal",
+      "description": "Predicted.of: read the vocal sub of an entry whatever its vocal state",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd5e9a1cfe4ca465",
+      "subset": [
+        "tests/test_intake_land_filing.py",
+        "tests/test_intake_land_native.py",
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_filing.py::test_an_entry_whose_vocal_is_not_added_reads_no_vocal_sub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        vocal_sub = entry.vocal_sub if entry.vocal == VOCAL_ADD else \"\"",
+      "new": "        vocal_sub = entry.vocal_sub",
+      "source": {
+        "table": "u165.json",
+        "id": "P3_of_vocal"
+      },
+      "moved": "Predicted.of now names the vocal sub before building itself; the condition on it is dropped as before"
+    },
+    {
+      "id": "u23-round-8-independent.X10_entry_id_drops_the_sub",
+      "description": "Two pieces of work differing only by sub-folder share one identifier",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0fef0175c0a08fcb",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_an_entry_identifier_moves_when_the_destination_moves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        canonical_json({\"tree\": tree, \"content\": content_id, \"bucket\": bucket, \"sub\": sub}).encode()",
+      "new": "        canonical_json({\"tree\": tree, \"content\": content_id, \"bucket\": bucket}).encode()",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X10_entry_id_drops_the_sub"
+      },
+      "moved": "the identifier's document was joined onto one line by the formatter; the sub is dropped from it as before"
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

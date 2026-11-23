@@ -55,8 +55,7 @@ BATCH = "Batch One"
 #: The files the fake account's ``pulsromania`` purchases stage, the library's
 #: own track of the compilation held back.
 PULS_FILES = (
-    "Aurora Bloom - Sun Path - 01 Sun Path.flac",
-    "Aurora Bloom - Sun Path - 02 Tide.flac",
+    "Aurora Bloom - Sun Path - 01 Sun Path.flac", "Aurora Bloom - Sun Path - 02 Tide.flac",
     "Various Artists - Compiled - 01 Coral Arc - Glass.flac",
 )
 OTHER_FILES = ("Coral Arc - Drift - 01 Drift.flac",)
@@ -94,11 +93,7 @@ def test_the_plan_names_each_rows_label_and_none_for_a_seller_no_label_names(
     assert code == int(ExitCode.OK), envelope
     by_row = rows(envelope)
     assert {key: row["label"] for key, row in by_row.items()} == {
-        "1": "PULS",
-        "2": "PULS",
-        "3": "PULS",
-        "4": None,
-        "5": "PULS",
+        "1": "PULS", "2": "PULS", "3": "PULS", "4": None, "5": "PULS",
     }
     assert by_row["1"]["label_id"] == puls.label_id
     summary = envelope["data"]["summary"]

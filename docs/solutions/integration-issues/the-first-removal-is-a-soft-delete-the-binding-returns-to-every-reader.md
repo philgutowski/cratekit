@@ -2,7 +2,7 @@
 title: "The first removal is a soft delete the binding returns to every reader, and the guard could not see one"
 date: 2026-09-29
 category: integration-issues
-module: "src/cratekit/core/rb_writer.py, src/cratekit/write/trees.py, src/cratekit/write/rebuild.py, src/cratekit/adopt/move_cli.py"
+module: "src/cratekit/core/rb_writer.py, src/cratekit/write/trees.py, src/cratekit/write/rebuild.py, src/cratekit/adopt/move_cli.py, src/cratekit/core/rb_nodes.py"
 problem_type: integration_issue
 component: database
 severity: high
