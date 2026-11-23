@@ -1,12 +1,12 @@
 # Mutation table: u328-replay-after
 
-Measured by `scripts/mutate.py` on 2026-11-23 22:02 UTC, branch `cloud/977-no-source-file-over-1500-lines` at `1dd2bd1d`. Pass kind: replay.
+Measured by `scripts/mutate.py` on 2026-11-23 22:54 UTC, branch `cloud/977-no-source-file-over-1500-lines` at `d8b1fc8a`. Pass kind: replay.
 
 A replay pass measures again rows a table under `docs/mutation/` already recorded, so it has no row cap and chooses no rows: every row below names the table and the id it came from. One full baseline and one null control serve the batch, and each row ran on its own subset (U297).
 
 Baseline: green, 22933 collected. pytest invocations for this batch: 62.
 
-Full baseline: measured by this driver (the battery's verdict was not read: it was read against another known failures file).
+Full baseline: measured by this driver (the battery's verdict was not read: it is for commit `1dd2bd1dd08e`, and this tree is at `d8b1fc8ab9be`).
 
 Subset baselines: 25, each measured by this driver.
 
@@ -29,7 +29,7 @@ Null control `NULL_CONTROL`: killed 0, collected 22933 against 22933. The contro
 | `r312.R1_summary_promises_a_replace` | `src/cratekit/cli/registry_pipeline.py` | user | 44 file(s) | 5814 | 1 | killed |
 | `r372-b.B12_verb_does_not_declare_the_check` | `src/cratekit/cli/registry_pipeline.py` | user | 3 file(s) | 1488 | 1 | killed |
 | `r424.A1_writes_narrowed` | `src/cratekit/cli/registry_sync.py` | user | 2 file(s) | 1143 | 2 | killed |
-| `r424.A2_cloud_gate_absent` | `src/cratekit/cli/registry_sync.py` | user | 2 file(s) | 0 | collection error | collect-error |
+| `r424.A2_cloud_gate_absent` | `src/cratekit/cli/registry_sync.py` | user | 2 file(s) | 1143 | 2 | killed |
 | `r424.A3_rekordbox_checks` | `src/cratekit/cli/registry_sync.py` | user | 3 file(s) | 1560 | 1 | killed |
 | `r424.A4_library_mounted` | `src/cratekit/cli/registry_sync.py` | user | 3 file(s) | 1560 | 1 | killed |
 | `r424.A5_summary_both_ways` | `src/cratekit/cli/registry_sync.py` | user | 2 file(s) | 1143 | 1 | killed |
@@ -41,7 +41,7 @@ Null control `NULL_CONTROL`: killed 0, collected 22933 against 22933. The contro
 | `u129-author.A11_export_archive_without_library_mounted` | `src/cratekit/cli/registry_modules.py` | user | 1 file(s) | 20 | 1 | killed |
 | `u129-author.A9_land_without_provider_check` | `src/cratekit/cli/registry_later.py` | user | 1 file(s) | 20 | 1 | killed |
 | `u263.D22_restamp_declares` | `src/cratekit/cli/registry_pipeline.py` | user | 2 file(s) | 1437 | 1 | killed |
-| `u27-adopt-apply-author.R1_marker_restored` | `src/cratekit/cli/registry_modules.py` | user | 3 file(s) | 102 | collection error | collect-error |
+| `u27-adopt-apply-author.R1_marker_restored` | `src/cratekit/cli/registry_modules.py` | user | 3 file(s) | 1734 | collection error | collect-error |
 | `u27-reports-round-1.R1_delete_review_precondition` | `src/cratekit/cli/registry_modules.py` | user | 14 file(s) | 3878 | 2 | killed |
 | `u27-restore-cli-independent.I_H1_the_landed_verb_keeps_its_marker` | `src/cratekit/cli/registry_state.py` | maintainer | 2 file(s) | 1119 | collection error | collect-error |
 | `u28-skills-independent.R1_planned_in_restored` | `src/cratekit/cli/registry_modules.py` | user | 1 file(s) | 1016 | collection error | collect-error |
@@ -228,14 +228,15 @@ Restore the cloud sync decision on a verb that never opens the database
 
 - File: `src/cratekit/cli/registry_sync.py`
 - Source: `r424.json`, row `A2_cloud_gate_absent`
-- Moved: the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py
+- Moved: U328 moved sync.favorites' entry to the sync part, which does not import the shared gate's name, so the row as written ended in a NameError and broke collection with no death; the same gate is added to the same entry's gates, spelled out as the equal value
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_cli_contract.py`, `tests/test_outbound_workers.py`
-- Collected: 0 against a baseline of 1143
-- Kills: 0 (collect-error)
-- Note: collection changed: 0 collected against a baseline of 1143. A file that fails to collect takes its tests with it and the run still looks green, so this is not a zero.
-- Collection errors: `tests/test_cli_contract.py`, `tests/test_outbound_workers.py`, `tests/test_cli_contract.py`, `tests/test_outbound_workers.py`, `tests/test_cli_contract.py`, `tests/test_outbound_workers.py`, `tests/test_cli_contract.py`, `tests/test_outbound_workers.py`
+- Collected: 1143 against a baseline of 1143
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_cli_contract.py::test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision`
+  - `tests/test_outbound_workers.py::test_the_verb_asks_no_question_its_work_cannot_raise`
 
 Old text:
 
@@ -251,7 +252,11 @@ New text:
 ```
                 explicit=True, digest_source="plan",
             ),
-            CLOUD_SYNC_UNREADABLE_GATE,
+            GateSpec(
+                name="write.cloudsync.unreadable", options=("proceed", "abort"),
+                prompt="Cloud Library Sync state could not be read; proceed anyway?",
+                explicit=True,
+            ),
         ),
         # Landed (U33, R-130).
 ```
@@ -600,31 +605,17 @@ Put planned_in back on the entry, so the conformance suite stops driving the lan
 
 - File: `src/cratekit/cli/registry_modules.py`
 - Source: `u27-adopt-apply-author.json`, row `R1_marker_restored`
-- Moved: the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py
+- Moved: U328 moved adopt.move's entry to the modules part, which does not import ADOPT_APPLY_CLI_UNIT, so the row as written ended in a NameError and broke collection for another reason; the same marker is put back on the same entry, by the constant's value, U27
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_cli_contract.py`, `tests/test_adoption.py`, `tests/test_pending_units.py`
-- Collected: 102 against a baseline of 1737
-- Kills: 101 (collect-error)
-- Note: collection changed: 102 collected against a baseline of 1737. A file that fails to collect takes its tests with it and the run still looks green, so this is not a zero.
+- Collected: 1734 against a baseline of 1737
+- Kills: 3 (collect-error)
+- Note: collection changed: 1734 collected against a baseline of 1737. A file that fails to collect takes its tests with it and the run still looks green, so this is not a zero.
 - Killed:
-  - `tests/test_pending_units.py::test_a_card_link_in_the_pull_request_body_is_not_a_keyword`
-  - `tests/test_pending_units.py::test_a_cli_shaped_register_key_names_a_module_some_verb_declares`
-  - `tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on`
-  - `tests/test_pending_units.py::test_a_closing_keyword_in_the_pull_request_body_is_refused[Card\nCloses #339\n]`
-  - `tests/test_pending_units.py::test_a_closing_keyword_in_the_pull_request_body_is_refused[Closes #339]`
-  - `tests/test_pending_units.py::test_a_closing_keyword_in_the_pull_request_body_is_refused[Resolved   #7]`
-  - `tests/test_pending_units.py::test_a_closing_keyword_in_the_pull_request_body_is_refused[this fixes #12 too]`
-  - `tests/test_pending_units.py::test_a_closing_reference_is_never_manufactured_across_two_commit_messages`
-  - `tests/test_pending_units.py::test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit`
-  - `tests/test_pending_units.py::test_a_hash_leading_body_line_survives_the_range_check`
-  - `tests/test_pending_units.py::test_a_message_that_closes_nothing_owed_is_left_alone[Closes #21]`
-  - `tests/test_pending_units.py::test_a_message_that_closes_nothing_owed_is_left_alone[Closes #52]`
-  - `tests/test_pending_units.py::test_a_message_that_closes_nothing_owed_is_left_alone[chore(vendor): bump pyrekordbox\n\nfixes dylanljones/pyrekordbox#36 upstream\n]`
-  - `tests/test_pending_units.py::test_a_message_that_closes_nothing_owed_is_left_alone[feat(write): converge\n\nCloses #21\n\nand #36 stays open until the export CLI lands.\n]`
-  - `tests/test_pending_units.py::test_a_message_that_closes_nothing_owed_is_left_alone[feat: x\n\nCloses #21\n# ------------------------ >8 ------------------------\n+Closes #36\n]`
-  - ... and 86 more, see the JSON sidecar
-- Collection errors: `tests/test_cli_contract.py`, `tests/test_cli_contract.py`, `tests/test_cli_contract.py`, `tests/test_adoption.py`, `tests/test_adoption.py`, `tests/test_cli_contract.py`, `tests/test_adoption.py`, `tests/test_adoption.py`
+  - `tests/test_adoption.py::test_no_landed_adoption_verb_still_owes_the_file_the_board_reads`
+  - `tests/test_cli_contract.py::test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
+  - `tests/test_cli_contract.py::test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewhere`
 
 Old text:
 
@@ -640,7 +631,7 @@ New text:
 ```
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in=ADOPT_APPLY_CLI_UNIT,
+        planned_in="U27",
     ),
     # ── Deletion: one surface, two modules
 ```
