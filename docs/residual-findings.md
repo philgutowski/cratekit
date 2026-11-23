@@ -3815,3 +3815,168 @@ track's R&B band alone, or names the file on the gate. Ledger only.
 **Measured cost.** Driven with two rows seeded on one file: the file and the first row carry the genre, the second row keeps its old one, and the refusal's reason names the wrong cause. A second run writes the second row. Two rows on one file is a duplicate the collection should not hold.
 
 **Closes when:** the plan lists a second row on a file already named as `file-shared` (or writes the file once for both), with the seeded pair as its test.
+
+---
+
+## R-1969. Ten writers still spell the empty analysis roots refusal inline beside watched_roots
+
+**Found:** at the build of #978, U329, 2026-11-23.
+
+**The mechanism.** `write.row_defaults.watched_roots` is the one home of
+"the roots a write's analysis-file watch covers, refused when empty" since
+U329, which `intake.rotate`, `intake.analyzed`, `intake.refill`,
+`intake.shelve`, `write.row_link` and `analysis.head_adopt` call. Ten other
+writers raise the same `ValueError` with the same three sentences inline,
+inside a longer function: `write/trees.py`, `write/genre_favorites.py`,
+`write/playlist_pair.py`, `tagging/rows.py`, `sync/twins.py`,
+`sync/pair_reverse.py`, `sync/removed.py`, `favorites/spine.py`,
+`intake/native.py` and `intake/set_playlist.py`. Neither reading
+U290 measures sees them: each copy is under six logical lines and is not a
+function body of its own.
+
+**Measured cost.** None to a user: every copy refuses the same empty list
+with the same words, measured by grep, and no test reads the words. A change
+to the refusal made in the home alone would leave ten writers saying the old
+thing.
+
+**Closes when:** each of the ten calls `row_defaults.watched_roots`, or the
+measure grows a reading of copied statement runs shorter than six lines.
+Ledger only.
+
+---
+
+## R-1970. Helper bodies identical as syntax trees escape the identical body reading when an annotation or a blank line differs
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** U329's reading of an identical body (`tests/test_duplication.py`,
+`identical_bodies`) keys a function on its arguments and its statements as
+syntax trees, the rule the card and U298 named, so a parameter annotation
+that differs makes two bodies distinct. Three pairs are identical statement
+for statement with the arguments set aside: `_planned_over` in
+`cli/label_sync.py` and `cli/sync_land.py` (`tail.Attend` against `_Attend`,
+which `sync_land.py` binds to `tail.Attend`), `_as_left` in `adopt/apply.py`
+and `identity_of` in `analysis/ahead.py`, and `declared_gate` in
+`cli/output.py` and `_gate` in `cli/verbs/taxonomy_word.py`. The size is
+physical lines per copy, so a two line body beside a twin wrapped to three
+is not counted, and `_folder_and_path` in `analysis/cli.py` and
+`vocals/cli.py` is an identical two line body today. Round two drove the
+other side of that: the floor reads each copy's own blank lines, so the
+accessor this card gave one home, copied into a new part with its blank line
+deleted, passes 37 of 37 where the same copy with the blank line fails, and a
+blank line added to both `_folder_and_path` copies turns the suite red with
+no code changed.
+
+**Measured cost.** None to a user, by the review's independent syntax tree
+pass with the arguments ignored. The card's title, "no identical helper body
+left", reads wider than its rule; the rule is what the guard holds.
+
+**Closes when:** each pair is given one home, or the reading compares bodies
+with the annotations dropped and the guard is tightened to it. Ledger only.
+
+---
+
+## R-1971. The soft delete guard reads the writer's shared accessor in one import spelling, so a permissive read through any other passes
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** Since U329 the writer's parts bind `_writer` with
+`from cratekit.core.rb_call_time import writer as _writer`, and
+`tests/_source_guards.py` (`_writer_accessors`) recognises that import and
+`from .rb_call_time import writer` inside `core`. The review drove five
+other spellings through the guard and each names nothing:
+`from ..core.rb_call_time import writer`, `rb_call_time.writer()` after a
+module import, `import cratekit.core.rb_call_time as ct` with `ct.writer()`,
+`from . import rb_call_time`, and `_writer = writer` after the import. A
+permissive read appended to `write/row_defaults.py` through the level two
+relative import passed the beat grid suites and the parts guard (271
+passed). It extends R-1901, which records the same limit for the accessor
+defined in a file.
+
+**Measured cost.** None today: the five imports of the accessor in `src`
+all use the recognised spelling, so none of them produces it. A part written
+in another spelling with a falsey default would read a removed row as active
+and pass the guard.
+
+**Closes when:** the guard resolves the writer by value rather than by
+spelling, as R-1901 asks, or a test holds every import of the accessor to
+the recognised spelling. Ledger only: a maintainer facing gap with no
+producer in the tree.
+
+---
+
+## R-1972. config.Remedy is the whole remedy vocabulary since U329, so a configuration failure is no longer held to its six tokens
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** U329 gave the six configuration remedy tokens one home by
+making `core.config.Remedy` the canonical `core.exit_codes.Remedy`,
+re-exported, rather than a subset enum of its own. So
+`config.Remedy("quit-rekordbox")` is accepted where the base refused it,
+`tests/test_config.py`'s `isinstance(kind.remedy, config.Remedy)` holds for
+any canonical token, and `core.config` left the subset walk in
+`tests/test_cli_contract.py`. A subset read off the canonical text was
+driven first and broke the reserved causes guard's static enum rule (R-1905),
+whose module may import only `ast` and `re`.
+
+**Measured cost.** None to a user: for all six tokens `str`, `repr`, JSON, the
+rendered fix line and the cause text are byte identical on base and head, and
+`src` holds no iteration, `isinstance` or constructor on `config.Remedy`.
+What is lost is a statement of which remedies a configuration failure may
+name.
+
+**Closes when:** a test names the remedies each configuration failure carries,
+or the static enum rule reads a member written as another enum's value and
+config declares its subset again by reading it. Ledger only.
+
+---
+
+## R-1973. No test passes empty analysis roots to the four intake writes that share watched_roots
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** `tests/test_inbox_rotate.py`'s empty roots test calls
+`rotate.watched_roots([])` alone, though it is named for every write that
+shares it. The review replaced the call with a plain list in turn at
+`intake/analyzed.py`, `intake/refill.py`, `intake/shelve.py` and
+`intake/rotate.py`'s apply, and five intake suites stayed green each time.
+Before U329 as after it; the full suite was not run for these mutants.
+
+**Measured cost.** None driven: every caller passes the roots the
+configuration names, and no verb produces an empty list for these writes
+that the review found. A write whose watch covers nothing would report a
+session clean whatever happened to the library's grids.
+
+**Closes when:** each of the four writes is driven with empty roots and
+refuses before the gate. Ledger only.
+
+---
+
+## R-1974. The split module scan derives a part from its imported accessor in one spelling, and its fixture covers the writer's family alone
+
+**Found:** at review round two of #978, U329, 2026-11-23.
+
+**The mechanism.** U329's fix round taught `tests/test_split_modules.py`'s
+`_accessor_parts` to derive a part from an accessor it imports as well as one
+it defines, reading `from cratekit.core.<home> import <accessor>` at level
+zero. Round two drove four other spellings of a part off the glob holding the
+accessor, each passing the suite: from a sibling part, by a relative import,
+module then attribute, and a dotted alias; the whole producer in the sibling
+and relative spellings, imported by `rb_writer` and by `core.tags`, passed 143
+of 143 over five structural files, and that part raising a bare
+`RuntimeError` passed the writer scans. The branch's own
+`tests/_source_guards.py` `_writer_accessors` accepts
+`from .rb_call_time import writer`, so two readers of one accessor disagree on
+the relative spelling. The fixture test plants the writer's family in one
+spelling, so limiting the derivation to `rb_writer`, counting any name
+imported from a home, or reading top level imports only each kill nothing.
+
+**Measured cost.** None today: 399 files read, 10 accessor imports, all in the
+absolute spelling, no relative import anywhere, so 10 candidates were driven
+and none produces it. A part named off the glob that took the accessor
+another way would escape every scan that reads through
+`tests/_split_modules.py`.
+
+**Closes when:** the derivation resolves an imported accessor by value (the
+function it binds, however reached), with a fixture per family and spelling;
+or a test holds every accessor import to the absolute spelling. Ledger only.

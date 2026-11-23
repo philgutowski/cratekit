@@ -2,7 +2,7 @@
 
 U290 point 3: removed duplication cannot grow back. A package's copied
 blocks must be on its allowance under ``tests/ratchets/duplication/``, which
-only shrinks.
+only shrinks, and since U329 every allowance is empty.
 
 Exact copies only. A logical line is one statement's tokens joined by single
 spaces, with comments, blank lines, lone strings and imports dropped, so a
@@ -15,10 +15,15 @@ The allowance is held in windows of exactly six lines, so removing a partner
 copy can only shrink what is found, where a whole block's digest would
 change in a package nobody touched. An edit bringing two stretches together
 is a new copy and fails on its own branch.
+
+A copied helper is read beside it (U329): a function body of three lines or
+more defined identically in two files, compared as syntax trees, which a
+window of six lines can miss.
 """
 
 from __future__ import annotations
 
+import ast
 import collections
 from pathlib import Path
 
@@ -261,3 +266,119 @@ def test_no_package_holds_a_copied_block_beyond_its_allowance():
         "and call it from each place; the allowance under "
         f"{measure.DUPLICATION_ALLOWANCES}/ is never added to:\n" + "\n".join(problems)
     )
+
+
+# ── Identical function bodies (U329) ─────────────────────────────────────────
+#
+# A copied helper is the duplication the window reading misses: a body of three
+# statements is half a window. A body is a function's arguments and its
+# statements as syntax trees, its docstring dropped, so a re-wrapped or
+# re-documented copy is still a copy; it counts from three physical lines.
+
+BODY_LINES = 3
+
+
+def identical_bodies(sources: dict[str, str]) -> list[list[str]]:
+    """Each body defined in two or more files, as its places, ``path:line name``."""
+    places: dict[str, list[tuple[str, str]]] = collections.defaultdict(list)
+    for path, text in sources.items():
+        for node in ast.walk(ast.parse(text)):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            body = node.body[1:] if ast.get_docstring(node, clean=False) is not None else node.body
+            if not body or body[-1].end_lineno - body[0].lineno + 1 < BODY_LINES:
+                continue
+            key = ast.dump(node.args) + "".join(ast.dump(statement) for statement in body)
+            places[key].append((path, f"{path}:{node.lineno} {node.name}"))
+    return sorted(
+        sorted(place for _, place in found)
+        for found in places.values()
+        if len({path for path, _ in found}) > 1
+    )
+
+
+def _function(name: str, body: str, *, docstring: str = "") -> str:
+    lines = [f'    """{docstring}"""'] if docstring else []
+    lines += [f"    {line}" for line in body.splitlines()]
+    return f"def {name}(path, *, strict=False):\n" + "\n".join(lines) + "\n"
+
+
+_BODY = "found = read(path)\nif strict and not found:\n    raise ValueError(path)\nreturn found"
+
+
+def test_a_body_defined_in_two_files_is_a_copy_whatever_its_docstring():
+    found = identical_bodies(
+        {
+            "src/cratekit/core/one.py": _function("load", _BODY, docstring="One way."),
+            "src/cratekit/write/two.py": _function("load", _BODY, docstring="Another way."),
+        }
+    )
+    assert found == [["src/cratekit/core/one.py:1 load", "src/cratekit/write/two.py:1 load"]]
+
+
+def test_a_renamed_function_with_the_same_body_is_still_a_copy():
+    found = identical_bodies(
+        {"a.py": _function("load", _BODY), "b.py": _function("read_it", _BODY)}
+    )
+    assert found == [["a.py:1 load", "b.py:1 read_it"]]
+
+
+def test_a_body_under_three_lines_or_in_one_file_is_not_a_copy():
+    short = "found = read(path)\nreturn found"
+    assert not identical_bodies(
+        {"a.py": _function("load", short), "b.py": _function("load", short)}
+    )
+    twice = _function("load", _BODY) + _function("again", _BODY)
+    assert not identical_bodies({"a.py": twice})
+
+
+def test_a_body_of_exactly_three_lines_is_a_copy_and_two_is_not():
+    """The floor is three physical lines, the size of the accessor U329 gave one home."""
+    three = "found = read(path)\n\nreturn found"
+    two = "found = read(path)\nreturn found"
+    assert identical_bodies({"a.py": _function("load", three), "b.py": _function("load", three)})
+    assert not identical_bodies({"a.py": _function("load", two), "b.py": _function("load", two)})
+
+
+def test_a_method_a_nested_function_and_an_async_function_are_read():
+    nested = "def outer():\n" + "".join(f"    {line}\n" for line in _function("load", _BODY).splitlines())
+    method = "class Reader:\n" + "".join(f"    {line}\n" for line in _function("load", _BODY).splitlines())
+    asynchronous = "async " + _function("load", _BODY)
+    for shape in (nested, method, asynchronous):
+        found = identical_bodies({"a.py": shape, "b.py": shape})
+        assert ["a.py:" in places[0] and places[0].endswith(" load") for places in found].count(
+            True
+        ) == 1, shape
+
+
+def test_bodies_that_differ_in_an_argument_or_a_statement_are_not_copies():
+    other_args = _function("load", _BODY).replace("strict=False", "strict=True")
+    other_body = _function("load", _BODY.replace("ValueError", "KeyError"))
+    base = _function("load", _BODY)
+    assert not identical_bodies({"a.py": base, "b.py": other_args})
+    assert not identical_bodies({"a.py": base, "b.py": other_body})
+
+
+def test_no_function_body_is_defined_identically_in_two_files():
+    sources = measure.read_sources(REPO_ROOT, [measure.SOURCE])
+    assert len(sources) > 100, f"read {len(sources)} files, too few to be the package"
+    found = identical_bodies(sources)
+    assert not found, (
+        "a function body of three lines or more is defined identically in two files. "
+        "Give it one home and import it from each place:\n"
+        + "\n".join(", ".join(places) for places in found)
+    )
+
+
+
+def test_every_duplication_allowance_is_empty():
+    """U329 emptied every allowance; a line put back is a copy excused, so none may stand."""
+    directory = REPO_ROOT / measure.DUPLICATION_ALLOWANCES
+    files = sorted(directory.glob("*.txt"))
+    assert len(files) > 10, f"read {len(files)} allowance files, too few to be the packages"
+    held = {
+        path.name: sorted(lines)
+        for path in files
+        if (lines := measure.parse_allowance(path.read_text(encoding="utf-8")))
+    }
+    assert not held, f"an allowance holds a line again, give the copy one home: {held}"

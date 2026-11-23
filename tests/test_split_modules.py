@@ -3,7 +3,7 @@
 Scans trust the helper's glob, so it is held against three independent lists
 of the parts: the ``docs/DEVELOPING.md`` table, the import graph (a part is
 imported only by its module and its parts), and the accessor a part holds
-back to its module.
+back to its module, defined or imported from its family's call time part.
 """
 
 from __future__ import annotations
@@ -81,13 +81,23 @@ def _documented_parts() -> dict[str, set[str]]:
 
 
 def _accessor_parts() -> dict[str, set[str]]:
-    """Each core module holding a function that imports a split module and returns it."""
+    """Each core module holding an accessor to a split module, defined or imported.
+
+    Defined: a function that imports the split module and returns it. Imported:
+    ``from cratekit.core.<home> import <accessor>`` of such a function, the
+    spelling every part uses since U329 gave each family's accessor one home.
+    """
     found: dict[str, set[str]] = {module: set() for module in SPLIT_MODULES}
     short = {module.rsplit(".", 1)[-1]: module for module in SPLIT_MODULES}
-    for path in sorted(CORE.glob("*.py")):
-        if path.stem in short:
-            continue
-        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+    trees = {
+        path.stem: ast.parse(path.read_text(encoding="utf-8"))
+        for path in sorted(CORE.glob("*.py"))
+        if path.stem not in short
+    }
+    #: ``(home module, accessor name)`` -> the split module it returns.
+    homes: dict[tuple[str, str], str] = {}
+    for stem, tree in trees.items():
+        for node in tree.body:
             if not isinstance(node, ast.FunctionDef):
                 continue
             bound: dict[str, str] = {}
@@ -99,7 +109,15 @@ def _accessor_parts() -> dict[str, set[str]]:
             for inner in ast.walk(node):
                 if isinstance(inner, ast.Return) and isinstance(inner.value, ast.Name):
                     if inner.value.id in bound:
-                        found[bound[inner.value.id]].add(path.stem)
+                        found[bound[inner.value.id]].add(stem)
+                        homes[(f"{PACKAGE}.{stem}", node.name)] = bound[inner.value.id]
+    for stem, tree in trees.items():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 0:
+                for alias in node.names:
+                    module = homes.get((node.module or "", alias.name))
+                    if module is not None:
+                        found[module].add(stem)
     return found
 
 
@@ -144,3 +162,22 @@ def test_the_module_comes_first_and_every_name_is_its_file():
         assert len(set(files)) == len(files) > 1
         assert names_of(module) == tuple(f"{PACKAGE}.{path.stem}" for path in files)
         assert all(path.read_text(encoding="utf-8") in source_of(module) for path in files)
+
+
+def test_a_part_holding_the_shared_accessor_by_import_is_found(tmp_path, monkeypatch):
+    """U329: a part importing its family's accessor is derived as a part, as one defining it was."""
+    import tests.test_split_modules as here
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "rb_writer.py").write_text("")
+    (core / "rb_call_time.py").write_text(
+        "def writer():\n    from cratekit.core import rb_writer\n\n    return rb_writer\n"
+    )
+    (core / "writer_extra.py").write_text(
+        "from cratekit.core.rb_call_time import writer as _writer\n"
+    )
+    (core / "unrelated.py").write_text("from cratekit.core.rb_tables import TABLE\n")
+    monkeypatch.setattr(here, "CORE", core)
+    found = here._accessor_parts()
+    assert found["cratekit.core.rb_writer"] == {"rb_call_time", "writer_extra"}

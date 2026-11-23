@@ -1,5 +1,5 @@
 # Copied blocks intake may still hold (U296). One line per place: the digest of
 # a window of six logical lines that also stands somewhere else. Lines are only
 # ever removed, by hand or with: scripts/refactor_measure.py prune intake
-# A line whose copy is gone fails nothing. To see where a window stands:
+# Every allowance is empty since U329, and any line here fails. To see where a window stands:
 # scripts/refactor_measure.py duplicates --where DIGEST
