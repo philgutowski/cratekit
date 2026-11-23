@@ -15,8 +15,9 @@ derives the parts three other ways and fails on one the glob misses: from the
 module table in ``docs/DEVELOPING.md``; from the import graph, since a part is
 imported by its module and by no module outside it and its parts; and from
 the call time accessor most parts hold back to their module. A module off the
-convention that another module also imports, and that holds no accessor,
-escapes all three; that is recorded, not covered.
+convention escapes all three when it is missing from the table, and is also
+imported from outside or only by a relative import, and holds no accessor in
+the parts' spelling; that is a recorded residual, not covered.
 The glob also matches ``rb_dates.py``, which predates U300 and is the writer's
 too (it installs the date bound the writer opens with), so it is read here as
 well: a scan that reads one file more is stricter, never weaker.

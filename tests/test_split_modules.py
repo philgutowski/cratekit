@@ -5,10 +5,10 @@ glob is held here against three independent lists of the parts: the module
 table in ``docs/DEVELOPING.md``, which is what a person is told; the import
 graph, since ``DEVELOPING.md`` says a part is re-exported by its module and
 imported from nowhere else; and the call time accessor most parts hold back
-to their module. A part named off the convention fails here when it is
-imported only by its module and its parts, or holds an accessor, or is in the
-table. One that is also imported from outside, holds no accessor and is not
-in the table escapes all three, and the helper's docstring says so.
+to their module. A part named off the convention fails here when it is in the
+table, when only its module and its parts import it by an absolute import, or
+when it holds an accessor in the spelling the parts use. One that escapes all
+three is described in the helper's docstring.
 """
 
 from __future__ import annotations
@@ -125,17 +125,23 @@ def test_the_glob_reads_every_part_only_its_module_imports():
         assert parts <= read, f"{module}'s scan misses {sorted(parts - read)}"
 
 
-def test_every_module_reaching_back_to_a_split_module_is_read_as_some_split_modules_part():
-    """Matched against every split module's glob, not only the one it reaches.
+def test_a_module_holding_an_accessor_is_read_with_the_module_it_reaches():
+    """Read with the module it reaches back to, or proved another module's part.
 
-    A session part may break an import cycle with the writer's accessor, which
-    makes it no part of the writer; what it must not be is outside every glob.
+    A session part may break an import cycle with the writer's accessor, and is
+    then the session's part, not the writer's: it passes only when the import
+    graph proves it the session's (only the session and its parts import it).
+    A writer part merely named ``session_*`` is not proved so, and fails.
+    The accessor is read in the spelling the parts use, a module level
+    function returning a name ``from cratekit.core import X`` bound.
     """
     accessors = _accessor_parts()
     assert all(accessors.values()), f"no accessor found for some module: {accessors}"
-    read = set().union(*_glob_matched().values())
-    holders = set().union(*accessors.values())
-    assert holders <= read, f"modules holding an accessor that no scan reads: {sorted(holders - read)}"
+    globbed, exclusive = _glob_matched(), _exclusive_parts()
+    proved = {part for module in SPLIT_MODULES for part in globbed[module] & exclusive[module]}
+    for module, holders in accessors.items():
+        unread = sorted(holders - globbed[module] - proved)
+        assert not unread, f"{module}'s scan misses {unread}, which reach back to it"
 
 
 def test_the_module_comes_first_and_every_name_is_its_file():

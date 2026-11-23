@@ -2712,9 +2712,12 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     ``_writer().SOFT_DELETE_COLUMN``, resolved since U300 split the writer, and
     only when the accessor is a function of the same file that imports the
     writer and returns that name: not through ``importlib`` or ``sys.modules``,
-    a lambda, a method, an accessor imported from another file, or a chain
-    such as ``_restore().rb_writer``) or a dictionary lookup, and an attribute
-    name computed at runtime. Each needs type or value inference this does not have. They are
+    a lambda, a method, an accessor imported from another file, a chain such
+    as ``_restore().rb_writer``, an accessor returning a module level import
+    or a local alias of it or a conditional, ``core.rb_writer`` reached through
+    the package, or a walrus at the call; and an outer function wrapping an
+    accessor, or a method named like a free function, is read as the writer
+    too) or a dictionary lookup, and an attribute name computed at runtime. Each needs type or value inference this does not have. They are
     recorded in the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
     rather than left for a reader to discover by being wrong.
