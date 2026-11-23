@@ -1,0 +1,115 @@
+name = "u304-replay-after-p2h"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1446.S1_u234_settled_reorder_never_leads"
+source = { table = "r1446.json", id = "S1_u234_settled_reorder_never_leads" }
+description = "sample, U234: a reorder settled readings show never leads"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+        and pair_model._now() - since >= AGREE_AFTER
+    ):
+        return True'''
+new = '''
+        and pair_model._now() - since >= AGREE_AFTER
+    ):
+        return False'''
+
+[[rows]]
+id = "u198.C12_archive_move"
+source = { table = "u198.json", id = "C12_archive_move" }
+description = "plan: a made pair moved under a skipped folder keeps syncing"
+file = "src/cratekit/sync/pair_screen.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_screen.py, was in src/cratekit/sync/pair_cli.py; the line also stands in favorites/order.py, another package's own guard, so rows --after would not choose"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '                if moved:'
+new = '                if False:'
+
+[[rows]]
+id = "u208.M10_here_database_only"
+source = { table = "u208.json", id = "M10_here_database_only" }
+description = "here: read only the database ISRC, never the row's file"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py; file_identity is read through pair_read, its home since the split"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            if code is None:
+                code = match.isrc_token(row.isrc) or pair_read.file_identity(cfg, row.path)[0]
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+new = '''
+            if code is None:
+                code = match.isrc_token(row.isrc)
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+
+[[rows]]
+id = "u231.M11_snapshot_from_the_order_sent"
+source = { table = "u231.json", id = "M11_snapshot_from_the_order_sent" }
+description = "write: the order as sent is recorded as the snapshot, with no settle reading"
+file = "src/cratekit/sync/pair_write.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_write.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '''
+        done.settle = Settle(
+            one=one, steps=steps, end=sent, moved_at=pair_model._now(), rekordbox_after=None
+        )
+        return None'''
+new = '        return sent'
+
+[[rows]]
+id = "u231.M13_settle_sleeps_the_whole_window"
+source = { table = "u231.json", id = "M13_settle_sleeps_the_whole_window" }
+description = "settle: the whole window is waited, the time spent on other pairs' writes not counted"
+file = "src/cratekit/sync/pair_write.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_write.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '        left = SETTLE_SECONDS - (pair_model._now() - settle.moved_at).total_seconds()'
+new = '        left = SETTLE_SECONDS'
+
+[[rows]]
+id = "u231.M17_agreement_gap_ignored"
+source = { table = "u231.json", id = "M17_agreement_gap_ignored" }
+description = "plan: a reading equal to the one kept agrees however soon after it"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '    agreed = kept and pair_model._now() - seen_at >= AGREE_AFTER'
+new = '    agreed = kept'
+
+[[rows]]
+id = "u234.O10_after_not_compared"
+source = { table = "u234.json", id = "O10_after_not_compared" }
+description = "the order after a settled one leads whatever the reading now, so an order that moved again leads unsettled"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '''
+        and not pair_stopped.reordered(kept.after, reading)
+        and pair_model._now() - since'''
+new = '        and pair_model._now() - since'
+
+[[rows]]
+id = "u234.O9_after_without_the_window"
+source = { table = "u234.json", id = "O9_after_without_the_window" }
+description = "the order after a settled one leads on its next reading however soon"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+moved = "moved by hand: the same guard, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py; the clock is read through pair_model._now, its home since the split, so one patch of it reaches every caller"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '''
+        and pair_model._now() - since >= AGREE_AFTER
+    ):
+        return True'''
+new = '''
+    ):
+        return True'''

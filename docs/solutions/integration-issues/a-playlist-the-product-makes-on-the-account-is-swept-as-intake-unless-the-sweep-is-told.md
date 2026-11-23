@@ -58,4 +58,4 @@ library already owns, would have been swept and then marked with the swept
 prefix under the mirror. `Excluded.MIRROR`, handed in from
 `ledger.mirror_playlist_ids`. The same unit found the rule has a second half,
 `sync pair`: a playlist another writer keeps must also be refused as a pair,
-or two writers each remove what the other adds (`pair_cli._scope_account`).
+or two writers each remove what the other adds (`pair_model._scope_account`).

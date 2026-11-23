@@ -1,57 +1,38 @@
 """The playlists ``crate sync pair`` finds for itself: every one the author made in rekordbox (U198).
 
-Decided by Phillip on 2026-11-04: every plain playlist he made himself in
-rekordbox, outside ARCHIVE, is on the account and stays the same list on both
-sides, with no pair named by hand. This module answers which playlists those
-are, and what each is called on the account. It reads one database handle and
-writes nothing.
+Every plain playlist the author made in rekordbox, outside ARCHIVE, is kept
+the same list on the account with no pair named by hand. This says which
+playlists those are and their account names. It reads one database handle
+and writes nothing.
 
-**WHAT IS FOUND.** Every live plain playlist, walked down from the top of the
-playlist tree through live folders only, so a playlist under a folder that was
-removed is not found. Left out, and never listed, because each is another
-writer's list or no list at all:
+**WHAT IS FOUND.** Every live plain playlist under live folders only. Left
+out, and never listed, as another writer's list or no list:
 
-* a node under one of Cratekit's own trees, which is a node the tree registry
-  records as a root or a top level node carrying a name the taxonomy declares
-  for one of its trees, the rule the pair scope already refuses by
-  (``pair_cli.generated_tops``);
-* the Favorites folder and the favourites playlist itself, found by the
-  playlist the taxonomy names as the favourites (``placement.source_name``).
-  Every live plain playlist of that name is taken as a home, so a library
-  holding two of them leaves both homes out rather than guessing;
-* another app's folder at the top level (U185);
-* a custom playlist twins' folder, ``Custom Playlists <year>`` (U149), whose
-  playlists the product made and pairs itself;
-* a rekordbox playlist a pair already holds, which the pair syncs.
+* a node under one of Cratekit's own trees (``pair_model.generated_tops``);
+* the favourites playlist and its folder (``placement.source_name``); two of
+  that name leave both out rather than guess;
+* another app's top level folder (U185);
+* a twins' folder, ``Custom Playlists <year>`` (U149), which pairs itself;
+* a playlist a pair already holds.
 
-**WHAT IS LISTED, NEVER WRITTEN.** A playlist under a folder the configuration
-names to skip (``outbound.pair_skip_folders``, ARCHIVE by default), a smart
-playlist, which holds no list a pair could keep, a playlist whose account side
-a person deleted, which is released and not made again, and two playlists
-that would take one account title, which refuse that title, since which one
-the account playlist copies is not something a name decides.
+**WHAT IS LISTED, NEVER WRITTEN.** A playlist under a skipped folder
+(``outbound.pair_skip_folders``), a smart playlist, one whose account side a
+person deleted, and two that would take one account title, since a name
+cannot decide which one the account copies.
 
-**THE ACCOUNT LAYOUT.** Each rekordbox top folder becomes one root folder of
-the same name on the account, holding one private playlist per rekordbox
-playlist under it, titled as the mirror titles its playlists, ``<Folder>
-<Playlist>``. A playlist in a subfolder takes its path below the top folder,
-``GIG READY Halloween Opener``. A playlist at the rekordbox root goes in the
-root folder ``Playlists``.
+**THE ACCOUNT LAYOUT.** Each rekordbox top folder becomes a root folder of the
+same name, one private playlist per playlist titled as the mirror titles
+them, ``<Folder> <path below> <Playlist>``. The rekordbox root goes in
+``Playlists``.
 
-**AND THE WAY BACK (U202).** :func:`home_of` is the inverse of
-:func:`title_of`: for a playlist made on the account in one of those root
-folders, the rekordbox folder it goes in and its name there, the title less
-``<Folder> ``, down any subfolder the title reads that rekordbox has. It
-refuses, with words a gate shows, every place a name cannot decide or that
-discovery itself would never pair.
+**AND THE WAY BACK (U202).** :func:`home_of` inverts :func:`title_of`, and
+refuses, in words a gate shows, any place a name cannot decide or discovery
+would never pair.
 
-**ONLY WHAT WAS MADE AFTER THE SYNC (U216).** Decided by Phillip on
-2026-11-04: an account playlist comes back only when it was made after its
-root folder was synced. :func:`before_adoption` says when a playlist is one
-the folder held before a sync adopted it, from the record of what it held, or
-by time for a folder adopted before that record, every unknown read as held;
-:func:`downloaded_copy` says when a playlist is a downloaded copy of one
-a pair in the same folder already holds.
+**ONLY WHAT WAS MADE AFTER THE SYNC (U216).** An account playlist comes back
+only when made after its root folder was synced (:func:`before_adoption`,
+every unknown read as held), and never as a downloaded copy of one a pair in
+the same folder holds (:func:`downloaded_copy`).
 
 Layer: modules.
 """
@@ -65,7 +46,6 @@ from datetime import datetime
 from typing import Any
 
 from cratekit.core import rb_writer
-from cratekit.modules.outbound import mirror
 from cratekit.write import playlist_pair
 
 #: The account root folder a playlist at the rekordbox root goes in.
@@ -127,9 +107,8 @@ class Found:
 class Listed:
     """One playlist left out and named: skipped, smart, released or twice titled.
 
-    ``account_id`` is set for an account playlist the sync did not bring to
-    rekordbox (U202), whose ``rekordbox_id`` is empty and whose ``path`` is
-    its account root folder and title.
+    ``account_id`` is set for an account playlist not brought to rekordbox
+    (U202); its ``path`` is then its root folder and title.
     """
 
     rekordbox_id: str
@@ -168,6 +147,7 @@ def title_of(path: tuple[str, ...]) -> tuple[str, str]:
 
     A path of one name is a playlist at the rekordbox root.
     """
+    from cratekit.modules.outbound import mirror
     if len(path) == 1:
         return ROOT_FOLDER, mirror.title(ROOT_FOLDER, path[0])
     return path[0], mirror.title(path[0], " ".join(path[1:]))
@@ -223,10 +203,10 @@ def discover(
 ) -> Discovery:
     """Walk the live playlist tree once and say what a sync of every pair should make.
 
-    ``tops`` is ``pair_cli.generated_tops``'s answer, ``favorites`` the name of
-    the playlist every favourite is in, ``skip`` the top folder names to list
-    and never write, ``paired`` every rekordbox playlist a pair holds, and
-    ``released`` every one whose account side was deleted.
+    ``tops`` is ``pair_model.generated_tops``'s answer, ``favorites`` the
+    favourites playlist's name, ``skip`` the top folders to list and never
+    write, ``paired`` the rekordbox playlists pairs hold, and ``released``
+    those whose account side was deleted.
     """
     from cratekit.core import foreign_tree
 
@@ -234,20 +214,11 @@ def discover(
     skipped = frozenset(str(one) for one in skip)
     held = frozenset(str(one) for one in paired)
     gone = frozenset(str(one) for one in released)
-    every = list(db.get_playlist())
-    live = [row for row in every if not rb_writer.node_removed(row)]
-    children: dict[str, list[Any]] = {}
-    for row in live:
-        parent = str(getattr(row, "ParentID", "") or "")
-        if parent in rb_writer.ROOT_PARENT_SENTINELS:
-            parent = ""
-        children.setdefault(parent, []).append(row)
+    every, live, children = _live_children(db)
 
     foreign = {str(row.ID) for row in foreign_tree.roots_in(live)}
-    # THE FAVOURITES' HOME, by placement's rule: the one live plain playlist of
-    # its name outside another app's folder, and the folder it sits in. Two of
-    # them are no home a name decides, so each is left out with its folder and
-    # every playlist there is LISTED as such, never hidden in silence.
+    # THE FAVOURITES' HOME, by placement's rule, and its folder. Two of them are
+    # no home a name decides, so every playlist there is LISTED, never hidden.
     named = [
         row
         for row in foreign_tree.outside(
@@ -358,11 +329,8 @@ def discover(
 def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) -> str:
     """Why a made pair's rekordbox playlist now sits where no pair is kept, or ``""``.
 
-    U198, from the review: a playlist moved after it was paired, under a
-    folder the configuration skips, into another app's folder (U185), or
-    into the folder that holds the favourites, sits where discovery would
-    never have found it, so its pair is let go rather than synced there. A
-    playlist at the rekordbox root sits under nothing.
+    U198. Moved where discovery would never find it, its pair is let go
+    rather than synced there.
     """
     from cratekit.core import foreign_tree
 
@@ -388,8 +356,7 @@ def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) 
 def name_of(folder: str, title: str) -> str:
     """An account title less its root folder's prefix, or the title when it has none.
 
-    ``GIG READY Opener`` in ``GIG READY`` is ``Opener``. A title that is only
-    the folder's name has nothing left, and is ``""``.
+    ``GIG READY Opener`` in ``GIG READY`` is ``Opener``; the folder's name alone is ``""``.
     """
     text = str(title or "").strip()
     head = f"{folder} "
@@ -410,18 +377,11 @@ def home_of(
     """Where an account playlist in one root folder goes in rekordbox, or why it goes nowhere.
 
     U202, the inverse of :func:`title_of`. ``Playlists`` is the rekordbox
-    root. Any other folder is the one live top level rekordbox folder of its
-    name, and a subfolder is read from the title where one of that name is
-    there: below each folder, a live subfolder whose name and a space begin
-    what is left of the title is descended into, the longest such name first,
-    so ``GIG READY Halloween Opener`` is ``Opener`` in ``GIG READY /
-    Halloween`` when that subfolder exists, and ``Halloween Opener`` directly
-    in ``GIG READY`` when it does not. Refused, with the words a gate shows:
-    a title that is only the folder's name, no live top folder of the name or
-    more than one, a top folder that discovery itself would never pair (the
-    skip list, one of Cratekit's trees, another app's folder, the twins'
-    folder, the folder holding the favourites), two subfolders of the name
-    the title reads, and a name the folder already holds.
+    root; any other folder is the one live top folder of its name. Below it,
+    a live subfolder whose name and a space begin the rest of the title is
+    descended into, longest name first, so ``GIG READY Halloween Opener`` is
+    ``Opener`` in ``GIG READY / Halloween`` when that exists. Every place a
+    name cannot decide or discovery would never pair is refused.
     """
     from cratekit.core import foreign_tree
 
@@ -431,14 +391,7 @@ def home_of(
             f"its title {title!r} is only its folder's name, so a rekordbox playlist "
             f"made for it would have no name; rename it on the account"
         )
-    every = list(db.get_playlist())
-    live = [row for row in every if not rb_writer.node_removed(row)]
-    children: dict[str, list[Any]] = {}
-    for row in live:
-        parent = str(getattr(row, "ParentID", "") or "")
-        if parent in rb_writer.ROOT_PARENT_SENTINELS:
-            parent = ""
-        children.setdefault(parent, []).append(row)
+    _every, live, children = _live_children(db)
 
     def named(row: Any) -> str:
         return str(getattr(row, "Name", "") or "")
@@ -526,8 +479,7 @@ def home_of(
 # U216: what an account folder held before a sync, and the DOWNLOADED copies
 # ---------------------------------------------------------------------------
 
-#: The step it gives a person who wants a playlist left out here synced anyway:
-#: the rekordbox side is theirs to make or choose first (U216, from the review).
+#: The step for syncing a left out playlist anyway; the rekordbox side is theirs (U216).
 BY_HAND = (
     "to sync it anyway, make or choose its rekordbox playlist and pair the two by hand "
     "with crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID"
@@ -537,11 +489,8 @@ BY_HAND = (
 def adoption_moment(marks: Iterable[str]) -> datetime | None:
     """When a sync adopted a root folder, as the earliest readable mark of a pair made in it.
 
-    U216. A folder recorded before U216 says nothing of when it was adopted,
-    and the adoption is reserved just before the first playlist made in it is
-    marked, so the earliest mark is the latest moment the adoption can have
-    been. A mark that does not read as a time, or reads without a zone, is
-    passed over; none readable is no moment.
+    U216. The adoption is reserved just before the first playlist in it is
+    marked, so the earliest mark bounds it. A mark without a zone is passed over.
     """
     found: list[datetime] = []
     for mark in marks:
@@ -565,14 +514,10 @@ def before_adoption(
 ) -> str:
     """Why an account playlist in a recorded root folder is one the folder held before the sync, or ``""``.
 
-    U216, decided by Phillip on 2026-11-04: a sync brings to rekordbox only a
-    playlist made on the account after its root folder was synced. ``held``
-    is what the folder held when a sync adopted it, which answers alone when
-    recorded. A folder this product ``created`` held nothing. A folder adopted
-    before the record existed is read by time: ``made``, when the account
-    says the playlist was made, against ``adopted``, the folder's
-    :func:`adoption_moment`. Every unknown answers held, since an unknown read
-    as new makes a duplicate in rekordbox and one read as held is only named.
+    U216. ``held``, when recorded, answers alone; a ``created`` folder held
+    nothing; otherwise ``made`` is read against ``adopted``. Every unknown
+    answers held, since one read as new makes a duplicate in rekordbox and
+    one read as held is only named.
     """
     if held is not None:
         if account_id in held:
@@ -610,18 +555,13 @@ def downloaded_copy(
 ) -> str:
     """The paired account title ``title`` is a downloaded copy of, or ``""``.
 
-    U216. Less the mark's prefix, the title names the same playlist as one a
-    pair in the same root folder holds: both are read less the folder's own
-    prefix (:func:`name_of`), ignoring case, so ``DOWNLOADED Techno`` copies
-    ``Genre Trivia! Techno`` in ``Genre Trivia!``. A title with nothing left
-    after the prefix copies nothing.
+    U216. Both are read less the folder's prefix (:func:`name_of`), ignoring
+    case, so ``DOWNLOADED Techno`` copies ``Genre Trivia! Techno`` in
+    ``Genre Trivia!``.
 
-    ``taken`` IS WHETHER CRATEKIT'S RECORD HOLDS THE PLAYLIST AS TAKEN (U242).
-    Once ``crate sync strip`` takes the prefix off, the copy is titled as the
-    playlist it copies, and the record is what still says it is the
-    downloaded one, so a taken title is read as a copy with no prefix to take
-    off. One the record does not hold and that carries no prefix is never a
-    copy, whatever it is named.
+    ``taken`` IS WHETHER CRATEKIT'S RECORD HOLDS THE PLAYLIST AS TAKEN (U242):
+    once ``crate sync strip`` took the prefix off, only the record says it is
+    a copy. One with neither prefix nor record is never a copy.
     """
     from cratekit.sync.playlists import SWEPT_PREFIX, untaken_name
 
@@ -644,11 +584,8 @@ def copy_candidates(
 ) -> list[str]:
     """The titles beside ``account_id`` it may be a downloaded copy of, as :func:`downloaded_copy` reads them.
 
-    TWO TAKEN PLAYLISTS OF ONE NAME ARE NOT EACH OTHER'S COPY (U242, rounds one
-    and two of its review). A taken title with no prefix reads as a copy only
-    of a playlist a pair holds or of one beside it that is not taken. A title
-    still carrying the prefix reads every one beside it, as before U242, so
-    ``DOWNLOADED Disco`` is still the copy of a taken ``Disco``.
+    TWO TAKEN PLAYLISTS OF ONE NAME ARE NOT EACH OTHER'S COPY (U242). A title
+    still carrying the prefix reads every one beside it.
     """
     from cratekit.sync.playlists import is_swept_name
 
@@ -683,32 +620,21 @@ def by_kind(listed: Iterable[Listed]) -> Mapping[str, tuple[Listed, ...]]:
 
 
 __all__ = [
-    "BEFORE",
-    "BY_HAND",
-    "COPY",
-    "FOLDER",
-    "LISTED_KINDS",
-    "PLAIN",
-    "RELEASED",
-    "ROOT_FOLDER",
-    "SKIPPED",
-    "SAID",
-    "SMART",
-    "TAKEN",
-    "TWICE",
-    "TWIN_FOLDER",
-    "Discovery",
-    "Found",
-    "Home",
-    "Listed",
-    "adoption_moment",
-    "before_adoption",
-    "by_kind",
-    "copy_candidates",
-    "discover",
-    "downloaded_copy",
-    "home_of",
-    "left_behind",
-    "name_of",
-    "title_of",
+    "BEFORE", "BY_HAND", "COPY", "FOLDER", "LISTED_KINDS", "PLAIN", "RELEASED", "ROOT_FOLDER",
+    "SKIPPED", "SAID", "SMART", "TAKEN", "TWICE", "TWIN_FOLDER", "Discovery", "Found", "Home",
+    "Listed", "adoption_moment", "before_adoption", "by_kind", "copy_candidates", "discover",
+    "downloaded_copy", "home_of", "left_behind", "name_of", "title_of"
 ]
+
+
+def _live_children(db) -> tuple[list[Any], list[Any], dict[str, list[Any]]]:
+    """Every node, the live ones, and each parent's live children, the root as ``""``."""
+    every = list(db.get_playlist())
+    live = [row for row in every if not rb_writer.node_removed(row)]
+    children: dict[str, list[Any]] = {}
+    for row in live:
+        parent = str(getattr(row, "ParentID", "") or "")
+        if parent in rb_writer.ROOT_PARENT_SENTINELS:
+            parent = ""
+        children.setdefault(parent, []).append(row)
+    return every, live, children

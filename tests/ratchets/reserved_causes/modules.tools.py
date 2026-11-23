@@ -67,24 +67,17 @@ KEBAB_LITERALS = {
 }
 
 NAMED_WITHOUT_OWN = {
+    # 2026-11-22, U311: the rest moved with the restore side and the database
+    # plan to backup_snapshot.py, whose Refusal names the reader resolves in
+    # the declaring module only.
     'modules/tools/backup.py': [
-        'database-absent',
         'destination-not-configured',
         'library-root-absent',
         'library-root-foreign',  # 2026-11-21, #893
         'library-root-unproven',  # 2026-11-21, #893
-        'no-snapshot-available',
         'rclone-missing',
-        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
-        'rekordbox-running',
         'remote-not-configured',
-        'restore-not-confirmed',
-        'restore-target-absent',
         'restore-transfer-failed',
-        'snapshot-identity-unrecorded',
-        'snapshot-library-mismatch',
-        'snapshot-listing-failed',
-        'snapshot-name-invalid',
     ],
     'modules/tools/mastering.py': [
         'archive-holds-a-different-recording',
@@ -98,24 +91,17 @@ NAMED_WITHOUT_OWN = {
 }
 
 NAMED_WITH_OWN = {
+    # 2026-11-22, U311: the rest moved with the restore side and the database
+    # plan to backup_snapshot.py, whose Refusal names the reader resolves in
+    # the declaring module only.
     'modules/tools/backup.py': [
-        'database-absent',
         'destination-not-configured',
         'library-root-absent',
         'library-root-foreign',  # 2026-11-21, #893
         'library-root-unproven',  # 2026-11-21, #893
-        'no-snapshot-available',
         'rclone-missing',
-        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
-        'rekordbox-running',
         'remote-not-configured',
-        'restore-not-confirmed',
-        'restore-target-absent',
         'restore-transfer-failed',
-        'snapshot-identity-unrecorded',
-        'snapshot-library-mismatch',
-        'snapshot-listing-failed',
-        'snapshot-name-invalid',
     ],
     'modules/tools/mastering.py': [
         'archive-holds-a-different-recording',

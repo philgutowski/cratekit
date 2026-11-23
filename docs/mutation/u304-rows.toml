@@ -1,0 +1,146 @@
+name = "u304"
+pass_kind = "light"
+
+# U304's own rows: the code the split and the seam work rewrote or added.
+# Every other guard of the package is replayed, unchanged, by the kill set
+# replay (docs/mutation/u304-replay-*).
+
+[[rows]]
+id = "S1_file_code_read_through_its_module"
+description = "pair_plan: the file's ISRC and album, read through pair_read so a patch reaches it, answer nothing"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_tie.py"]
+old = '''            code, album = pair_read.file_identity(cfg, row.path)'''
+new = '''            code, album = "", ""'''
+
+[[rows]]
+id = "S2_file_code_for_an_agreement"
+description = "pair_plan: a row with no database code never asks its file for one before the account is asked to agree"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py"]
+old = '''or pair_read.file_identity(cfg, row.path)[0]'''
+new = '''or ""'''
+
+[[rows]]
+id = "S3_agreement_clock_through_its_module"
+description = "pair_plan._moved_since_stop: the agreement window read off the wall clock, not pair_model._now; maintainer facing, since the two clocks agree outside a test, and round one's review measured that no test moves the clock on this path"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''        elif first is not None and pair_model._now() - first >= AGREE_AFTER:'''
+new = '''        elif first is not None and __import__("datetime").datetime.now(__import__("datetime").UTC) - first >= AGREE_AFTER:'''
+
+[[rows]]
+id = "S4_pending_agreement_clock"
+description = "pair_plan._pending: a pending pair's agreement read off the wall clock, not pair_model._now"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py"]
+old = '''    agreed = kept and pair_model._now() - seen_at >= AGREE_AFTER'''
+new = '''    agreed = kept and __import__("datetime").datetime.now(__import__("datetime").UTC) - seen_at >= AGREE_AFTER'''
+
+[[rows]]
+id = "S5_settle_window_clock"
+description = "pair_write._settle: the settle window counted off the wall clock, not pair_model._now"
+file = "src/cratekit/sync/pair_write.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_account.py"]
+old = '''        left = SETTLE_SECONDS - (pair_model._now() - settle.moved_at).total_seconds()'''
+new = '''        left = SETTLE_SECONDS - (datetime.now(settle.moved_at.tzinfo) - settle.moved_at).total_seconds()'''
+
+[[rows]]
+id = "S6_settle_moment_clock"
+description = "pair_write._write_account: when the moves were sent is stamped off the wall clock, not pair_model._now"
+file = "src/cratekit/sync/pair_write.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_account.py"]
+old = '''            one=one, steps=steps, end=sent, moved_at=pair_model._now(), rekordbox_after=None'''
+new = '''            one=one, steps=steps, end=sent, moved_at=datetime.now(__import__("datetime").UTC), rekordbox_after=None'''
+
+[[rows]]
+id = "S7_walk_keeps_removed_nodes"
+description = "pair_discover._live_children: a removed playlist is read as live"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_adopted.py"]
+old = '''    live = [row for row in every if not rb_writer.node_removed(row)]
+    children: dict[str, list[Any]] = {}'''
+new = '''    live = list(every)
+    children: dict[str, list[Any]] = {}'''
+
+[[rows]]
+id = "S8_walk_root_sentinel"
+description = "pair_discover._live_children: a node under the root sentinel is not filed under the root"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_adopted.py"]
+old = '''        if parent in rb_writer.ROOT_PARENT_SENTINELS:
+            parent = ""
+        children.setdefault(parent, []).append(row)
+    return every, live, children'''
+new = '''        children.setdefault(parent, []).append(row)
+    return every, live, children'''
+
+[[rows]]
+id = "S9_walk_every_is_only_live"
+description = "pair_discover._live_children: the whole tree handed back is only its live nodes"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_adopted.py"]
+old = '''    return every, live, children'''
+new = '''    return live, live, children'''
+
+[[rows]]
+id = "S10_unpaired_default_side"
+description = "pair_screen.Unpaired: the side gone by default is rekordbox's, not the account's"
+file = "src/cratekit/sync/pair_screen.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_twins.py", "tests/test_sync_pair_hold.py"]
+old = '''    gone: str = "account"'''
+new = '''    gone: str = "rekordbox"'''
+
+[[rows]]
+id = "S11_twins_landed_through_pair_read"
+description = "twins.read_library: the landed inbox playlists answer none"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '''    mirrors, _unread = pair_read.landed_inbox_playlists(cfg)'''
+new = '''    mirrors, _unread = {}, ()'''
+
+[[rows]]
+id = "S12_pair_cli_offers_file_identity"
+description = "pair_cli: file_identity, which organize reads there, is no longer offered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''from cratekit.sync.pair_read import (
+    file_identity,
+'''
+new = '''from cratekit.sync.pair_read import (
+'''
+
+[[rows]]
+id = "S13_pair_cli_offers_scope_account"
+description = "pair_cli: _scope_account, which the organize suite reads there, is no longer offered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror.py"]
+old = '''from cratekit.sync.pair_model import _scope_account as _scope_account  # noqa: PLC0414
+'''
+new = ""
+
+[[rows]]
+id = "S14_playlists_still_answers_account_playlist"
+description = "sync.playlists.__getattr__: AccountPlaylist, which organize's suite reads there, is no longer answered (round one's finding)"
+file = "src/cratekit/sync/playlists.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_inbox.py"]
+old = '''    if name == "AccountPlaylist":
+        from cratekit.label.catalogue import AccountPlaylist
+
+        return AccountPlaylist
+    raise'''
+new = '''    raise'''

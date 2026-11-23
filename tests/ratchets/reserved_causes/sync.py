@@ -34,53 +34,45 @@ KEBAB_LITERALS = {
     # 2026-11-12, U242: the taken ledger's found prefix joined.
     'sync/mark_record.py': ['found-prefixed', 'sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
-    # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
-    # not discovered and released warnings joined. 2026-11-04, U202: the
-    # account playlists not brought over and the later change calls joined,
-    # and the two listing refusals a brought playlist is listed for.
-    # 2026-11-05, U209: the check before the write's stale refusal, its moved
-    # folder side, the side a made rekordbox playlist's home is named on,
-    # and the warning a run planned again carries. 2026-11-05, U210: a
-    # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with. 2026-11-05, R-1264: the warning
-    # naming account tracks listed with no title or no artist. 2026-11-05,
-    # U220: the step an order refused records, and the two refusals that stop
-    # that pair alone.
-    'sync/pair_cli.py': [
-        'account-discovery',
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_check.py': [
         'account-folder',
         'decision-stale',
+        'rekordbox-home',
+        'sync-pair-replanned',
+    ],
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_cli.py': ['sync-pair-resumed', 'sync-pair-steps-unread'],
+    # 2026-11-04, U202: the later change calls joined.
+    'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_model.py': [
         'intake-list-unusable',
         'label-playlist-unreadable',
-        'landing-unread',  # 2026-11-07, R-1383.
-        'on-hold',  # 2026-11-05, U221.
-        'order-moved-since-stop',  # 2026-11-07, U234.
-        'order-pending',  # 2026-11-06, U231.
+        'landing-unread',
+        'on-hold',
+        'order-pending',
         'order-refused',
         'outbound-remove-refused',
         'playlist-pair',
-        'rekordbox-home',
-        'sync-pair-account-lagging',  # 2026-11-06, U226.
-        'sync-pair-account-settling',  # 2026-11-06, U231.
+        'sync-pair-account-lagging',
+        'sync-pair-account-settling',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
-        'sync-pair-finishing',  # 2026-11-06, U225.
-        'sync-pair-landing-unread',  # 2026-11-07, R-1383.
+        'sync-pair-finishing',
+        'sync-pair-landing-unread',
         'sync-pair-later-change',
         'sync-pair-left-out',
         'sync-pair-not-brought',
         'sync-pair-not-discovered',
         'sync-pair-nothing',
-        'sync-pair-on-hold',  # 2026-11-05, U221.
-        'sync-pair-order-pending',  # 2026-11-06, U231.
+        'sync-pair-on-hold',
+        'sync-pair-order-pending',
         'sync-pair-out-of-scope',
         'sync-pair-released',
-        'sync-pair-replanned',
-        'sync-pair-resumed',
         'sync-pair-skipped',
-        'sync-pair-steps-unread',
         'sync-pair-steps-unwritten',
-        'sync-pair-stopped-unread',  # 2026-11-06, U225.
+        'sync-pair-stopped-unread',
         'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
@@ -89,12 +81,14 @@ KEBAB_LITERALS = {
         'sync-pair-withheld',
         'sync-pair-written',
         'unavailable-transient',
-        'window-lags',  # 2026-11-06, U226.
+        'window-lags',
     ],
-    # 2026-11-04, U202: the later change calls joined.
-    'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_plan.py': ['order-moved-since-stop'],
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.
     'sync/pair_reverse.py': ['decision-stale'],
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_screen.py': ['account-discovery'],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -140,15 +134,6 @@ KEBAB_LITERALS = {
         'sync-removed-retired-now',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
-    # 2026-11-01, U149: the custom playlist twins and their backfill.
-    'sync/twins.py': [
-        'custom-playlist-twins',
-        'custom-playlist-twins-landed',
-        'custom-playlist-twins-unpaired',
-        'decision-stale',
-        'session-committed-unverified',
-        'whitelist-violation',
-    ],
     # 2026-11-12, U242: the strip verb joined.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/strip_cli.py': [
@@ -162,6 +147,15 @@ KEBAB_LITERALS = {
     ],
     # 2026-11-12, U242: the migration verb joined.
     'sync/taken_cli.py': ['sync-taken'],
+    # 2026-11-01, U149: the custom playlist twins and their backfill.
+    'sync/twins.py': [
+        'custom-playlist-twins',
+        'custom-playlist-twins-landed',
+        'custom-playlist-twins-unpaired',
+        'decision-stale',
+        'session-committed-unverified',
+        'whitelist-violation',
+    ],
     'sync/twins_cli.py': [
         'sync-twins-left',
         'sync-twins-listing-short',
@@ -169,6 +163,8 @@ KEBAB_LITERALS = {
         'sync-twins-missing',
         'sync-twins-nothing',
     ],
+    # 2026-11-21, U320: the record of not found answers.
+    'sync/unavailable.py': ['sync-unavailable-record-unusable', 'utf-8'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/unmark_cli.py': [
         'already-unmarked',
@@ -179,14 +175,16 @@ KEBAB_LITERALS = {
         'sync-unmark-changed-since-plan',
         'sync-unmark-no-mark',
     ],
-    # 2026-11-21, U320: the record of not found answers.
-    'sync/unavailable.py': ['sync-unavailable-record-unusable', 'utf-8'],
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
 }
 
 NAMED_WITHOUT_OWN = {
-    # 2026-11-05, U210: the refusal a write step it could not record stops it with.
-    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-account-settling', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226; U231 settling.
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_model.py': [
+        'sync-pair-account-lagging',
+        'sync-pair-account-settling',
+        'sync-pair-steps-unwritten',
+    ],
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     # 2026-11-21, U320: the reader's refusal of rows a playlist served.
@@ -194,8 +192,12 @@ NAMED_WITHOUT_OWN = {
 }
 
 NAMED_WITH_OWN = {
-    # 2026-11-05, U210: the refusal a write step it could not record stops it with.
-    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-account-settling', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226; U231 settling.
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_model.py': [
+        'sync-pair-account-lagging',
+        'sync-pair-account-settling',
+        'sync-pair-steps-unwritten',
+    ],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -220,18 +222,15 @@ LITERAL_HOLDERS = {
     'sync/mark_cli.py': ['internal-error', 'sync-mark-record-unusable'],
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
-    # 2026-10-10, U130: the sync pair verb joined.
-    # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
-    # 2026-11-05, U209: the check before the write refuses stale.
-    # 2026-11-05, U210: a write step it could not record stops the write.
-    # 2026-11-05, U220: the two order refusals that stop one pair alone.
-    'sync/pair_cli.py': [
-        'decision-stale',
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_check.py': ['decision-stale'],
+    # 2026-11-22, U304: sync pair's verb split into its modules.
+    'sync/pair_model.py': [
         'intake-list-unusable',
         'label-playlist-unreadable',
         'outbound-remove-refused',
-        'sync-pair-account-lagging',  # 2026-11-06, U226.
-        'sync-pair-account-settling',  # 2026-11-06, U231.
+        'sync-pair-account-lagging',
+        'sync-pair-account-settling',
         'sync-pair-out-of-scope',
         'sync-pair-steps-unwritten',
         'sync-pair-unknown',
@@ -251,10 +250,10 @@ LITERAL_HOLDERS = {
     'sync/strip_cli.py': ['internal-error'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
-    'sync/unmark_cli.py': ['internal-error'],
     # 2026-11-21, U320: the record of not found answers.
     'sync/unavailable.py': ['sync-unavailable-record-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'sync/unmark_cli.py': ['internal-error'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
 }
 

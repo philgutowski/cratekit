@@ -1,0 +1,434 @@
+{
+  "name": "u304-replay-merge",
+  "pass_kind": "replay",
+  "branch": "cloud/861-sync-a-fifth-smaller",
+  "head": "761e7227",
+  "when": "2026-11-23 06:06 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22530,
+  "baseline_exit": 1,
+  "pytest_runs": 21,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/5752b730-82d2-5bb0-b120-3c1da5ca9238/scratchpad/merge-known.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: it is for commit `d6b0281be362`, and this tree is at `761e72276c07`",
+  "subset_baselines": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4d926ccf6eadc59e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22530,
+    "baseline_collected": 22530,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r835-c.S2_sync_hands_the_ledger_to_the_sweep_again",
+      "description": "sync.cli._plan_playlists: the sweep is handed no label built playlists, so every year playlist is swept as intake",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e31a8832dcefd7df",
+      "subset": [
+        "tests/test_export_collection.py",
+        "tests/test_intake_writers_native.py",
+        "tests/test_label_playlists.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 298,
+      "baseline_collected": 298,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_playlists.py::test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    label_built = ledger.label_playlist_ids(cfg)",
+      "new": "    label_built = frozenset()",
+      "source": {
+        "table": "r835-c.json",
+        "id": "S2_sync_hands_the_ledger_to_the_sweep_again"
+      }
+    },
+    {
+      "id": "r837-a.A17_sweep_hand_off",
+      "description": "sync.cli: the sweep is handed no set playlist, so the exclusion has nothing to exclude",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "007068dfc6ccf6e2",
+      "subset": [
+        "tests/test_export_collection.py",
+        "tests/test_export_set.py",
+        "tests/test_intake_writers_native.py",
+        "tests/test_label_playlists.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 361,
+      "baseline_collected": 361,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_the_sweep_never_reads_a_set_playlist_as_intake"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            set_built=set_built,",
+      "new": "            set_built=frozenset(),",
+      "source": {
+        "table": "r837-a.json",
+        "id": "A17_sweep_hand_off"
+      }
+    },
+    {
+      "id": "u147-c.M19_sweep_handoff",
+      "description": "sync.cli: the sync source hands the sweep no mirrored playlist",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab1174020fb2498d",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_the_sync_pass_hands_the_sweep_every_mirrored_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            mirrored=mirrored,",
+      "new": "",
+      "source": {
+        "table": "u147-c.json",
+        "id": "M19_sweep_handoff"
+      }
+    },
+    {
+      "id": "r1056.S1_no_landing_step_names_intake_missing",
+      "description": "_native_proof: drop the named source from the no landing step, so a label batch is told intake missing",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3e061df6acfd8914",
+      "subset": [
+        "tests/test_label_mark_native.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_mark_native.py::test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name[abandoned]",
+        "tests/test_label_mark_native.py::test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name[another-pass]",
+        "tests/test_label_mark_native.py::test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name[never-committed]",
+        "tests/test_label_mark_native.py::test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name[no-landing]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"land the pass with crate intake land --pass and {named}, then run {verb} \"",
+      "new": "            f\"land the pass with crate intake land --pass and {SYNC_PASS_NAMED}, then run {verb} \"",
+      "source": {
+        "table": "r1056.json",
+        "id": "S1_no_landing_step_names_intake_missing"
+      }
+    },
+    {
+      "id": "r1056.S2_unreachable_step_names_sync",
+      "description": "_native_proof: name sync mark in the unreachable library step whatever verb asked",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ea885c9d9e53b0e",
+      "subset": [
+        "tests/test_label_mark_native.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_mark_native.py::test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"mount the library volume, then run {verb} again\",",
+      "new": "            \"mount the library volume, then run crate sync mark again\",",
+      "source": {
+        "table": "r1056.json",
+        "id": "S2_unreachable_step_names_sync"
+      }
+    },
+    {
+      "id": "u147-c.M20_pair_scope",
+      "description": "sync.pair_cli._scope_account: a mirrored playlist may be paired",
+      "file": "src/cratekit/sync/pair_model.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e325fb1327803342",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_sync_pair_refuses_to_pair_a_mirrored_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if account_id in mirrored:",
+      "new": "    if False:",
+      "source": {
+        "table": "u147-c.json",
+        "id": "M20_pair_scope"
+      },
+      "moved": "the same text, now in src/cratekit/sync/pair_model.py, was in src/cratekit/sync/pair_cli.py"
+    },
+    {
+      "id": "r835-b.S1_built_year_excluded_from_sweep",
+      "description": "sync.playlists.exclusion: a year playlist a label build recorded is swept as intake",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "71a167f0485e724e",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_label_playlists.py",
+        "tests/test_sync_all.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 271,
+      "baseline_collected": 271,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_playlists.py::test_the_sweep_never_reads_a_built_year_playlist_as_intake"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if playlist.playlist_id in label_built:\n        return Excluded.LABEL_FOLDER",
+      "new": "    if False:\n        return Excluded.LABEL_FOLDER",
+      "source": {
+        "table": "r835-b.json",
+        "id": "S1_built_year_excluded_from_sweep"
+      }
+    },
+    {
+      "id": "r837-a.A16_sweep_excludes_set",
+      "description": "sync.playlists.exclusion: a set playlist export set recorded is swept as intake",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9289b2b9f7eff68e",
+      "subset": [
+        "tests/test_export_set.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_label_playlists.py",
+        "tests/test_sync_all.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 334,
+      "baseline_collected": 334,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_the_sweep_never_reads_a_set_playlist_as_intake"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if playlist.playlist_id in set_built:\n        return Excluded.SET_PLAYLIST",
+      "new": "    if False:\n        return Excluded.SET_PLAYLIST",
+      "source": {
+        "table": "r837-a.json",
+        "id": "A16_sweep_excludes_set"
+      }
+    },
+    {
+      "id": "u113-a.A6_sweep_passes_no_name",
+      "description": "The sweep queues each playlist job without the account's name",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d0108c8e5852eb3",
+      "subset": [
+        "tests/test_intake_land_account_playlists.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 141,
+      "baseline_collected": 141,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_account_playlists.py::test_sync_all_records_the_name_the_account_listed_on_each_playlist_job"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                name=names.get(playlist_id),",
+      "new": "                name=None,",
+      "source": {
+        "table": "u113-a.json",
+        "id": "A6_sweep_passes_no_name"
+      }
+    },
+    {
+      "id": "u147-c.M18_sweep_exclusion",
+      "description": "sync.playlists.exclusion: a mirrored playlist is swept as intake",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d2f498beb33fd008",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_the_intake_sweep_leaves_a_mirrored_playlist_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if playlist.playlist_id in mirrored:\n        return Excluded.MIRROR\n",
+      "new": "",
+      "source": {
+        "table": "u147-c.json",
+        "id": "M18_sweep_exclusion"
+      }
+    },
+    {
+      "id": "u149.T21_landing_paired_again",
+      "description": "plan_landing: plan a twin for an account playlist already paired",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "01ca3185b17afe4a",
+      "subset": [
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 5,
+      "baseline_collected": 5,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_twins.py::test_an_account_playlist_already_paired_gets_no_second_twin"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    wanted = [(account_id, name) for account_id, name in accounts if account_id not in held]",
+      "new": "    wanted = list(accounts)",
+      "source": {
+        "table": "u149.json",
+        "id": "T21_landing_paired_again"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

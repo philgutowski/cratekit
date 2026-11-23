@@ -1,11 +1,11 @@
-"""U210: a stop inside one paired playlist's account writes, finished by a continue of the run.
+"""U210: a stop inside one paired playlist's account writes, finished by a continue.
 
-The single pair world ``tests/test_sync_pair.py`` builds, synced once and then
-changed so both sides owe a write, with every account write sent through a
-real provider gate (``tests/test_sync_pair_resume.py``), so ``--calls`` stops
-the write between its removal and its addition, after rekordbox's commit.
+The single pair world of ``tests/test_sync_pair.py``, changed so both sides
+owe a write, with every account write sent through a real provider gate, so
+``--calls`` stops between the removal and the addition, after rekordbox's
+commit.
 
-D1 applies. Nothing here names a real account, a real person or a real track.
+D1 applies. Nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -37,10 +37,9 @@ from tests.test_sync_pair_resume import CEILING, VERB, gate_the_account, to_the_
 def paired(world, monkeypatch):
     """A pair synced once, then changed so both sides owe a write.
 
-    The account gains t4, so rekordbox adds row 4; rekordbox loses row 2 and
-    gains row 5, so the account takes t2 off and adds t5. The account's
-    writes are a removal, an addition and possibly an order, each one gated
-    call, and a ceiling of one stops it after the removal.
+    The account gains t4 and rekordbox swaps row 2 for row 5, so the account
+    owes a removal, an addition and maybe an order, each one gated call; a
+    ceiling of one stops after the removal.
     """
     made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(made.args())[0] == int(ExitCode.OK)
@@ -137,7 +136,7 @@ def test_a_step_that_cannot_be_recorded_stops_the_write(paired, monkeypatch):
 
 
 def test_a_reorder_by_hand_on_the_part_written_playlist_refuses_stale(paired):
-    """Round one's blocking finding: the order the plan read is held until the write orders."""
+    """The order the plan read is held until the write orders."""
     world = paired
     args = [*VERB, ACCOUNT]
     run_id, _first = to_the_write(args)
@@ -253,15 +252,14 @@ def _one_move_a_call(account) -> None:
 def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_finishes_it(
     world, monkeypatch
 ):
-    """Round two of U210, and U231: a continue sends none of the moves a stop left in doubt.
+    """U210, U231: a continue resends none of the moves a stop left in doubt.
 
-    How many moves reached the provider before the stop is not known, and a
-    move sent again from a reading that lags lands on whatever stands at its
-    position, so the continue only reads the order: pending. Two later
-    readings that agree on an order on the moves' path then finish it from
-    rekordbox, as U225 finishes a stopped write: the continue's own reading
-    and the next sync's.
+    How many moves landed is unknown and a move resent from a lagging reading
+    lands wherever its position now holds, so the continue only reads the
+    order, pending. Two later readings that agree finish it from rekordbox, as
+    U225 finishes a stopped write.
     """
+    from cratekit.sync import pair_plan
     made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(made.args())[0] == int(ExitCode.OK)
     gate_the_account(made.account, monkeypatch)
@@ -279,9 +277,9 @@ def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_f
     assert len(made.account.ordered) == moves, "the continue sent the order again"
     assert made.on_account() == ["t2", "t1", "t3"]
     assert pair_cli.PENDING in {w["code"] for w in done["warnings"]}
-    # The continue's reading is kept on the pair; a later one that agrees
-    # with it, read at least AGREE_AFTER on, finishes the order.
-    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(0))
+    # The continue's reading is kept; a later agreeing one, at least
+    # AGREE_AFTER on, finishes the order.
+    monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
     code, finished = sync(args)
     assert code == int(ExitCode.OK), finished
     assert made.on_account() == ["t3", "t2", "t1"]

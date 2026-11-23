@@ -1,11 +1,8 @@
 """Marks wait until the local output exists.
 
-Deferred marks: a provider playlist is marked only after the importable file
-is on disk, and only after a recheck shows the remote side is still the thing
-the run planned to mark. Since U242 a mark is a taken entry in Cratekit's own
-record and no title changes; before it, the mark was the ``DOWNLOADED ``
-prefix. Applying the mark first is how a crash leaves a playlist taken, never
-offered again, while the library has nothing to import.
+A playlist is marked (a taken entry in Cratekit's own record, U242) only after
+the importable file is on disk and a recheck shows the remote side unchanged.
+Marking first lets a crash leave a playlist taken with nothing to import.
 """
 
 from __future__ import annotations
@@ -55,17 +52,11 @@ def _blocked(local_output: Path, because: str) -> CratekitError:
 def require_output(local_output: Path) -> os.stat_result:
     """The importable file's stat, or the refusal. THE PATH IS READ ONCE.
 
-    One ``os.stat`` answers all three questions, is it there, is it a file, does
-    it hold anything. The check used to be ``is_file()`` and then ``stat()``, and
-    a file removed between the two raised ``FileNotFoundError`` out of the second
-    as a bare ``OSError``, at the one step whose whole design is that it refuses
-    (R-398). Every ``OSError`` is the refusal, a dead mount included, because a
-    file this process cannot stat is not proof of anything. A permission error
-    is chained as the cause, so ``core.cause`` reads it as the path refusal it
-    is and the person is given the remedy for that and not for a missing file.
-
-    The result is returned so a caller that wants to fingerprint the file it was
-    shown uses THIS read and not a second one.
+    One ``os.stat`` answers exists, is a file and is non empty, so a file
+    removed between two reads cannot escape as a bare ``OSError`` (R-398).
+    Every ``OSError`` is the refusal, chained as the cause so a permission
+    error gets its own remedy. A caller fingerprints the returned stat rather
+    than reading again.
     """
     try:
         found = os.stat(local_output)
@@ -82,23 +73,16 @@ def require_output(local_output: Path) -> os.stat_result:
 class NativeLanding:
     """The proof a pass landed on a database native intake tree (R-777).
 
-    A native landing takes its files into the collection through the guarded
-    writer and writes NO importable file, so the file this module waits for
-    cannot exist. What stands in for it is what the file was evidence of: the
-    caller read the intake tree's medium as native and resolved every track
-    the pass did not find against the library, by ``acquire match``'s view,
-    before planning a single mark. ``sync mark --pass`` is the one maker, and
-    it reads the medium again before the first rename.
+    A native landing writes no importable file, so this stands in for it: the
+    caller read the medium as native and resolved every unfound track against
+    the library before planning a mark. ``sync mark --pass`` is the one maker.
 
-    A TYPE AND NOT A MISSING ARGUMENT. A ``None`` where the file belongs is
-    still refused, so a caller that has neither proof is as wrong about the
-    run as it was before this existed.
+    A TYPE AND NOT A MISSING ARGUMENT, so a ``None`` is still refused.
     """
 
     tree_id: str
     pass_name: str
-    #: The closed native landings that committed the pass, which a mark waits
-    #: for the way it waits for a file (R-777).
+    #: The closed native landings that committed the pass, which a mark waits for.
     landings: tuple[str, ...] = ()
 
 
@@ -136,12 +120,10 @@ def apply_deferred(
     recheck: Callable[[PendingMark], bool],
     apply: Callable[[PendingMark], None],
 ) -> tuple[str, ...]:
-    """Apply marks whose recheck still holds, after the local file is real.
+    """Apply marks whose recheck still holds, after the local proof is real.
 
-    Returns the target ids that were actually marked. A failed recheck skips
-    that mark rather than forcing it: the remote item changed, and the next
-    increment will see it again. On a database native intake tree the file is
-    a :class:`NativeLanding` instead, see there.
+    Returns the ids actually marked. A failed recheck skips the mark, since the
+    remote item changed and the next increment sees it again.
     """
     require_proof(local_output)
     applied: list[str] = []

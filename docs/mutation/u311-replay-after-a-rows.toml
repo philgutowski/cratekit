@@ -1,0 +1,1435 @@
+name = "u311-replay-after-a"
+pass_kind = "replay"
+
+[[rows]]
+id = "r221-a.S3_flag_reads_a_key_nothing_freezes"
+source = { table = "r221-a.json", id = "S3_flag_reads_a_key_nothing_freezes" }
+description = "Read the rehearsal flag under a name the build does not freeze, so every job reads as a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return bool((job.payload or {}).get(DRY_RUN))'
+new = '    return bool((job.payload or {}).get("rehearsal"))'
+
+[[rows]]
+id = "r221-a.W1_rehearsal_never_said"
+source = { table = "r221-a.json", id = "W1_rehearsal_never_said" }
+description = "The warning is never carried, which is the exact state the ledger entry describes"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'
+new = '    return ()'
+
+[[rows]]
+id = "r221-a.W2_rehearsal_said_unconditionally"
+source = { table = "r221-a.json", id = "W2_rehearsal_said_unconditionally" }
+description = "Every run is told it copied nothing, including the real one that copied and published, which is the same defect pointing the other way"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'
+new = '    return (rehearsal_warning(),)'
+
+[[rows]]
+id = "r221-a.W3_queue_branch_warning_dropped"
+source = { table = "r221-a.json", id = "W3_queue_branch_warning_dropped" }
+description = "The identifier is handed back with no word about what it will do, and the detached child a resume spawns writes to a log nobody is watching"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+                *map(dict, backup.snapshot_identity_warning(cfg)),
+                *_rehearsal(job),
+            ),
+        )'''
+new = '''
+                *map(dict, backup.snapshot_identity_warning(cfg)),
+            ),
+        )'''
+
+[[rows]]
+id = "r221-a.W4_twin_branch_warning_dropped"
+source = { table = "r221-a.json", id = "W4_twin_branch_warning_dropped" }
+description = "A second ask reports the open rehearsal as the backup the person asked for, with nothing saying it is one"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+                    *_rehearsal(twin),
+                ),
+            )'''
+new = '''
+                ),
+            )'''
+
+[[rows]]
+id = "r221-a.W6_twin_branch_says_it_unconditionally"
+source = { table = "r221-a.json", id = "W6_twin_branch_says_it_unconditionally" }
+description = "The reported twin always carries the word, so a person asking twice for a REAL backup is told the open job copies nothing. Removing the helper's own guard is W2; this is the branch's own reading of the job it hands back"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '                    *_rehearsal(twin),'
+new = '                    rehearsal_warning(),'
+
+[[rows]]
+id = "r221-b.M1_refusal_step_dropped"
+source = { table = "r221-b.json", id = "M1_refusal_step_dropped" }
+description = "No refusal carries the sentence, so a rehearsal that failed reads as a real backup attempt that fell over"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '''
+    return error
+    cause = error.cause'''
+
+[[rows]]
+id = "r221-b.M2_refusal_step_unconditional"
+source = { table = "r221-b.json", id = "M2_refusal_step_unconditional" }
+description = "Every refusal gains the sentence, so a person whose REAL backup failed is told nothing was copied and stops looking for the half that was"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '    cause = error.cause'
+
+[[rows]]
+id = "r221-b.R1_refusal_is_its_own_cause"
+source = { table = "r221-b.json", id = "R1_refusal_is_its_own_cause" }
+description = "Raise the result from the original unconditionally, which is `raise exc from exc` on a real run and truncates the chain cause.classified walks. This is the defect the code review found"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    extended = _with_rehearsal_step(error, job)
+    if extended is error:
+        raise error
+    raise extended from error'''
+new = '    raise _with_rehearsal_step(error, job) from error'
+
+[[rows]]
+id = "r222-b.B10_archive_not_compared"
+source = { table = "r222-b.json", id = "B10_archive_not_compared" }
+description = "Compare only the mirror, so two jobs rotating one archive root from different mirrors are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '            frozen.backup.dest == cfg.backup.dest'
+
+[[rows]]
+id = "r222-b.B11_finished_jobs_are_twins"
+source = { table = "r222-b.json", id = "B11_finished_jobs_are_twins" }
+description = "Read every state from the queue, so a backup that is over stands in for a new one for ever"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    for job in jobs.list_jobs(store, states=open_states):'
+new = '    for job in jobs.list_jobs(store):'
+
+[[rows]]
+id = "r222-b.B12_warnings_from_the_live_configuration"
+source = { table = "r222-b.json", id = "B12_warnings_from_the_live_configuration" }
+description = "Describe the reported job from the configuration on disk rather than the one it was frozen against"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            described = cfg if frozen is None else frozen'
+new = '            described = cfg'
+
+[[rows]]
+id = "r222-b.B14_destination_claimed_unread"
+source = { table = "r222-b.json", id = "B14_destination_claimed_unread" }
+description = "Reword the unreadable case to the ordinary sentence's opening, so the warning no longer says the configuration was not rebuilt"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        "its frozen configuration could not be rebuilt, so where it writes is "'
+new = '        "its frozen configuration was not consulted, so where it writes is "'
+
+[[rows]]
+id = "r222-b.B1_always_enqueue"
+source = { table = "r222-b.json", id = "B1_always_enqueue" }
+description = "Never report a twin, which is the finding itself: every ask files another job"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if found is not None:
+            twin, frozen = found'''
+new = '''
+        if False:
+            twin, frozen = found'''
+
+[[rows]]
+id = "r222-b.B2_any_verb_is_a_twin"
+source = { table = "r222-b.json", id = "B2_any_verb_is_a_twin" }
+description = "Drop the handler key comparison, so another verb's open job is reported as the backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'
+new = '        if job.library_id != cfg.library.volume_id:'
+
+[[rows]]
+id = "r222-b.B3_any_library_is_a_twin"
+source = { table = "r222-b.json", id = "B3_any_library_is_a_twin" }
+description = "Drop the library comparison, so a job copying another library is reported as this one's backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'
+new = '        if job.handler_key != handler_key:'
+
+[[rows]]
+id = "r222-b.B4_rehearsal_is_a_twin"
+source = { table = "r222-b.json", id = "B4_rehearsal_is_a_twin" }
+description = "Drop the rehearsal flag comparison, so an open rehearsal answers a request for a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "r222-b.B5_whole_payload_compared"
+source = { table = "r222-b.json", id = "B5_whole_payload_compared" }
+description = "Compare the whole payload, so a job frozen with one more key is a stranger and a second backup is filed beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:'
+new = '        if dict(job.payload or {}) != {DRY_RUN: dry_run}:'
+
+[[rows]]
+id = "r222-b.B6_itemless_job_is_a_twin"
+source = { table = "r222-b.json", id = "B6_itemless_job_is_a_twin" }
+description = "Report a job with no items, which refuses when driven, as the backup asked for"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if not jobs.items(store, job.job_id):
+            continue
+        try:'''
+new = '''
+        if False:
+            continue
+        try:'''
+
+[[rows]]
+id = "r222-b.B7_unreadable_is_elsewhere"
+source = { table = "r222-b.json", id = "B7_unreadable_is_elsewhere" }
+description = "Read a frozen configuration that cannot be rebuilt as somewhere else, and file a second job beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''
+        except (config.ConfigError, ValueError):
+            continue'''
+
+[[rows]]
+id = "r222-b.B8_every_exception_is_unreadable"
+source = { table = "r222-b.json", id = "B8_every_exception_is_unreadable" }
+description = "Catch every exception from the rebuild, so a defect in it is reported as an open backup with exit zero"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''
+        except Exception:
+            return job, None'''
+
+[[rows]]
+id = "r222-b.B9_mirror_not_compared"
+source = { table = "r222-b.json", id = "B9_mirror_not_compared" }
+description = "Compare only the archive root, so two jobs syncing into one mirror with different archives are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '            frozen.backup.archive_root == cfg.backup.archive_root'
+
+[[rows]]
+id = "r349-a.A1_failure_write"
+source = { table = "r349-a.json", id = "A1_failure_write" }
+description = "Drop the failure path JSON write: raise the refusal without writing the outcome"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            raise _with_outcome_recorded(refusal, outcome, outcome_to)'
+new = '            raise refusal'
+
+[[rows]]
+id = "r349-a.A2_success_produced"
+source = { table = "r349-a.json", id = "A2_success_produced" }
+description = "The handler returns nothing on success instead of the staged record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return jobs.Produced(staged=staged, final=final)'
+new = '    return None'
+
+[[rows]]
+id = "r349-a.A4_envelope_field"
+source = { table = "r349-a.json", id = "A4_envelope_field" }
+description = "The backup run --job envelope stops attaching the outcomes field"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        progress[OUTCOMES] = outcomes'
+new = '        pass'
+
+[[rows]]
+id = "r349-b.B3_clear_before_attempt"
+source = { table = "r349-b.json", id = "B3_clear_before_attempt" }
+description = "The handler no longer clears the previous attempt's record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    backup_facts.clear_outcome(job.job_id, named)
+    report = perform_backup('''
+new = '    report = perform_backup('
+
+[[rows]]
+id = "r349-b.B4_stage_error_completes"
+source = { table = "r349-b.json", id = "B4_stage_error_completes" }
+description = "A staging write error escapes the handler instead of completing the item"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError:
+        return None
+    return jobs.Produced'''
+new = '''
+    except KeyError:
+        return None
+    return jobs.Produced'''
+
+[[rows]]
+id = "r349-c.C2_write_failure_step"
+source = { table = "r349-c.json", id = "C2_write_failure_step" }
+description = "A failed record write returns the refusal without the step saying the record is missing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError as exc:
+        cause = refusal.cause'''
+new = '''
+    except OSError as exc:
+        return refusal
+        cause = refusal.cause'''
+
+[[rows]]
+id = "r390-a.A6_backup_transfer_exit_is_permanent"
+source = { table = "r390-a.json", id = "A6_backup_transfer_exit_is_permanent" }
+description = "the flag the review round added: a transfer exit recorded with no retryable flag"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            retryable=True,
+            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+new = '''
+            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+
+[[rows]]
+id = "u45-round-1.A1_unreadable_reported_as_absent"
+source = { table = "u45-round-1.json", id = "A1_unreadable_reported_as_absent" }
+description = "Return an empty list for an unreadable fact file, so a library with a good backup reads as never backed up"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except backup_facts.BackupFactsUnreadable as exc:
+        raise refuse(
+            "backup-facts-unreadable",'''
+new = '''
+    except backup_facts.BackupFactsUnreadable as exc:
+        del exc
+        return []
+        raise refuse(
+            "backup-facts-unreadable",'''
+
+[[rows]]
+id = "u45-round-1.A4_state_collapsed_to_known"
+source = { table = "u45-round-1.json", id = "A4_state_collapsed_to_known" }
+description = "Report every portion as known, so never-recorded and recorded-in-the-future both read as a current backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            "state": str(entry.state),
+            "age_seconds"'''
+new = '''
+            "state": "known",
+            "age_seconds"'''
+
+[[rows]]
+id = "u45-round-1.C2_refusal_read_as_failure"
+source = { table = "u45-round-1.json", id = "C2_refusal_read_as_failure" }
+description = "Widen the failed predicate to any portion that did not run, so a refused database portion reads as a failed transfer"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        entry for entry in outcome.portions if not entry.ran and entry.refusal is None'
+new = '        entry for entry in outcome.portions if not entry.ran'
+
+[[rows]]
+id = "u45-round-1.C3_nothing_ran_accepted"
+source = { table = "u45-round-1.json", id = "C3_nothing_ran_accepted" }
+description = "Return None when no portion ran, so a machine with no rclone exits OK over a backup that did not happen"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if any(entry.ran for entry in outcome.portions):
+        return None
+    refusals'''
+new = '''
+    return None
+    refusals'''
+
+[[rows]]
+id = "u45-round-1.C4_uniform_refusal_flattened"
+source = { table = "u45-round-1.json", id = "C4_uniform_refusal_flattened" }
+description = "Drop the uniform pass-through so every no-run refusal becomes the summary slug and rclone-missing loses install-binary"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if len(refusals) == 1:
+        only = next(iter(refusals))'''
+new = '''
+    if False:
+        only = next(iter(refusals))'''
+
+[[rows]]
+id = "u45-round-1.C5_first_refusal_taken"
+source = { table = "u45-round-1.json", id = "C5_first_refusal_taken" }
+description = "Take the first portion's refusal when the reasons differ, rather than naming all of them"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if len(refusals) == 1:'
+new = '    if refusals:'
+
+[[rows]]
+id = "u45-round-1.C6_partial_run_refused"
+source = { table = "u45-round-1.json", id = "C6_partial_run_refused" }
+description = "Refuse whenever any portion did not run, so a mirror that completed while the database was skipped is reported as a failure"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if any(entry.ran for entry in outcome.portions):
+        return None'''
+new = '''
+    if all(entry.ran for entry in outcome.portions):
+        return None'''
+
+[[rows]]
+id = "u45-round-1.Q1_resume_drops_the_rehearsal"
+source = { table = "u45-round-1.json", id = "Q1_resume_drops_the_rehearsal" }
+description = "Drop --dry-run from the resume argv, so a queued rehearsal respawns as a real transfer that publishes an age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if payload.get(DRY_RUN):
+        argv.append("--dry-run")'''
+new = '    pass'
+
+[[rows]]
+id = "u45-round-1.Q2_resume_always_rehearses"
+source = { table = "u45-round-1.json", id = "Q2_resume_always_rehearses" }
+description = "Always emit --dry-run, the other direction, so a real backup respawns as a rehearsal that copies nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if payload.get(DRY_RUN):
+        argv.append("--dry-run")'''
+new = '    argv.append("--dry-run")'
+
+[[rows]]
+id = "u45-round-1.Q3_resume_loses_the_job"
+source = { table = "u45-round-1.json", id = "Q3_resume_loses_the_job" }
+description = "Drop --job from the resume argv, so the child queues a second backup instead of continuing the first"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return [*argv, "--job", job.job_id]'
+new = '    return list(argv)'
+
+[[rows]]
+id = "u45-round-1.Q4_payload_key_not_read"
+source = { table = "u45-round-1.json", id = "Q4_payload_key_not_read" }
+description = "Read a key the handler does not freeze, which is the drift the named constant exists to prevent"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if payload.get(DRY_RUN):'
+new = '    if payload.get("dryrun"):'
+
+[[rows]]
+id = "u45-round-1.R1_reserved_remediation_discarded"
+source = { table = "u45-round-1.json", id = "R1_reserved_remediation_discarded" }
+description = "Replace the reservation table's per-slug remediation with the class default, which is what the first draft did"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            remediation=reservations.remediation_for(slug),'
+new = '            remediation=Remediation(),'
+
+[[rows]]
+id = "u45-round-1.R2_slug_flattened"
+source = { table = "u45-round-1.json", id = "R2_slug_flattened" }
+description = "Fold every engine refusal into one slug, so nine diagnoses arrive as one and each loses its own fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    slug = str(refusal)
+    return CratekitError('''
+new = '''
+    slug = str(backup.Refusal.RCLONE_MISSING)
+    return CratekitError('''
+
+[[rows]]
+id = "u45-round-1.W2_report_from_the_plan"
+source = { table = "u45-round-1.json", id = "W2_report_from_the_plan" }
+description = "Report the PLAN rather than the OUTCOME, which is the shell half of the first-caller defect"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report = backup.outcome_payload(outcome)'
+new = '    report = backup.plan_payload(plan)'
+
+[[rows]]
+id = "u45-round-1.W3_ages_not_read_back"
+source = { table = "u45-round-1.json", id = "W3_ages_not_read_back" }
+description = "Drop the age read-back, so the verb never reports what a destructive session would see"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report["ages"] = published_ages(cfg, now=now)'
+new = '    report["ages"] = []'
+
+[[rows]]
+id = "u45-round-1.W4_ages_derived_from_the_outcome"
+source = { table = "u45-round-1.json", id = "W4_ages_derived_from_the_outcome" }
+description = "Derive the published ages from the outcome instead of reading the fact file, the duplicate rule the module argues against"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report["ages"] = published_ages(cfg, now=now)'
+new = '''
+    report["ages"] = [
+        {"portion": p.portion.value, "state": "known" if p.ran else "never-recorded"}
+        for p in outcome.portions
+    ]'''
+
+[[rows]]
+id = "u45-round-1.W5_publishing_switched_off"
+source = { table = "u45-round-1.json", id = "W5_publishing_switched_off" }
+description = "Pass publish=False, so a successful backup records no age and the write session still sees never-recorded"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)'
+new = '''
+    outcome = backup.run_backup(
+        cfg, plan, runner=runner, now=now, dry_run=dry_run, publish=False
+    )'''
+
+[[rows]]
+id = "u45-round-1.W6_rehearsal_becomes_a_real_run"
+source = { table = "u45-round-1.json", id = "W6_rehearsal_becomes_a_real_run" }
+description = "Ignore the frozen dry-run key, so a rehearsal transfers for real and publishes an age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    dry_run = bool(payload.get(DRY_RUN))'
+new = '    dry_run = False'
+
+[[rows]]
+id = "u45-round-1.W8_engine_refusal_escapes"
+source = { table = "u45-round-1.json", id = "W8_engine_refusal_escapes" }
+description = "Let BackupRefused escape, so an unconfigured remote reaches the dispatcher as internal-error with report-defect"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except backup.BackupRefused as exc:
+        raise _engine_refusal(
+            exc.refusal, exc.detail, library=str(cfg.library.root)
+        ) from exc'''
+new = '''
+    except backup.BackupRefused:
+        raise'''
+
+[[rows]]
+id = "u45-round-2.A3_age_seconds_always_none"
+source = { table = "u45-round-2.json", id = "A3_age_seconds_always_none" }
+description = "Report no age number even for a known portion, so the value R15's warning quotes never reaches the report"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            "age_seconds": entry.age.total_seconds() if entry.age is not None else None,'
+new = '            "age_seconds": None,'
+
+[[rows]]
+id = "u45-round-2.C7_failed_detail_dropped"
+source = { table = "u45-round-2.json", id = "C7_failed_detail_dropped" }
+description = "Reword the transfer-failed message so it no longer says a destructive session still sees the previous age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            + ". No backup age was published for that portion, so a destructive "
+            "session still sees whatever the last successful run left",'''
+new = '            + ". The run stopped there.",'
+
+[[rows]]
+id = "u50-author.B1_no_items_enqueued"
+source = { table = "u50-author.json", id = "B1_no_items_enqueued" }
+description = "Queue the backup with no items, so the driver has nothing to claim and reports an empty success"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            item_ids=backup_items(),'
+new = ''
+
+[[rows]]
+id = "u50-author.B3_items_one_portion_only"
+source = { table = "u50-author.json", id = "B3_items_one_portion_only" }
+description = "Queue only the mirror, so the database half of every backup is never claimed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return tuple(str(portion) for portion in backup_facts.Portion)'
+new = '    return (str(backup_facts.Portion.FILES),)'
+
+[[rows]]
+id = "u50-author.W5_unknown_portion_unchecked"
+source = { table = "u50-author.json", id = "W5_unknown_portion_unchecked" }
+description = "Let an undeclared item name raise out of the coercion rather than refusing by name"
+file = "src/cratekit/backup/cli.py"
+surface = "maintainer"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        raise refuse(
+            "internal-error",
+            f"this job's item is {named!r}, which is not a backup portion this "
+            f"build declares. The portions are {', '.join(declared)}",'''
+new = '''
+        raise refuse(
+            "internal-error",
+            "the item could not be read",'''
+
+[[rows]]
+id = "u50-author.W6_fresh_config_in_the_handler"
+source = { table = "u50-author.json", id = "W6_fresh_config_in_the_handler" }
+description = "Load the configuration in the handler rather than using the one frozen on the job (KTD9)"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        cfg=cfg,
+        # RESOLVED AT CALL TIME, not left to the default, so a test can put a
+        # stand-in in front of it. ``perform_backup``'s own default is bound when
+        # this module is imported and cannot be reached any other way.
+        runner=backup.subprocess_runner,'''
+new = '''
+        cfg=_load(),
+        runner=backup.subprocess_runner,'''
+
+[[rows]]
+id = "u50-review-fixes.R2_empty_job_guard_dropped"
+source = { table = "u50-review-fixes.json", id = "R2_empty_job_guard_dropped" }
+description = "Drive a job with no items, so a job queued by the previous build reports SUCCEEDED over a library nothing copied"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '                _refuse_an_empty_job(store, job)'
+new = ''
+
+[[rows]]
+id = "u50-zero-rows.B2_items_hardcoded_pair"
+source = { table = "u50-zero-rows.json", id = "B2_items_hardcoded_pair" }
+description = "Name the two portions instead of deriving them, so a third portion is queued by nobody"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return tuple(str(portion) for portion in backup_facts.Portion)'
+new = '    return ("files", "database")'
+
+[[rows]]
+id = "u50-zero-rows.W4b_item_ignored_entirely"
+source = { table = "u50-zero-rows.json", id = "W4b_item_ignored_entirely" }
+description = "Back up the mirror whatever the item says, so every item of the job does the same half"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    named = str(item.item_id or "")'
+new = '    named = str(backup_facts.Portion.FILES)'
+
+[[rows]]
+id = "r154-a.A1_stamp_pattern"
+source = { table = "r154-a.json", id = "A1_stamp_pattern" }
+description = "Drop the pattern half of is_stamp, so the calendar parse alone decides and its lenient padding admits 2026-8-01T000000Z"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+    if not _STAMP_SHAPE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, _STAMP_FORMAT)'''
+new = '''
+    try:
+        datetime.strptime(value, _STAMP_FORMAT)'''
+
+[[rows]]
+id = "r154-a.A2_stamp_calendar"
+source = { table = "r154-a.json", id = "A2_stamp_calendar" }
+description = "Drop the calendar half of is_stamp, so the pattern alone decides and a thirteenth month is a stamp"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+    try:
+        datetime.strptime(value, _STAMP_FORMAT)
+    except ValueError:
+        return False
+    return True'''
+new = '    return True'
+
+[[rows]]
+id = "r154-a.A4_legacy_spelling"
+source = { table = "r154-a.json", id = "A4_legacy_spelling" }
+description = "Accept only this product's stamp as a snapshot name, so every snapshot the source system wrote is refused by name and hidden from the listing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+    if is_stamp(value):
+        return True
+    if not _LEGACY_SHAPE.fullmatch(value):
+        return False'''
+new = '''
+    if is_stamp(value):
+        return True
+    return False
+    if not _LEGACY_SHAPE.fullmatch(value):
+        return False'''
+
+[[rows]]
+id = "r154-a.A5_listing_filter"
+source = { table = "r154-a.json", id = "A5_listing_filter" }
+description = "List every folder under the snapshot root as a snapshot, so a stray folder sorting last is the newest"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '            if is_snapshot_name(name)'
+new = '            if name'
+
+[[rows]]
+id = "r154-a.A7_read_normalization"
+source = { table = "r154-a.json", id = "A7_read_normalization" }
+description = "Compare a marker's identity as spelled on the remote, so a marker written in another letter case names a foreign volume"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "U311 split the snapshot listing out of backup.py into backup_snapshot.py with this line unchanged, and folded test_the_identity_is_compared_case_blind_like_the_volume_gate into test_a_snapshot_marked_for_this_library_is_planned_and_compared_case_blind, whose second half lists the same upper case marker and asserts the same lower case recorded volume, so it is the same guard held by the same assertion"
+tests = ["tests/modules/test_tools.py"]
+old = '        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])'
+new = '        name[len(IDENTITY_MARKER_PREFIX):]'
+
+[[rows]]
+id = "r154-a.A8_empty_expected"
+source = { table = "r154-a.json", id = "A8_empty_expected" }
+description = "Let an expected identity of nothing stay the empty string, so it matches a marker with nothing after its prefix"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '    expected = (preflight.normalize_identity(wanted) or None) if wanted is not None else None'
+new = '    expected = preflight.normalize_identity(wanted) if wanted is not None else None'
+
+[[rows]]
+id = "r154-b.B2_two_markers"
+source = { table = "r154-b.json", id = "B2_two_markers" }
+description = "Accept a named snapshot when the expected identity is AMONG its markers, so a folder two libraries wrote passes on either one"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+        if recorded == (expected,):
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+new = '''
+        if expected in recorded:
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+
+[[rows]]
+id = "r154-b.B3_handed_down_stamp"
+source = { table = "r154-b.json", id = "B3_handed_down_stamp" }
+description = "Ignore accept_unrecorded, so a stamp the verb resolved and handed down arrives looking typed and an unmarked one is pulled"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '        accepted = True if accept_unrecorded is None else accept_unrecorded'
+new = '        accepted = True'
+
+[[rows]]
+id = "r154-b.B4_stated_volume_over_unmarked"
+source = { table = "r154-b.json", id = "B4_stated_volume_over_unmarked" }
+description = "Pull an unmarked named snapshot even when a person stated the volume it should record, so the statement is checked against nothing"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '        if not recorded and snapshot_volume is None and accepted:'
+new = '        if not recorded and accepted:'
+
+[[rows]]
+id = "r154-b.B5_veto_not_select"
+source = { table = "r154-b.json", id = "B5_veto_not_select" }
+description = "Read only the newest folder, which is the first cut: a shared root refuses whenever the other library backed up last"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '    newest = names[::-1][:NEWEST_WALK]'
+new = '    newest = names[::-1][:1]'
+
+[[rows]]
+id = "r154-b.B6_walk_bound"
+source = { table = "r154-b.json", id = "B6_walk_bound" }
+description = "Multiply the walk bound by ten, so a remote of foreign snapshots is read far past what the refusal says it looked at"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = 'NEWEST_WALK = 8'
+new = 'NEWEST_WALK = 80'
+
+[[rows]]
+id = "r154-b.B8_walk_match"
+source = { table = "r154-b.json", id = "B8_walk_match" }
+description = "Stop the walk at the first folder carrying ANY marker, so the default pulls another library's snapshot under a shared root"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+        if seen[name] == (expected,):
+            return ResolvedSnapshot(stamp=name, recorded_volume=expected, named=False)'''
+new = '''
+        if seen[name]:
+            return ResolvedSnapshot(stamp=name, recorded_volume=expected, named=False)'''
+
+[[rows]]
+id = "r222-a.A10_plan_text_at_keep_zero"
+source = { table = "r222-a.json", id = "A10_plan_text_at_keep_zero" }
+description = "Describe the held run at a keep of zero, so the preview promises a retention the run does not apply"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+    if archive_keep == 0:
+        return "keeping no dated archive folder"'''
+new = '''
+    if False:
+        return "keeping no dated archive folder"'''
+
+[[rows]]
+id = "r367.E3_a_live_rekordbox_is_ignored"
+source = { table = "r367.json", id = "E3_a_live_rekordbox_is_ignored" }
+description = "existing guard sample: a restore proceeds while rekordbox holds the database"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+    if running:
+        raise BackupRefused(
+            Refusal.REKORDBOX_RUNNING,'''
+new = '''
+    if running and False:
+        raise BackupRefused(
+            Refusal.REKORDBOX_RUNNING,'''
+
+[[rows]]
+id = "r367.G8_files_only_is_dropped"
+source = { table = "r367.json", id = "G8_files_only_is_dropped" }
+description = "directories in the snapshot folder can be read as sidecar names"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py"]
+old = '''
+                f"{cfg.backup.db_dest_root}/{snapshot}/db/",
+                "--files-only",'''
+new = '                f"{cfg.backup.db_dest_root}/{snapshot}/db/",'
+
+[[rows]]
+id = "u279.M12_holder_never_found"
+source = { table = "u279.json", id = "M12_holder_never_found" }
+description = "Exclusion.holder: answer None for every path, so no anchor is placed in an excluded folder"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''
+            if identity in self.folders:
+                return self.folders[identity]'''
+new = '''
+            if False:
+                return self.folders[identity]'''
+
+[[rows]]
+id = "u279.M1_walk_ignores_exclude"
+source = { table = "u279.json", id = "M1_walk_ignores_exclude" }
+description = "iter_audio: walk the whole root again, sorted(root.rglob), so the excluded folders are indexed (the defect itself)"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '    for candidate in sorted(Exclusion.under(root, exclude).walk(root)):'
+new = '    for candidate in sorted(root.rglob("*")):'
+
+[[rows]]
+id = "u279.M2_excluded_folder_walked"
+source = { table = "u279.json", id = "M2_excluded_folder_walked" }
+description = "Exclusion.walk: drop the skip of an excluded folder, so the hand walk yields it and its contents"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''
+            if identity in self.folders:
+                continue
+            yield child'''
+new = '            yield child'
+
+[[rows]]
+id = "u279.M3_ancestor_taken_whole"
+source = { table = "u279.json", id = "M3_ancestor_taken_whole" }
+description = "Exclusion.walk: hand an ancestor of an excluded folder to rglob whole, so a nested excluded folder is walked"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '            if identity in self.ancestors:'
+new = '            if False:'
+
+[[rows]]
+id = "u279.M4_symlink_followed"
+source = { table = "u279.json", id = "M4_symlink_followed" }
+description = "Exclusion.walk: read a symlinked folder on the hand walked path as a directory, so it is descended where rglob does not"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '                if entry.is_dir(follow_symlinks=False):'
+new = '                if entry.is_dir():'
+
+[[rows]]
+id = "u279.M5_unlistable_raises"
+source = { table = "u279.json", id = "M5_unlistable_raises" }
+description = "Exclusion.walk: catch only a missing folder, so one the walk cannot list stops the index where rglob passes it over"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''
+                entries = list(listing)
+        except OSError:
+            return'''
+new = '''
+                entries = list(listing)
+        except FileNotFoundError:
+            return'''
+
+[[rows]]
+id = "u279.M6_chain_unresolved"
+source = { table = "u279.json", id = "M6_chain_unresolved" }
+description = "_chain_to: read the configured folder as spelled, so a staging folder configured through a link outside the root excludes nothing"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '        current = folder.resolve()'
+new = '        current = folder.absolute()'
+
+[[rows]]
+id = "u279.M7_outermost_folder_excluded"
+source = { table = "u279.json", id = "M7_outermost_folder_excluded" }
+description = "Exclusion.under: exclude the outermost folder above a configured one rather than the folder itself, so its library siblings are dropped"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '                folders.setdefault(chain[0], Path(folder))'
+new = '                folders.setdefault(chain[-1], Path(folder))'
+
+[[rows]]
+id = "u279.M10_tilde_not_expanded"
+source = { table = "u279.json", id = "M10_tilde_not_expanded" }
+description = "excluded_folders: read the staging path without expanding a tilde, round one's finding"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = 'Path(cfg.paths.download_staging).expanduser())'
+new = 'Path(cfg.paths.download_staging))'
+
+[[rows]]
+id = "u279.M11_excluded_anchor_not_refused"
+source = { table = "u279.json", id = "M11_excluded_anchor_not_refused" }
+description = "set_build: drop the excluded anchor refusal, so an anchor in staging gets the generic not indexed wording"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''
+    _refuse_if_excluded(candidate, cfg, root)
+'''
+new = ''
+
+[[rows]]
+id = "u279.M13_wrong_folder_named"
+source = { table = "u279.json", id = "M13_wrong_folder_named" }
+description = "_refuse_if_excluded: say the state folder whichever folder holds the anchor"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '    if holder == folders[0]:'
+new = '    if True:'
+
+[[rows]]
+id = "u279.M8_index_call_unexcluded"
+source = { table = "u279.json", id = "M8_index_call_unexcluded" }
+description = "setbuild _index: drop exclude, so the verb's index walks the state and staging folders again"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''
+        exclude=excluded_folders(cfg),
+'''
+new = ''
+
+[[rows]]
+id = "u279.M9_staging_not_excluded"
+source = { table = "u279.json", id = "M9_staging_not_excluded" }
+description = "excluded_folders: leave download staging out of the exclusion, the state folder only"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '    return (config.library_state_dir(cfg), Path(cfg.paths.download_staging).expanduser())'
+new = '    return (config.library_state_dir(cfg), config.library_state_dir(cfg))'
+
+[[rows]]
+id = "r154-a.A3_named_shape_check"
+source = { table = "r154-a.json", id = "A3_named_shape_check" }
+description = "Never refuse a named snapshot on shape, which is the finding itself: the traversal value reaches the remote path again"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '        if not is_snapshot_name(snapshot):'
+new = '        if False:'
+
+[[rows]]
+id = "r154-b.B1_named_mismatch"
+source = { table = "r154-b.json", id = "B1_named_mismatch" }
+description = "Accept a named snapshot carrying ANY marker, which is the finding's real half: a well formed stamp from another library is pulled"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+        if recorded == (expected,):
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+new = '''
+        if recorded:
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+
+[[rows]]
+id = "r154-b.B7_walk_order"
+source = { table = "r154-b.json", id = "B7_walk_order" }
+description = "Walk oldest first, so the default pulls the OLDEST snapshot that is this library's"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '    newest = names[::-1][:NEWEST_WALK]'
+new = '    newest = names[:NEWEST_WALK]'
+
+[[rows]]
+id = "r367.E1_a_failed_transfer_is_unread"
+source = { table = "r367.json", id = "E1_a_failed_transfer_is_unread" }
+description = "existing guard sample: run_restore returns results without reading return codes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+        if result.returncode != 0:
+            raise BackupRefused(
+                Refusal.RESTORE_TRANSFER_FAILED,'''
+new = '''
+        if result.returncode == 0:
+            raise BackupRefused(
+                Refusal.RESTORE_TRANSFER_FAILED,'''
+
+[[rows]]
+id = "r367.E2_an_unconfirmed_restore_is_allowed"
+source = { table = "r367.json", id = "E2_an_unconfirmed_restore_is_allowed" }
+description = "existing guard sample: a restore proceeds without the named decision"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+    if not confirmed:
+        raise BackupRefused(
+            Refusal.RESTORE_NOT_CONFIRMED,'''
+new = '''
+    if confirmed and False:
+        raise BackupRefused(
+            Refusal.RESTORE_NOT_CONFIRMED,'''
+
+[[rows]]
+id = "r367.G12_listing_results_are_discarded"
+source = { table = "r367.json", id = "G12_listing_results_are_discarded" }
+description = "the listing runs and its names are thrown away, so every sidecar is treated as absent"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '    held = snapshot_filenames(cfg, chosen, runner=runner)'
+new = '''
+    snapshot_filenames(cfg, chosen, runner=runner)
+    held = frozenset()'''
+
+[[rows]]
+id = "r367.G1_always_copy_the_restored_sidecar"
+source = { table = "r367.json", id = "G1_always_copy_the_restored_sidecar" }
+description = "the original defect: copy every restored sidecar whether the snapshot holds it or not"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+    held = snapshot_filenames(cfg, chosen, runner=runner)
+    absent: list[str] = []
+    for sidecar in config.state_file("rekordbox_db").sidecars:
+        if not sidecar.restored:
+            continue
+        name = f"{database_target.name}{sidecar.suffix}"
+        if name not in held:
+            absent.append(sidecar.suffix)
+            continue
+        commands.append(
+'''
+new = '''
+    absent: list[str] = []
+    for sidecar in config.state_file("rekordbox_db").sidecars:
+        if not sidecar.restored:
+            continue
+        name = f"{database_target.name}{sidecar.suffix}"
+        commands.append(
+'''
+
+[[rows]]
+id = "r367.G3_membership_is_inverted"
+source = { table = "r367.json", id = "G3_membership_is_inverted" }
+description = "copy the sidecar when it is absent and skip it when it is present"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '        if name not in held:'
+new = '        if name in held:'
+
+[[rows]]
+id = "r367.G4_the_inventory_restored_flag_is_ignored"
+source = { table = "r367.json", id = "G4_the_inventory_restored_flag_is_ignored" }
+description = "a listed shared memory index is written back beside a fresh log"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+        if not sidecar.restored:
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "r367.G5_absent_sidecars_are_not_recorded"
+source = { table = "r367.json", id = "G5_absent_sidecars_are_not_recorded" }
+description = "the plan copies nothing extra and also does not name what it skipped"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''
+            absent.append(sidecar.suffix)
+'''
+new = ''
+
+[[rows]]
+id = "r367.G7_the_listing_is_of_the_snapshot_root"
+source = { table = "r367.json", id = "G7_the_listing_is_of_the_snapshot_root" }
+description = "list the dated folder, not the db folder inside it, so the log is never seen"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '                f"{cfg.backup.db_dest_root}/{snapshot}/db/",'
+new = '                f"{cfg.backup.db_dest_root}/{snapshot}/",'
+
+[[rows]]
+id = "u138.S7_verb_drops_the_answer"
+source = { table = "u138.json", id = "S7_verb_drops_the_answer" }
+description = "The verb never hands down who answered the gate"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''
+        cfg, now=now, decided_by=answered.actor if answered is not None else None
+'''
+new = '''
+        cfg, now=now, decided_by=None
+'''
+
+[[rows]]
+id = "u184.A10_summary_always_recorded"
+source = { table = "u184.json", id = "A10_summary_always_recorded" }
+description = "_summary: say recorded whether or not this call minted"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '        "recorded": minted,'
+new = '        "recorded": True,'
+
+[[rows]]
+id = "u184.A11_wording_swapped"
+source = { table = "u184.json", id = "A11_wording_swapped" }
+description = "_expiry_row: swap the two phrasings, so a mint reads as already on record"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '    said = "recorded now" if minted else "already on record, not minted again"'
+new = '    said = "already on record, not minted again" if minted else "recorded now"'
+
+[[rows]]
+id = "u184.A3_engine_rule_not_selected"
+source = { table = "u184.json", id = "A3_engine_rule_not_selected" }
+description = "_mint_as_session: hand no actor to the engine, so the terminal rule decides and the ages are not judged"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''
+        cfg, now=now, decided_by=session.SESSION_ACTOR
+    )'''
+new = '''
+        cfg, now=now, decided_by=None
+    )'''
+
+[[rows]]
+id = "u184.A4_valid_record_minted_again"
+source = { table = "u184.json", id = "A4_valid_record_minted_again" }
+description = "_mint_as_session: never report a valid acknowledgment, so every call mints a fresh one"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '    if recorded is not None and recorded.valid_at(now):'
+new = '    if False:'
+
+[[rows]]
+id = "u184.A5_expired_reported_valid"
+source = { table = "u184.json", id = "A5_expired_reported_valid" }
+description = "_mint_as_session: drop the window check, so an expired acknowledgment is reported as on record"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '    if recorded is not None and recorded.valid_at(now):'
+new = '    if recorded is not None:'
+
+[[rows]]
+id = "u184.A6_unreadable_record_refuses"
+source = { table = "u184.json", id = "A6_unreadable_record_refuses" }
+description = "_mint_as_session: let an unreadable record raise, so a damaged file can never be replaced by the session"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''
+    except CratekitError:
+        recorded = None'''
+new = '''
+    except CratekitError:
+        raise'''
+
+[[rows]]
+id = "u184.A7_already_valid_says_ok"
+source = { table = "u184.json", id = "A7_already_valid_says_ok" }
+description = "_mint_as_session: report an existing acknowledgment as an ok run rather than a no op"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''
+                "summary": _summary(recorded, minted=False),
+            },
+            outcome=Outcome.NO_OP,'''
+new = '''
+                "summary": _summary(recorded, minted=False),
+            },
+            outcome=Outcome.OK,'''
+
+[[rows]]
+id = "u184.A8_expiry_row_dropped"
+source = { table = "u184.json", id = "A8_expiry_row_dropped" }
+description = "_mint_as_session: leave the expiry row out of a mint, so a person at a terminal is never shown it"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '                _expiry_row(acknowledgment, minted=True),'
+new = ''
+
+[[rows]]
+id = "u184.A9_expiry_row_names_the_mint"
+source = { table = "u184.json", id = "A9_expiry_row_names_the_mint" }
+description = "_expiry_row: name the moment recorded where the expiry belongs"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '            f"{acknowledgment.expires_at.isoformat()}"'
+new = '            f"{acknowledgment.recorded_at.isoformat()}"'
+
+[[rows]]
+id = "u266.M1_seven_opens_again"
+source = { table = "u266.json", id = "M1_seven_opens_again" }
+description = "read_index_tags: go back to one read_tag call per field, seven opens a file, the regression the card removes"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '    return tags.read_tags(path, INDEX_FIELDS)'
+new = '    return {name: tags.read_tag(path, name) for name in INDEX_FIELDS}'
+
+[[rows]]
+id = "u266.M2_strict_reader"
+source = { table = "u266.json", id = "M2_strict_reader" }
+description = "read_index_tags: read through the checked reader, so a file one open cannot read raises and aborts the walk instead of reading all absent"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '    return tags.read_tags(path, INDEX_FIELDS)'
+new = '    return tags.read_tags_checked(path, INDEX_FIELDS)'
+
+[[rows]]
+id = "u266.M3_a_field_dropped"
+source = { table = "u266.json", id = "M3_a_field_dropped" }
+description = "read_index_tags: read every field but the last, so the vocal gender never reaches the index"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '    return tags.read_tags(path, INDEX_FIELDS)'
+new = '    return tags.read_tags(path, INDEX_FIELDS[:-1])'
+
+[[rows]]
+id = "u266.M4_key_order_reversed"
+source = { table = "u266.json", id = "M4_key_order_reversed" }
+description = "read_index_tags: read the fields in reverse order, the same values under a different key order"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "maintainer"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '    return tags.read_tags(path, INDEX_FIELDS)'
+new = '    return tags.read_tags(path, tuple(reversed(INDEX_FIELDS)))'
+
+[[rows]]
+id = "u266.M6_size_not_compared"
+source = { table = "u266.json", id = "M6_size_not_compared" }
+description = "_entry_is_current: trust a cached entry without comparing the size, the sample guard on when the warm index is trusted"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''
+        and entry.get("size") == identity["size"]
+'''
+new = ''
+
+[[rows]]
+id = "r349-c.C1_prune_recorded"
+source = { table = "r349-c.json", id = "C1_prune_recorded" }
+description = "The prune calls the bare runner, so its commands are not recorded beside its results"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py", "tests/modules/test_tools.py"]
+old = '                    runner=recorded,'
+new = '                    runner=runner,'
+
+[[rows]]
+id = "r349-c.C4_argv_rendered"
+source = { table = "r349-c.json", id = "C4_argv_rendered" }
+description = "outcome_payload renders the label where the argv belongs"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py", "tests/modules/test_tools.py"]
+old = '                        "argv": list(command.argv),'
+new = '                        "argv": [command.label],'
+
+[[rows]]
+id = "u181.E2_direct_reference_drops_extras"
+source = { table = "u181.json", id = "E2_direct_reference_drops_extras" }
+description = "extras.install_command: the direct reference names only the extra asked for, dropping the ones the copy carries"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_install_command.py"]
+old = '''
+            name, chosen, url = reference
+            wanted = ",".join(sorted({*chosen, extras}))'''
+new = '''
+            name, chosen, url = reference
+            wanted = ",".join(sorted({extras}))'''
+
+[[rows]]
+id = "u27-reports-round-2.S5b_engine_default_drift"
+source = { table = "u27-reports-round-2.json", id = "S5b_engine_default_drift" }
+description = "Drift the engine's own copy of the handler key away from the registry's"
+file = "src/cratekit/modules/reports/duplicates.py"
+surface = "user"
+tests = ["tests/modules/test_reports.py", "tests/test_reports_cli.py"]
+old = 'HANDLER_KEY = "audit.duplicates"'
+new = 'HANDLER_KEY = "duplicates.audit"'
+
+[[rows]]
+id = "u48-author.P3_two_codes_collapsed_to_one"
+source = { table = "u48-author.json", id = "P3_two_codes_collapsed_to_one" }
+description = "One code over both conditions, which is the discriminator this unit split"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_reserved_causes.py"]
+old = 'ARCHIVE_PURGE_FAILED = "archive-purge-failed"'
+new = 'ARCHIVE_PURGE_FAILED = "archive-listing-failed"'

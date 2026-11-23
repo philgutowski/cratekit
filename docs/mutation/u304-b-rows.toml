@@ -1,0 +1,28 @@
+name = "u304-b"
+pass_kind = "light"
+
+# U304's second batch, after the first (docs/mutation/u304.md) read S7 and S9
+# zero. S7 again, with the test written to kill it; S15 is S9's composite.
+
+[[rows]]
+id = "S7_walk_keeps_removed_nodes"
+description = "pair_discover._live_children: a removed playlist is read as live (again, with test_a_playlist_deleted_in_rekordbox_is_never_found)"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_adopted.py"]
+old = '''    live = [row for row in every if not rb_writer.node_removed(row)]
+    children: dict[str, list[Any]] = {}'''
+new = '''    live = list(every)
+    children: dict[str, list[Any]] = {}'''
+
+[[rows]]
+id = "S15_favourites_home_judged_without_the_foreign_check"
+description = "pair_discover.discover: a playlist named as the favourites one inside another app's folder counts as the Favorites home; S9's composite, the foreign check S9 hands every node to, removed"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_adopted.py"]
+old = '''        for row in foreign_tree.outside(
+            [r for r in live if _attribute(r) == PLAIN and str(getattr(r, "Name", "") or "") == favorites],
+            every,
+        )'''
+new = '''        for row in [r for r in live if _attribute(r) == PLAIN and str(getattr(r, "Name", "") or "") == favorites]'''

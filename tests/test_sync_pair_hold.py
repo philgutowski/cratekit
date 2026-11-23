@@ -1,13 +1,9 @@
 """U209: answering a gate does not plan the whole sync again.
 
-Driven through ``crate sync pair`` on the disposable database
-``tests/test_sync_pair.py`` builds, with the fake account and catalogue
-counting what each command asks: every listing of an account playlist and
-every ISRC lookup. The command that plans holds its plan under its run, the
-later commands read it back, and the check before the write reads only the
-lists the plan read.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The plan is held under its run and read back by the later commands, and the
+check before the write reads only the lists the plan read; the fakes count
+every listing and lookup. D1 applies, nothing here names a real account,
+person or track.
 """
 
 from __future__ import annotations
@@ -49,7 +45,7 @@ class Counted:
             self.listings += 1
             return real(found, reference, **kwargs)
 
-        monkeypatch.setattr(pair_cli.intake_cli, "list_playlist_readable", listing)
+        monkeypatch.setattr(intake_cli, "list_playlist_readable", listing)
         tracks = w.account.playlist_tracks
 
         def read(playlist_id):
@@ -57,8 +53,7 @@ class Counted:
             return tracks(playlist_id)
 
         w.account.playlist_tracks = read
-        # The provider gate's own count, as the fakes reach no gate: every
-        # listing, every lookup and every account write is one call.
+        # The fakes reach no gate, so every listing, lookup and write counts as one call.
         monkeypatch.setattr(pair_cli, "_spent", self.total)
 
     @property
@@ -93,9 +88,7 @@ def _to_the_write(w) -> str:
     return run_id
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One plan per run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_two_gate_sync_makes_one_plans_lookups(world, counted):
@@ -105,8 +98,7 @@ def test_a_two_gate_sync_makes_one_plans_lookups(world, counted):
     assert code == int(ExitCode.OK), envelope
     assert w.held() == ["1", "2", "3", "4"]
     assert w.on_account() == ["t1", "t2", "t3", "t4"]
-    # Rows three and four are asked once each, by the one plan; the account
-    # playlist is listed by that plan and by the check before the write.
+    # Rows three and four asked once each; listed by the plan and by the check.
     assert seen.lookups == 2
     assert seen.listings == 2
 
@@ -154,9 +146,7 @@ def test_both_sides_skipped_releases_the_held_plan(world):
     assert not held_plan.path(run_id).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The check before the write
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_account_list_changed_before_the_write_refuses_stale_and_names_it(world):
@@ -255,9 +245,7 @@ def test_a_pair_with_nothing_to_write_on_the_account_is_not_listed_again(world, 
     assert seen.listings == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A no change sync, and what each phase cost
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_no_change_sync_of_a_linked_pair_makes_no_isrc_lookup(world, counted, cfg):
@@ -279,8 +267,7 @@ def test_each_phase_is_counted_on_the_answer(world, counted):
     counted(w)
     code, envelope = sync(w.args())
     assert code == int(ExitCode.OK), envelope
-    # Plan: one listing and two lookups. Check: one listing. Write: the add
-    # and the listing after it.
+    # Plan: a listing and two lookups. Check: a listing. Write: the add and a listing.
     assert envelope["data"]["totals"]["calls"] == {"plan": 3, "check": 1, "write": 2}
     written = next(one for one in envelope["warnings"] if one["code"] == pair_cli.WRITTEN)
     assert (
@@ -301,9 +288,8 @@ def test_the_calls_are_on_a_no_op_answer_too(world, counted):
 def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted, cfg, tmp_path, found):
     """U229. Reading every landed INBOX playlist asks the provider nothing.
 
-    The same pair plans the same add whichever way the library's row is
-    found, by the row's own ISRC or by a landing through another account
-    playlist, and the provider is asked the same number of times for both.
+    The same add is planned at the same cost whether the row is found by its
+    ISRC or by another account playlist's landing.
     """
     from tests.test_sync_pair import _landed_for, _untagged_row, isrc
 
@@ -322,9 +308,7 @@ def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted,
     assert seen.lookups == 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A held plan that cannot be used is planned again, and says so
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_unreadable_held_plan_is_planned_again_and_says_why(world, counted):
@@ -342,8 +326,7 @@ def test_an_unreadable_held_plan_is_planned_again_and_says_why(world, counted):
     assert code == int(ExitCode.OK), done
     assert pair_cli.REPLANNED not in {one["code"] for one in done["warnings"]}
     assert w.on_account() == ["t1", "t2"]
-    # The first plan and the plan made again each ask once; the plan made
-    # again is held, so the write asks nothing.
+    # Each plan asks once; the plan made again is held, so the write asks nothing.
     assert seen.lookups == 2
 
 
@@ -389,9 +372,7 @@ def test_a_replanned_run_whose_list_moved_is_refused_by_the_gate(world):
     assert w.on_account() == ["t1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The codec
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _a_plan(w) -> pair_cli.Plan:
@@ -408,9 +389,10 @@ def _store(w):
 
 
 def test_a_real_plan_reads_back_equal_with_its_digest(world):
+    from cratekit.sync import pair_check
     w = world(account=("1", "3"), rekordbox=("1", "2"))
     planned = _a_plan(w)
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     back = held_plan.decode(json.loads(json.dumps(held_plan.encode(planned, registry))), registry)
     assert back == planned
     assert back.digest == planned.digest
@@ -420,7 +402,9 @@ def test_a_real_plan_reads_back_equal_with_its_digest(world):
 def test_a_merge_call_with_its_moments_reads_back_equal():
     from datetime import datetime, timezone
 
-    registry = pair_cli._held_classes()
+    from cratekit.sync import pair_check
+
+    registry = pair_check._held_classes()
     merged = pair_merge.Merged(
         order=("r:1",),
         leader=pair_merge.ACCOUNT,
@@ -435,7 +419,8 @@ def test_a_merge_call_with_its_moments_reads_back_equal():
 
 
 def test_a_class_the_registry_does_not_name_is_refused_both_ways():
-    registry = pair_cli._held_classes()
+    from cratekit.sync import pair_check
+    registry = pair_check._held_classes()
     stranger = pair_cli.Done(account_id="x")
     with pytest.raises(held_plan.Unheld, match="not a class this plan may hold"):
         held_plan.encode(stranger, registry)
@@ -455,7 +440,8 @@ def test_a_value_the_codec_cannot_carry_is_not_held(cfg):
 
 
 def test_a_held_plan_of_another_kind_or_run_is_no_plan(cfg):
-    registry = pair_cli._held_classes()
+    from cratekit.sync import pair_check
+    registry = pair_check._held_classes()
     plan = pair_cli.Plan()
     assert held_plan.hold("run-a", "sync.pair", plan, registry=registry, digest=plan.digest) == ""
     found, digest, _extra, why = held_plan.load(
@@ -479,7 +465,9 @@ def test_old_held_plans_are_pruned_and_the_new_one_kept(cfg):
     import os
     import time
 
-    registry = pair_cli._held_classes()
+    from cratekit.sync import pair_check
+
+    registry = pair_check._held_classes()
     plan = pair_cli.Plan()
     assert held_plan.hold("run-old", "sync.pair", plan, registry=registry, digest=plan.digest) == ""
     assert held_plan.hold("run-young", "sync.pair", plan, registry=registry, digest=plan.digest) == ""

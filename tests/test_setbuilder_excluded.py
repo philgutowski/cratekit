@@ -1,21 +1,9 @@
 """U279: ``crate setbuild`` indexes only the library itself.
 
-Filed from attended sitting 96. The index walked the whole library root, so the
-copies a rehearsal keeps under ``<root>/.cratekit/local/rehearsals/<id>/staging``
-sorted ahead of ``<root>/Music/...`` and took each real file's place when
-``build_index`` collapsed one work to its first file. A person anchoring on the
-real file by path was told it is not in the library, and a set could name a
-companion by a path a cleanup removes.
-
-Two folders are left out of the walk: the library state folder
-(``config.library_state_dir``, whatever ``library.state_dirname`` says) and
-``paths.download_staging`` when it sits under the root, which is setup's own
-default (``<root>/Downloads``). They are matched BY LOCATION, the directory they
-are, never by a name a library folder could share.
-
-The engine half drives ``iter_audio`` and ``build_index`` over plain files with
-a fake reader. The verb half drives ``crate setbuild`` over real tagged FLAC in
-a disposable library, configured the way setup configures one.
+The library state folder and the download staging folder, when under the root,
+are left out of the walk, matched by location and never by name. The engine half
+drives ``iter_audio`` and ``build_index`` with a fake reader; the verb half drives
+``crate setbuild`` over real tagged FLAC in a disposable library.
 """
 
 from __future__ import annotations
@@ -57,9 +45,7 @@ def under(path: Path, folder: Path) -> bool:
     return path == folder or folder in path.parents
 
 
-# ---------------------------------------------------------------------------
-# The engine
-# ---------------------------------------------------------------------------
+# ── The engine ──────────────────────────────────────────────────────────────
 
 
 def test_a_staging_copy_never_takes_the_library_files_place(tmp_path):
@@ -70,25 +56,14 @@ def test_a_staging_copy_never_takes_the_library_files_place(tmp_path):
     state = root / ".cratekit"
 
     before = setbuilder.build_index(root, template=TEMPLATE, reader=same_work)
-    assert [t.path for t in before] == [str(staged)], (
-        "the fixture no longer reproduces the defect: the staging copy must sort "
-        "ahead of the library's own file for this test to mean anything"
-    )
+    assert [t.path for t in before] == [str(staged)], "the fixture no longer reproduces the defect"
 
     index = setbuilder.build_index(root, template=TEMPLATE, reader=same_work, exclude=(state,))
     assert [t.path for t in index] == [str(real)]
 
 
 def test_the_excluded_walk_is_todays_walk_less_the_excluded_folders(tmp_path):
-    """Every library file indexed exactly as before, in exactly the same order.
-
-    Today's answer is ``iter_audio`` with nothing left out, which is
-    ``sorted(root.rglob("*"))`` filtered by suffix. The tree carries what a
-    hand written walk gets wrong: dot folders that are the library's, a folder
-    named like the state folder deeper down, a symlinked folder (not walked
-    today), nested folders on both sides of an excluded one, and files whose
-    names sort between the excluded folder and its siblings.
-    """
+    """Every library file indexed exactly as before, in exactly the same order."""
     root = tmp_path / "library"
     state = root / ".cratekit"
     staging = root / "Downloads" / "incoming"
@@ -134,11 +109,7 @@ def test_the_excluded_walk_is_todays_walk_less_the_excluded_folders(tmp_path):
 
 
 def test_a_folder_the_walk_cannot_list_is_passed_over_as_today(tmp_path, monkeypatch):
-    """An unreadable folder on the hand walked path, as rglob passes one over.
-
-    The container reads every folder as root, so the refusal to list is
-    planted on ``os.scandir``, which today's walk and the hand walk both call.
-    """
+    """An unreadable folder on the hand walked path, as rglob passes one over."""
     root = tmp_path / "library"
     touch(root / "Music" / "A.flac")
     touch(root / "Downloads" / "B.flac")
@@ -219,9 +190,7 @@ def test_an_earlier_cache_entry_under_an_excluded_folder_is_not_served(tmp_path)
     assert sorted(kept) == [str(real)], "the excluded entry survived the write back"
 
 
-# ---------------------------------------------------------------------------
-# The verb
-# ---------------------------------------------------------------------------
+# ── The verb ────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -244,20 +213,16 @@ def configure(library):
 
     def save(*, state_dirname: str | None = None, staging: Path | None = None) -> config.Config:
         section = {
-            "root": str(library),
-            "volume_id": "F1E2-D3C4",
+            "root": str(library), "volume_id": "F1E2-D3C4",
             "db_path": str(library / "db" / "master.db"),
         }
         if state_dirname is not None:
             section["state_dirname"] = state_dirname
-        cfg = config.from_dict(
-            {
-                "schema_version": config.CURRENT_SCHEMA_VERSION,
-                "library": section,
-                "paths": {"download_staging": str(staging or library / "Downloads")},
-                "profile": {"name": "full"},
-            }
-        )
+        cfg = config.from_dict({
+            "schema_version": config.CURRENT_SCHEMA_VERSION, "library": section,
+            "paths": {"download_staging": str(staging or library / "Downloads")},
+            "profile": {"name": "full"},
+        })
         config.save(cfg)
         config.reset_cache()
         return cfg
@@ -274,16 +239,9 @@ def place(library, silence):
         path = library / folder / f"{artist} - {head}.flac"
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(silence, path)
-        assert tags.write_tags(
-            path,
-            {
-                "title": head,
-                "artist": artist,
-                "initialkey": key,
-                "genre": GENRE,
-                "energylevel": energy,
-            },
-        ), f"the fixture could not tag {path.name}"
+        written = {"title": head, "artist": artist, "initialkey": key, "genre": GENRE,
+                   "energylevel": energy}
+        assert tags.write_tags(path, written), f"the fixture could not tag {path.name}"
         return path
 
     return put
@@ -303,11 +261,7 @@ def named_paths(document: dict) -> list[str]:
 
 
 def a_library_with_staging_copies(place, staging_folder: Path) -> dict[str, Path]:
-    """The sitting's shape: every work also copied into a staging folder.
-
-    ``Only Staged`` exists only as a staging copy, so a set that names it has
-    named a path a cleanup removes.
-    """
+    """The sitting's shape: every work also copied into a staging folder."""
     music = Path("Music") / "Labels"
     works = {
         "anchor": ("Alder", "Anchor Work", "08A", 124, 6),
@@ -329,12 +283,7 @@ def assert_nothing_from(document: dict, folder: Path) -> None:
 
 @pytest.mark.parametrize(
     ("state_dirname", "where"),
-    [
-        (None, "state"),
-        ("Cratekit State", "state"),
-        (None, "staging"),
-        (None, "tilde-staging"),
-    ],
+    [(None, "state"), ("Cratekit State", "state"), (None, "staging"), (None, "tilde-staging")],
     ids=["state-folder", "renamed-state-folder", "download-staging", "tilde-staging"],
 )
 def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
@@ -358,7 +307,7 @@ def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
 
     code, document = envelope_of(["setbuild", str(held["anchor"])])
     assert code == int(ExitCode.OK), document
-    paths = [item["path"] for item in document["data"]["items"]]
+    paths = named_paths(document)
     assert sorted(paths) == sorted([str(held["low"]), str(held["up"])])
     assert_nothing_from(document, excluded)
 
@@ -392,11 +341,8 @@ def test_an_anchor_inside_an_excluded_folder_is_refused_naming_the_folder(
 ):
     cfg = configure()
     state = config.library_state_dir(cfg)
-    folder = (
-        state / "local" / "rehearsals" / "X" / "staging"
-        if where == "state"
-        else Path(cfg.paths.download_staging)
-    )
+    rehearsal = state / "local" / "rehearsals" / "X" / "staging"
+    folder = rehearsal if where == "state" else Path(cfg.paths.download_staging)
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
     code, document = envelope_of(["setbuild", str(held["staged"])])

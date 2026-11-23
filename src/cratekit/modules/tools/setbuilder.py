@@ -1,54 +1,19 @@
-"""Feature Inventory row 29: the library-grounded set builder.
+"""The library grounded set builder (Feature Inventory row 29).
 
 Give it an anchor track and it returns owned tracks that mix with it, ranked and
-sequenced. Everything it knows comes from the library's own analyzed tags, which
-is what makes it deterministic: the same anchor against the same files always
-produces the same answer, with no network call, no adapter, and no write.
+sequenced, from the library's own analyzed tags alone: no network call, no
+adapter, no write, so the same anchor over the same files gives the same answer.
 
-THE GROUNDING RULE, WHICH IS THE WHOLE DESIGN. Index membership IS ownership, so
-a track that is not in the index cannot be recommended. That sounds obvious and
-it is the constraint most recommendation code loses first, usually by enriching a
-candidate from the web and forgetting that the enrichment created a candidate
-that does not exist on disk. Here the pool is filtered from the index, the
-ranking runs over pool entries, and the sequence is drawn from the ranked list,
-so the constraint holds at the output boundary rather than being re-checked.
+Index membership IS ownership. The pool is filtered from the index, ranked, and
+the sequence drawn from the ranking, so nothing that is not on disk can be
+recommended. The index reads files rather than an export because energy and
+vocal prominence live only in the tags, tempo lives in the title head (nothing
+here writes a tempo tag, R17), and an export lags a fresh import.
 
-WHY THE INDEX READS FILES AND NOT AN EXPORT. Two of the five ranking signals,
-energy and vocal prominence, exist only in the file tags; the export does not
-carry them. Tempo lives in the title head rather than in a tempo tag, because
-nothing in this product writes a tempo tag (R17). And an export lags a fresh
-import by however long it has been since the user last exported, so a track added
-this morning would be invisible to a set built this afternoon.
-
-FOUR THINGS THIS PORT CHANGES, each closing a defect rather than tidying:
-
-1. **The Camelot parser is the shared one.** The source module's own
-   normalizer merely uppercased and stripped leading zeros, so ``0A``, ``13A``
-   and ``99B`` all became confident answers for keys that are not on the wheel,
-   and a candidate carrying one could enter the pool through a wrap-around that
-   means nothing. ``naming.parse_camelot`` is bounded to 1..12 and is the only
-   code parser in the product now.
-2. **The head is parsed from the declared name template**, not from a private
-   regular expression. The source's pattern hardcoded ``key - bpm - title`` and
-   did not know about the lossy marker, so a marked file's clean title kept the
-   marker and matched nothing.
-3. **Genre affinity comes from the declared taxonomy** (R19). The source
-   hardcoded one person's genre families as substring rules, so a user whose
-   library is not house-centric got a soft prior that described somebody else's
-   record collection.
-4. **The vocal threshold is a parameter** (D7). The source reached up into an
-   analysis module for it, which is one of the two live layering violations the
-   plan says to fix rather than port; here an unsupplied threshold simply makes
-   the vocal signal neutral, which is what a library with no vocal analysis
-   should produce.
-
-WHAT IS DELIBERATELY NOT PORTED. The source resolves an unowned anchor by
-querying a streaming service for its artist and title, then asking a web lookup
-for a key. The plan's disposition for this unit is "pure read, no writes, no
-adapter, no jobs", so no network call ships here. The affordance survives as an
-injected seam: a caller that wants web enrichment supplies it, and the default is
-None, which means an unowned anchor asks for its key to be supplied rather than
-guessing one.
+The Camelot parser is the shared, bounded one; the head is parsed from the
+declared name template; genre affinity comes from the declared taxonomy (R19);
+the vocal threshold is a parameter (D7). An unowned anchor is never looked up on
+the web: a caller may inject a lookup, and without one it asks for a key.
 """
 
 from __future__ import annotations
@@ -63,56 +28,33 @@ from pathlib import Path
 from rapidfuzz import fuzz, process
 
 from cratekit.core import config, routing, tags
-from cratekit.core.naming import (
-    AUDIO_EXTS,
-    NameTemplate,
-    parse_camelot,
-    parse_head,
-    split_head,
-)
+from cratekit.core.naming import AUDIO_EXTS, NameTemplate, parse_camelot, parse_head, split_head
 from cratekit.core.taxonomy import Taxonomy
 
 log = logging.getLogger(__name__)
 
-#: The tag fields the index reads. Every one is looked up through
-#: ``core.tags``'s single container-correct reader, so this module never opens an
-#: audio file itself and cannot disagree with the writer about where a field
-#: lives.
+#: The tag fields the index reads, all through ``core.tags``'s one reader, so
+#: this module never opens an audio file itself.
 INDEX_FIELDS: tuple[str, ...] = (
-    "title",
-    "artist",
-    "genre",
-    "initialkey",
-    "energylevel",
-    "voxlevel",
-    "voxgender",
+    "title", "artist", "genre", "initialkey", "energylevel", "voxlevel", "voxgender",
 )
 
-#: Cache format. Bumped when :class:`Track` gains or loses a field, because a
-#: cached entry is deserialized straight into one and a stale shape would raise
-#: on a machine that had simply run an older build. ALSO BUMPED WHEN THE PARSE
-#: THAT FILLS ONE CHANGES, ``match_key``, the head parser or the Camelot parser:
-#: a cached entry is that parse's output, and a changed parse touches no file's
-#: modification time, so nothing else would ever retire the old answers. The
-#: template stamp covers the parse's one DATA input; this covers its code.
+#: Cache format. Bumped when :class:`Track` changes shape, AND when the parse
+#: that fills one changes (``match_key``, the head or Camelot parser): a changed
+#: parse touches no file's modification time, so nothing else retires old answers.
 #: 3: an entry carries the file's size and its modification time in nanoseconds.
 CACHE_VERSION = 3
 
 
-# ---------------------------------------------------------------------------
 # The types
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Track:
     """One owned track and the five signals the ranker uses.
 
-    ``key`` is canonical Camelot (unpadded, upper: ``2A``, ``12B``). ``bpm`` is
-    None when the name carried no tempo, ``energy`` and ``vox`` are None when the
-    analysis passes never tagged the file. None means UNKNOWN throughout and is
-    scored neutrally; it never means zero, because a track with no energy reading
-    is not a track with no energy.
+    ``key`` is canonical Camelot (``2A``, ``12B``). None means UNKNOWN throughout
+    and scores neutrally; a track with no energy reading is not a quiet track.
     """
 
     artist: str
@@ -136,9 +78,8 @@ class Track:
 class Anchor:
     """The track a set is built around, owned or not.
 
-    ``owned`` and ``track`` are not redundant. An unowned anchor still carries a
-    key and a tempo, supplied by the caller, and the pool is built from those; it
-    simply contributes no genre, energy, or vocal signal, so those score neutral.
+    An unowned anchor carries a supplied key and tempo and no ``track``, so its
+    genre, energy and vocal signals score neutral.
     """
 
     key: str | None
@@ -147,13 +88,9 @@ class Anchor:
     track: Track | None = None
     display: str = ""
     #: True when the key did not come from the library's own analysis, so the
-    #: caller must show it before the picks are trusted. A web-derived key flips
-    #: the relative major/minor side often enough that trusting it silently
-    #: produces a plausible, wrong set.
+    #: caller must show it before the picks are trusted.
     key_needs_confirming: bool = False
-    #: Set when the anchor could not be resolved at all. A structured absence
-    #: rather than an exception: "not in your library" is an ordinary answer to
-    #: an ordinary question, and the caller renders it.
+    #: Why the anchor could not be resolved: an ordinary answer, not an exception.
     unresolved: str = ""
 
 
@@ -179,13 +116,7 @@ class SetPlan:
 
 @dataclass(frozen=True, slots=True)
 class Weights:
-    """Ranking weights, summing to one.
-
-    A dataclass rather than module constants so two rankings can run in one
-    process with different weights, which is what makes the weighting testable
-    at all: constants would force a monkeypatch, and a monkeypatched weight is
-    not the weight that ships.
-    """
+    """Ranking weights, summing to one; a value so two rankings can differ in one process."""
 
     harmonic: float = 0.35
     bpm: float = 0.20
@@ -218,18 +149,14 @@ DEFAULT_POOL = 8
 DEFAULT_SIDE = 2
 
 
-# ---------------------------------------------------------------------------
 # Identity and normalization
-# ---------------------------------------------------------------------------
 
 
 def canonical_key(code: str | None) -> str:
     """Canonical unpadded Camelot, or "" when the code is not on the wheel.
 
-    One parser, shared with naming and with every other consumer. The empty
-    string is deliberate: a track whose key cannot be placed on the wheel cannot
-    be harmonically ranked, so it is excluded from the index rather than carried
-    with a key nobody can compare.
+    A track whose key cannot be placed cannot be ranked, so "" keeps it out of
+    the index.
     """
     parsed = parse_camelot(code or "")
     if parsed is None:
@@ -241,20 +168,15 @@ def canonical_key(code: str | None) -> str:
 def match_key(artist: str, title: str) -> str:
     """The comparison form for anchor lookup and duplicate collapse.
 
-    Lowercased, punctuation-stripped, whitespace-collapsed. Deliberately NOT the
-    identity primitive a match or a tombstone uses: those decide whether two
-    recordings are the same VERSION, and being wrong there costs a file. This
-    decides whether two index entries are the same work for the purpose of not
-    listing it twice, and being wrong here costs one duplicate line.
+    Lowercased, punctuation stripped, whitespace collapsed. Not the version
+    identity a match uses: being wrong here costs one duplicate line, not a file.
     """
     text = f"{artist} {title}".lower()
     kept = [c if c.isalnum() or c.isspace() else " " for c in text]
     return " ".join("".join(kept).split())
 
 
-# ---------------------------------------------------------------------------
 # The index
-# ---------------------------------------------------------------------------
 
 TagReader = Callable[[Path], Mapping[str, str | None]]
 FileLister = Callable[[Path, Sequence[Path]], Iterable[Path]]
@@ -263,39 +185,20 @@ FileLister = Callable[[Path, Sequence[Path]], Iterable[Path]]
 def read_index_tags(path: Path) -> dict[str, str | None]:
     """Read the index fields from one file through ONE container open.
 
-    All of :data:`INDEX_FIELDS` go through one ``core.tags.read_tags`` call,
-    which opens the file once and reads each field under the dialect's own
-    key. Each field answers exactly what ``core.tags.read_tag`` answers for it,
-    because that reader is one field of this one: an absent field, an
-    undecodable one (its neighbours still read), a container the tag module
-    does not handle (nothing is opened) and a file that cannot be opened all
-    read as None. Until U266 this asked ``read_tag`` once per field, and the
-    first walk of a library opened every file seven times.
-
-    A single unreadable file yields all-None rather than aborting the scan,
-    which is safe here only because the caller asserts the mount precondition
-    first: with the volume absent every file reads as untagged, and a whole
-    library of untagged tracks is a perfectly valid input that produces a
-    silently wrong answer.
+    An absent, undecodable or unreadable field reads as None, exactly as
+    ``core.tags.read_tag`` answers it. A wholly unreadable file yields all None
+    rather than aborting the scan, which is safe only because the caller checks
+    the mount first.
     """
     return tags.read_tags(path, INDEX_FIELDS)
 
 
 def iter_audio(root: Path, exclude: Iterable[Path] = ()) -> Iterator[Path]:
-    """Every audio file under ``root``, in a stable order, less ``exclude``.
+    """Every audio file under ``root``, sorted, less the ``exclude`` folders.
 
-    Sorted, because the index order decides which of two duplicate works
-    survives the collapse, and an unsorted walk would make that choice depend on
-    the filesystem's mood.
-
-    ``exclude`` names folders the library holds that are NOT the library's own
-    music (U279): Cratekit's library state folder, whose rehearsals keep staged
-    copies of real tracks, and the download staging folder when it sits under
-    the root, which is where setup puts it by default. Their copies sorted ahead
-    of ``Music`` and took the real files' place in the collapse. Each is matched
-    by :class:`Exclusion`, by the directory it IS and never by its name, and is
-    pruned rather than walked and filtered. Everything outside them is yielded
-    exactly as ``sorted(root.rglob("*"))`` yields it, in the same order.
+    Sorted because the order decides which duplicate survives the collapse.
+    ``exclude`` folders (state, download staging) are pruned by :class:`Exclusion`;
+    the rest is yielded as ``sorted(root.rglob("*"))`` yields it.
     """
     suffixes = frozenset(AUDIO_EXTS)
     for candidate in sorted(Exclusion.under(root, exclude).walk(root)):
@@ -313,21 +216,12 @@ def _identity(status: os.stat_result) -> _Identity:
 
 @dataclass(frozen=True, slots=True)
 class Exclusion:
-    """The folders under a root the index leaves out, BY LOCATION (U279).
+    """The folders under a root the index leaves out, BY LOCATION.
 
-    A path is not an identity. The configured staging folder may be spelled
-    through a symlinked mount, with a trailing separator or a ``..``, or in
-    another letter case on a volume that ignores case, and a library folder
-    deeper down may share the state folder's NAME. So each configured folder is
-    read once as the directory it is, its device and inode, and the walk
-    compares directories against that, never names.
-
-    ``folders`` maps each excluded directory's identity to the configured path,
-    which a refusal names. ``ancestors`` holds the directories strictly between
-    the root and an excluded folder: only those are walked by hand, and every
-    other subtree is handed to ``rglob`` whole, so what is yielded outside the
-    excluded folders is what today's walk yields. A configured folder that is
-    missing, is the root, holds the root, or sits outside it excludes nothing.
+    A path is not an identity, so each folder is read once as device and inode.
+    ``folders`` maps each to the configured path a refusal names; ``ancestors``
+    are the directories above one, the only ones walked by hand. A folder that is
+    missing, is or holds the root, or sits outside it excludes nothing.
     """
 
     folders: Mapping[_Identity, Path]
@@ -352,9 +246,8 @@ class Exclusion:
     def walk(self, root: Path) -> Iterator[Path]:
         """What ``root.rglob("*")`` yields, less every excluded folder and its contents.
 
-        ``rglob`` yields every entry of every directory it reaches and descends
-        into real directories only, never a symlink to one, and an entry it
-        cannot list it passes over. The hand walk below keeps all three.
+        Like ``rglob``: every entry of every directory reached, descending into
+        real directories only, passing over what cannot be listed.
         """
         if not self.folders:
             yield from root.rglob("*")
@@ -385,9 +278,8 @@ class Exclusion:
     def holder(self, path: Path) -> Path | None:
         """The configured excluded folder ``path`` sits in, or None.
 
-        Read up the path's own folders, each as the directory it is, until the
-        root: so an anchor spelled through a link into staging is placed where
-        it is rather than where its spelling says.
+        Read up the path's folders as directories, so a spelling through a link
+        is placed where it really is.
         """
         if not self.folders:
             return None
@@ -406,10 +298,8 @@ class Exclusion:
 def _chain_to(folder: Path, top: _Identity) -> list[_Identity]:
     """``folder`` and each directory above it, up to and not including ``top``.
 
-    Empty when ``folder`` is not a directory strictly under ``top``. Read on the
-    resolved path, so the chain is the real directories whatever the spelling,
-    and each step compared by identity, so case and mount spelling cannot hide
-    the root.
+    Empty unless ``folder`` is a directory strictly under ``top``; read on the
+    resolved path and compared by identity.
     """
     try:
         current = folder.resolve()
@@ -432,120 +322,58 @@ def _chain_to(folder: Path, top: _Identity) -> list[_Identity]:
 
 
 def parse_entry(
-    raw: Mapping[str, str | None],
-    *,
-    path: str = "",
-    template: NameTemplate,
+    raw: Mapping[str, str | None], *, path: str = "", template: NameTemplate
 ) -> Track | None:
-    """Build a :class:`Track` from a tag mapping. Pure, so it needs no audio.
+    """Build a :class:`Track` from a tag mapping, or None without a Camelot key.
 
-    Returns None when no Camelot key can be established, because a track that
-    cannot be placed on the wheel cannot be harmonically compared and would enter
-    the pool only through a tier lookup that means nothing.
-
-    The key comes from the ``initialkey`` tag, falling back to the name head; the
-    tempo and the clean title come from the head. That order matters: the tag is
-    what the analysis pass wrote, while the head is what a renamer wrote from it,
-    so the tag is the earlier and more authoritative of the two.
+    The key comes from the ``initialkey`` tag, which the analysis wrote, falling
+    back to the name head a renamer wrote from it; tempo and clean title come
+    from the head.
     """
     raw_title = (raw.get("title") or "").strip()
     head, remainder = split_head(raw_title, template=template)
-    fields = _head_fields(raw_title, template=template)
+    head_fields = parse_head(raw_title, template=template) or {}
     clean_title = remainder.strip() if head else raw_title
-
-    key = canonical_key(raw.get("initialkey") or fields.get("key"))
+    key = canonical_key(raw.get("initialkey") or head_fields.get("key"))
     if not key:
         return None
-
-    bpm = _as_float(fields.get("bpm"))
     artist = (raw.get("artist") or "").strip()
     return Track(
         artist=artist,
         title=clean_title,
         key=key,
-        bpm=bpm,
+        bpm=_as_number(float, head_fields.get("bpm")),
         genre=(raw.get("genre") or "").strip(),
-        energy=_as_int(raw.get("energylevel")),
-        vox=_as_int(raw.get("voxlevel")),
+        energy=_as_number(int, raw.get("energylevel")),
+        vox=_as_number(int, raw.get("voxlevel")),
         voxgender=(raw.get("voxgender") or "").strip() or None,
         match=match_key(artist, clean_title),
         path=path,
     )
 
 
-def _head_fields(name: str, *, template: NameTemplate) -> dict[str, str]:
-    return parse_head(name, template=template) or {}
-
-
-def _as_int(value: object) -> int | None:
+def _as_number(kind: type[int] | type[float], value: object) -> int | float | None:
     try:
-        return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _as_float(value: object) -> float | None:
-    try:
-        return float(str(value).strip())
+        return kind(str(value).strip())
     except (TypeError, ValueError):
         return None
 
 
 def build_index(
-    root: Path | str,
-    *,
-    template: NameTemplate,
-    cache_path: Path | None = None,
-    reader: TagReader = read_index_tags,
-    lister: FileLister = iter_audio,
+    root: Path | str, *, template: NameTemplate, cache_path: Path | None = None,
+    reader: TagReader = read_index_tags, lister: FileLister = iter_audio,
     exclude: Sequence[Path] = (),
 ) -> tuple[Track, ...]:
     """Scan ``root`` and return the deduplicated index, in walk order.
 
-    ``cache_path`` defaults to None, meaning NO CACHE, and there is deliberately
-    no fallback path. The cache is a declared state file
-    (``setbuilder_index_cache``) that the caller resolves through the state
-    inventory; a module that composed its own path under a state root would
-    create a file nothing walking that inventory can find, snapshot, or clear.
-    None is what a test wants and what a one-off run can afford.
-
-    The cache is keyed on path, modification time in nanoseconds AND size, so an
-    edited file invalidates only itself. Size is there because the time alone is
-    forgeable by exactly the tools a library is restored with: ``rsync -a``,
-    ``cp -p`` and rclone all put different bytes at the same path under the old
-    time, and the rest of this product pairs the two for that reason.
-
-    THE WHOLE CACHE IS ALSO STAMPED WITH THE TEMPLATE it was parsed under,
-    because a cached entry is the OUTPUT of a parse and the template is that
-    parse's other input: a changed lossy marker alters every marked file's clean
-    title and match key while touching no file's modification time, so without
-    the stamp the old titles would be served for ever. A stamp that differs
-    discards the cache, at the cost of one scan.
-
-    A file whose parse yielded nothing is cached as nothing: without that, every
-    keyless file in the library is re-read on every run, which is the majority
-    of the cost on a library with unanalyzed corners. BUT A READ THAT RETURNED
-    NO FIELD AT ALL IS NOT CACHED. The shared reader answers None for an absent
-    tag and for a file it could not open alike, so a wholly empty read cannot be
-    told from a momentary I/O error on an external volume, and caching it would
-    drop an analyzed track from the index until somebody touched the file.
-    Re-reading a file with no tags at all costs one open per run, which is the
-    cheaper of the two mistakes.
-
-    NOTHING IS WRITTEN WHEN THE WALK FOUND NO FILE. An empty walk over a root
-    that is a directory is what an unmounted volume's leftover mountpoint looks
-    like, and creating a state directory inside it is how the real volume comes
-    to mount under a second name.
-
-    A cache write failure is logged and swallowed. The cache is an optimization,
-    and refusing to produce a set because a cache could not be written would turn
-    a performance feature into an outage.
-
-    ``exclude`` names the folders under ``root`` that are not the library's own
-    music, handed to the lister (U279); :func:`iter_audio` prunes them. A cache
-    entry is only ever served for a path the walk yields, and the cache written
-    back holds only those, so an entry an earlier build cached under an excluded
-    folder is never served and is gone after the next write.
+    ``cache_path`` None means no cache, never a fallback path: the cache is the
+    declared state file ``setbuilder_index_cache``. Entries are keyed on path,
+    nanosecond mtime AND size (restores keep old times over new bytes), and the
+    cache is stamped with the template, whose change alters titles but no file.
+    A read with no field at all is not cached, as it may be an I/O error. Nothing
+    is written after an empty walk (an unmounted volume's mountpoint), and a
+    failed write is logged and swallowed. Only paths the lister yields, less
+    ``exclude``, are served or written back.
     """
     root = Path(root)
     files = list(lister(root, tuple(exclude)))
@@ -561,7 +389,6 @@ def build_index(
             stat = path.stat()
             identity = {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
         except OSError:
-            # A file that cannot be stat'ed has no identity to cache under.
             identity = None
         entry = cached.get(key)
         if identity is not None and _entry_is_current(entry, identity):
@@ -585,9 +412,8 @@ def build_index(
 def _entry_is_current(entry: object, identity: Mapping[str, int]) -> bool:
     """Whether a cached entry describes the file as it is now.
 
-    Every comparison is against a value of the right TYPE, because the cache is a
-    file on a volume that syncs, and a hand edit or a conflict copy can hold any
-    JSON at all. A cache that cannot be trusted costs one read, never the run.
+    Every comparison checks TYPE too: the cache syncs, and a hand edit or a
+    conflict copy can hold any JSON. An untrusted entry costs one read.
     """
     return (
         isinstance(entry, dict)
@@ -598,12 +424,10 @@ def _entry_is_current(entry: object, identity: Mapping[str, int]) -> bool:
 
 
 def _template_stamp(template: NameTemplate) -> str:
-    """The template as a string that is equal exactly when the template is.
+    """The template as a string equal exactly when the template is.
 
-    Built field by field rather than taken from ``repr``, because the template
-    holds a frozenset and a set's repr follows string hashing, which differs
-    between two runs of the same build. A stamp that moved on its own would
-    discard the cache on every run and look exactly like a cache that works.
+    Field by field rather than ``repr``, because a frozenset's repr follows
+    string hashing and would differ between runs, discarding the cache each time.
     """
     parts = []
     for field in fields(template):
@@ -622,9 +446,6 @@ def _load_cache(cache_path: Path | None, stamp: str) -> dict[str, dict]:
     except (OSError, ValueError):
         return {}
     if not isinstance(data, dict) or data.get("cache_version") != CACHE_VERSION:
-        # A cache written by another build describes a Track shape this one may
-        # not have. Discarding it costs one scan; deserializing it costs a
-        # TypeError in the middle of a run.
         return {}
     if data.get("template") != stamp:
         return {}
@@ -639,8 +460,7 @@ def _save_cache(cache_path: Path | None, entries: Mapping[str, dict], stamp: str
         {"cache_version": CACHE_VERSION, "template": stamp, "entries": dict(entries)}
     )
     try:
-        # The shared state writer: a rename into place, so a killed run or two
-        # runs at once leave the old cache or the new one and never half of one.
+        # Renamed into place, so a killed run leaves the old cache or the new one.
         config.atomic_write_bytes(payload.encode("utf-8"), cache_path)
     except OSError as exc:
         log.debug("set-builder index cache not written to %s: %s", cache_path, exc)
@@ -653,8 +473,7 @@ def _track_from_cache(raw: object) -> Track | None:
         track = Track(**raw)
     except TypeError:
         return None
-    # The right NAMES with the wrong TYPES construct without complaint and fail
-    # later, inside the ranking, where nothing says the cache was the cause.
+    # Right names with wrong types construct fine and fail later, in the ranking.
     texts = (track.artist, track.title, track.key, track.genre, track.match, track.path)
     if not all(isinstance(value, str) for value in texts):
         return None
@@ -670,9 +489,7 @@ def _is_number(value: object) -> bool:
     return value is None or (isinstance(value, int | float) and not isinstance(value, bool))
 
 
-# ---------------------------------------------------------------------------
 # Harmony: the Camelot wheel and the tempo band
-# ---------------------------------------------------------------------------
 
 
 def _wrap(number: int) -> int:
@@ -688,48 +505,28 @@ def compatible_keys(anchor_key: str) -> dict[str, str]:
         boost    (n+2)L                     the energy lift
         wider    (n-2)L, (n+3)L, (n-1)O, (n+1)O   diagonals, used sparingly
 
-    Assigned widest-first so the narrower tiers overwrite them, which is how a
-    key that is both a diagonal and a neighbour ends up reported as the
-    neighbour it is.
+    Assigned widest first so the narrower tiers overwrite them.
     """
     parsed = parse_camelot(anchor_key or "")
     if parsed is None:
         return {}
     number, letter = parsed
     other = "B" if letter == "A" else "A"
-    tiers: dict[str, str] = {}
-    for code in (
-        f"{_wrap(number - 2)}{letter}",
-        f"{_wrap(number + 3)}{letter}",
-        f"{_wrap(number - 1)}{other}",
-        f"{_wrap(number + 1)}{other}",
-    ):
-        tiers[code] = "wider"
+    wider = ((-2, letter), (3, letter), (-1, other), (1, other))
+    perfect = ((0, letter), (1, letter), (-1, letter), (0, other))
+    tiers = {f"{_wrap(number + step)}{side}": "wider" for step, side in wider}
     tiers[f"{_wrap(number + 2)}{letter}"] = "boost"
-    for code in (
-        f"{_wrap(number)}{letter}",
-        f"{_wrap(number + 1)}{letter}",
-        f"{_wrap(number - 1)}{letter}",
-        f"{_wrap(number)}{other}",
-    ):
-        tiers[code] = "perfect"
+    tiers.update({f"{_wrap(number + step)}{side}": "perfect" for step, side in perfect})
     return tiers
 
 
 def in_band(
-    candidate_bpm: float | None,
-    anchor_bpm: float | None,
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    candidate_bpm: float | None, anchor_bpm: float | None, *, width: float = DEFAULT_BPM_WIDTH
 ) -> bool:
-    """True when the candidate sits within ``width`` of the anchor, its half, or
-    its double.
+    """True when the candidate sits within ``width`` of the anchor, its half, or its double.
 
-    Half and double time are included because they are a mix, not a coincidence.
-    An anchor with no tempo drops the constraint entirely rather than excluding
-    everything, which is what makes a key-only pool possible; a CANDIDATE with no
-    tempo is excluded when the anchor has one, because there is nothing to check
-    it against and a silent pass would put an untested tempo in the set.
+    An anchor with no tempo drops the constraint (a key only pool); a candidate
+    with no tempo is excluded when the anchor has one, as untested.
     """
     if anchor_bpm is None:
         return True
@@ -742,16 +539,12 @@ def in_band(
 
 
 def build_pool(
-    anchor: Anchor,
-    index: Sequence[Track],
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    anchor: Anchor, index: Sequence[Track], *, width: float = DEFAULT_BPM_WIDTH
 ) -> tuple[tuple[Track, str], ...]:
     """Filter the index to harmonically and rhythmically compatible candidates.
 
-    The anchor itself is excluded by match key rather than by path, so a second
-    copy of the anchor (a re-import, an extended edit that normalizes the same)
-    does not come back as its own best companion.
+    The anchor is excluded by match key, not path, so a second copy of it does
+    not come back as its own best companion.
     """
     tiers = compatible_keys(anchor.key or "")
     anchor_match = anchor.track.match if anchor.track else None
@@ -760,17 +553,12 @@ def build_pool(
         if anchor_match and track.match == anchor_match:
             continue
         tier = tiers.get(track.key)
-        if tier is None:
-            continue
-        if not in_band(track.bpm, anchor.bpm, width=width):
-            continue
-        out.append((track, tier))
+        if tier is not None and in_band(track.bpm, anchor.bpm, width=width):
+            out.append((track, tier))
     return tuple(out)
 
 
-# ---------------------------------------------------------------------------
 # Ranking
-# ---------------------------------------------------------------------------
 
 
 def harmonic_score(tier: str) -> float:
@@ -778,16 +566,9 @@ def harmonic_score(tier: str) -> float:
 
 
 def bpm_score(
-    candidate: float | None,
-    anchor: float | None,
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    candidate: float | None, anchor: float | None, *, width: float = DEFAULT_BPM_WIDTH
 ) -> float:
-    """Proximity to the nearest of the anchor, its half, or its double.
-
-    Neutral when either tempo is unknown, so a library where the tempo never made
-    it into the name ranks on its other four signals instead of ranking randomly.
-    """
+    """Proximity to the nearest of the anchor, its half, or its double; neutral when unknown."""
     if candidate is None or anchor is None:
         return 0.5
     distance = min(abs(candidate - r) for r in (anchor, anchor / 2, anchor * 2))
@@ -795,12 +576,10 @@ def bpm_score(
 
 
 def energy_score(candidate: int | None, anchor: int | None, role: str) -> float:
-    """Role-aware energy fit, neutral when either reading is unknown.
+    """Role aware energy fit, neutral when either reading is unknown.
 
-    ``before`` rewards equal or lower (a lead-in), ``after`` rewards equal or
-    higher (a lift), ``either`` rewards closeness. The divisor is the usable span
-    of the 1-to-10 scale, so a full-scale difference saturates rather than going
-    negative and being clamped away silently.
+    ``before`` rewards equal or lower, ``after`` equal or higher, ``either``
+    closeness; the divisor is the usable span of the 1 to 10 scale.
     """
     if candidate is None or anchor is None:
         return 0.5
@@ -812,20 +591,11 @@ def energy_score(candidate: int | None, anchor: int | None, role: str) -> float:
     return max(0.0, 1.0 - abs(delta) / 8.0)
 
 
-def vocal_score(
-    candidate: int | None,
-    anchor: int | None,
-    *,
-    threshold: float | None,
-) -> float:
-    """Penalize a vocal-forward companion beside a vocal-forward anchor.
+def vocal_score(candidate: int | None, anchor: int | None, *, threshold: float | None) -> float:
+    """Penalize a vocal forward companion beside a vocal forward anchor.
 
-    Two lead vocals over one another is the clash this signal exists to avoid.
-    The threshold that decides "vocal-forward" is PASSED IN (D7): the source
-    fetched it by importing an analysis module from inside the ranker, which
-    raises on a slim install that has no analysis module at all. An absent
-    threshold scores neutral-high, which is what a library with no vocal analysis
-    should produce: no penalty, and no false confidence either.
+    The threshold is passed in (D7) so the ranker imports no analysis module; an
+    absent one scores neutral high.
     """
     if candidate is None or anchor is None or threshold is None:
         return 0.7
@@ -848,12 +618,9 @@ def _key_direction(candidate_key: str, anchor_key: str | None) -> int:
 
 
 def assign_role(track: Track, anchor: Anchor) -> str:
-    """Where the candidate sits relative to the anchor.
+    """Where the candidate sits relative to the anchor: energy first, then the wheel.
 
-    Energy decides it, with the wheel direction as the tiebreak, because energy
-    is what a listener hears as "this came before that". When neither signal
-    resolves, the answer is ``either`` rather than a guess, and the sequence
-    builder uses those as filler for whichever side is short.
+    ``either`` when neither resolves; the sequence uses those as filler.
     """
     anchor_energy = anchor.track.energy if anchor.track else None
     if track.energy is not None and anchor_energy is not None:
@@ -881,21 +648,14 @@ def _reason(track: Track, tier: str, anchor: Anchor, role: str, affinity: float)
 
 
 def rank(
-    pool: Sequence[tuple[Track, str]],
-    anchor: Anchor,
-    *,
-    taxonomy: Taxonomy,
-    width: float = DEFAULT_BPM_WIDTH,
-    weights: Weights = DEFAULT_WEIGHTS,
+    pool: Sequence[tuple[Track, str]], anchor: Anchor, *, taxonomy: Taxonomy,
+    width: float = DEFAULT_BPM_WIDTH, weights: Weights = DEFAULT_WEIGHTS,
     vox_threshold: float | None = None,
 ) -> tuple[Scored, ...]:
     """Score the pool and order it, best first.
 
-    ``taxonomy`` is a PARAMETER because the domain layer takes values (KTD23) and
-    because a user's genre families are their own declaration (R19). The tie
-    break is the match key, so two candidates that score identically order the
-    same way on every run: an ordering that depends on the walk is an ordering a
-    user cannot reproduce, and reproducibility is the point of the whole engine.
+    ``taxonomy`` is a parameter (KTD23, R19). Ties break on the match key, so the
+    order is the same on every run.
     """
     anchor_track = anchor.track
     anchor_genre = anchor_track.genre if anchor_track else None
@@ -913,40 +673,26 @@ def rank(
             + weights.energy * energy_score(track.energy, anchor_energy, role)
             + weights.vocal * vocal_score(track.vox, anchor_vox, threshold=vox_threshold)
         )
-        scored.append(
-            Scored(
-                track=track,
-                tier=tier,
-                role=role,
-                score=score,
-                reason=_reason(track, tier, anchor, role, affinity),
-            )
-        )
+        reason = _reason(track, tier, anchor, role, affinity)
+        scored.append(Scored(track=track, tier=tier, role=role, score=score, reason=reason))
     scored.sort(key=lambda s: (-s.score, s.track.match))
     return tuple(scored)
 
 
-# ---------------------------------------------------------------------------
 # Anchor resolution and the sequence
-# ---------------------------------------------------------------------------
 
 WebKeyLookup = Callable[[str, str], Mapping[str, object] | None]
 
 
-#: How close a typed anchor must be to an index entry before it counts as that
-#: entry. High on purpose: building a set around the WRONG anchor is a worse
-#: answer than refusing to build one, because every pick that follows is
-#: internally consistent and therefore looks right.
+#: How close a typed anchor must be to an index entry to count as it. High: a
+#: set around the WRONG anchor looks right and is worse than a refusal.
 MATCH_THRESHOLD = 90
 
-#: How many candidates a refusal names. A vague query can reach a whole label's
-#: worth of titles, and a listing nobody can read is not a remedy.
+#: How many candidates a refusal names; a listing nobody can read is no remedy.
 CANDIDATE_LIMIT = 10
 
-#: How close one typed WORD must be to a word of the title to count as that
-#: word. Low enough that a slip of the finger still lands, "anchr" on "anchor",
-#: and high enough that the words which tell two versions apart never do:
-#: "extended" on "original", "club" on "dub" and "remix" on "mix" all fall under.
+#: How close one typed WORD must be to a title word: "anchr" lands on "anchor",
+#: while "extended" on "original", "club" on "dub", "remix" on "mix" fall under.
 WORD_THRESHOLD = 80
 
 
@@ -954,23 +700,17 @@ WORD_THRESHOLD = 80
 class AnchorMatch:
     """What a typed anchor names in the index: one track, several, or nothing.
 
-    Three answers and not two. ``track`` set is a resolution. ``track`` None with
-    ``candidates`` is a REFUSAL THAT KNOWS WHY: the name reached owned tracks and
-    could not choose between them, and the caller shows them rather than picking.
-    Both empty is an ordinary absence. Folding the middle answer into either
-    neighbour is the defect this type exists to end (R-187): folded into the
-    first it builds a set around whichever track the walk met first, and folded
-    into the last it tells a person their track is not in their library.
+    ``track`` set is a resolution; ``track`` None with ``candidates`` is a
+    refusal that knows why (several owned tracks reached, none chosen); both
+    empty is an ordinary absence. The middle answer must never fold into either
+    neighbour (R-187).
     """
 
     track: Track | None = None
     #: The owned tracks the name reached, best score first, when none was chosen.
     candidates: tuple[Track, ...] = ()
-    #: True when NO candidate holds every word of the name. Several candidates
-    #: that each hold all of it is a choice between owned tracks. Candidates that
-    #: all lack part of it is a different statement: the person named a version,
-    #: a remix or a credit the library's copies do not carry, so what they named
-    #: may not be owned at all.
+    #: True when NO candidate holds every word of the name: the person named a
+    #: version, remix or credit the library's copies do not carry.
     partial: bool = False
 
 
@@ -979,30 +719,10 @@ def match_in_index(
 ) -> AnchorMatch:
     """Resolve ``query`` against the index, refusing rather than guessing.
 
-    AN EXACT HIT ON THE COMPARISON KEY WINS OUTRIGHT, before any fuzzy score is
-    taken. ``token_set_ratio`` scores a subset at 100, so "Alder - Anchor Work"
-    scores identically against that track and against "Alder - Anchor Work
-    (Extended Mix)", and no threshold separates two candidates that are both at
-    the ceiling. The exact comparison is the only thing that can.
-
-    Fuzzy after that, because a user types what they remember, and the library's
-    titles carry remix credits, feature credits, and label suffixes that nobody
-    types. EVERY hit at the threshold is collected, never the first: one hit is
-    a resolution and two are a question only the person can answer.
-
-    A HIT COUNTS ONLY WHEN IT HOLDS EVERY WORD OF THE NAME. The set score cannot
-    say so: it is 100 whenever one side is a subset of the other, in EITHER
-    direction, and on a long title it stays above the threshold while the one
-    word that matters differs, "Original Mix" against "Extended Mix". So each
-    typed word is looked for among the hit's own, with room for a slip of the
-    finger and none for a different word. Typing LESS than the title is
-    remembering; typing something the title does not hold is naming something
-    else. One hit that holds the whole name is the resolution, even when other
-    titles scored as high on fewer words. Several are a question only the person
-    can answer. Hits that ALL lack part of the name come back ``partial``.
-
-    Candidates are ordered by score and then by match key and path, so the
-    listing does not depend on the order a filesystem walk produced.
+    An exact hit on the comparison key wins outright (``token_set_ratio`` scores
+    a subset at 100). Then a fuzzy hit counts only when it holds every typed
+    word, give or take a slip: one resolves, several are a question, and hits
+    that all lack part of the name come back ``partial``.
     """
     wanted = match_key("", query)
     if not wanted or not index:
@@ -1045,43 +765,29 @@ def _holds_every_word(match: str, wanted: str) -> bool:
 def find_in_index(
     query: str, index: Sequence[Track], *, threshold: int = MATCH_THRESHOLD
 ) -> Track | None:
-    """The one track ``query`` names, or None. See :func:`match_in_index`.
-
-    None covers both "nothing matched" and "more than one did", which is right
-    for a caller that only wants an owned anchor when there is exactly one. A
-    caller that has to TELL a person which it was reads the verdict instead.
-    """
+    """The one track ``query`` names, or None for no match and for several alike."""
     return match_in_index(query, index, threshold=threshold).track
 
 
+def _unresolved(query: str, why: str) -> Anchor:
+    return Anchor(key=None, bpm=None, owned=False, display=query, unresolved=why)
+
+
 def resolve_anchor(
-    query: str,
-    index: Sequence[Track],
-    *,
-    key: str | None = None,
-    bpm: float | None = None,
+    query: str, index: Sequence[Track], *, key: str | None = None, bpm: float | None = None,
     web_lookup: WebKeyLookup | None = None,
 ) -> Anchor:
     """Resolve the anchor against the library, or against supplied values.
 
-    Owned wins outright: the library's own analysis is authoritative, and an
-    explicitly supplied key overrides it only because a user who passes one has
-    seen the disagreement and made a call.
-
-    An unowned anchor with no supplied key and no injected lookup is UNRESOLVED,
-    not guessed. The source fired a streaming-service search here; this unit
-    ships no network call, and a fabricated key would produce a full, confident,
-    wrong set.
+    Owned wins; a supplied key overrides the library's only because the person
+    saw the disagreement. An unowned anchor with no key and no injected lookup
+    is unresolved, never guessed.
     """
     matched = match_in_index(query, index)
-    # A PARTIAL REACH WITH A SUPPLIED KEY IS THE UNOWNED ANSWER, and falls
-    # through to it: the person named a remix the library's copies do not carry
-    # and said what key it is in, which is the "should I buy this" question.
+    # A partial reach with a supplied key is the unowned answer, and falls
+    # through to it: "should I buy this" about a version the library lacks.
     if matched.track is None and matched.candidates and not (matched.partial and key):
-        # REACHED AND NOT CHOSEN, which is neither of the answers below. Falling
-        # through would call an owned track unowned: with a key it would rank
-        # the library's own copies as companions to themselves, and without one
-        # it would say "not in your library" about a name that hit several.
+        # Reached and not chosen: falling through would call an owned track unowned.
         named = "; ".join(t.display for t in matched.candidates[:CANDIDATE_LIMIT])
         if matched.partial:
             why = (
@@ -1094,12 +800,11 @@ def resolve_anchor(
                 f"that anchor names {len(matched.candidates)} owned tracks, and "
                 f"picking for you would build a set around the wrong one: {named}"
             )
-        return Anchor(key=None, bpm=None, owned=False, display=query, unresolved=why)
+        return _unresolved(query, why)
     owned = matched.track
     if owned is not None:
-        resolved_key = canonical_key(key) or owned.key
         return Anchor(
-            key=resolved_key,
+            key=canonical_key(key) or owned.key,
             bpm=bpm if bpm is not None else owned.bpm,
             owned=True,
             track=owned,
@@ -1110,13 +815,7 @@ def resolve_anchor(
     if key:
         canonical = canonical_key(key)
         if not canonical:
-            return Anchor(
-                key=None,
-                bpm=None,
-                owned=False,
-                display=query,
-                unresolved=f"{key!r} is not a Camelot code between 1A and 12B",
-            )
+            return _unresolved(query, f"{key!r} is not a Camelot code between 1A and 12B")
         return Anchor(
             key=canonical, bpm=bpm, owned=False, display=query, key_needs_confirming=True
         )
@@ -1125,33 +824,20 @@ def resolve_anchor(
         derived = web_lookup("", query) or {}
         canonical = canonical_key(str(derived.get("key") or ""))
         if canonical:
+            tempo = _as_number(float, derived.get("bpm"))
             return Anchor(
-                key=canonical,
-                bpm=_as_float(derived.get("bpm")),
-                owned=False,
-                display=query,
-                key_needs_confirming=True,
+                key=canonical, bpm=tempo, owned=False, display=query, key_needs_confirming=True
             )
 
-    return Anchor(
-        key=None,
-        bpm=None,
-        owned=False,
-        display=query,
-        unresolved=(
-            "that anchor is not in your library, and no Camelot key was supplied "
-            "for it; nothing here looks a key up on the web, so supply one"
-        ),
+    return _unresolved(
+        query,
+        "that anchor is not in your library, and no Camelot key was supplied "
+        "for it; nothing here looks a key up on the web, so supply one",
     )
 
 
 def _energy_order(scored: Scored) -> tuple[bool, int]:
-    """Sort a run by energy, with unknown energy last.
-
-    Unknown last rather than treated as zero: a track with no reading is not a
-    quiet track, and putting it at the bottom of a build-up would state something
-    about it that nothing measured.
-    """
+    """Sort a run by energy, unknown last: no reading is not a quiet track."""
     return (scored.track.energy is None, scored.track.energy or 0)
 
 
@@ -1164,23 +850,13 @@ def _pick_side(ranked: Sequence[Scored], side: str, count: int) -> tuple[Scored,
 
 
 def build_plan(
-    ranked: Sequence[Scored],
-    anchor: Anchor,
-    *,
-    count: int | None = None,
-    role: str | None = None,
+    ranked: Sequence[Scored], anchor: Anchor, *, count: int | None = None, role: str | None = None
 ) -> SetPlan:
     """Compose the ranked pool and one suggested sequence.
 
-    ``role`` narrows the answer to one side of the anchor. ``either`` entries are
-    included on whichever side is asked for, because a candidate whose role could
-    not be decided is a legitimate pick for both, not for neither.
-
-    BUT IT IS PLAYED ONCE. With both sides asked for, the after side draws from
-    what the before side left, so an ``either`` filler cannot be placed on both
-    sides of the anchor. Without that, one same-key companion of equal energy
-    was the whole sequence twice, and an unowned anchor, whose companions all
-    carry an unknown energy relative to it, hit that on most runs (U98).
+    ``role`` narrows the answer to one side; ``either`` entries count for any
+    side asked for. With both sides, the after side draws from what the before
+    side left, so one ``either`` filler is never placed on both sides.
     """
     if role in ("before", "after"):
         pool = tuple(s for s in ranked if s.role in (role, "either"))
@@ -1196,67 +872,34 @@ def build_plan(
 
 
 def build_set(
-    query: str,
-    index: Sequence[Track],
-    *,
-    taxonomy: Taxonomy,
-    key: str | None = None,
-    bpm: float | None = None,
-    count: int | None = None,
-    role: str | None = None,
-    width: float = DEFAULT_BPM_WIDTH,
-    weights: Weights = DEFAULT_WEIGHTS,
-    vox_threshold: float | None = None,
-    web_lookup: WebKeyLookup | None = None,
+    query: str, index: Sequence[Track], *, taxonomy: Taxonomy, key: str | None = None,
+    bpm: float | None = None, count: int | None = None, role: str | None = None,
+    width: float = DEFAULT_BPM_WIDTH, weights: Weights = DEFAULT_WEIGHTS,
+    vox_threshold: float | None = None, web_lookup: WebKeyLookup | None = None,
 ) -> SetPlan:
-    """The whole engine over a prepared index. No input, no output, no network.
-
-    Taking the index as an argument rather than building one is what makes this
-    testable and what makes it honest: the scan is the only part that touches a
-    disk, so keeping it outside means every ranking decision can be exercised
-    against synthetic tracks in microseconds.
-    """
+    """The whole engine over a prepared index. No input, no output, no network."""
     anchor = resolve_anchor(query, index, key=key, bpm=bpm, web_lookup=web_lookup)
     if anchor.key is None:
         return SetPlan(anchor=anchor)
     pool = build_pool(anchor, index, width=width)
     ranked = rank(
-        pool,
-        anchor,
-        taxonomy=taxonomy,
-        width=width,
-        weights=weights,
-        vox_threshold=vox_threshold,
+        pool, anchor, taxonomy=taxonomy, width=width, weights=weights, vox_threshold=vox_threshold
     )
     return build_plan(ranked, anchor, count=count, role=role)
 
 
-# ---------------------------------------------------------------------------
 # Structured output (R32). Rendering stays with the CLI.
-# ---------------------------------------------------------------------------
 
-#: Bumped whenever a field is removed or its meaning changes, so a consumer can
-#: refuse rather than silently reading a field that now means something else.
+#: Bumped whenever a field is removed or its meaning changes.
 PAYLOAD_VERSION = 1
 
 
 def as_payload(plan: SetPlan) -> dict:
-    """The plan as plain data, for the CLI's structured output mode.
+    """The plan as plain data, with no rendering decision in it.
 
-    Data only: no colour, no column widths, no sentence. R32 keeps human
-    rendering separate, and the separation only holds if the structured half
-    never acquires a rendering decision.
-
-    THE TEMPO FIELD IS CALLED ``tempo``, NOT ``bpm``, AND THAT IS AN R17
-    DECISION RATHER THAN A MATTER OF TASTE. ``bpm`` is the literal tag key in
-    the Vorbis dialect and one letter from the MP4 atom, so a mapping spelled
-    that way is one copy-paste from being handed to a tag writer, and a tempo
-    tag reaches rekordbox on import exactly as a grid element does. The
-    invariant guard treats any mapping carrying that key as a violation and it
-    is right to: the cost of being wrong is a grid seeded at half or double
-    time, which moves every cue point the user has ever set. The dataclass
-    attribute keeps the domain word, because an attribute cannot be splatted
-    into a tag call; the serialized KEY does not.
+    The tempo field is ``tempo``, never ``bpm`` (R17): ``bpm`` is a tag key, so a
+    mapping spelled that way is one paste from a tag writer, and a tempo tag
+    seeds a beat grid in rekordbox. The invariant guard rejects any such mapping.
     """
     return {
         "payload_version": PAYLOAD_VERSION,
@@ -1274,61 +917,23 @@ def as_payload(plan: SetPlan) -> dict:
 
 
 def _scored_payload(scored: Scored) -> dict:
+    track = scored.track
     return {
-        "artist": scored.track.artist,
-        "title": scored.track.title,
-        "key": scored.track.key,
+        "artist": track.artist, "title": track.title, "key": track.key,
         # See as_payload: the serialized key avoids the tag spelling on purpose.
-        "tempo": scored.track.bpm,
-        "genre": scored.track.genre,
-        "energy": scored.track.energy,
-        "vox": scored.track.vox,
-        "path": scored.track.path,
-        "tier": scored.tier,
-        "role": scored.role,
-        "score": round(scored.score, 6),
+        "tempo": track.bpm,
+        "genre": track.genre, "energy": track.energy, "vox": track.vox, "path": track.path,
+        "tier": scored.tier, "role": scored.role, "score": round(scored.score, 6),
         "reason": scored.reason,
     }
 
 
 __all__ = [
-    "CACHE_VERSION",
-    "CANDIDATE_LIMIT",
-    "MATCH_THRESHOLD",
-    "WORD_THRESHOLD",
-    "DEFAULT_BPM_WIDTH",
-    "DEFAULT_POOL",
-    "DEFAULT_SIDE",
-    "DEFAULT_WEIGHTS",
-    "INDEX_FIELDS",
-    "PAYLOAD_VERSION",
-    "TIER_SCORE",
-    "Anchor",
-    "AnchorMatch",
-    "Exclusion",
-    "Scored",
-    "SetPlan",
-    "Track",
-    "Weights",
-    "as_payload",
-    "assign_role",
-    "bpm_score",
-    "build_index",
-    "build_plan",
-    "build_pool",
-    "build_set",
-    "canonical_key",
-    "compatible_keys",
-    "energy_score",
-    "find_in_index",
-    "match_in_index",
-    "harmonic_score",
-    "in_band",
-    "iter_audio",
-    "match_key",
-    "parse_entry",
-    "rank",
-    "read_index_tags",
-    "resolve_anchor",
-    "vocal_score",
+    "CACHE_VERSION", "CANDIDATE_LIMIT", "MATCH_THRESHOLD", "WORD_THRESHOLD",
+    "DEFAULT_BPM_WIDTH", "DEFAULT_POOL", "DEFAULT_SIDE", "DEFAULT_WEIGHTS", "INDEX_FIELDS",
+    "PAYLOAD_VERSION", "TIER_SCORE", "Anchor", "AnchorMatch", "Exclusion", "Scored", "SetPlan",
+    "Track", "Weights", "as_payload", "assign_role", "bpm_score", "build_index", "build_plan",
+    "build_pool", "build_set", "canonical_key", "compatible_keys", "energy_score",
+    "find_in_index", "match_in_index", "harmonic_score", "in_band", "iter_audio", "match_key",
+    "parse_entry", "rank", "read_index_tags", "resolve_anchor", "vocal_score",
 ]

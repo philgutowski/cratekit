@@ -1,34 +1,22 @@
-"""A queued verb run by hand drives its own job before it returns (U192).
+"""A queued verb run by hand drives its own job before it returns.
 
-``crate tag folder``, ``crate analyze run`` and ``crate analyze restamp`` queued
-a job and returned, printing the ``--job`` command that drives it, so every step
-of a tail was two commands with an identifier copied between them. Each now
-runs its own ``--job`` path in this process on the job it just queued, and
-answers with the settled job.
-
-THE DRIVE IS THE VERB'S OWN RESUME, NOT A SECOND ONE. A verb hands
-:func:`settle` the function its ``--job`` path already calls, so the
-reconcile, the empty job refusal, the drive and the mapping of how the job
-ended stay written once, in the verb. This module owns only what is new: the
-flag that keeps the old behaviour, and what an interrupt leaves behind.
+``crate tag folder``, ``crate analyze run`` and ``crate analyze restamp`` run
+their own ``--job`` path in this process on the job they just queued, and
+answer with the settled job. A verb hands :func:`settle` the function its
+``--job`` path already calls, so the reconcile, the drive and the mapping of
+how the job ended stay written once, in the verb.
 
 AN INTERRUPT LEAVES THE JOB QUEUED, AND SAYS THE COMMAND. The engine records a
-run stopped by a signal as CANCELLED, which is closed, and a closed job's
-``--job`` command reports it rather than driving it. So the job is re-armed
-with :func:`cratekit.core.jobs.retry`, the step ``crate job resume`` takes
-before it spawns its worker, and the cancelled refusal leaves carrying the
-``--job`` command that finishes it in the foreground. Items that settled stay
-settled: ``retry`` re-arms only what is pending, claimed or failed.
+signalled run as CANCELLED, which is closed, so the job is re-armed with
+:func:`cratekit.core.jobs.retry` (items that settled stay settled) and the
+refusal carries the ``--job`` command that finishes it in the foreground.
 
-``--queue-only`` KEEPS TODAY'S ANSWER, for a caller that drives the job itself.
-``crate sync land`` is that caller: it queues each tail step and settles it
-through the ``--job`` command, so the pass reports one command per step and no
-job is driven twice. The flag shares a mutually exclusive group with ``--job``,
-because a resume queues nothing and the flag would mean nothing there.
+``--queue-only`` keeps the queue and return answer for a caller that drives the
+job itself, as ``crate sync land`` does. It is mutually exclusive with
+``--job``, since a resume queues nothing.
 
-Layer: modules. Below it a command is a token the CLI renders (D2), and this
-module names the exact `--job` command a person resumes with, which only the
-verb that queued the job can build.
+Layer: modules. Below it a command is a token the CLI renders (D2), and only
+the verb that queued the job can build its exact ``--job`` command.
 """
 
 from __future__ import annotations
@@ -85,11 +73,9 @@ def settle(
 ) -> _T:
     """Run the verb's ``--job`` path on the job it just queued; re-arm it if interrupted.
 
-    ``settled`` is that path, closed over the job identifier. ``argv`` is the
-    command line that resumes the job, the one the verb's ``argv_builder``
-    returns, named on the refusal when the drive is interrupted. Every other
-    ending, blocked, failed or succeeded, leaves exactly as the ``--job`` path
-    leaves it.
+    ``settled`` is that path, closed over the job identifier; ``argv`` is the
+    command line that resumes the job, named on the refusal when the drive is
+    interrupted. Every other ending leaves exactly as the ``--job`` path does.
     """
     try:
         return settled()
@@ -97,13 +83,10 @@ def settle(
         raise _resumable(exc, job_id, argv, origin) from exc
 
 
-def _resumable(
-    exc: JobCancelled, job_id: str, argv: Sequence[str], origin: str
-) -> Exception:
+def _resumable(exc: JobCancelled, job_id: str, argv: Sequence[str], origin: str) -> Exception:
     """The cancelled refusal, with the job queued again and its command first."""
-    # NO STATE CHECK BEFORE ``retry``: it re-arms a cancelled job and hands an
-    # open one back untouched, and this refusal can come from nothing but a job
-    # ``raise_for_state`` read as cancelled.
+    # No state check before ``retry``: it re-arms a cancelled job and hands an
+    # open one back untouched.
     with jobs.open_store() as store:
         job = jobs.retry(store, job_id)
         progress = jobs.progress(store, job_id)
@@ -114,8 +97,7 @@ def _resumable(
         f"the job is queued again with {progress['settled']} of {progress['total']} "
         f"items settled, and the resume does not redo them",
     )
-    # THE TOKEN IS DROPPED, NOT KEPT BESIDE THE STEPS. It renders as ``crate job
-    # resume <id>`` on the fix line, ahead of the steps, and that command spawns
+    # THE TOKEN IS DROPPED: it renders as ``crate job resume <id>``, which spawns
     # a detached worker where the person asked for the foreground.
     remediation = dataclasses.replace(cause.remediation, remedy=None, steps=steps)
     detail = {**cause.detail, "job_id": job_id, "state": str(job.state), "resume": list(argv)}
@@ -123,6 +105,3 @@ def _resumable(
         exc,
         dataclasses.replace(cause, remediation=remediation, detail=detail).at(origin),
     )
-
-
-__all__ = ["QUEUE_ONLY", "add_job_options", "queue_only", "settle"]

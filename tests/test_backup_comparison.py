@@ -1,28 +1,7 @@
-"""R-757: the mirror's comparison, its two modes, and what the run says about it.
+"""The mirror's comparison, its two modes, and what the run says about it.
 
-WHAT WAS SLOW, MEASURED ON THE AUTHOR'S LIBRARY ON 2026-09-29. The remote was
-listed one folder at a time, 22,433 folders at the rate the remote's request
-pacing allows. The local walk took 1.5 seconds and more checkers changed
-nothing. The fix is one option that lists the remote in one recursive pass, and
-both modes still compare every file by size and modification time.
-
-WHY THE REAL PROGRAM IS DRIVEN HERE, where every other backup test uses a
-stand-in. The claims below are about what rclone SENDS when handed the argv this
-product builds, and a stand-in sends nothing: it would prove the argv contains
-the words and not that a changed file travels. So the mirror is run for real,
-between two temporary folders. rclone's own configuration is pointed at a
-temporary file, so no account on this machine is read, and that file declares
-each remote as an alias of a temporary folder, because the configuration
-refuses a destination that is not spelled ``remote:path`` (R-345).
-
-WHAT THAT CANNOT MEASURE, said here so nobody reads it as covered. A local
-folder has no recursive listing, so between two of them the option is accepted
-and changes nothing. These tests prove the two modes agree on what to send and
-that neither skips a changed file. That the recursive listing of a real remote
-is complete is what the full mode and its doctor line exist to check, at an
-attended sitting.
-
-D1 APPLIES TO EVERY NAME HERE.
+The real rclone is driven, since the claims are about what it SENDS, between
+temporary folders aliased as remotes so no account is read.
 """
 
 from __future__ import annotations
@@ -49,10 +28,9 @@ MOMENT = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
 #: The modes, as the payload the shell freezes for each.
 FAST = {backup_cli.FULL: False}
 FULL = {backup_cli.FULL: True}
+MODES = pytest.mark.parametrize("payload", [FAST, FULL], ids=["fast", "full"])
 
-
-#: The remotes the temporary rclone configuration declares, each an alias of a
-#: folder under the test's own temporary directory.
+#: The remotes the temporary rclone configuration declares as folder aliases.
 REMOTES = ("remote", "fast", "full")
 
 
@@ -73,12 +51,7 @@ def _nothing_is_running(monkeypatch):
 
 @pytest.fixture
 def real_rclone(monkeypatch, tmp_path) -> str:
-    """The rclone on this machine, ASSERTED present, reading no real account.
-
-    Asserted rather than skipped, which is the rule ``tests/test_pending_units.py``
-    enforces: a suite that skipped here would report green on a machine where
-    none of the claims below was ever driven.
-    """
+    """The rclone on this machine, asserted present (never skipped), reading no account."""
     monkeypatch.delenv("CRATEKIT_BIN_RCLONE", raising=False)
     declared = tmp_path / "rclone.conf"
     declared.write_text(
@@ -89,10 +62,7 @@ def real_rclone(monkeypatch, tmp_path) -> str:
     )
     monkeypatch.setenv("RCLONE_CONFIG", str(declared))
     found = binaries.find("rclone")
-    assert found is not None, (
-        "rclone is not installed, so no test in this file can drive the mirror. "
-        "It is a declared binary of the backup module"
-    )
+    assert found is not None, "rclone, a declared binary of the backup module, is not installed"
     return str(found)
 
 
@@ -100,25 +70,21 @@ def _configured(root: Path, remote: str, tmp_path: Path) -> config.Config:
     """A library at ``root`` whose three destinations are on the remote named."""
     (root / "Music").mkdir(parents=True, exist_ok=True)
     (root / "db").mkdir(parents=True, exist_ok=True)
-    built = config.from_dict(
+    return config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
+                "root": str(root), "volume_id": "F1E2-D3C4",
                 "db_path": str(root / "db" / "master.db"),
             },
             "paths": {"download_staging": str(tmp_path / "staging")},
             "profile": {"name": "full"},
             "backup": {
-                "remote": remote,
-                "dest": f"{remote}:mirror",
-                "archive_root": f"{remote}:archive",
-                "db_dest_root": f"{remote}:database",
+                "remote": remote, "dest": f"{remote}:mirror",
+                "archive_root": f"{remote}:archive", "db_dest_root": f"{remote}:database",
             },
         }
     )
-    return built
 
 
 @pytest.fixture
@@ -141,22 +107,21 @@ def _write(path: Path, content: bytes, *, at: datetime) -> None:
 
 
 def _one_track(cfg) -> None:
-    """R-1761. A library holds its music: an empty folder at the root is what
-    an unmounted volume leaves, and a backup refuses it. For the tests that
-    read the command or a stand in's report rather than what was sent."""
+    """A library holds its music, since a backup refuses an empty root."""
     _write(cfg.library.root / "Music" / "fixture.flac", b"one track", at=MOMENT)
 
 
 def _seed(cfg) -> Path:
     """Three tracks in the library, and the folder they live in."""
     music = cfg.library.root / "Music"
-    for name, content in (
-        ("kept.flac", b"kept, generation one"),
-        ("retagged.flac", b"genre: house...."),
-        ("removed.flac", b"removed, generation one"),
-    ):
+    tracks = {"kept.flac": b"kept, generation one", "retagged.flac": b"genre: house...."}
+    for name, content in {**tracks, "removed.flac": b"removed, generation one"}.items():
         _write(music / name, content, at=MOMENT)
     return music
+
+
+def _only(plan: backup.BackupPlan, portion=backup_facts.Portion.FILES) -> backup.BackupPlan:
+    return replace(plan, portions=(plan.portion(portion),))
 
 
 def _files_portion(report: dict) -> dict:
@@ -165,136 +130,75 @@ def _files_portion(report: dict) -> dict:
 
 
 def _mirror(payload: dict, cfg, *, now: datetime, publish: bool = False) -> dict:
-    """Run the FILES portion through the real program and return its rendered row.
-
-    NOTHING IS PUBLISHED unless a test asks, and that is what makes the counts
-    below exact. The fact file lives under the library root, so a run that
-    publishes changes one file in the library it just mirrored, and the next run
-    sends it. ``test_a_run_that_published_sends_its_own_record_next_time`` holds
-    that, and every other drive here keeps it out of the count.
-    """
-    plan = backup.plan_backup(
-        cfg,
-        now=now,
-        full=bool(payload.get(backup_cli.FULL)),
-        check=bool(payload.get(backup_cli.CHECK)),
-    )
-    narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
+    """The FILES portion's rendered row from the real program, publishing only when
+    asked, since the fact file a publish writes is under the library root."""
+    full, check = bool(payload.get(backup_cli.FULL)), bool(payload.get(backup_cli.CHECK))
+    narrowed = _only(backup.plan_backup(cfg, now=now, full=full, check=check))
     outcome = backup.run_backup(
-        cfg,
-        narrowed,
-        now=now,
-        dry_run=bool(payload.get(backup_cli.DRY_RUN)),
-        publish=publish,
+        cfg, narrowed, now=now, dry_run=bool(payload.get(backup_cli.DRY_RUN)), publish=publish
     )
     return _files_portion(backup.outcome_payload(outcome))
 
 
 def _held(folder: Path) -> dict[str, bytes]:
     """Every file under one folder, by relative path."""
-    if not folder.is_dir():
-        return {}
-    return {
-        str(path.relative_to(folder)): path.read_bytes()
-        for path in sorted(folder.rglob("*"))
-        if path.is_file()
-    }
-
-
-# ---------------------------------------------------------------------------
-# The argv, which is where the two modes differ and the only place they do
-# ---------------------------------------------------------------------------
+    files = sorted(folder.rglob("*")) if folder.is_dir() else []
+    return {str(path.relative_to(folder)): path.read_bytes() for path in files if path.is_file()}
 
 
 def _mirror_command(cfg, **kwargs) -> backup.Command:
     _one_track(cfg)
-    plan = backup.plan_backup(cfg, now=MOMENT, **kwargs)
-    (found,) = [
-        command
-        for command in plan.portion(backup_facts.Portion.FILES).commands
-        if command.label == backup.MIRROR
-    ]
+    commands = _only(backup.plan_backup(cfg, now=MOMENT, **kwargs)).portions[0].commands
+    (found,) = [command for command in commands if command.label == backup.MIRROR]
     return found
 
 
 def test_the_two_modes_differ_by_the_listing_option_and_by_nothing_else(cfg, real_rclone):
-    """The full mode is the fast one with one word removed.
-
-    Asserted as a difference of the two argument lists rather than as two
-    expected lists, because the property is that NOTHING ELSE differs: an
-    exclude or the archive folder present in one mode and not the other would
-    make the two send different things.
-    """
+    """The full mode is the fast one with one word removed, and nothing else."""
     fast = list(_mirror_command(cfg).argv)
     full = list(_mirror_command(cfg, full=True).argv)
-
     assert backup.FAST_LIST in fast and backup.FAST_LIST not in full
     assert [word for word in fast if word != backup.FAST_LIST] == full
     assert backup.comparison_mode(_mirror_command(cfg)) == "fast"
     assert backup.comparison_mode(_mirror_command(cfg, full=True)) == "full"
 
 
-@pytest.mark.parametrize("forbidden", ["--size-only", "--max-age", "--ignore-times", "--ignore-existing"])
-def test_neither_mode_carries_an_option_that_can_skip_a_changed_file(
-    cfg, real_rclone, forbidden
-):
-    """The candidates that were refused, held out of the command by name.
-
-    A comparison by size alone skips a tag write that kept the file's length.
-    A walk limited by age skips a file copied in with an old date and never
-    sees a removal. Each would make the run faster and each skips a changed
-    file, which the brief forbids whatever is chosen.
-    """
+@pytest.mark.parametrize(
+    "forbidden", ["--size-only", "--max-age", "--ignore-times", "--ignore-existing"]
+)
+def test_neither_mode_carries_an_option_that_can_skip_a_changed_file(cfg, real_rclone, forbidden):
+    """Each would be faster and skip a changed file (a same length tag write, an old date)."""
     for full in (False, True):
         argv = _mirror_command(cfg, full=full).argv
         assert not any(word.startswith(forbidden) for word in argv), argv
 
 
-# ---------------------------------------------------------------------------
-# The four scenarios, through the real program
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("payload", [FAST, FULL], ids=["fast", "full"])
+@MODES
 def test_nothing_changed_sends_nothing_and_says_so(cfg, real_rclone, payload, tmp_path):
     _seed(cfg)
     first = _mirror(payload, cfg, now=MOMENT)
     assert first["comparison"]["sent"] == 3, first
-    assert first["comparison"]["checked"] == 0, (
-        "a file that is only in the library is sent without being checked, "
-        f"which is what the word in the report has to mean: {first}"
-    )
+    # A file only in the library is sent unchecked, and a zero sent means nothing
+    # changed only beside a count of what was compared.
+    assert first["comparison"]["checked"] == 0, first
 
-    second = _mirror(payload, cfg, now=MOMENT + timedelta(hours=1))
-
-    said = second["comparison"]
+    said = _mirror(payload, cfg, now=MOMENT + timedelta(hours=1))["comparison"]
     assert said["sent"] == 0, said
-    assert said["checked"] == 3, (
-        "a run that compared nothing also sends nothing, so the count of what "
-        f"was compared is what makes a zero mean nothing changed: {said}"
-    )
+    assert said["checked"] == 3, said
     assert isinstance(said["seconds"], float) and said["seconds"] > 0, said
     assert _held(_folder(tmp_path, cfg.backup.archive_root)) == {}
 
 
-@pytest.mark.parametrize("payload", [FAST, FULL], ids=["fast", "full"])
+@MODES
 def test_a_file_changed_in_content_and_not_in_size_is_sent(cfg, real_rclone, payload, tmp_path):
-    """A tag write that keeps the file's length, which is the case that is skipped
-    by any comparison trusting size alone.
-
-    The two contents are the same length, asserted, and the modification time
-    moves the way a write moves it.
-    """
+    """A tag write keeping the length, which a comparison of size alone skips."""
     music = _seed(cfg)
     _mirror(payload, cfg, now=MOMENT)
-
     before, after = b"genre: house....", b"genre: techno..."
     assert len(before) == len(after) and (music / "retagged.flac").read_bytes() == before
     _write(music / "retagged.flac", after, at=MOMENT + timedelta(minutes=30))
-
     later = MOMENT + timedelta(hours=1)
     row = _mirror(payload, cfg, now=later)
-
     assert row["comparison"]["sent"] == 1, row
     assert (_folder(tmp_path, cfg.backup.dest) / "Music" / "retagged.flac").read_bytes() == after
     assert _held(_folder(tmp_path, cfg.backup.archive_root) / backup.stamp_for(later)) == {
@@ -302,17 +206,14 @@ def test_a_file_changed_in_content_and_not_in_size_is_sent(cfg, real_rclone, pay
     }, "the version the mirror replaced is not in this run's dated archive folder"
 
 
-@pytest.mark.parametrize("payload", [FAST, FULL], ids=["fast", "full"])
+@MODES
 def test_an_added_file_is_sent_and_a_removed_one_is_archived(cfg, real_rclone, payload, tmp_path):
     music = _seed(cfg)
     _mirror(payload, cfg, now=MOMENT)
-
     _write(music / "added.flac", b"added", at=MOMENT + timedelta(minutes=30))
     (music / "removed.flac").unlink()
-
     later = MOMENT + timedelta(hours=1)
     row = _mirror(payload, cfg, now=later)
-
     assert row["comparison"]["sent"] == 1, row
     mirrored = _held(_folder(tmp_path, cfg.backup.dest))
     assert "Music/added.flac" in mirrored and "Music/removed.flac" not in mirrored
@@ -324,11 +225,7 @@ def test_an_added_file_is_sent_and_a_removed_one_is_archived(cfg, real_rclone, p
 def test_the_two_modes_agree_on_what_to_send_for_the_same_fixture(
     tmp_path, monkeypatch, real_rclone
 ):
-    """One set of changes, made identically to two libraries, one run per mode.
-
-    Two libraries rather than one run after the other, because the first run
-    would leave the second nothing to send and they would agree on an empty set.
-    """
+    """One set of changes made to two libraries, one run per mode."""
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
     ended: dict[str, tuple[dict, dict, dict]] = {}
     for name, payload in (("fast", FAST), ("full", FULL)):
@@ -337,39 +234,23 @@ def test_the_two_modes_agree_on_what_to_send_for_the_same_fixture(
         one = _configured(root, name, tmp_path / name)
         music = _seed(one)
         _mirror(payload, one, now=MOMENT)
-
         _write(music / "retagged.flac", b"genre: techno...", at=MOMENT + timedelta(minutes=30))
         _write(music / "added.flac", b"added", at=MOMENT + timedelta(minutes=30))
         (music / "removed.flac").unlink()
-
         later = MOMENT + timedelta(hours=1)
         row = _mirror(payload, one, now=later)
         assert row["comparison"]["mode"] == name, row
-        counts = {
-            key: row["comparison"][key] for key in ("checked", "sent", "sent_bytes")
-        }
-        ended[name] = (
-            counts,
-            _held(_folder(tmp_path, one.backup.dest)),
-            _held(_folder(tmp_path, one.backup.archive_root) / backup.stamp_for(later)),
-        )
+        counts = {key: row["comparison"][key] for key in ("checked", "sent", "sent_bytes")}
+        archived = _held(_folder(tmp_path, one.backup.archive_root) / backup.stamp_for(later))
+        ended[name] = (counts, _held(_folder(tmp_path, one.backup.dest)), archived)
 
     assert ended["fast"] == ended["full"]
     assert ended["fast"][0]["sent"] == 2, ended["fast"]
 
 
 def test_a_run_that_published_sends_its_own_record_next_time(cfg, real_rclone, tmp_path):
-    """Why an unchanged library reports one file sent and not none.
-
-    The fact file is library state and the mirror carries it, which is right:
-    it is restored with the library. The cost is that the sentence a person
-    reads never says zero after a real full check. Recorded as a residual and
-    held here so the number is explained by a test and not by a guess.
-
-    A FULL CHECK, ASKED FOR (U317). Without it the second run finds nothing
-    changed but the fact file, which every run rewrites, and is skipped;
-    ``tests/test_backup_quick.py`` holds that half.
-    """
+    """An unchanged library's full check sends the fact file the mirror carries;
+    without the check it is skipped, as ``tests/test_backup_quick.py`` holds."""
     _seed(cfg)
     _mirror(FAST, cfg, now=MOMENT, publish=True)
     fact = backup_facts.path_for(cfg)
@@ -381,9 +262,7 @@ def test_a_run_that_published_sends_its_own_record_next_time(cfg, real_rclone, t
     assert row["comparison"]["sent"] == 1, row
     sent = _folder(tmp_path, cfg.backup.dest) / fact.relative_to(cfg.library.root)
     carried = json.loads(sent.read_text())["portions"]["files"]["completed_at"]
-    assert carried == MOMENT.isoformat(), (
-        "the record the second run sent is not the one the first run wrote"
-    )
+    assert carried == MOMENT.isoformat(), "the second run sent another run's record"
 
 
 def test_a_rehearsal_counts_what_it_would_send_and_sends_nothing(cfg, real_rclone, tmp_path):
@@ -394,17 +273,12 @@ def test_a_rehearsal_counts_what_it_would_send_and_sends_nothing(cfg, real_rclon
     assert _held(_folder(tmp_path, cfg.backup.dest)) == {}
 
 
-# ---------------------------------------------------------------------------
-# The report, over a runner that answers what a test says it answers
-# ---------------------------------------------------------------------------
-
-
 def _answering(stderr: str, *, returncode: int = 0, elapsed: float | None = 12.5):
+    """A stand in runner whose mirror answers as told."""
+
     def runner(command: backup.Command) -> backup.CommandResult:
         if command.label == backup.MIRROR:
-            return backup.CommandResult(
-                returncode=returncode, stderr=stderr, elapsed=elapsed
-            )
+            return backup.CommandResult(returncode=returncode, stderr=stderr, elapsed=elapsed)
         return backup.CommandResult(returncode=0)
 
     return runner
@@ -415,14 +289,9 @@ def _totals(**stats) -> str:
 
 
 def _run_files(cfg, runner, *, full: bool = False) -> backup.PortionOutcome:
-    """The files portion's full check over a stand in runner.
-
-    Asked for (U317): a second run over a library the first left unchanged is
-    otherwise skipped, and these read the full mirror's report.
-    """
+    """The files portion's full check (a rerun would otherwise skip) over ``runner``."""
     _one_track(cfg)
-    plan = backup.plan_backup(cfg, now=MOMENT, full=full, check=True)
-    narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
+    narrowed = _only(backup.plan_backup(cfg, now=MOMENT, full=full, check=True))
     (outcome,) = backup.run_backup(cfg, narrowed, runner=runner, now=MOMENT).portions
     return outcome
 
@@ -452,12 +321,8 @@ def test_the_last_totals_logged_are_the_ones_reported(cfg, real_rclone):
 
 def test_a_failed_mirror_says_why_in_words_and_how_far_it_got(cfg, real_rclone):
     """The mirror logs JSON, and the tail of a JSON log is the totals object."""
-    logged = "\n".join(
-        [
-            json.dumps({"level": "error", "msg": "the remote went away"}),
-            _totals(checks=40, transfers=6, errors=1),
-        ]
-    )
+    went_away = json.dumps({"level": "error", "msg": "the remote went away"})
+    logged = "\n".join([went_away, _totals(checks=40, transfers=6, errors=1)])
     outcome = _run_files(cfg, _answering(logged, returncode=5))
 
     assert not outcome.ran
@@ -469,34 +334,22 @@ def test_a_failed_mirror_says_why_in_words_and_how_far_it_got(cfg, real_rclone):
     assert plain.detail.endswith("connection refused"), plain.detail
 
     mixed = _run_files(
-        cfg,
-        _answering(logged + "\npanic: the program died outside its logger", returncode=2),
+        cfg, _answering(logged + "\npanic: the program died outside its logger", returncode=2)
     )
     assert "the remote went away" in mixed.detail, mixed.detail
-    assert mixed.detail.endswith("panic: the program died outside its logger"), (
-        "a plain line after a page of JSON is the reason the run died, and it "
-        f"was dropped: {mixed.detail}"
-    )
+    # A plain line after a page of JSON is why the run died.
+    assert mixed.detail.endswith("panic: the program died outside its logger"), mixed.detail
 
 
 def test_a_portion_with_no_mirror_carries_no_comparison(cfg, real_rclone):
     config.state_path("rekordbox_db", cfg).write_bytes(b"database")
-    plan = backup.plan_backup(cfg, now=MOMENT)
-    narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.DATABASE),))
-    (outcome,) = backup.run_backup(
-        cfg, narrowed, runner=_answering(""), now=MOMENT
-    ).portions
+    narrowed = _only(backup.plan_backup(cfg, now=MOMENT), backup_facts.Portion.DATABASE)
+    (outcome,) = backup.run_backup(cfg, narrowed, runner=_answering(""), now=MOMENT).portions
 
     assert outcome.ran and outcome.comparison is None
-    (row,) = backup.outcome_payload(
-        backup.BackupOutcome(stamp=plan.stamp, portions=(outcome,))
-    )["portions"]
+    whole = backup.BackupOutcome(stamp=narrowed.stamp, portions=(outcome,))
+    (row,) = backup.outcome_payload(whole)["portions"]
     assert row["comparison"] is None
-
-
-# ---------------------------------------------------------------------------
-# The fact, and doctor's reading of it
-# ---------------------------------------------------------------------------
 
 
 def _full_age(cfg, *, now: datetime = MOMENT) -> backup_facts.PortionAge:
@@ -507,30 +360,25 @@ def test_only_a_full_mirror_moves_the_date_of_the_last_full_comparison(cfg, real
     assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED
 
     _run_files(cfg, _answering(_totals(checks=1)))
-    assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED, (
-        "a fast run recorded a full comparison, so doctor would say one ran"
-    )
+    # A fast run records no full comparison, or doctor would say one ran.
+    assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED
     assert backup_facts.read_facts(cfg)[backup_facts.Portion.FILES].completed_at == MOMENT
 
-    plan = backup.plan_backup(cfg, now=MOMENT, full=True)
-    narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
+    narrowed = _only(backup.plan_backup(cfg, now=MOMENT, full=True))
     backup.run_backup(cfg, narrowed, runner=_answering(_totals(checks=1)), now=MOMENT)
     assert _full_age(cfg).completed_at == MOMENT
 
+    # A later fast run, the database portion with it, neither moves nor erases it.
     later = MOMENT + timedelta(days=3)
     fast = backup.plan_backup(cfg, now=later)
     backup.run_backup(cfg, fast, runner=_answering(_totals(checks=1)), now=later)
     held = _full_age(cfg, now=later)
-    assert held.completed_at == MOMENT and held.age == timedelta(days=3), (
-        "a later fast run, or the database portion beside it, moved or erased "
-        f"the date of the last full comparison: {held}"
-    )
+    assert held.completed_at == MOMENT and held.age == timedelta(days=3), held
     assert backup_facts.read_facts(cfg)[backup_facts.Portion.FILES].completed_at == later
 
 
 def test_a_full_mirror_that_failed_or_only_rehearsed_records_nothing(cfg, real_rclone):
-    plan = backup.plan_backup(cfg, now=MOMENT, full=True)
-    narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
+    narrowed = _only(backup.plan_backup(cfg, now=MOMENT, full=True))
 
     backup.run_backup(cfg, narrowed, runner=_answering("", returncode=5), now=MOMENT)
     backup.run_backup(cfg, narrowed, runner=_answering(""), now=MOMENT, dry_run=True)
@@ -538,34 +386,25 @@ def test_a_full_mirror_that_failed_or_only_rehearsed_records_nothing(cfg, real_r
     assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED
 
 
-def test_a_fact_file_from_a_build_with_one_mode_reads_as_a_full_comparison(cfg):
-    """Every backup before this unit compared folder by folder.
+def _record(cfg, portion=backup_facts.Portion.FILES, *, at=MOMENT, where="somewhere", **kwargs):
+    backup_facts.record(cfg, portion, completed_at=at, destination=where, **kwargs)
 
-    Their fact file has no key for it, and answering "never" over that file
-    would tell a person whose every backup was a full one that none ever ran.
-    The first fast record must then carry that date forward and not erase it.
-    """
+
+def _fact_file(**extra) -> str:
+    """A fact file holding one files portion completed at ``MOMENT``."""
+    files = {"completed_at": MOMENT.isoformat(), "destination": "remote:mirror"}
+    return json.dumps({"schema_version": 1, "portions": {"files": files}, **extra})
+
+
+def test_a_fact_file_from_a_build_with_one_mode_reads_as_a_full_comparison(cfg):
+    """An older build's backups were all full; a fast record carries that date on."""
     path = backup_facts.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "portions": {
-                    "files": {
-                        "completed_at": MOMENT.isoformat(),
-                        "destination": "remote:mirror",
-                    }
-                },
-            }
-        )
-    )
+    path.write_text(_fact_file())
     assert _full_age(cfg).completed_at == MOMENT
 
     later = MOMENT + timedelta(days=2)
-    backup_facts.record(
-        cfg, backup_facts.Portion.FILES, completed_at=later, destination="remote:mirror"
-    )
+    _record(cfg, at=later, where="remote:mirror")
 
     written = json.loads(path.read_text())
     assert written[backup_facts.FULL_COMPARISON_KEY]["completed_at"] == MOMENT.isoformat()
@@ -574,41 +413,21 @@ def test_a_fact_file_from_a_build_with_one_mode_reads_as_a_full_comparison(cfg):
 
 def test_a_build_with_two_modes_always_writes_the_key(cfg):
     """Null included, because the key's absence is what marks an older build."""
-    backup_facts.record(
-        cfg, backup_facts.Portion.DATABASE, completed_at=MOMENT, destination="somewhere"
-    )
+    _record(cfg, backup_facts.Portion.DATABASE)
     written = json.loads(backup_facts.path_for(cfg).read_text())
     assert backup_facts.FULL_COMPARISON_KEY in written
     assert written[backup_facts.FULL_COMPARISON_KEY] is None
 
-    backup_facts.record(
-        cfg, backup_facts.Portion.FILES, completed_at=MOMENT, destination="somewhere"
-    )
+    _record(cfg)
     assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED
 
 
 def test_a_damaged_full_comparison_entry_refuses_its_own_reader_and_no_other(cfg):
-    """The entry feeds one informational line. The portions feed the age a
-    destructive session reads and the publish at the end of a transfer, so a
-    damaged entry must not fail a backup whose files already travelled.
-    """
+    """The entry feeds one informational line and never the portions' ages."""
     path = backup_facts.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     for held in ("yesterday", {"completed_at": "2026-08-29T12:00:00"}, {"completed_at": 7}):
-        path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "portions": {
-                        "files": {
-                            "completed_at": MOMENT.isoformat(),
-                            "destination": "remote:mirror",
-                        }
-                    },
-                    backup_facts.FULL_COMPARISON_KEY: held,
-                }
-            )
-        )
+        path.write_text(_fact_file(**{backup_facts.FULL_COMPARISON_KEY: held}))
         with pytest.raises(backup_facts.BackupFactsUnreadable):
             _full_age(cfg)
         assert _finding(cfg, now=MOMENT).status is doctor.Status.FAIL
@@ -616,24 +435,11 @@ def test_a_damaged_full_comparison_entry_refuses_its_own_reader_and_no_other(cfg
         (files, _) = backup_facts.ages(cfg, now=MOMENT)
         assert files.usable and files.age == timedelta(0), files
 
-        backup_facts.record(
-            cfg,
-            backup_facts.Portion.DATABASE,
-            completed_at=MOMENT,
-            destination="remote:database",
-        )
-        assert json.loads(path.read_text())[backup_facts.FULL_COMPARISON_KEY] == held, (
-            "a record that was not a full comparison replaced an entry nobody "
-            "could read, so cannot be read became never ran"
-        )
+        _record(cfg, backup_facts.Portion.DATABASE, where="remote:database")
+        # A record that was not a full comparison leaves the unreadable entry.
+        assert json.loads(path.read_text())[backup_facts.FULL_COMPARISON_KEY] == held
 
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=MOMENT,
-        destination="remote:mirror",
-        full_comparison=True,
-    )
+    _record(cfg, where="remote:mirror", full_comparison=True)
     assert _full_age(cfg).completed_at == MOMENT
 
 
@@ -652,13 +458,7 @@ def test_doctor_says_how_long_ago_a_full_comparison_last_ran(cfg):
     assert never.status is doctor.Status.INFO
     assert "no backup here" in never.detail and "crate backup run --full" in never.detail
 
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=MOMENT,
-        destination="a-remote:mirror",
-        full_comparison=True,
-    )
+    _record(cfg, where="a-remote:mirror", full_comparison=True)
     recent = _finding(cfg, now=MOMENT + timedelta(days=9))
     assert recent.status is doctor.Status.INFO
     assert "9 days ago" in recent.detail and "a-remote:mirror" in recent.detail
@@ -672,14 +472,7 @@ def test_doctor_says_how_long_ago_a_full_comparison_last_ran(cfg):
 
 def test_a_record_a_few_minutes_ahead_is_zero_days_old_and_not_minus_one(cfg):
     """Inside the tolerance a record is a known age, and its days are negative."""
-    ahead = MOMENT + timedelta(minutes=10)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ahead,
-        destination="somewhere",
-        full_comparison=True,
-    )
+    _record(cfg, at=MOMENT + timedelta(minutes=10), full_comparison=True)
     report = doctor.run(cfg, probes=_probes(MOMENT))
     for key in ("backup.full_comparison", "backup.age.files"):
         (found,) = [f for f in report.findings if f.key == key]
@@ -688,19 +481,8 @@ def test_a_record_a_few_minutes_ahead_is_zero_days_old_and_not_minus_one(cfg):
 
 
 def test_doctor_refuses_a_full_comparison_recorded_ahead_of_now(cfg):
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=MOMENT + timedelta(days=2),
-        destination="somewhere",
-        full_comparison=True,
-    )
+    _record(cfg, at=MOMENT + timedelta(days=2), full_comparison=True)
     assert _finding(cfg, now=MOMENT).status is doctor.Status.FAIL
-
-
-# ---------------------------------------------------------------------------
-# The flag, frozen and rebuilt, and the sentence a person reads
-# ---------------------------------------------------------------------------
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
@@ -710,25 +492,18 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 
 
 def test_the_full_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
-    """Both directions, through the real parser, for the reason the rehearsal
-    flag's own test gives: a wrong ``dest`` freezes False for ever while the
-    flag parses fine, and a builder that always emits the flag breaks the other
-    half as completely.
-    """
+    """Both directions, through the real parser and the resume's argv builder."""
     code, envelope = _drive(["backup", "run", "--full", "--dry-run"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["progress"][backup_cli.FULL] is True
     with jobs.open_store() as store:
         job = jobs.get(store, envelope["data"]["job_id"])
     assert job.payload == {
-        backup_cli.DRY_RUN: True,
-        backup_cli.FULL: True,
-        backup_cli.CHECK: False,
+        backup_cli.DRY_RUN: True, backup_cli.FULL: True, backup_cli.CHECK: False,
         backup_cli.EMPTIED: False,
     }
-    assert backup_cli.backup_argv(job) == [
-        "backup", "run", "--dry-run", "--full", "--job", job.job_id,
-    ]
+    resumed = ["backup", "run", "--dry-run", "--full", "--job", job.job_id]
+    assert backup_cli.backup_argv(job) == resumed
 
     code, envelope = _drive(["backup", "run"])
     assert envelope["data"]["progress"][backup_cli.FULL] is False
@@ -738,22 +513,15 @@ def test_the_full_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
 
 
 def test_the_frozen_mode_is_the_one_the_plan_is_built_in(cfg, real_rclone, monkeypatch):
-    """The payload reaches the planner, asserted on the command that was run.
-
-    Each drive starts with no record of a completed backup (U317), so each is
-    a full check in its frozen mode rather than a skip of the one before.
-    """
+    """The payload reaches the planner; each drive starts with no record, so is full."""
     from cratekit.modules.tools import backup_record
 
     _one_track(cfg)
     for payload, wanted in ((FAST, "fast"), (FULL, "full"), ({}, "fast")):
         backup_record.invalidate(backup_record.manifest_path())
         report = backup_cli.perform_backup(
-            payload,
-            portion=backup_facts.Portion.FILES,
-            cfg=cfg,
-            runner=_answering(_totals(checks=2, transfers=0)),
-            now=MOMENT,
+            payload, portion=backup_facts.Portion.FILES, cfg=cfg,
+            runner=_answering(_totals(checks=2, transfers=0)), now=MOMENT,
         )
         row = _files_portion(report)
         assert row["comparison"]["mode"] == wanted, (payload, row)
@@ -762,11 +530,7 @@ def test_the_frozen_mode_is_the_one_the_plan_is_built_in(cfg, real_rclone, monke
 
 
 def test_the_resumed_verb_says_what_the_comparison_did(cfg, real_rclone):
-    """End to end through the dispatcher and the real program: queue, resume, read.
-
-    The database half is refused on purpose, by a rekordbox process that is not
-    there being absent and a database file that is, so the job runs both items.
-    """
+    """Queue, resume and read through the dispatcher, both items of the job run."""
     _seed(cfg)
     config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation one")
     code, queued = _drive(["backup", "run"])
@@ -797,28 +561,32 @@ def test_a_resumed_rehearsal_never_says_that_it_sent(cfg, real_rclone, tmp_path)
     assert _held(_folder(tmp_path, cfg.backup.dest)) == {}
 
 
+def _queued_said(envelope: dict) -> str:
+    (said,) = [w for w in envelope["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
+    return said["message"]
+
+
 def test_a_second_ask_in_the_other_mode_is_told_the_open_job_differs(cfg):
     """Both directions, and the same mode says nothing about modes."""
     _, first = _drive(["backup", "run"])
     code, second = _drive(["backup", "run", "--full"])
     assert code == int(ExitCode.OK), second
     assert second["data"]["job_id"] == first["data"]["job_id"], "a second job was filed"
-    (said,) = [w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
-    assert "will run the fast comparison" in said["message"], said
-    assert "this ask was for the full one" in said["message"], said
+    said = _queued_said(second)
+    assert "will run the fast comparison" in said, said
+    assert "this ask was for the full one" in said, said
 
     _, same = _drive(["backup", "run"])
-    (said,) = [w for w in same["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
-    assert "comparison" not in said["message"], said
+    assert "comparison" not in _queued_said(same), same
 
     with jobs.open_store() as store:
         jobs.cancel(store, first["data"]["job_id"])
     _, full = _drive(["backup", "run", "--full"])
     assert full["data"]["job_id"] != first["data"]["job_id"], full
     _, fast = _drive(["backup", "run"])
-    (said,) = [w for w in fast["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
-    assert "will run the full comparison" in said["message"], said
-    assert "this ask was for the fast one" in said["message"], said
+    said = _queued_said(fast)
+    assert "will run the full comparison" in said, said
+    assert "this ask was for the fast one" in said, said
 
 
 def test_the_sentence_never_prints_an_unread_number_as_zero():
@@ -834,9 +602,7 @@ def test_the_sentence_never_prints_an_unread_number_as_zero():
     assert unread["message"].endswith("crate backup run --check"), unread
 
     for unknown in (None, "quick", 7):
-        assert backup_cli.comparison_warning(outcomes({"mode": unknown, "sent": 1})) == (), (
-            f"a mode of {unknown!r} was named in a sentence and the other one offered"
-        )
+        assert backup_cli.comparison_warning(outcomes({"mode": unknown, "sent": 1})) == (), unknown
 
     assert backup_cli.comparison_warning(None) == ()
     assert backup_cli.comparison_warning({"database": {"portions": []}}) == ()
@@ -847,11 +613,8 @@ def test_a_failed_full_run_is_still_a_refusal(cfg, real_rclone):
     _one_track(cfg)
     with pytest.raises(CratekitError) as excinfo:
         backup_cli.perform_backup(
-            FULL,
-            portion=backup_facts.Portion.FILES,
-            cfg=cfg,
-            runner=_answering("", returncode=5),
-            now=MOMENT,
+            FULL, portion=backup_facts.Portion.FILES, cfg=cfg,
+            runner=_answering("", returncode=5), now=MOMENT,
         )
     assert excinfo.value.cause.reason == "backup-transfer-failed"
     assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED

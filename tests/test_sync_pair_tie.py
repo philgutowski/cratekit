@@ -1,14 +1,10 @@
 """U208: a paired row whose ISRC names several agreeing releases is paired as one of them.
 
-Driven through ``crate sync pair`` on the disposable database
-``tests/test_sync_pair.py`` builds, every write through the recording fake
-account and every MATCH through the real adapter over the fake provider client,
-so the release a tie takes is the one ``match_track`` chooses and not one a
-fake was told to choose. The adapter's own rule is pinned at its level in
-``tests/test_outbound_tidal_account.py``; this file pins that the pairs ask it,
-link what it chose, and keep every refusal before the tie.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Every match goes through the real adapter over the fake provider client, so
+the release a tie takes is the one ``match_track`` chooses. The adapter's rule
+is pinned in ``tests/test_outbound_tidal_account.py``; this file pins that the
+pairs ask it, link what it chose, and keep every refusal before the tie. D1
+applies, nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -132,9 +128,7 @@ def _pair(cfg) -> pairs.Pair:
     return held
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The tie is broken as the mirror breaks it, and linked
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_tie_with_none_hearted_is_linked_to_the_lowest_release(tied, cfg):
@@ -218,9 +212,7 @@ def test_a_second_sync_asks_the_provider_nothing_about_a_linked_tie(tied):
     assert w.on_account() == ["101"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The refusals before the tie stand
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_tie_beside_an_unreadable_release_still_refuses_and_is_not_remembered(tied, cfg):
@@ -274,9 +266,7 @@ def test_a_tie_remembered_as_a_miss_before_this_unit_is_asked_once_and_linked(ti
     assert w.account.client.isrc_asked == asked
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The reverse direction: a sibling release added on the account
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _sibling_added(w) -> None:
@@ -334,7 +324,7 @@ def _rows_of_playlist(cfg, playlist_id: str) -> list[tuple[str, str]]:
 def test_a_row_removed_in_rekordbox_takes_every_release_of_it_off_the_account(
     tied, cfg, tmp_path, on_file
 ):
-    """The review's round one, row 1: two releases linked to one row were two keys."""
+    """Two releases linked to one row are one key, so both leave the account."""
     w = tied([release("202"), release("101")], rekordbox=(TIED, "2"))
     if on_file:
         _untagged_row(cfg, TIED, tmp_path, file_isrc=isrc(TIED))
@@ -357,7 +347,7 @@ def test_a_row_removed_in_rekordbox_takes_every_release_of_it_off_the_account(
 def test_one_release_taken_off_the_account_while_another_stays_changes_nothing(
     tied, cfg, tmp_path, on_file
 ):
-    """The review's round one, row 2: the row was rewritten in rekordbox and the release put back."""
+    """The row is not rewritten in rekordbox and the release is not put back."""
     w = tied([release("202"), release("101")], rekordbox=(TIED, "2", "3"))
     if on_file:
         _untagged_row(cfg, TIED, tmp_path, file_isrc=isrc(TIED))
@@ -387,15 +377,14 @@ def test_both_releases_taken_off_the_account_take_the_row_out_of_rekordbox(tied)
 
     assert w.held() == ["2"]
     _quiet(w)
-    # PUT BACK IN REKORDBOX, the row goes to the account as its one key's
-    # release, the lowest numbered linked, the same on every run.
+    # PUT BACK IN REKORDBOX, the row goes as its lowest linked release, every run.
     w.rekordbox_add(TIED)
     assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
     assert w.on_account() == ["92", "101"]
 
 
 def test_two_releases_already_on_the_account_take_the_lower_and_add_no_third(tied, cfg):
-    """The review's round one, row 3: the provider's lowest release was added beside both."""
+    """The provider's lowest release is not added beside the two already there."""
     w = tied(
         [release("101"), release("202"), release("303")],
         account=(),
@@ -414,7 +403,7 @@ def test_two_releases_already_on_the_account_take_the_lower_and_add_no_third(tie
 
 
 def test_a_release_added_on_the_account_as_the_row_leaves_rekordbox_is_never_taken_off(tied):
-    """The review's round two, row 1: removals were expanded under links made after the merge."""
+    """Removals are not expanded under links made after the merge."""
     w = tied([release("202"), release("101")], rekordbox=(TIED, "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     assert w.on_account() == ["101", "92"]
@@ -432,7 +421,7 @@ def test_a_release_added_on_the_account_as_the_row_leaves_rekordbox_is_never_tak
 
 
 def test_a_sibling_placed_at_the_top_of_the_account_is_left_where_the_person_put_it(tied):
-    """The review's round two, row 2: the order grouped a row's releases in another key space."""
+    """The order does not group a row's releases in another key space."""
     w = tied([release("202"), release("101")], rekordbox=("2", TIED))
     assert sync(w.args())[0] == int(ExitCode.OK)
     assert w.on_account() == ["92", "101"]
@@ -452,7 +441,7 @@ def test_a_sibling_placed_at_the_top_of_the_account_is_left_where_the_person_put
 
 
 def test_the_first_release_taken_off_while_a_later_one_stays_keeps_the_row(tied):
-    """The review's round two, row 3: the drop of the first release, the half the suite missed."""
+    """Dropping the first release while a later one stays keeps the row."""
     w = tied([release("202"), release("101")], rekordbox=(TIED, "2", "3"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     _sibling_added(w)

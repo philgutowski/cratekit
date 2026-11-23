@@ -1,41 +1,24 @@
 """``crate sync removed``: each downloaded track taken off its playlist on the account (U287).
 
-The engine is :mod:`cratekit.sync.removed`, and its docstring says what is
-downloaded, what is synced, when a track counts as removed and how each row is
-answered. This module is the order a person meets it in:
+The rules are :mod:`cratekit.sync.removed`'s; this is the order a person meets them in:
 
-* the session log is read once, and the downloaded playlists found from it,
-  before anything is opened or asked;
-* the database is read on a disposable copy, so the verb refuses while
-  rekordbox or its agent runs and never holds the live file;
-* the record of playlists the account answered not found for is read before
-  the account is asked anything, so one that cannot be read refuses first
-  (U320);
-* the account is asked only when something was downloaded: its playlist list
-  once, then each downloaded playlist, and every other synced playlist and
-  the account's hearts only when a removal was found, since only then does
-  "still on another synced playlist" need an answer; then the record is
-  written once with what each read said, a sighting, a retirement, or a
-  playlist that opens again dropped from it;
-* the plan is shown, digested; a plan that offers nothing ends there and
-  writes nothing;
-* a plan that offers a row reads the backup acknowledgment, then asks the
-  explicit gate ``sync.removed.confirm`` over the digested plan, every offered,
-  kept and left row on its screen with the count of memberships the removal
-  renumbers (U288, R-1830);
-* only ``apply`` opens the database to write, refusing while rekordbox or its
-  agent runs, and the engine takes the plan again on that handle and refuses
-  ``decision-stale`` when anything moved in between. The offered rows leave the
-  collection as rekordbox's own Remove from Collection takes them out, the
-  members after each in a playlist it left numbered down, and no file is
-  touched: each file reaches the Trash only through the next ``crate
-  delete review``, which reads the session record this writes.
+* the session log is read once, before anything is opened or asked;
+* the database is read on a disposable copy, never the live file;
+* the not found record is read before the account is asked, so an unreadable
+  one refuses first (U320);
+* the account is asked only when something was downloaded, and the other
+  synced playlists and hearts only once a removal is found; the record is
+  then written once;
+* a plan that offers nothing ends there, writing nothing;
+* otherwise the backup acknowledgment, then the gate ``sync.removed.confirm``
+  over the digested plan (U288, R-1830);
+* only ``apply`` opens the database to write, where the engine replans and
+  refuses ``decision-stale`` on any change. No file is touched; ``crate delete
+  review`` offers them later from the session record.
 
-``--retire`` is the other order (U320): every synced playlist is read,
-whatever was downloaded, each one the account no longer lists whose id
-answered not found on this read is listed at the explicit gate
-``sync.removed.retire``, and only ``retire`` writes the record, abort writing
-nothing. It makes no removal plan; the next run makes it without them.
+``--retire`` (U320) reads every synced playlist, lists each unlisted one whose
+id answered not found at the gate ``sync.removed.retire``, and writes the
+record only on ``retire``. It makes no removal plan.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -81,9 +64,8 @@ RETIRE_GATE = "sync.removed.retire"
 #: What ``--retire`` retired.
 RETIRED_NOW = "sync-removed-retired-now"
 
-#: The one command that retires them now, as a person types it. It reads every
-#: synced playlist, about two calls each, so on a large account it needs the
-#: ceilings raised as a run that finds a removal does (R-1716).
+#: The command that retires them now. It costs about two calls per synced
+#: playlist, so it needs raised ceilings on a large account (R-1716).
 RETIRE_COMMAND = "crate --calls N --calls-per-hour M sync removed --retire"
 
 
@@ -254,14 +236,12 @@ def _gate(entry, name: str = CONFIRM_GATE) -> Any:
 def _read_synced(
     cfg, found, *, every: bool, record_now: bool = True
 ) -> dict[str, removed.Listing]:
-    """The account's reads, recorded in the record of not found answers (U320).
+    """The account's reads, recorded in the not found record (U320).
 
-    The downloaded playlists first; every other synced playlist and the hearts
-    only when a removal was found, or when ``every`` asks, as ``--retire``
-    does. The record is read before the account is asked anything, so one that
-    cannot be read refuses before a call is spent, and is written once after
-    every read with what each one said, unless ``record_now`` is false, as
-    ``--retire`` asks so that its abort writes nothing.
+    The downloaded playlists first; the rest and the hearts only once a removal
+    is found, or with ``every``. The record is read before any call, so an
+    unreadable one costs none, and written once after, unless ``record_now`` is
+    false, so that ``--retire``'s abort writes nothing.
     """
     record = unavailable.UnavailableRecord(cfg)
     sightings = record.read()
@@ -275,9 +255,8 @@ def _read_synced(
     account = catalogue.resolve(cfg)
     listed = removed.account_listing(account)
     recorded = removed.recorded_contents(cfg)
-    # WHAT CRATEKIT CALLS EACH ONE (round one), so a playlist the account's
-    # list no longer names is still named on the screen and in the record.
-    # The pair store's names join only once it is read, below (round two).
+    # WHAT CRATEKIT CALLS EACH ONE, so an unlisted playlist is still named;
+    # the pair store's names join once it is read, below.
     names = {one.account: one.name for one in found if one.name}
     asked = {
         "sightings": sightings,
@@ -314,10 +293,7 @@ def _read_synced(
 def retirable(reads: dict[str, removed.Listing]) -> list[removed.Listing]:
     """Each synced playlist the account no longer lists whose id answered not found on this read.
 
-    THIS READ'S ANSWER, NEVER THE RECORD'S ALONE: a playlist whose id failed
-    any other way now, or that the account lists, is not offered for
-    retirement whatever was recorded before, and one already retired is not
-    offered again.
+    THIS READ'S ANSWER, NEVER THE RECORD'S ALONE, and never one already retired.
     """
     return [
         one
@@ -329,12 +305,8 @@ def retirable(reads: dict[str, removed.Listing]) -> list[removed.Listing]:
 def retire(ctx, cfg) -> Envelope:
     """``--retire``: retire behind the explicit gate each playlist :func:`retirable` names (U320).
 
-    Reads every synced playlist whatever was downloaded, records nothing until
-    the gate is answered ``retire``, and then records every read's answer and
-    each named playlist as retired by a person. It writes Cratekit's own
-    record and nothing else: not the account, not the database, not a file.
-    The removal plan is not made here; the next ``crate sync removed`` makes
-    it without them.
+    Records nothing until the gate answers ``retire``, then every read and each
+    named playlist as retired by a person. It writes Cratekit's record only.
     """
     records, _unreadable = session.scan_log(cfg)
     found = removed.downloaded(cfg, records)
@@ -352,8 +324,8 @@ def retire(ctx, cfg) -> Envelope:
         if one.noted is not None
     ]
     data = {
-        # THE PLAYLISTS NAMED, NOT THE DATES (round one), so the gate's two
-        # drives either side of midnight bind to one plan.
+        # THE PLAYLISTS NAMED, NOT THE DATES, so drives either side of midnight
+        # bind to one plan.
         "digest": digest_of(
             {
                 "kind": "sync-removed-retire",
@@ -364,8 +336,7 @@ def retire(ctx, cfg) -> Envelope:
         "totals": {"count": len(items), "playlists read": len(reads)},
         "chunk": None,
     }
-    # A PLAYLIST THIS READ COULD NOT ASK IS SAID (round one), so an outage
-    # that answered nothing is not read as a clean list with nothing to retire.
+    # A PLAYLIST THIS READ COULD NOT ASK IS SAID, so an outage is not a clean list.
     unasked = [
         one
         for one in reads.values()
@@ -458,8 +429,7 @@ def sync_removed(ctx) -> Envelope:
             outcome=Outcome.OK if plan.answers else Outcome.NO_OP,
             warnings=warnings,
         )
-    # BEFORE THE GATE (R-733), and only once something is offered, so a run
-    # that lists and offers nothing asks for nothing.
+    # BEFORE THE GATE (R-733), and only once something is offered.
     session.assert_backup_acknowledged(cfg)
     if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
@@ -514,22 +484,7 @@ def written(
 
 
 __all__ = [
-    "APPLIED",
-    "CONFIRM_GATE",
-    "GONE",
-    "HEARTS_WITHHELD",
-    "PARTIAL",
-    "RECORDS_UNREADABLE",
-    "RETIRED",
-    "RETIRED_NOW",
-    "RETIRE_COMMAND",
-    "RETIRE_GATE",
-    "UNAVAILABLE",
-    "build_removed",
-    "facts",
-    "payload",
-    "retirable",
-    "retire",
-    "sync_removed",
-    "written",
+    "APPLIED", "CONFIRM_GATE", "GONE", "HEARTS_WITHHELD", "PARTIAL", "RECORDS_UNREADABLE",
+    "RETIRED", "RETIRED_NOW", "RETIRE_COMMAND", "RETIRE_GATE", "UNAVAILABLE", "build_removed",
+    "facts", "payload", "retirable", "retire", "sync_removed", "written"
 ]
