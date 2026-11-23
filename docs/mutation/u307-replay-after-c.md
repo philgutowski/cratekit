@@ -1,10 +1,10 @@
 # Mutation table: u307-replay-after-c
 
-Measured by `scripts/mutate.py` on 2026-11-22 23:35 UTC, branch `HEAD` at `59f66e86`. Pass kind: replay.
+Measured by `scripts/mutate.py` on 2026-11-23 01:01 UTC, branch `HEAD` at `e4ead69f`. Pass kind: replay.
 
 A replay pass measures again rows a table under `docs/mutation/` already recorded, so it has no row cap and chooses no rows: every row below names the table and the id it came from. One full baseline and one null control serve the batch, and each row ran on its own subset (U297).
 
-Baseline: green, 22539 collected. pytest invocations for this batch: 319.
+Baseline: green, 22539 collected. pytest invocations for this batch: 318.
 
 Full baseline: measured by this driver (the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`).
 
@@ -236,7 +236,7 @@ Null control `NULL_CONTROL`: killed 0, collected 22539 against 22539. The contro
 | `r924.F1_no_start_line` | `src/cratekit/intake/fetch.py` | user | 2 file(s) | 52 | 2 | killed |
 | `r924.F2_no_landed_line` | `src/cratekit/intake/fetch.py` | user | 2 file(s) | 52 | 1 | killed |
 | `r924.F4_sum_not_largest` | `src/cratekit/intake/fetch.py` | user | 1 file(s) | 11 | 1 | killed |
-| `r924.F5_watcher_not_joined` | `src/cratekit/intake/fetch.py` | maintainer | 1 file(s) | 22539 | 0 (promoted) | zero |
+| `r924.F5_watcher_not_joined` | `src/cratekit/intake/fetch.py` | maintainer | 1 file(s) | 11 | 1 | killed |
 | `u104-a.F1_guard_string_layer` | `src/cratekit/intake/fetch.py` | user | 1 file(s) | 41 | 1 | killed |
 | `u104-a.F2_guard_samefile_layer` | `src/cratekit/intake/fetch.py` | user | 1 file(s) | 41 | 1 | killed |
 | `u104-a.F3_guard_absent_library_return` | `src/cratekit/intake/fetch.py` | maintainer | 1 file(s) | 41 | 1 | killed |
@@ -286,10 +286,6 @@ Null control `NULL_CONTROL`: killed 0, collected 22539 against 22539. The contro
 | `r770-c.C4_failure_past_the_gate_loses_its_remedy` | `src/cratekit/intake/landing.py` | user | 1 file(s) | 33 | 1 | killed |
 | `r706-c.C4_pipeline_drops_parts` | `src/cratekit/intake/pipeline.py` | user | 1 file(s) | 67 | 1 | killed |
 | `u103-b.P2_digest_reaches_the_verb` | `src/cratekit/intake/pipeline.py` | user | 1 file(s) | 67 | 1 | killed |
-
-## Zero rows and what they owe
-
-- `r924.F5_watcher_not_joined` (maintainer facing): maintainer facing, composite not required
 
 ## Row definitions
 
@@ -6389,10 +6385,10 @@ The watcher is told to stop and not waited for, so it can outlive the fetch
 - Surface: maintainer
 - Subset: explicit subset from the row
 - Ran: `tests/intake/test_set_progress.py`
-- Collected: 22539 against a baseline of 22539
-- Kills: 0 (zero)
-- Promoted: subset killed 0, full suite killed 0
-- Note: confirmed on the full suite
+- Collected: 11 against a baseline of 11
+- Kills: 1 (killed)
+- Killed:
+  - `tests/intake/test_set_progress.py::test_a_fetch_that_raises_still_stops_the_watcher`
 
 Old text:
 
