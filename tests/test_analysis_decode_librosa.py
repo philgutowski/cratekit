@@ -425,3 +425,32 @@ def test_the_ffmpeg_path_mixes_an_m4a_to_its_wavs_bits(keyed):
 
 def _never(*_a, **_k):
     raise AssertionError("ffmpeg was asked to decode a file libsndfile reads")
+
+
+@pytest.mark.parametrize("name", ["alac", "aac"])
+def test_the_energy_measure_decodes_an_m4a_once_and_reads_what_two_decodes_read(
+    keyed, monkeypatch, no_fallback, name
+):
+    """R-1556, closed by U344: the length and the window came from two whole ffmpeg decodes,
+    and since the run measures energy as the restamp does it would have paid both."""
+    monkeypatch.setattr(energy, "SEGMENT_SECONDS", 10.0)
+    path = keyed[name]
+    # The two calls the measure made before, composed here without the code under test.
+    length = decode.duration(path)
+    offset = (length - 10.0) / 2.0
+    expected, _ = decode.load(path, energy.MEASURE_RATE, offset=offset, duration=10.0)
+    decodes: list[object] = []
+    shipped = decode._ffmpeg_samples
+
+    def counted(target):
+        decodes.append(target)
+        return shipped(target)
+
+    monkeypatch.setattr(decode, "_ffmpeg_samples", counted)
+    samples, rate = decode.centred(path, energy.MEASURE_RATE, 10.0)
+    assert rate == energy.MEASURE_RATE
+    assert np.array_equal(samples, expected)
+    assert len(decodes) == 1, "an M4A is decoded whole once per measure"
+    decodes.clear()
+    assert energy.features_from_path(path) == energy.features_from_samples(expected, rate)
+    assert len(decodes) == 1

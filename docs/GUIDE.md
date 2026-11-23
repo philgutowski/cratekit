@@ -195,6 +195,17 @@ the two commands that answer and apply it and the rekordbox visit after.
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
+- The tail's `analyze restamp` is passed `--scored-by` with the pass's
+  `analyze run` job, so it does not measure energy again on a file that run
+  just scored: the run measures energy the way the restamp does, over the
+  same two minutes of the same audio. It still restamps a file the run
+  skipped (a name already carrying the head), could not key or score, or
+  scored under a calibration that is no longer the active one, a file whose
+  energy tag changed since, and a file whose length moved when the run wrote
+  its tags (an MP3 with no Xing header, whose length is read off its size,
+  so the two minutes measured are not the same ones). Its `restamp` row says
+  how many it left out, and when the run scored every staged file it queues
+  nothing and says so.
 - When every genre catalogue but Discogs refuses this machine (Beatport's 403,
   a bot wall), a pass with a `discogs-token` recorded carries on: a file
   Discogs searched and could not tag is left with no genre, never recorded
@@ -257,19 +268,24 @@ Then, in order:
 
 **The rekordbox visit.** Cratekit never analyses inside rekordbox and never
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
-rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
-BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same.
+rows with the `dyn` My Tag first, with Analysis Mode Dynamic; then rows without
+`dyn` last, with Analysis Mode Normal, high precision off, BPM/Grid, Phrase and
+KEY on, the Dynamic run's other settings the same. The order matters: the last
+Analyze Tracks run sets the mode the next launch's Auto Analysis dialog shows,
+so a visit that ends on Dynamic leaves that dialog reading Dynamic.
 
 With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
 rekordbox and bring its window to the front: it raises one dialog saying Auto
 Analysis is starting, with the fields it will use. Press OK only when it shows
 every one of the Normal settings above with Vocal and CUE off and no field set
 otherwise, and it analyses every row waiting with no selection; otherwise,
-Cancel it and select as above. Auto Analysis runs on its preference's own mode,
-so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
-Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
-finds unanalysed, however it came in, so whether it is on is yours to choose.
+Cancel it and select as above. Auto Analysis runs on its preference's own
+mode, so rows with `dyn` still take Analyze Tracks with Dynamic, and after
+them one row without `dyn` takes Analyze Tracks with Normal again, so the
+visit ends on Normal; a batch whose every row has `dyn` ends on Dynamic, and
+the next launch's dialog is cancelled. Cratekit never turns Auto Analysis on or off.
+rekordbox's Auto Analysis analyses every track it finds unanalysed, however it
+came in, so whether it is on is yours to choose.
 
 Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
@@ -1524,7 +1540,7 @@ verdict).
 ```bash
 crate analyze run /path/to/folder
 crate analyze vocals /path/to/folder [--recursive] [--unscored]
-crate analyze restamp /path/to/folder [--recursive]
+crate analyze restamp /path/to/folder [--recursive] [--scored-by RUN_JOB_ID]
 crate analyze calibrate LIBRARY_ROOT --recursive
 crate analyze validate /path/to/labelled-folder
 crate metadata mytags-vocals [--apply]
@@ -1541,6 +1557,21 @@ crate metadata mytags-vocals [--apply]
   rekordbox's key and tempo with `analyze adopt` is never stamped again;
   `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
   row says when vocals cannot score.
+- `analyze run` measures a track's energy exactly as `analyze restamp` does,
+  over the same central two minutes (decoded alone, or for a file only ffmpeg
+  reads cut from one whole decode), so one file under one calibration,
+  measured over the same audio, gets one level from either verb.
+  Until U344 the run read the energy from the whole track it decoded for the
+  key, which gave a level one step apart on a track sitting on a level's
+  edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
+  `analyze run` job scored at its present name under the calibration active
+  now, whose `energylevel` tag still reads that level and whose length did
+  not move with the run's own tag write, and restamps the rest. Its JSON
+  answer counts what it left out (`progress.left_out` when queued,
+  `progress.analysis.left_out` when driven); a job that is not a finished
+  run over that folder leaves nothing out, with a `restamp-left-out-nothing`
+  warning. The tail passes it; by hand, a restamp without it restamps every
+  file as it always has.
 - `analyze run` measures key, tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's

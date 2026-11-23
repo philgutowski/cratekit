@@ -1,0 +1,258 @@
+name = "r1950"
+pass_kind = "light"
+
+[[rows]]
+id = "S01_apply_read_back_unchecked"
+description = "second.apply: drop the read back compare, so a write that did not take is counted read back and the verb reports a clean run"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''        if after is None or after != (item.genre, item.wanted):'''
+new = '''        if after is None:'''
+
+[[rows]]
+id = "S02_digest_no_items"
+description = "SecondPlan.digest: leave the items out, so an approval binds the counts alone and covers a plan over other rows"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''                "items": [item.to_json() for item in self.items],
+'''
+new = ''''''
+
+[[rows]]
+id = "S03_removed_membership_chosen"
+description = "playlist_members: count a removed membership, so a track rekordbox took out of the playlist is written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''                for song in db.get_playlist_songs(PlaylistID=str(found[0].ID))
+                if not rb_writer.membership_removed(song)
+'''
+new = '''                for song in db.get_playlist_songs(PlaylistID=str(found[0].ID))
+'''
+
+[[rows]]
+id = "S04_removed_node_in_tree"
+description = "playlist_members: read removed playlists as the tree, so a deleted playlist's tracks are chosen"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''    nodes = {str(node.ID): node for node in db.get_playlist() if not rb_writer.node_removed(node)}'''
+new = '''    nodes = {str(node.ID): node for node in db.get_playlist()}'''
+
+[[rows]]
+id = "S05_two_nodes_first_taken"
+description = "playlist_members: drop the refusal of two playlists at one path, so the first is chosen and rows nobody named are written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''    if len(found) > 1:
+        raise _no_playlist(path, f"{len(found)} nodes answer to it")'''
+new = '''    if False:
+        raise _no_playlist(path, f"{len(found)} nodes answer to it")'''
+
+[[rows]]
+id = "S06_parent_cycle_unguarded"
+description = "playlist_members: drop the parent cycle guard, so a cycle in the tree recurses until Python stops it"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''        if above is None or parent in seen:'''
+new = '''        if above is None:'''
+
+[[rows]]
+id = "S07_plan_genre_unchecked"
+description = "second.plan: drop its own genre check, so a direct caller plans a second genre that files nowhere"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''    if wanted:
+        assert_genre_files(declared, wanted)'''
+new = '''    if False:
+        assert_genre_files(declared, wanted)'''
+
+[[rows]]
+id = "S08_read_plan_genre_unchecked"
+description = "second_cli.read_plan: drop the genre check before the library opens, so a genre naming no folder is refused for the library instead"
+file = "src/cratekit/tagging/second_cli.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''    if genre:
+        second.assert_genre_files(declared, genre)'''
+new = '''    if False:
+        second.assert_genre_files(declared, genre)'''
+
+[[rows]]
+id = "M01_unfile_keeps_second"
+description = "mirror edits: an unfile leaves the second genre on the file instead of clearing it with the genre and energy"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''        if decision.outcome == edits.UNFILE:
+            genre, energy, second = None, None, None
+'''
+new = '''        if decision.outcome == edits.UNFILE:
+            genre, energy = None, None
+'''
+
+[[rows]]
+id = "M02_identity_drops_second"
+description = "mirror edits: a change's identity, and so the step digest an approval binds, no longer carries the second genre"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_second_genre.py"]
+old = '''            *([[self.second_was, self.second]] if self.second_was or self.second else []),
+'''
+new = ''''''
+
+[[rows]]
+id = "M03_write_skips_second_read_back"
+description = "mirror edits: the write no longer reads the second genre back, so one that did not take reports success"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_second_genre.py"]
+old = '''        and tags.read_energy_from_file(path) == change.energy
+        and (tags.read_tag(path, "secondgenre") or None) == (change.second or None)
+'''
+new = '''        and tags.read_energy_from_file(path) == change.energy
+'''
+
+[[rows]]
+id = "M04_item_hides_second"
+description = "mirror edits: the gate item of a two genre change no longer shows the second genre before and after"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_second_genre.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''            if self.second_was or self.second:
+                shown["second genre"] = [self.second_was, self.second]
+'''
+new = ''''''
+
+[[rows]]
+id = "M05_non_move_into_two_taken"
+description = "mirror edits: a non move edit into one of a track's two genre folders is taken instead of refused"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_second_genre.py"]
+old = '''        if decision.outcome != edits.MOVE:
+'''
+new = '''        if False:
+'''
+
+[[rows]]
+id = "M06_band_word_unchecked"
+description = "mirror edits: a band move filed only by another word than the genre naming the folder is taken, writing back a word that files elsewhere"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_mirror.py", "tests/test_second_genre.py"]
+old = '''        if target is None or target[0] != word:
+'''
+new = '''        if target is None:
+'''
+
+[[rows]]
+id = "C01_nothing_applicable_counts_entries"
+description = "adopt apply: the nothing applicable warning counts plan entries, so a two genre track reads as two tracks"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_counts.py", "tests/test_adopt_workers.py"]
+old = '''f"this plan holds {len(plan.firsts())} track(s) and none of "'''
+new = '''f"this plan holds {len(plan.entries)} track(s) and none of "'''
+
+[[rows]]
+id = "C02_file_landed_compares_second_entry"
+description = "intake filing: file_landed keys every entry by content id, so a two genre track is compared against its second folder and reported filed differently"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_counts.py", "tests/test_intake_land_filing.py"]
+old = '''found = {entry.content_id: entry for entry in plan.firsts()}'''
+new = '''found = {entry.content_id: entry for entry in plan.entries}'''
+
+[[rows]]
+id = "C03_adopt_step_tracks_read_counts_entries"
+description = "organize: the adopt step's tracks read counts plan entries, so a two genre track is read twice"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_counts.py", "tests/test_organize.py"]
+old = '''"tracks read": len(plan.firsts())'''
+new = '''"tracks read": len(plan.entries)'''
+
+[[rows]]
+id = "C04_second_bucket_files_by_first_word"
+description = "rebuild: filed_genres hands the second bucket the first genre's word, so its genre sub is never reached"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_counts.py", "tests/test_second_genre.py", "tests/test_rebuild.py"]
+old = '''return ((first, entry.genre), (second, entry.second_genre))'''
+new = '''return ((first, entry.genre), (second, entry.genre))'''
+
+[[rows]]
+id = "C05_export_decision_column_keeps_last_place"
+description = "route export: the decision overwrites a track's column, so the gate names only the last of a two genre track's places"
+file = "src/cratekit/write/routing_export.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_counts.py", "tests/test_routing_workers.py", "tests/test_second_genre.py"]
+old = '''_shown(named, key, f"{folder}/{sub}")'''
+new = '''named[key] = f"{folder}/{sub}"'''
+
+[[rows]]
+id = "A01_second_sub_any_disposition"
+description = "adoption: _second_sub drops its ROUTE guard, so a track that does not route gets a second entry"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py"]
+old = '''    if track.disposition is not Disposition.ROUTE or not track.second_bucket:
+        return ""'''
+new = '''    if not track.second_bucket:
+        return ""'''
+
+[[rows]]
+id = "A02_second_entry_without_place"
+description = "adoption: the second entry is built whenever a routed track names a second bucket, so a second folder with no place for the reading gets an entry that files nothing and keeps a split place for the first; the ledger's sub is None guard, now the caller's if second_sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py"]
+old = '''        if second_sub:
+            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+new = '''        if track.second_bucket and track.disposition is Disposition.ROUTE:
+            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+
+[[rows]]
+id = "A03_second_entry_first_word"
+description = "adoption: the second entry keeps the first genre's word instead of the second genre's"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py"]
+old = '''            entry = replace(unplaced, genre=track.second_genre, second=True)'''
+new = '''            entry = replace(unplaced, second=True)'''
+
+[[rows]]
+id = "A04_review_row_no_second_genre"
+description = "adoption: review_row drops the second_genre key, so the review list and its digest lose the second genre's word"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py"]
+old = '''        # Only on a second genre's entry (U340), so a one genre row reads as before.
+        **({"second_genre": entry.genre} if entry.second else {}),
+'''
+new = '''        # Only on a second genre's entry (U340), so a one genre row reads as before.
+'''
+
+[[rows]]
+id = "A05_second_beside_without_first_place"
+description = "adoption: the second entry keeps the first bucket's split place even when the first entry files nothing there"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py"]
+old = '''                    beside=frozenset({bucket}) if sub else frozenset(),'''
+new = '''                    beside=frozenset({bucket}),'''
+
+[[rows]]
+id = "A06_own_any_bucket"
+description = "adopt move: _own counts an entry's bucket as claimed whether or not it claims it, so a verdict withheld second entry hides its folder from the first"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_second_genre_guards_adopt.py", "tests/test_second_genre.py", "tests/test_adopt_split_place.py", "tests/test_adopt_move.py"]
+old = '''    return frozenset({entry.bucket}) if claims(entry, entry.bucket) else frozenset()'''
+new = '''    return frozenset({entry.bucket}) if entry.bucket else frozenset()'''

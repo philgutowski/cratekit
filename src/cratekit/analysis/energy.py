@@ -22,6 +22,7 @@ install can import this module and read a calibration file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -143,9 +144,11 @@ def _central(samples: Any, rate: int) -> Any:
 def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
     """The ordered feature vector for decoded mono samples, or None.
 
-    Samples, so the head pass does not decode twice; measured over the central
-    :data:`SEGMENT_SECONDS`. THE TEMPO FEATURE IS MEASURED HERE, FROM THE
-    SLICE, ON EVERY PATH, so ``analyze run`` and ``analyze restamp`` agree.
+    Measured over the central :data:`SEGMENT_SECONDS`. THE TEMPO FEATURE IS
+    MEASURED HERE, FROM THE SLICE, ON EVERY PATH. Every verb that scores a file
+    hands this the samples :func:`features_from_path` decoded, through
+    :func:`measure`, so ``analyze run`` and ``analyze restamp`` read the same
+    samples and give one file the same level (U344).
     """
     try:
         import librosa
@@ -230,28 +233,25 @@ def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
 def features_from_path(path: Path) -> dict[str, float] | None:
     """Decode the central slice of ``path`` and measure it.
 
-    The restamp and calibrate path. ONLY THE SLICE IS DECODED for a file
-    librosa reads, off the header's duration; one decoded through ffmpeg has
-    no such seek (U263).
+    The run, restamp and calibrate path (U344). ONLY THE SLICE IS DECODED for
+    a file librosa reads, off the header's duration; one decoded through ffmpeg
+    has no such seek (U263), so it is decoded whole once and cut (R-1556).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
-    from cratekit.analysis import decode
+    from cratekit.analysis import decode, warm
 
-    # THROUGH THE ONE DECODER (U263).
+    # THE PROCESS'S KERNELS ARE WARMED FIRST, as before every head (U344): a
+    # numba kernel keeps the code it was first compiled to, and the slice's
+    # beat concentration differed in its last bits between a process that
+    # measured a head first and one that measured energy first, so a run
+    # scored in a worker and a restamp in the driver could disagree.
+    warm.kernels()
+    # THROUGH THE ONE DECODER (U263), which decodes an M4A once (R-1556).
     try:
-        offset = 0.0
-        try:
-            duration = decode.duration(path)
-        except Exception:
-            duration = 0.0
-        if duration > SEGMENT_SECONDS:
-            offset = (duration - SEGMENT_SECONDS) / 2.0
-        samples, decoded_rate = decode.load(
-            path, MEASURE_RATE, offset=offset, duration=SEGMENT_SECONDS
-        )
+        samples, decoded_rate = decode.centred(path, MEASURE_RATE, SEGMENT_SECONDS)
     except Exception:
         return None
     return features_from_samples(samples, int(decoded_rate))
@@ -408,6 +408,17 @@ def load_calibration(cfg: config.Config) -> Calibration | None:
         ) from exc
 
 
+def fingerprint(calibration: Calibration | Mapping[str, Any]) -> str:
+    """Which calibration a level was scored under, as a digest of its state mapping.
+
+    Two readings of one calibration file give one fingerprint, and a refit gives
+    another, so a level scored under one is known not to be the other's (U344).
+    """
+    mapping = calibration.to_json() if isinstance(calibration, Calibration) else calibration
+    text = json.dumps(dict(mapping), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def save_calibration(cfg: config.Config, calibration: Calibration) -> Path:
     return write_json(calibration_path(cfg), calibration.to_json())
 
@@ -489,6 +500,7 @@ __all__ = [
     "extractor_bound",
     "features_from_path",
     "features_from_samples",
+    "fingerprint",
     "index",
     "level_for",
     "load_calibration",

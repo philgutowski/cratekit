@@ -36,7 +36,7 @@ import functools
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
-from cratekit.analysis import ahead, artifacts, detect, energy, light, vocals
+from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
@@ -58,6 +58,23 @@ DEFAULT_CALIBRATION_SAMPLE = 500
 #: The handler key of ``crate analyze run``, the one verb here whose drive
 #: measures ahead of itself (U241). ``analyze restamp`` shares the resume.
 RUN_HANDLER_KEY = "analyze.run"
+
+#: The run report's key naming the calibration its level was scored under (U344).
+SCORED_UNDER = "calibration"
+#: The run report's key saying the energy's slice did not move with the run's
+#: own tag write (U344), and what :func:`slice_length` answers for a file
+#: decoded whole, whose length no tag moves.
+SLICE_HELD = "slice_held"
+DECODED_WHOLE = "decoded-whole"
+#: The payload key recording why a restamp told a run's job left nothing out.
+PAYLOAD_LEFT_OUT_NOTHING = "left_out_nothing"
+#: ``analyze restamp``'s flag naming the ``analyze run`` job of this pass, whose
+#: scored files it leaves out (U344), and the payload keys that record them.
+SCORED_BY_FLAG = "--scored-by"
+PAYLOAD_SCORED_BY = "scored_by"
+PAYLOAD_LEFT_OUT = "left_out"
+#: The no op ``analyze restamp --scored-by`` answers when the run scored every file.
+ALL_SCORED = "scored-by-run"
 
 #: The warning every restamp resume carries, because the registry declares a
 #: database write this build does not perform. See ``handle_restamp``.
@@ -208,6 +225,19 @@ def build_restamp(parser, entry) -> None:
         help=(
             "queue every folder under this one as a single resumable job, "
             "instead of only the tracks directly inside it"
+        ),
+    )
+    parser.add_argument(
+        SCORED_BY_FLAG,
+        dest="scored_by",
+        default=None,
+        metavar="JOB_ID",
+        help=(
+            "leave out each file the analyze run job JOB_ID scored at its present "
+            "name under the calibration active now, whose energy tag still reads "
+            "that level and whose length did not move with the run's own tag "
+            "write, since the run measured it as a restamp would; the tail "
+            "passes it"
         ),
     )
     foreground.add_job_options(parser, what="restamp")
@@ -405,6 +435,11 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
         warnings = (*warnings, *discovery.warnings_of(job.payload))
         if job.handler_key == "analyze.restamp":
             warnings = (*warnings, DB_NOT_WRITTEN)
+            # What a tail's restamp left out because the run scored it (U344).
+            summary.update(left_out_of(job.payload))
+            why = (job.payload or {}).get(PAYLOAD_LEFT_OUT_NOTHING)
+            if isinstance(why, str):
+                warnings = (*warnings, left_out_nothing(why))
         else:
             # THE HEAD IS A MEASUREMENT WITH A KNOWN ERROR (R-744): rekordbox
             # will not always agree, so the answer carries the measured rate.
@@ -746,7 +781,13 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": partial["terminal"]}
         )
     scored = vocals.analyse(partial)
+    # THE SLICE THE ENERGY WAS MEASURED OVER IS CENTRED ON THE FILE'S LENGTH,
+    # which libsndfile estimates from the size of an MP3 with no Xing header,
+    # so the tag write below can move it (U344 review): read before and after.
+    measured = scored.get("energy") is not None
+    before = slice_length(path) if measured else None
     final = _finalize(cfg, job, item, path, scored)
+    held = measured and before is not None and slice_length(final) == before
     return artifacts.produced(
         cfg,
         job,
@@ -766,8 +807,44 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             "voxgender": scored.get("voxgender"),
             "drift": scored.get("drift"),
             "drift_verdict": scored.get("drift_verdict"),
+            # WHICH CALIBRATION THE LEVEL IS UNDER, so the tail's restamp leaves
+            # this file out only while that calibration is still the one (U344).
+            SCORED_UNDER: _scored_under(cfg, settings),
+            SLICE_HELD: held,
         },
     )
+
+
+def slice_length(path: Path) -> float | str | None:
+    """The length the energy measure centres its slice on, or None when unread.
+
+    A file libsndfile opens answers its header's length, a read of the header
+    alone. Any other is decoded whole (by ffmpeg, or by audioread under a
+    librosa before 1.0), whose length is the decoded samples' and no tag can
+    move, so it answers that it is decoded, with no decode here; a file nothing
+    can read answers so too, and the run measured no energy for it to keep.
+    None when the analysis stack is absent or the length cannot be read: a
+    length not read is not a length that held.
+    """
+    try:
+        if not decode.libsndfile_opens(path):
+            return DECODED_WHOLE
+        return decode.duration(path)
+    except Exception:  # noqa: BLE001 - an unread length leaves the file to the restamp
+        return None
+
+
+def _scored_under(cfg: config.Config, settings: ahead.Settings | None) -> str | None:
+    """The fingerprint of the calibration this item's level was scored under, or None.
+
+    The settings the detector was bound under; under a test's own detector,
+    which binds none, the calibration active now.
+    """
+    if settings is not None:
+        held = settings.calibration
+        return None if held is None else energy.fingerprint(held)
+    active = energy.load_calibration(cfg)
+    return None if active is None else energy.fingerprint(active)
 
 
 def as_level(text: str | None) -> int | None:
@@ -807,23 +884,125 @@ def analyze_restamp(ctx) -> Envelope:
         return nothing_to_queue(ctx, folder, extra)
     # REFUSED AT THE QUEUE, not only in the worker: a job whose every item
     # would fail on the same absence is a report over work nothing could do.
-    _calibration_or_refuse(cfg)
+    calibration = _calibration_or_refuse(cfg)
+    items: list[str] = list(scan.items)
+    scored_by: dict[str, Any] = {}
+    if ctx.args.scored_by:
+        left_out, why = scored_in_pass(cfg, ctx.args.scored_by, folder, items, calibration)
+        items = [item for item in items if item not in left_out]
+        scored_by = {
+            PAYLOAD_SCORED_BY: ctx.args.scored_by,
+            PAYLOAD_LEFT_OUT: sorted(left_out),
+        }
+        if why is not None:
+            # ON THE PAYLOAD as well, since the foreground answer is the resume's.
+            scored_by[PAYLOAD_LEFT_OUT_NOTHING] = why
+            extra = (*extra, left_out_nothing(why))
+        if not items:
+            return ctx.envelope(
+                data=no_job(ALL_SCORED, left_out=len(left_out), scored_by=ctx.args.scored_by),
+                outcome=Outcome.NO_OP,
+                warnings=extra,
+            )
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
             # FROZEN WITH THE FOLDER: the resume never re-scans, so it reports
             # the tree the job was queued against.
-            payload={"folder": str(folder), **discovery.frozen_walk(scan, recursive=recursive)},
+            payload={
+                "folder": str(folder),
+                **discovery.frozen_walk(scan, recursive=recursive),
+                **scored_by,
+            },
             cfg=cfg,
-            item_ids=list(scan.items),
+            item_ids=items,
         )
         if foreground.queue_only(ctx.args):
             return ctx.envelope(
-                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
+                data=jobs.reported(store, job, left_out_of(job.payload)),
+                warnings=(DB_NOT_WRITTEN, *extra),
             )
     # NOT ``extra`` AGAIN: the resume reads the walk's warnings off the payload.
     return _settle(ctx, cfg, job, restamp_argv(job))
+
+
+def scored_in_pass(
+    cfg: config.Config,
+    run_job_id: str,
+    folder: Path,
+    items: list[str],
+    calibration: energy.Calibration,
+) -> tuple[set[str], str | None]:
+    """The items ``run_job_id`` scored that a restamp would leave as they are, and why none.
+
+    An item is left out only when the run's committed report says it was
+    analysed at exactly this path with a level under the calibration active
+    now, the slice its energy was measured over did not move with the run's
+    own tag write, and the file's energy tag still reads that level: the run
+    measures through the restamp's own :func:`energy.measure` (U344), over
+    the same samples, so the restamp would answer the same level and write
+    nothing. Anything else, a job that
+    is not a finished run over this folder included, is restamped as it
+    always was; the second answer says why nothing was left out, when so.
+    """
+    with jobs.open_store() as store:
+        try:
+            run = jobs.get(store, run_job_id)
+        except CratekitError:
+            # An identifier the queue does not hold, or a queue that cannot
+            # answer: nothing is known to be scored, so nothing is left out.
+            run = None
+    if run is None:
+        return set(), f"no job {run_job_id} is recorded, so every file is restamped"
+    if run.handler_key != RUN_HANDLER_KEY or run.state is not jobs.JobState.SUCCEEDED:
+        return set(), (
+            f"job {run_job_id} is not a finished analyze run ({run.handler_key}, "
+            f"{run.state}), so every file is restamped"
+        )
+    if _folder_of(str(run.payload.get("folder") or "")) != folder:
+        return set(), (
+            f"job {run_job_id} analysed {run.payload.get('folder')}, not {folder}, so "
+            f"every file is restamped"
+        )
+    active = energy.fingerprint(calibration)
+    scored: dict[Path, int] = {}
+    for report in artifacts.committed(cfg, run.job_id):
+        level = report.get("energy")
+        if (
+            report.get("status") == "analyzed"
+            and report.get("energy_status") == energy.STATUS_CALIBRATED
+            and isinstance(level, int)
+            and not isinstance(level, bool)
+            and report.get(SCORED_UNDER) == active
+            and report.get(SLICE_HELD) is True
+            and isinstance(report.get("path"), str)
+        ):
+            scored[Path(report["path"])] = level
+    left_out: set[str] = set()
+    for item in items:
+        path = folder / item
+        level = scored.get(path)
+        if level is not None and as_level(tags.read_tag(path, "energylevel")) == level:
+            left_out.add(item)
+    return left_out, None
+
+
+def left_out_nothing(why: str) -> dict[str, str]:
+    """The warning a restamp told a run's job carries when it could leave nothing out."""
+    return {"code": "restamp-left-out-nothing", "message": why}
+
+
+def left_out_of(payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What a restamp queued with ``--scored-by`` left out, read off its payload."""
+    held = payload or {}
+    if PAYLOAD_SCORED_BY not in held:
+        return {}
+    names = held.get(PAYLOAD_LEFT_OUT)
+    return {
+        PAYLOAD_LEFT_OUT: len(names) if isinstance(names, list) else 0,
+        PAYLOAD_SCORED_BY: str(held[PAYLOAD_SCORED_BY]),
+    }
 
 
 def handle_restamp(job, item, cfg) -> jobs.Produced:
