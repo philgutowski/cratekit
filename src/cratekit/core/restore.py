@@ -38,8 +38,8 @@ Three parts hold the rest, each name a caller reads re-exported here (U300): the
 performing steps (``restore_perform``), retention and the prune (``restore_retention``, which cites
 :data:`RESIDUAL_CAPTURE_VOLUME_UNREPORTED`), and bare-metal recovery
 (``restore_recovery``, which cites :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`).
-A fourth, ``restore_tags``, is the files' half (R-1924): the title tag and key
-tag a session kept before it wrote them, read at the plan and put back by
+A fourth, ``restore_tags``, is the files' half (R-1924, U339): the title tag,
+key tag or genre a session kept before it wrote them, read at the plan and put back by
 :func:`run` after the database half lands and before the latch is retracted.
 It is the one write outside the coupled set, and the plan's ``file_tags``.
 
@@ -566,7 +566,7 @@ class Plan:
     tree_markers: tuple[reconcile.Marker, ...] = ()
     unconverged: tuple[str, ...] = ()
     unverified_sessions: tuple[str, ...] = ()
-    #: Each file's title tag and key tag before the restored session and every
+    #: Each file's kept tags before the restored session and every
     #: session it discards wrote them, put back after the database (R-1924).
     file_tags: tuple[restore_tags.FileBefore, ...] = ()
 

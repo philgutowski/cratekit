@@ -711,8 +711,9 @@ together can form a window that was never there, which is a new copy.
 ### Allowance
 A file of lines, one per place a package may still hold something a rule
 forbids, under `tests/ratchets/`: one file per package for copied blocks and one
-for seam crossings. Lines are only ever removed. A line whose finding is gone
-fails nothing, so a card that removes a copy or a crossing cannot fail another
+for seam crossings. Lines are only ever removed. The copied block allowances
+are all empty since U329 and any line in one fails. An import allowance line
+whose finding is gone fails nothing, so a card that removes a copy or a crossing cannot fail another
 card's package by removing it, and `scripts/refactor_measure.py prune` removes
 such lines and can add none.
 
@@ -1142,7 +1143,9 @@ adoption plan holds it: `add`, `present`, `under-another-name`, `no-sub`,
 
 ### Move
 `crate adopt move`: one track leaving the competing subs its reading does not
-name for the one it does, within one bucket. The addition commits before the
+name for the one it does, within one bucket, or, for a row `tag set` gave a new
+genre (U339), leaving every sub of the bucket its old genre filed it in for the
+one its new genre names in another. The addition commits before the
 removal (a soft delete of the membership, the only removal the guarded writer
 admits). With no reading it is Left.
 
