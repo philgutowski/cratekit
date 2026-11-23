@@ -162,7 +162,7 @@ def test_a_row_with_another_genre_is_planned_for_its_file_and_its_row(machine, s
     (item,) = plan.items
     assert (item.row, item.file, item.action, item.reason) == (MELODIC, MELODIC, gs.WRITE, "")
     assert item.file_writes and item.row_writes
-    assert plan.genre_row == _genre_ids()[DEEP] and not plan.mints
+    assert plan.genre_row == _genre_ids()[DEEP]
 
 
 def test_only_the_surface_that_differs_is_planned(machine, silence):
@@ -214,14 +214,17 @@ def test_a_row_held_out_is_listed_and_a_held_identifier_naming_none_is_carried(
     assert plan.digest != _plan(machine, DEEP, ["10", "11"], leave=("11",)).digest
 
 
-def test_a_genre_with_no_lookup_row_is_planned_as_a_mint_and_a_tombstone_is_not_its_row(
+def test_a_genre_with_no_lookup_row_leaves_every_row_and_a_tombstone_is_not_its_row(
     machine, silence
 ):
-    build(machine, silence, Track("10", MELODIC, MELODIC))
+    build(machine, silence, Track("10", MELODIC, MELODIC), Track("11", "", ""))
     _tombstone(machine, AFRO)
-    plan = _plan(machine, AFRO, ["10"])
-    assert plan.mints and plan.genre_row == ""
-    assert genre_set_cli._payload(plan)["totals"]["genre_row"] == gs.MINTED
+    plan = _plan(machine, AFRO, ["10", "11", "404"])
+    assert plan.genre_row == "" and plan.writes == ()
+    assert [(item.content_id, item.reason) for item in plan.items] == [
+        ("10", gs.GENRE_UNKNOWN), ("11", gs.GENRE_UNKNOWN), ("404", gs.ROW_GONE)
+    ]
+    assert genre_set_cli._payload(plan)["totals"]["genre_row"] == gs.NO_ROW
 
 
 def test_the_digest_names_no_path_and_moves_with_a_word(machine, silence, tmp_path):
@@ -323,36 +326,6 @@ def test_the_apply_writes_the_genre_on_file_and_row_and_nothing_else(acknowledge
         assert changed == ({"GenreID"} if content_id in ("10", "11") else set())
 
 
-def test_a_genre_with_no_lookup_row_is_minted_once_for_many_rows_past_a_tombstone(
-    acknowledged, silence
-):
-    cfg = acknowledged
-    build(cfg, silence, *(Track(cid, MELODIC, MELODIC) for cid in ("10", "11", "12")))
-    _tombstone(cfg, AFRO)
-
-    _plan_, written = _apply(cfg, AFRO, ["10", "11", "12"])
-
-    rows_named = dict(_genre_rows(cfg, AFRO))
-    assert rows_named.pop("900") == 1
-    ((minted, live),) = rows_named.items()
-    assert live == 0
-    assert written.minted == minted and written.read_back == 3
-    linked = _query(cfg, "SELECT GenreID FROM djmdContent WHERE ID IN ('10','11','12')")
-    assert {genre_id for (genre_id,) in linked} == {minted}
-    # A SECOND RUN LINKS THE ROW THE FIRST MINTED, and mints none.
-    build_more = _plan(cfg, AFRO, ["10"])
-    assert build_more.genre_row == minted and not build_more.mints
-
-
-def test_nothing_is_minted_when_no_row_is_written(acknowledged, silence, monkeypatch):
-    cfg = acknowledged
-    build(cfg, silence, Track("10", MELODIC, MELODIC))
-    monkeypatch.setattr(tags, "write_genre", lambda *args: False)
-    _plan_, written = _apply(cfg, AFRO, ["10"])
-    assert written.files.failed == ("10",) and written.written == 0 and written.minted == ""
-    assert _genre_rows(cfg, AFRO) == [] and _genre_of(cfg, "10") == MELODIC
-
-
 def test_a_file_that_moved_since_the_plan_is_named_and_its_row_left(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
@@ -406,7 +379,7 @@ def test_a_second_run_plans_nothing_and_writes_nothing(acknowledged, silence):
     assert _content(cfg) == settled
 
 
-def test_the_policy_registered_is_the_retag_genres_and_the_mint_is_admitted_by_name(
+def test_the_policy_registered_is_the_retag_genres_and_no_creation_is_asked_for(
     acknowledged, silence, monkeypatch
 ):
     cfg = acknowledged
@@ -419,8 +392,8 @@ def test_the_policy_registered_is_the_retag_genres_and_the_mint_is_admitted_by_n
         return real(db, **kwargs)
 
     monkeypatch.setattr(rb_writer, "commit_guarded", noting)
-    _apply(cfg, AFRO, ["10"])
-    assert asked == [(rb_writer.GENRE_TABLE,)]
+    _apply(cfg, DEEP, ["10"])
+    assert asked == [()]
     assert metadata.RETAG_GENRE in rb_writer.registered_field_policies()
 
 
@@ -473,19 +446,36 @@ def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silenc
     build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", DEEP, DEEP))
     _seed_picks(cfg, "11", "10")
 
-    code, acted, refused = _two_acts(_verb(AFRO, "--playlist", PICKS))
+    code, acted, refused = _two_acts(_verb(DEEP, "--playlist", PICKS))
 
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["digest"] == acted["data"]["digest"]
-    assert shown["genre_row"] == gs.MINTED and shown["playlist"] == PICKS
+    assert shown["genre_row"] == _genre_ids()[DEEP] and shown["playlist"] == PICKS
     totals = acted["data"]["totals"]
-    assert (totals["count"], totals["written"], totals["read_back"]) == (2, 2, 2)
-    assert [_genre_of(cfg, cid) for cid in ("10", "11")] == [AFRO, AFRO]
+    assert (totals["count"], totals["written"], totals["read_back"]) == (2, 1, 1)
+    assert [_genre_of(cfg, cid) for cid in ("10", "11")] == [DEEP, DEEP]
     codes = [warning["code"] for warning in acted["warnings"]]
-    assert codes == [genre_set_cli.GENRE_WRITTEN, genre_set_cli.FILE_NEXT]
-    assert "one was made and linked on the same commit" in acted["warnings"][0]["message"]
+    assert codes == [
+        genre_set_cli.GENRE_WRITTEN, genre_set_cli.FILE_NEXT, genre_set_cli.ROWS_LEFT
+    ]
     assert "crate adopt move" in acted["warnings"][1]["message"]
+    assert "(1 already-that-genre)" in acted["warnings"][2]["message"]
+
+
+def test_a_genre_the_library_has_no_row_for_writes_nothing_and_names_the_act(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    code, acted, refused = _two_acts(_verb(AFRO, "--row", "10"))
+    assert code == int(ExitCode.OK) and acted["outcome"] == "no_op"
+    assert refused["cause"]["detail"]["shown"]["genre_row"] == gs.NO_ROW
+    codes = [warning["code"] for warning in acted["warnings"]]
+    assert codes[:2] == [genre_set_cli.NOTHING_TO_WRITE, genre_set_cli.GENRE_NO_ROW]
+    assert "give one track that genre in rekordbox" in acted["warnings"][1]["message"]
+    assert _genre_rows(cfg, AFRO) == []
+    assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == MELODIC
 
 
 def test_the_gate_takes_no_inline_answer_and_a_declined_gate_writes_nothing(
@@ -565,7 +555,7 @@ def test_a_file_that_will_not_take_the_genre_refuses_after_the_rest_landed(
 def test_the_restore_puts_the_files_and_rows_back(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", OLD, ""))
-    code, acted, _refused = _two_acts(_verb(AFRO, "--row", "10", "--row", "11"))
+    code, acted, _refused = _two_acts(_verb(DEEP, "--row", "10", "--row", "11"))
     assert code == int(ExitCode.OK), acted
     (record,) = [one for one in session.records(cfg) if one.workflow == gs.WORKFLOW]
 
@@ -582,7 +572,7 @@ def test_the_restore_puts_the_files_and_rows_back(acknowledged, silence):
     # A GENRE THE FILE NEVER HAD IS PUT BACK ABSENT.
     assert _tags_of(cfg, "11")["genre"] is None
     assert restored["data"]["totals"]["file_tags"]["read_back"] == 2
-    assert _genre_rows(cfg, AFRO) == [] and dict(genre_moves.read(cfg)) == {}
+    assert dict(genre_moves.read(cfg)) == {}
 
 
 # 6. What the verb is

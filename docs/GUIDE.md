@@ -1332,9 +1332,10 @@ its genre on the row and the file and what changes at an explicit gate
 its file is missing or unreadable, its file holds several genres, it already
 carries the genre on both, or `--leave CONTENT_ID` holds it. The run that
 applies takes the plan again and refuses `decision-stale` if anything moved.
-It writes the file's genre tag and then the row's genre and nothing else; when
-the library has no genre row for the word, it makes one on the same commit
-that links it, so no edit in rekordbox is needed first. A file that will not
+It writes the file's genre tag and then the row's genre and nothing else.
+When the library has no genre row for the word yet, it writes nothing on any
+file or row and says so (`set-genre-has-no-row`): give one track that genre in
+rekordbox, which makes the row, then run it again. A file that will not
 take the genre keeps its row's old genre and the run ends refused under
 `tag-set-unwritten` after the rest landed. A restore of the run's session puts
 the rows back and each file's old genre. Then run `crate adopt move`, which

@@ -167,6 +167,7 @@ KEBAB_LITERALS = {
     ],
     'tagging/genre_set_cli.py': [
         'set-file-next',
+        'set-genre-has-no-row',
         'set-genre-written',
         'set-leave-unmatched',
         'set-nothing-to-write',

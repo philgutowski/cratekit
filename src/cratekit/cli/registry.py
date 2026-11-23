@@ -1815,8 +1815,8 @@ ENTRIES: tuple[Entry, ...] = (
         # No feature row or source script. Core, as ``tag.suggest``: adoption
         # files by genre.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The file and the row, the row as ``tag.rows`` writes it, a genre lookup
-        #: row minted on the linking commit when the library has none.
+        #: The file and the row, the row as ``tag.rows`` writes it; a genre with
+        #: no lookup row writes nothing, since only a landing may make one.
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
         doctor_checks=(

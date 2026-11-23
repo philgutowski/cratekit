@@ -14,9 +14,10 @@ shown, since the person named each row.
 WHAT IT WRITES IS THE GENRE AND NOTHING ELSE: the file's genre tag through
 :func:`cratekit.core.tags.write_genre`, and the row's ``GenreID`` through
 :func:`cratekit.write.metadata.plan_genre_retag` under ``RETAG_GENRE``. A word
-with no active lookup row is minted by :func:`cratekit.write.metadata.mint_genre`
-on the same commit that links it, since rekordbox drops a lookup row nothing
-references. THE FILE IS WRITTEN FIRST AND THE ROW ONLY WHEN ITS FILE READ BACK,
+with no active lookup row is NOT MINTED: the core writer admits a created
+lookup row for the native landing alone (``tests/test_rb_writer_guard.py``), so
+every row is left ``genre-unknown`` and nothing is written until rekordbox has
+made the row. THE FILE IS WRITTEN FIRST AND THE ROW ONLY WHEN ITS FILE READ BACK,
 inside the session, after every file's old genre is in the record, so a restore
 of the session puts the rows back from its capture and the files back from the
 record (:mod:`cratekit.core.restore_tags`).
@@ -65,7 +66,7 @@ CHANGE_KEY = rows.CHANGE_KEY
 RECORD_KEY = "genre_set_before"
 
 #: What a plan shows for a genre the library has no active lookup row for.
-MINTED = "mint"
+NO_ROW = "none"
 
 #: The outcomes, in the order a summary lists them, zero filled.
 WRITE = "write"
@@ -73,9 +74,11 @@ ALREADY = "already-that-genre"
 HELD_OUT = rows.HELD_OUT
 ROW_GONE = "row-gone"
 FILE_MULTI_VALUED = rows.FILE_MULTI_VALUED
+GENRE_UNKNOWN = rows.GENRE_UNKNOWN
 
 OUTCOMES: tuple[str, ...] = (
-    WRITE, ALREADY, HELD_OUT, ROW_GONE, FILE_MULTI_VALUED, rows.FILE_UNREADABLE, *rows.UNREAD[1:],
+    WRITE, ALREADY, HELD_OUT, ROW_GONE, GENRE_UNKNOWN, FILE_MULTI_VALUED, rows.FILE_UNREADABLE,
+    *rows.UNREAD[1:],
 )
 
 #: The outcomes of a named row that is not written, each an item.
@@ -133,7 +136,7 @@ class SetPlan(rows.Tallied):
     """Every named row, the count of every outcome, and the genre's lookup row."""
 
     genre: str
-    #: The active lookup row the genre links, or empty when the apply mints one.
+    #: The active lookup row the genre links, or empty when the library has none.
     genre_row: str
     #: The playlist the rows were named by, as given, or empty.
     playlist: str
@@ -143,19 +146,14 @@ class SetPlan(rows.Tallied):
     leave_unmatched: tuple[str, ...] = ()
 
     @property
-    def mints(self) -> bool:
-        """Whether the apply makes the genre's lookup row."""
-        return not self.genre_row
-
-    @property
     def digest(self) -> str:
-        """The fingerprint an approval is bound to: the genre, its row or the
-        mint, the scope's playlist and every item, and nothing that names a copy."""
+        """The fingerprint an approval is bound to: the genre, its lookup row, the
+        scope's playlist and every item, and nothing that names a copy."""
         return digest_of(
             {
                 "kind": WORKFLOW,
                 "genre": self.genre,
-                "genre_row": self.genre_row or MINTED,
+                "genre_row": self.genre_row or NO_ROW,
                 "playlist": self.playlist,
                 "items": [item.digested() for item in self.items],
                 "counts": dict(self.counts),
@@ -289,6 +287,7 @@ def plan_set(
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
+    genre_row = metadata.resolve_genre_id(db, genre)
     wanted = frozenset(content_ids)
     every = {str(row.ID): row for row in db.get_content()}
     mapped = {
@@ -329,6 +328,10 @@ def plan_set(
             reason = HELD_OUT
         elif file_word == genre and row_word == genre:
             reason = ALREADY
+        elif genre_row is None:
+            # NOTHING IS WRITTEN WITHOUT THE LOOKUP ROW, the file no more than the
+            # row, so file and row never part over a word only rekordbox can make.
+            reason = GENRE_UNKNOWN
         if reason:
             counts[reason] += 1
             items.append(Item(content_id, path, title, row_word, file_word, LEAVE, reason=reason))
@@ -340,7 +343,6 @@ def plan_set(
                 file_writes=file_word != genre, row_writes=row_word != genre,
             )
         )
-    genre_row = metadata.resolve_genre_id(db, genre)
     listed = {item.content_id for item in items}
     return SetPlan(
         genre=genre,
@@ -390,10 +392,9 @@ FilesWritten = suggest.FilesWritten
 
 @dataclass(frozen=True, slots=True)
 class Written(row_defaults.RowsWritten):
-    """What one apply did, files and rows, and the lookup row it minted, if any."""
+    """What one apply did, files and rows."""
 
     files: FilesWritten = FilesWritten()
-    minted: str = ""
 
 
 def write_files(genre: str, items: Sequence[Item]) -> FilesWritten:
@@ -483,8 +484,8 @@ def apply_set(
     analysis_roots: Iterable[Path | str],
 ) -> Written:
     """Write the plan inside one guarded session: every file's old genre into the
-    record, the files, then the rows whose file read back, the genre's lookup row
-    minted on that same commit when the library has none, read back from SQL.
+    record, the files, then the rows whose file read back, linked to the genre's
+    lookup row and read back from SQL.
     Each row's old bucket is recorded for ``adopt move`` before the commit, after
     the capture, so a restore takes it back with the rows.
 
@@ -511,7 +512,7 @@ def apply_set(
         rowed = [item for item in writes if item.content_id in landed and item.row_writes]
         ids = [item.content_id for item in rowed]
         before = row_defaults.read_columns(db, ids)
-        done = {"written": 0, "minted": ""}
+        done = {"written": 0}
         try:
             if rowed:
                 _write_rows(cfg, db, plan, declared, rowed, mapped, done)
@@ -524,7 +525,7 @@ def apply_set(
             raise
         # RECORDED THE INSTANT THE COMMIT RETURNS.
         row_defaults.record_commit(record, CHANGE_KEY, int(done["written"]), cfg)
-        written, minted = int(done["written"]), str(done["minted"])
+        written = int(done["written"])
         convergence.record_fingerprint(cfg, db)
         after = row_defaults.read_columns(db, ids)
         names = rows._genre_names(db)
@@ -539,7 +540,6 @@ def apply_set(
         wrong=wrong,
         moved=moved,
         files=files,
-        minted=minted,
     )
 
 
@@ -552,17 +552,10 @@ def _write_rows(
     mapped: Mapping[str, Any],
     done: dict[str, Any],
 ) -> None:
-    """Link each row to the genre's lookup row, minting it first when the library
-    has none, record each row's old bucket, and commit. ``done`` holds the count
-    and the mint as they happen, so a commit that raised after landing is
-    recorded with what it wrote.
-
-    MINTED ONLY WHEN A ROW LINKS IT, AND ON THE COMMIT THAT LINKS IT: rekordbox
-    drops a lookup row nothing references (A4).
-    """
+    """Link each row to the genre's lookup row, record each row's old bucket, and
+    commit. ``done`` holds the count as it happens, so a commit that raised after
+    landing is recorded with what it wrote."""
     ids = [item.content_id for item in rowed]
-    if plan.mints:
-        done["minted"] = metadata.mint_genre(db, plan.genre)
     changes = metadata.plan_genre_retag(
         [mapped[content_id] for content_id in ids], dict.fromkeys(ids, plan.genre), db=db
     )
@@ -573,12 +566,12 @@ def _write_rows(
     genre_moves.record(
         cfg, moved_out_of(declared, plan.genre, rowed), into=named_bucket(declared, plan.genre)
     )
-    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())
+    rb_writer.commit_guarded(db)
 
 
 def _assert_all_linked(changes: metadata.Plan, ids: Sequence[str], genre: str) -> None:
     """Refuse, before any row is set, when the resolution on the write handle
-    links fewer rows than were planned: the genre's row was minted or found."""
+    links fewer rows than were planned: the plan found the genre's row."""
     linked = {change.content_id for change in changes.changes}
     unlinked = [content_id for content_id in ids if content_id not in linked]
     if not unlinked:
@@ -586,7 +579,7 @@ def _assert_all_linked(changes: metadata.Plan, ids: Sequence[str], genre: str) -
     raise refuse(
         "internal-error",
         f"the lookup row for {genre!r} could not be resolved for "
-        f"{len(unlinked)} row(s) after it was found or made, so no row was written: "
+        f"{len(unlinked)} row(s) after the plan found it, so no row was written: "
         + row_defaults.named(unlinked),
         remedy=Remedy.REPORT_DEFECT,
         origin=_ORIGIN,
@@ -623,7 +616,7 @@ def assert_read_back(written: Written) -> None:
 
 
 __all__ = [
-    "ALREADY", "CHANGE_KEY", "FILE_MULTI_VALUED", "HELD_OUT", "LEAVE", "LEFT", "MINTED",
+    "ALREADY", "CHANGE_KEY", "FILE_MULTI_VALUED", "GENRE_UNKNOWN", "HELD_OUT", "LEAVE", "LEFT", "NO_ROW",
     "OUTCOMES", "PATH_SEPARATOR", "RECORD_KEY", "ROW_GONE", "WORKFLOW", "WRITE", "FilesWritten",
     "Item", "SetPlan", "Written", "apply_set", "assert_declared", "assert_plan_unchanged",
     "assert_read_back", "judge", "moved_out_of", "named_bucket", "plan_set", "playlist_members", "scoped", "write_files",

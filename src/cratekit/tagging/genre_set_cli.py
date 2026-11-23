@@ -31,11 +31,13 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 CONFIRM_GATE = "tag.set.confirm"
 
 #: The warnings: nothing to write, what was written and read back, rows left,
-#: a ``--leave`` naming no row in scope, and the step that files the rows.
+#: a ``--leave`` naming no row in scope, a genre with no lookup row, and the
+#: step that files the rows.
 NOTHING_TO_WRITE = "set-nothing-to-write"
 GENRE_WRITTEN = "set-genre-written"
 ROWS_LEFT = "set-rows-left"
 LEAVE_UNMATCHED = "set-leave-unmatched"
+GENRE_NO_ROW = "set-genre-has-no-row"
 FILE_NEXT = "set-file-next"
 
 #: The refusal over the files that did not take, after the rest landed.
@@ -123,7 +125,7 @@ def _payload(plan: gs.SetPlan) -> dict[str, Any]:
         plan,
         rows=len(plan.items),
         genre=plan.genre,
-        genre_row=plan.genre_row or gs.MINTED,
+        genre_row=plan.genre_row or gs.NO_ROW,
         playlist=plan.playlist,
         outcomes=dict(plan.counts),
     )
@@ -133,7 +135,7 @@ def _facts(plan: gs.SetPlan) -> dict[str, Any]:
     """What the gate puts in front of the items: the genre, its row, the counts."""
     facts: dict[str, Any] = {
         "genre": plan.genre,
-        "genre_row": plan.genre_row or gs.MINTED,
+        "genre_row": plan.genre_row or gs.NO_ROW,
         "rows": len(plan.items),
         "outcomes": dict(plan.counts),
     }
@@ -161,6 +163,20 @@ def _left(plan: gs.SetPlan) -> list[dict[str, str]]:
     )]
 
 
+def _no_row(plan: gs.SetPlan) -> list[dict[str, str]]:
+    """The warning, on every path, when the library has no genre row for the
+    word, naming the act, since only rekordbox makes one."""
+    if plan.genre_row or not plan.counts[gs.GENRE_UNKNOWN]:
+        return []
+    return [warning(
+        GENRE_NO_ROW,
+        f"the library has no genre row for {plan.genre!r}, so nothing was written "
+        f"on any file or row: give one track that genre in rekordbox, which makes "
+        f"the row, then run this again; this verb links a genre row and never "
+        f"makes one, since only a landing may add a lookup row",
+    )]
+
+
 def _unmatched(plan: gs.SetPlan) -> list[dict[str, str]]:
     if not plan.leave_unmatched:
         return []
@@ -172,7 +188,7 @@ def _unmatched(plan: gs.SetPlan) -> list[dict[str, str]]:
 
 
 def _advisories(plan: gs.SetPlan) -> list[dict[str, str]]:
-    return [*_left(plan), *_unmatched(plan)]
+    return [*_no_row(plan), *_left(plan), *_unmatched(plan)]
 
 
 def _nothing(plan: gs.SetPlan) -> dict[str, str]:
@@ -185,17 +201,11 @@ def _nothing(plan: gs.SetPlan) -> dict[str, str]:
 
 def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
     files = written.files
-    minted = (
-        f"; the library had no genre row for {plan.genre!r}, so one was made and "
-        f"linked on the same commit"
-        if written.minted
-        else ""
-    )
     said = [warning(
         GENRE_WRITTEN,
         f"{len(files.read_back)} file(s) carry the genre {plan.genre!r}, read back, "
         f"and {written.written} row(s) link it, {written.read_back} read back from "
-        f"the database as written, the genre and no other column{minted}; a restore "
+        f"the database as written, the genre and no other column; a restore "
         f"of session {written.session_id} puts the rows back and each file's old "
         f"genre, which its record keeps",
     )]
@@ -327,6 +337,6 @@ def tag_set(ctx) -> Envelope:
 
 
 __all__ = [
-    "CONFIRM_GATE", "FILE_NEXT", "GENRE_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
+    "CONFIRM_GATE", "FILE_NEXT", "GENRE_NO_ROW", "GENRE_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
     "ROWS_LEFT", "UNWRITTEN", "apply_plan", "build", "named_rows", "read_plan", "tag_set",
 ]
