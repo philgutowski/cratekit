@@ -6,7 +6,6 @@ under another name, are the Fresh Export rekordbox would take after it.
 
 from __future__ import annotations
 
-import io
 import json
 import re
 import shutil
@@ -14,50 +13,21 @@ from pathlib import Path
 
 import pytest
 
-from cratekit import cli
-from cratekit.cli import output, registry
+from cratekit.cli import registry
 from cratekit.core import config, preflight, session, snapshot, tags, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import collection_xml, imported_cli, ingest, land_cli, pipeline
 from cratekit.sync import mark_cli
 from cratekit.write import routing_cli, routing_pass
-from tests._containers import synth_container
 from tests.cli_drive import drive_human
-from tests.test_config import valid_data
-from tests.xml_fixtures import _fresh_xml
+from tests.test_intake_land import _drive
+from tests.test_intake_land import cfg as cfg  # noqa: PLC0414 - the fixture, re-exported
+from tests.test_intake_land import export as export  # noqa: PLC0414 - the fixture
+from tests.test_intake_land import silence as silence  # noqa: PLC0414 - the fixture
 
 GATE = "intake.land.confirm"
 BATCH = "2026-09-19_batch"
-
-
-@pytest.fixture
-def cfg(tmp_path: Path) -> config.Config:
-    root = tmp_path / "library"
-    root.mkdir()
-    staging = tmp_path / "staging"
-    staging.mkdir()
-    data = valid_data(root)
-    data["paths"] = {"download_staging": str(staging)}
-    built = config.from_dict(data)
-    Path(built.library.root).mkdir(parents=True, exist_ok=True)
-    config.save(built)
-    config.reset_cache()
-    return built
-
-
-@pytest.fixture
-def silence(tmp_path: Path) -> Path:
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    return synth_container(scratch, ".flac")
-
-
-@pytest.fixture
-def export(tmp_path: Path) -> Path:
-    path = tmp_path / "fresh.xml"
-    path.write_bytes(_fresh_xml())
-    return path
 
 
 def _stage(cfg: config.Config, silence: Path, name: str, *, genre: str = "Deep House") -> Path:
@@ -68,13 +38,6 @@ def _stage(cfg: config.Config, silence: Path, name: str, *, genre: str = "Deep H
     )
     return path
 
-
-def _drive(argv: list[str]) -> tuple[int, dict]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    document = json.loads(out.getvalue())
-    assert output.envelope_problems(document) == [], document
-    return code, document
 
 
 def _land(cfg: config.Config, silence: Path, export: Path, *names: str, batch: str = BATCH) -> dict:

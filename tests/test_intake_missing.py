@@ -29,17 +29,11 @@ from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Lan
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, StrictCatalogue, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_intake_missing_isrc import fresh_cache as fresh_cache  # noqa: PLC0414 - autouse
+from tests.test_intake_missing_isrc import library as library  # noqa: PLC0414 - fixture
+from tests.test_intake_missing_isrc import lists_dir
 
 # Fixtures
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch) -> Path:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
 
 
 @pytest.fixture
@@ -56,12 +50,6 @@ def cfg(library) -> config.Config:
     config.reset_cache()
     return built
 
-
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    intake_cli.reset_cache()
-    yield
-    intake_cli.reset_cache()
 
 
 class Track:
@@ -159,9 +147,6 @@ def human(argv: list[str]) -> tuple[int, str]:
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue() + err.getvalue()
 
-
-def lists_dir(library: Path) -> Path:
-    return library.parent / "staging" / missing_cli.LISTS_DIR
 
 
 def tombstone(cfg: config.Config, artist: str, title: str) -> None:
