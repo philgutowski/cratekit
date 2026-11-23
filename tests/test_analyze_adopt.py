@@ -1169,7 +1169,8 @@ def test_the_apply_stamps_title_title_tag_and_key_tag_and_nothing_else(native_li
         assert name == names[stem] == f"{stem}.flac"
         handle = mutagen.File(_file(cfg, stem))
         keys = {str(key).lower() for key in (handle.tags or {}).keys()}
-        assert not keys & {"bpm", "tbpm", "tmpo", "averagebpm", "beatgrid"}, (stem, keys)
+        spelled = keys | {key.split(":", 1)[-1] for key in keys}
+        assert not spelled & {key.lower() for key in FORBIDDEN_TAG_KEYS}, (stem, keys)
     for content_id in after:
         for column in ("KeyID", "BPM", "Analysed", "AnalysisDataPath", "FolderPath"):
             assert after[content_id][column] == before[content_id][column]

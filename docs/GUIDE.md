@@ -307,7 +307,9 @@ and tempo behind an explicit gate (`analyze.adopt.confirm`), and `--leave
 CONTENT_ID` holds a row out, given again on the run that applies. A row is
 left and named when it has left the collection, rekordbox has not analysed it,
 its title has no head and rekordbox did not give both a key and a tempo, its
-head could not be read back once built, rekordbox gave neither a key nor a
+title has no head at the front but carries one at its end or holds nothing
+after the lossy marker (`no-head`), its head could not be read back once
+built, rekordbox gave neither a key nor a
 tempo, its file's path resolves to no file on this machine or the file is
 missing or unreadable, the file's title tag says another title (for a title
 with no head, anything but that title or the stamped one), or `--leave` holds
