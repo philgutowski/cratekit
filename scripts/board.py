@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """The build board, as a tool.
 
-The board at https://github.com/users/<owner>/projects/2 is this repository's
-work queue; `--help` lists the commands. The dependency graph is parsed out of
-each issue body's `**Depends on:** #18 (U18)` line, never stored, and `audit`
-fails on a unit issue that does not parse. Readiness is derived from closure
-state and the graph, so `sync` is safe at any time. A cloud session's proxy
-refuses GraphQL: reads fall back to REST, and `cloud` is its command.
+Project 2 of the repository's owner is the work queue. The graph is parsed from
+each issue's `**Depends on:** #18 (U18)` line, never stored, so `sync` is safe
+at any time. Where GraphQL is refused, reads use REST and `cloud` is the queue.
 """
 
 from __future__ import annotations
@@ -27,8 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # Status option ids are looked up, never pinned: a recreated option's new id.
 STATUS_ORDER = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
 
-# Somebody holds the card: `start` and a lane's builder set In Progress, the
-# relay runner sets In review. No graph derives either, so a sync keeps them.
+# A held card, which no graph derives, so a sync keeps it.
 UNDERWAY = ("In Progress", "In review")
 
 DEPENDS_RE = re.compile(r"^\*\*Depends on:\*\*\s*(.+)$", re.MULTILINE)
@@ -45,8 +41,7 @@ class Truncated(Fail):
     """A board read came back cut short, so it cannot be taken as the whole board."""
 
 
-# The most rows one read asks `gh` for (U148); a read this long is refused as
-# truncated, and each read is also checked against GitHub's own count.
+# The most rows one read asks for (U148); a read this long is refused as truncated.
 READ_LIMIT = 5000
 
 # Every issue, any state, no pull requests; `gh api` fills the placeholders.
@@ -103,10 +98,7 @@ def remote_slug() -> tuple[str, str]:
 
 
 def rest_pages(path: str, what: str) -> list:
-    """Every row of a REST listing, a hundred a page, ending on a short page.
-
-    Not `gh api --paginate`: the cloud proxy rejects its numeric `Link` paths.
-    """
+    """Every row of a REST listing, by hand: the cloud proxy rejects `--paginate`'s links."""
     joiner = "&" if "?" in path else "?"
     rows: list = []
     for page in range(1, READ_LIMIT // 100 + 2):
@@ -195,18 +187,12 @@ def build_graph(issues: list[dict]) -> dict:
         labels = {label["name"] for label in issue["labels"]}
         is_unit = "unit" in labels
         by_number[issue["number"]] = {
-            "number": issue["number"],
-            "title": issue["title"],
-            "closed": issue["state"] == "CLOSED",
-            "labels": labels,
-            "unit": is_unit,
+            "number": issue["number"], "title": issue["title"],
+            "closed": issue["state"] == "CLOSED", "labels": labels, "unit": is_unit,
             "attended": "attended" in labels,
             "deps": parse_deps(issue["body"]) if is_unit else closes_with(issue["body"]),
-            "body": issue["body"],
+            "body": issue["body"], "unblocks": [],
         }
-
-    for node in by_number.values():
-        node["unblocks"] = []
     for node in by_number.values():
         for dep in node["deps"] or []:
             if dep in by_number:
@@ -248,26 +234,26 @@ def pending_units() -> dict[int, list[str]]:
     source = ROOT / "tests" / "_pending.py"
     if not source.exists():
         return {}
-    tree = ast.parse(source.read_text())
     owed: dict[int, list[str]] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.AnnAssign) and not isinstance(node, ast.Assign):
+    for node in ast.walk(ast.parse(source.read_text())):
+        if not isinstance(node, ast.AnnAssign | ast.Assign) or not isinstance(node.value, ast.Dict):
             continue
         targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
         if not any(isinstance(t, ast.Name) and t.id == "PENDING" for t in targets):
             continue
-        if not isinstance(node.value, ast.Dict):
-            continue
         for key, value in zip(node.value.keys, node.value.values):
-            if not isinstance(value, ast.Tuple) or not value.elts:
-                continue
-            unit = value.elts[0]
+            first = value.elts[0] if isinstance(value, ast.Tuple) and value.elts else None
+            unit = _unit(getattr(first, "value", None))
             name = key.value if isinstance(key, ast.Constant) else "?"
-            if isinstance(unit, ast.Constant) and isinstance(unit.value, str):
-                match = re.match(r"U(\d+)$", unit.value)
-                if match:
-                    owed.setdefault(int(match.group(1)), []).append(str(name))
+            if unit is not None:
+                owed.setdefault(unit, []).append(str(name))
     return owed
+
+
+def _unit(text) -> int | None:
+    """The unit a `"U12"` string names, or None for anything else."""
+    match = re.match(r"U(\d+)$", text) if isinstance(text, str) else None
+    return int(match.group(1)) if match else None
 
 
 def planned_units() -> dict[int, list[str]]:
@@ -283,26 +269,20 @@ def planned_units() -> dict[int, list[str]]:
                 if isinstance(target, ast.Name) and isinstance(node.value.value, str):
                     constants[target.id] = node.value.value
 
-    def literal(value: ast.AST) -> str | None:
-        """The string this argument evaluates to, through one named constant."""
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            return value.value
+    def literal(value: ast.AST | None) -> str | None:
+        """The string an argument evaluates to, through one named constant."""
         if isinstance(value, ast.Name):
             return constants.get(value.id)
-        return None
+        return value.value if isinstance(getattr(value, "value", None), str) else None
 
     owed: dict[int, set[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != "Entry":
             continue
         fields = {kw.arg: kw.value for kw in node.keywords if kw.arg}
-        planned = literal(fields["planned_in"]) if "planned_in" in fields else None
-        module = literal(fields["module"]) if "module" in fields else None
-        if not planned or not module:
-            continue
-        match = re.match(r"U(\d+)$", planned)
-        if match:
-            owed.setdefault(int(match.group(1)), set()).add(module)
+        unit, module = _unit(literal(fields.get("planned_in"))), literal(fields.get("module"))
+        if unit is not None and module:
+            owed.setdefault(unit, set()).add(module)
     return {uid: sorted(modules) for uid, modules in owed.items()}
 
 
@@ -315,46 +295,32 @@ def owed_by_unit() -> dict[int, list[str]]:
     return {uid: sorted(modules) for uid, modules in merged.items()}
 
 
-# The closing check: a trailer is refused BEFORE it closes anything.
-
-#: Every keyword GitHub closes an issue on, not only the one the contract uses.
+# The closing check: a trailer is refused BEFORE it closes anything. Every keyword
+# GitHub closes on, and the forms that close an issue IN THIS REPOSITORY, longest
+# first (`owner/repo#n` and an issue URL close one elsewhere).
 CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
                     "resolve", "resolves", "resolved")
-
-#: The reference forms that close an issue IN THIS REPOSITORY, longest first.
-#: `owner/repo#n` and an issue URL close one elsewhere, so they are left out.
 REFERENCE_FORMS = (r"GH-(\d+)", r"#(\d+)")
-
-#: Keyword, optional colon, then a reference. The lookbehind rejects a keyword
-#: that is a URL path segment, `https://example.com/notes/fixes#36`.
+# The lookbehind rejects a keyword that is a URL path segment, `notes/fixes#36`.
 CLOSES_RE = re.compile(
     r"(?<![/\w])\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*"
     r"(?:" + "|".join(REFERENCE_FORMS) + r")",
     re.IGNORECASE,
 )
-
-#: A comma list continuing from a keyword-anchored issue: `Closes #36, #33`.
-#: `[^\S\n]` is horizontal whitespace only, so a later line opening "and #33
-#: stays open" is never read as part of the list.
+# A list after a keyword, `Closes #36, #33`, on its own line: `[^\S\n]` keeps a
+# later line opening "and #33 stays open" out of it.
 CONTINUED_RE = re.compile(
-    r"[^\S\n]*(?:,|and)[^\S\n]*(?:" + "|".join(REFERENCE_FORMS) + r")",
-    re.IGNORECASE,
+    r"[^\S\n]*(?:,|and)[^\S\n]*(?:" + "|".join(REFERENCE_FORMS) + r")", re.IGNORECASE
 )
-
-#: Lines git itself strips from a commit message, applied only to the raw file
-#: the commit-msg hook is handed; see `message_body`.
+# What git strips from the raw message a hook is handed: comment lines, and all
+# from its scissors line on, eight dashes a side at least.
 COMMENT_LINE_RE = re.compile(r"^\s*#")
-#: Git's own scissors line, eight dashes a side at least, so a line a person
-#: typed in a body never truncates the message.
 SCISSORS_RE = re.compile(r"^#\s?-{8,}\s?>8\s?-{8,}\s*$")
 
 
 def message_body(text: str, *, raw: bool) -> str:
-    """The part of a commit message git will keep, comments and diff removed.
-
-    ``raw`` is the hook's pre-cleanup file; `git log --format=%B` is already
-    clean, where stripping could only delete a real `#` leading trailer (R-320).
-    """
+    """The part of a commit message git keeps. Only a hook's ``raw`` file is
+    stripped: `git log --format=%B` is clean, and a `#` trailer there is real (R-320)."""
     if raw is False:
         return text
     kept = []
@@ -368,11 +334,8 @@ def message_body(text: str, *, raw: bool) -> str:
 
 
 def closing_references(text: str, *, raw: bool = True) -> list[int]:
-    """Every issue number this message would close, by any spelling GitHub reads.
-
-    A comma list is caught over inclusively on one line; a bare `#36` with no
-    keyword is left alone, so a body can say why a unit is still open.
-    """
+    """Every issue this message would close, by any spelling GitHub reads; a bare
+    `#36` with no keyword is left alone, so a body can say why a unit is open."""
     found: list[int] = []
     body = message_body(text, raw=raw)
     for match in CLOSES_RE.finditer(body):
@@ -390,17 +353,11 @@ def _referenced(match: re.Match) -> int:
 
 
 def unresolved_closes(
-    text: str,
-    owed: dict[int, list[str]] | None = None,
-    *,
-    raw: bool = True,
+    text: str, owed: dict[int, list[str]] | None = None, *, raw: bool = True,
     units: dict[int, int] | None = None,
 ) -> list[str]:
-    """Every issue this message closes whose unit a register still owes a module.
-
-    Network free, so it runs in a hook. ``units`` maps issue to unit number (U38
-    is issue #51); without it an issue number is read as a unit, a named guess.
-    """
+    """Every issue this message closes whose unit a register still owes a module, offline
+    for a hook. Without ``units``, issue to unit (U38 is #51), an issue reads as its unit."""
     owed = owed_by_unit() if owed is None else owed
     found = []
     for reference in dict.fromkeys(closing_references(text, raw=raw)):
@@ -408,11 +365,8 @@ def unresolved_closes(
         modules = owed.get(uid) if uid is not None else None
         if not modules:
             continue
-        lines = [
-            f"this message closes #{reference}, but U{uid} is still owed "
-            f"{', '.join(modules)}. Either land them, or re-point them at "
-            f"the unit that will."
-        ]
+        lines = [f"this message closes #{reference}, but U{uid} is still owed "
+                 f"{', '.join(modules)}. Either land them, or re-point them at the unit that will."]
         if units is None and reference == uid:
             lines.append(
                 f"      read #{reference} as U{uid} without consulting the board, "
@@ -426,27 +380,18 @@ def unresolved_closes(
 
 def _near_misses(modules: list[str]) -> list[str]:
     """For each owed module that is absent, the near names its package does hold."""
-    root = ROOT / "src"
     notes: list[str] = []
-    for module in modules:
-        if module.startswith("path:"):
+    for module in (m for m in modules if not m.startswith("path:")):
+        *dirs, name = module.split(".")
+        package = ROOT.joinpath("src", *dirs)
+        if not package.is_dir() or (package / f"{name}.py").exists() or (package / name).is_dir():
             continue
-        parts = module.split(".")
-        package = root.joinpath(*parts[:-1])
-        target = package / f"{parts[-1]}.py"
-        if not package.is_dir() or target.exists() or (package / parts[-1]).is_dir():
-            continue
-        siblings = sorted(
-            child.stem
-            for child in package.glob("*.py")
-            if child.stem != "__init__" and parts[-1] in child.stem
-        )
+        siblings = sorted(c.stem for c in package.glob("*.py")
+                          if c.stem != "__init__" and name in c.stem)
         if siblings:
-            notes.append(
-                f"note: {module} is absent and {package.name} already contains "
-                f"{', '.join(siblings)}. If that is the same module under "
-                f"another name, the register key is what needs correcting."
-            )
+            notes.append(f"note: {module} is absent and {package.name} already contains "
+                         f"{', '.join(siblings)}. If that is the same module under "
+                         f"another name, the register key is what needs correcting.")
     return notes
 
 
@@ -460,12 +405,9 @@ def cmd_closing(args) -> int:
             return 1
         text = path.read_text()
     else:
-        # One message per record, split on NUL: run together, two messages can
-        # make a closing reference neither commit contains.
+        # Split on NUL: run together, two messages can make a reference neither holds.
         result = subprocess.run(
-            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],
-            capture_output=True,
-            text=True,
+            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"], capture_output=True, text=True
         )
         problems: list[str] = []
         card = pull_request_card(getattr(args, "pull_request_head", None))
@@ -518,8 +460,6 @@ def _report(problems: list[str]) -> int:
     return 2
 
 
-# Writing the board.
-
 # The project and its fields in one query (U151), asked of a user, then an org.
 CONTEXT_QUERY = (
     "query($login: String!, $number: Int!) { %s(login: $login) { "
@@ -569,21 +509,16 @@ def project_context(owner: str) -> dict:
     if not status or "options" not in status:
         raise Fail(f"project {PROJECT_NUMBER} of {owner} has no single select Status field")
     unblocks = next((f for f in whole_fields if f.get("name") == "Unblocks"), None)
-    return {
-        "id": project["id"],
-        "url": project["url"],
-        "status_field": status["id"],
-        "options": {o["name"]: o["id"] for o in status["options"]},
-        "unblocks_field": unblocks["id"] if unblocks else None,
-    }
+    return {"id": project["id"], "url": project["url"], "status_field": status["id"],
+            "options": {o["name"]: o["id"] for o in status["options"]},
+            "unblocks_field": unblocks["id"] if unblocks else None}
 
 
 def project_items(owner: str) -> dict:
     """Every issue's card on project `PROJECT_NUMBER` of `owner`, read from the issues."""
     items: dict = {}
     seen: list[int] = []
-    total = None
-    after = None
+    total = after = None
     for _ in range(READ_LIMIT // 100 + 1):
         args = [
             "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
@@ -610,10 +545,8 @@ def project_items(owner: str) -> dict:
                 if login.lower() != owner.lower():
                     continue
                 items[issue["number"]] = {
-                    "id": item["id"],
-                    "status": (item.get("status") or {}).get("name"),
-                    "unblocks": (item.get("unblocks") or {}).get("number"),
-                }
+                    "id": item["id"], "status": (item.get("status") or {}).get("name"),
+                    "unblocks": (item.get("unblocks") or {}).get("number")}
         info = page["pageInfo"]
         if not info["hasNextPage"]:
             break
@@ -621,15 +554,10 @@ def project_items(owner: str) -> dict:
         if not after:
             raise Truncated("the project membership read said there was more and gave no cursor")
     else:
-        raise Truncated(
-            f"the project membership read ran past {READ_LIMIT} issues, so it is "
-            f"truncated. {RAISE_LIMIT}"
-        )
+        raise Truncated(f"the project membership read ran past {READ_LIMIT} issues, so it is "
+                        f"truncated. {RAISE_LIMIT}")
     short_of_count(seen, total, "project membership")
     return items
-
-
-# Commands.
 
 
 def cmd_next(args) -> int:
@@ -647,13 +575,11 @@ def cmd_next(args) -> int:
         # A repository scoped token cannot read a user owned project.
         items = {}
         print("(cannot read the project board with this token, so work already")
-        print(" in progress is not shown below)")
-        print()
+        print(" in progress is not shown below)\n")
 
     ready = [n for n in graph.values() if n["unit"] and not n["closed"] and not n["open_deps"]]
-    in_progress = [
-        n for n in graph.values() if items.get(n["number"], {}).get("status") in UNDERWAY
-    ]
+    held = {number for number, item in items.items() if item.get("status") in UNDERWAY}
+    in_progress = [n for n in graph.values() if n["number"] in held]
     busy = {n["number"] for n in in_progress}
     ready = [n for n in ready if n["number"] not in busy]
     ready.sort(key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"]))
@@ -760,9 +686,8 @@ def cmd_start(args) -> int:
     return 0
 
 
-#: The ledger, append only, its older entries archived by number range in the
-#: sibling `ledger/` folder with no file over the limit (U314), and the folder a
-#: residual waits in for its number.
+#: The ledger, append only, its older entries archived by number range in `ledger/`
+#: beside it, no file over the limit (U314); and where a residual waits for a number.
 LEDGER = ROOT / "docs" / "residual-findings.md"
 RESIDUALS_DIR = ROOT / "docs" / "residuals"
 LEDGER_LIMIT = 5000
@@ -794,13 +719,8 @@ def ledger_files(ledger: Path | None = None) -> list[Path]:
 
 
 def _headings(ledger: Path | None = None) -> list[tuple[int, str, Path]]:
-    return [
-        (int(match[1]), match[2], path)
-        for path in ledger_files(ledger)
-        if path.exists()
-        for match in map(_HEADING.match, path.read_text().splitlines())
-        if match
-    ]
+    return [(int(match[1]), match[2], path) for path in ledger_files(ledger) if path.exists()
+            for match in map(_HEADING.match, path.read_text().splitlines()) if match]
 
 
 def residual_titles(ledger: Path | None = None) -> dict[int, str]:
@@ -812,8 +732,7 @@ def _entries(lines: list[str]) -> list[tuple[int, int, int]]:
     """(number, where its separator starts, its heading line) per entry."""
     found = []
     for head, line in enumerate(lines):
-        match = _HEADING.match(line)
-        if match:
+        if match := _HEADING.match(line):
             start = head
             while start and lines[start - 1] in ("", "---"):
                 start -= 1
@@ -826,10 +745,8 @@ def ledger_entries(text: str) -> list[tuple[int, str]]:
     lines = text.split("\n")
     found = _entries(lines)
     ends = [start for _, start, _ in found[1:]] + [len(lines)]
-    return [
-        (number, "\n".join(lines[head:end]).rstrip("\n"))
-        for (number, _, head), end in zip(found, ends)
-    ]
+    return [(number, "\n".join(lines[head:end]).rstrip("\n"))
+            for (number, _, head), end in zip(found, ends)]
 
 
 #: How many headings a ledger search prints before it counts the rest.
@@ -842,8 +759,7 @@ def search_residuals(
     """The headings in every ledger file carrying every word, newest first (U196)."""
     source = LEDGER if ledger is None else ledger
     if not source.is_file():
-        # A missing ledger is not an empty one: "nothing matches" over a file
-        # never read is how a duplicate card gets filed.
+        # A missing ledger is not an empty one, or a duplicate card gets filed.
         raise FileNotFoundError(f"no residual ledger at {source}")
     wanted = [word.casefold() for word in words]
     hits = [hit for hit in _headings(source) if all(w in hit[1].casefold() for w in wanted)]
@@ -857,8 +773,7 @@ def residual_files(folder: Path | None = None) -> list[Path]:
     if not folder.is_dir():
         return []
     paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")
-    # Only what git knows: an untracked draft is not filed yet. A folder outside
-    # any repository is taken whole.
+    # Only what git knows, since an untracked draft is not filed; outside git, all.
     listed = git("ls-files", "-z", "--", ".", cwd=folder)
     if listed.returncode != 0:
         return paths
@@ -868,8 +783,7 @@ def residual_files(folder: Path | None = None) -> list[Path]:
 
 def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
     """The frontmatter and the body of one residual file, or ValueError saying why."""
-    text = path.read_text()
-    lines = text.split("\n")
+    lines = path.read_text().split("\n")
     if not lines or lines[0] != "---":
         raise ValueError("does not open with a frontmatter fence")
     try:
@@ -1019,9 +933,7 @@ def ledger_problems(
     """METHOD's merge checks over the archived ledger, and the move's byte comparison."""
     ledger = LEDGER if ledger is None else ledger
     problems: list[str] = []
-    now: dict[int, str] = {}
-    where: dict[int, Path] = {}
-    last = 0
+    now, where, last = {}, {}, 0
     for path in ledger_files(ledger):
         name = path.relative_to(ledger.parent.parent)
         text = path.read_text() if path.exists() else ""
@@ -1046,9 +958,8 @@ def ledger_problems(
     if texts is None:
         return [*problems, f"cannot read the ledger at {against}"]
     before: dict[int, str] = {}
-    for text in texts:
-        for number, entry in ledger_entries(text):
-            before.setdefault(number, entry)
+    for number, entry in (pair for text in texts for pair in ledger_entries(text)):
+        before.setdefault(number, entry)
     missing = [f"R-{n}" for n in sorted(set(before) - set(now))]
     if missing:
         problems.append(f"headings at {against} are gone now: {', '.join(missing)}")
@@ -1072,16 +983,12 @@ def repointed_residuals(graph: dict) -> list[str]:
             continue
         number, issue_title = int(match.group(1)), match.group(2)
         if number not in file_titles:
-            found.append(
-                f"#{node['number']} R-{number}\n"
-                f"      the issue names it, the residual ledger has no such finding"
-            )
+            found.append(f"#{node['number']} R-{number}\n"
+                         f"      the issue names it, the residual ledger has no such finding")
         elif file_titles[number] != issue_title:
-            found.append(
-                f"#{node['number']} R-{number} names a different finding than the ledger does\n"
-                f"      issue: {issue_title[:72]}\n"
-                f"      file : {file_titles[number][:72]}"
-            )
+            found.append(f"#{node['number']} R-{number} names a different finding than the ledger "
+                         f"does\n      issue: {issue_title[:72]}\n"
+                         f"      file : {file_titles[number][:72]}")
     return found
 
 
@@ -1090,9 +997,7 @@ def units_by_issue_number(graph: dict) -> dict[int, int]:
     seen: dict[int, int] = {}
     duplicated: set[int] = set()
     for number, node in graph.items():
-        if not node["unit"]:
-            continue
-        match = re.match(r"U(\d+)\b", node["title"])
+        match = re.match(r"U(\d+)\b", node["title"]) if node["unit"] else None
         if not match:
             continue
         unit = int(match.group(1))
@@ -1103,11 +1008,8 @@ def units_by_issue_number(graph: dict) -> dict[int, int]:
 
 
 def contradictions(graph: dict, owed: dict[int, list[str]] | None = None) -> list[str]:
-    """Closed unit issues a register still owes a module, and repointed residuals.
-
-    Not drift: a sync would have to pick a source to overwrite. ``owed`` defaults
-    to the live registers (R-322).
-    """
+    """Closed unit issues a register still owes a module, and repointed residuals: not drift,
+    since a sync would pick a source to overwrite. ``owed`` defaults to the registers (R-322)."""
     found = []
     owed = owed_by_unit() if owed is None else owed
     issues_by_unit = units_by_issue_number(graph)
@@ -1115,10 +1017,8 @@ def contradictions(graph: dict, owed: dict[int, list[str]] | None = None) -> lis
         number = issues_by_unit.get(uid)
         node = graph.get(number) if number is not None else None
         if node and node["unit"] and node["closed"]:
-            found.append(
-                f"#{node['number']} {node['title'][:44]}\n"
-                f"      closed, but a register still owes it {', '.join(modules)}"
-            )
+            found.append(f"#{node['number']} {node['title'][:44]}\n"
+                         f"      closed, but a register still owes it {', '.join(modules)}")
     return found + repointed_residuals(graph)
 
 
@@ -1315,16 +1215,11 @@ def cmd_residuals(args) -> int:
     return 0
 
 
-# The cloud lane.
-
-# The label a residual's card carries, held in a constant so the word is never
-# followed by a quoted string, which test_reserved_causes reads as a title.
+# The cloud lane. A residual card's label is a constant, since test_reserved_causes
+# reads the word followed by a quoted string as a title; a session's comments
+# carry its footer, and the reader reads their headings and nothing else.
 FINDING_LABEL = "residual"
-
-# A cloud session's footer, which tells its comments from the person's.
 SESSION_MARK = "Generated by [Claude Code]"
-
-# The headings a cloud session writes; the reader reads headings and nothing else.
 HEAD_STARTED = "started"
 HEAD_RESUMED = "resumed"
 HEAD_PLAN = "plan"
@@ -1345,12 +1240,10 @@ CLOUD_TAKE = ("answered", "resume", "ready")
 CLOUD_SKIP = ("underway", "waiting-on-phillip", "set-aside", "landed-open", "blocked", "attended")
 
 
-# An opening emphasised span heads the line, `**Brainstorm.** One question
-# waits`; its closer must repeat the opener and be followed by the line's end,
-# whitespace or punctuation, so `**Brainstorm**s` is no span.
+# An opening emphasised span heads the line, `**Brainstorm.** One question waits`: its
+# closer repeats the opener before an end, a space or a stop, so `**Brainstorm**s` is none.
 _OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")
-# A heading ends at a colon, a comma, or a sentence end followed by whitespace,
-# so `**Started: cloud/1-a**` reads `started` and `v0.6.0` is never cut.
+# A heading ends at a colon, a comma, or a sentence end before whitespace (`v0.6.0` stays).
 _HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")
 # What may trail a heading, stripped with emphasis until neither is left.
 _TRAILING = ".?!;\u2026# \t"
@@ -1398,8 +1291,6 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
     stated = [c for c in mine if comment_heading(c.get("body") or "") not in notes]
     last = stated[-1] if stated else mine[-1]
     heading, since = comment_heading(last.get("body") or ""), _when(last)
-    freshest = _when(mine[-1])
-
     after = [
         c for c in ordered
         if _when(c) > since and (SESSION_MARK not in (c.get("body") or "") or _relayed_answer(c))
@@ -1416,7 +1307,7 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
             return "answered", f"Phillip replied {_when(after[-1])[:16]} to the {heading}"
         return "waiting-on-phillip", f"{heading} posted {since[:16]}, no reply yet"
     # Started, Resumed, or any heading this reader does not know, is a hold.
-    age = _hours_since(freshest)
+    age = _hours_since(_when(mine[-1]))
     if age is not None and age > STALE_HOURS:
         return "resume", f"held since {since[:16]}, {age:.0f} hours, the session is gone"
     return "underway", f"{heading or 'held'} {since[:16]}"
@@ -1448,30 +1339,27 @@ def _card_lines(cards: list, states: dict, width: int) -> None:
         state, why = states[node["number"]]
         print(f"  #{node['number']:<4} {state:<{width}} {why}")
         print(f"        {node['title'][:72]}")
+    print()
 
 
 def cmd_cloud(args) -> int:
     """The cloud lane's queue: every open unit or residual card, by state."""
     lanes = max(1, getattr(args, "lanes", None) or CLOUD_LANES)
     graph = build_graph(load_issues())
-    cards = [
-        n for n in graph.values()
-        if not n["closed"] and (n["unit"] or FINDING_LABEL in n["labels"])
-    ]
+    cards = [n for n in graph.values()
+             if not n["closed"] and (n["unit"] or FINDING_LABEL in n["labels"])]
     if not cards:
         print("No open unit or residual card. Nothing is the cloud's.")
         return 0
     states = {n["number"]: cloud_state(n, load_comments(n["number"])) for n in cards}
     held = [n for n in cards if states[n["number"]][0] == "underway"]
     take = [n for n in cards if states[n["number"]][0] in CLOUD_TAKE]
-    take.sort(key=lambda n: (
-        CLOUD_TAKE.index(states[n["number"]][0]), -n["reach"], -len(n["unblocks"]), n["number"]
-    ))
+    take.sort(key=lambda n: (CLOUD_TAKE.index(states[n["number"]][0]), -n["reach"],
+                             -len(n["unblocks"]), n["number"]))
     skipped = [n for n in cards if states[n["number"]][0] in CLOUD_SKIP]
     if skipped:
         print("Not the cloud's to take right now:")
         _card_lines(sorted(skipped, key=lambda n: n["number"]), states, 19)
-        print()
     # Times come from the states' own lines, which end in the hold's timestamp.
     held.sort(key=lambda n: states[n["number"]][1].rsplit(" ", 1)[-1])
     if len(held) > lanes:
@@ -1497,7 +1385,6 @@ def cmd_cloud(args) -> int:
         return 0
     print(f"The cloud may take ({len(take)}):")
     _card_lines(take, states, 12)
-    print()
     top = take[0]
     state, _ = states[top["number"]]
     print(f"Take #{top['number']} ({state}). Branch: {cloud_branch(top)}, from origin/main.")
@@ -1546,55 +1433,30 @@ def main() -> int:
     command("start", "branch and mark In Progress", cmd_start, number=True)
     command("sync", "make the board match the repository", cmd_sync)(
         "--labels-only", action="store_true",
-        help="skip the project board, for a token that cannot reach it",
-    )
+        help="skip the project board, for a token that cannot reach it")
     command("audit", "report drift, exit 1 if the board is lying", cmd_audit)(
-        "--labels-only", action="store_true", help="skip the project board"
-    )
-    closing = command(
-        "closing", "refuse a Closes trailer while a register still owes that unit", cmd_closing
-    )
-    closing(
-        "--message-file",
-        help="a single commit message to judge; this is what the commit-msg hook passes",
-    )
-    closing(
-        "--since", default="main",
-        help="judge every commit after this ref instead of one message file",
-    )
-    closing(
-        "--pull-request-head",
-        help=(
-            "a pull request's head branch; a `cloud/N-slug` head is judged as "
-            "closing card N, the trailer its merge will write"
-        ),
-    )
-    residuals = command(
-        "residuals",
-        "list the residual files waiting for a number, or number them",
-        cmd_residuals,
-    )
-    residuals(
-        "--land", action="store_true",
-        help="on main, give each file the next R number and append it to the ledger",
-    )
-    residuals(
-        "--search", nargs="+", metavar="WORD",
-        help="print the ledger headings carrying every word, case insensitive, newest first",
-    )
-    residuals(
-        "--archive", action="store_true",
-        help=f"move the working file's oldest entries to docs/ledger while over {LEDGER_LIMIT} lines",
-    )
-    residuals(
-        "--check", action="store_true",
-        help="refuse a duplicated heading, a misnamed or overlapping archive, or a file over the limit",
-    )
+        "--labels-only", action="store_true", help="skip the project board")
+    closing = command("closing", "refuse a Closes trailer while a register still owes that unit",
+                      cmd_closing)
+    closing("--message-file",
+            help="a single commit message to judge; this is what the commit-msg hook passes")
+    closing("--since", default="main",
+            help="judge every commit after this ref instead of one message file")
+    closing("--pull-request-head", help="a pull request's head branch; a `cloud/N-slug` head is "
+            "judged as closing card N, the trailer its merge will write")
+    residuals = command("residuals", "list the residual files waiting for a number, or number them",
+                        cmd_residuals)
+    residuals("--land", action="store_true",
+              help="on main, give each file the next R number and append it to the ledger")
+    residuals("--search", nargs="+", metavar="WORD",
+              help="print the ledger headings carrying every word, case insensitive, newest first")
+    residuals("--archive", action="store_true", help="move the working file's oldest entries to "
+              f"docs/ledger while over {LEDGER_LIMIT} lines")
+    residuals("--check", action="store_true", help="refuse a duplicated heading, a misnamed or "
+              "overlapping archive, or a file over the limit")
     residuals("--against", metavar="REV", help="with --check, refuse a heading REV has and now lacks")
     residuals("--unchanged", action="store_true", help="with --against, refuse a changed entry")
-    command(
-        "cloud", "the cloud lane's queue, read from the cards' comments over REST", cmd_cloud
-    )(
+    command("cloud", "the cloud lane's queue, read from the cards' comments over REST", cmd_cloud)(
         "--lanes", type=int, default=None,
         help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",
     )
