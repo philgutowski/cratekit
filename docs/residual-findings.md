@@ -4622,3 +4622,76 @@ closes only at an attended sitting.
 **Measured cost.** Driven in review round one with the band removed by `rb_writer.remove_memberships` by hand, not by a verb, before `tag set`: the row ended in both folders' `with vox` and Favorites, `adopt move` planned and listed nothing, and `converge` read matching. No verb was driven that produces the state, so reachability is unmeasured. When the band goes after `tag set` recorded the entry, the move is correct (driven).
 
 **Closes when:** `_leaves` asks the same places the move leaves (`holds` and `holds_alongside`, through one predicate the move shares), with a test that records and moves such a row.
+
+---
+
+## R-2004. A held sync removed read trusts the provider to serve a playlist's current tracks half an hour after its stamp moves, and a change that keeps the count past that is held for six hours
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` holds a synced playlist's read
+only when it holds as many tracks as the account's listing counts and the
+listing's last updated stamp is at least `SETTLED` (30 minutes) older than
+the read, and reuses it for `HELD_FOR` (6 hours) while the listing shows the
+same count and stamp. A change that keeps the count (a swap of one track for
+another) whose old tracks the provider still serves more than 30 minutes
+after the stamp moved is read old, held, and answers every run for six
+hours. Round two drove it on a stand in: the listing current, the rows old,
+the stamp 31 minutes back; New1, swapped onto another synced playlist, was
+offered for removal from the collection until the hold ended, where a fresh
+read keeps it.
+
+**Measured cost.** Not driven against the provider. The one measured lag is
+sitting 86's, a paged read serving a playlist's old order for at least 13
+minutes after a move (`docs/cutover.md`); a removal showed none at sitting
+101. A lag on a swap or an add, or one past 30 minutes, has not been
+measured, nor the spelling of `lastUpdated` the live listing sends (with no
+zone it marks nothing and nothing is ever held, which costs calls only).
+
+**Closes when:** an attended sitting measures how long the provider serves a
+playlist's old tracks after a swap and an add, and what `lastUpdated` the
+account listing sends, and `SETTLED` is set from that; or the read compares
+the opened playlist's own count and stamp with the listing's before it is
+held. Ledger only: the input was not produced, and the attended card filed
+with #1010 measures it.
+
+---
+
+## R-2005. A synced playlist that lists one track twice is never held by sync removed, so every run reads it again
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `SyncedReads.keep` holds a read only when
+`len(listing.refs)` equals the account listing's track count. The reader
+builds the playlist's order with one entry per id, so a playlist holding one
+track twice reads one ref fewer than the provider counts, and is read again
+on every run.
+
+**Measured cost.** Calls only, no wrong answer. Driven in review round two:
+a playlist of three rows over two ids was asked on four of four commands and
+never held; with 20 such among 60 synced playlists at 3 calls each, the runs
+spent 183, 63 and 63 calls. How many of the live account's synced playlists
+repeat a track is not measured.
+
+**Closes when:** the read carries its row count beside its distinct ids and
+the guard compares that, with a test of a playlist listing a track twice
+held. Ledger only.
+
+---
+
+## R-2006. The held reads' flush interval kills no test, since the one test of it reads the interval from the symbol
+
+**Found:** at the mutation table of #1010, R-1716, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` writes the held reads every
+`FLUSH_EVERY` (50) changes and on the way out. Row K19 of
+`docs/mutation/r1716.md`, `FLUSH_EVERY` at 500, killed none of 22,995: the
+test of the interval counts to `FLUSH_EVERY` itself, and every verb test
+ends its run, which writes the store on the way out.
+
+**Measured cost.** None to a person: the interval bounds what a killed
+process loses, at most that many reads to be read again, and the way out
+writes the rest. Maintainer facing.
+
+**Closes when:** a test pins the interval at 50 by number, or holds that a
+process killed after 60 new reads leaves at least 50 written. Ledger only.
