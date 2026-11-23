@@ -291,7 +291,7 @@ def test_the_part_is_re_exported_by_the_restore():
         pytest.param([{"path": "/x", "tag_title": "t", "initialkey": 8}], id="a-number-key"),
         pytest.param([{"path": "x.flac", "tag_title": "t", "initialkey": ""}], id="relative"),
         pytest.param([{"path": " ", "tag_title": "t", "initialkey": ""}], id="a-blank-path"),
-        pytest.param([{"path": " /x", "tag_title": "t", "initialkey": ""}], id="padded"),
+        pytest.param([{"path": "/x ", "tag_title": "t", "initialkey": ""}], id="padded"),
         pytest.param([{"path": "/x", "tag_title": " ", "initialkey": ""}], id="a-blank-title"),
     ],
 )
@@ -300,6 +300,7 @@ def test_a_record_kept_in_another_shape_refuses(kept):
         restore_tags.kept_by(_record({restore_tags.RECORD_KEY: kept}))
     assert refused.value.cause.reason == "restore-record-unusable"
     assert refused.value.cause.detail["session_id"] == "s-1"
+    assert "run the restore again" in " ".join(refused.value.cause.remediation.steps)
 
 
 def test_a_record_with_no_key_keeps_nothing():
@@ -447,8 +448,9 @@ def _tagged(paths: dict[str, Path]) -> dict[str, tuple]:
     }
 
 
+@pytest.mark.parametrize("left", ["abandoned", "open"])
 def test_a_later_adopt_that_wrote_files_and_no_rows_has_its_files_put_back(
-    native_library, silence, monkeypatch
+    native_library, silence, monkeypatch, left
 ):
     """B1: a commit is no evidence about files. A restore of an earlier session
     reads every later record that kept tags, committed or not, and asks no discard
@@ -459,6 +461,11 @@ def test_a_later_adopt_that_wrote_files_and_no_rows_has_its_files_put_back(
     before = _tagged(paths)
     landing = _landing_of(cfg, "Golf")
     stopped = _stopped_adopt(cfg, monkeypatch)
+    if left == "open":
+        # A PROCESS KILLED OUTRIGHT leaves its record open (review round two).
+        record = session.read_record(stopped, cfg)
+        record.state = session.SessionState.OPEN
+        session.write_record(record, cfg)
     assert _surfaces(cfg, "Golf")[1:3] == ("09A - 98 - Golf", "09A")
     assert _surfaces(cfg, "Golf")[0] == "01A - 124 - Golf"
 
@@ -542,10 +549,11 @@ def test_a_dry_run_finds_a_file_gone_and_refuses_as_the_run_would(native_library
     assert cause["reason"] == "restore-tags-unwritten"
     assert "a dry run" in cause["message"] and str(golf) in cause["message"]
     assert cause["detail"]["failed"] == [str(golf)]
+    assert cause["detail"]["wrong"] == []
     assert _surfaces(cfg, "Alpha")[:3] == (rows, "07B - 124 - Alpha", "07B")
 
 
-def test_a_dry_run_reads_and_writes_no_file(silence, tmp_path, monkeypatch):
+def test_a_dry_run_writes_no_file(silence, tmp_path, monkeypatch):
     path = tmp_path / "a.flac"
     path.write_bytes(silence.read_bytes())
     assert tags.write_tags(path, {"title": "09A - 98 - A", "initialkey": "09A"})
@@ -555,3 +563,58 @@ def test_a_dry_run_reads_and_writes_no_file(silence, tmp_path, monkeypatch):
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
 
     assert done == restore_tags.TagsPutBack(1)
+
+
+# 4. Review round two
+
+
+def test_a_restore_of_the_later_adopt_leaves_the_earlier_one_s_files(native_library, silence):
+    """Only sessions that started after the one restored are read: an earlier
+    adopt's files keep what it wrote, as its rows do."""
+    cfg, _root = native_library
+    _before, first = _keyed_and_adopted(cfg, silence)
+    adopted = _all(cfg)
+    _visit(cfg, "Alpha", scale="4A", bpm=12400)
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    (second,) = [
+        r.session_id for r in session.records(cfg)
+        if r.workflow == ha.WORKFLOW and r.session_id != first
+    ]
+
+    code, envelope = _restore(second)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["file_tags"]["planned"] == 1
+    assert _all(cfg) == adopted
+
+
+def test_two_later_adopts_put_a_file_back_to_before_the_earlier(native_library, silence):
+    """Among the later sessions the earliest wins, so a file read by two goes back
+    to before the first of them, never to the second's before value."""
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    paths = {stem: _file(cfg, stem) for stem in LANDED}
+    before = _tagged(paths)
+    landing = _landing_of(cfg, "Golf")
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    _visit(cfg, "Alpha", scale="4A", bpm=12400)
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    adopts = [r.session_id for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
+    assert len(adopts) == 2
+
+    code, envelope = _restore(landing, *[f for one in adopts for f in ("--discard", one)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _tagged(paths) == before
+
+
+def test_a_dry_run_counts_a_file_it_cannot_read_as_failed(tmp_path):
+    path = tmp_path / "a.flac"
+    path.write_bytes(b"not audio at all")
+
+    done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
+
+    assert done.failed == (str(path),) and not done.read_back

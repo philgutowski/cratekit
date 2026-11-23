@@ -107,7 +107,8 @@ def kept_by(record: session.SessionRecord) -> tuple[FileBefore, ...]:
     """The before values one record keeps, in its order; none when it keeps none.
 
     Refuses a record that holds :data:`RECORD_KEY` in any other shape than a
-    list of entries each naming a path and both tags as text.
+    list of entries each naming an absolute, unpadded path and both tags as
+    text, the title tag not blank.
     """
     if RECORD_KEY not in record.detail:
         return ()
