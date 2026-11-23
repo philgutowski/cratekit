@@ -1,5 +1,8 @@
 """``crate analyze adopt``: after the visit, a title whose key or tempo differs takes rekordbox's (U327).
 
+A title with no head is given one built from rekordbox's key and tempo, planned
+``stamped`` apart from the corrected rows, at the same gate (U342).
+
 The engine is :mod:`cratekit.analysis.head_adopt`. THE ORDER IS ``tag rows``'S:
 the backup acknowledgment first; the plan on a read handle closed before the
 gate; the explicit gate over the digest, taking no inline answer, AN EMPTY PLAN
@@ -126,8 +129,15 @@ def _left(plan: ha.AdoptPlan) -> list[dict[str, str]]:
         ROWS_LEFT,
         f"{len(left)} of {plan.rows} row(s) were left alone "
         f"({counted(plan.counts, ha.LEFT)}): "
-        + named([f"{_title(item)} ({item.reason})" for item in left]),
+        + named([f"{_title(item)} ({_why_left(item)})" for item in left]),
     )]
+
+
+def _why_left(item: ha.Item) -> str:
+    """A row's reason, and for a title with no head, which half rekordbox did not give."""
+    if item.reason == ha.NO_HEAD_UNANSWERED and item.notes:
+        return f"{item.reason}: {', '.join(item.notes)}"
+    return item.reason
 
 
 def _half(plan: ha.AdoptPlan) -> list[dict[str, str]]:
@@ -192,12 +202,15 @@ def _nothing(plan: ha.AdoptPlan) -> dict[str, str]:
 
 def _written(plan: ha.AdoptPlan, written: ha.Written) -> dict[str, str]:
     files = written.files
+    landed = frozenset(files.read_back)
+    stamped = sum(1 for item in plan.writes if item.action == ha.STAMPED and item.content_id in landed)
     return warning(
         HEADS_WRITTEN,
         f"{len(files.read_back)} file(s) carry rekordbox's key and tempo in their title "
-        f"tag and key tag, read back, and {written.written} row(s) in their title, "
+        f"tag and key tag, read back, {stamped} of them a title that had no head, and "
+        f"{written.written} row(s) in their title, "
         f"{written.read_back} read back from the database as written, the title and no "
-        f"other column; the file names keep their old head; a restore of session "
+        f"other column; no file is renamed; a restore of session "
         f"{written.session_id} puts the rows back and each file's old title tag and "
         f"key tag, which its record keeps",
     )

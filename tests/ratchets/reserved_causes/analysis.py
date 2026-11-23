@@ -18,11 +18,17 @@ KEBAB_LITERALS = {
     'analysis/cli.py': [
         'analysis-write-failed',
         'db-metadata-not-written',
+        # 2026-11-23, U344: a slice length libsndfile cannot read, so ffmpeg decodes it whole.
+        'decoded-whole',
         'energy-calibration-missing',
         'folder-absent',
         'internal-error',
         'module-extras-missing',
         'no-audio',
+        # 2026-11-23, U344: a restamp told the run's job leaves nothing out, and says why.
+        'restamp-left-out-nothing',
+        # 2026-11-23, U344: the restamp's no op when the run scored every staged file.
+        'scored-by-run',
         'skipped-prefixed',
         'source-missing',
     ],
@@ -38,6 +44,7 @@ KEBAB_LITERALS = {
         'key-empty',
         'key-not-camelot',
         'no-head',
+        'no-head-unanswered',  # 2026-11-23, U342: a headless title never stamped half.
         'no-path',
         'no-reference',
         'not-analysed',

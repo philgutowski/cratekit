@@ -1145,22 +1145,41 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
     assert placed.id in {band.id for band in declared.energy.bands}
 
 
-def test_the_detector_names_why_energy_is_what_it_is(monkeypatch):
-    samples = np.zeros(2205, dtype=np.float32)
-    assert detect.energy_from_samples(samples, 22050, calibration=None) == (
+def test_the_detector_names_why_energy_is_what_it_is(monkeypatch, tmp_path):
+    track = tmp_path / "track.flac"
+    asked: list[Path] = []
+
+    def measuring(answer):
+        def extract(path):
+            asked.append(path)
+            return answer
+
+        return extract
+
+    monkeypatch.setattr(energy, "_EXTRACTOR", measuring(features(11)))
+    assert detect.energy_from_path(track, calibration=None) == (
         None,
         energy.STATUS_UNCALIBRATED,
     )
+    assert asked == [], "no calibration measures nothing"
     calibration = calibration_over()
-    monkeypatch.setattr(energy, "features_from_samples", lambda *a, **k: None)
-    assert detect.energy_from_samples(samples, 22050, calibration=calibration) == (
+    monkeypatch.setattr(energy, "_EXTRACTOR", measuring(None))
+    assert detect.energy_from_path(track, calibration=calibration) == (
         None,
         energy.STATUS_FEATURES_UNAVAILABLE,
     )
-    monkeypatch.setattr(energy, "features_from_samples", lambda *a, **k: features(11))
-    level, status = detect.energy_from_samples(samples, 22050, calibration=calibration)
+    monkeypatch.setattr(energy, "_EXTRACTOR", measuring(features(11)))
+    level, status = detect.energy_from_path(str(track), calibration=calibration)
     assert status == energy.STATUS_CALIBRATED
     assert level == energy.LEVEL_MAX
+    assert asked == [track, track], "the restamp's own measure, asked of the file by path"
+
+
+def test_the_head_scores_energy_through_the_restamps_measure_not_its_own_samples():
+    """U344: the head hands the calibration the restamp's slice, so one file has one level."""
+    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
+    assert "energy_from_path(path, calibration=calibration)" in source
+    assert "features_from_samples" not in source
 
 
 def test_the_detector_source_no_longer_returns_energy_as_a_literal_none():
@@ -1842,7 +1861,7 @@ def test_the_feature_vector_measures_its_own_tempo_on_every_path():
     import inspect
 
     assert "tempo" not in inspect.signature(energy.features_from_samples).parameters
-    assert "tempo" not in inspect.signature(detect.energy_from_samples).parameters
+    assert "tempo" not in inspect.signature(detect.energy_from_path).parameters
 
 
 def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silence, monkeypatch):

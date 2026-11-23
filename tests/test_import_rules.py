@@ -150,12 +150,18 @@ TOGGLE_HOMES = {
 #: config.mkdir_private, preflight.names_one_path) each replaced the private
 #: spelling of itself and moved nothing.
 #:
-#: U331 lowered it from 452 to the count measured once every reach went
+#: 2026-11-23, U342, by the coordinator's call for #994, raised by one for
+#: naming.stamp_head, which analyze adopt calls to give a title with no head
+#: one: the naming engine is the one place a head is rendered, and building it
+#: in a feature package would undo what the refactor is for. U331 (#980) counts
+#: it as an interface name.
+#:
+#: U331 lowered it from 453 to 434, the count measured once every reach went
 #: through the list: a name re-exported by a listed module replaced the one it
 #: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
 #: names of the modules that moved to the feature that used them (``held_plan``
 #: to sync, ``rehearsal`` and ``drift`` to intake) are core names no longer.
-CORE_NAMES_CEILING = 433
+CORE_NAMES_CEILING = 434
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────

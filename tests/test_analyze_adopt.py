@@ -24,7 +24,7 @@ from cratekit.cli import gates, registry
 from cratekit.core import analysis_store, config, locations, rb_writer, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.core.naming import NameTemplate
+from cratekit.core.naming import NameTemplate, parse_head, stamp_head
 from cratekit.intake import check_cli, native
 from cratekit.intake import rekordbox_check as rc
 from cratekit.write import metadata
@@ -42,6 +42,7 @@ from tests.test_intake_land_native import (
 from tests.test_intake_land_native import _two_acts as _land_acts
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
 
 VERB = ["analyze", "adopt"]
 GATE = head_adopt_cli.CONFIRM_GATE
@@ -168,8 +169,14 @@ def _land_headed(cfg: config.Config, silence: Path, batch: str, heads: dict[str,
 
 
 def _id(cfg: config.Config, stem: str) -> str:
+    """The row whose title ends in ``stem`` after a head, a marker, or nothing (U342)."""
     ((content_id,),) = _query(
-        cfg, "SELECT ID FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0", f"% - {stem}"
+        cfg,
+        "SELECT ID FROM djmdContent WHERE (Title LIKE ? OR Title LIKE ? OR Title = ?) "
+        "AND rb_local_deleted = 0",
+        f"% - {stem}",
+        f"%] {stem}",
+        stem,
     )
     return str(content_id)
 
@@ -550,10 +557,13 @@ def test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named(
     _visit(cfg, "Oscar", scale="6A", bpm=12400, analysed=False)
     _visit(cfg, "Papa", scale="6A", bpm=12400)
     _visit(cfg, "Quebec", scale="6A", bpm=12400)
-    # Papa's tag spells another body; Quebec's row lost its head by hand.
+    # Papa's tag spells another body. Quebec's row lost its head by hand while its
+    # tag kept one, so the tag is another title and the row is never stamped
+    # (U342); a title the engine could not stamp and read back is no head.
     assert tags.write_tags(_file(cfg, "Papa"), {"title": "01A - 124 - Papa (Edit)"})
+    quebec = _id(cfg, "Quebec")
     with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET Title = 'Quebec' WHERE ID = ?", (_id(cfg, "Quebec"),))
+        conn.execute("UPDATE djmdContent SET Title = 'Quebec' WHERE ID = ?", (quebec,))
     conn.close()
 
     with plan_handle(cfg) as found:
@@ -562,8 +572,14 @@ def test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named(
     assert reasons == {
         "01A - 124 - Oscar": ha.NOT_ANALYSED,
         "01A - 124 - Papa": ha.TAG_DIFFERS,
-        "Quebec": ha.NO_HEAD,
+        "Quebec": ha.TAG_DIFFERS,
     }
+    with sqlite3.connect(cfg.library.db_path) as conn:
+        conn.execute("UPDATE djmdContent SET Title = ' Quebec' WHERE ID = ?", (quebec,))
+    conn.close()
+    with plan_handle(cfg) as found:
+        reasons = {item.title: item.reason for item in found.items}
+    assert reasons[" Quebec"] == ha.NO_HEAD
     assert found.writes == ()
 
 
@@ -1015,3 +1031,349 @@ def test_a_bare_title_s_tempo_is_not_counted_as_differing(native_library, silenc
     assert code == int(ExitCode.OK), checked
     summary = checked["data"]["summary"]
     assert (summary["differs"], summary["tempo_differs"]) == (0, 0)
+
+
+# U342: a title with no head is given one built from rekordbox's key and tempo.
+
+
+def _land_bare(cfg: config.Config, silence: Path, batch: str, titles: dict[str, str]) -> None:
+    """Stage each track with no head in its file name or title tag, then land, as a
+    landing that wrote no head before the visit leaves it."""
+    for stem, title in titles.items():
+        path = _staging(cfg) / f"{stem}.flac"
+        shutil.copyfile(silence, path)
+        assert tags.write_tags(path, {"title": title, "artist": "Probe", "genre": "Deep House"})
+    code, acted, _refused = _land_acts(["intake", "land", "--name", batch])
+    assert code == int(ExitCode.OK), acted
+
+
+#: Bare titles: a plain one, the lossy marker, and bodies that begin like a head.
+BARE = {
+    "Sierra": "Sierra",
+    "Tango": "[MP3] Tango",
+    "Uniform": "1A - Uniform",
+    "Victor": "124 - Victor",
+}
+BARE_VISITED = {
+    "Sierra": ("6A", 12400),
+    "Tango": ("Em", 9850),
+    "Uniform": ("12B", 12049),
+    "Victor": ("3A", 17000),
+}
+STAMPED = {
+    "Sierra": "06A - 124 - Sierra",
+    "Tango": "09A - 99 - [MP3] Tango",
+    "Uniform": "12B - 120 - 1A - Uniform",
+    "Victor": "03A - 170 - 124 - Victor",
+}
+
+
+def _bare_and_visited(cfg: config.Config, silence: Path) -> None:
+    _land_bare(cfg, silence, "2026-11-23_bare", BARE)
+    for stem, (scale, bpm) in BARE_VISITED.items():
+        _visit(cfg, stem, scale=scale, bpm=bpm)
+
+
+@pytest.mark.parametrize(
+    ("title", "key", "tempo", "expected"),
+    [
+        pytest.param("Sierra", "06A", 124, "06A - 124 - Sierra", id="plain"),
+        pytest.param("Sierra", "6A", 124, "06A - 124 - Sierra", id="the-key-padded"),
+        pytest.param("[MP3] Tango", "09A", 99, "09A - 99 - [MP3] Tango", id="the-marker-kept"),
+        pytest.param("[MP3]Tango", "09A", 99, "09A - 99 - [MP3]Tango", id="every-marker-byte"),
+        pytest.param("1A - Uniform", "12B", 120, "12B - 120 - 1A - Uniform", id="a-key-led-body"),
+        pytest.param(
+            "08A - 124 Victor", "03A", 170, "03A - 170 - 08A - 124 Victor", id="a-near-head-body"
+        ),
+        pytest.param("01A - 124 - Alpha", "06A", 124, None, id="a-head-already"),
+        pytest.param(" Sierra", "06A", 124, None, id="a-body-that-would-not-read-back"),
+        pytest.param("", "06A", 124, None, id="nothing-to-follow-the-head"),
+        pytest.param("Sierra", "06A", 1000, None, id="a-tempo-no-head-carries"),
+        pytest.param("Sierra", "13A", 124, None, id="a-key-off-the-wheel"),
+        pytest.param("Victor - 06A - 124", "06A", 124, None, id="a-head-at-the-end"),
+        pytest.param("[MP3]", "06A", 124, None, id="a-marker-and-nothing-after"),
+        pytest.param("[MP3]  ", "06A", 124, None, id="a-marker-and-blanks"),
+    ],
+)
+def test_a_title_with_no_head_is_stamped_and_keeps_every_byte(title, key, tempo, expected):
+    stamped = stamp_head(title, key=key, bpm=tempo, template=TEMPLATE)
+    assert stamped == expected
+    if stamped is not None:
+        assert stamped.endswith(title)
+        assert parse_head(stamped, template=TEMPLATE) == {"key": stamped[:3], "bpm": str(tempo)}
+
+
+def test_a_headless_title_is_planned_stamped_apart_from_the_corrected_rows(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    _bare_and_visited(cfg, silence)
+
+    code, refused = drive(VERB)
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    with plan_handle(cfg) as found:
+        items = {_stem(item.title): item for item in found.items}
+    for stem, title in STAMPED.items():
+        item = items[stem]
+        assert (item.action, item.title, item.new_title) == (ha.STAMPED, BARE[stem], title), stem
+        assert (item.tag_title, item.new_tag_title) == (BARE[stem], title), stem
+        assert (item.head_key, item.head_tempo, item.relation) == (None, None, rc.KEY_UNKEYED)
+        assert item.new_initialkey == title[:3]
+    assert items["Alpha"].action == ha.ADOPT
+    counts = refused["cause"]["detail"]["shown"]["outcomes"]
+    assert (counts[ha.STAMPED], counts[ha.ADOPT], counts[ha.AGREE]) == (4, 5, 3)
+    assert {item.content_id for item in found.writes} == {
+        _id(cfg, stem) for stem in (*STAMPED, "Alpha", "Bravo", "Echo", "Golf", "Hotel")
+    }
+
+
+def _stem(title: str) -> str:
+    """The stem a test landed under, off any head, marker or body prefix."""
+    for stem in (*LANDED, *BARE, *UNANSWERED):
+        if title.endswith(stem):
+            return stem
+    return title
+
+
+def test_the_apply_stamps_title_title_tag_and_key_tag_and_nothing_else(native_library, silence):
+    import mutagen
+
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    before = _content(cfg)
+    grids = _analysis_bytes(cfg)
+    names = {stem: _file(cfg, stem).name for stem in BARE}
+
+    code, acted, _refused = _two_acts()
+
+    assert code == int(ExitCode.OK), acted
+    after = _content(cfg)
+    changed = {
+        content_id: sorted(
+            column
+            for column in after[content_id]
+            if column not in rb_writer.BOOKKEEPING_COLUMNS
+            and after[content_id][column] != before[content_id].get(column)
+        )
+        for content_id in after
+    }
+    assert {cid: cols for cid, cols in changed.items() if cols} == {
+        _id(cfg, stem): ["Title"] for stem in BARE
+    }
+    for stem, title in STAMPED.items():
+        db_title, tag_title, initialkey, name = _surfaces(cfg, stem)
+        assert (db_title, tag_title, initialkey) == (title, title, title[:3]), stem
+        # THE FILE NAME IS NEVER CHANGED: it keeps having no head.
+        assert name == names[stem] == f"{stem}.flac"
+        handle = mutagen.File(_file(cfg, stem))
+        keys = {str(key).lower() for key in (handle.tags or {}).keys()}
+        spelled = keys | {key.split(":", 1)[-1] for key in keys}
+        assert not spelled & {key.lower() for key in FORBIDDEN_TAG_KEYS}, (stem, keys)
+    for content_id in after:
+        for column in ("KeyID", "BPM", "Analysed", "AnalysisDataPath", "FolderPath"):
+            assert after[content_id][column] == before[content_id][column]
+    assert _analysis_bytes(cfg) == grids
+    assert (acted["data"]["totals"]["written"], acted["data"]["totals"]["read_back"]) == (4, 4)
+    said = acted["warnings"][0]
+    assert said["code"] == head_adopt_cli.HEADS_WRITTEN
+    assert "4 of them a title that had no head" in said["message"]
+    assert "no file is renamed" in said["message"]
+    (record,) = [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
+    kept = {entry["content_id"]: entry for entry in record.detail[ha.RECORD_KEY]}
+    tango = kept[_id(cfg, "Tango")]
+    assert (tango["title"], tango["tag_title"], tango["initialkey"]) == (
+        "[MP3] Tango", "[MP3] Tango", ""
+    )
+
+
+#: Headless rows rekordbox did not fully answer: never stamped half.
+UNANSWERED = {
+    "Whiskey": (None, 12400, (ha.KEY_EMPTY,)),
+    "Xray": ("6A", 0, (ha.TEMPO_ZERO,)),
+    "Yankee": (None, 0, (ha.KEY_EMPTY, ha.TEMPO_ZERO)),
+    "Zulu": ("Lydian", 12400, (ha.KEY_NOT_CAMELOT,)),
+}
+
+
+def test_a_headless_row_rekordbox_did_not_key_or_time_is_left_and_named(native_library, silence):
+    cfg, _root = native_library
+    _land_bare(cfg, silence, "2026-11-23_unanswered", {stem: stem for stem in UNANSWERED})
+    for stem, (scale, bpm, _notes) in UNANSWERED.items():
+        _visit(cfg, stem, scale=scale, bpm=bpm)
+    before = _content(cfg)
+
+    code, acted, _refused = _two_acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    items = {item["title"]: item for item in acted["data"]["items"]}
+    for stem, (_scale, _bpm, notes) in UNANSWERED.items():
+        item = items[stem]
+        assert (item["action"], item["reason"], item["new_title"]) == (
+            ha.LEAVE_ACTION, ha.NO_HEAD_UNANSWERED, stem
+        ), stem
+        assert tuple(item["notes"]) == notes, stem
+    left = {warning["code"]: warning["message"] for warning in acted["warnings"]}
+    assert "Yankee (no-head-unanswered: key-empty, tempo-zero)" in left[head_adopt_cli.ROWS_LEFT]
+    assert "Zulu (no-head-unanswered: key-not-camelot)" in left[head_adopt_cli.ROWS_LEFT]
+    assert head_adopt_cli.HALF_READ not in left
+    assert _content(cfg) == before
+    assert {stem: _surfaces(cfg, stem)[1] for stem in UNANSWERED} == {s: s for s in UNANSWERED}
+
+
+def test_leave_holds_a_stamped_row_out_in_the_plan_and_on_the_apply(native_library, silence):
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    sierra = _id(cfg, "Sierra")
+
+    code, acted, _refused = _two_acts([*VERB, "--leave", sierra])
+
+    assert code == int(ExitCode.OK), acted
+    assert _surfaces(cfg, "Sierra")[:3] == ("Sierra", "Sierra", None)
+    assert _surfaces(cfg, "Tango")[0] == STAMPED["Tango"]
+    held = {item["content_id"]: item for item in acted["data"]["items"]}[sierra]
+    assert (held["action"], held["reason"], held["new_title"]) == (
+        ha.LEAVE_ACTION, ha.HELD_OUT, STAMPED["Sierra"]
+    )
+    assert head_adopt_cli.LEAVE_UNMATCHED not in [w["code"] for w in acted["warnings"]]
+
+
+def test_a_stamped_row_moved_between_plan_and_apply_refuses_and_writes_nothing(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    code, refused = drive(VERB)
+    _decide(refused["run_id"])
+    with sqlite3.connect(cfg.library.db_path) as conn:
+        conn.execute("UPDATE djmdContent SET BPM = 13000 WHERE ID = ?", (_id(cfg, "Sierra"),))
+    conn.close()
+    before = _content(cfg)
+    tags_before = {stem: _surfaces(cfg, stem) for stem in BARE}
+
+    code, stale = drive(["--run", refused["run_id"], *VERB])
+
+    assert stale["cause"]["reason"] == "decision-stale", stale
+    assert _content(cfg) == before
+    assert {stem: _surfaces(cfg, stem) for stem in BARE} == tags_before
+
+
+def test_a_second_run_after_a_stamp_plans_nothing_and_ends_no_op(native_library, silence):
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    before = _content(cfg)
+
+    code, again, _refused = _two_acts()
+
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op"
+    assert again["warnings"][0]["code"] == head_adopt_cli.NOTHING_TO_WRITE
+    assert {item["action"] for item in again["data"]["items"]} == {ha.AGREE}
+    assert _content(cfg) == before
+
+
+def test_a_file_already_stamped_is_continued_by_planning_again(native_library, silence):
+    """A run stopped after the files and before the rows: the tag already reads as
+    the stamped title, so only the row is written."""
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    assert tags.write_tags(_file(cfg, "Sierra"), {"title": STAMPED["Sierra"], "initialkey": "6A"})
+
+    with plan_handle(cfg) as found:
+        sierra = {_stem(item.title): item for item in found.items}["Sierra"]
+
+    assert sierra.action == ha.STAMPED and sierra.writes_title and not sierra.writes_file
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    assert _surfaces(cfg, "Sierra")[:3] == (STAMPED["Sierra"], STAMPED["Sierra"], "6A")
+
+
+def test_a_headless_row_whose_tag_carries_another_title_is_left(native_library, silence):
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    assert tags.write_tags(_file(cfg, "Sierra"), {"title": "Sierra (Edit)"})
+
+    with plan_handle(cfg) as found:
+        sierra = {_stem(item.title): item for item in found.items}["Sierra"]
+
+    assert (sierra.action, sierra.reason) == (ha.LEAVE_ACTION, ha.TAG_DIFFERS)
+    assert sierra.content_id not in {item.content_id for item in found.writes}
+
+
+@pytest.mark.parametrize("suffix", tags.SUPPORTED_SUFFIXES)
+def test_a_stamped_file_carries_the_tempo_as_text_and_no_tempo_tag_in_any_container(
+    tmp_path, suffix
+):
+    """The gridless rule on the stamped path, in every container the tag module writes."""
+    import mutagen
+
+    from tests._containers import synth_container
+
+    path = synth_container(tmp_path, suffix)
+    assert tags.write_tags(path, {"title": "Sierra"})
+    stamped = stamp_head("Sierra", key="06A", bpm=128, template=TEMPLATE)
+    item = ha.Item(
+        content_id="1", action=ha.STAMPED, path=str(path), title="Sierra",
+        new_title=stamped, tag_title="Sierra", new_tag_title=stamped, new_initialkey="06A",
+        key="06A", tempo=128,
+    )
+
+    written = ha.write_files([item])
+
+    assert written.read_back == ("1",), written
+    assert tags.read_tag(path, "title") == "06A - 128 - Sierra"
+    handle = mutagen.File(path)
+    held = {str(key) for key in (handle.tags or {}).keys()}
+    spelled = {key.lower() for key in held} | {key.split(":", 1)[-1].lower() for key in held}
+    assert not spelled & {key.lower() for key in FORBIDDEN_TAG_KEYS}, sorted(held)
+
+
+def test_a_stamped_row_is_counted_written_and_never_as_left(native_library, silence, monkeypatch):
+    """The rows left count names only rows left, never a stamped one, and the written
+    message counts a stamped title only when its file took it."""
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    _land_bare(cfg, silence, "2026-11-23_one_left", {"Whiskey": "Whiskey"})
+    _visit(cfg, "Whiskey", scale=None, bpm=12400)
+    tango = _file(cfg, "Tango")
+    real = tags.write_tags
+
+    def refuses_tango(path, fields):
+        return False if Path(path) == tango else real(path, fields)
+
+    monkeypatch.setattr(tags, "write_tags", refuses_tango)
+    code, acted, _refused = _two_acts()
+
+    assert acted["cause"]["reason"] == head_adopt_cli.UNWRITTEN, acted
+    said = {warning["code"]: warning["message"] for warning in acted["warnings"]}
+    assert said[head_adopt_cli.ROWS_LEFT].startswith(
+        "1 of 5 row(s) were left alone (1 no-head-unanswered): "
+    ), said[head_adopt_cli.ROWS_LEFT]
+    assert _surfaces(cfg, "Tango")[:2] == ("[MP3] Tango", "[MP3] Tango")
+    assert _surfaces(cfg, "Sierra")[0] == STAMPED["Sierra"]
+    assert acted["data"]["totals"]["outcomes"][ha.STAMPED] == 4
+    assert acted["data"]["totals"]["written"] == 3
+
+
+def test_the_written_message_counts_only_stamped_files_that_took_it():
+    plan_items = (
+        ha.Item("1", ha.STAMPED, title="A", new_title="06A - 124 - A"),
+        ha.Item("2", ha.STAMPED, title="B", new_title="06A - 124 - B"),
+        ha.Item("3", ha.ADOPT, title="01A - 124 - C", new_title="06A - 124 - C"),
+    )
+    plan = ha.AdoptPlan(
+        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="INBOX / Analyze", content_ids=("1", "2", "3")),
+        items=plan_items,
+        counts={},
+        notes={},
+    )
+    written = ha.Written(
+        session_id="s", written=2, read_back=2, files=ha.FilesWritten(read_back=("1", "3"))
+    )
+    message = head_adopt_cli._written(plan, written)["message"]
+    assert "2 file(s) carry rekordbox's key and tempo" in message
+    assert "1 of them a title that had no head" in message

@@ -345,7 +345,8 @@ The verbs run over staged files before a landing, in order: `tag folder`,
 `name apply` (`cratekit.cli.tail`).
 `crate sync land`, `label sync --go` and `sync bandcamp` run it; no landing is
 planned unless every step succeeded, and a stale tail job is replaced, not
-resumed.
+resumed. Its restamp leaves out the files its `analyze run` just scored
+(`--scored-by`, U344).
 
 ### Shelve
 `crate intake shelve` (`intake/shelve.py`): moves a landed batch folder from
@@ -384,7 +385,8 @@ answered not found a day apart, or that a person retired behind
 the collection as rekordbox's Remove from Collection takes them out (U288): the
 row and every row naming it deleted, the lists left, the live members after it
 in each playlist moved up one place per removed track before them, as rekordbox
-numbers them (R-1830); the session record names
+numbers them (R-1830), each moved row stamped with the removal's update count
+and time as rekordbox stamps it (U955); the session record names
 each one, and `crate delete review` then offers its file.
 
 *Avoid:* a pair removal, which takes a membership and never a track.
@@ -894,7 +896,9 @@ beat from its BPM column rounded half up to a whole beat, takes rekordbox's, spl
 spans of the row's `Title`, the file's title tag and its `initialkey`. The file
 name keeps its old head, so every reader that would put it back (`name apply`,
 the library index) reads the title tag's head first. Never writes `KeyID`, the
-BPM column, a grid or a tempo tag.
+BPM column, a grid or a tempo tag. A title with no head is **stamped** (U342):
+given the naming engine's head of rekordbox's key and tempo before the whole
+title, both halves or none.
 
 *Avoid:* adoption, `crate adopt`, which takes a library's playlists over; and
 re-stamping, which is `analyze restamp`'s energy tag alone.

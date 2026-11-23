@@ -3980,3 +3980,561 @@ another way would escape every scan that reads through
 **Closes when:** the derivation resolves an imported accessor by value (the
 function it binds, however reached), with a fixture per family and spelling;
 or a test holds every accessor import to the absolute spelling. Ledger only.
+
+---
+
+## R-1975. A rekordbox visit over a batch whose every row is dyn ends on Dynamic, so the next launch's Auto Analysis dialog is cancelled
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** The brief asks that every visit end with the shared
+Analysis Mode on Normal. U954 ends it on Normal by making the last Analyze
+Tracks OK a Normal run on rows without `dyn`; a batch whose every row carries
+`dyn` has no such row, and the visit may touch no track outside INBOX /
+Analyze, so it ends on Dynamic. The skill and the landing's warning say so,
+and the next launch's dialog is cancelled by the skill's step 2 for that
+known cause. A visit that stops between its Dynamic OK and its last Normal
+one ends the same way.
+
+**Measured cost.** Driven as a landing of one and of two variable tracks: the
+warning now says the visit ends on Dynamic. The next visit then takes the
+Analyze Tracks path, which costs its selection by hand and nothing analysed
+wrong.
+
+**Closes when:** a way to leave Normal set with no row of the batch to
+analyse is settled at an attended sitting: sitting 104 put the mode back by
+analysing a throwaway AIFF alone on Normal, under CLAUDE.md's clause for a
+probe, and whether a visit may do that routinely, or whether a Normal
+Analyze Tracks dialog answered Cancel keeps its mode, is unmeasured; or
+Phillip accepts the exception. Ledger only: it closes at an attended
+sitting.
+
+---
+
+## R-1976. A variable row the landing could not tag dyn is counted among the rows the visit runs Normal, while another warning sends it to Dynamic by name
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** When a landing cannot give a variable row the `dyn` My
+Tag (no My Tag category to copy, a removed value, a tag that does not read
+back), `dyn-not-written` names it for a Dynamic run by name, before any
+Normal run and left out of it. The `rows-await-analysis` warning counts rows
+by the tag alone, so it counts that row among "the rows without it" for the
+Normal run, and the skill's status line check and wait (the batch less the
+`dyn` count) are off by the rows named. With every row such a row, the
+awaiting warning tells of a Normal run on rows the other warning says to
+leave out.
+
+**Measured cost.** Driven at the review through the landing fixtures, a
+library with no My Tag category and a removed `dyn` value; both states are
+made by a person in rekordbox and were seeded here, so reachability on the
+live library, which carries the category, is unmeasured. The cost is a count
+that disagrees by the named rows, and the visit's mode left on Dynamic.
+
+**Closes when:** the awaiting warning counts a variable row the landing could
+not tag with the Dynamic rows (or names it apart), and the skill's counts
+follow. Ledger only.
+
+---
+
+## R-1977. The rekordbox visit's Normal run selection is checked by its count alone, so a wrong row clicked out keeps the count
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** U954's Analyze Tracks path selects the rows without `dyn`
+by selecting all and Command clicking each `dyn` row out, then checks that
+the status line reads the batch less the `dyn` count. A plain row clicked out
+in place of a `dyn` one keeps that count, so the Normal run can take a `dyn`
+row and overwrite its Dynamic grid while leaving a plain row unanalysed by
+Normal. The Dynamic selection before it was count checked the same way.
+
+**Measured cost.** Not driven in rekordbox, which no cloud session opens. The
+reviewer drove `crate analyze check` over the outcome: on a fresh batch the
+plain row left out reads waiting, so it is caught; on a second visit, where
+that row was already analysed, a `dyn` row left with a one tempo grid reads
+done.
+
+**Closes when:** the visit checks the selection's rows, not only their count
+(the My Tag column read off the screenshot, or a check of each `dyn` row's
+grid after the visit), or an attended sitting shows the count check enough.
+Ledger only: it closes at an attended sitting.
+
+---
+
+## R-1978. A verdict that keeps a two genre track out of its R&B folder is what takes it out of R&B's band
+
+**Found:** at the review of #1000, R-1950, 2026-11-23.
+
+**The mechanism.** A Soul track whose second genre is R&B (or the reverse)
+has two adoption entries, Soul's and R&B's. With no verdict, `adopt move`
+plans nothing for it in R&B's band, since R&B's entry claims that folder and
+Soul's split place over R&B's band is the track's own other folder
+(`adopt/plan.py` `kept_beside`). A collision verdict that withholds the R&B
+entry makes it claim nothing (`adopt/move.py` `claims`), so the track is no
+longer counted as R&B's, and `build_move_plan` plans removing it from R&B's
+band under Soul's split place, the move a one genre Soul track gets. The
+same happens with R&B first and Soul second. A one genre R&B track under that
+verdict is left alone. So the verdict a person gave to keep adoption out of
+R&B is what takes the track out of R&B.
+
+**Measured cost.** Driven at the engine only, with the real `find_collisions`
+and `with_collision_verdicts` folding the verdict and a census row built by
+hand, no database: the move plan carries one removal from R&B Med. Whether a
+person can reach that state through `adopt apply` and `adopt move` on a
+library, and whether the removal is what a DJ who gave the verdict wants, is
+unmeasured. R-1950's tests do not pin it either way.
+
+**Closes when:** the state is driven through the verbs on a disposable
+library and either the move is shown to be what the verdict means, recorded,
+or `adopt move` leaves a track in the folder its withheld entry names as it
+does for a one genre track. Ledger only until it is driven.
+
+---
+
+## R-1979. In the default output a restamp told a run's job never says what it left out, and its no op reads as an empty folder's
+
+**Found:** at the review of #996, U344, round one, 2026-11-23.
+
+**The mechanism.** `analyze restamp --scored-by RUN_JOB_ID` counts the files
+it left out at `progress.left_out` in its queue answer and at
+`progress.analysis.left_out` in its job answer. The default renderer prints
+neither, so a person reading the plain answer sees `items: 1 of 1 settled`
+with no count and no reason, and when the run scored every file the answer
+is `analyze.restamp: no_op`, the same words an empty folder gives.
+
+**Measured cost.** Driven by the review through `drive_human` over the
+suite's fixtures. The tail reads the JSON answer and says the count on its
+own `restamp` row, so a sync pass is not affected; only a person running
+the flag by hand reads less than the answer holds.
+
+**Closes when:** the default output names the count and the run job, and
+the no op says the run scored every file. Ledger only.
+
+---
+
+## R-1980. A restamp told a run's job decides what it leaves out at its queue, and a calibration refit before its drive does not reopen those files
+
+**Found:** at the review of #996, U344, round one, 2026-11-23.
+
+**The mechanism.** `scored_in_pass` compares each run report's calibration
+fingerprint with the calibration active when the restamp is queued, and the
+left out files are frozen on the payload. The worker reads the calibration
+again when the job is driven. A refit saved between the queue and the drive
+restamps the queued files under the new calibration and leaves the left out
+ones at the level the old one gave, with no warning.
+
+**Measured cost.** Driven by the review by hand: `analyze restamp
+--scored-by RUN --queue-only`, a refit saved through
+`energy.save_calibration`, then the job's `--job` command: the queued file
+stamped 1 under the refit, the left out file still 6 where the refit gives
+1. The tail queues and drives back to back and replaces a stale tail job, so
+only a hand sequence of three steps reaches it; the refit was not made
+through `analyze calibrate`.
+
+**Closes when:** the drive compares the calibration it reads with the one
+the queue left files out under, and restamps them, or refuses, when they
+differ. Ledger only.
+
+---
+
+## R-1981. analyze run decodes an M4A whole twice, once for the head and once for the energy slice, 1.3 seconds a track more than before U344
+
+**Found:** at the build of #996, U344, 2026-11-23.
+
+**The mechanism.** Since U344 the head measures energy through the
+restamp's own measure, `energy.features_from_path`, so the slice is decoded
+on its own after the head's whole decode. For a file libsndfile opens that
+is a seek and a two minute read. A file only ffmpeg reads, an M4A on
+librosa 1.0, has no seek: the measure decodes it whole once more (once,
+since U344 closed R-1556's second decode) and cuts the slice from it.
+
+**Measured cost.** One reading each on the cloud container, the 16 M4A
+transcodes of the fixed set in `scripts/analyze_stages.py`: the head's
+energy stage 28.2 s before, 48.7 s after, so `analyze run` by hand takes
+about 1.3 s a track more on an M4A. A tail pass over the same files is
+faster, 49.4 s in all, since the restamp no longer measures them, and a
+hand `analyze restamp` over them went from 69.9 s to 52.5 s.
+
+**Closes when:** the head hands the energy measure the native samples it
+already decoded for a file only ffmpeg reads, cut and resampled as the
+restamp cuts them, within the light worker's declared memory. Ledger only.
+
+---
+
+## R-1982. no real stack test holds the two warm up calls U344 added, and the reason for measuring energy from a file in the warm up is not measured
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** U344 closed R-1491 by two calls: `features_from_path`
+asks `warm.kernels()` before it decodes, and the warm up's own head also
+measures energy from its file, so the restamp's and calibrate's measure
+compile the same kernel specialisations a worker's head does. The first is
+held by `test_the_energy_measure_asks_for_the_warm_up_before_it_decodes`
+against a librosa stand in. On the real stack (librosa and soundfile),
+dropping either call fails no test, since no test measures a worker's head
+against the driver's restamp across two processes; that was measured by
+hand (23 of 23 and 32 of 32 identical, against 21 of 23 and 19 of 32
+before). The review dropped the warm up's file measure and found 10 of 10
+files bit identical head against plain measure over fresh caches in both
+orders. The file measure's reason is R-1491's own measurement, eleven
+cache files written by the file path on an empty cache, one a second
+specialisation of `utils._cabs2`; the empty cache coverage test no longer
+sees that difference with the line removed, so on this librosa the reason
+is unconfirmed. The mutation table agrees: row M6, dropping it, killed
+nothing.
+
+**Cost today.** None measured: every comparison made on the branch agreed.
+A later edit dropping either call fails nothing on any stack.
+
+**Closes when:** a real stack test runs a head in one process and the
+restamp's measure in another over a fresh kernel cache, in both orders, and
+asserts the features bit equal; and either a measurement shows the file
+measure is needed, or it is removed with that test green. Ledger only.
+
+---
+
+## R-1983. under a librosa before 1.0, decode.centred reads ffmpeg's samples where the old composition read audioread's, when the length read fails
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** `decode.centred` replaced the energy measure's two calls
+(a length, then a windowed load). When `librosa.get_duration` fails for a
+file libsndfile does not open, `centred` decodes it through ffmpeg; the old
+composition's load went through `librosa.load`, which under a librosa
+before 1.0 reads the file through audioread. The review forced
+`get_duration` to raise under librosa 0.10.2.post1 and found 3 of 4 M4As
+measured from different samples. Untouched, 15 of 15 files were identical,
+and so were 165 comparisons on librosa 1.0.1. No real file was found that
+takes that path.
+
+**Cost today.** None produced: the shipped stack is librosa 1.0, and the
+path needs a length read that fails on a file audioread can decode.
+
+**Closes when:** a real file is found that takes the path, or `centred`
+under a librosa before 1.0 falls back as `load` does. Ledger only.
+
+---
+
+## R-1984. analyze restamp and analyze calibrate now wait on the warm up lock with no bound
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** Since U344 the energy measure asks `warm.kernels()`
+before its first decode, so a restamp or a calibrate takes the warm up's
+file lock as `analyze run` already did. `warm.py` says the run's wait is
+unbounded; U344 extends that wait to the two verbs.
+
+**Measured cost.** With another process holding the lock for 20 seconds, a
+fresh process's first measure took 23.49 s against 4.42 to 4.95 s unheld.
+A sleeping holder stood in for a suspended one; a holder that never lets go
+would hold the restamp as long.
+
+**Closes when:** the warm up lock is taken with a bound, after which a
+process measures unwarmed and says so. Ledger only.
+
+---
+
+## R-1985. analyze adopt stamps a headless row only when its title tag equals the row's title byte for byte, so three near misses are left as title-tag-differs
+
+**Found:** at review round one of #994, U342, 2026-11-23.
+
+**The mechanism.** `analysis/head_adopt.py`, `_tag_after`: a title with no
+head is stamped only when the file's title tag reads exactly as the row's
+title, or already as the stamped title. Anything else is `title-tag-differs`.
+
+**Measured cost.** Driven at review round one, through the landing and the
+plan on the suite's disposable library: a file with no title tag lands as
+Title `Lima` and is left `title-tag-differs` naming an empty tag; a tag
+`[MP3]Tango` lands as Title `[MP3] Tango`, since `intake/ingest.py` renders
+the marker again, and is left the same; a stamp stopped after the files and
+before the rows (a `KeyboardInterrupt` at the row write) is continued while
+rekordbox's answer stands, and left on every later run once the BPM column
+moves, where a corrected head would splice the tag's own. Each row is named
+and nothing is written or lost; the row keeps having no head until a person
+fixes the tag. No producer of a tagless or off spaced marker file upstream of
+staging was driven, and the stopped stamp needs a reanalysis between two runs.
+
+**Closes when:** a stamped row compares the tag by its body as a corrected
+head does, with a tagless file given the row's title. The trap: a blank
+before title tag makes `core/restore_tags.py` `kept_by` refuse the session's
+record, so a tagless file must keep a non blank before value or the restore
+must learn to clear it. Ledger only.
+
+---
+
+## R-1986. A title that is or holds a head the parser does not read as leading, 13A - 124 - Alpha, 06A - 124 alone, or one behind the marker, is stamped as a title with no head and carries two
+
+**Found:** at review round one of #994, U342, 2026-11-23.
+
+**The mechanism.** `core/naming.py`, `stamp_head`: the head parser reads a key
+only on the wheel, 1A to 12B, so `13A - 124 - Alpha` has no head to it and
+is given one, `06A - 124 - 13A - 124 - Alpha`. A title that is a head and
+nothing else, `06A - 124`, has no terminator after its tempo, so it is no head
+either and becomes `06A - 124 - 06A - 124`; a head behind the lossy marker,
+`[MP3] 8A - 125 - Alpha`, becomes `06A - 124 - [MP3] 8A - 125 - Alpha`. A
+head at the end of a title is refused since review round one
+(`strip_trailing_head`), these are not.
+
+**Measured cost.** Driven at review round two through the landing and the
+verb: a title tag `13A - 124 - Alpha` lands unchanged and adopt writes
+`06A - 124 - 13A - 124 - Alpha` to the row, the tag and the key tag; `06A -
+124` lands and is written `06A - 124 - 06A - 124`, and a second run agrees.
+Every byte is kept and the session record restores it. The marker case was
+driven on the pure function; the landing turns that tag into `08A - 125 -
+[MP3] Alpha`, which is then left. No producer of any of these tags upstream
+of staging was driven: every writer of a head renders through the same
+engine.
+
+**Closes when:** a producer is found, then `stamp_head` refuses a title that
+begins, after any marker, with a shape of key and tempo whatever the key's
+number or what follows. Ledger only.
+
+---
+
+## R-1987. analyze run pointed at a file analyze adopt stamped measures and names it again, putting its own key over rekordbox's
+
+**Found:** while building #994, U342, 2026-11-23.
+
+**The mechanism.** `analyze adopt` gives a title with no head one built from
+rekordbox's key and tempo, in the row's title, the title tag and
+`initialkey`, and never renames the file, so the file name keeps having no
+head. `analyze run`'s resume marker (`analysis/run.py`, `already_analyzed`,
+and `analysis/cli.py`, `carries_head`) reads the head off the file name only,
+so the stamped file reads as never analysed.
+
+**Measured cost.** Driven on the workers suite's fixtures with a fixed
+detector: a file `Sierra.flac` whose title tag is `06A - 124 - Sierra` and
+`initialkey` `06A`, put through `crate analyze run` over its folder, came out
+as `08A - 124 - Sierra.flac`, title tag `08A - 124 - Sierra`, `initialkey`
+`08A`: rekordbox's key replaced by Cratekit's, and the file renamed. A file
+in the collection renamed by `analyze run` is a separate, older exposure of
+any headless library file. The producer is a person pointing `analyze run` at
+a library folder after the visit; today's landings carry a head from
+`analyze run` before they land, so a stamped file is rare until U343, and the
+reachability on a real library was not measured.
+
+`analyze vocals --unscored` keys on the same file name head (`vocals/cli.py`);
+driven at review round two, a stamped file with no `voxlevel` is never picked
+by it, since the selector takes only a file whose name carries a head, so the
+rescore misses it rather than taking it again.
+
+**Closes when:** U343 (#995) lands, which removes the key stage, the head,
+the `initialkey` write and the rename from `analyze run` and resumes it by a
+tag the run writes. Ledger only: the card that closes it is already queued.
+
+---
+
+## R-1988. analyze adopt's half read warning counts the notes of rows it left beside the rows that took half an answer
+
+**Found:** at review round one of #994, U342, 2026-11-23, on code the branch did not change.
+
+**The mechanism.** `analysis/head_adopt_cli.py`, `_half`: the warning names
+only rows that took half of rekordbox's answer, but its bracket prints
+`plan.notes`, the notes of every row, left ones included.
+
+**Measured cost.** Driven at review round one: a mixed plan said `1 row(s)
+took only half of rekordbox's answer (3 key-empty, 1 tempo-zero)`, the two
+extra notes from rows left as `no-head-unanswered`; a copy of the base gives
+the same sentence with a `no-head` and a `no-reference` row. A count in a
+warning that overstates; nothing is written or lost.
+
+**Closes when:** the bracket counts the notes of the rows it names. Ledger only.
+
+---
+
+## R-1989. analyze adopt leaves a headless title that only ends like a head, Type-2B-10, as no-head with no cause named
+
+**Found:** at review round two of #994, U342, 2026-11-23.
+
+**The mechanism.** Review round one made `core/naming.py`, `stamp_head`,
+refuse a title carrying a head at its end, by `strip_trailing_head`, whose
+pattern takes any ending of a hyphen, a wheel key, a hyphen and one to three
+digits, spaced or not. A title that only ends that way, `Type-2B-10`,
+`Symphony No. 5 - 3B - 7` or `Area 51 - 9B - 140`, is refused with it, and
+`plan_row` names the row `no-head`, the word for a head it could not build.
+
+**Measured cost.** Driven at review round two: a title tag `Type-2B-10`
+landed and was left `no-head` on two runs, where round one's code stamped it
+`06A - 124 - Type-2B-10`. The row is named and nothing is written or lost; it
+keeps having no head. No real title of the shape was measured, and no
+producer upstream of staging was driven.
+
+**Closes when:** the refusal reads a trailing head only in the spaced form the
+engine writes, or names its own reason so the row says why. Ledger only.
+
+---
+
+## R-1990. A playlist rekordbox removed is still compared when a rebuild recorded it, while one nothing recorded is not
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** R-1949's fix leaves a playlist rekordbox removed out of
+the playlists the check compares through their names (`node.removed`), but a
+destination a rebuild recorded resolves to its node by identifier whether or
+not that node is removed, so a removed recorded playlist with live
+memberships still reads `unexpected`. The two paths answer differently for
+one state.
+
+**Measured cost.** Driven at round two: a rebuild recorded playlist marked
+removed with its memberships live read `unexpected:tech_house/high:1` on the
+branch and on the base; with its memberships marked removed too it read
+converged on both. The repository's own measurement (the solutions note on
+the first removal being a soft delete) found removed memberships inside
+removed playlists, so the live state may be the second shape; the first was
+not produced by rekordbox here.
+
+**Closes when:** the check treats a removed node the same on both paths, or a
+measurement on the live library shows rekordbox never leaves live
+memberships in a removed playlist. Ledger only: unmeasured reachability, and
+the base's behaviour.
+
+---
+
+## R-1991. A cleared second genre left under a folder renamed in rekordbox reads as matching when no rebuild or resort ever recorded that folder
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check reads a playlist that nothing
+derives into by its folder's declared name, or, when the folder's name
+declares no bucket, by the bucket a previous write recorded for it. Adoption's
+writer (`trees.write_tree_membership` under `adopt apply`) records no node, so
+a tree filed only by adoption has no record. A genre folder renamed in
+rekordbox there declares no bucket and has none recorded, so a cleared second
+genre's track left alone in a playlist under it falls into `foreign`, and
+`converge` says `matching`: R-1949's own state, under a rename.
+
+**Measured cost.** Driven at round two with the folder renamed by a row
+write standing in for rekordbox: the verb said `matching`, "1 declared
+placement(s) all present", left behind empty, `foreign: Loud! Room/High`.
+Once a rebuild or resort recorded a playlist in that folder it said
+`differing` and named the leftover. The rename itself was not made in
+rekordbox, which no cloud session may open.
+
+**Closes when:** the check can tell which bucket an unrecorded renamed folder
+under the governed root is (for instance by a record adoption writes, or the
+bucket its declared playlists' tracks derive into) and compares its playlists,
+or names such a folder as not compared rather than reading matching. An issue:
+a clean report over a membership no genre files (the bar's b).
+
+---
+
+## R-1992. A track whose file the walk did not read is unexpected in the band it sits in alone, now that a playlist nothing derives into is compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check compares every playlist under the
+governed root that bears a declared destination's names (R-1949), with
+nothing declared there when no track derives into it. A track the
+derivation placed nowhere, because the walk of the music directory did not
+read its file (a file outside the music directory, or one that would not
+open), reads `unexpected` there. The base already read it so once the same
+playlist held one derived track; the branch widens the class to a playlist
+holding only such tracks.
+
+**Measured cost.** Driven at round one: track 2 with no reading, alone in
+Tech House / High, `check` said `unexpected:tech_house/high:2` where the
+base said `foreign`. No producer on a real library was driven, so how often
+a genre playlist holds only unread files is unmeasured. `converge` says
+`differing` over a membership whose file it did not read.
+
+**Closes when:** the check knows which active rows the walk read and leaves a
+membership whose file it did not read out of `unexpected` (or names it apart),
+in both the populated and the newly compared playlists. Ledger only: the
+report is not clean, and the class is the base's.
+
+---
+
+## R-1993. converge offers rebuild-tree as the remedy for an unexpected membership, which a rebuild adds around and never removes
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `crate converge` gives every `differing` tree the remedy
+`rebuild-tree`. A rebuild adds and never removes, so for a tree whose only
+differences are `unexpected` memberships (a cleared second genre's track
+left in that folder, R-1949) the remedy changes nothing and the tree reads
+`differing` after it. The base does the same for any unexpected membership;
+R-1949's fix makes converge name more of them.
+
+**Measured cost.** Driven at round one: the card's own scenario through the
+verb, `differing`, `unexpected:tech_house/high:1`, remedy `rebuild-tree`.
+The guide now says to take such a track out by hand in rekordbox; the
+verb's remedy still names the rebuild.
+
+**Closes when:** converge names a remedy per direction, the rebuild for a
+missing membership and the removal by hand (or `route resort`'s left behind
+list) for an unexpected one. Ledger only: a remedy wording, which the guide
+already corrects.
+
+---
+
+## R-1994. A Favorites playlist is compared on a governed tree whose derivation neither files favourites nor names their dimension as not compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `rebuild.with_favorites` derives the genre Favorites
+only for the routing tree, and names the dimension as not compared only
+there. On any other tree id the check now compares a playlist bearing a
+declared Favorites name with nothing declared there, so its members read
+`unexpected` though nothing was derived for them.
+
+**Measured cost.** Driven at round one on the test tree id: a Favorites
+playlist by hand read `unexpected:deep_house/favorites:1` with no gap
+named. One candidate producer was driven and does not reach it:
+`cutover.derivation_source` refuses any tree but the two cutover trees, and
+the inbox tree refuses at `assert_derivable`, so no shipped verb checks
+another tree. Reachability is unmeasured beyond that one candidate.
+
+**Closes when:** the check leaves a playlist signal class out of the newly
+compared playlists on any tree `with_favorites` does not derive. Ledger only:
+no producer reached.
+
+---
+
+## R-1995. A clock stepping back between a removal's plan and its stamp refuses the removal as an unplanned write
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `DatabaseReading.read_at` is the plan's time, read when
+`CollectionRemoval.prepare` reads the database, and the renumbering's
+`updated_at` stamp is read from the same clock at the commit.
+`_stamp_after_plan` refuses a stamp earlier than the plan, so a system clock
+stepped back between the two (an NTP correction, a manual change) refuses
+the whole removal with `whitelist-violation`, "reached rows it did not plan",
+nothing written, and a remedy of changing policy or input where waiting and
+running again is the answer.
+
+**Measured cost.** Driven by the reviewer with `rb_removal._now` patched to
+run 5 ms backward per call: exit 42, nothing written, the message above. The
+producer, a real clock step inside one apply, was not driven. Nothing is
+lost: the verb can be run again.
+
+**Closes when:** the refusal names the clock and is retryable, or the check
+is dropped in favour of the row moving to the stamp's text alone. Ledger
+only: a misleading refusal over nothing lost, on an input not driven.
+
+---
+
+## R-1996. A removal gives every renumbered row one count, the final one, and rekordbox was read on one row of one playlist
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `CollectionRemoval.commit` stamps every membership row it
+renumbers, in every playlist and for every removed track, with one
+`rb_local_usn`, the removal's final `localUpdateCount`, and one `updated_at`.
+A202 at sitting 104 read rekordbox 7.2.19's own Remove from Collection on one
+moved row in one playlist, whose count equalled the final count. That fits
+both one count on every moved row and successive counts ending at the final
+one, and nothing measured several moved rows, several playlists or several
+removed tracks at once. The confinement admits only the shape this product
+writes.
+
+**Measured cost.** Not driven against rekordbox, which no cloud session may
+open. Driven through the verb on the `one_offered` fixture: 7 rows in 3
+playlists moved, all holding the one final count. If rekordbox numbers them
+apart, the library differs from rekordbox's own state in the count of rows
+rekordbox itself does not read for playback.
+
+**Closes when:** an attended sitting reads rekordbox's removal of one track
+with two survivors after it on each of two playlists, column by column on two
+dated copies, and the stamp rule is kept or changed to match. Ledger only: it
+closes only at an attended sitting.

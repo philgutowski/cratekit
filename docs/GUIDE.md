@@ -195,6 +195,17 @@ the two commands that answer and apply it and the rekordbox visit after.
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
+- The tail's `analyze restamp` is passed `--scored-by` with the pass's
+  `analyze run` job, so it does not measure energy again on a file that run
+  just scored: the run measures energy the way the restamp does, over the
+  same two minutes of the same audio. It still restamps a file the run
+  skipped (a name already carrying the head), could not key or score, or
+  scored under a calibration that is no longer the active one, a file whose
+  energy tag changed since, and a file whose length moved when the run wrote
+  its tags (an MP3 with no Xing header, whose length is read off its size,
+  so the two minutes measured are not the same ones). Its `restamp` row says
+  how many it left out, and when the run scored every staged file it queues
+  nothing and says so.
 - When every genre catalogue but Discogs refuses this machine (Beatport's 403,
   a bot wall), a pass with a `discogs-token` recorded carries on: a file
   Discogs searched and could not tag is left with no genre, never recorded
@@ -257,25 +268,30 @@ Then, in order:
 
 **The rekordbox visit.** Cratekit never analyses inside rekordbox and never
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
-rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
-BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same.
+rows with the `dyn` My Tag first, with Analysis Mode Dynamic; then rows without
+`dyn` last, with Analysis Mode Normal, high precision off, BPM/Grid, Phrase and
+KEY on, the Dynamic run's other settings the same. The order matters: the last
+Analyze Tracks run sets the mode the next launch's Auto Analysis dialog shows,
+so a visit that ends on Dynamic leaves that dialog reading Dynamic.
 
 With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
 rekordbox and bring its window to the front: it raises one dialog saying Auto
 Analysis is starting, with the fields it will use. Press OK only when it shows
 every one of the Normal settings above with Vocal and CUE off and no field set
 otherwise, and it analyses every row waiting with no selection; otherwise,
-Cancel it and select as above. Auto Analysis runs on its preference's own mode,
-so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
-Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
-finds unanalysed, however it came in, so whether it is on is yours to choose.
+Cancel it and select as above. Auto Analysis runs on its preference's own
+mode, so rows with `dyn` still take Analyze Tracks with Dynamic, and after
+them one row without `dyn` takes Analyze Tracks with Normal again, so the
+visit ends on Normal; a batch whose every row has `dyn` ends on Dynamic, and
+the next launch's dialog is cancelled. Cratekit never turns Auto Analysis on or off.
+rekordbox's Auto Analysis analyses every track it finds unanalysed, however it
+came in, so whether it is on is yours to choose.
 
 Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
-crate analyze adopt        # titles whose key or tempo differs take rekordbox's
+crate analyze adopt        # titles whose key or tempo differs, or with no head, take rekordbox's
 crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 ```
 
@@ -286,23 +302,35 @@ the visit suspect; the check counts it and names `crate analyze adopt`.
 `--pass` or `--session` names one landing.
 
 `analyze adopt` gives each analysed row whose title head names another key or
-tempo rekordbox's answer, since rekordbox's is the more reliable. The key is
+tempo rekordbox's answer, since rekordbox's is the more reliable, and gives a
+title with no head one built from rekordbox's key and tempo (U342), shown as
+`stamped` apart from the corrected rows: the head the naming engine writes,
+the key padded Camelot, set before the whole title, so `[MP3] Alpha` becomes
+`09A - 98 - [MP3] Alpha` and no other character changes. A title with no head
+is stamped only with both halves: one rekordbox did not key, or whose tempo is
+zero, is left as `no-head-unanswered` naming the half missing. The key is
 the Key column's and wins on any difference, one Camelot step included; the
 tempo is rekordbox's rounded, and wins only when the head is more than one
-beat away. Only those two parts of the head change, in the row's title in
-rekordbox, the file's title tag and the file's key tag; the rest of the title,
-the lossy marker included, keeps every character. It never writes the Key or
+beat away. On a title with a head only those two parts of it change, and on
+one without, only the new head is added, in the row's title in rekordbox, the
+file's title tag and the file's key tag; the rest of the title, the lossy
+marker included, keeps every character. It never writes the Key or
 BPM columns, a grid or a tempo tag, and it never renames a file, so the file
-name keeps its old head; `name apply` and the library index read the title
-tag's head first, so the old head is never written back. It reads the backup
+name keeps its old head, or keeps having none; `name apply` and the library
+index read the title tag's head first, so the old head is never written back. It reads the backup
 acknowledgment first, shows every row before and after with its key relation
 and tempo behind an explicit gate (`analyze.adopt.confirm`), and `--leave
 CONTENT_ID` holds a row out, given again on the run that applies. A row is
 left and named when it has left the collection, rekordbox has not analysed it,
-its title has no head, rekordbox gave neither a key nor a tempo, its file's
-path resolves to no file on this machine or the file is missing or unreadable,
-the file's title tag says another title, or `--leave` holds it; a missing key
-never stops the tempo, nor a missing tempo the key. The tempo compared is
+its title has no head and rekordbox did not give both a key and a tempo, its
+title has no head at the front but carries one at its end or holds nothing
+after the lossy marker (`no-head`), its head could not be read back once
+built, rekordbox gave neither a key nor a
+tempo, its file's path resolves to no file on this machine or the file is
+missing or unreadable, the file's title tag says another title (for a title
+with no head, anything but that title or the stamped one), or `--leave` holds
+it; on a title with a head a missing key never stops the tempo, nor a missing
+tempo the key. The tempo compared is
 rekordbox's rounded half up to a whole beat. A file that cannot take its new
 title keeps its row's old title, and the run ends refused under
 `analyze-adopt-unwritten` naming it, after the rest landed; run it again once
@@ -784,7 +812,8 @@ collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
 stay, emptier. In each playlist the track leaves, the tracks after it move
 up one place for each removed track before them, as rekordbox numbers them,
-and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
+and each one that moves is stamped as rekordbox stamps it, with the removal's
+update count and its time, and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
 the collection or the playlists moved since the gate. A track a My Tag (the
 landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
@@ -1389,10 +1418,17 @@ moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
 band there, never a place `adopt move` takes it out of. A track with one
 genre is filed exactly as before. A cleared second genre leaves the track in
-that folder until it is taken out there; `converge` names it as a membership
-no genre files only while that playlist holds another track filed into it.
-The one exception is a Soul track's cleared R&B: its R&B band is Soul's split
-place again, which `adopt move` takes it out of.
+that folder until it is taken out there, by hand in rekordbox: `rebuild`, the
+remedy `converge` names, adds and never removes. The one exception is a Soul
+track's cleared R&B: its R&B band is Soul's split place again, which
+`adopt move` takes it out of. Until it is out, `converge` says `differing`
+and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
+the folder's and band's stable identifiers and the track's row, whether or
+not anything else is filed into that playlist (the line shows the first 20
+differences), and `route resort` lists it as left behind. Under a folder
+renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
+recorded that folder. A Candy playlist, which a person fills by hand, is
+never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 
@@ -1517,7 +1553,7 @@ verdict).
 ```bash
 crate analyze run /path/to/folder
 crate analyze vocals /path/to/folder [--recursive] [--unscored]
-crate analyze restamp /path/to/folder [--recursive]
+crate analyze restamp /path/to/folder [--recursive] [--scored-by RUN_JOB_ID]
 crate analyze calibrate LIBRARY_ROOT --recursive
 crate analyze validate /path/to/labelled-folder
 crate metadata mytags-vocals [--apply]
@@ -1531,9 +1567,27 @@ crate metadata mytags-vocals [--apply]
   spread), then renames the file to the naming template's Camelot head. It
   skips a file already carrying the head, so `analyze vocals --unscored`
   scores the ones it finished with no `voxlevel`, and a title that took
-  rekordbox's key and tempo with `analyze adopt` is never stamped again;
+  rekordbox's key and tempo with `analyze adopt` is never stamped again
+  when its file name carries a head; a file `analyze adopt` stamped keeps a
+  name with no head, so `analyze run` pointed at it measures and names it
+  again, until U343 gives the run a resume tag;
   `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
   row says when vocals cannot score.
+- `analyze run` measures a track's energy exactly as `analyze restamp` does,
+  over the same central two minutes (decoded alone, or for a file only ffmpeg
+  reads cut from one whole decode), so one file under one calibration,
+  measured over the same audio, gets one level from either verb.
+  Until U344 the run read the energy from the whole track it decoded for the
+  key, which gave a level one step apart on a track sitting on a level's
+  edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
+  `analyze run` job scored at its present name under the calibration active
+  now, whose `energylevel` tag still reads that level and whose length did
+  not move with the run's own tag write, and restamps the rest. Its JSON
+  answer counts what it left out (`progress.left_out` when queued,
+  `progress.analysis.left_out` when driven); a job that is not a finished
+  run over that folder leaves nothing out, with a `restamp-left-out-nothing`
+  warning. The tail passes it; by hand, a restamp without it restamps every
+  file as it always has.
 - `analyze run` measures key, tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's

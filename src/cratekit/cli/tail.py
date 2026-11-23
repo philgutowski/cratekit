@@ -63,6 +63,14 @@ DOWNLOAD_VERB = "acquire.download"
 RENAME_INCOMPLETE = "rename-incomplete"
 LAND_VERB = "intake.land"
 
+#: ``analyze restamp``'s flag naming this pass's ``analyze run`` job, the no op
+#: state it answers when that run scored every staged file, and the progress
+#: key counting what it left out (U344). Spelled here, since this module
+#: imports no feature module at its top; a test holds them to the verb's own.
+SCORED_BY_FLAG = "--scored-by"
+ALL_SCORED = "scored-by-run"
+LEFT_OUT = "left_out"
+
 #: The genre guess run right after ``tag folder`` (U172), not queued, and the
 #: flag naming the pass whose playlists vote. Spelled here, not imported, as
 #: the vocals verb below is; a test holds the words to the registry's.
@@ -106,19 +114,24 @@ AUTO_ANALYSIS_STEP = (
     "on its Auto Analysis dialog only when it shows every one of those Normal "
     "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
     "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+    f"carrying the dyn My Tag, if any, still take Analyze Tracks with "
+    f"{drift.DYNAMIC_SETTINGS}, and then, when they did and a row lacks the tag, one "
+    f"row without it takes Analyze Tracks with {drift.NORMAL_SETTINGS} again, so the "
+    f"visit ends on Normal"
 )
 
 #: The rekordbox visit an attended session makes once the landing is applied,
 #: over the playlist every landing fills (U166), then the clear. The ``dyn``
-#: rows take Dynamic and the rest Normal (U157), or Auto Analysis answers both
-#: (U319); no reload tags is needed (U163).
+#: rows take Dynamic first and the rest Normal last (U157), so the mode the
+#: next launch's Auto Analysis dialog reads is Normal (U954), or Auto Analysis
+#: answers both (U319); no reload tags is needed (U163).
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
-    f"landed row waiting for analysis, and run Analyze Tracks on its rows "
-    f"without the dyn My Tag: {drift.NORMAL_SETTINGS}; then on its rows "
-    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; "
-    f"{AUTO_ANALYSIS_STEP}",
+    f"landed row waiting for analysis, and run Analyze Tracks first on its rows "
+    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS} as the Normal "
+    f"run's; then last on its rows without the dyn My Tag, if any: "
+    f"{drift.NORMAL_SETTINGS}, so the mode the next launch reads is Normal unless "
+    f"every row carries the tag; {AUTO_ANALYSIS_STEP}",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",
@@ -233,6 +246,9 @@ class Chain:
     warnings: list[dict[str, str]] = dataclasses.field(default_factory=list)
     #: Each step's last ``--job`` envelope, by step (U284).
     settled: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
+    #: The ``analyze run`` job of this pass once it succeeded, whose scored
+    #: files the restamp leaves out (U344).
+    analyzed: str | None = None
     summary: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "steps": [],
@@ -428,9 +444,22 @@ def tail_step(
         replace_stale(chain, step, verb, folder, cfg)
     except CratekitError as exc:
         raise Stop(step, rebuilt(exc, exc.cause.at(chain.namespace))) from exc
+    # The run of this pass, so the restamp measures none of its files again (U344).
+    scored = [SCORED_BY_FLAG, chain.analyzed] if step == RESTAMP and chain.analyzed else []
     # ``--queue-only`` (U192), since the chain drives the job itself below.
-    envelope = required(chain, step, [*words, foreground.QUEUE_ONLY, str(folder)])
-    job_id = str((envelope.get("data") or {}).get("job_id") or "")
+    envelope = required(chain, step, [*words, *scored, foreground.QUEUE_ONLY, str(folder)])
+    data = envelope.get("data") or {}
+    job_id = str(data.get("job_id") or "")
+    left_out = restamp_left_out(chain, data) if scored else None
+    if left_out is not None and data.get("state") == ALL_SCORED:
+        chain.check(
+            step,
+            "ok",
+            f"crate {' '.join(words)} queued nothing over {folder}: analyze run job "
+            f"{chain.analyzed} scored all {left_out} staged file(s) in this pass under "
+            f"the calibration active now, so their energy was not measured again",
+        )
+        return
     if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
         # Nothing to queue is not a step done, so the landing is not planned.
         raise Stop(
@@ -451,9 +480,37 @@ def tail_step(
     if job.state is not jobs.JobState.SUCCEEDED:
         error = job_error(chain, job)
         raise Stop(step, refused_stop(error, chain.settled.get(step)) if step == TAG else error)
-    chain.check(step, "ok", f"crate {' '.join(words)} job {job.job_id} succeeded over {folder}")
+    said = f"crate {' '.join(words)} job {job.job_id} succeeded over {folder}"
+    if left_out:
+        said += (
+            f", leaving out {left_out} staged file(s) analyze run job {chain.analyzed} "
+            f"scored in this pass under the calibration active now, whose energy "
+            f"was not measured again"
+        )
+    elif left_out is not None:
+        said += (
+            f", leaving out no staged file, since analyze run job {chain.analyzed} "
+            f"scored none of them in this pass under the calibration active now with "
+            f"its energy tag still reading that level"
+        )
+    chain.check(step, "ok", said)
+    if step == ANALYZE:
+        chain.analyzed = job.job_id
     if step == TAG:
         refused_files(chain, chain.settled.get(step))
+
+
+def restamp_left_out(chain: Chain, data: Mapping[str, Any]) -> int:
+    """How many staged files the restamp left out as the run's, recorded on the summary.
+
+    Read off the restamp's own answer, never counted here: a no op names the
+    count under ``progress``, as a queued job does (U344).
+    """
+    progress = data.get("progress")
+    count = progress.get(LEFT_OUT) if isinstance(progress, Mapping) else None
+    left_out = count if isinstance(count, int) and not isinstance(count, bool) else 0
+    chain.summary["restamp_left_out"] = left_out
+    return left_out
 
 
 def _tagging(section: Any) -> Mapping[str, Any]:
@@ -912,6 +969,7 @@ def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
 
 __all__ = [
     "ACK_STOP",
+    "ALL_SCORED",
     "ANALYZE",
     "ANALYZE_PLAYLIST",
     "GATE_STOP",
@@ -922,6 +980,7 @@ __all__ = [
     "LAND_GATE",
     "LAND_OPTION",
     "LAND_VERB",
+    "LEFT_OUT",
     "NAME",
     "NAME_GATE",
     "NAME_OPTION",
@@ -932,6 +991,7 @@ __all__ = [
     "REHEARSE_FLAG",
     "RESCORE",
     "RESTAMP",
+    "SCORED_BY_FLAG",
     "SESSION_ACTOR",
     "STEPS",
     "TAG",
@@ -964,6 +1024,7 @@ __all__ = [
     "replace_stale",
     "required",
     "rescore",
+    "restamp_left_out",
     "run",
     "settle",
     "succeeded",
