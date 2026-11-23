@@ -17,6 +17,7 @@ from cratekit.core import backup_facts, session
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import test_session_cli as session_suite
+from tests._sync_builders import exited
 from tests.test_session_cli import (  # noqa: F401
     ACK_GATE,
     _drive,
@@ -57,11 +58,9 @@ def _backed_up(cfg, **ages: timedelta) -> None:
 
 def _answered_by(actor: str) -> tuple[int, dict]:
     """Ask, answer as ``actor`` with run decide, and drive the mint."""
-    code, refused = _drive(["session", "ack"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)
     run_id = refused["run_id"]
-    code, decided = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--actor", actor])
-    assert code == int(ExitCode.OK), decided
+    exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--actor", actor]))
     return _drive(["--run", run_id, "session", "ack"])
 
 
@@ -71,9 +70,7 @@ def test_the_session_mints_with_no_terminal_when_both_ages_are_under_five_days(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4, hours=23))
 
-    code, envelope = _answered_by(SESSION)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_answered_by(SESSION))
     summary = envelope["data"]["summary"]
     assert summary["recorded"] is True
     assert (summary["rule"], summary["decided_by"]) == ("session-ages", SESSION)
@@ -109,9 +106,7 @@ def test_the_session_is_refused_naming_the_portion_over_five_days_or_unknown(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, **ages)
 
-    code, envelope = _answered_by(SESSION)
-
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    envelope = exited(_answered_by(SESSION), ExitCode.ACK_REQUIRED)
     cause = envelope["cause"]
     assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
     assert named in cause["message"], cause["message"]
@@ -124,9 +119,7 @@ def test_a_session_with_a_terminal_is_still_held_to_the_ages(installed):  # noqa
     """The age rule is the session's whatever the terminal says."""
     _backed_up(installed, files=timedelta(days=9), database=timedelta(days=1))
 
-    code, envelope = _answered_by(SESSION)
-
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    envelope = exited(_answered_by(SESSION), ExitCode.ACK_REQUIRED)
     assert envelope["cause"]["reason"] == "backup-acknowledgment-backup-too-old", envelope
     assert session.read_acknowledgment(installed) is None
 
@@ -135,9 +128,7 @@ def test_a_person_without_a_terminal_is_still_refused_over_fresh_backups(nobody_
     """The age rule widens the session's answer and nobody else's."""
     _backed_up(nobody_at_a_terminal, files=timedelta(days=1), database=timedelta(days=1))
 
-    code, envelope = _answered_by("a-person")
-
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    envelope = exited(_answered_by("a-person"), ExitCode.ACK_REQUIRED)
     assert envelope["cause"]["reason"] == "backup-acknowledgment-no-terminal", envelope
     assert session.read_acknowledgment(nobody_at_a_terminal) is None
 
@@ -148,9 +139,7 @@ def test_a_person_at_a_terminal_mints_by_the_terminal_rule_and_the_record_says_s
     """Old backups do not stop a person: their path shows the ages without judging them."""
     _backed_up(installed, files=timedelta(days=30), database=timedelta(days=30))
 
-    code, envelope = _answered_by("a-person")
-
-    assert code == int(ExitCode.OK), envelope
+    exited(_answered_by("a-person"))
     kept = session.read_acknowledgment(installed)
     assert (kept.rule, kept.decided_by) == ("terminal", "a-person")
 
@@ -226,9 +215,7 @@ def test_one_command_mints_as_the_session_when_both_ages_are_four_days(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=4), database=timedelta(days=4))
 
-    code, envelope = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(ONE_COMMAND))
     summary = envelope["data"]["summary"]
     assert (summary["recorded"], summary["already_valid"]) == (True, False)
     assert (summary["rule"], summary["decided_by"]) == ("session-ages", SESSION)
@@ -245,9 +232,7 @@ def test_one_command_prints_the_expiry_a_person_reads(nobody_at_a_terminal):
     """The default renderer prints check rows and not the summary."""
     _backed_up(nobody_at_a_terminal, files=timedelta(days=1), database=timedelta(days=1))
 
-    code, text = session_suite._human(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), text
+    text = exited(session_suite._human(ONE_COMMAND))
     kept = session.read_acknowledgment(nobody_at_a_terminal)
     assert "backup.acknowledgment: recorded now, by the session-ages rule" in text, text
     assert f"valid until {kept.expires_at.isoformat()}" in text, text
@@ -270,9 +255,7 @@ def test_one_command_refuses_naming_the_portion_and_records_nothing(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, **ages)
 
-    code, envelope = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    envelope = exited(_drive(ONE_COMMAND), ExitCode.ACK_REQUIRED)
     cause = envelope["cause"]
     assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
     assert named in cause["message"], cause["message"]
@@ -286,13 +269,10 @@ def test_one_command_reports_a_valid_acknowledgment_and_does_not_mint_again(
 ):
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=1), database=timedelta(days=1))
-    code, first = _drive(ONE_COMMAND)
-    assert code == int(ExitCode.OK), first
+    first = exited(_drive(ONE_COMMAND))
     written = session.ack_path(cfg).read_bytes()
 
-    code, second = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), second
+    second = exited(_drive(ONE_COMMAND))
     assert second["outcome"] == "no_op", second
     summary = second["data"]["summary"]
     assert (summary["recorded"], summary["already_valid"]) == (False, True)
@@ -307,13 +287,10 @@ def test_one_command_reports_a_valid_acknowledgment_and_does_not_mint_again(
 def test_a_valid_acknowledgment_a_person_minted_is_reported_over_old_backups(installed):  # noqa: F811
     """Valid is what every destructive verb's gate accepts, whoever minted it."""
     _backed_up(installed, files=timedelta(days=30), database=timedelta(days=30))
-    code, envelope = _answered_by("a-person")
-    assert code == int(ExitCode.OK), envelope
+    exited(_answered_by("a-person"))
     written = session.ack_path(installed).read_bytes()
 
-    code, envelope = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(ONE_COMMAND))
     assert envelope["data"]["summary"]["rule"] == "terminal", envelope
     assert envelope["data"]["summary"]["already_valid"] is True, envelope
     assert session.ack_path(installed).read_bytes() == written
@@ -326,9 +303,7 @@ def test_an_expired_acknowledgment_is_replaced_by_one_command(nobody_at_a_termin
     lapsed = session.record_acknowledgment(cfg, now=earlier, decided_by=SESSION)
     assert not lapsed.valid_at(datetime.now(UTC))
 
-    code, envelope = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_drive(ONE_COMMAND))
     assert envelope["data"]["summary"]["recorded"] is True, envelope
     kept = session.read_acknowledgment(cfg)
     assert kept.recorded_at > lapsed.recorded_at and kept.valid_at(datetime.now(UTC))
@@ -341,9 +316,7 @@ def test_an_unreadable_acknowledgment_is_replaced_by_one_command(nobody_at_a_ter
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ not json")
 
-    code, envelope = _drive(ONE_COMMAND)
-
-    assert code == int(ExitCode.OK), envelope
+    exited(_drive(ONE_COMMAND))
     assert session.read_acknowledgment(cfg).rule == "session-ages"
 
 
@@ -351,9 +324,7 @@ def test_without_the_flag_the_gate_still_appears(nobody_at_a_terminal):
     """Without the flag, the explicit gate appears and a run waits on it."""
     _backed_up(nobody_at_a_terminal, files=timedelta(days=1), database=timedelta(days=1))
 
-    code, envelope = _drive(["session", "ack"])
-
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    envelope = exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)
     assert _waiting_runs() == [envelope["run_id"]]
     assert session.read_acknowledgment(nobody_at_a_terminal) is None
 
@@ -363,8 +334,6 @@ def test_the_flag_names_no_actor_but_the_session(nobody_at_a_terminal, named, ca
     """The one value it takes is a rule selector, so no caller can name a person."""
     _backed_up(nobody_at_a_terminal, files=timedelta(days=1), database=timedelta(days=1))
 
-    code, text = session_suite._human(["session", "ack", "--as", named])
-
-    assert code == int(ExitCode.USAGE), text
+    exited(session_suite._human(["session", "ack", "--as", named]), ExitCode.USAGE)
     assert f"invalid choice: '{named}'" in capsys.readouterr().err
     assert session.read_acknowledgment(nobody_at_a_terminal) is None

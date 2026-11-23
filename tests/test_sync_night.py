@@ -33,6 +33,7 @@ from cratekit.core import config, jobs, night_budget, provider_gate, rb_writer, 
 from cratekit.core.cause import Cause, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import test_sync_land as land
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_sync_land import Tail, _account, _model_cannot_score, _ok, _refused
 
@@ -228,9 +229,7 @@ def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_
     cfg, script = machine
     _account(monkeypatch, script, "101", "102")
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(drive(["sync", "night"]), ExitCode.PENDING_HUMAN)
     assert envelope["outcome"] == "pending"
     record = _status()
     assert record["outcome"] == sync_night.WAITING_GATE
@@ -272,9 +271,7 @@ def test_a_night_pass_that_needs_the_acknowledgment_stops_there_and_mints_none(
         ).cause
     )
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    exited(drive(["sync", "night"]), ExitCode.PENDING_HUMAN)
     record = _status()
     assert record["outcome"] == sync_night.WAITING_ACK
     assert "crate session ack --as session" in record["line"]
@@ -319,9 +316,7 @@ def test_a_night_pass_the_vocal_model_cannot_score_waits_at_that_gate_and_queues
 def test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything(
     plain, one_pass, argv
 ):
-    code, envelope = drive(argv)
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(argv), ExitCode.REFUSED_BY_POLICY)
     cause = envelope["cause"]
     assert cause["reason"] == "refused-by-policy"
     assert cause["detail"][sync_night.REFUSAL_KEY] == sync_night.NO_ANSWER
@@ -333,9 +328,7 @@ def test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything(
 def test_rekordbox_or_its_agent_up_refuses_before_any_call(plain, one_pass, monkeypatch, running):
     monkeypatch.setattr(rb_writer, "rekordbox_processes_running", lambda: running)
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.REKORDBOX_OPEN), envelope
+    envelope = exited(drive(["sync", "night"]), ExitCode.REKORDBOX_OPEN)
     assert envelope["cause"]["reason"] == "rekordbox-running"
     assert running[0] in envelope["cause"]["message"]
     assert one_pass.calls == []
@@ -372,9 +365,7 @@ def test_a_job_whose_driver_died_does_not_hold_the_night(plain, one_pass):
             item_ids=("a",),
         )
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.OK), envelope
+    exited(drive(["sync", "night"]))
     assert one_pass.calls == [["sync", "land"]]
 
 
@@ -383,9 +374,7 @@ def test_another_pass_holding_the_staging_lock_refuses_the_night_naming_it(
 ):
     foreign(verb="crate label sync --go", run_id="go-run")
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    envelope = exited(drive(["sync", "night"]), ExitCode.LIBRARY_BUSY)
     cause = envelope["cause"]
     assert cause["reason"] == staging_lock.HELD
     assert "crate label sync --go" in cause["message"] and "go-run" in cause["message"]
@@ -403,9 +392,7 @@ def test_a_staging_folder_holding_what_a_landing_takes_refuses_a_new_pass(plain,
         line="night of 2026-11-20: waiting at the landing gate under run G",
     )
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     cause = envelope["cause"]
     assert cause["detail"][sync_night.REFUSAL_KEY] == sync_night.OCCUPIED
     assert cause["detail"]["files"] == ["Waiting - Track.flac"]
@@ -420,9 +407,7 @@ def test_a_staging_folder_with_nothing_a_landing_takes_lets_the_night_run(plain,
     staging.mkdir(parents=True, exist_ok=True)
     (staging / ".DS_Store").write_bytes(b"x")
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.OK), envelope
+    exited(drive(["sync", "night"]))
     assert one_pass.calls == [["sync", "land"]]
 
 
@@ -454,9 +439,7 @@ def test_a_night_already_spent_refuses_before_any_call(plain, one_pass):
         night_budget.ledger_path(),
     )
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     assert envelope["cause"]["reason"] == provider_gate.NIGHT
     assert str(plain.provider.night_calls) in envelope["cause"]["message"]
     assert one_pass.calls == []
@@ -517,9 +500,7 @@ def test_a_pass_the_nights_budget_stopped_is_continued_by_the_next_firing(plain,
     first = Pass(_stopped_by(provider_gate.NIGHT))
     monkeypatch.setattr(tail_chain, "dispatch", first)
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     record = _status()
     assert record["outcome"] == sync_night.STOPPED
     assert record["continue_pass"] == "pass-1"
@@ -532,9 +513,7 @@ def test_a_pass_the_nights_budget_stopped_is_continued_by_the_next_firing(plain,
     second = Pass()
     monkeypatch.setattr(tail_chain, "dispatch", second)
 
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.OK), envelope
+    exited(drive(["sync", "night"]))
     assert second.calls == [["sync", "land", "--pass-run", "pass-1"]]
 
 
@@ -581,9 +560,7 @@ def test_a_record_that_cannot_be_read_continues_nothing(plain, monkeypatch):
 def test_last_prints_the_record_and_runs_nothing(plain, one_pass):
     _write_status(outcome=sync_night.WAITING_GATE, gate_run="G", land_name="P", staging="/s")
 
-    code, envelope = drive(["sync", "night", "--last"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(drive(["sync", "night", "--last"]))
     night = envelope["data"]["summary"]["night"]
     assert night["gate_run"] == "G" and night["land_name"] == "P"
     assert one_pass.calls == []
@@ -591,9 +568,7 @@ def test_last_prints_the_record_and_runs_nothing(plain, one_pass):
 
 
 def test_last_with_no_night_says_so(plain, one_pass):
-    code, envelope = drive(["sync", "night", "--last"])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(drive(["sync", "night", "--last"]))
     assert envelope["data"]["summary"]["night"] is None
     assert "no night pass has run" in envelope["data"]["checks"][0]["detail"]
 
@@ -637,9 +612,7 @@ def test_a_pass_by_hand_refuses_while_the_night_holds_the_lock(machine, monkeypa
     _account(monkeypatch, script, "101")
     foreign(verb="crate sync night", run_id="night-run")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.LIBRARY_BUSY)
     assert envelope["cause"]["reason"] == staging_lock.HELD
     assert "crate sync night" in envelope["cause"]["message"]
     assert tail.calls == []
@@ -725,10 +698,8 @@ def test_a_refused_firing_keeps_the_pass_waiting_at_its_gate(machine, monkeypatc
     waiting = _status()
     assert waiting["outcome"] == sync_night.WAITING_GATE
 
-    code, envelope = drive(["sync", "night"])
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
-    code, envelope = drive(["-d", "x=y", "sync", "night"])
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
+    exited(drive(["-d", "x=y", "sync", "night"]), ExitCode.REFUSED_BY_POLICY)
 
     kept = _status()
     for name in ("outcome", "gate_run", "pass_run", "staging", "land_name", "gate"):
@@ -763,9 +734,7 @@ def test_a_refused_firing_keeps_the_pass_the_next_night_continues(plain, monkeyp
     monkeypatch.setattr(sync_night, "_clock", lambda: later)
     nxt = Pass()
     monkeypatch.setattr(tail_chain, "dispatch", nxt)
-    code, envelope = drive(["sync", "night"])
-
-    assert code == int(ExitCode.OK), envelope
+    exited(drive(["sync", "night"]))
     assert nxt.calls == [["sync", "land", "--pass-run", "pass-1"]]
 
 
@@ -833,8 +802,7 @@ def test_a_landed_pass_reads_settled_everywhere_whatever_is_staged_since(
     assert "nothing waits" in _doctor_row(plain).detail
     # THE NEXT FIRING READS IT SETTLED TOO, so its refusal beside 103.wav is a
     # fresh record and keeps no pass that has landed.
-    code, envelope = drive(["sync", "night"])
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     fresh = _status()
     assert fresh["outcome"] == sync_night.REFUSED and fresh["gate_run"] is None
 
@@ -847,8 +815,7 @@ def test_an_emptied_staging_folder_alone_never_settles_a_wait(plain, one_pass, m
 
     assert sync_night.settle(sync_night.read_status(), plain)["outcome"] == sync_night.WAITING_GATE
     # AND THE NIGHT STILL RUNS over an empty folder.
-    code, envelope = drive(["sync", "night"])
-    assert code == int(ExitCode.OK), envelope
+    exited(drive(["sync", "night"]))
     assert one_pass.calls == [["sync", "land"]]
 
 

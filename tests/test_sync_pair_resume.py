@@ -15,6 +15,7 @@ from cratekit.core import held_plan, provider_gate
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_calls, pair_cli
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -75,12 +76,10 @@ def _gate(envelope) -> str:
 def to_the_write(args: list[str], *, calls: int | None = None) -> tuple[str, dict]:
     """Answer both gates apply, one command each. The run id and the first gate's envelope."""
     lead = ["--calls", str(calls)] if calls else []
-    code, first = drive([*lead, *args])
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive([*lead, *args]), ExitCode.DECISION_REQUIRED)
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, _gate(first), *APPLY])[0] == int(ExitCode.OK)
-    code, second = drive(["--run", run_id, *args])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = exited(drive(["--run", run_id, *args]), ExitCode.DECISION_REQUIRED)
     assert drive(["run", "decide", run_id, _gate(second), *APPLY])[0] == int(ExitCode.OK)
     return run_id, first
 
@@ -134,8 +133,7 @@ def test_a_ceiling_stop_after_three_of_five_pairs_is_finished_by_a_continue_of_t
     assert len(world.account.created) == 3, world.account.created
     assert world.account._writes == 10
 
-    code, done = write(run_id, VERB, 100)
-    assert code == int(ExitCode.OK), done
+    done = exited(write(run_id, VERB, 100))
     # Pairs four and five only: two makes, two moves, two fills.
     assert world.account._writes == 16
     assert len(world.account.created) == 5, "a playlist was made twice"
@@ -177,8 +175,7 @@ def test_the_stop_names_the_run_and_the_calls_its_continue_needs(made_world):
     assert higher > cause["detail"]["expected"]
     assert cause["remediation"]["steps"][0].endswith(command)
     # The command it names is the one that finishes the run.
-    code, done = drive(words[1:])
-    assert code == int(ExitCode.OK), done
+    exited(drive(words[1:]))
     assert len(world.account.created) == 5
 
 
@@ -223,8 +220,7 @@ def test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_n
     made = next(iter(world.account.titles))
     world.account.playlists[made].append("t9")
 
-    code, refused = write(run_id, VERB, 100)
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(write(run_id, VERB, 100), ExitCode.DECISION_STALE)
     moved = refused["cause"]["detail"]["moved"]
     assert moved == [
         {
@@ -247,8 +243,7 @@ def test_a_title_taken_in_the_folder_before_the_continue_refuses_stale_naming_it
     world.account.placed[taken] = folder_id
     writes = world.account._writes
 
-    code, refused = write(run_id, VERB, 100)
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(write(run_id, VERB, 100), ExitCode.DECISION_STALE)
     assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
         "now holds a playlist titled 'GIG READY Set 5'"
     ]
@@ -261,8 +256,7 @@ def test_a_title_taken_in_the_folder_before_the_continue_refuses_stale_naming_it
 def test_a_gate_whose_ceiling_is_below_the_expected_calls_says_so_with_the_calls_value(
     made_world,
 ):
-    code, first = drive(["--calls", "10", *VERB])
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(["--calls", "10", *VERB]), ExitCode.DECISION_REQUIRED)
     shown = first["cause"]["detail"]["shown"]
     run_id = first["run_id"]
     assert "one command may make 10" in shown["provider calls"]
@@ -276,14 +270,12 @@ def test_a_gate_whose_ceiling_is_below_the_expected_calls_says_so_with_the_calls
     assert drive(["run", "decide", run_id, _gate(first), *APPLY])[0] == int(ExitCode.OK)
     code, second = drive(["--run", run_id, *VERB])
     assert drive(["run", "decide", run_id, _gate(second), *APPLY])[0] == int(ExitCode.OK)
-    code, done = write(run_id, VERB, higher)
-    assert code == int(ExitCode.OK), done
+    exited(write(run_id, VERB, higher))
     assert len(made_world[0].account.created) == 5
 
 
 def test_a_gate_under_its_ceiling_shows_the_expected_calls_and_no_warning(made_world):
-    code, first = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(VERB), ExitCode.DECISION_REQUIRED)
     shown = first["cause"]["detail"]["shown"]
     assert "the command that writes is expected to make about" in shown["provider calls"]
     assert "call ceiling" not in shown
@@ -355,8 +347,7 @@ def test_a_pair_the_stopped_command_finished_is_not_read_again_by_the_continue(m
     first = world.in_folder("GIG READY")["GIG READY Set 1"]
     world.account.playlists[first].append("t9")
 
-    code, done = write(run_id, VERB, 100)
-    assert code == int(ExitCode.OK), done
+    exited(write(run_id, VERB, 100))
     assert world.account.playlists[first] == ["t1", "t9"], "the finished pair was written again"
     assert len(world.account.created) == 5
 
@@ -388,14 +379,12 @@ def test_a_ceiling_continue_above_the_hour_names_the_hour_and_finishes_the_run(s
     assert "--calls-per-hour" in words, words
     assert int(words[words.index("--calls-per-hour") + 1]) >= higher
 
-    code, done = drive(words[1:])
-    assert code == int(ExitCode.OK), done
+    exited(drive(words[1:]))
     assert len(world.account.created) == 5
 
 
 def test_a_gate_forecast_above_the_hour_names_the_hour_and_its_command_runs(small_hour):
-    code, first = drive(["--calls", "10", *VERB])
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(["--calls", "10", *VERB]), ExitCode.DECISION_REQUIRED)
     said = first["cause"]["detail"]["shown"]["call ceiling"]
     run_id = first["run_id"]
     words = shlex.split(said.split("for example ", 1)[1].split(" once ", 1)[0])
@@ -407,6 +396,5 @@ def test_a_gate_forecast_above_the_hour_names_the_hour_and_its_command_runs(smal
     assert drive(["run", "decide", run_id, _gate(first), *APPLY])[0] == int(ExitCode.OK)
     code, second = drive(["--run", run_id, *VERB])
     assert drive(["run", "decide", run_id, _gate(second), *APPLY])[0] == int(ExitCode.OK)
-    code, done = drive(words[1:])
-    assert code == int(ExitCode.OK), done
+    exited(drive(words[1:]))
     assert len(small_hour[0].account.created) == 5

@@ -14,6 +14,7 @@ from cratekit.core.cause import Remedy, Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -75,8 +76,7 @@ def owed(world):
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
     second = world.playlist("Second", "4", "5", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "3", "1", "2")
     world.rekordbox_add(second, "6")
     on_account(world, "GIG READY Closer", "GIG READY", "t7", "t8")
@@ -126,8 +126,7 @@ def test_a_continue_of_the_run_puts_the_refused_pair_in_order_and_moves_nothing_
     added = list(world.account.added)
 
     refused_on.clear()
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", run_id, *VERB]))
     assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
     assert world.held(opener) == ["3", "1", "2"]
     assert world.account.added == added, "a continue added a track a second time"
@@ -142,8 +141,7 @@ def test_a_first_order_is_asked_with_nothing_to_agree_with_but_what_the_adapter_
     world, owed
 ):
     opener_account = world.titled("GIG READY Opener")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
     assert world.account.expected == [(opener_account, None)]
 
@@ -192,8 +190,7 @@ def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved
     assert code != int(ExitCode.OK), stopped
     refused_on.clear()
     asked = len(world.account.expected)
-    code, refused = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(drive(["--run", stopped["run_id"], *VERB]), ExitCode.DECISION_STALE)
     assert len(world.account.expected) == asked, "the continue asked the account an order"
     assert world.account.playlists[opener_account] == ["t1", "t3", "t2"]
     assert world.held(opener) == ["3", "1", "2"]
@@ -237,8 +234,7 @@ def refused_once(world, monkeypatch):
     """
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     account_id = world.titled("GIG READY Opener")
     refused_on = {account_id}
@@ -260,8 +256,7 @@ def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
     ordered = list(world.account.ordered)
 
-    code, refused = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
     assert refused["cause"]["detail"]["moved"] == [
         {
             "side": "account",
@@ -279,8 +274,7 @@ def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since
     assert held is not None and held.account == tuple(_ids("1", "2", "3", "4"))
 
     # A fresh sync merges the person's order as a fresh sync does.
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[account_id] == _ids("2", "4", "1", "3")
     assert world.held(opener) == ["2", "4", "1", "3"]
 
@@ -289,13 +283,11 @@ def test_a_fresh_sync_over_the_same_two_reorders_takes_the_accounts_order(world,
     """What the continue leaves to: a fresh sync's merge of both reorders."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     account_id = world.titled("GIG READY Opener")
     _reordered(world, opener, "4", "3", "1", "2")
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[account_id] == _ids("2", "4", "1", "3")
     assert world.held(opener) == ["2", "4", "1", "3"]
 
@@ -304,8 +296,7 @@ def test_a_continue_of_a_refused_order_the_account_still_stands_in_finishes_it(
     world, refused_once, cfg
 ):
     opener, account_id, run_id = refused_once
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", run_id, *VERB]))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"]
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
@@ -317,8 +308,7 @@ def _refused_with_an_addition(world, monkeypatch):
     """The 4, 3, 1, 2 reorder and track 5 added in rekordbox, the addition landed, the order refused."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     world.rekordbox_add(opener, "5")
     account_id = world.titled("GIG READY Opener")
@@ -334,8 +324,7 @@ def _refused_with_an_addition(world, monkeypatch):
 def test_a_continue_of_a_refused_order_that_also_added_finishes_it(world, cfg, monkeypatch):
     opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
     added = list(world.account.added)
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", run_id, *VERB]))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2", "5")
     assert world.held(opener) == ["4", "3", "1", "2", "5"]
     assert world.account.added == added, "a continue added a track a second time"
@@ -347,8 +336,7 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_sinc
     opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3", "5")
     ordered = list(world.account.ordered)
-    code, refused = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
     assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
         "was reordered since the plan"
     ]
@@ -370,8 +358,7 @@ def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_sin
 
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     account_id = world.titled("GIG READY Opener")
     real = world.account.order_tracks
@@ -421,8 +408,7 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
 
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     account_id = world.titled("GIG READY Opener")
     real = world.account.order_tracks
@@ -457,8 +443,7 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
-    code, done = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", stopped["run_id"], *VERB]))
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"]
@@ -477,8 +462,7 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
 
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     account_id = world.titled("GIG READY Opener")
     real = world.account.order_tracks
@@ -501,8 +485,7 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
         where.unlink()
     else:
         where.write_text("{not json\n")
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", run_id, *VERB]))
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
 
@@ -514,8 +497,7 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_the_added_track_mov
     opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
     world.account.playlists[account_id][:] = _ids("1", "2", "5", "3", "4")
     ordered = list(world.account.ordered)
-    code, refused = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
     assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
         "was reordered since the plan"
     ]

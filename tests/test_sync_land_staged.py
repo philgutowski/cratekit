@@ -20,6 +20,7 @@ from cratekit.cli import tail as tail_chain
 from cratekit.core import tags
 from cratekit.core.cause import Cause, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
+from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
@@ -47,8 +48,7 @@ def _first_pass(monkeypatch, script, cfg) -> dict:
     for n in ISRC:
         script.landings.setdefault(n, Landing())
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _rows("101", "102")))
-    code, first = drive(["sync", "land"])
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     for n in ("101", "102"):
         path = _staged(cfg) / f"{n}.wav"
         assert tags.write_tags(
@@ -91,9 +91,7 @@ def test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stag
     first = _first_pass(monkeypatch, script, cfg)
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
-    code, second = _second_pass(monkeypatch, "101", "103")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(_second_pass(monkeypatch, "101", "103"), ExitCode.REFUSED_BY_POLICY)
     assert script.fetched == []
     summary = _summary(second)
     assert summary["staged"] == 1
@@ -117,9 +115,7 @@ def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuse
     downloads = len(_by_key("acquire.download"))
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
-    code, second = _second_pass(monkeypatch, "102")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(_second_pass(monkeypatch, "102"), ExitCode.REFUSED_BY_POLICY)
     assert script.fetched == []
     assert len(_by_key("acquire.download")) == downloads, "a download was queued"
     summary = _summary(second)
@@ -145,9 +141,7 @@ def test_a_continued_pass_whose_own_downloads_are_staged_lists_them_again(
     before = listed.read_bytes()
     run_id = _summary(first)["pass_run"]
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.PENDING_HUMAN), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PENDING_HUMAN)
     assert listed.read_bytes() == before
     assert script.fetched == []
     assert len(_by_key("acquire.download")) == 1
@@ -184,9 +178,7 @@ def test_a_name_stop_over_a_second_copy_names_the_pass_that_downloaded_it(
         tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete(ISRC["101"]))
     )
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.PRECONDITION), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PRECONDITION)
     steps = again["cause"]["remediation"]["steps"]
     said = [step for step in steps if step.startswith(f"ISRC {ISRC['101']}")]
     assert said == [
@@ -205,9 +197,7 @@ def test_a_second_copy_no_download_job_records_is_said_so(machine, monkeypatch, 
         tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete("GBAAA2601999"))
     )
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.PRECONDITION), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PRECONDITION)
     steps = again["cause"]["remediation"]["steps"]
     assert (
         "ISRC GBAAA2601999, carried by 101.wav and by the file whose name it would "
@@ -237,9 +227,7 @@ def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_r
     script.landings["103"] = Landing(kind="lossy")
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
-    code, second = _second_pass(monkeypatch, "101", "103")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(_second_pass(monkeypatch, "101", "103"), ExitCode.REFUSED_BY_POLICY)
     summary = _summary(second)
     assert summary["staged"] == 1
     assert not summary.get("download_refused")

@@ -29,6 +29,7 @@ from cratekit.sync import mark_record
 from tests import cutover_fixtures
 from tests import test_intake_land_account_playlists_native as account_native
 from tests import test_intake_land_native as land_native
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import _cut_over, _machine, _templated
 from tests.test_intake_land_native import (
@@ -134,8 +135,7 @@ def _queued(cfg: config.Config, tracks: dict, **payload) -> jobs.Job:
 
 
 def _run(job: jobs.Job) -> str:
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(drive(cli_jobs.argv_for(job)))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
     return job.job_id
 
@@ -171,8 +171,7 @@ def _inspiration(job_id: str, *extra: str) -> list[str]:
 
 def _decided(verb: list[str], gate: str = APPROVE, answer: str = "apply") -> dict:
     """The first act refused at the gate and the person's answer recorded: its refusal."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(verb), ExitCode.DECISION_REQUIRED)
     decided, _ = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
     return refused
@@ -743,8 +742,7 @@ def test_the_backfill_over_a_set_with_nothing_owned_asks_and_then_writes_nothing
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
     _cut_over_intake(machine)
     job_id = set_job(machine, ("One",))
-    code, envelope = drive(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    envelope = exited(drive(_inspiration(job_id, *WORDS)), ExitCode.ACK_REQUIRED)
     assert "gate" not in (envelope.get("cause") or {}).get("detail", {})
 
 
@@ -823,8 +821,7 @@ def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_la
     _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
     job_id = set_job(cfg, ("One", "Two"))
     item_id, option = _offered_item(cfg, job_id, "One")
-    code, answered = drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
-    assert code == int(ExitCode.OK), answered
+    exited(drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option]))
     _stage(cfg, silence, "Two")
     _acted, shown = _ok(_land("--set", job_id, *WORDS))
     assert shown["set tracks"] == 2
@@ -841,8 +838,7 @@ def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_l
     _offered_item(cfg, job_id, "One")
     before = _unresolved(cfg)
     assert before == 1
-    code, refused = drive(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_inspiration(job_id, *WORDS)), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["set tracks"] == 0 and shown["set left out"] == 1
     assert _unresolved(cfg) == before
@@ -1231,8 +1227,7 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
     wanted = (match.Wanted(artist="Probe", title="One", origin=match.TEXT),)
     monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
     assert [name for name, _pid in set_cli._inspiration_playlists(cfg)] == names
-    code, refused = drive(["export", "set"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["export", "set"]), ExitCode.DECISION_REQUIRED)
     message = json.dumps(refused)
     assert names[0] in message and names[1] in message
     assert held.created == []
@@ -1260,8 +1255,7 @@ def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str,
 
 def _renamed(job_id: str) -> dict:
     argv = ["export", "set", "--rename", job_id]
-    code, acted = drive(["--run", _decided(argv, gate=set_cli.RENAME_GATE)["run_id"], *argv])
-    assert code == int(ExitCode.OK), acted
+    acted = exited(drive(["--run", _decided(argv, gate=set_cli.RENAME_GATE)["run_id"], *argv]))
     return acted
 
 
@@ -1277,8 +1271,7 @@ def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_da
     with jobs.open_store() as store:
         assert set_playlist.frozen_name(jobs.get(store, job_id)) == POSTED_NAME
     # The backfill over INSPIRATION now finds the renamed playlist recorded.
-    code, after = drive(["export", "set"])
-    assert code == int(ExitCode.DECISION_REQUIRED), after
+    after = exited(drive(["export", "set"]), ExitCode.DECISION_REQUIRED)
     assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
     assert held.created == [NAME]
 
@@ -1313,8 +1306,7 @@ def test_export_set_rename_refuses_a_playlist_a_legacy_archive_prefixed(account_
     )
     held.titles[remote_id] = f"DOWNLOADED {NAME}"
     before = list(held.renamed)
-    code, refused = drive(["export", "set", "--rename", job_id])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = exited(drive(["export", "set", "--rename", job_id]), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
     assert "the pass 2026-10-09 Set" in refused["cause"]["message"]
     assert any(

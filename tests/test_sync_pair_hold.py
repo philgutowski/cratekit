@@ -17,6 +17,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.sync import pair_cli, pair_merge
 from cratekit.write import playlist_pair
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -78,12 +79,10 @@ def _gate(envelope) -> str:
 
 def _to_the_write(w) -> str:
     """Answer both gates apply, one command each, and stop before the write. The run id."""
-    code, first = drive(w.args())
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, _gate(first), *APPLY])[0] == int(ExitCode.OK)
-    code, second = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_REQUIRED)
     assert drive(["run", "decide", run_id, _gate(second), *APPLY])[0] == int(ExitCode.OK)
     return run_id
 
@@ -94,8 +93,7 @@ def _to_the_write(w) -> str:
 def test_a_two_gate_sync_makes_one_plans_lookups(world, counted):
     w = world(account=("1", "2"), rekordbox=("2", "3", "4"))
     seen = counted(w)
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["1", "2", "3", "4"]
     assert w.on_account() == ["t1", "t2", "t3", "t4"]
     # Rows three and four asked once each; listed by the plan and by the check.
@@ -106,16 +104,14 @@ def test_a_two_gate_sync_makes_one_plans_lookups(world, counted):
 def test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved(world, counted):
     w = world(account=("1",), rekordbox=("1", "2"))
     seen = counted(w)
-    code, first = drive(w.args())
-    assert code == int(ExitCode.DECISION_REQUIRED)
+    first = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     run_id = first["run_id"]
     planned = (seen.lookups, seen.listings)
     assert planned == (1, 1)
     code, second = drive(["run", "decide", run_id, _gate(first), *APPLY, "--continue"])
     assert code == int(ExitCode.DECISION_REQUIRED), second
     assert (seen.lookups, seen.listings) == planned, "the second gate planned again"
-    code, done = drive(["run", "decide", run_id, _gate(second), *APPLY, "--continue"])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["run", "decide", run_id, _gate(second), *APPLY, "--continue"]))
     assert seen.lookups == 1, "the write asked about a track"
     assert seen.listings == 2, "the write listed more than the check"
     assert w.on_account() == ["t1", "t2"]
@@ -129,8 +125,7 @@ def test_the_held_plan_is_released_once_the_run_writes(world, cfg):
     drive(["run", "decide", run_id, _gate(first), *APPLY])
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, *APPLY])
-    code, done = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", run_id, *w.args()]))
     assert not held_plan.path(run_id).exists()
 
 
@@ -141,8 +136,7 @@ def test_both_sides_skipped_releases_the_held_plan(world):
     drive(["run", "decide", run_id, _gate(first), "skip", "--actor", "a-person"])
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, "skip", "--actor", "a-person"])
-    code, done = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", run_id, *w.args()]))
     assert not held_plan.path(run_id).exists()
 
 
@@ -153,8 +147,7 @@ def test_an_account_list_changed_before_the_write_refuses_stale_and_names_it(wor
     w = world(account=("1",), rekordbox=("1", "2"))
     run_id = _to_the_write(w)
     w.account.playlists[ACCOUNT].append("t5")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert refused["cause"]["reason"] == "decision-stale"
     moved = refused["cause"]["detail"]["moved"]
     assert moved == [
@@ -177,8 +170,7 @@ def test_an_account_list_reordered_before_the_write_refuses_stale(world):
     w = world(account=("1", "3"), rekordbox=("1", "3", "2"))
     run_id = _to_the_write(w)
     w.account.playlists[ACCOUNT] = ["t3", "t1"]
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert refused["cause"]["detail"]["moved"][0]["why"] == "was reordered since the plan"
 
 
@@ -186,8 +178,7 @@ def test_a_rekordbox_membership_changed_before_the_write_refuses_stale_and_names
     w = world(account=("1",), rekordbox=("1", "2"))
     run_id = _to_the_write(w)
     w.rekordbox_remove("2")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     moved = refused["cause"]["detail"]["moved"]
     assert [(one["side"], one["playlist_id"]) for one in moved] == [
         ("rekordbox", w.rekordbox_id)
@@ -201,8 +192,7 @@ def test_both_sides_moved_are_both_named(world):
     run_id = _to_the_write(w)
     w.rekordbox_add("3")
     w.account.playlists[ACCOUNT].remove("t1")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert sorted(one["side"] for one in refused["cause"]["detail"]["moved"]) == [
         "account",
         "rekordbox",
@@ -217,8 +207,7 @@ def test_a_moved_list_is_checked_whichever_side_was_skipped(world):
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, *APPLY])
     w.rekordbox_add("3")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert w.on_account() == ["t1"]
 
 
@@ -228,8 +217,7 @@ def test_a_withheld_count_changed_before_the_write_refuses_stale(world):
     w.rekordbox_add("3")
     run_id = _to_the_write(w)
     w.declared = 5
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert "withholds" in refused["cause"]["detail"]["moved"][0]["why"]
 
 
@@ -239,8 +227,7 @@ def test_a_pair_with_nothing_to_write_on_the_account_is_not_listed_again(world, 
     w.rekordbox_order("2", "1")
     w.account.playlists[ACCOUNT] = ["t2", "t1"]
     seen = counted(w)
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert seen.reads == 0, "the account playlist was listed again for its snapshot"
     assert seen.listings == 2
 
@@ -256,8 +243,7 @@ def test_a_no_change_sync_of_a_linked_pair_makes_no_isrc_lookup(world, counted, 
     assert w.on_account() == ["t1", "t2"]
     seen = counted(w)
     for args in (w.args(), VERB):
-        code, envelope = sync(args)
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(sync(args))
         assert envelope["outcome"] == "no_op"
     assert seen.lookups == 0, w.account.matches
 
@@ -265,8 +251,7 @@ def test_a_no_change_sync_of_a_linked_pair_makes_no_isrc_lookup(world, counted, 
 def test_each_phase_is_counted_on_the_answer(world, counted):
     w = world(account=("1",), rekordbox=("1", "2", "3"))
     counted(w)
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args()))
     # Plan: a listing and two lookups. Check: a listing. Write: the add and a listing.
     assert envelope["data"]["totals"]["calls"] == {"plan": 3, "check": 1, "write": 2}
     written = next(one for one in envelope["warnings"] if one["code"] == pair_cli.WRITTEN)
@@ -279,8 +264,7 @@ def test_each_phase_is_counted_on_the_answer(world, counted):
 def test_the_calls_are_on_a_no_op_answer_too(world, counted):
     w = world(account=("1",), rekordbox=("2",))
     counted(w)
-    code, envelope = sync(w.args(), rekordbox="skip", account="skip")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync(w.args(), rekordbox="skip", account="skip"))
     assert envelope["data"]["totals"]["calls"] == {"plan": 2, "check": 0, "write": 0}
 
 
@@ -300,8 +284,7 @@ def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted,
         _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.account.playlists[ACCOUNT].append("t8")
     seen = counted(w)
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     assert w.held() == ["1", "8"]
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert envelope["data"]["totals"]["calls"]["plan"] == 1
@@ -318,12 +301,10 @@ def test_an_unreadable_held_plan_is_planned_again_and_says_why(world, counted):
     run_id = first["run_id"]
     held_plan.path(run_id).write_text("not json")
     drive(["run", "decide", run_id, _gate(first), *APPLY])
-    code, second = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_REQUIRED)
     assert "could not be read" in second["cause"]["detail"]["shown"]["planned again"]
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, *APPLY])
-    code, done = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", run_id, *w.args()]))
     assert pair_cli.REPLANNED not in {one["code"] for one in done["warnings"]}
     assert w.on_account() == ["t1", "t2"]
     # Each plan asks once; the plan made again is held, so the write asks nothing.
@@ -340,8 +321,7 @@ def test_a_held_plan_other_than_the_offer_is_planned_again(world, cfg):
     other = pair_cli.Plan()
     asked = pair_cli._asked((pair_cli.Target(ACCOUNT, w.rekordbox_id, False),), False)
     assert pair_cli._hold(run_id, other, 0, asked) == ""
-    code, done = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", run_id, *w.args()]))
     said = next(one for one in done["warnings"] if one["code"] == pair_cli.REPLANNED)
     assert "is not the plan" in said["message"]
     assert w.on_account() == ["t1", "t2"]
@@ -351,13 +331,11 @@ def test_a_held_plan_made_for_other_pairs_is_planned_again(world, cfg):
     w = world(account=("1",), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_add("3")
-    code, first = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = exited(drive(VERB), ExitCode.DECISION_REQUIRED)
     run_id = first["run_id"]
     drive(["run", "decide", run_id, _gate(first), *APPLY])
     # The same run asked again for one pair by name, not for every pair.
-    code, second = drive(["--run", run_id, *VERB, ACCOUNT])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = exited(drive(["--run", run_id, *VERB, ACCOUNT]), ExitCode.DECISION_REQUIRED)
     said = second["cause"]["detail"]["shown"]["planned again"]
     assert "other pairs" in said
 
@@ -367,8 +345,7 @@ def test_a_replanned_run_whose_list_moved_is_refused_by_the_gate(world):
     run_id = _to_the_write(w)
     held_plan.release(run_id)
     w.rekordbox_add("3")
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert w.on_account() == ["t1"]
 
 
@@ -488,8 +465,7 @@ def test_a_rekordbox_playlist_deleted_before_the_write_refuses_stale(world):
     conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (w.rekordbox_id,))
     conn.commit()
     conn.close()
-    code, refused = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert refused["cause"]["detail"]["moved"][0]["why"] == "is no longer a live plain playlist"
     assert w.on_account() == ["t1"]
 
@@ -504,8 +480,7 @@ def test_a_held_plan_older_than_it_is_kept_is_planned_again(world):
     long_ago = time.time() - held_plan.KEEP.total_seconds() - 60
     os.utime(held_plan.path(run_id), (long_ago, long_ago))
     drive(["run", "decide", run_id, _gate(first), *APPLY])
-    code, second = drive(["--run", run_id, *w.args()])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_REQUIRED)
     assert "older than 30 days" in second["cause"]["detail"]["shown"]["planned again"]
 
 
@@ -517,11 +492,9 @@ def test_tracks_another_sync_queued_before_the_write_refuse_stale_not_twice(worl
     w.account.playlists[ACCOUNT].append("t77")
     first = _to_the_write(w)
     second = _to_the_write(w)
-    code, done = drive(["--run", first, *w.args()])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", first, *w.args()]))
     assert len(done["data"]["totals"]["queued_jobs"]) == 1
-    code, refused = drive(["--run", second, *w.args()])
-    assert code == int(ExitCode.DECISION_STALE), refused
+    refused = exited(drive(["--run", second, *w.args()]), ExitCode.DECISION_STALE)
     moved = refused["cause"]["detail"]["moved"]
     assert [(one["side"], one["playlist_id"]) for one in moved] == [("library", ACCOUNT)]
     with jobs.open_store() as store:

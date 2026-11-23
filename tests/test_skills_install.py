@@ -15,6 +15,7 @@ from cratekit import __version__, cli
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.skills import cli as skills_cli
+from tests._sync_builders import exited
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
@@ -77,9 +78,7 @@ def test_every_shipped_skill_is_installed_and_the_set_is_walked_not_listed(insta
 def test_running_it_twice_reports_current_and_not_installed(reinstalled):
     """Idempotent, and it says which of the three things happened."""
     into, _ = reinstalled
-    code, envelope = _install(into)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_install(into))
     summary = envelope["data"]["summary"]
     assert summary["current"] == len(skills_cli.shipped_names())
     assert summary["installed"] == 0
@@ -93,9 +92,7 @@ def test_a_stale_stamp_warns_and_is_repaired_in_the_same_run(reinstalled):
     (into / name / skills_cli.STAMP_NAME).write_text('version = "0.0.0-from-an-older-build"\n')
     (into / name / "SKILL.md").write_text("what the older build said\n")
 
-    code, envelope = _install(into)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_install(into))
     assert envelope["data"]["summary"]["refreshed"] == 1
     drifted = [c for c in envelope["data"]["checks"] if c["key"] == f"skill.{name}"]
     assert drifted and drifted[0]["status"] == "info", drifted
@@ -111,9 +108,7 @@ def test_an_unstamped_copy_is_drift_rather_than_damage(tmp_path):
     (into / name).mkdir(parents=True)
     (into / name / "SKILL.md").write_text("hand written\n")
 
-    code, envelope = _install(into)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(_install(into))
     assert envelope["data"]["summary"]["refreshed"] == 1
     assert skills_cli.installed_version(into / name) == __version__
 

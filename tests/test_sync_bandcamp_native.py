@@ -22,6 +22,7 @@ from cratekit.core import config, jobs, secrets, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name
 from cratekit.label import registry as labels
+from tests._sync_builders import exited
 from tests.bandcamp_fakes import COOKIE, FakeAccount, archive, item
 from tests.cli_drive import drive
 from tests.test_intake_land_labels_native import _filed
@@ -127,9 +128,7 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     ]
     decided, answered = drive(decide_argv[1:])
     assert decided == int(ExitCode.OK), answered
-    code, applied = drive(apply_argv[1:])
-
-    assert code == int(ExitCode.OK), applied
+    exited(drive(apply_argv[1:]))
     assert _filed(cfg) == {"PULS": {"PULS 2026": ["Sun Path", "Tide"]}}
     (batch,) = _query(
         cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0", NAME

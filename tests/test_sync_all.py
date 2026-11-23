@@ -35,6 +35,7 @@ from cratekit.modules.outbound import source as outbound_source
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import playlists, sources, watermarks
 from tests import outbound_fakes
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
@@ -101,8 +102,7 @@ def _verb(exported: Path) -> list[str]:
 
 def _confirmed(exported: Path, option: str = "sync") -> tuple[str, int, dict]:
     """R34's two acts on the composer's own gate, then the pass. Returns (run, code, envelope)."""
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == CONFIRM
     run_id = refused["run_id"]
     decided, envelope = drive(
@@ -229,8 +229,7 @@ def test_the_gate_refusal_has_queued_nothing_and_says_what_would_be(
     """PLAN, ASK, QUEUE: a source queued before the question would be queued again by the answer."""
     del installed
     register(LABELS[0])
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     assert _jobs() == []
     shown = refused["cause"]["detail"]["shown"]
     assert shown["queued"] == []
@@ -260,8 +259,7 @@ def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
     """R-227: the pass builds its own favourites plan, so the export's date must still show beside its block."""
     del installed
     written = _written_days_ago(exported, 30)
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["would_queue"] == ["favorites"]
     assert shown["export"]["written"] == (
@@ -275,8 +273,7 @@ def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
 def test_the_composed_gate_shows_the_tracks_the_sweeps_digest_covers(installed, exported):
     """R-693: the composed gate lists the favourites the sweep would heart back, as the favourites gate does."""
     del installed
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     _exported, resolved = favorites_cli.resolve_sweep(str(exported), None)
     assert shown["items"] == list(resolved.track_ids)
@@ -357,8 +354,7 @@ def test_a_source_that_refuses_does_not_stop_the_other(installed, monkeypatch):
             account=[_playlist("pl-a", "Warmup")],
         ),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [job.payload[intake_cli.SOURCE] for job in _jobs()] == ["pl-a"]
     assert passed["data"]["summary"]["not_queued"] == {
         "favorites": "outbound-export-required",
@@ -466,8 +462,7 @@ def test_the_gate_names_the_guided_verb_and_nothing_for_labels_to_queue(
     """The gate shows labels in neither list and names their verb, since every favourites pass stops there first."""
     del installed
     register(LABELS[0])
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert "labels" not in shown["would_queue"]
     assert "labels" not in shown["not_queued"]
@@ -489,8 +484,7 @@ def test_a_profile_without_the_labels_module_names_no_guided_verb(slim, monkeypa
     """Slim does not switch the labels verb on, so it is not pointed at it."""
     del slim
     bind_hearts(monkeypatch, FakeCatalogue(**_A_NEW_PLAYLIST))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["guided"] == {}
     assert "sync.labels" not in {c["key"] for c in passed["data"]["checks"]}
 
@@ -562,8 +556,7 @@ def test_a_slim_pass_queues_each_new_account_playlist_under_the_shared_run(
         (_playlist("pl-b", "Peak"), _tracks("201")),
         (_playlist("pl-c", playlists.SWEPT_PREFIX + "Closing"), _tracks("301")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "ok"
 
     queued = {job.payload[intake_cli.SOURCE]: job for job in _playlist_jobs()}
@@ -594,8 +587,7 @@ def test_a_playlist_with_no_tracks_queues_nothing_and_is_reported(slim, monkeypa
         (_playlist("pl-a", "Counted Empty", tracks=0), _tracks()),
         (_playlist("pl-b", "Listed Empty"), _tracks()),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "no_op"
     assert _jobs() == []
     summary = passed["data"]["summary"]
@@ -614,8 +606,7 @@ def test_a_playlist_with_no_tracks_queues_nothing_and_is_reported(slim, monkeypa
 def test_an_account_with_no_playlists_is_reported_not_recorded(slim, monkeypatch):
     del slim
     bind_playlists(monkeypatch)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "no_op"
     assert passed["data"]["summary"]["playlists"]["listed"] == 0
     assert _swept(config.load()) is None
@@ -638,8 +629,7 @@ def test_the_favourites_placeholders_are_left_to_the_favourites_source(slim, mon
         (_playlist("pl-copy", near[1]), _tracks("301")),
         (_playlist("pl-old", near[2]), _tracks("401")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert {job.payload[intake_cli.SOURCE] for job in _playlist_jobs()} == {
         "pl-all",
         "pl-copy",
@@ -664,8 +654,7 @@ def test_the_label_batch_debris_is_not_queued_as_intake(slim, monkeypatch):
         (_playlist("pl-2026", "Colorize 2026"), _tracks("401")),
         (_playlist("pl-title", "Colorize Library"), _tracks("501")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert {job.payload[intake_cli.SOURCE] for job in _playlist_jobs()} == {"pl-2026", "pl-title"}
     assert set(fake.playlists_asked_for) == {"pl-2026", "pl-title"}, (
         "a debris playlist was listed track by track anyway"
@@ -691,8 +680,7 @@ def test_a_pass_that_finds_only_debris_says_so_on_the_check(slim, monkeypatch):
         (_playlist("pl-a", "Rebellion LIBRARY"), _tracks("101")),
         (_playlist("pl-b", "Do Not Sit On The Furniture LIBRARY"), _tracks("102")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "no_op"
     assert _jobs() == []
     summary = passed["data"]["summary"]
@@ -710,12 +698,10 @@ def test_the_cursor_records_ids_only_once_a_job_succeeds(slim, monkeypatch):
         (_playlist("pl-a", "Warmup Title"), _tracks("101")),
         (_playlist("pl-b", "Peak Title"), _tracks("201")),
     )
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     assert _swept(cfg) is None, "queueing a playlist recorded it as swept"
 
-    code, again = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), again
+    again = exited(drive(["sync", "all"]))
     assert len(_playlist_jobs()) == 2, "an open job's playlist was queued a second time"
     assert {k: v["reason"] for k, v in again["data"]["summary"]["playlists"]["excluded"].items()} == {
         "pl-a": "in-flight",
@@ -723,12 +709,10 @@ def test_the_cursor_records_ids_only_once_a_job_succeeds(slim, monkeypatch):
     }
 
     (job_a,) = [j for j in _playlist_jobs() if j.payload[intake_cli.SOURCE] == "pl-a"]
-    code, resumed = drive(cli_jobs.argv_for(job_a))
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(drive(cli_jobs.argv_for(job_a)))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
 
-    code, third = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), third
+    third = exited(drive(["sync", "all"]))
     block = third["data"]["summary"]["playlists"]
     assert block["recorded_now"] == ["pl-a"]
     assert {k: v["reason"] for k, v in block["excluded"].items()} == {
@@ -747,8 +731,7 @@ def test_a_failed_job_is_not_recorded_and_its_playlist_is_offered_again(slim, mo
     (job,) = _playlist_jobs()
     with jobs.open_store() as store:
         jobs.transition(store, job.job_id, jobs.JobState.FAILED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["recorded_now"] == []
     assert _swept(cfg) is None
     assert len(_playlist_jobs()) == 2
@@ -769,14 +752,12 @@ def test_a_playlist_ingested_by_hand_is_recorded_on_the_next_pass(slim, monkeypa
     """R-382: after ``crate intake playlist`` runs to done, ``crate sync all`` records the playlist, not queuing it again."""
     cfg = slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    code, by_hand = drive(["intake", "playlist", "pl-a"])
-    assert code == int(ExitCode.OK), by_hand
+    exited(drive(["intake", "playlist", "pl-a"]))
     (job,) = _playlist_jobs()
     assert "source_id" not in job.payload, "the producer is a job with no source id"
     code, resumed = drive(cli_jobs.argv_for(job))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["queued"] == []
     assert block["recorded_now"] == ["pl-a"]
@@ -788,10 +769,8 @@ def test_a_playlist_ingested_by_hand_is_recorded_on_the_next_pass(slim, monkeypa
 def test_a_playlist_intake_still_open_by_hand_is_in_flight_not_queued(slim, monkeypatch):
     cfg = slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    code, by_hand = drive(["intake", "playlist", "pl-a"])
-    assert code == int(ExitCode.OK), by_hand
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    exited(drive(["intake", "playlist", "pl-a"]))
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["queued"] == []
     assert block["excluded"]["pl-a"]["reason"] == "in-flight"
@@ -808,8 +787,7 @@ def test_a_playlist_intake_by_hand_that_did_not_succeed_is_not_recorded(
     with jobs.open_store() as store:
         job = _by_hand(store, cfg, "pl-a")
         jobs.transition(store, job.job_id, ended)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
     assert _swept(cfg) is None
 
@@ -824,8 +802,7 @@ def test_a_set_intake_naming_the_playlist_is_not_a_playlist_intake(slim, monkeyp
         finished = _by_hand(store, cfg, "pl-a", handler_key=set_key)
         jobs.transition(store, finished.job_id, jobs.JobState.SUCCEEDED)
         _by_hand(store, cfg, "pl-a", handler_key=set_key)  # and one still open
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
     assert _swept(cfg) is None
 
@@ -847,8 +824,7 @@ def test_two_succeeded_jobs_for_one_playlist_record_it_once(slim, monkeypatch):
         )
         for job in (hand, swept):
             jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["recorded_now"] == ["pl-a"]
     assert _swept(cfg) == ("pl-a",)
 
@@ -871,8 +847,7 @@ def test_a_playlist_typed_as_a_url_by_hand_records_its_identifier(slim, monkeypa
     with jobs.open_store() as store:
         job = _by_hand(store, cfg, typed)
         jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["queued"] == []
     assert block["excluded"][PLAYLIST_UUID]["reason"] == "recorded"
@@ -884,8 +859,7 @@ def test_a_playlist_typed_as_a_url_and_still_open_is_in_flight(slim, monkeypatch
     bind_playlists(monkeypatch, (_playlist(PLAYLIST_UUID, "Warmup"), _tracks("101")))
     with jobs.open_store() as store:
         _by_hand(store, cfg, f"https://tidal.com/playlist/{PLAYLIST_UUID}")
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["queued"] == []
     assert block["excluded"][PLAYLIST_UUID]["reason"] == "in-flight"
@@ -900,8 +874,7 @@ def test_a_pass_queued_job_records_the_listing_identifier_verbatim(slim, monkeyp
     (job,) = _playlist_jobs()
     with jobs.open_store() as store:
         jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["excluded"][listed]["reason"] == "recorded"
     assert _swept(cfg) == (listed,)
 
@@ -935,8 +908,7 @@ def test_a_hearts_intake_is_not_recorded_as_a_playlist(slim, monkeypatch):
         )
         for job in (by_verb, by_source):
             jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["recorded_now"] == []
     assert _swept(cfg) is None
 
@@ -961,8 +933,7 @@ def test_another_librarys_finished_job_is_not_this_librarys_sweep(slim, monkeypa
             source_id=playlists.SOURCE_ID,
         )
         jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["recorded_now"] == []
     assert _swept(cfg) is None
     assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
@@ -975,8 +946,7 @@ def test_an_unreadable_playlist_is_reported_and_the_rest_still_queue(slim, monke
         (_playlist("pl-gone", "Deleted Meanwhile"), None),
         (_playlist("pl-a", "Warmup"), _tracks("101")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
     block = passed["data"]["summary"]["playlists"]
     assert block["excluded"]["pl-gone"]["reason"] == "unreadable"
@@ -1018,8 +988,7 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
         return real(store, cfg, **kwargs)
 
     monkeypatch.setattr(intake_cli, "queue_playlist", second_refuses)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
     summary = passed["data"]["summary"]
     assert [j["job_id"] for j in summary["jobs"]] == [job.job_id]
@@ -1044,11 +1013,9 @@ def _recording_pass(cfg, fake) -> playlists.Sweep:
     :func:`playlists.plan` reconciles, so it is called EXACTLY ONCE: a second
     call would hand back an empty ``recorded_now`` for an unrelated reason.
     """
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(drive(cli_jobs.argv_for(job)))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
     with jobs.open_store() as store:
         sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
@@ -1196,8 +1163,7 @@ def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
     """DJ_tools may sweep the playlist before this pass records it; marking again would double the prefix."""
     cfg = slim
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
     code, resumed = drive(cli_jobs.argv_for(job))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
@@ -1271,8 +1237,7 @@ def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
         (_playlist("pl-a", "Warmup"), _tracks("101")),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     for job in _playlist_jobs():
         code, resumed = drive(cli_jobs.argv_for(job))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
@@ -1309,8 +1274,7 @@ def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, m
     code, resumed = drive(cli_jobs.argv_for(job))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
 
-    code, third = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), third
+    third = exited(drive(["sync", "all"]))
     block = third["data"]["summary"]["playlists"]
     assert block["recorded_now"] == ["pl-a"]
     assert block["mark"] == playlists.MARK_UNBOUND
@@ -1327,11 +1291,9 @@ def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, m
 def _recorded_over_missing(monkeypatch) -> None:
     """Drive the producer until the next pass records a playlist the library owns none of."""
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(drive(cli_jobs.argv_for(job)))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
     progress = resumed["data"]["progress"]
     assert (progress["missing"], progress["acquired"]) == (2, 0), progress
@@ -1354,8 +1316,7 @@ def test_a_recorded_playlist_says_in_json_its_tracks_were_resolved_not_acquired(
 ):
     cfg = slim
     _recorded_over_missing(monkeypatch)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["recorded_now"] == ["pl-a"]
     assert _swept(cfg) == ("pl-a",)
@@ -1367,8 +1328,7 @@ def test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acqu
 ):
     del slim
     _recorded_over_missing(monkeypatch)
-    code, text = _run_human(["sync", "all"])
-    assert code == int(ExitCode.OK), text
+    text = exited(_run_human(["sync", "all"]))
     line = _playlists_line(text)
     assert "1 recorded" in line, text
     assert "resolved" in line and "not acquired" in line, text
@@ -1394,8 +1354,7 @@ def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb
         (_playlist("pl-a", "Warmup"), _tracks("101")),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    code, text = _run_human(["sync", "all"])
-    assert code == int(ExitCode.OK), text
+    text = exited(_run_human(["sync", "all"]))
     (run_id,) = {job.payload["run_id"] for job in _playlist_jobs()}
     (line,) = [row for row in text.splitlines() if "sync.next:" in row]
     assert f"crate intake missing --run {run_id}" in line, text
@@ -1405,8 +1364,7 @@ def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb
 def test_the_json_summary_carries_the_same_command(slim, monkeypatch):
     del slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["next"] == f"crate intake missing --run {passed['run_id']}"
 
 
@@ -1414,8 +1372,7 @@ def test_a_pass_that_queued_no_intake_job_names_no_run_verb(slim, monkeypatch):
     """``intake missing --run`` refuses a run with no intake job, so it is not named."""
     del slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Counted Empty", tracks=0), _tracks()))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["next"] is None
     assert "sync.next" not in {c["key"] for c in passed["data"]["checks"]}
 
@@ -1432,8 +1389,7 @@ def test_a_pass_through_to_one_list_holds_a_shared_track_once_with_both_playlist
         (_playlist("pl-a", "Warmup"), _tracks("101", "102")),
         (_playlist("pl-b", "Peak"), _tracks("102", "201")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     for job in _playlist_jobs():
         code, resumed = drive(cli_jobs.argv_for(job))
         assert code == int(ExitCode.OK), resumed
@@ -1441,8 +1397,7 @@ def test_a_pass_through_to_one_list_holds_a_shared_track_once_with_both_playlist
 
     command = passed["data"]["summary"]["next"].split()
     assert command[:3] == ["crate", "intake", "missing"]
-    code, listed = drive(command[1:])
-    assert code == int(ExitCode.OK), listed
+    listed = exited(drive(command[1:]))
     summary = listed["data"]["summary"]
     body = json.loads(Path(summary["list"]).read_text())
     assert sorted(track["id"] for track in body["tracks"]) == ["101", "102", "201"]
@@ -1474,8 +1429,7 @@ def test_a_pass_renames_nothing_even_over_a_recorded_playlist_with_its_file_land
     (Path(slim.library.root) / "pass_synced_inboxed.xml").write_text(
         "<COLLECTION/>", encoding="utf-8"
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     block = passed["data"]["summary"]["playlists"]
     assert block["excluded"]["pl-a"]["reason"] == "recorded"
     assert (block["mark"], block["marked"]) == (playlists.MARK_UNBOUND, [])
@@ -1753,8 +1707,7 @@ def test_the_gate_refusal_queues_no_hearts_listing_either(installed, exported, m
     """PLAN, ASK, QUEUE: the read is queued by the run that answers."""
     del installed
     bind_hearts(monkeypatch)
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     assert _jobs() == []
     # THE GATE SAYS the hearts go whatever the answer.
     assert refused["cause"]["detail"]["shown"]["inbound"] == {
@@ -1764,8 +1717,7 @@ def test_the_gate_refusal_queues_no_hearts_listing_either(installed, exported, m
 
 def test_the_gate_says_when_the_hearts_could_not_be_listed(installed, exported):
     del installed
-    code, refused = drive(_verb(exported))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(_verb(exported)), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["shown"]["inbound"] == {
         "favorites": {"queued_whatever_the_answer": False, "not_queued": "credential-missing"}
     }
@@ -1828,8 +1780,7 @@ def test_a_missing_export_still_queues_the_hearts_and_the_pass_is_not_a_refusal(
     """The write half's precondition no longer refuses the source: the hearts alone make the pass OK."""
     del installed
     bind_hearts(monkeypatch)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "ok"
     assert len(_hearts_jobs()) == 1
     assert passed["data"]["summary"]["not_queued"] == {
@@ -1849,8 +1800,7 @@ def test_a_slim_pass_lists_no_hearts_and_queues_none(slim, monkeypatch):
         account=[_playlist("pl-a", "Warmup")],
     )
     bind_hearts(monkeypatch, fake)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert _hearts_jobs() == []
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
     assert fake.heart_listings == 0
@@ -1894,8 +1844,7 @@ def test_an_unreadable_hearts_listing_is_reported_and_the_playlists_still_queue(
             account=[_playlist("pl-a", "Warmup")],
         ),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert _hearts_jobs() == []
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
     assert _inbound(passed)["not_queued"] == "label-playlist-unreadable"
@@ -1924,8 +1873,7 @@ def test_nothing_queued_because_every_half_refused_is_still_a_refusal(installed,
 def test_an_account_with_no_hearts_queues_nothing_for_them(installed, monkeypatch):
     del installed
     bind_hearts(monkeypatch, FakeCatalogue(**_A_NEW_PLAYLIST))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert _hearts_jobs() == []
     block = _inbound(passed)
     assert block["hearts"] == 0 and block["not_queued"] == "empty"
@@ -1950,8 +1898,7 @@ def test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count(
 ):
     del installed
     bind_hearts(monkeypatch, ShortHearts(_hearts("301", "302", "303"), declared=5))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     (job,) = _hearts_jobs()
     assert len(_items(job.job_id)) == 3
     block = _inbound(passed)
@@ -1966,8 +1913,7 @@ def test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count(
 def test_hearts_all_withheld_are_not_reported_as_an_account_with_none(installed, monkeypatch):
     del installed
     bind_hearts(monkeypatch, ShortHearts([], declared=4, **_A_NEW_PLAYLIST))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert _hearts_jobs() == []
     block = _inbound(passed)
     assert block["not_queued"] == "empty"
@@ -1981,8 +1927,7 @@ def test_hearts_all_withheld_are_not_reported_as_an_account_with_none(installed,
 def test_a_complete_hearts_listing_carries_no_shortfall(installed, monkeypatch):
     del installed
     bind_hearts(monkeypatch)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert _inbound(passed)["shortfall"] is None
     check = _inbound_check(passed)
     assert check["status"] == "ok" and "withheld" not in check["detail"]
@@ -2002,8 +1947,7 @@ def test_the_human_output_prints_the_inbound_shortfall(installed, monkeypatch):
 def test_an_open_hearts_job_is_not_queued_twice(installed, monkeypatch):
     del installed
     fake = bind_hearts(monkeypatch)
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     (job,) = _hearts_jobs()
 
     # NOTHING NEW AND TWO SOURCES REFUSED, so the second pass is the refusal
@@ -2024,8 +1968,7 @@ def test_a_hearts_job_queued_by_hand_is_not_queued_beside(installed, monkeypatch
     """``crate intake playlist favorites`` lists the same hearts under the same key."""
     del installed
     bind_hearts(monkeypatch)
-    code, by_hand = drive(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), by_hand
+    exited(drive(["intake", "playlist", "favorites"]))
     (job,) = _hearts_jobs()
     code, passed = drive(["sync", "all"])
     assert code != int(ExitCode.OK), passed
@@ -2041,8 +1984,7 @@ def test_a_finished_hearts_job_does_not_hold_the_next_pass(installed, monkeypatc
     (job,) = _hearts_jobs()
     with jobs.open_store() as store:
         jobs.transition(store, job.job_id, jobs.JobState.FAILED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert len(_hearts_jobs()) == 2
     assert _inbound(passed)["not_queued"] is None
 
@@ -2064,8 +2006,7 @@ def test_another_librarys_open_hearts_job_does_not_hold_this_one(installed, monk
             tracks={"301": {"title": "Heart 301"}},
             source_id=intake_cli.FAVORITES_SOURCE_ID,
         )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert len(_hearts_jobs()) == 2
     assert _inbound(passed)["open_jobs"] == []
 
@@ -2086,8 +2027,7 @@ def test_an_open_playlists_job_does_not_hold_the_hearts(installed, monkeypatch):
     (hearts_job,) = _hearts_jobs()
     with jobs.open_store() as store:
         jobs.transition(store, hearts_job.job_id, jobs.JobState.FAILED)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    exited(drive(["sync", "all"]))
     assert len(_hearts_jobs()) == 2
 
 
@@ -2108,8 +2048,7 @@ def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
         return real(store, cfg, **kwargs)
 
     monkeypatch.setattr(intake_cli, "queue_playlist", refusing)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [job.payload[intake_cli.SOURCE] for job in _jobs()] == ["pl-a"]
     assert _inbound(passed)["not_queued"] == "internal-error"
     assert passed["data"]["summary"]["not_queued"]["favorites"] == "outbound-export-required"
@@ -2180,8 +2119,7 @@ def test_the_sweep_summary_carries_the_shortfall_per_playlist(slim, monkeypatch)
         account=[_playlist("pl-a", "Warmup"), _playlist("pl-b", "Peak")],
     )
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
 
     queued = {job.payload[intake_cli.SOURCE]: job for job in _playlist_jobs()}
     assert set(queued) == {"pl-a", "pl-b"}, "a short playlist is queued, never refused"
@@ -2198,8 +2136,7 @@ def test_the_sweep_summary_carries_the_shortfall_per_playlist(slim, monkeypatch)
 def test_a_sweep_of_full_playlists_carries_no_shortfall(slim, monkeypatch):
     del slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["data"]["summary"]["playlists"]["withheld"] == {}
     assert "sync-playlists-withheld" not in {w["code"] for w in passed["warnings"]}
 
@@ -2232,8 +2169,7 @@ def test_a_track_with_no_title_or_artist_is_named_and_its_playlist_still_queues(
         (_playlist("pl-a", "Warmup"), [*_tracks("101", "102"), untitled]),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
 
     queued = {job.payload[intake_cli.SOURCE]: job for job in _playlist_jobs()}
     assert set(queued) == {"pl-a", "pl-b"}
@@ -2271,11 +2207,9 @@ def test_a_queued_playlist_that_left_a_track_unread_is_recorded_when_its_job_suc
         monkeypatch,
         (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("103", "Artist 103", "")]),
     )
-    code, first = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), first
+    exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(drive(cli_jobs.argv_for(job)))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
 
     code, second = drive(["sync", "all"])
@@ -2294,8 +2228,7 @@ def test_a_row_with_no_provider_id_still_leaves_its_playlist_out_by_name(slim, m
         (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("", "Artist", "Title")]),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-b"]
     block = passed["data"]["summary"]["playlists"]
     assert block["excluded"]["pl-a"] == {"reason": "unreadable", "name": "Warmup"}
@@ -2341,8 +2274,7 @@ def test_a_playlist_whose_every_track_is_unread_is_unreadable_not_empty(slim, mo
         ),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-b"]
     block = passed["data"]["summary"]["playlists"]
     assert block["excluded"]["pl-a"] == {"reason": "unreadable", "name": "Warmup"}
@@ -2366,8 +2298,7 @@ def test_a_pass_whose_only_playlist_left_every_track_unread_says_so_on_the_check
     bind_playlists(
         monkeypatch, (_playlist("pl-a", "Warmup"), [Track("103", "Artist 103", "")])
     )
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     assert passed["outcome"] == "no_op"
     (check,) = passed["data"]["checks"]
     assert "1 unreadable" in check["detail"]
@@ -2376,8 +2307,7 @@ def test_a_pass_whose_only_playlist_left_every_track_unread_says_so_on_the_check
 def test_a_fully_readable_sweep_names_nothing_unread(slim, monkeypatch):
     del slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
     assert _items(job.job_id) == ["101", "102"]
     assert passed["data"]["summary"]["playlists"]["unread"] == {}
@@ -2396,8 +2326,7 @@ def test_a_short_listing_with_an_unread_track_carries_both(slim, monkeypatch):
         account=[_playlist("pl-a", "Warmup")],
     )
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
     assert _items(job.job_id) == ["101"]
     block = passed["data"]["summary"]["playlists"]

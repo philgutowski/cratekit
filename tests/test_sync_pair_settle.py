@@ -21,6 +21,7 @@ from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
 from cratekit.sync import pair_cli
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -42,8 +43,7 @@ def owed(world):
     """One pair synced in GIG READY, then reordered in rekordbox, so its account side owes an order."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     return opener, world.titled("GIG READY Opener")
 
@@ -59,8 +59,7 @@ def _agreeing_at_once(monkeypatch) -> None:
 
 def test_an_order_the_provider_serves_at_once_finishes_in_the_one_run(world, owed, cfg):
     opener, account_id = owed
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert pair_cli.PENDING not in _codes(envelope)
     held = pairs.PairStore(cfg).get(account_id)
@@ -76,8 +75,7 @@ def test_an_order_the_provider_serves_late_is_left_pending_and_the_run_ends_ok(
 ):
     opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.PENDING in _codes(envelope)
     assert "GIG READY Opener" in _said(envelope, pair_cli.PENDING)
     # Every move landed; the provider does not serve them yet.
@@ -95,8 +93,7 @@ def test_a_late_order_finishes_in_the_next_run_with_no_rekordbox_write_between(
 ):
     opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     ordered = len(world.account.ordered)
     # The provider catches up before the next sync.
     del world.account.served[account_id]
@@ -104,8 +101,7 @@ def test_a_late_order_finishes_in_the_next_run_with_no_rekordbox_write_between(
     assert [item for item in plan["items"] if item["pair"] == account_id] == [], (
         "a pair whose order landed planned a write"
     )
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert len(world.account.ordered) == ordered, "the order was written a second time"
     assert world.held(opener) == ["4", "3", "1", "2"]
     held = pairs.PairStore(cfg).get(account_id)
@@ -117,13 +113,11 @@ def test_a_late_order_finishes_in_the_next_run_with_no_rekordbox_write_between(
 def test_a_pending_pair_is_held_whole_until_a_later_reading_agrees(world, owed, cfg):
     opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     # The provider now serves a third order, between the two.
     world.account.served[account_id] = _ids("3", "1", "2", "4")
     world.rekordbox_add(opener, "5")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     assert "GIG READY Opener" in _said(envelope, pair_cli.LEFT_OUT)
     # Nothing written on either side: the addition in rekordbox waits too.
@@ -136,11 +130,9 @@ def test_a_pending_pair_is_held_whole_until_a_later_reading_agrees(world, owed, 
 def test_an_agreeing_reading_too_soon_after_the_last_is_not_agreement(world, owed, cfg):
     _opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     ordered = len(world.account.ordered)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     assert len(world.account.ordered) == ordered
 
@@ -152,8 +144,7 @@ def test_every_move_accepted_and_an_agreed_reading_short_of_their_end_is_still_a
     opener, account_id = owed
     _agreeing_at_once(monkeypatch)
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     ordered = len(world.account.ordered)
     for _ in range(2):
         code, envelope = sync()
@@ -180,8 +171,7 @@ def test_a_pair_that_never_settles_stays_pending_past_the_age_a_plan_is_kept(
     _agreeing_at_once(monkeypatch)
     readings = [_ids("1", "2", "3", "4"), _ids("2", "1", "3", "4")]
     world.account.served[account_id] = readings[0]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     ordered = len(world.account.ordered)
     for turn in range(4):
         world.account.served[account_id] = readings[(turn + 1) % 2]
@@ -201,13 +191,11 @@ def test_a_pending_pair_the_person_reordered_after_a_sync_read_it_is_merged_as_t
     opener, account_id = owed
     _agreeing_at_once(monkeypatch)
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     # The person puts the playlist in an order no move of the write passes.
     del world.account.served[account_id]
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope), "one reading was taken as agreed"
     # Two syncs read it agreed and write nothing, keeping that reading, settled.
     plan_only()
@@ -222,8 +210,7 @@ def test_a_pending_pair_the_person_reordered_after_a_sync_read_it_is_merged_as_t
         assert code == int(ExitCode.OK), envelope
         assert pair_cli.LEFT_OUT in _codes(envelope), "one reading was taken as agreed"
         assert world.held(opener) == ["4", "3", "1", "2"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.held(opener) == ["3", "2", "4", "1"]
     assert world.account.playlists[account_id] == _ids("3", "2", "4", "1")
     held = pairs.PairStore(cfg).get(account_id)
@@ -238,15 +225,12 @@ def test_a_pending_pair_agreed_once_off_the_path_keeps_rekordboxs_order(
     opener, account_id = owed
     _agreeing_at_once(monkeypatch)
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     del world.account.served[account_id]
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.held(opener) == ["4", "3", "1", "2"], "rekordbox took the agreed reading"
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
 
@@ -307,8 +291,7 @@ def test_a_stop_part_way_then_a_continue_sends_no_move_again(world, owed, cfg, m
     assert code != int(ExitCode.OK), stopped
     assert stops == [1]
     ordered = len(world.account.ordered)
-    code, done = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", stopped["run_id"], *VERB]))
     assert len(world.account.ordered) == ordered, "a continue sent the moves again"
     # The provider serves the one move that landed: the pair waits, pending.
     assert pair_cli.PENDING in _codes(done)
@@ -325,8 +308,7 @@ def test_a_stop_part_way_whose_moves_all_landed_finishes_on_the_continue(
     # The failed move had in fact landed: every move is in.
     world.account.playlists[account_id][:] = _ids("4", "3", "1", "2")
     ordered = len(world.account.ordered)
-    code, done = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", stopped["run_id"], *VERB]))
     assert len(world.account.ordered) == ordered
     assert pair_cli.PENDING not in _codes(done)
     held = pairs.PairStore(cfg).get(account_id)
@@ -343,12 +325,10 @@ def test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox(
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
     reached = list(world.account.playlists[account_id])
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     assert world.account.playlists[account_id] == reached
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"], "rekordbox took the stopped order"
 
@@ -483,8 +463,7 @@ def test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending(
         return stopping(asked_id, remote_ids, expect=expect, begun=begun, **agreed)
 
     monkeypatch.setattr(world.account, "order_tracks", refusing)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     code, envelope = sync()
     assert code != int(ExitCode.OK), envelope
     assert refusals == [tuple(reached)], "the finish was not refused, or not held to its reading"
@@ -556,8 +535,7 @@ def test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order
     assert "recorded no count" in _said(envelope, pair_cli.LEFT_OUT)
     # Shown as the moves leave it, it finishes with nothing moved.
     world.account.playlists[account_id][:] = _ids("4", "3", "2", "1")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT not in _codes(envelope)
     assert len(world.account.ordered) == ordered
     assert world.held(opener) == ["4", "3", "2", "1"]
@@ -569,16 +547,14 @@ def test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order
 def test_a_pair_outside_gig_ready_gets_no_order_write_and_its_membership_still_syncs(world, cfg):
     crates = world.folder("Crates")
     deep = world.playlist("Deep", "1", "2", "3", under=crates)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     account_id = world.titled("Crates Deep")
     _reordered(world, deep, "3", "1", "2")
     world.rekordbox_add(deep, "4")
     plan = plan_only()
     assert _items(plan, "account", "order") == []
     assert [item["action"] for item in plan["items"] if item["side"] == "account"] == ["add"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
     assert world.account.ordered == []
     assert world.held(deep) == ["3", "1", "2", "4"]
@@ -589,12 +565,10 @@ def test_the_config_key_keeps_the_account_order_of_every_pair(world, cfg, monkey
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: every)
     crates = world.folder("Crates")
     deep = world.playlist("Deep", "1", "2", "3", under=crates)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     account_id = world.titled("Crates Deep")
     _reordered(world, deep, "3", "1", "2")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.playlists[account_id] == _ids("3", "1", "2")
 
 
@@ -617,8 +591,7 @@ def test_a_write_that_keeps_no_record_sends_no_order(world, owed, cfg, monkeypat
     assert held is not None and held.account == tuple(_ids("1", "2", "3", "4"))
     # Once a plan can be held again, the order is sent once and recorded.
     monkeypatch.setattr(pair_cli, "_hold", real_hold)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert len(world.account.ordered) == 1
     assert pair_cli.PENDING in _codes(envelope)
 
@@ -646,8 +619,7 @@ def test_two_readings_agree_only_once_minutes_apart(world, owed, cfg, monkeypatc
 
     later = pair_cli.AGREE_AFTER + timedelta(seconds=1)
     monkeypatch.setattr(pair_model, "_now", lambda: datetime.now(UTC) + later)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2"), (
         envelope["warnings"], pairs.PairStore(cfg).get(account_id)
     )
@@ -678,8 +650,7 @@ def test_the_settle_window_counts_the_time_spent_on_other_writes(world, owed, cf
     start = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
     ticks = iter(range(0, 10_000, 20))
     monkeypatch.setattr(pair_model, "_now", lambda: start + timedelta(seconds=next(ticks)))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.account.settle_waits
     assert world.account.settle_waits[0] <= pair_cli.SETTLE_SECONDS - 20
 
@@ -706,8 +677,7 @@ def test_a_settle_reading_refused_for_another_reason_stops_the_write(world, owed
 def test_a_root_playlist_named_gig_ready_is_not_under_gig_ready(world, cfg):
     """The scope is the folder, not a playlist of that name."""
     root = world.playlist("GIG READY", "1", "2", "3")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, root, "3", "1", "2")
     plan = plan_only()
     assert _items(plan, "account", "order") == []
@@ -717,8 +687,7 @@ def test_a_pending_run_does_not_count_its_pending_pair_as_synced(world, owed):
     """The headline says pending, not synced, for a pair whose snapshot did not move."""
     _opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     said = _said(envelope, pair_cli.WRITTEN)
     assert said.startswith("0 pair(s) synced"), said
     assert "1 pending" in said
@@ -812,8 +781,7 @@ def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
     monkeypatch.setattr(pair_model, "_now", lambda: datetime.now(UTC) + timedelta(seconds=20))
-    code, done = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["--run", stopped["run_id"], *VERB]))
     assert world.account.settle_waits[-1] <= pair_cli.SETTLE_SECONDS - 15
 
 
@@ -929,8 +897,7 @@ def test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes(
 ):
     opener, account_id, reached = _stopped_then_added(world, owed, monkeypatch)
     for _ in range(2):
-        code, envelope = sync()
-        assert code == int(ExitCode.OK), envelope
+        exited(sync())
     assert world.account.playlists[account_id] == _ids("4", "3", "2", "1", "5")
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
     assert world.account.agreed[0] == (account_id, tuple(reached))
@@ -952,8 +919,7 @@ def test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused
     monkeypatch.setattr(world.account, "add_tracks", added_first)
     asked = _adapter_reading(world, monkeypatch, account_id, ["t5", *reached])
     for _ in range(2):
-        code, envelope = sync()
-        assert code == int(ExitCode.OK), envelope
+        exited(sync())
     assert asked[0] == tuple(reached)
     assert world.account.playlists[account_id] == _ids("4", "3", "2", "1", "5")
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
@@ -993,8 +959,7 @@ def _refused_finish(world, monkeypatch, account_id: str, lag: list[str]) -> tupl
     """The adapter's reading lagging the stopped move: held once, then the finish refused.
     Answers the agreed readings asked and the refused run."""
     asked = _adapter_reading(world, monkeypatch, account_id, lag)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     code, refused = sync()
     assert code != int(ExitCode.OK), refused
     return asked, refused["run_id"]
@@ -1044,8 +1009,7 @@ def test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_readin
     """A held plan that cannot be read leaves no check listing to pass."""
     opener, account_id, reached = _stopped_then_added(world, owed, monkeypatch)
     asked = _adapter_reading(world, monkeypatch, account_id, _ids("1", "2", "3", "4", "5"))
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     answers = {pair_cli.REKORDBOX_GATE: "apply", pair_cli.ACCOUNT_GATE: "apply"}
     run_id = None
     for _ in range(3):
@@ -1075,8 +1039,7 @@ def longer(world):
     """One GIG READY pair synced on seven tracks, then reversed in rekordbox, so its account owes six moves."""
     gig = world.folder("GIG READY")
     closer = world.playlist("Closer", "1", "2", "3", "4", "5", "6", "7", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     _reordered(world, closer, "7", "6", "5", "4", "3", "2", "1")
     return closer, world.titled("GIG READY Closer")
 
@@ -1127,8 +1090,7 @@ def test_a_pending_stop_agreed_off_its_path_is_finished_from_rekordbox(
     assert code != int(ExitCode.OK), stopped
     assert stops == [3]
     left = list(world.account.playlists[account_id])
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     plan = plan_only()
     pair = [item for item in plan["items"] if item["pair"] == account_id]
@@ -1136,8 +1098,7 @@ def test_a_pending_stop_agreed_off_its_path_is_finished_from_rekordbox(
         "the plan writes rekordbox the provider's half done order"
     )
     assert [item["action"] for item in pair if item["side"] == "account"] == ["order"]
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.held(closer) == ["7", "6", "5", "4", "3", "2", "1"]
     assert world.account.playlists[account_id] == _ids("7", "6", "5", "4", "3", "2", "1")
     assert (account_id, tuple(left)) in world.account.agreed, "the rest moved from another reading"
@@ -1182,8 +1143,7 @@ def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_pl
     assert reached == ["t9", *_ids("1", "2", "3", "4")]
     world.rekordbox_add(opener, "5")
     asked = _adapter_reading(world, monkeypatch, account_id, [*_ids("1", "2", "3", "4"), "t9", "t5"])
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope)
     code, envelope = sync()
     # Refused with nothing moved, its addition landed, rekordbox untouched.
@@ -1341,8 +1301,7 @@ def test_a_hand_move_of_the_unread_track_read_first_after_the_stop_is_finished_b
     world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
     envelopes: list[dict] = []
     for _ in range(2):
-        code, envelope = sync()
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(sync())
         envelopes.append(envelope)
     assert any(pair_cli.FINISHING in _codes(one) for one in envelopes), envelopes
     assert world.held(opener) == ["2", "3", "4", "1"]
@@ -1370,8 +1329,7 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
     envelopes: list[dict] = []
     # Held while the change settles, then written: rekordbox still leads.
     for left_out in (True, True, False):
-        code, envelope = _synced_keeping_gates(envelopes)
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(_synced_keeping_gates(envelopes))
         envelopes.append(envelope)
         assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
     assert world.held(opener) == ["2", "3", "4", "1"]
@@ -1426,8 +1384,7 @@ def test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_wri
     envelopes: list[dict] = []
     # Held while the change settles, as any change after a settled reading is.
     for left_out in (True, True, False):
-        code, envelope = _synced_keeping_gates(envelopes)
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(_synced_keeping_gates(envelopes))
         envelopes.append(envelope)
         assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
     assert world.held(opener) == ["2", "3", "4", "1"], "the DJ's rekordbox order was undone"
@@ -1473,8 +1430,7 @@ def test_a_settled_move_of_a_readable_track_beside_an_unread_one_still_leads(
     )
     envelopes: list[dict] = []
     for left_out in (True, True, False):
-        code, envelope = _synced_keeping_gates(envelopes)
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(_synced_keeping_gates(envelopes))
         envelopes.append(envelope)
         assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
     assert world.held(opener) == ["3", "1", "2", "4"], "the person's settled reorder did not lead"
@@ -1821,8 +1777,7 @@ def _moved_twice_and_synced(world, account_id: str, remote_id: str, *, plans: in
     assert world.account.playlists[account_id][:3] == ["t1", "t2", remote_id]
     envelopes: list[dict] = []
     for _ in range(syncs):
-        code, envelope = sync()
-        assert code == int(ExitCode.OK), envelope
+        envelope = exited(sync())
         envelopes.append(envelope)
     return envelopes
 
@@ -1832,8 +1787,7 @@ def test_a_stop_before_the_first_send_with_nothing_moved_is_finished_from_its_st
 ):
     """R-1434: the account still stands where the write began, so the finish puts it in the asked order."""
     opener, account_id = _stopped_before_the_first_send(world, owed, monkeypatch)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.FINISHING in _codes(envelope)
     assert world.account.playlists[account_id] == ["t2", "t3", "t4", "t9", "t1"]
     assert world.held(opener) == ["2", "3", "4", "1"]
@@ -1904,8 +1858,7 @@ def _five_owed(world):
     """A pair of the playlist 1 to 5 synced once. Answers the rekordbox playlist and the account playlist."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", "5", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     return opener, world.titled("GIG READY Opener")
 
 

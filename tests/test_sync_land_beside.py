@@ -21,6 +21,7 @@ from cratekit.core.cause import Cause, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import beside as staged_reading
 from cratekit.intake import land_cli
+from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
 from tests.test_label_sync_go import (
@@ -123,9 +124,7 @@ def test_a_label_gos_download_at_its_landings_gate_renamed_refuses_the_pass_befo
     _landable(script)
     script.fetched.clear()
 
-    code, envelope = _pass(monkeypatch, "101")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.DOWNLOAD)
     assert [request.key for request in script.fetched] == [], "the pass downloaded beside the go"
     assert _queued_tail(renaming) == [], "the tail ran over the go's tracks"
@@ -158,9 +157,7 @@ def test_a_gos_download_arriving_while_the_pass_downloads_refuses_its_tail(
     monkeypatch.setattr(sync_land, "_download", and_another)
     _account(monkeypatch, script, "101")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.TAG)
     assert [one["job"] for one in cause["detail"]["waiting"]] == other
     assert _queued_tail(tail) == [], "the tail ran over another download"
@@ -178,9 +175,7 @@ def test_a_plain_download_beside_the_pass_refuses_naming_it(machine, monkeypatch
     script.fetched.clear()
     _account(monkeypatch, script, "101")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.DOWNLOAD)
     assert cause["detail"]["waiting"] == [
         {
@@ -206,8 +201,7 @@ def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_la
     and names the first pass's own continue command."""
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101", "102")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101", "102"), ExitCode.PENDING_HUMAN)
     (download,) = _by_key("acquire.download")
     first_run = _summary(first)["pass_run"]
     script.fetched.clear()
@@ -217,9 +211,7 @@ def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_la
         (_playlist("pl-a", "Warmup"), _rows("101", "102")),
         (_playlist("pl-b", "Peak"), _rows("101", "103")),
     )
-    code, second = drive(["sync", "land"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert script.fetched == []
     assert cause["detail"]["waiting"] == [
@@ -243,8 +235,7 @@ def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monke
     answered, is named as whose tail may have renamed them."""
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101", "102")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101", "102"), ExitCode.PENDING_HUMAN)
     renamed = _files(cfg)
     assert renamed == ["Artist - 101.wav", "Artist - 102.wav"]
     first_run = _summary(first)["pass_run"]
@@ -254,9 +245,7 @@ def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monke
         (_playlist("pl-a", "Warmup"), _rows("101", "102")),
         (_playlist("pl-b", "Peak"), _rows("103")),
     )
-    code, second = drive(["sync", "land"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert cause["detail"]["unnamed"] == renamed
     (waiting,) = cause["detail"]["waiting"]
@@ -267,8 +256,7 @@ def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monke
 def test_a_pass_whose_landing_is_proven_is_not_named(machine, monkeypatch, renaming):
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     (Path(cfg.library.root) / f"{_summary(first)['land_name']}{land_cli.INTAKE_SUFFIX}").write_text(
         "<xml/>"
     )
@@ -278,9 +266,7 @@ def test_a_pass_whose_landing_is_proven_is_not_named(machine, monkeypatch, renam
         (_playlist("pl-b", "Peak"), _rows("103")),
     )
 
-    code, second = drive(["sync", "land"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert cause["detail"]["waiting"] == []
     assert cause["detail"]["unnamed"] == ["Artist - 101.wav"]
@@ -317,9 +303,7 @@ def test_the_passes_own_renamed_tracks_after_its_tail_stopped_run_on(
     renaming.landing = Tail().landing
     landings = sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"])
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.PENDING_HUMAN), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PENDING_HUMAN)
     assert sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"]) == landings + 1
     assert _summary(again)["stopped_at"] == sync_land.LAND_GATE
 
@@ -329,15 +313,12 @@ def test_a_file_put_there_since_the_tail_stopped_is_not_the_passes_own(
 ):
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
     (_staged(cfg) / "Someone - Else.wav").write_bytes(b"RIFF")
     landings = sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"])
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(again, sync_land.DOWNLOAD)
     assert cause["detail"]["unnamed"] == ["Someone - Else.wav"]
     assert sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"]) == landings
@@ -349,14 +330,11 @@ def test_a_file_the_passes_tail_left_and_then_changed_is_not_its_own(
     """The record is the identity the landing's digest reads, not the name."""
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
     (_staged(cfg) / "Artist - 101.wav").write_bytes(b"something else entirely")
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.REFUSED_BY_POLICY)
     assert _refused_beside(again, sync_land.DOWNLOAD)["detail"]["unnamed"] == ["Artist - 101.wav"]
 
 
@@ -365,23 +343,19 @@ def test_once_the_passes_landing_is_proven_its_record_reads_nothing_as_its_own(
 ):
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
     name = _summary(first)["land_name"]
     (Path(cfg.library.root) / f"{name}{land_cli.INTAKE_SUFFIX}").write_text("<xml/>")
 
-    code, again = drive(["sync", "land", "--pass-run", run_id])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), again
+    again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.REFUSED_BY_POLICY)
     assert _refused_beside(again, sync_land.DOWNLOAD)["detail"]["unnamed"] == ["Artist - 101.wav"]
 
 
 def test_the_record_is_kept_under_the_pass_at_each_tail_stop(machine, monkeypatch, renaming):
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     record = staged_reading.pass_record(cfg, _summary(first)["land_name"])
     kept = staged_reading.kept(record)
     assert {name for name, _size, _mtime in kept} == {"Artist - 101.wav"}
@@ -398,9 +372,7 @@ def test_a_record_that_cannot_be_kept_is_a_warning_and_the_next_run_refuses(
         raise OSError("read-only file system")
 
     monkeypatch.setattr(staged_reading, "keep", unwritable)
-    code, first = _pass(monkeypatch, "101")
-
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     (warning,) = [one for one in first["warnings"] if one["code"] == sync_land.UNRECORDED_WARNING]
     assert "read-only file system" in warning["message"]
     monkeypatch.setattr(staged_reading, "keep", real_keep)
@@ -452,8 +424,7 @@ def test_an_unreadable_library_root_refuses_over_the_passes_renamed_tracks(
 ):
     cfg, script = machine
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
 
     def unreadable(_cfg, name):
@@ -482,14 +453,11 @@ def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
 ):
     cfg, script = full
     _landable(script)
-    code, first = _pass(monkeypatch, "101")
-    assert code == int(ExitCode.PENDING_HUMAN), first
+    first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     first_run = _summary(first)["pass_run"]
     one_release_answered(monkeypatch, script)
 
-    code, envelope = drive(["label", "sync", "--go"])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["label", "sync", "--go"]), ExitCode.REFUSED_BY_POLICY)
     cause = envelope["cause"]
     (waiting,) = cause["detail"]["waiting"]
     assert waiting["pass_run"] == first_run and waiting["run"] is None
@@ -537,9 +505,7 @@ def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
     stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
 
-    code, envelope = _pass(monkeypatch, "101")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == [stand_in.arrived]
     assert (cause["detail"]["before"], cause["detail"]["after"]) == (1, 2)
@@ -570,9 +536,7 @@ def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(
     stand_in = ArrivingTail(put_there)
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
 
-    code, envelope = _pass(monkeypatch, "101")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == []
     assert (cause["detail"]["before"], cause["detail"]["after"]) == (1, 2)
@@ -662,9 +626,7 @@ def test_a_download_finished_as_the_landing_is_planned_refuses_the_planned_landi
     stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
 
-    code, envelope = _pass(monkeypatch, "101")
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == [stand_in.arrived]
     assert cause["detail"]["planned_run"] == "land-run"

@@ -30,6 +30,7 @@ import pytest
 from cratekit.cli import registry, schedule, sync_night
 from cratekit.core import binaries, config
 from cratekit.core.exit_codes import ExitCode
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 
 SOURCE = Path(schedule.__file__)
@@ -253,7 +254,7 @@ def test_the_seam_answers_a_launchctl_it_cannot_run_or_that_hangs(tmp_path, monk
     sleeper = tmp_path / "sleeper"
     sleeper.write_text("#!/bin/sh\nsleep 5\n")
     sleeper.chmod(0o755)
-    copy.LAUNCHCTL, copy.LAUNCHCTL_TIMEOUT = str(sleeper), 1
+    copy.LAUNCHCTL, copy.LAUNCHCTL_TIMEOUT = str(sleeper), 0.1
     answer = copy.launchctl("print", SERVICE)
     assert answer.code == -1 and "could not be run" in answer.words
 
@@ -326,9 +327,7 @@ def test_a_crate_that_cannot_run_is_refused_and_nothing_is_written(
         found = crate
     monkeypatch.setattr(schedule, "crate_path", lambda: found)
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-crate-unresolved"
     assert not agents.exists() or not any(agents.iterdir())
     assert "bootstrap" not in mac.verbs()
@@ -386,9 +385,7 @@ def test_at_sets_the_time(mac, agents, text, at):
     "text", ["24:00", "12:60", "3:7", "noon", "0300", "-1:30", "03:15:00", "", "003:15"]
 )
 def test_a_time_that_is_not_hh_mm_is_a_usage_error_and_writes_nothing(mac, agents, text):
-    code, _envelope = drive(["schedule", "install", "--at", text])
-
-    assert code == int(ExitCode.USAGE)
+    exited(drive(["schedule", "install", "--at", text]), ExitCode.USAGE)
     assert not agents.exists()
     assert mac.calls == []
 
@@ -485,9 +482,7 @@ def test_a_relative_override_is_carried_absolute(mac, agents, monkeypatch, tmp_p
 def test_a_bootstrap_that_fails_is_refused_in_its_words_and_leaves_nothing(mac, agents):
     mac.fail["bootstrap"] = schedule.Answer(5, "Bootstrap failed: 5: Input/output error")
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     cause = envelope["cause"]
     assert cause["reason"] == "schedule-launchctl-failed"
     assert "Bootstrap failed: 5: Input/output error" in cause["message"]
@@ -507,9 +502,7 @@ def test_a_bootstrap_launchd_does_not_then_hold_is_refused_and_leaves_nothing(
 
     monkeypatch.setattr(schedule, "launchctl", forgetful)
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-launchctl-failed"
     assert not (agents / schedule.PLIST_NAME).exists()
 
@@ -518,9 +511,7 @@ def test_a_failed_replace_says_the_earlier_schedule_is_gone_too(mac, agents):
     drive(["schedule", "install"])
     mac.fail["bootstrap"] = schedule.Answer(5, "Bootstrap failed: 5: Input/output error")
 
-    code, envelope = drive(["schedule", "install", "--at", "01:00"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert "installed before it was removed too" in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["replaced"] is True
     assert not (agents / schedule.PLIST_NAME).exists()
@@ -532,9 +523,7 @@ def test_an_agent_launchd_will_not_let_go_of_is_not_replaced(mac, agents):
     before = (agents / schedule.PLIST_NAME).read_bytes()
     mac.stuck = True
 
-    code, envelope = drive(["schedule", "install", "--at", "01:00"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-launchctl-failed"
     assert (agents / schedule.PLIST_NAME).read_bytes() == before
     assert mac.verbs().count("bootstrap") == 1
@@ -752,9 +741,7 @@ def test_a_remove_launchd_does_not_confirm_keeps_the_plist(mac, agents, how):
     else:
         mac.fail["print"] = schedule.Answer(1, "launchctl: no such domain")
 
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "remove"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-launchctl-failed"
     assert (agents / schedule.PLIST_NAME).exists(), "the plist went while launchd may still hold it"
 
@@ -769,9 +756,7 @@ def test_a_remove_launchd_does_not_confirm_keeps_the_plist(mac, agents, how):
 def test_any_platform_but_macos_refuses_naming_it(mac, agents, monkeypatch, verb, running):
     monkeypatch.setattr(schedule, "platform", lambda: running)
 
-    code, envelope = drive(["schedule", verb])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", verb]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-platform-unsupported"
     assert running in envelope["cause"]["message"]
     assert mac.calls == []
@@ -800,9 +785,7 @@ def test_root_is_refused_and_launchd_is_never_asked(mac, agents, monkeypatch, ve
     """Finding 5: ``gui/0`` is nobody's login."""
     monkeypatch.setattr(schedule, "uid", lambda: 0)
 
-    code, envelope = drive(["schedule", verb])
-
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    envelope = exited(drive(["schedule", verb]), ExitCode.REFUSED_BY_POLICY)
     assert "never as root" in envelope["cause"]["message"]
     assert mac.calls == []
     assert not agents.exists()
@@ -847,9 +830,7 @@ def test_a_replace_whose_write_fails_says_the_earlier_schedule_is_off(mac, agent
 
     monkeypatch.setattr(config, "atomic_write_bytes", refused)
 
-    code, envelope = drive(["schedule", "install", "--at", "01:00"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-agent-unwritten"
     assert "booted out and its plist kept" in envelope["cause"]["message"]
     assert (agents / schedule.PLIST_NAME).read_bytes() == before
@@ -869,9 +850,7 @@ def test_a_failed_load_launchd_may_still_hold_keeps_its_plist(mac, agents, monke
 
     monkeypatch.setattr(schedule, "launchctl", half)
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert "launchd may still hold it, so its plist is kept" in envelope["cause"]["message"]
     assert (agents / schedule.PLIST_NAME).exists()
     assert schedule.LABEL in mac.loaded
@@ -882,9 +861,7 @@ def test_a_bootout_launchd_ignores_is_said_in_words_a_person_reads(mac):
     drive(["schedule", "install"])
     mac.stuck = True
 
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = exited(drive(["schedule", "remove"]), ExitCode.PRECONDITION)
     message = envelope["cause"]["message"]
     assert "launchd still holds the agent after launchctl answered its bootout" in message
     assert "answered 0" not in message and "state =" not in message

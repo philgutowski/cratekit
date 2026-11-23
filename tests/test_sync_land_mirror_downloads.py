@@ -17,6 +17,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.organize import mirror_downloads
+from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
 from tests.test_sync_all import _playlist, _tracks, bind_playlists
@@ -80,9 +81,7 @@ def test_a_pass_takes_the_open_mirror_download_and_lands_its_track(machine, monk
     queued = _mirror_job(monkeypatch, cfg, "301")
     _account(monkeypatch, script, "101")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     summary = _summary(envelope)
     taken = _job(queued.job_id)
     assert taken.payload["run_id"] == summary["pass_run"]
@@ -103,9 +102,7 @@ def test_a_track_the_mirror_job_and_another_playlist_both_list_lands_once(
     queued = _mirror_job(monkeypatch, cfg, "101")
     _account(monkeypatch, script, "101", "102")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert _job(queued.job_id).payload["run_id"] == _summary(envelope)["pass_run"]
     staged = sorted(p.name for p in cfg.paths.download_staging.expanduser().iterdir() if p.is_file())
     assert staged == ["101.wav", "102.wav"]
@@ -121,9 +118,7 @@ def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(
     queued = _mirror_job(monkeypatch, cfg, "301")
     bind_playlists(monkeypatch)
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     summary = _summary(envelope)
     assert summary["pass_run"] and _job(queued.job_id).payload["run_id"] == summary["pass_run"]
     assert _job(queued.job_id).state is jobs.JobState.SUCCEEDED
@@ -138,8 +133,7 @@ def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(
 def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeypatch, tail):
     cfg, script = machine
     _account(monkeypatch, script, "101")
-    code, earlier = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), earlier
+    earlier = exited(drive(["sync", "all"]))
     queued = _mirror_job(monkeypatch, cfg, "301")
     _account(monkeypatch, script, "101")
 
@@ -161,8 +155,7 @@ def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
     """
     cfg, script = machine
     _account(monkeypatch, script, "101")
-    code, earlier = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), earlier
+    earlier = exited(drive(["sync", "all"]))
     queued = _mirror_job(monkeypatch, cfg, "301")
     _account(monkeypatch, script, "101")
 
@@ -184,8 +177,7 @@ def test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken(
     with jobs.open_store() as store:
         jobs.cancel(store, cancelled.job_id)
     _account(monkeypatch, script, "101")
-    code, by_hand = drive(["intake", "playlist", "pl-a"])
-    assert code == int(ExitCode.OK), by_hand
+    by_hand = exited(drive(["intake", "playlist", "pl-a"]))
     script.landings["201"] = Landing()
     bind_playlists(
         monkeypatch,
@@ -257,9 +249,7 @@ def test_a_mirror_download_another_library_queued_is_not_taken(machine, monkeypa
     assert queued.library_id != cfg.library.volume_id
     _account(monkeypatch, script, "101")
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert "run_id" not in _job(queued.job_id).payload
     assert "mirror_downloads_taken" not in _summary(envelope)
 

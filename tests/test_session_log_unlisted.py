@@ -23,6 +23,7 @@ from cratekit.core import session, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
 from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -286,8 +287,7 @@ def test_restore_list_and_run_refuse_a_log_they_cannot_list(cfg, monkeypatch):
     """List exited 0 with no item and no warning over a recorded session, and
     run said no session was recorded under an id that was."""
     record, _captured = completed_session(cfg)
-    code, listing = drive(["restore", "list"])
-    assert code == int(ExitCode.OK), listing
+    listing = exited(drive(["restore", "list"]))
     assert [row["session_id"] for row in listing["data"]["items"]] == [record.session_id]
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
     code, refused = drive(["restore", "list"])

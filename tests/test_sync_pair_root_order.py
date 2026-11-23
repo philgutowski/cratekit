@@ -17,6 +17,7 @@ from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -38,14 +39,12 @@ def _at_the_root(world, monkeypatch, *tracks: str):
     """A hand pair at the rekordbox root whose account order is not kept, synced once."""
     w = world(account=tracks, rekordbox=tracks)
     _kept(monkeypatch, w, every=False)
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     return w
 
 
 def _again(w):
-    code, envelope = sync([*VERB, ACCOUNT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync([*VERB, ACCOUNT]))
     return envelope
 
 
@@ -150,8 +149,7 @@ def _paired(world, monkeypatch, *, account, rekordbox, every: bool = False):
 
 def _line(w) -> str:
     """The pair's gate line on its first sync, read before anything is answered."""
-    code, envelope = drive(w.args())
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    envelope = exited(drive(w.args()), ExitCode.DECISION_REQUIRED)
     return envelope["cause"]["detail"]["shown"][f"pair {ACCOUNT}"]
 
 
@@ -162,8 +160,7 @@ def test_a_hand_pairs_first_sync_outside_gig_ready_keeps_rekordbox_s_order(world
     assert "first sync, additions only" in line, line
     assert "order follows rekordbox's" in line, line
     assert "order follows the account's" not in line, line
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["3", "1", "2"], "the first sync put rekordbox in Tidal's order"
     assert w.on_account() == ["t1", "t2", "t3"], "the account order was written outside GIG READY"
     envelope = _again(w)
@@ -177,8 +174,7 @@ def test_a_track_only_tidal_holds_lands_after_its_neighbour_in_rekordbox_s_order
 ):
     """Track 4 follows 3 on Tidal, so it lands after 3 and the rest keep rekordbox's order."""
     w = _paired(world, monkeypatch, account=("1", "2", "3", "4"), rekordbox=("3", "1", "2"))
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["3", "4", "1", "2"]
     assert w.on_account() == ["t1", "t2", "t3", "t4"]
     envelope = _again(w)
@@ -190,8 +186,7 @@ def test_a_track_only_rekordbox_holds_is_appended_to_the_account_and_nothing_els
     world, monkeypatch
 ):
     w = _paired(world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "5", "1", "2"))
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["3", "5", "1", "2"]
     assert w.on_account() == ["t1", "t2", "t3", "t5"]
     envelope = _again(w)
@@ -207,8 +202,7 @@ def test_a_hand_pairs_first_sync_with_every_pairs_order_kept_follows_tidal(world
     )
     line = _line(w)
     assert "order follows the account's" in line, line
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["1", "2", "3"]
     assert w.on_account() == ["t1", "t2", "t3"]
 
@@ -218,8 +212,7 @@ def test_an_empty_rekordbox_playlist_paired_by_hand_is_planned_as_before(world, 
     w = _paired(world, monkeypatch, account=("3", "1", "2"), rekordbox=())
     line = _line(w)
     assert "order follows the account's" in line, line
-    code, envelope = sync(w.args())
-    assert code == int(ExitCode.OK), envelope
+    exited(sync(w.args()))
     assert w.held() == ["3", "1", "2"]
     assert w.on_account() == ["t3", "t1", "t2"]
 
