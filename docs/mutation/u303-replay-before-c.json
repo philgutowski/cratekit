@@ -5,10 +5,10 @@
   "head": "fd8173d3",
   "when": "2026-11-22 22:09 UTC",
   "valid": true,
-  "invalid_reason": "in progress",
+  "invalid_reason": "",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 178,
+  "pytest_runs": 205,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -5521,6 +5521,915 @@
       "source": {
         "table": "u183.json",
         "id": "M14_retryable_intake_continues"
+      }
+    },
+    {
+      "id": "u183.M15_continue_command_words",
+      "description": "_continue_command: drop the flag, so every printed continuation starts a new pass",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac0cd146c8763c8c",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back",
+        "tests/test_sync_land.py::test_a_failed_tail_step_plans_no_landing_and_names_the_continuation",
+        "tests/test_sync_land.py::test_a_gate_any_earlier_step_stops_at_is_the_steps_own_not_the_passes",
+        "tests/test_sync_land.py::test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on",
+        "tests/test_sync_land.py::test_an_intake_job_that_ended_retryable_ends_its_way_on_with_the_continuation",
+        "tests/test_sync_land.py::test_an_unknown_id_refuses_before_any_step_and_names_the_recent_passes",
+        "tests/test_sync_land.py::test_the_continue_command_a_failed_step_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_the_continue_command_a_pending_stop_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_two_earlier_passes_holding_open_jobs_are_a_choice_named_not_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return f\"crate sync land --pass-run {pass_run}\"",
+      "new": "    return f\"crate sync land {pass_run}\"",
+      "source": {
+        "table": "u183.json",
+        "id": "M15_continue_command_words"
+      }
+    },
+    {
+      "id": "u183.M1_pass_run_as_given",
+      "description": "_resolve: never take the given id as a pass run, so a pass id is looked up as a land record and refused",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a4046bbe9ee10002",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 16,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_cancelled_download_over_the_same_list_is_not_reused",
+        "tests/test_sync_land.py::test_a_continued_pass_drives_the_download_it_queued_and_queues_no_second",
+        "tests/test_sync_land.py::test_a_continued_pass_is_told_the_answer_that_continues_it",
+        "tests/test_sync_land.py::test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest",
+        "tests/test_sync_land.py::test_a_continued_pass_over_an_open_intake_job_drives_it_first",
+        "tests/test_sync_land.py::test_a_continued_pass_retries_a_download_that_failed_transiently",
+        "tests/test_sync_land.py::test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_resume",
+        "tests/test_sync_land.py::test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal",
+        "tests/test_sync_land.py::test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id",
+        "tests/test_sync_land.py::test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row",
+        "tests/test_sync_land.py::test_an_intake_job_that_ended_failed_names_its_retry_not_a_continuation",
+        "tests/test_sync_land.py::test_an_intake_job_that_ended_retryable_ends_its_way_on_with_the_continuation",
+        "tests/test_sync_land.py::test_the_continue_command_a_failed_step_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_the_continue_command_a_pending_stop_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_the_left_open_row_names_each_playlist_its_age_size_and_copies",
+        "tests/test_sync_land.py::test_the_newest_download_over_the_list_is_the_one_the_pass_reads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _pass_jobs(store, given, cfg):\n            return given",
+      "new": "        if False:\n            return given",
+      "source": {
+        "table": "u183.json",
+        "id": "M1_pass_run_as_given"
+      }
+    },
+    {
+      "id": "u183.M2_land_record_resolves",
+      "description": "_resolve: ignore the land run's recorded pass, so the land run's own id is refused as it was before U183",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f7d3dbcd91773f90",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back",
+        "tests/test_sync_land.py::test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id",
+        "tests/test_sync_land.py::test_a_run_interrupted_after_sync_all_continues_by_its_own_id"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    recorded = land.related_runs.get(PASS_ROLE) if land is not None else None\n    if recorded:",
+      "new": "    recorded = land.related_runs.get(PASS_ROLE) if land is not None else None\n    if False:",
+      "source": {
+        "table": "u183.json",
+        "id": "M2_land_record_resolves"
+      }
+    },
+    {
+      "id": "u183.M3_recorded_pass_needs_a_job",
+      "description": "_resolve: take a land run's recorded pass with no intake job of this library, so the pass fails at the fourth step again",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c67a5a812b04f3f1",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if _pass_jobs(store, recorded, cfg):\n                report.check(",
+      "new": "            if True:\n                report.check(",
+      "source": {
+        "table": "u183.json",
+        "id": "M3_recorded_pass_needs_a_job"
+      }
+    },
+    {
+      "id": "u183.M6_unreadable_record",
+      "description": "_land_record: let a record that cannot be read raise out of the resolver",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c15231d8fd643244",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (CratekitError, AttributeError, KeyError, TypeError, ValueError, OSError):\n        return None\n    return state if",
+      "new": "    except KeyError:\n        return None\n    return state if",
+      "source": {
+        "table": "u183.json",
+        "id": "M6_unreadable_record"
+      }
+    },
+    {
+      "id": "u183.M7_remember_saves",
+      "description": "_remember: record the pass on the run without saving, so a run that stops before the dispatcher saves keeps nothing",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b2db26d0fe74edb",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_run_interrupted_after_sync_all_continues_by_its_own_id"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    ctx.run.related_runs[PASS_ROLE] = pass_run\n    gates.save(ctx.run)",
+      "new": "    ctx.run.related_runs[PASS_ROLE] = pass_run",
+      "source": {
+        "table": "u183.json",
+        "id": "M7_remember_saves"
+      }
+    },
+    {
+      "id": "u183.M8_remember_called",
+      "description": "sync_land: never record the pass on the land run",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e8c58fd0ee6bf4dc",
+      "subset": [
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back",
+        "tests/test_sync_land.py::test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id",
+        "tests/test_sync_land.py::test_a_refused_id_names_the_land_run_recorded_beside_each_pass",
+        "tests/test_sync_land.py::test_a_run_interrupted_after_sync_all_continues_by_its_own_id",
+        "tests/test_sync_land.py::test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if run_id:\n            _remember(ctx, report, run_id)",
+      "new": "        if False:\n            _remember(ctx, report, run_id)",
+      "source": {
+        "table": "u183.json",
+        "id": "M8_remember_called"
+      }
+    },
+    {
+      "id": "u212.S1_missing_ends",
+      "description": "sync_land._missing: nothing listed ends the pass whatever is staged",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e5ed9370b160670f",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_inbox_analyzed.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 334,
+      "baseline_collected": 334,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if (envelope.get(\"outcome\") == str(Outcome.NO_OP) or not listed) and not staged:",
+      "new": "    if envelope.get(\"outcome\") == str(Outcome.NO_OP) or not listed:",
+      "source": {
+        "table": "u212.json",
+        "id": "S1_missing_ends"
+      }
+    },
+    {
+      "id": "u212.S2_download_refused_all",
+      "description": "sync_land._download: a download that landed nothing ends the pass whatever is staged, round one's F1",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8db326df5fb3fc9d",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_inbox_analyzed.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if not listed.staged:\n            raise _Done(DOWNLOAD)\n        return 0\n    report.check(",
+      "new": "        raise _Done(DOWNLOAD)\n    report.check(",
+      "source": {
+        "table": "u212.json",
+        "id": "S2_download_refused_all"
+      }
+    },
+    {
+      "id": "u212.S3_no_list_download",
+      "description": "sync_land._download: no early return for a pass with no list, so it asks the download verb for a list that is not there",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c8d168fb24d0798",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_inbox_analyzed.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if listed.path is None:\n        report.check(DOWNLOAD, \"info\", \"nothing downloaded: every missing track is staged already\")\n        return 0",
+      "new": "",
+      "source": {
+        "table": "u212.json",
+        "id": "S3_no_list_download"
+      }
+    },
+    {
+      "id": "u212.S4_staged_said",
+      "description": "sync_land._missing: the missing row drops the staged clause, so the pass does not say how many it skipped",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fdaf6ff5fcfdd72d",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_inbox_analyzed.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 334,
+      "baseline_collected": 334,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stage_and_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        + (f\"; {staged} more {held}\" if staged else \"\"),",
+      "new": "        + \"\",",
+      "source": {
+        "table": "u212.json",
+        "id": "S4_staged_said"
+      }
+    },
+    {
+      "id": "u227.R15_way_on_wording",
+      "description": "_way_on: name a mirror download as queued by hand, to be driven outside a pass (round one's S12)",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b45770abd9882a15",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_mirror_downloads.py::test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:",
+      "new": "    elif False:",
+      "source": {
+        "table": "u227.json",
+        "id": "R15_way_on_wording"
+      }
+    },
+    {
+      "id": "u227.R19_take_library",
+      "description": "_take_mirror_downloads: take another library's mirror job",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cfea41be132af3d7",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_mirror_downloads.py::test_a_mirror_download_another_library_queued_is_not_taken"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                or job.library_id != cfg.library.volume_id\n",
+      "new": "",
+      "source": {
+        "table": "u227.json",
+        "id": "R19_take_library"
+      }
+    },
+    {
+      "id": "u227.R20_take_source",
+      "description": "_mirror_download: any intake.playlist job is a mirror download, a hand queued one included",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1683e78cf0a3770",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_an_intake_job_queued_by_hand_with_no_pass_is_named_not_passed_over",
+        "tests/test_sync_land_mirror_downloads.py::test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and (job.payload or {}).get(\"source_id\") == mirror_downloads.SOURCE_ID\n",
+      "new": "",
+      "source": {
+        "table": "u227.json",
+        "id": "R20_take_source"
+      }
+    },
+    {
+      "id": "u227.R21_take_continued",
+      "description": "sync_land: take mirror jobs into a continued earlier pass",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9311d8942db1096a",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_mirror_downloads.py::test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if fresh and run_id in (None, fresh) and _take_mirror_downloads(report, cfg, fresh):",
+      "new": "            if fresh and _take_mirror_downloads(report, cfg, run_id or fresh):",
+      "source": {
+        "table": "u227.json",
+        "id": "R21_take_continued"
+      }
+    },
+    {
+      "id": "u227.R22_take_not_driven",
+      "description": "sync_land: give the jobs the run but keep driving the pass sync all named nothing for",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "284185909431bfb7",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_mirror_downloads.py::test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                run_id = fresh\n                report.summary[\"pass_run\"] = fresh",
+      "new": "                pass",
+      "source": {
+        "table": "u227.json",
+        "id": "R22_take_not_driven"
+      }
+    },
+    {
+      "id": "u227.R25_way_on_state",
+      "description": "_way_on: name a blocked mirror download as the next pass's, which takes queued jobs only (round two's R3)",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9c5449aa61c4a4a5",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_mirror_downloads.py",
+        "tests/test_sync_land_staged.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_mirror_downloads.py::test_a_mirror_download_a_pass_cannot_take_keeps_the_command_that_settles_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:",
+      "new": "    elif _mirror_download(job):",
+      "source": {
+        "table": "u227.json",
+        "id": "R25_way_on_state"
+      }
+    },
+    {
+      "id": "u293.S3_sync_land_holds",
+      "description": "sync_land: a pass by hand takes no staging lock",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a388ab06604f00d",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_beside.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 144,
+      "baseline_collected": 144,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_pass_by_hand_refuses_while_the_night_holds_the_lock"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with staging_lock.held(\"crate sync land\", run_id=ctx.run.run_id):",
+      "new": "    if True:",
+      "source": {
+        "table": "u293.json",
+        "id": "S3_sync_land_holds"
+      }
+    },
+    {
+      "id": "u293.N1_no_answer",
+      "description": "_no_answer: an answer or a raised line given to the night is taken",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "17849a8562672cb2",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything[argv0]",
+        "tests/test_sync_night.py::test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything[argv1]",
+        "tests/test_sync_night.py::test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything[argv2]",
+        "tests/test_sync_night.py::test_an_answer_or_a_raised_line_given_to_the_night_refuses_before_anything[argv3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if given:",
+      "new": "    if False:",
+      "source": {
+        "table": "u293.json",
+        "id": "N1_no_answer"
+      }
+    },
+    {
+      "id": "u293.N2_rekordbox_refused",
+      "description": "sync_night: the night runs beside rekordbox or its agent",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db01b01c10f7ae17",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_refused_night_writes_its_record_even_when_its_line_cannot_be_kept",
+        "tests/test_sync_night.py::test_rekordbox_or_its_agent_up_refuses_before_any_call[running0]",
+        "tests/test_sync_night.py::test_rekordbox_or_its_agent_up_refuses_before_any_call[running1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            rb_writer.assert_rekordbox_closed(\"crate sync night\")",
+      "new": "            pass",
+      "source": {
+        "table": "u293.json",
+        "id": "N2_rekordbox_refused"
+      }
+    },
+    {
+      "id": "u293.N3_live_job_refused",
+      "description": "sync_night: the night runs beside a job with a live driver",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "defaa59424428902",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_job_with_a_live_driver_refuses_before_any_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _no_live_job()\n            pass_run",
+      "new": "            pass_run",
+      "source": {
+        "table": "u293.json",
+        "id": "N3_live_job_refused"
+      }
+    },
+    {
+      "id": "u293.N4_occupied_refused",
+      "description": "sync_night: a new pass runs beside what the staging folder holds",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a5c987730e81f32f",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_landed_pass_reads_settled_everywhere_whatever_is_staged_since",
+        "tests/test_sync_night.py::test_a_refused_firing_keeps_the_pass_waiting_at_its_gate",
+        "tests/test_sync_night.py::test_a_staging_folder_holding_what_a_landing_takes_refuses_a_new_pass",
+        "tests/test_sync_night.py::test_an_answered_gate_over_tracks_still_staged_stays_owed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                _nothing_waits(cfg, last)",
+      "new": "                pass",
+      "source": {
+        "table": "u293.json",
+        "id": "N4_occupied_refused"
+      }
+    },
+    {
+      "id": "u293.N5_owed_kept",
+      "description": "_refused: a refusal writes a fresh record over a pass still owed",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "127471a9c4773451",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_refused_firing_keeps_the_pass_the_next_night_continues",
+        "tests/test_sync_night.py::test_a_refused_firing_keeps_the_pass_waiting_at_its_gate",
+        "tests/test_sync_night.py::test_an_answered_gate_over_tracks_still_staged_stays_owed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _owed(last) and last is not None:",
+      "new": "    if False:",
+      "source": {
+        "table": "u293.json",
+        "id": "N5_owed_kept"
+      }
+    },
+    {
+      "id": "u293.N6_settled_by_landing",
+      "description": "settle: the pass's own landing never ends a wait, so a landed pass reads as waiting",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e042a02f5912974",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_landed_pass_reads_settled_everywhere_whatever_is_staged_since"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _landed(cfg, record.get(\"land_name\")):",
+      "new": "    if False:",
+      "source": {
+        "table": "u293.json",
+        "id": "N6_settled_by_landing"
+      }
+    },
+    {
+      "id": "u293.N7_unread_landing_is_not_settled",
+      "description": "_landed: a landing log that cannot be read is read as landed, so a waiting pass reads settled",
+      "file": "src/cratekit/cli/sync_night.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4d10a7b18c1ee0ea",
+      "subset": [
+        "tests/test_sync_night.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1068,
+      "baseline_collected": 1068,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_night.py::test_a_landing_that_cannot_be_read_settles_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (CratekitError, OSError):\n        return None",
+      "new": "    except (CratekitError, OSError):\n        return True",
+      "source": {
+        "table": "u293.json",
+        "id": "N7_unread_landing_is_not_settled"
       }
     }
   ],
