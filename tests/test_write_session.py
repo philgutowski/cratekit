@@ -269,10 +269,15 @@ def _rule(target, volume_id=None) -> locations.PrefixRule:
     return locations.PrefixRule(_RECORDED_ELSEWHERE, str(target), volume_id)
 
 
+def _mounted(monkeypatch, cfg, path: Path, identity) -> Path:
+    """``path``, made and standing in as the mount of a disk reporting ``identity``."""
+    path.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {path: identity}, otherwise=cfg.library.volume_id)
+    return path
+
+
 def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
 
     proved = _mapped(cfg, [_rule(archive, _ARCHIVE)])
 
@@ -284,9 +289,7 @@ def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
     cfg, tmp_path, monkeypatch
 ):
     """R-44 Open 1: a decoy at the second rule refuses with its index."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: "BBBB-a-decoy"}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", "BBBB-a-decoy")
     rules = [
         locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
         _rule(archive, _ARCHIVE),
@@ -346,9 +349,7 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 ):
     """With nothing recorded, the refusal names the rule's config key and the
     identity the disk shows now, so the fix is one edit."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
 
     cause = _refusal(_mapped, cfg, [_rule(archive)])
 
@@ -361,9 +362,7 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 
 def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypatch):
     """Inside the root, the library's identity is asserted, not passed."""
-    nested = Path(cfg.library.root) / "Archive"
-    nested.mkdir()
-    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+    nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
 
     cause = _refusal(_mapped, cfg, [_rule(nested)])
 
@@ -373,9 +372,7 @@ def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypa
 
 def test_a_rule_target_whose_identity_cannot_be_read_refuses(cfg, tmp_path, monkeypatch):
     """Destructive strength. "I could not look" is not "it is the right disk"."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: None}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", None)
 
     cause = _refusal(_mapped, cfg, [_rule(archive, _ARCHIVE)])
 
@@ -386,9 +383,7 @@ def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_fol
     cfg, tmp_path, monkeypatch
 ):
     """The one non-OK pass, and the reason is that the identity question was answered."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
     rule = _rule(archive / "never-made", _ARCHIVE)
 
     proved = _mapped(cfg, [rule])
@@ -435,9 +430,7 @@ def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_r
 ):
     """Inside the root the identity compared was the library's, and the wording
     says so and offers no ``volume_id`` to record."""
-    nested = Path(cfg.library.root) / "Archive"
-    nested.mkdir()
-    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+    nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
 
     cause = _refusal(_mapped, cfg, [_rule(nested)])
 

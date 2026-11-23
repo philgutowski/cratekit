@@ -149,6 +149,11 @@ def _snapshot_dir(root: Path, name: str, order: int, *, real: bool = True) -> Pa
     return directory
 
 
+def _eight_snapshots(root: Path) -> Path:
+    """Eight snapshots, oldest first, returning the oldest, the one pruning reaches first."""
+    return [_snapshot_dir(root, f"run{index}", index) for index in range(8)][0]
+
+
 def test_prunes_to_newest_five_and_spares_non_snapshots(tmp_path):
     """Retention itself, with the provider passed as None so the test stays hermetic."""
     snapshots = [_snapshot_dir(tmp_path, f"run{index}", index) for index in range(8)]
@@ -172,9 +177,7 @@ def test_never_prunes_below_one_and_a_missing_root_is_a_no_op(tmp_path):
 
 
 def test_a_snapshot_a_non_terminal_run_references_survives_pruning(tmp_path):
-    doomed = _snapshot_dir(tmp_path, "run0", 0)
-    for index in range(1, 8):
-        _snapshot_dir(tmp_path, f"run{index}", index)
+    doomed = _eight_snapshots(tmp_path)
 
     held = {(doomed / "master.db").resolve()}
     pruned = W.prune_snapshots(tmp_path, keep=5, protected_provider=lambda: held)
@@ -185,9 +188,7 @@ def test_a_snapshot_a_non_terminal_run_references_survives_pruning(tmp_path):
 
 def test_the_same_snapshot_is_released_once_its_run_reaches_a_terminal_state(tmp_path):
     """The other half. Protection that never releases is a store that never shrinks."""
-    doomed = _snapshot_dir(tmp_path, "run0", 0)
-    for index in range(1, 8):
-        _snapshot_dir(tmp_path, f"run{index}", index)
+    doomed = _eight_snapshots(tmp_path)
 
     vocabulary = W.RunStateVocabulary()
     open_run = {vocabulary.state_key: "running", vocabulary.snapshot_key: str(doomed / "master.db")}
@@ -213,9 +214,7 @@ def test_every_declared_terminal_state_releases_its_snapshot(terminal):
 
 def test_protection_matches_the_directory_as_well_as_the_database_inside_it(tmp_path):
     """Both, because a session log records the file and a person names the directory."""
-    doomed = _snapshot_dir(tmp_path, "run0", 0)
-    for index in range(1, 8):
-        _snapshot_dir(tmp_path, f"run{index}", index)
+    doomed = _eight_snapshots(tmp_path)
 
     by_directory = {doomed.resolve()}
     assert W.prune_snapshots(tmp_path, keep=5, protected_provider=lambda: by_directory) != []
@@ -224,8 +223,7 @@ def test_protection_matches_the_directory_as_well_as_the_database_inside_it(tmp_
 
 def test_a_failing_protection_provider_deletes_nothing(tmp_path):
     """Fail safe. A transient error elsewhere must not cost a recovery point."""
-    for index in range(8):
-        _snapshot_dir(tmp_path, f"run{index}", index)
+    _eight_snapshots(tmp_path)
 
     def broken():
         raise RuntimeError("the run-state store is unreadable right now")
@@ -254,14 +252,17 @@ def configured(tmp_path, monkeypatch):
     return config.from_dict(valid_data(library))
 
 
+def _running_record(path: Path, snapshot: str) -> None:
+    """A run-state record of a running session that references ``snapshot``."""
+    vocabulary = W.RunStateVocabulary()
+    path.write_text(json.dumps({vocabulary.state_key: "running", vocabulary.snapshot_key: snapshot}))
+
+
 def test_the_default_provider_reads_the_directory_the_state_inventory_declares(configured):
     """Resolved through the inventory's own path builder, never a glob that can match nothing."""
     run_state_dir = config.state_path("session_log", configured)
     run_state_dir.mkdir(parents=True)
-    vocabulary = W.RunStateVocabulary()
-    (run_state_dir / "20260801_120000.json").write_text(
-        json.dumps({vocabulary.state_key: "running", vocabulary.snapshot_key: "/snaps/a/master.db"})
-    )
+    _running_record(run_state_dir / "20260801_120000.json", "/snaps/a/master.db")
 
     assert W.default_protected_snapshot_paths(configured) == {Path("/snaps/a/master.db").resolve()}
 
@@ -270,11 +271,7 @@ def test_the_scan_is_bounded_to_the_run_state_directory(configured):
     """One directory, one level, never the whole state tree."""
     run_state_dir = config.state_path("session_log", configured)
     (run_state_dir / "nested").mkdir(parents=True)
-    vocabulary = W.RunStateVocabulary()
-    payload = json.dumps(
-        {vocabulary.state_key: "running", vocabulary.snapshot_key: "/snaps/b/master.db"}
-    )
-    (run_state_dir / "nested" / "run.json").write_text(payload)
+    _running_record(run_state_dir / "nested" / "run.json", "/snaps/b/master.db")
 
     assert W.default_protected_snapshot_paths(configured) == set()
 
@@ -285,10 +282,7 @@ def test_unreadable_and_malformed_records_are_skipped_not_fatal(configured):
     run_state_dir.mkdir(parents=True)
     (run_state_dir / "broken.json").write_text("{not json")
     (run_state_dir / "list.json").write_text("[]")
-    vocabulary = W.RunStateVocabulary()
-    (run_state_dir / "good.json").write_text(
-        json.dumps({vocabulary.state_key: "running", vocabulary.snapshot_key: "/snaps/c/master.db"})
-    )
+    _running_record(run_state_dir / "good.json", "/snaps/c/master.db")
 
     assert W.default_protected_snapshot_paths(configured) == {Path("/snaps/c/master.db").resolve()}
 
