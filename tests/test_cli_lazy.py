@@ -146,11 +146,12 @@ def test_every_help_screen_reads_the_same_as_the_eager_parsers(preset, monkeypat
     membership = profiles.resolve(preset)
     paths = _paths(membership)
     assert len(paths) > 40
+    # Each lazy parser is fresh; the eager one is plain argparse, which parsing leaves as built.
+    eager = cli.build_parser(membership=membership, eager=True)
     for path in paths:
         argv = [*path, "--help"]
         lazy = _said(cli.build_parser(membership=membership), argv)
-        eager = _said(cli.build_parser(membership=membership, eager=True), argv)
-        assert lazy == eager, f"crate {' '.join(argv)} reads differently"
+        assert lazy == _said(eager, argv), f"crate {' '.join(argv)} reads differently"
         assert lazy[0] == 0 and lazy[1].startswith("usage: crate")
 
 
