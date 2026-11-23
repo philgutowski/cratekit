@@ -170,6 +170,83 @@ def target_tags(
     return None
 
 
+#: Why an edit on a track filed into two genre folders is not taken (U340).
+SECOND_GENRE_EDIT = (
+    "it is filed into two genre folders by its genre and its second genre, and "
+    "{what}, so which of the two the account changed is not something the account says; "
+    "`crate tag second` sets or clears a second genre"
+)
+
+
+def left_folders(decision: Any) -> frozenset[str]:
+    """The genre folders an edit took a track's band places out of on the account.
+
+    Read off the edit's own record: its band places in the snapshot that the
+    account no longer holds, each named to its folder by the playlists the
+    edit read in full.
+    """
+    folder_of = {title: folder for folder, title, _held in decision.settle}
+    return frozenset(
+        folder_of[title] for title in set(decision.was) - set(decision.account) if title in folder_of
+    )
+
+
+def _second_genre_tags(
+    declared: Any, decision: Any, truth: Any, two: str
+) -> tuple[str | None, int | None, str | None] | str:
+    """The genre, energy and second genre an edit gives a track filed into two folders (U340).
+
+    Or why it is not taken. AN EDIT IN ONE FOLDER LEAVES THE OTHER: a band move
+    inside either folder changes the energy alone, which files the track in the
+    same band of both; a move out of one folder into a third replaces the genre
+    that named the folder it left and keeps the other. An edit that took the
+    track out of one folder and left it in the other, that left both, or that
+    left neither while adding a third, says nothing about which genre changed,
+    and is not taken.
+    """
+    from cratekit.core import routing
+    from cratekit.modules.outbound import mirror_edits as edits
+
+    assert decision.to is not None
+    one = routing.resolve_bucket(declared, truth.genre).bucket_id
+    to = declared.bucket_for_display(decision.to.folder)
+    left = {declared.bucket_for_display(folder) for folder in left_folders(decision)}
+    playlist = decision.to.playlist if decision.outcome == edits.MOVE else None
+    if to in (one, two):
+        other = two if to == one else one
+        if other in left:
+            return SECOND_GENRE_EDIT.format(
+                what=f"the account took it out of {declared.bucket(other).display} only"
+            )
+        if decision.outcome != edits.MOVE:
+            return SECOND_GENRE_EDIT.format(
+                what=f"the account put it in a playlist of {decision.to.folder}, which holds it"
+            )
+        word = truth.genre if to == one else truth.second_genre
+        target = target_tags(declared, decision.to.folder, playlist, word, truth.energy)
+        if target is None or target[0] != word:
+            return (
+                f"no energy files it into {decision.to.title} by the genre that names "
+                f"{decision.to.folder}, so nothing is written"
+            )
+        return truth.genre, target[1], truth.second_genre
+    if left not in ({one}, {two}):
+        return SECOND_GENRE_EDIT.format(
+            what=f"the account put it in {decision.to.title} without taking it out of "
+            f"exactly one of the two"
+        )
+    target = target_tags(declared, decision.to.folder, playlist, None, truth.energy)
+    if target is None:
+        return (
+            f"no genre and energy routing reads files it into {decision.to.title}, "
+            f"so nothing is written"
+        )
+    word, energy = target
+    if left == {one}:
+        return word, energy, truth.second_genre
+    return truth.genre, energy, word
+
+
 @dataclass(frozen=True, slots=True)
 class Change:
     """One track's edit as the library takes it."""
@@ -183,6 +260,10 @@ class Change:
     genre: str | None = None
     energy_was: int | None = None
     energy: int | None = None
+    #: The file's second genre before and after (U340), both None on a track
+    #: with one genre, which is written exactly as before.
+    second_was: str | None = None
+    second: str | None = None
     #: Tree memberships it leaves and joins, ``(playlist id, folder, playlist)``.
     leave: tuple[tuple[str, str, str], ...] = ()
     join: tuple[tuple[str, str, str], ...] = ()
@@ -203,6 +284,9 @@ class Change:
             self.content_id, self.track, self.outcome, self.path, self.genre, self.energy,
             [one[0] for one in self.leave], [one[0] for one in self.join],
             [self.month, self.month_id, self.colour],
+            # Only where a second genre is in play (U340), so a one genre
+            # change digests as before.
+            *([[self.second_was, self.second]] if self.second_was or self.second else []),
         ]
 
     def item(self) -> dict[str, Any]:
@@ -219,6 +303,8 @@ class Change:
         if self.tree == edits.GENRE:
             shown["genre"] = [self.genre_was, self.genre]
             shown["energy"] = [self.energy_was, self.energy]
+            if self.second_was or self.second:
+                shown["second genre"] = [self.second_was, self.second]
         if self.month and not self.month_id:
             shown["makes"] = self.month
         if self.colour:
@@ -377,6 +463,7 @@ def _plan_genre(
     vocal_threshold: float | None, live: Any, skip: Any,
 ) -> list[Change]:
     """Every genre edit as the library takes it: the tags routing reads, and the tree (U201)."""
+    from cratekit.core import routing
     from cratekit.modules.outbound import mirror_edits as edits
     from cratekit.organize import account_mirror
     from cratekit.write import rebuild, routing_pass
@@ -393,8 +480,17 @@ def _plan_genre(
             skip(decision, "its file could not be found, so neither its tags nor its row is written")
             continue
         truth = rebuild.read_truth(path)
+        second_was = truth.second_genre or None
+        second = second_was
+        two = routing.second_bucket(declared, truth.genre, truth.second_genre)
         if decision.outcome == edits.UNFILE:
-            genre, energy = None, None
+            genre, energy, second = None, None, None
+        elif two is not None:
+            found = _second_genre_tags(declared, decision, truth, two)
+            if isinstance(found, str):
+                skip(decision, found)
+                continue
+            genre, energy, second = found
         else:
             assert decision.to is not None
             playlist = decision.to.playlist if decision.outcome == edits.MOVE else None
@@ -415,7 +511,10 @@ def _plan_genre(
         else:
             placements, _gaps = rebuild.derive_from_taxonomy(
                 declared,
-                [rebuild.Truth(location=str(path), genre=genre, energy=energy, voxlevel=truth.voxlevel)],
+                [rebuild.Truth(
+                    location=str(path), genre=genre, energy=energy, voxlevel=truth.voxlevel,
+                    second_genre=second,
+                )],
                 vocal_threshold=vocal_threshold,
             )
             wanted: set[str] = set()
@@ -431,6 +530,8 @@ def _plan_genre(
         changes.append(Change(
             decision.content_id, decision.track, decision.outcome, _shown(row), str(path),
             truth.genre, genre, truth.energy, energy,
+            second_was=second_was,
+            second=second,
             leave=tuple((pid, *tree.names[pid]) for pid in leave_ids),
             join=tuple(join),
             missing=tuple(missing),
@@ -569,11 +670,17 @@ def _plan_inbox(
 
 
 def _write_tags(change: Change) -> bool:
-    """Write one file's two tags and read them back. ``True`` when the file holds them."""
+    """Write one file's tags and read them back. ``True`` when the file holds them.
+
+    The genre and the energy, and the second genre only where it was there or
+    is to be (U340), so a one genre file is written exactly as before.
+    """
     from cratekit.core import tags
 
     path = Path(change.path)
-    pairs = (("genre", change.genre), ("energylevel", change.energy))
+    pairs: list[tuple[str, object]] = [("genre", change.genre), ("energylevel", change.energy)]
+    if change.second_was or change.second:
+        pairs.append(("secondgenre", change.second))
     written = {name: value for name, value in pairs if value is not None}
     cleared = [name for name, value in pairs if value is None]
     if written and not tags.write_tags(path, written):
@@ -583,6 +690,7 @@ def _write_tags(change: Change) -> bool:
     return (
         (tags.read_genre_from_file(path) or None) == (change.genre or None)
         and tags.read_energy_from_file(path) == change.energy
+        and (tags.read_tag(path, "secondgenre") or None) == (change.second or None)
     )
 
 
