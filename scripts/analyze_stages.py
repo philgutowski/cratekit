@@ -1,33 +1,20 @@
 #!/usr/bin/env python3
 """Measure where an ``analyze run`` spends its time, and what the pool buys (U241).
 
-Reads audio and writes NOTHING onto it: no tag, no rename, no report, no job.
-The one thing it can write is the synthetic set, into an empty folder you name.
+Writes NOTHING onto the audio it reads; it writes only the synthetic set, into an
+empty folder you name.
 
     .venv/bin/python scripts/analyze_stages.py synthesize /path/to/empty/folder
     .venv/bin/python scripts/analyze_stages.py stages /path/to/folder --limit 20
     .venv/bin/python scripts/analyze_stages.py memory /path/to/folder --limit 5
     .venv/bin/python scripts/analyze_stages.py batch /path/to/folder --limit 20
 
-``stages`` times each stage of the shipped functions in place, one process,
-one track after another: decode, tempo and drift, harmonic separation, chroma
-and key, energy, vocal decode, vocal model. The key is read with the shipped
-method unless ``--key`` names another, and the plain chroma, the shipped one
-since U276, meets no harmonic separation, so its table counts none. ``memory`` measures the peak
-memory of one light worker per track, each in a fresh process, which is the
-number ``cratekit.analysis.light`` declares to the pool. ``batch`` runs the
-measuring an ``analyze run`` does, once with one worker and once with the pool
-this machine affords, compares the two sets of results, and prints the pool's
-check line.
-
-The folder is read one level deep, the sorted audio files, the walk ``analyze
-run`` itself takes. ``--limit N`` takes N of them at an even stride so short
-and long tracks are both in. Energy is scored against the configured library's
-calibration when there is one, and against a flat stand-in otherwise, so the
-energy stage is timed either way. The vocal stages run when the vocal model can
-load here; ``--untrained-model`` times the shipped architecture with untrained
-weights where the checkpoint is absent, which costs the same and scores
-nothing meaningful, and ``--no-vocals`` leaves the pass out.
+``stages`` times each stage of the shipped functions, track after track (the plain
+chroma meets no harmonic separation, so its table counts none). ``memory`` measures
+each track's light worker peak in a fresh process against what ``light`` declares
+to the pool. ``batch`` runs one worker, then the pool, and compares the results.
+``--limit N`` takes N of the sorted audio at an even stride. Energy is scored
+against the library's calibration, or a flat stand-in.
 """
 
 from __future__ import annotations
@@ -57,35 +44,21 @@ STAGE_WORDS: tuple[tuple[str, str], ...] = (
     ("vocal_model", "vocal model"),
 )
 
-#: The fixed synthetic set: seconds, tempo, tonic as semitones above C, minor,
-#: and a shape. Mixed lengths from a stinger to eleven minutes, most of them
-#: the seven to ten minute tracks the card was filed over. ``latekey`` changes
-#: key in its last quarter, ``ramp`` and ``lastthird`` move their tempo, and
-#: ``beatless`` has no drums. Fixed here so two machines measure one set.
+#: The fixed synthetic set, so two machines measure one set: seconds, tempo,
+#: tonic as semitones above C, minor, and a shape. ``latekey`` changes key in its
+#: last quarter, ``ramp`` and ``lastthird`` move their tempo, ``beatless`` has no drums.
 SYNTHETIC_SET: tuple[tuple[int, float, int, bool, str], ...] = (
-    (2, 124.0, 0, True, "steady"),
-    (45, 122.0, 9, True, "steady"),
-    (95, 128.0, 4, False, "steady"),
-    (150, 126.0, 7, True, "steady"),
-    (185, 120.0, 2, True, "steady"),
-    (210, 100.0, 5, False, "steady"),
-    (240, 132.0, 11, True, "steady"),
-    (265, 124.5, 0, False, "latekey"),
-    (290, 127.0, 3, True, "steady"),
-    (320, 123.0, 8, True, "ramp"),
-    (345, 125.0, 10, False, "steady"),
-    (370, 121.3, 1, True, "steady"),
-    (395, 129.0, 6, True, "lastthird"),
-    (420, 126.0, 9, True, "steady"),
-    (445, 124.0, 4, True, "beatless"),
-    (470, 122.0, 7, False, "steady"),
-    (500, 128.0, 2, True, "steady"),
-    (530, 125.5, 5, True, "steady"),
-    (560, 127.0, 0, True, "steady"),
-    (590, 123.0, 3, False, "lastthird"),
-    (600, 126.0, 8, True, "steady"),
-    (615, 130.0, 10, True, "steady"),
-    (660, 124.0, 1, True, "steady"),
+    (2, 124.0, 0, True, "steady"), (45, 122.0, 9, True, "steady"), (95, 128.0, 4, False, "steady"),
+    (150, 126.0, 7, True, "steady"), (185, 120.0, 2, True, "steady"),
+    (210, 100.0, 5, False, "steady"), (240, 132.0, 11, True, "steady"),
+    (265, 124.5, 0, False, "latekey"), (290, 127.0, 3, True, "steady"),
+    (320, 123.0, 8, True, "ramp"), (345, 125.0, 10, False, "steady"),
+    (370, 121.3, 1, True, "steady"), (395, 129.0, 6, True, "lastthird"),
+    (420, 126.0, 9, True, "steady"), (445, 124.0, 4, True, "beatless"),
+    (470, 122.0, 7, False, "steady"), (500, 128.0, 2, True, "steady"),
+    (530, 125.5, 5, True, "steady"), (560, 127.0, 0, True, "steady"),
+    (590, 123.0, 3, False, "lastthird"), (600, 126.0, 8, True, "steady"),
+    (615, 130.0, 10, True, "steady"), (660, 124.0, 1, True, "steady"),
 )
 SYNTHETIC_RATE = 44100
 
@@ -93,11 +66,6 @@ SYNTHETIC_RATE = 44100
 def synthetic_name(index: int) -> str:
     seconds, _tempo, _tonic, _minor, shape = SYNTHETIC_SET[index]
     return f"set{index:02d}-{seconds:03d}s-{shape}.flac"
-
-
-# ---------------------------------------------------------------------------
-# The synthetic set
-# ---------------------------------------------------------------------------
 
 
 def _beat_times(seconds: float, tempo: float, shape: str) -> list[float]:
@@ -208,11 +176,6 @@ def synthesize(folder: Path) -> int:
     return 0
 
 
-# ---------------------------------------------------------------------------
-# What is measured, and under what
-# ---------------------------------------------------------------------------
-
-
 def chosen(folder: Path, limit: int | None) -> list[Path]:
     """The folder's audio, sorted, ``limit`` of it at an even stride."""
     from cratekit.core import discovery
@@ -236,11 +199,7 @@ def stride(items: list[Any], count: int) -> list[Any]:
 
 
 def stand_in_calibration() -> Any:
-    """A calibration that scores every track, so the energy stage runs and is timed.
-
-    Not anybody's library: a flat reference with unit spread, used only where
-    the configured library has no calibration to read.
-    """
+    """A flat calibration that scores every track, so the energy stage runs and is timed."""
     from cratekit.analysis import energy
 
     rows = [{name: float(seed) for name in energy.FEATURE_ORDER} for seed in range(12)]
@@ -263,11 +222,7 @@ def calibration_for_measuring() -> tuple[Any, str]:
 
 
 def untrained_model() -> Any:
-    """The shipped architecture with untrained weights: the same arithmetic, so the same cost.
-
-    For timing the vocal model where its checkpoint is absent. What it scores
-    means nothing, and nothing here writes a score anywhere.
-    """
+    """The shipped architecture with untrained weights: the same arithmetic, so the same cost."""
     from cratekit.analysis import vocals
 
     if not vocals.labels_ready():
@@ -285,12 +240,7 @@ def untrained_model() -> Any:
     wrapper.classes_num = len(labels)
     torch.manual_seed(0)
     wrapper.model = Cnn14_DecisionLevelMax(
-        sample_rate=32000,
-        window_size=1024,
-        hop_size=320,
-        mel_bins=64,
-        fmin=50,
-        fmax=14000,
+        sample_rate=32000, window_size=1024, hop_size=320, mel_bins=64, fmin=50, fmax=14000,
         classes_num=wrapper.classes_num,
     )
     wrapper.model.eval()
@@ -323,11 +273,6 @@ def peak_megabytes() -> float:
     return peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
 
 
-# ---------------------------------------------------------------------------
-# stages
-# ---------------------------------------------------------------------------
-
-
 def stages(args: argparse.Namespace) -> int:
     from cratekit.analysis import detect, light, vocals
 
@@ -341,17 +286,15 @@ def stages(args: argparse.Namespace) -> int:
         found = detect.analyse_file(path, calibration=calibration, key=args.key, timings=timings)
         if found is not None and found.get("terminal") is None and not args.no_vocals:
             vocals.analyse({"path": str(path), "terminal": None}, timings=timings)
-        rows.append(
-            {
-                "name": path.name,
-                "seconds": light.seconds_of(path),
-                "wall": time.perf_counter() - started,
-                "stages": timings,
-                "status": "analyzed"
-                if found is not None and found.get("terminal") is None
-                else (found or {}).get("terminal", "skipped-no-key"),
-            }
-        )
+        rows.append({
+            "name": path.name,
+            "seconds": light.seconds_of(path),
+            "wall": time.perf_counter() - started,
+            "stages": timings,
+            "status": "analyzed"
+            if found is not None and found.get("terminal") is None
+            else (found or {}).get("terminal", "skipped-no-key"),
+        })
         if not args.json:
             print(f"  {path.name}: {rows[-1]['wall']:.1f} s", file=sys.stderr, flush=True)
     totals = stage_totals(rows, args.key)
@@ -373,11 +316,7 @@ def stages(args: argparse.Namespace) -> int:
 
 
 def stage_totals(rows: list[dict[str, Any]], method: str) -> dict[str, float]:
-    """Each stage's seconds over the rows, leaving out a detector stage the method never meets.
-
-    The plain chroma does no separation (U276), so its totals carry no
-    ``harmonic``, in the JSON as in the table.
-    """
+    """Each stage's seconds over the rows, leaving out a detector stage the method never meets."""
     from cratekit.analysis import detect
 
     met = set(detect.stages_of(method))
@@ -401,8 +340,7 @@ def stage_table(result: dict[str, Any]) -> str:
     ]
     from cratekit.analysis import detect
 
-    # A STAGE THE METHOD NEVER MEETS IS NOT A ROW (U276): the plain chroma does
-    # no separation, and a row of naught seconds would read as one that ran.
+    # A stage the method never meets is no row: naught seconds would read as one that ran.
     met = set(detect.stages_of(result["key"]))
     for key, words in STAGE_WORDS:
         if key in detect.STAGES and key not in met:
@@ -413,16 +351,8 @@ def stage_table(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# memory
-# ---------------------------------------------------------------------------
-
 def one_head(args: argparse.Namespace) -> int:
-    """Measure one file's head in THIS process and print the process's peak memory.
-
-    What ``memory`` runs once per track, each in a process of its own, so the
-    peak it prints is one track's and nothing before it.
-    """
+    """Measure one file's head in THIS process and print its peak memory, one track's alone."""
     from cratekit.analysis import detect
 
     detect.analyse_file(args.path, calibration=stand_in_calibration())
@@ -437,22 +367,18 @@ def memory(args: argparse.Namespace) -> int:
     for path in chosen(args.folder, args.limit):
         done = subprocess.run(
             [sys.executable, str(Path(__file__).resolve()), "one-head", str(path)],
-            capture_output=True,
-            text=True,
-            check=False,
+            capture_output=True, text=True, check=False,
         )
         if done.returncode != 0:
             print(f"{path.name}: could not be measured ({done.stderr.strip()[-200:]})")
             continue
         seconds = light.seconds_of(path)
-        rows.append(
-            {
-                "name": path.name,
-                "seconds": seconds,
-                "peak_megabytes": float(done.stdout.strip().splitlines()[-1]),
-                "declared_megabytes": light.cost_of(path) / (1024 * 1024),
-            }
-        )
+        rows.append({
+            "name": path.name,
+            "seconds": seconds,
+            "peak_megabytes": float(done.stdout.strip().splitlines()[-1]),
+            "declared_megabytes": light.cost_of(path) / (1024 * 1024),
+        })
     if args.json:
         print(json.dumps({"rows": rows}, indent=2))
         return 0
@@ -467,11 +393,6 @@ def memory(args: argparse.Namespace) -> int:
     if over:
         print(f"\nMEASURED OVER DECLARED on {len(over)} track(s): {', '.join(over)}")
     return 0
-
-
-# ---------------------------------------------------------------------------
-# batch
-# ---------------------------------------------------------------------------
 
 
 def _measure_all(job: str, paths: list[str], settings: Any, no_vocals: bool) -> list[dict]:
@@ -554,9 +475,6 @@ def batch(args: argparse.Namespace) -> int:
     return 0 if result["results_equal"] else 1
 
 
-# ---------------------------------------------------------------------------
-
-
 def build_parser() -> argparse.ArgumentParser:
     """The script's commands and arguments, the key method's default the detector's."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -591,10 +509,7 @@ def build_parser() -> argparse.ArgumentParser:
     measuring("memory", "peak memory of one light worker per track", memory)
     pooled = measuring("batch", "one worker against the pool this machine affords", batch)
     pooled.add_argument(
-        "--reserved-cores",
-        type=int,
-        default=2,
-        metavar="N",
+        "--reserved-cores", type=int, default=2, metavar="N",
         help="cores kept back from the light pool (the shipped figure is 2)",
     )
     with_vocals(pooled)

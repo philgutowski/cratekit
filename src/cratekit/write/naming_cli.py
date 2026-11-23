@@ -1,32 +1,15 @@
 """Preview renames, then apply after the confirm gate.
 
-The naming engine owns mechanism. This shell owns the plan, the gate, and
-the filesystem rename. Absent key and BPM fields are omitted (R20). A
-lossy file is marked on filename, title tag, and library name together
-(R21), or the engine refuses.
+The naming engine owns mechanism; this shell owns the plan, the gate and the
+rename. Absent key and BPM fields are omitted (R20). A lossy file is marked on
+filename, title tag and library name together (R21), or the engine refuses.
 
-A file the rekordbox collection references is never renamed or retagged here
-(U67). rekordbox records a path once, at import, so a rename leaves the row
-pointing at nothing. The verb reads the collection, holds those files back and
-lists them in the plan, and refuses outright when the collection cannot be read.
-
-A row recorded under a volume no prefix rule names, whose recorded file is not
-on this machine either, refuses the whole verb too (R-500). Nothing here carries
-that spelling, so the row matches no candidate and the file it names would be
-planned as an ordinary rename. The deletion pass refuses on an unmapped row for
-the same reason: a row that did not answer is a hole in the proof, not a row
-that references nothing.
-
-A file named for a provider identifier, the form every acquired file lands in,
-is given a body from its artist and title tags (R-669). That is the one stem
-this verb composes; a stem carrying any text is carried as it is (R-168). An
-identifier file whose tags cannot compose a body is held back and listed in the
-plan as ``unnamed``, never renamed to a title alone.
-
-A file held back because its name is taken by a file carrying the SAME ISRC is
-said to be a second copy of one recording (U212), with the ISRC on its item, so
-the verb that ran this step can name the passes that downloaded it. Sitting 55
-met two such copies and had to compare their audio by hand to know it.
+A file the rekordbox collection references is never renamed or retagged (U67),
+since a rename strands the row; it is held back and listed, and an unreadable
+collection, or a dark row that could name a candidate (R-500), refuses the
+verb. A provider identifier stem is given a body from its artist and title tags
+(R-669), or held back as ``unnamed``; any other stem is carried as it is
+(R-168). A file held back by a file with the SAME ISRC is a second copy (U212).
 """
 
 from __future__ import annotations
@@ -46,21 +29,16 @@ from cratekit.write import trees
 RENAME = "rename"
 REFERENCED = "referenced"
 COLLIDES = "collides"
-#: An identifier stem whose tags cannot compose a body (R-669). Held back like a
-#: collision, named in the plan and owed on apply, because it is a rename the
-#: library still needs and nothing short of a tag write can perform.
+#: An identifier stem whose tags cannot compose a body (R-669), held back and
+#: owed on apply like a collision.
 UNNAMED = "unnamed"
 
-#: How many incomplete items one cause's detail carries, the same bound the
-#: unmapped refusal puts on its own list and for the same measured reason.
+#: How many incomplete items one cause's detail carries, the unmapped refusal's bound.
 INCOMPLETE_SHOWN = 20
-#: How many planned and how many held items the gate screen lists (R-670). A
-#: batch is tens of files and is shown whole; a sweep of the library root can be
-#: thousands, and the screen is printed to a terminal and parsed by the runner,
-#: so past this bound the totals carry the rest.
+#: How many planned and held items the gate screen lists (R-670); a sweep of the
+#: library root can be thousands, so past this the totals carry the rest.
 PLAN_SHOWN = 200
-#: Why a referenced item is held, carried on the item like the other held
-#: classes carry theirs, so the plan and the screen say the same thing.
+#: Why a referenced item is held, carried on the item as the other classes carry theirs.
 REFERENCED_WHY = "the rekordbox collection references it"
 
 
@@ -69,30 +47,19 @@ def _template(cfg: config.Config) -> NameTemplate:
 
 
 def _is_identifier(stem: str) -> bool:
-    """A stem that is digits and nothing else, the form the downloader writes.
+    """A stem of digits and nothing else, the form the downloader writes.
 
-    Digits only, not "no letters", because a name a person chose can carry no
-    letters, ``2 + 2 = 5``, and R-168's rule stands over it. The staging template
-    is ``{track_id}``, which is a number, and a number is the one stem nobody
-    chose.
+    Digits only, not "no letters": a chosen name can carry no letters
+    (``2 + 2 = 5``), and R-168 stands over it.
     """
     return stem.strip().isdigit()
 
 
 def _artist(path: Path) -> str | None:
-    """The artist tag as one credit line, with every credited artist kept.
+    """The artist tag as one credit line, every credited artist kept.
 
-    Read as VALUES rather than as one string, because a Vorbis comment can hold
-    the credit as several ``ARTIST`` fields and the single value reader answers
-    with the first of them alone. The library's convention writes the credits
-    into one segment separated by a comma, so a multi valued field is joined the
-    same way rather than naming the file for whoever happened to be listed first.
-
-    NOT SANITIZED HERE. ``naming.compose_body`` puts each part into its segment
-    form, and a second sanitizer in front of it was a guard nothing measured:
-    the mutation table's one zero row was this function's copy, dead because the
-    composer's held. One layer, in the composer, where the fallback fetch path
-    pays for it too.
+    Read as values, since a Vorbis comment can hold several ``ARTIST`` fields,
+    joined with a comma. ``naming.compose_body`` sanitizes each part.
     """
     values = tags.read_tag_values(path, "artist")
     if not values:
@@ -103,14 +70,10 @@ def _artist(path: Path) -> str | None:
 def _composed_body(
     path: Path, tagged_title: str | None, *, template: NameTemplate
 ) -> tuple[str | None, str | None]:
-    """The body for an identifier stem, or the reason none can be composed.
+    """The body for an identifier stem, or why none can be composed.
 
-    ``Artist - Title``, the library's own order, with the version kept inside the
-    title exactly as tagged. The title is stripped of any head first, because the
-    live system writes the head into the tag (R-664) and a head belongs to the
-    head derivation, not to the body. BOTH TAGS OR NOTHING: a title alone would
-    name the file for its title and lose the artist for life once it is imported
-    (R-407), and an artist alone is not a name.
+    ``Artist - Title``, the title stripped of any head (R-664). Both tags or
+    nothing: a title alone loses the artist for life once imported (R-407).
     """
     artist = _artist(path)
     title = naming.strip_head(tagged_title, template=template).strip() if tagged_title else ""
@@ -140,52 +103,13 @@ def _composed_body(
 def _spec_for(
     path: Path, *, template: NameTemplate, cfg: config.Config
 ) -> tuple[NameSpec, str | None]:
-    """One spec for one file, shared by the plan and the apply pass.
+    """One spec for one file, shared by the plan and the apply so the two agree.
 
-    Returns the spec and, for an identifier stem no body could be composed for,
-    the reason, so the plan can name the file it is holding back and the apply
-    pass can re-read the tags after the gate rather than trust the plan's.
-
-    The two passes previously built their specs separately and disagreed on
-    the lossy flag, so a marked file was promised a rename the apply pass was
-    never going to perform. One builder makes agreement structural.
-
-    The head is recovered from the FILENAME first and the title tag second,
-    as text through the head parser, never from any analysis surface (U39).
-    Without this, a spec built from tags alone has no tempo, the default head
-    is all or nothing, and a rename strips the head the file already carries.
-    The title fallback heals the tag then rename crash window, where the head
-    survives in the title and not in the filename. The key prefers the tag,
-    because renaming from metadata is the verb's job; the head fills silence
-    and supplies the tempo, which has no tag field at all, structurally.
-
-    THE HEAD IS DERIVED AND THE BODY IS CARRIED (U41). Each surface keeps its
-    own body: the filename's body renders the filename, the title tag's body
-    renders the tag. ``NameSpec`` always held ``stem`` and ``title`` separately
-    for exactly this, and collapsing them onto one value is what made a rename
-    destructive. Composing the filename from the tag dropped the artist off
-    almost every file in the library, since the convention keeps the artist in
-    the name and the title alone in the tag (R-168). Feeding the filename's
-    body the other way would have been worse, stuffing the artist and the album
-    into every title tag the apply pass rewrites.
-
-    No recomposition rule is attempted and that is the decision, not an
-    omission. Measured over the library on 2026-08-25, read only: 53 percent of
-    names are ``Title - Artist - Album``, 25 percent are ``Artist - Title``,
-    one percent have a body equal to the title tag, and the remainder differ
-    from the tag only because the filesystem cannot hold a colon or a quote. No
-    single rule fits that, so the verb pads the head it understands and leaves
-    the text it does not. Normalizing the library to one grammar is a separate
-    decision for a person to take deliberately.
-
-    ONE EXCEPTION, AND IT IS NARROW (R-669). The vendored downloader names the
-    file it lands for its provider identifier on purpose and defers naming to
-    this verb, and this verb, by the rule above, carried that identifier as the
-    body. So a landed batch was fifty four numbers on disk and, once imported,
-    R-407 made every one of them unrenamable for life. A stem that carries NO
-    DIGITS AND NOTHING ELSE once the head is off is not a body anybody wrote,
-    and only that stem is composed from the tags. Any other stem is text a
-    person or the source system chose, and R-168's decision stands over it.
+    Returns the spec and, for an identifier stem with no composable body, the
+    reason. The head comes from the filename first and the title tag second, as
+    text, never from analysis (U39); the key prefers the tag. Each surface keeps
+    its own body (U41, R-168), except a provider identifier stem, composed from
+    the tags (R-669).
     """
     tagged_title = tags.read_tag(path, "title")
     title = tagged_title or path.stem
@@ -215,19 +139,9 @@ def _spec_for(
 def _recorded(cfg: config.Config) -> tuple[str, ...]:
     """Every path the collection records, tombstones included, or a refusal.
 
-    A READ, and the open says so: ``require_closed`` is the write-intent flag and
-    it stays False, the same open ``write/metadata_cli._open`` makes for its plan.
-    ``adopt.collection.read_collection`` is the same read one layer up, and the
-    layering test forbids this layer from importing it.
-
-    A TOMBSTONED ROW STILL COUNTS. rekordbox keeps the row, and a restore or a
-    re-import brings it back pointing at whatever path it recorded, so renaming
-    the file strands it exactly as it would strand a live one.
-
-    A DATABASE THAT WOULD NOT OPEN IS A REFUSAL, NEVER AN EMPTY COLLECTION. An
-    empty tuple from here means the database opened and holds no row, and that is
-    the only way to get one. Folding the two would rename every imported file in
-    the library on the day the volume holding the database is not mounted.
+    A read: ``require_closed`` stays False. A tombstoned row counts, since a
+    restore brings it back. A database that would not open is a refusal, never
+    an empty collection, or every imported file would be renamed.
     """
     try:
         target = rb_writer.live_db_path(cfg)
@@ -264,13 +178,10 @@ def _recorded(cfg: config.Config) -> tuple[str, ...]:
 
 
 def _key(path: str) -> str:
-    """One path as the referenced set compares it.
+    """One path as the referenced set compares it: NFC and casefolded.
 
-    NFC for the reason ``core.locations`` gives, and casefolded because the
-    volume a library normally sits on ignores case. A recorded path that differs
-    from the file on disk only in case still names that file there, and a
-    rename would strand its row. On a volume that respects case the cost is a
-    file left unrenamed, which is the direction to be wrong in.
+    The library volume normally ignores case; on one that respects it the cost is
+    a file left unrenamed, the safe direction.
     """
     return locations.norm_for_compare(path).casefold()
 
@@ -280,63 +191,16 @@ def _referenced(
 ) -> frozenset[str]:
     """The keys of every file the collection references, or a refusal.
 
-    Each row contributes its path as recorded AND its path after the configured
-    volume rewrites, because most rows in a real library still carry a volume
-    name the drive stopped using long ago, and either spelling can be the one
-    that is on disk today. A row naming another host has no local path and
-    contributes nothing, since no local file can be the one it names, and a
-    streaming pseudo-location references no file at all.
+    Each row adds its recorded path and its path after the volume rewrites, since
+    either can be the one on disk. Decode and resolve are ``trees.located``; the
+    keying errs toward holding back.
 
-    THE DECODE AND THE RESOLVE ARE ``trees.located``, the one locate the
-    membership and routing writers use, so a row is unmapped here exactly when
-    it is unmapped there. The KEYING stays this verb's own, because the two ask
-    different questions: a writer needs the one row that IS a file and compares
-    exactly, and this guard needs every row that COULD name a file and errs
-    toward holding it back, which is what the casefold and the second spelling
-    are for. Casefolding the writers' index would manufacture ambiguous rows.
-
-    A DARK ROW THAT COULD NAME A CANDIDATE REFUSES THE WHOLE VERB (R-500,
-    narrowed by R-675). Dark is two facts together: no rule resolves the row,
-    and the file it records is not on this machine under that spelling. Its
-    only key is then a spelling nothing here carries, so it would match no
-    candidate and the file it names would be renamed out from under it. Holding
-    nothing back for that row is absence read as evidence. A rule that differs
-    from the recorded volume only in case is no rule, here as in every other
-    consumer of the shared resolver.
-
-    COULD NAME means the row's file name is one of ``renaming``, the files this
-    pass would rename, compared as keys, and not one the resolved rows already
-    hold: a candidate a resolved row references is never renamed (R-407), so a
-    dark row under its name puts nothing in doubt, and the resolved keys are
-    read first for that reason. A renamed volume or a moved mount changes a
-    path's prefix and never its leaf, so a dark row under another leaf cannot
-    be any candidate under another spelling, and refusing on it stops the verb
-    over rows that are not in doubt. A colliding candidate is still asked
-    about, because a collision is a rename the library still owes and the
-    question comes due when it is resolved. The first live plan with
-    renames measured 582 such rows: 137 streamed tracks rekordbox records as
-    ``/v4/catalog/tracks/<id>/``, which starts with a slash and so reaches the
-    resolver as a path, 437 tombstones under two folders that no longer exist,
-    and 8 rows on another account of this machine. None could name a file in
-    download staging, and the refusal held every rename in the library for
-    good. A dark row whose leaf IS a candidate's still refuses, as R-500 drove
-    it, and a tombstone counts the same as a live row (R-524): a restore
-    brings it back pointing at what it recorded.
-
-    AN UNMAPPED ROW WHOSE RECORDED FILE EXISTS HAS ANSWERED. A track imported
-    from a downloads folder, or the demo tracks rekordbox installs, sit outside
-    the library under no rule, and the recorded spelling is the one on disk, so
-    the recorded key already protects the file. Refusing on those would stop the
-    verb on most real libraries over rows that are not in doubt. The existence
-    test fails closed: a path that cannot be inspected reads as absent.
-
-    WHERE THIS IS STRICTER THAN THE DELETION PASS, and it is deliberate. That
-    pass skips a tombstoned row before it asks whether the row resolved. This
-    verb counts one, by its own rule above that a restore brings a tombstone
-    back pointing at whatever it recorded. And two shapes that pass refuses on,
-    a drive letter and a location on another host, are still excused here.
+    A dark row (no rule resolving it, its recorded file absent) refuses the whole
+    verb when its leaf matches a file this pass would rename that no resolved row
+    holds (R-500, R-675, R-407), since a moved volume changes a prefix and never
+    a leaf. Tombstones count (R-524).
     """
-    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    rules = trees.prefix_rules(cfg)
     keys: set[str] = set()
     unplaced: list[str] = []
     for value in recorded:
@@ -352,10 +216,8 @@ def _referenced(
         elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):
             unplaced.append(decoded)
     referenced = frozenset(keys)
-    # THE LEAVES THIS PASS WOULD RENAME, keyed as the rows are, because a dark
-    # row is compared to them by name alone: that is the one part of a recorded
-    # path a renamed volume leaves as it was. A candidate the resolved rows
-    # hold is left out, since it is not renamed whatever a dark row says.
+    # The leaves this pass would rename, keyed as the rows are, less those a
+    # resolved row holds, since those are never renamed.
     leaves: dict[str, list[str]] = {}
     for path in renaming:
         if not _is_referenced(path, referenced):
@@ -371,29 +233,11 @@ def _referenced(
 
 
 def _unmapped_refusal(dark: list[tuple[str, list[str]]]) -> CratekitError:
-    """The refusal over rows nothing resolves, worded as the deletion pass's is.
+    """The refusal over dark rows, worded as the deletion pass's is.
 
-    The count leads and the first location follows, because the count says how
-    much of the collection is dark and the location is what a person compares
-    against their rules. It is the DECODED location, since that is the text a
-    rule is matched against, and a percent-encoded spelling copied into a rule
-    would never match. The prefixes are grouped in the detail so ten thousand
-    rows under one old volume name read as one correction. ``could_name``
-    pairs each dark row with the files in the plan it could be naming, since
-    R-675 made that the condition, in the same order and under the same cap as
-    the locations, so a person sees which of their renames each row puts in
-    doubt and not only which rows are dark.
-
-    TWO STEPS, because the rows this refusal now names come in two kinds and a
-    rule answers one of them. A row under the library's own drive by an old
-    name is placed by a prefix rule. A row under a folder that is on this
-    machine, or was, names a file that is gone, and no rule can place it: the
-    file it could be naming is renamed by hand or the track is removed in
-    rekordbox, which is what R-523's close asked the steps to say.
-
-    ``fix-config-values`` and not ``run-doctor``, which is what the deletion
-    pass says: no doctor check reads the prefix map, so that token would send a
-    caller to a report that comes back clean.
+    The count leads and the first decoded location follows. The detail groups
+    the prefixes and pairs each row with the files it could name (R-675), with
+    one step per kind of row (R-523).
     """
     count = len(dark)
     rows = "collection row records" if count == 1 else "collection rows record"
@@ -429,24 +273,15 @@ def _unmapped_refusal(dark: list[tuple[str, list[str]]]) -> CratekitError:
 
 
 def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:
-    """True when the collection records ``path``, by either spelling of it.
-
-    Both the absolute and the resolved spelling are asked, so a ``--root`` given
-    through a link or as a relative path is still recognised.
-    """
+    """True when the collection records ``path`` by its absolute or resolved spelling."""
     return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced
 
 
 def referenced_keys(cfg: config.Config, *, renaming: Iterable[Path]) -> frozenset[str]:
-    """The referenced set, read fresh, for a second verb that renames files.
+    """The referenced set, read fresh, for ``repair paths --apply`` (U102).
 
-    ``repair paths --apply`` (U102) holds a file back by the same rule this verb
-    does, and it asks HERE rather than copying the read, because two copies of
-    this guard are two places for the next correction to miss. Every refusal
-    ``_recorded`` and ``_referenced`` raise therefore reaches that verb too, in
-    the same words. The lookup of ``_recorded`` is late, through the module, so
-    a test that stubs the collection stubs it for both verbs. ``renaming`` is
-    the files that verb would rename, for the dark row rule above.
+    One guard for both verbs, in the same words. ``_recorded`` is looked up
+    through the module so one test stub covers both.
     """
     return _referenced(_recorded(cfg), cfg=cfg, renaming=renaming)
 
@@ -464,9 +299,7 @@ def held_collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
 def second_copy(path: Path, target: Path) -> str:
     """The ISRC ``path`` and ``target`` both carry when they are one recording, else ``""``.
 
-    READ FROM BOTH FILES through the one fold (U212). Absence of a read is not a
-    match: a file with no ISRC, a malformed one, or tags that cannot be read
-    is a second copy of nothing, so the collision is said as it always was.
+    Read from both files (U212). A missing or unreadable ISRC matches nothing.
     """
     mine = tags.isrc_token(tags.read_tag(path, "isrc"))
     if not mine:
@@ -490,44 +323,13 @@ def _taken(path: Path, target: Path, *, fallback: str) -> tuple[str, str]:
 def _collisions(
     movers: list[tuple[Path, str]], seconds: dict[str, str] | None = None
 ) -> dict[str, str]:
-    """Each mover that must not be renamed, mapped to why, keyed by path.
+    """Each mover that must not be renamed, mapped to why, keyed by path (R-172).
 
-    THE PLAN PASS OWNS A COLLISION (R-172). Two files rendering to one name left
-    the plan promising two renames and the apply performing one, because the
-    loser's ``claim_target`` failed and the loop moved on. Detecting it here is
-    what the ledger asked for: it is knowable before the gate, so the plan a
-    person approves says which files cannot be renamed instead of promising a
-    rename the filesystem was never going to allow.
-
-    TWO SHAPES ARE HELD, and one deliberately is not:
-
-    * several movers rendering to ONE target. Nothing decides which of them
-      earns the name, so none of them takes it. Letting the first in sort order
-      win is what shipped, and an arbitrary winner is worse than no winner,
-      since the report said both moved.
-    * a target that is a file on disk NOTHING here is moving. The claim would
-      fail against a file with its own content, which is the collision the U67
-      table drove.
-
-    A TARGET ANOTHER MOVER STILL HOLDS IS LEFT PROMISED. The chain resolves
-    whenever sort order reaches the occupant first, which it usually does, so
-    holding it back would lose a rename that works today. When order runs the
-    other way the apply pass reports it, which is the one case where discovering
-    a collision during the rename is still the right place.
-
-    KEYED THROUGH ``_key``, for the reason that function gives: the volume a
-    library normally sits on ignores case, so two targets differing only in case
-    are one name there. On a volume that respects case the cost is a file left
-    unrenamed, which is the direction to be wrong in.
-
-    TO A FIXPOINT, because holding a file back makes it an occupant. The first
-    cut asked whether a target belonged to a mover ONCE, over every mover,
-    including the ones it was in the middle of holding back. A file whose target
-    was occupied by a collider therefore read as a chain that sort order would
-    resolve, so the plan promised its rename and no rename was possible: three
-    files in one folder produced ``totals.count`` of one and zero renames, which
-    is the finding this unit exists to close, one file over. Each round removes
-    what it held and asks again, and it ends when a round holds nothing.
+    Found at plan time. Held: several movers rendering to one target, and a
+    target that is a file on disk nothing here moves; a target another mover
+    holds is left promised, and the apply reports it when sort order does not
+    resolve the chain. Run to a fixpoint, since a held file becomes an occupant.
+    ``seconds`` collects the ISRC of a second copy (U212).
     """
     targets = [(path, path.with_name(filename)) for path, filename in movers]
     held: dict[str, str] = {}
@@ -560,9 +362,8 @@ def _collisions(
                         f"nothing here is renaming"
                     ),
                 )
-                # THE ISRC ONLY FOR THIS COLLISION (review round one, F3), the
-                # one whose reason names the file on disk, so an item's ISRC
-                # and its reason always describe one collision.
+                # The ISRC only for the collision naming the file on disk, so an
+                # item's ISRC and reason describe one collision.
                 if same and seconds is not None:
                     seconds[str(path)] = same
         if not found:
@@ -570,29 +371,16 @@ def _collisions(
         held.update(found)
 
 
+def _referenced_item(path: Path) -> dict[str, str]:
+    return {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
+
+
 def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     """The plan, with every file the collection references held back.
 
-    THE CHECK IS HERE, ON THE CHECKING PATH, so the digest the gate is answered
-    against covers it: a row that starts referencing a file changes the plan a
-    person approved. It runs for every root, inside the library or not, because a
-    collection can record paths anywhere on the machine.
-
-    The collection is read only when something would be renamed. With no rename
-    candidate its contents cannot change the outcome, and an empty folder is a
-    plan a person can still abort on a machine with no database yet.
-
-    ``totals.count`` stays the number of renames, and ``items`` carries the
-    referenced files too, each marked, so the plan says which files were held
-    back rather than leaving them out silently. A colliding file is a third
-    marked class (R-172) and is held back the same way, so ``count`` is the
-    number of renames that can actually be performed rather than the number the
-    plan wished for. An identifier file with no body to compose is a fourth
-    (R-669), listed with its reason, so a person reading the plan sees the file
-    that will stay a number and why, rather than a plan that omits it. THE
-    COLLECTION WINS OVER THE HOLD: an imported identifier file is one this verb
-    can never rename (R-407), so it is held as referenced and never owed, rather
-    than sending a person to tag a file whose tag can change nothing.
+    Checked on the planning path so the gate's digest covers it. ``totals.count``
+    is the renames that can be performed, and ``items`` also lists each held
+    class, marked; the collection wins over the unnamed hold (R-407).
     """
     template = _template(cfg)
     budget = NameBudget.of(cfg.naming)
@@ -616,32 +404,23 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
         if candidates or uncomposed
         else frozenset()
     )
-    # ASKED ONCE PER CANDIDATE. ``_is_referenced`` resolves the path, which is a
-    # syscall per candidate, and a sweep of a real library has thousands.
-    decided = [
-        (path, filename, _is_referenced(path, referenced)) for path, filename in candidates
-    ]
+    # Asked once per candidate: ``_is_referenced`` resolves the path, a syscall.
+    decided = [(path, filename, _is_referenced(path, referenced)) for path, filename in candidates]
     seconds: dict[str, str] = {}
-    collides = _collisions(
-        [(path, filename) for path, filename, ref in decided if not ref], seconds
-    )
+    collides = _collisions([(path, filename) for path, filename, ref in decided if not ref], seconds)
     items: list[dict[str, str]] = []
     held = 0
     unnamed: list[dict[str, str]] = []
     for path, why in uncomposed:
         if _is_referenced(path, referenced):
             held += 1
-            items.append(
-                {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
-            )
+            items.append(_referenced_item(path))
         else:
             unnamed.append({"action": UNNAMED, "from": path.name, "path": str(path), "why": why})
     for path, filename, ref in decided:
         if ref:
             held += 1
-            items.append(
-                {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
-            )
+            items.append(_referenced_item(path))
         elif str(path) in collides:
             item = {
                 "action": COLLIDES,
@@ -650,15 +429,12 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
                 "path": str(path),
                 "why": collides[str(path)],
             }
-            # THE ISRC ON THE ITEM (U212), for the one collision that names a
-            # file on disk, as the fixpoint read it.
+            # The ISRC on the item (U212), as the fixpoint read it.
             if str(path) in seconds:
                 item["isrc"] = seconds[str(path)]
             items.append(item)
         else:
-            items.append(
-                {"action": RENAME, "from": path.name, "to": filename, "path": str(path)}
-            )
+            items.append({"action": RENAME, "from": path.name, "to": filename, "path": str(path)})
     items.extend(unnamed)
     return {
         "digest": digest_of({"kind": "rename", "items": items}),
@@ -674,15 +450,8 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
 
 
 def _shown(plan: dict, *, root: Path) -> dict[str, object]:
-    """What the gate screen puts in front of the person (R-670).
-
-    The totals and the items, the way the landing gate beside this verb shows
-    its count and its files. Without this the screen carried the question and
-    the options and not one rename, so a person confirmed a plan they had not
-    seen. A held item carries the reason it is held, because a plan that says a
-    file is not moving without saying why sends a person to diff the folder.
-    Each list stops at ``PLAN_SHOWN`` and says how many it left out, since the
-    default root is the whole library.
+    """What the gate screen shows (R-670): the totals and the items, each held item
+    with its reason, each list capped at ``PLAN_SHOWN`` with a count of the rest.
     """
     items = plan["items"]
     planned = [
@@ -714,16 +483,10 @@ ROOT_MISSING = "root-folder-missing"
 
 
 def root_path(given: str | None, cfg: config.Config, *, verb: str) -> Path:
-    """The folder a ``--root`` names, read the way the person typing it means it.
+    """The folder a ``--root`` names, relative to the library root (U169).
 
-    RELATIVE IS RELATIVE TO THE LIBRARY ROOT (U169), never to the directory the
-    shell happens to stand in. Sitting 47 ran ``name apply --root Downloads``,
-    meaning the library's Downloads folder; it was read under the shell's
-    directory, found no files, and planned 0 renames as an ordinary empty plan.
-    ``~`` is expanded, an absolute path is taken as it is, and an omitted root
-    is the library root. An EMPTY one is refused rather than read as omitted,
-    because ``Path("")`` is the working directory and a person who typed a
-    root meant some folder.
+    Never relative to the shell's directory. ``~`` is expanded, an omitted root
+    is the library root, and an empty one is refused.
     """
     library = Path(cfg.library.root)
     if given is None:
@@ -739,12 +502,9 @@ def root_path(given: str | None, cfg: config.Config, *, verb: str) -> Path:
 
 
 def root_folder(given: str | None, cfg: config.Config, *, verb: str) -> Path:
-    """:func:`root_path`, refused unless a folder is there.
+    """:func:`root_path`, refused naming the path it tried unless a folder is there.
 
-    A folder that is not there is refused NAMING THE PATH IT TRIED, and for a
-    relative root saying it was read against the library root, so the person
-    sees at once which reading missed. Without it the walk over a missing
-    folder finds nothing, and nothing is the answer a tidy folder also gives.
+    A walk over a missing folder finds nothing, as a tidy folder does.
     """
     tried = root_path(given, cfg, verb=verb)
     if tried.is_dir():
@@ -791,22 +551,9 @@ def _incomplete_cause(
 ) -> Cause:
     """What the run answers when part of the plan did not happen (R-172).
 
-    THE COUNT LEADS AND THE FIRST FILE FOLLOWS, worded as the unmapped refusal
-    beside it is: the count says how much of the approved plan is outstanding
-    and the name is what a person goes and looks at. Every item is in the detail,
-    capped, with the reason it carries, so a report names which file stayed put
-    instead of leaving a person to diff the folder against the plan.
-
-    WHAT LANDED IS SAID IN THE SAME SENTENCE. This is not a refusal: the renames
-    that could happen did, and a message naming only the failures reads like a
-    run that touched nothing and would send a person to repeat it.
-
-    THE STEP SENDS A PERSON TO THE REPORT, and only a real collision adds the
-    sentence about naming a file by hand. Five reasons reach here and one of them
-    is a target that was free by the time the run ended, so a single collision
-    worded step told a person to rename a file that needed nothing, over a run
-    that a second attempt completes. The per item reason is the specific
-    instruction and the step is what points at it.
+    The renamed count, the outstanding count and the first file lead, with every
+    item capped in the detail; a collision, an unnamed file and a second copy
+    each add their own step.
     """
     count = len(incomplete)
     steps = [
@@ -856,13 +603,8 @@ def name_apply(ctx) -> Envelope:
     template = _template(cfg)
     budget = NameBudget.of(cfg.naming)
     renames = [item for item in plan["items"] if item["action"] == RENAME]
-    # EVERY RENAME THIS RUN OWES AND DID NOT PERFORM, collected by name as it
-    # happens (R-172). Each of the branches below used to be a bare ``continue``,
-    # so a plan promising two renames and performing one answered ok with nothing
-    # naming the file that stayed put. A collision the plan already held back
-    # counts here too: it is a rename the library still needs, and answering ok
-    # over it means every later sweep answers ok over it as well. So does an
-    # identifier file with no body to compose (R-669), for the same reason.
+    # Every rename this run owes and did not perform, by name (R-172), a held
+    # collision and an unnamed file (R-669) included.
     incomplete: list[dict[str, str]] = [
         {
             "from": item["from"],
@@ -874,29 +616,16 @@ def name_apply(ctx) -> Envelope:
         if item["action"] in (COLLIDES, UNNAMED)
     ]
     renamed = 0
-    # HOW MANY OF THE OUTSTANDING ITEMS ARE A NAME ALREADY IN USE, which decides
-    # whether the remediation says to name a file by hand. The plan's own
-    # collisions start the count and a claim that failed after the gate joins it.
+    # Outstanding items that are a name in use, which decides the hand rename step.
     collided = plan["totals"]["collides"]
 
-    def _owed(
-        item: dict[str, str], why: str, *, at: Path | None = None, isrc: str = ""
-    ) -> None:
-        """One outstanding item, named where the file IS rather than where it was.
-
-        ``at`` is the file's path now, and only the tag write needs it: that
-        branch runs after a successful rename, so the plan's ``from`` and ``path``
-        name a file nobody can go and look at.
-        """
+    def _owed(item: dict[str, str], why: str, *, at: Path | None = None, isrc: str = "") -> None:
+        """One outstanding item, named where the file is now (``at``, after a rename)."""
         where = item["path"] if at is None else str(at)
-        owed = {"from": Path(where).name, "path": where, "why": why}
-        if isrc:
-            owed["isrc"] = isrc
-        incomplete.append(owed)
+        isrcs = {"isrc": isrc} if isrc else {}
+        incomplete.append({"from": Path(where).name, "path": where, "why": why, **isrcs})
 
-    # READ AGAIN AFTER THE GATE, because the gate can wait on a person for as
-    # long as they like and rekordbox can import a file in that time. The plan's
-    # check decides what a person was shown; this one decides what is touched.
+    # Read again after the gate, which can wait while rekordbox imports a file.
     referenced = (
         _referenced(
             _recorded(cfg), cfg=cfg, renaming=[Path(item["path"]) for item in renames]
@@ -916,9 +645,7 @@ def name_apply(ctx) -> Envelope:
                 "approved, and renaming it would strand that row",
             )
             continue
-        # READ AGAIN, the tags as much as the collection: a plan composed this
-        # body from tags a person could have edited while the gate waited, and
-        # a name the person did not see is not a name the person approved.
+        # The tags are read again too: a name the person did not see is not approved.
         built, why = _spec_for(path, template=template, cfg=cfg)
         if why is not None:
             _owed(item, why)
@@ -937,8 +664,7 @@ def name_apply(ctx) -> Envelope:
         if target != path:
             if not naming.claim_target(target):
                 collided += 1
-                # THE SAME READING AS THE PLAN'S (U212): a file that took the
-                # name while the gate waited may be the same recording too.
+                # Read as the plan reads it (U212), a late taker may be a second copy.
                 why, same = _taken(
                     path, target, fallback=f"{rendered.filename} is already taken in the folder"
                 )
@@ -952,9 +678,7 @@ def name_apply(ctx) -> Envelope:
                 continue
             path = target
         renamed += 1
-        # READ, because ``write_tags`` reports a failure by returning False and
-        # a renamed file whose title never took the head is a promised write
-        # that did not happen. The rename itself stands and is counted.
+        # ``write_tags`` reports failure by returning False; the rename stands.
         if not tags.write_tags(path, {"title": rendered.title_tag}):
             _owed(item, "it was renamed and its title tag could not be written", at=path)
     plan["totals"] = {
@@ -964,14 +688,9 @@ def name_apply(ctx) -> Envelope:
     }
     if not incomplete:
         return ctx.envelope(data=plan, outcome=Outcome.OK)
-    # THROUGH ``from_cause``, the one boundary where a cause becomes a status, so
-    # this verb does not restate the code lookup or the origin hop for itself.
-    # THE PLAN SURFACE AND NOT THE DIAGNOSTIC ONE, which is the ``schema``
-    # argument's whole purpose: that function's default assumes a verb that
-    # refused before producing a plan, and this one produced a plan and carried
-    # out part of it, so what it DID rename is exactly what a person needs next.
-    # ``items`` is untouched after the gate, so the digest keeps describing what
-    # was approved.
+    # Through ``from_cause`` on the plan surface, not the diagnostic one, since
+    # this verb carried out part of a plan; ``items`` is untouched after the
+    # gate, so the digest still describes what was approved.
     return output.from_cause(
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
