@@ -1,50 +1,25 @@
 """Hardware backed verification fixtures: repeated timing, a FAT volume, a read only volume.
 
-Three fixtures the review wave's remaining units need so they can be verified
-against real hardware behavior rather than against doubles:
+1. ``time_repeated`` returns a ``TimingTable`` of every duration, the repeat
+   count and the pass rate against a threshold, the only shape METHOD's
+   driver rule allows for a timing row.
+2. ``fat_volume`` mounts a real FAT32 image made with hdiutil, since every
+   rekordbox USB export is FAT (U23) and a temp directory on APFS is not.
+3. ``read_only_volume`` populates an image writable, then remounts it read
+   only, since U27's doctor must tell an EROFS mount from an absent volume,
+   which a chmod cannot stand in for.
 
-1. ``time_repeated`` runs a callable a declared number of times and returns a
-   ``TimingTable`` holding every duration, the repeat count, and the pass rate
-   against a threshold. METHOD's driver rule is that a timing row carries a
-   repeat count and a pass rate, never one number, and this runner makes that
-   shape the only one it can produce.
+Probed on 2026-08-13: ``newfs_msdos`` cannot lay out FAT32 under about 33 MB
+and hdiutil blames permissions, so ``FAT32_MIN_MB`` is enforced with the real
+cause; and the macOS msdos driver allows symlinks, so ``filesystem_kind``,
+reading the mount table, is the FAT detector. Mountpoints are private temp
+directories, never under the system mount root, to avoid collisions and the
+portability scan.
 
-2. ``fat_volume`` creates a real FAT32 disk image with hdiutil, mounts it at a
-   private mountpoint, and tears it down. U23's adoption work meets FAT on
-   every rekordbox USB export, and FAT behavior is not something a temp
-   directory on APFS can stand in for.
-
-3. ``read_only_volume`` builds an image, lets the caller populate it while it
-   is writable, then remounts it read only. U27's doctor must distinguish a
-   volume that is present but not writable from one that is absent, and a
-   chmod on a directory is not the same refusal: a read only MOUNT refuses at
-   the filesystem with EROFS no matter who asks.
-
-Two facts probed on 2026-08-13, kept here so nobody re-learns them:
-
-- ``newfs_msdos`` cannot lay out FAT32 under roughly 33 MB, and hdiutil
-  reports that failure as the misleading summary line "create failed,
-  Operation not permitted". ``fat_volume`` therefore refuses sizes under
-  ``FAT32_MIN_MB`` with an error that names the real limit.
-- The macOS msdos driver ALLOWS symlinks on a mounted FAT volume, so symlink
-  refusal is not a usable FAT detector here. Assert the filesystem kind
-  through ``filesystem_kind``, which reads the mount table, instead.
-
-Mountpoints are private temp directories, never children of the system mount
-root, both so concurrent fixtures cannot collide on a volume name and because
-tracked text naming the system mount root would trip the portability scan's
-shape patterns.
-
-Timing calibration lives in ``tests/fixtures/timing_calibration.json``,
-written by ``scripts/calibrate_timing.py`` on a QUIET machine, never while
-other agents run. A threshold for a timing verification is expressed as a
-multiple of the calibrated median through ``threshold_seconds``, so the number
-in a claim says how much slack it gets relative to the machine that measured
-it, not an absolute guess that breaks on the next machine. The calibration is
-BOUND to the machine that wrote it: loading it checks the stored interpreter
-and CPU facts against the running machine and refuses a mismatch, because a
-threshold derived from another machine's speed is a confident number about
-the wrong machine. Recalibrate when the machine changes.
+Calibration lives in ``tests/fixtures/timing_calibration.json``, written by
+``scripts/calibrate_timing.py`` on a QUIET machine. ``threshold_seconds``
+expresses a threshold as a multiple of the calibrated median, and loading
+refuses a calibration whose interpreter or CPU facts are another machine's.
 """
 
 from __future__ import annotations
@@ -68,13 +43,11 @@ CALIBRATION_PATH = Path(__file__).resolve().parent / "fixtures" / "timing_calibr
 CALIBRATION_SCHEMA = 1
 
 # A calibration whose runs spread wider than this was not taken on a quiet
-# machine, and writing it would silently loosen every threshold derived from
-# it. The gate lives on the write path, not beside it.
+# machine and would loosen every threshold; refused on the write path.
 SPREAD_LIMIT = 0.25
 
-# newfs_msdos refuses FAT32 below roughly 33 MB. The probe on 2026-08-13 saw a
-# 8 MB request die inside hdiutil with a summary line blaming permissions, so
-# the floor is enforced here with an error that names the real cause.
+# newfs_msdos refuses FAT32 below about 33 MB, and hdiutil blames
+# permissions, so the floor is enforced here naming the real cause.
 FAT32_MIN_MB = 34
 
 _DETACH_ATTEMPTS = 5
@@ -88,21 +61,15 @@ _DETACH_WAIT_SECONDS = 0.6
 
 @dataclass(frozen=True)
 class TimingTable:
-    """One repeated timing measurement, whole.
-
-    Every duration is kept, so a later reader can recompute any summary this
-    class offers. The class is frozen because a measurement is a record of
-    what happened, not a workspace.
-    """
+    """One repeated timing measurement, whole and frozen, every duration kept."""
 
     repeats: int
     threshold_seconds: float
     durations: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        # The runner cannot produce a mismatch, but this constructor is public,
-        # and a record whose headline count disagrees with its own evidence
-        # would be quotable as a row. The record holds the invariant itself.
+        # The constructor is public, so the record holds its own invariant: the
+        # headline count agrees with the evidence.
         if self.repeats < 1 or self.repeats != len(self.durations):
             raise ValueError(
                 f"repeats is {self.repeats} but {len(self.durations)} durations were "
@@ -143,9 +110,8 @@ def time_repeated(
 ) -> TimingTable:
     """Run ``fn`` ``repeats`` times against ``threshold_seconds`` and keep every duration.
 
-    The clock is injectable so the pass rate arithmetic is testable without a
-    single real sleep. A repeat count under two is refused because a single
-    run is exactly the one number measurement METHOD forbids.
+    The clock is injectable; fewer than two repeats is the one-number
+    measurement METHOD forbids.
     """
     if repeats < 2:
         raise ValueError(
@@ -169,10 +135,8 @@ def time_repeated(
 def reference_workload() -> int:
     """Fixed interpreter bound work, the yardstick the calibration measures.
 
-    Mostly bytecode dispatch with a periodic sha256 so the number tracks the
-    interpreter this suite actually runs on. The amount of work is a constant
-    of this file: changing it invalidates every stored calibration, which is
-    what ``CALIBRATION_SCHEMA`` exists to version.
+    Changing the amount of work invalidates every stored calibration, which
+    ``CALIBRATION_SCHEMA`` versions.
     """
     import hashlib
 
@@ -188,9 +152,8 @@ def reference_workload() -> int:
 def calibrate(*, repeats: int = 25) -> dict:
     """Measure the reference workload ``repeats`` times and return the payload to store.
 
-    The payload carries the full spread, not one number, and records only
-    machine facts that identify capability rather than a person: interpreter
-    version and CPU count, never a hostname, account, or path.
+    The full spread, and machine facts only (interpreter version, CPU count),
+    never a hostname, account or path.
     """
     durations: list[float] = []
     for _ in range(repeats):
@@ -230,10 +193,7 @@ class Calibration:
 def write_calibration(payload: dict, path: Path = CALIBRATION_PATH, *, force: bool = False) -> None:
     """Store a calibration, refusing one whose spread says the machine was not quiet.
 
-    The refusal sits here rather than in the calling script because this is
-    the one function every calibration passes through on its way into the
-    tree. ``force`` exists for a human who has read the spread and decided to
-    keep it anyway, and for nothing else.
+    ``force`` is for a human who read the spread and chose to keep it.
     """
     spread = float(payload["relative_spread"])
     if spread > SPREAD_LIMIT and not force:
@@ -245,14 +205,7 @@ def write_calibration(payload: dict, path: Path = CALIBRATION_PATH, *, force: bo
 
 
 def load_calibration(path: Path = CALIBRATION_PATH) -> Calibration:
-    """Load a stored calibration, refusing one another machine wrote.
-
-    The payload records the interpreter version and CPU count at capture time.
-    Checking them here is what makes those fields identity rather than
-    decoration: a baseline from a faster or slower machine turns every derived
-    threshold into a confident number about the wrong machine, in whichever
-    direction it is wrong.
-    """
+    """Load a stored calibration, refusing one another machine wrote (interpreter, CPU count)."""
     data = json.loads(path.read_text())
     if data.get("schema") != CALIBRATION_SCHEMA:
         raise ValueError(
@@ -285,13 +238,7 @@ def load_calibration(path: Path = CALIBRATION_PATH) -> Calibration:
 
 
 def threshold_seconds(multiplier: float, calibration: Calibration | None = None) -> float:
-    """A timing threshold as a multiple of the calibrated median.
-
-    A verification that says ``threshold_seconds(3.0)`` claims the measured
-    operation stays within three reference workloads on the machine that
-    calibrated, which survives a machine change the way an absolute number
-    cannot.
-    """
+    """A timing threshold as a multiple of the calibrated median, surviving a machine change."""
     if multiplier <= 0:
         raise ValueError(f"multiplier must be positive, got {multiplier}")
     cal = calibration if calibration is not None else load_calibration()
@@ -320,17 +267,10 @@ def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
 def _mount_entry(mountpoint: Path) -> str:
     """The parenthesized attribute list the mount table shows for ``mountpoint``.
 
-    The path is resolved first because the temp root this module mounts under
-    is reached through a symlink on macOS, and the mount table records the
-    real path.
-
-    Each line reads ``device on path (attrs)``. The path is taken as
-    everything between the first `` on `` and the LAST attribute group, then
-    compared EXACTLY, never as a substring. macOS mounts a second volume with
-    a duplicated label at ``NAME (1)``, so a substring match asked about an
-    absent ``NAME`` would return the sibling's entry, which answers "is this
-    volume here" falsely, and a parenthesis inside the path would shear the
-    parse at the wrong bracket.
+    The path is resolved first (macOS reaches the temp root through a symlink).
+    Each line reads ``device on path (attrs)``; the path is everything between
+    the first `` on `` and the LAST attribute group, compared EXACTLY, since
+    macOS mounts a duplicate label at ``NAME (1)``.
     """
     resolved = str(Path(mountpoint).resolve())
     for line in _run(["mount"]).stdout.splitlines():
@@ -347,12 +287,7 @@ def _mount_entry(mountpoint: Path) -> str:
 
 
 def filesystem_kind(mountpoint: Path) -> str:
-    """The filesystem kind mounted at ``mountpoint``: msdos, hfs, apfs.
-
-    This is the honest FAT detector. Behavioral probes are weaker than they
-    look: the macOS msdos driver allows symlinks, and case folding matches
-    the platform default filesystem too.
-    """
+    """The filesystem kind mounted at ``mountpoint``: msdos, hfs, apfs; the honest FAT detector."""
     return _mount_entry(mountpoint).split(",", 1)[0].strip()
 
 
@@ -361,13 +296,10 @@ def mount_flags(mountpoint: Path) -> tuple[str, ...]:
 
 
 def _detach(mountpoint: Path) -> None:
-    """Detach, retrying briefly, then force.
+    """Detach, retrying briefly for a straggling reference, then force.
 
-    A just used mount can hold a straggling reference for a moment, which
-    makes the first detach report resource busy. Retries absorb that, and the
-    force is last because it is the option that can strand a dirty buffer,
-    which is why ``read_only_volume`` verifies content after its remount
-    rather than trusting whichever path this took.
+    Force can strand a dirty buffer, which is why ``read_only_volume`` verifies
+    its content after the remount.
     """
     for _ in range(_DETACH_ATTEMPTS):
         try:
@@ -381,19 +313,15 @@ def _detach(mountpoint: Path) -> None:
 def _remove_workdir(workdir: Path, mountpoint: Path) -> None:
     """Delete the fixture's scratch, but never through a live mount.
 
-    When every detach attempt failed, the volume is still attached, and an
-    rmtree from above would descend INTO it: it would delete the mounted
-    volume's contents, unlink the backing image out from under the kernel,
-    and then swallow the one error naming the mountpoint. Leaving the workdir
-    in place keeps the evidence a human needs to detach and diagnose.
+    An rmtree over an attached volume would delete its contents and the backing
+    image and swallow the error; the workdir is left as evidence instead.
     """
     if not os.path.ismount(mountpoint):
         shutil.rmtree(workdir, ignore_errors=True)
 
 
-# Directories the platform writes onto a volume on its own. The manifest
-# ignores exactly these names at the top level, so it pins what ``populate``
-# declared without flagging the indexer's droppings.
+# Directories the platform writes onto a volume itself, ignored at the top
+# level so the manifest pins only what ``populate`` declared.
 _PLATFORM_NOISE = frozenset(
     {".fseventsd", ".Spotlight-V100", ".Trashes", ".TemporaryItems", ".DS_Store"}
 )
@@ -415,11 +343,9 @@ def _content_manifest(root: Path) -> dict[str, str]:
 
 @contextmanager
 def fat_volume(*, size_mb: int = 64, label: str = "CKFAT") -> Iterator[Path]:
-    """A mounted FAT32 volume, yielded as its mountpoint, torn down on exit.
+    """A mounted FAT32 volume, yielded as its mountpoint, torn down on exit however the body ends.
 
-    Teardown detaches the volume and deletes the image whether the body
-    returned or raised. The label rules are FAT's own: at most 11 characters,
-    uppercase alphanumeric.
+    The label rules are FAT's own: at most 11 characters, uppercase alphanumeric.
     """
     if size_mb < FAT32_MIN_MB:
         raise ValueError(
@@ -454,16 +380,10 @@ def read_only_volume(
 ) -> Iterator[Path]:
     """A really read only volume, populated by the caller, yielded as its mountpoint.
 
-    The image is attached writable exactly once, for ``populate``, then
-    remounted with the readonly option. HFS plus is the image format because
-    it mounts as a single volume with no container indirection, and what the
-    consumers assert is mount level refusal, not filesystem flavor.
-
-    What ``populate`` wrote is fingerprinted before the writable detach and
-    verified after the readonly remount. The detach between the two mounts
-    can end on a forced path that strands unflushed data, and without this
-    check the fixture would serve a clean looking volume missing part of what
-    the caller declared, which is a measurement corrupted by its own fixture.
+    Attached writable once for ``populate``, then remounted readonly. HFS plus,
+    since it mounts as a single volume. What ``populate`` wrote is fingerprinted
+    before the detach and verified after the remount, since a forced detach can
+    strand unflushed data.
     """
     workdir = Path(tempfile.mkdtemp(prefix="cratekit-ro-"))
     image = workdir / "volume.dmg"
