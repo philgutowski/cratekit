@@ -1,14 +1,9 @@
 """Label's scenarios: the registry document, written, read back and refused (U298).
 
-`crate label registry` keeps one state document. `add` and `set` write it
-under the registry's lock and `list` reads it back; a document that exists and
-cannot be parsed is refused in the registry's own words and never read as an
-empty registry. The read and the lock are two of the things U298 gave one
-home each, so this is the scenario that holds a state store's words and bytes
-across that move. On the registry verbs suite's own machine, with labels that
-name no real one. The second scenario drives every other action the verb
-offers, rename, remove, adopt and the kind, genre and Bandcamp fields, and
-their refusals (U308).
+`crate label registry` writes its document under the lock and reads it back,
+and refuses an unparseable one rather than reading it empty, which U298's move
+of the read and the lock must keep. The second scenario drives every other
+action and its refusals (U308).
 """
 
 from __future__ import annotations

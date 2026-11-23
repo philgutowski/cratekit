@@ -1,11 +1,8 @@
 """Label sync's scenarios: the questions asked label by label, answered, and refused (U308).
 
-`crate label sync` lists every followed label, asks about the first with
-something new, records the answer and leaves the registry and the review
-queue as the answer says. Driven through the structured path and at a
-scripted terminal whose every word is printed into the command's own output,
-so the capture holds the questions in the order they were put. On the sync
-suite's own machine with its fake provider; nothing is downloaded here.
+`crate label sync` asks about each followed label with something new and
+records the answer, through the structured path and a scripted terminal whose
+words are printed, so the questions are held in order. Nothing is downloaded.
 """
 
 from __future__ import annotations

@@ -1,11 +1,8 @@
 """The rest of core read through its library calls, written down for the capture (U301).
 
-No verb prints these whole, so the scenario writes each answer into a file in
-its own directory, which the capture holds byte for byte: the pool plan over a
-table of host readings, the provider gate's spend and each refusal it raises
-on a pinned clock, preflight's refusal for each unusable sample, and the tag
-writer over synthesized audio, every field written and read back with the
-file's bytes, and the tempo field refused.
+No verb prints these whole, so each answer is written into the scenario's
+directory: the pool plan, the provider gate's spend and refusals, preflight's
+refusals, and the tag writer's fields read back, the tempo field refused.
 """
 
 from __future__ import annotations

@@ -1,14 +1,9 @@
 """Sync's scenario: the collection removal behind its gate (U298).
 
-`crate sync removed` over a landed pass whose account playlist lost a track:
-the plan as a person reads it, the gate as the envelope the two acts answer,
-the decision, and the acting drive that takes the offered row out of the
-collection through the guarded writer's shared capture. On the removal
-suite's own library, with the account a fake catalogue and no socket open.
-
-``borrowed`` is the other sync scenario files' helper (U304): it routes a
-suite's own drivers through the stage, so a test of the suite runs as written
-and every command it drives is captured.
+`crate sync removed` takes a track an account playlist lost out of the
+collection through the guarded writer, behind its gate. ``borrowed`` routes a
+suite's own drivers through the stage, so its tests run as written as
+scenarios (U304).
 """
 
 from __future__ import annotations
@@ -37,9 +32,8 @@ from tests.test_sync_removed import pinned_day as pinned_day  # noqa: PLC0414
 from tests.test_sync_removed import silence as silence  # noqa: PLC0414
 
 OK = int(ExitCode.OK)
-#: The modification time every staged file is given. A landing's digest covers
-#: each file's size and time, and the clock the capture pins is not the one a
-#: file is stamped with, so an unpinned time moves the digest between runs.
+#: The modification time every staged file is given, since a landing's digest
+#: covers each file's time and the capture's clock pin does not reach it.
 STAGED_NS = 1_790_000_000_000_000_000
 
 
@@ -73,10 +67,9 @@ def test_collection_removal(stage, native_library, silence, monkeypatch, offline
 def borrowed(stage, monkeypatch) -> None:
     """Route the suites' two drivers through ``stage``, so a suite's own test is a scenario (U304).
 
-    The sync suites drive a verb with ``tests.cli_drive``'s ``drive`` and
-    ``drive_human``, each test module holding them by name, so every binding
-    of either in a loaded test module answers through the stage instead: the
-    same dispatcher, the same envelope check, and each command kept.
+    Every binding of ``tests.cli_drive``'s ``drive`` and ``drive_human`` in a
+    loaded test module answers through the stage: the same dispatcher and
+    envelope check, each command kept.
     """
 
     def drive(argv):

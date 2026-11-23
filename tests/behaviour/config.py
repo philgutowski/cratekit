@@ -1,13 +1,9 @@
 """Core's foundation scenarios: the config file, the taxonomy and the cause table (U299).
 
-The config verbs write `config.toml` through `core.config`'s save and update,
-so the file each writes is captured byte for byte: on a fresh state root, after
-`crate profile set`, and refused for each schema shape the loader turns away.
-The taxonomy verbs write the active copy, and a dump of the taxonomy built from
-the shipped template and from the suite's second template, and of the whole
-cause and exit code tables, is written into the scenario's directory, so a
-refactor of the modules that hold them compares their content, base against
-branch.
+The config verbs' `config.toml` is captured byte for byte: fresh, after `crate
+profile set`, and refused per schema shape. The taxonomy verbs write the active
+copy, and dumps of both templates' taxonomies and of the cause and exit code
+tables are written, so a refactor of the modules holding them compares content.
 """
 
 from __future__ import annotations

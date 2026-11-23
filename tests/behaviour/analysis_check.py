@@ -1,19 +1,11 @@
 """Analysis's check scenarios: `crate analyze check` reading rekordbox's result (U306).
 
-On a disposable rekordbox database built from the binding's own schema, with
-the intake tree cut over to an INBOX folder holding the Analyze playlist,
-rows are left as rekordbox leaves them before and after a visit by setting
-the columns it writes. The check waits on a pending action while rows are
-not analysed, and names a row gone from the collection; it is suspect when
-an analysed row's analysis file is missing or its stored path climbs out of
-the share; it falls to every row not analysed when the intake tree is not
-cut over; it ends with nothing checked when no row is in scope; and it
-refuses a pass and a session no landing recorded, and a running rekordbox.
-
-No scenario here writes an analysis file: a row analysed right carries a
-beat grid in one, and nothing in this product writes a grid, so the verdict
-that every row is done is the one path left to the suite. Self contained, so
-the suites it stands beside can be trimmed without moving it.
+On a disposable database from the binding's schema, rows are left as rekordbox
+leaves them before and after a visit. The check waits, names a missing row, is
+suspect of a missing or escaping analysis file, falls back when the intake tree
+is not cut over, ends with nothing in scope, and refuses an unrecorded pass or
+session and a running rekordbox. No scenario writes an analysis file, since one
+carries a beat grid. Self contained, so the suites beside it can be trimmed.
 """
 
 from __future__ import annotations

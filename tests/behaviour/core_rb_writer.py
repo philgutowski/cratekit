@@ -1,14 +1,10 @@
 """The guarded writer's refusals, driven through a whole verb (U300).
 
-Each scenario queues `crate rebuild` on the routing suite's library and runs
-the job under one condition the guarded writer or the session refuses:
-rekordbox or its agent running at open, rekordbox started before the commit,
-Cloud Library Sync on, the library lock held on another handle, and the
-backup acknowledgment absent or expired. A rebuild opens without the
-application version check, so `core_gates.py` drives that one. The
-capture holds what each refusal printed, its exit code, and that nothing was
-written. A whitelist violation and a delete have no verb that produces them,
-so `tests/test_rb_writer_db.py` drives those against the writer itself.
+`crate rebuild` on the routing suite's library, under each condition the writer
+or the session refuses: rekordbox or its agent running, rekordbox started
+before the commit, Cloud Library Sync on, the lock held elsewhere, and the
+acknowledgment absent or expired. `core_gates.py` drives the version check and
+`tests/test_rb_writer_db.py` the writes no verb produces.
 """
 
 from __future__ import annotations

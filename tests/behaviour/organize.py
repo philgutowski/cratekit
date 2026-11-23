@@ -1,17 +1,9 @@
 """Organize's scenarios: both areas, the filing, the root and the mirror (U309).
 
-`crate organize` plans the rekordbox area and the account area, asks each its
-own explicit gate, and writes what was answered. On the organize suite's own
-world: the adoption suite's disposable database with two unfiled tracks, an
-old INBOX batch, a followed label, a set exported by `crate export set` and
-landed, and the account the suite's recording fake. Each scenario writes the
-fake's record of every call beside the ledger, so a capture holds what the
-account was asked as well as the database the run left.
-
-The refusals are the mirror's when two root folders on the account carry a
-genre's name, and the account area's when no provider session is stored. With
-the export module off in the configuration the verb still plans, and says
-which steps it left out.
+`crate organize` plans the rekordbox and account areas behind a gate each, and
+the fake's record of every account call is written beside the ledger. The
+refusals: two root folders named for a genre, and no provider session; with
+export off the verb still plans and names the steps it left out.
 """
 
 from __future__ import annotations

@@ -1,10 +1,6 @@
 """Label prune's scenarios: tracks taken off a label's year playlists behind the gate (U308).
 
-`crate label prune` takes off the year playlists this product built for a
-label every track the genre gate holds and every track the catalogue no
-longer confirms, shown at its explicit gate. On the prune suite's own
-machine: the three years built on the fake account, one release held by the
-gate and one the catalogue stopped confirming.
+`crate label prune` takes off every held or unconfirmed track, shown at its gate.
 """
 
 from __future__ import annotations

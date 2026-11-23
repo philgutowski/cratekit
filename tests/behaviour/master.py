@@ -1,16 +1,10 @@
 """Mastering's scenarios: the commands planned for the encoder, and its refusals (U311).
 
-`crate master` is queued and then run, on the mastering suite's own machine
-with no database and a real recording the suite makes with ffmpeg. The encode
-runs through the seam the suite drives it through, ``mastering.subprocess_runner``
-answered by ``_recorder``, the stand in that answers each stage on its own
-terms and keeps every command it was handed; those commands are written into
-the scenario's directory after the run, so the capture holds what would have
-been asked of ffmpeg and ffprobe, argument by argument.
-
-The refusals are the encoder named through ``CRATEKIT_BIN_FFMPEG`` at a
-program that is not there, which ``core.binaries`` reads before PATH, and a
-master already at the destination without ``--overwrite``.
+`crate master` runs on a real recording through ``mastering.subprocess_runner``
+answered by ``_recorder``, whose kept commands are written out, so the capture
+holds every argument asked of ffmpeg and ffprobe. The refusals: an encoder
+named at a missing program through ``CRATEKIT_BIN_FFMPEG``, and an existing
+master without ``--overwrite``.
 """
 
 from __future__ import annotations
@@ -32,12 +26,8 @@ OK = int(ExitCode.OK)
 def _pin_temporary_names(monkeypatch) -> None:
     """Draw the names ``tempfile`` makes from a seeded sequence, for the life of the scenario.
 
-    A split recording is joined in a directory ``tempfile.mkdtemp`` names, and
-    that name is in every command after the join. The standard library draws
-    it from a generator of its own, seeded by the system and not the one the
-    stage pins, so it is pinned here, as ``sync.py`` pins a staged file's time:
-    a sequence seeded once, which ``tempfile`` keeps as its module's one name
-    source and reuses only in the process that seeded it.
+    A split recording is joined in a ``tempfile.mkdtemp`` directory named in
+    every later command, drawn from the standard library's own generator.
     """
     names = tempfile._RandomNameSequence()
     names._rng = random.Random(0)

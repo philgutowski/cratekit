@@ -1,15 +1,8 @@
 """Intake's missing scenarios over a text list: candidates searched, offered and accepted (U307).
 
-`crate intake missing --list` reads a typed tracklist, resolves each row
-against the library and asks the catalogue's text search about each row
-still missing. A near miss is offered into the review queue with its
-candidates and scores and nothing is listed; once a person accepts a
-candidate through `crate review resolve`, the next run lists it without
-searching again. A provider that cannot search refuses with nothing offered
-or written. Everything but the catalogue is real, as in the search suite.
-
-A file of its own, because the search suite calls its configuration ``cfg``
-and its library ``library`` as other intake suites call theirs.
+A typed list's missing rows are searched and offered into review, an accepted
+candidate is listed next run without a search, and a provider that cannot
+search refuses. Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

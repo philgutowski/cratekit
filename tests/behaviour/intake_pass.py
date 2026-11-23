@@ -1,22 +1,10 @@
 """Intake's pass scenarios: a sync pass landed with its account playlists and hearts (U307).
 
-`crate intake land --pass` over a pass whose playlist jobs ran: each account
-playlist is its own INBOX playlist under its exact name and the landing's
-date (U113, U175), a track two playlists brought in is a member of both, and
-a file no playlist claimed stays in the batch playlist. Then a pass whose
-hearts job ran beside a playlist job: the hearted file lands in All
-Favorites and a month made for it and is coloured Pink (U120, U153), and an
-owned track the account hearts joins in the same commit with nothing
-downloaded for it. `crate inbox refill --pass` fills an account playlist a
-person emptied from the pass that brought it in, three owned rows and two
-new ones in the account's order, and run again plans nothing (U134). `crate
-inbox analyzed` clears from INBOX / Analyze the rows rekordbox analysed and
-leaves the rest waiting (U166). On the native landing suite's own library,
-its jobs run through the driver with no account reached and no socket open.
-
-A file of its own, because the account playlists suite pins the day a batch
-is named for with an autouse fixture every scenario here takes, and the
-scenarios in ``intake.py`` are captured without it.
+`crate intake land --pass` files each account playlist under its own name
+(U113, U175) and hearts into All Favorites, Pink (U120, U153); `crate inbox
+refill --pass` refills an emptied playlist (U134); `crate inbox analyzed`
+clears what rekordbox analysed (U166). Its own file because the suite pins the
+batch day with an autouse fixture.
 """
 
 from __future__ import annotations

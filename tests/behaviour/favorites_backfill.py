@@ -1,10 +1,7 @@
 """Favorites backfill's scenarios: owned hearts placed into All Favorites behind the gate (U308).
 
-`crate favorites backfill` lists every owned heart All Favorites lacks, dates
-it by its job or the account, shows the placement at its explicit gate, and
-once the gate is answered places each heart and its month. A second run has
-nothing to place. On the backfill suite's own library: hearts landed natively
-with no pass, one heart the source system filed deep, the account faked.
+`crate favorites backfill` places each owned heart All Favorites lacks, dated
+by its job or the account; a second run has nothing to place.
 """
 
 from __future__ import annotations
@@ -28,11 +25,8 @@ OK = int(ExitCode.OK)
 
 
 def _landed_hearts(stage, cfg, silence, titles: dict[str, str | None]) -> None:
-    """The suite's hearts landed with no pass, the staged files given the pinned instant.
-
-    The landing's digest names each staged file by its time, and the suite's
-    own ``_landed_hearts`` stages and lands in one call with no settle between.
-    """
+    """The suite's hearts landed with no pass, the staged files given the pinned
+    instant, since the landing's digest names each by its time."""
     hearts_swept(cfg, {title: UNKNOWN if when is None else when for title, when in titles.items()}, run_id="")
     for title in titles:
         _stage(cfg, silence, title)

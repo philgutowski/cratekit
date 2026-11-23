@@ -1,15 +1,9 @@
 """The report verbs' scenarios: the tables each prints and the queue one writes (U311).
 
-The four verbs whose engines live in ``cratekit.modules.reports``, `crate
-audit coverage`, `crate audit duplicates`, `crate report library` and `crate
-report intake-aging`, each read a rekordbox collection export named on the
-command line. The machine and the export are the report suite's own: no
-database, and an export written by ``exported`` with a filed track, a
-duplicate pair where asked, and loose tracks in a dated intake grouping. Each
-verb is run in a person's rendering and as JSON, and the one that writes, the
-duplicate audit, offers its pair into the review queue, is asked again, and is
-asked once more after the pair is rejected, so the capture holds the queue's
-database as each run left it.
+`crate audit coverage`, `audit duplicates`, `report library` and `report
+intake-aging` each read the report suite's export, in a person's rendering and
+as JSON; the duplicate audit's queue is held after each of three runs, the last
+after its pair is rejected.
 """
 
 from __future__ import annotations

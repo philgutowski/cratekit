@@ -1,24 +1,9 @@
 """The session package's scenarios: the acknowledgment, the release and the three restore verbs (U311).
 
-Every verb here is registered from ``cratekit.session``. The library is the
-restore suite's own, configured and saved, with its database a few bytes the
-restore engine captures and puts back; the platform seams are answered by the
-restore command suite's ``installed`` and, where a person must be at a
-terminal, by the session command suite's ``at_a_terminal``, which together are
-what that suite's own ``installed`` is.
-
-`crate session ack` is driven through its explicit gate in three commands, as
-``_mint_through_the_cli`` drives it, and in a person's rendering. `crate
-session release` is driven through its gate with nothing held, aborted, and
-over a lock and an open record a previous boot left, the power loss case,
-whose holder names a process by a fixed number so two captures agree.
-
-`crate restore list` is read before and after a real `crate restore run` of a
-write session's snapshot, which goes through its two acts and puts the
-database back as the session's capture held it. `crate restore bare-metal`
-runs as far as the suite drives it without a real volume: onto a replacement
-directory the suite calls a mount point, through the stand in for rclone, and
-refused without the acceptance flag and while the library is still mounted.
+On the restore suite's library: `crate session ack` through its gate,
+`session release` with nothing held, aborted, and over a previous boot's lock,
+`crate restore list` around a real `restore run`, and `restore bare-metal` onto
+a stand in mount point, refused without its flag and while mounted.
 """
 
 from __future__ import annotations
@@ -41,9 +26,7 @@ from tests.test_write_session import _lock_recording
 OK = int(ExitCode.OK)
 ASKED = int(ExitCode.DECISION_REQUIRED)
 
-#: The process a previous boot's holder names. Fixed rather than a real
-#: finished process's, because a boot other than this one is what makes the
-#: holder gone, and a real number would differ between two captures.
+#: The process a previous boot's holder names, fixed so two captures agree.
 GONE_PID = 4242
 
 

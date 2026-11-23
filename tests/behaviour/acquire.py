@@ -1,14 +1,11 @@
 """Acquire's scenarios: the match verdicts, the audit and the refusals (U305).
 
-`crate match run` reads a list three ways (pasted text, a provider playlist
-document and a public playlist document) and resolves each row against the
-library to matched, a question or missing; a second run reads the review
-entries the first one queued, and a tombstone withholds a deleted record.
-Across a table of titles, versions, keys and ISRCs, every verdict, review
-entry and printed line is held here, so the split of the match engine that
-U305 makes is seen to change none of them. `acquire audit` and the refusals
-of `acquire download` and `match run` are the rest. On the match suite's own
-machine, with names that are no real artist's.
+`crate match run` reads a list three ways and resolves each row to matched, a
+question or missing; a second run reads the review entries the first queued,
+and a tombstone withholds a deleted record. Every verdict, review entry and
+printed line is held so U305's split of the match engine changes none of them.
+`acquire audit` and the refusals of `acquire download` and `match run` are the
+rest, on the match suite's machine with no real artist's names.
 """
 
 from __future__ import annotations

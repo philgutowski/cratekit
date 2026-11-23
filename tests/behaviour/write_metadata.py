@@ -1,12 +1,8 @@
 """The write layer's My Tag scenarios: vocal tags written from a file's vocal reading (U302).
 
-`crate metadata mytags-vocals` reads each collection row's file for its vocal
-level and gender, plans the My Tags those earn above the calibrated cut, and
-with ``--apply`` writes them inside one guarded database session, never a
-content column. On the metadata suite's own library: a disposable database
-with a tag category and one row naming a file the encoder synthesized, tagged
-as a voiced male track. Its refusal is a vocal calibration that cannot be read,
-which stops the apply with no My Tag written.
+`crate metadata mytags-vocals --apply` writes the My Tags a file's vocal reading
+earns, never a content column; an unreadable calibration stops it with none
+written.
 """
 
 from __future__ import annotations

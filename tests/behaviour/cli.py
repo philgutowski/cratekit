@@ -1,14 +1,9 @@
 """The command shell's scenarios: every verb's help, and a config no verb can use.
 
-The help is generated from the registry, so a verb added later is captured
-without an edit here: the top level screen, every group's and every verb's, as
-an unconfigured machine shows them, which is the full preset (U297).
-
-The second scenario runs one verb after another on a machine with no
-configuration, and then on one whose configuration file is not a
-configuration. Each of these verbs loads the configuration before anything
-else and takes no argument to reach that load, so what a person is told, and
-the origin the envelope names, is each verb's own (U298).
+The help is generated from the registry, so a later verb is captured without an
+edit here, as an unconfigured machine shows it (U297). Then one verb after
+another runs with no configuration and with a broken one, so each verb's own
+message and origin are held (U298).
 """
 
 from __future__ import annotations

@@ -1,19 +1,10 @@
 """Adoption's scenarios: the scan, apply and move jobs, the genre report and the revert (U298, U310).
 
-`crate adopt scan` queues one item per live row and drives them, each item's
-report staged and then committed beside the queue; `crate adopt apply` stops
-at its explicit gate, queues one item for the plan it approved, and its
-worker writes the memberships inside one guarded database session. On the
-adoption workers suite's own cut over library. The job report, the job
-shell and the two report directories are three of the things U298 gave one
-home each, and this scenario holds what a job prints at each step and every
-report file it leaves.
-
-U310 adds the rest of the package: `crate adopt move` behind its gate on the
-move suite's library, whose tree files tracks where their files do not read;
-`crate report genres` on the genre report suite's library; and the revert
-ledger, which no verb reaches, driven straight after an apply whose worker
-was handed a tag to write.
+`crate adopt scan` queues and drives one item per live row; `crate adopt apply`
+stops at its gate, then its worker writes the memberships inside one guarded
+session; every job's printing and report file is held (U298). U310 adds
+`crate adopt move` behind its gate, `crate report genres`, and the revert
+ledger, which no verb reaches, driven after an apply handed a tag to write.
 """
 
 from __future__ import annotations
@@ -114,12 +105,9 @@ def _written(report) -> dict:
 
 
 def test_revert_after_an_apply_that_wrote_tags(stage, placed, monkeypatch):
-    # THE SHIPPED APPLY WRITES NO TAG (``apply_cli``'s docstring says why), so
-    # no verb reaches the revert ledger. The worker's apply is handed the tag an
-    # adoption that writes one would give it, each entry's bucket name, and
-    # everything else is the verb as it ships: the gate, the job, the
-    # memberships and, inside the one destructive session, each tag written
-    # with its revert record ahead of it.
+    # The shipped apply writes no tag, so no verb reaches the revert ledger: the
+    # worker is handed each entry's bucket name as a tag, and the rest is the verb
+    # as it ships, each tag written with its revert record ahead of it.
     real = apply_cli.apply_outstanding
 
     def writing(*args, **kwargs):

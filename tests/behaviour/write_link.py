@@ -1,14 +1,9 @@
 """The write layer's probe scenarios: chosen values written into chosen rows (U302).
 
-`crate repair link` takes ``--set row:column=value`` triples on the two probe
-columns, plans each with how many other live rows carry the value, stops at
-its explicit gate, and once the gate is answered writes the triples inside one
-guarded database session and reads every one back. On the link suite's own
-library: the row repair suite's disposable database with rekordbox's probe
-values on every row it made and the binding's on the two a landing made.
-
-A file of its own beside ``write_rows.py``, because the two suites name their
-verb and its gate by the same names, ``VERB`` and ``GATE``, for two verbs.
+`crate repair link` plans ``--set row:column=value`` triples on the two probe
+columns with how many rows share each value, then writes and reads them back
+behind its gate. Its own file because ``write_rows.py`` names ``VERB`` and
+``GATE`` for another verb.
 """
 
 from __future__ import annotations

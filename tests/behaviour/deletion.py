@@ -1,18 +1,10 @@
 """Deletion's scenarios: the review, its confirm gate, the Trash and the tombstones (U310).
 
-`crate delete review` reads the collection, offers every removed row whose
-file it can prove is the one the row described and nothing else claims, and
-stops at its explicit confirm gate; once the gate is answered it trashes the
-confirmed files, records a tombstone per file and moves the watermark.
-`crate tombstone list` reads those records back and lifts one. On the
-deletion suite's own disposable database, whose two collection rows each
-scenario edits with the suite's own raw writer, and the suite's fake Trash
-under the scenario's home.
-
-Beside the files the pass takes, each refusal it makes with nothing removed:
-a file a playlist still holds, a row with nothing to identify it by, a
-decision whose plan digest moved under it, and a tombstone that could not be
-written, which puts the file back.
+`crate delete review` offers every removed row whose file it can prove, stops
+at its confirm gate, then trashes, records a tombstone per file and moves the
+watermark; `crate tombstone list` reads them back and lifts one. Beside it,
+each refusal that removes nothing: a file a playlist holds, an unidentifiable
+row, a moved plan digest, and a tombstone that could not be written.
 """
 
 from __future__ import annotations
@@ -47,11 +39,8 @@ CREDITED = "First Track (feat. A Guest)"
 
 
 def _removed(cfg, *rows: tuple[str, str, str], after: int = 40) -> dict[str, Path]:
-    """Mark the disposable database's rows removed after the baseline, one file each.
-
-    Each row is a content id, a file name and a title. The update sequence is
-    past ``after``, the baseline's, so the next review offers what it can prove.
-    """
+    """Mark the disposable database's rows removed after the baseline, one file each,
+    each row a content id, a file name and a title, past ``after``."""
     made: dict[str, Path] = {}
     written = []
     for usn, (content_id, name, title) in enumerate(rows, start=after + 10):
@@ -81,11 +70,8 @@ def _baselined(cfg) -> None:
 
 
 def _membership(cfg, content_id: str) -> None:
-    """A live playlist entry on ``content_id``, as rekordbox leaves one behind.
-
-    Written as a row with plain SQL, as the suite's own ``_write_rows`` edits
-    the collection: a membership is exactly what this unit never writes.
-    """
+    """A live playlist entry on ``content_id``, as rekordbox leaves one behind,
+    written with plain SQL, since this unit never writes a membership."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         conn.execute(
