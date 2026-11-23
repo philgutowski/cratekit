@@ -1,9 +1,8 @@
 """U221: a twin's missing tracks are held for Phillip's choice per playlist.
 
-``crate sync twins`` records each twin's missing tracks as its pair's hold,
-``crate sync pair`` names them and queues none, and ``crate sync release``
-lets one twin's or every twin's go at its own explicit gate. Driven through
-the dispatcher on the disposable world tests/test_sync_twins.py builds.
+``sync twins`` records the hold, ``sync pair`` names it and queues none, and
+``sync release`` lets one or every twin's go at its own explicit gate, on the
+world tests/test_sync_twins.py builds.
 """
 
 from __future__ import annotations

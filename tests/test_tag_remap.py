@@ -224,9 +224,7 @@ def test_a_file_holding_a_second_genre_is_left_alone_and_both_are_shown(machine,
 
 
 def test_a_word_the_taxonomy_now_has_no_folder_for_is_listed_and_left(machine, silence):
-    """A word with no row that the aliases answer with a bare bucket name,
-    which is no longer written. The genre stays on the file: declining a word
-    is no reason to blank one, and a person reads which word to add a row for."""
+    """A word with no row is listed and its genre left on the file, for a person to add a row."""
     path = tagged(machine, silence, "an indie record", OLD_ALTERNATIVE, "Indie Rock")
     plan = planned(machine)
     counts(plan, word_declined=1)
@@ -282,9 +280,7 @@ def test_a_genre_a_record_shop_wrote_later_on_a_path_the_catalogue_once_wrote_ag
 
 
 def test_one_file_recorded_under_two_spellings_is_one_file(machine, silence):
-    """What the second review drove. Grouped by the string, the shop's record
-    was never seen beside the general catalogue's and the genre a record shop
-    supplied was planned for rewrite."""
+    """Grouped by the string, the shop's genre was planned for rewrite (second review)."""
     path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
     spelled = music(machine) / ".." / "Music" / "a record.flac"
     record(machine, spelled, OLD_POP, source=SHOP, word="Pop", job="job-b")
@@ -315,11 +311,10 @@ def test_a_file_reached_through_a_link_is_the_file(machine, silence, tmp_path):
 def test_a_folder_named_in_another_case_on_a_volume_that_folds_case_is_inside(
     machine, silence
 ):
-    """A tag job keeps the folder as it was typed. Where the volume folds case
-    that is the same directory, and its files are this library's. Where it
-    keeps two cases apart the other case is another folder, outside the
-    library. Both are asserted, each on the volume that shows it, so this
-    never passes by not running."""
+    """A folder typed in another case is inside where the volume folds case, outside where not.
+
+    Each is asserted on the volume that shows it, so this never passes by not running.
+    """
     path = tagged(machine, silence, "a record", OLD_POP, "Pop")
     typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
     assert str(typed) != str(path)
@@ -344,9 +339,7 @@ def test_two_files_that_are_gone_are_two_files(machine):
 
 
 def test_a_record_shops_genre_is_never_resolved_as_the_catalogues_word(machine, silence):
-    """The shop's word here is one the general catalogue's table writes
-    differently. Resolved as the catalogue's, the shop's Dance / Pop would be
-    planned as a pop record. It is the shop's, and it agrees."""
+    """Read as the catalogue's word, the shop's Dance / Pop would be planned as pop."""
     path = tagged(machine, silence, "a record", OLD_ALTERNATIVE, "Alternative", now=OLD_POP)
     record(machine, path, OLD_POP, source=SHOP, word="Pop", job="job-b")
     plan = planned(machine)
@@ -428,9 +421,7 @@ def test_a_path_that_climbs_out_of_the_library_is_outside_it(machine, silence, t
 def test_a_file_under_a_directory_this_account_cannot_enter_does_not_end_the_plan(
     machine, silence
 ):
-    """Found by the hunt after the reviews, and driven: asking whether such a
-    file is there raised out of the plan, so one folder ended the verb over
-    every other file."""
+    """Asking whether such a file is there raised out of the plan and ended the verb."""
     locked = music(machine) / "locked"
     locked.mkdir()
     hidden = locked / "a pop record.flac"
@@ -801,9 +792,7 @@ def test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again(
 
 
 def test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone(machine, silence):
-    """What the second review drove. The record the rewrite replaced still
-    matched the file, so the undo a person made was planned for rewrite again
-    on every run."""
+    """The replaced record still matched, so a person's undo was rewritten each run."""
     path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     remap.apply(machine, planned(machine))
     assert tags.write_genre(path, OLD_POP)

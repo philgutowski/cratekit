@@ -1,10 +1,7 @@
 """U149: ``crate sync twins`` and the twin pairs, on a disposable database.
 
-The catalogue (which lists) and the account seam (which lists folders and
-writes) read one fake, so an edit on one is what the next listing serves. The
-backfill, the merge after it and the unpair are driven through the dispatcher,
-explicit gates included. The landing's twins are in
-tests/test_intake_land_twins.py.
+The catalogue and the account seam read one fake, so an edit on one is what the
+next listing serves. The landing's twins are in tests/test_intake_land_twins.py.
 """
 
 from __future__ import annotations
@@ -292,11 +289,8 @@ def world(cfg, gates_pass, db, monkeypatch) -> World:
 def ladder_waits(monkeypatch) -> list[float]:
     """The listing's real retry ladder, every rung climbed, none of it slept (U252).
 
-    ``listing.fetch_with_retry`` sleeps 31 real seconds per reading through a
-    keyword default ``sleep``, which patching ``time.sleep`` does not reach,
-    so only that sleep is bound, as tests/test_label_workers.py does; the
-    retries, pagination and re-raise run as shipped. Returns every wait asked
-    for, so a test proves the ladder was climbed.
+    Only the keyword default ``sleep`` of ``listing.fetch_with_retry`` is bound, as
+    tests/test_label_workers.py does. Returns every wait asked for.
     """
     real = harvest.playlist_tracks
     waits: list[float] = []

@@ -1,11 +1,8 @@
 """``crate sync unmark``: a mark a pass wrote can be taken off again (R-838).
 
-A legacy mark since U242: ``sync mark`` now holds a playlist as taken in the
-record (driven in ``tests/test_u242_taken.py``) and retitles nothing. This
-file drives the title half, which still puts back every prefix a pass wrote
-before U242. Each test lands a pass with ``tests/test_sync_mark.py``'s helpers
-and then writes the record entry and retitled listing a pre U242 mark left,
-as the live account holds them.
+Since U242 a mark retitles nothing (``tests/test_u242_taken.py``); this drives
+the title half, putting back every prefix a pass wrote before U242, over the
+record entry and retitled listing such a mark left.
 """
 
 from __future__ import annotations
@@ -46,10 +43,7 @@ def fresh_cache():
 
 
 def _marked(slim_cfg, monkeypatch, *listed):
-    """A pass over ``listed``, landed whole and marked, the listing retitled to the mark.
-
-    Returns the fake catalogue, the account, the pass's name and the intake file.
-    """
+    """A pass over ``listed``, landed whole and marked, its listing retitled to the mark."""
     listed = listed or THREE
     fake, name = _swept_pass(monkeypatch, *listed)
     account = outbound_fakes.FakeAccount()

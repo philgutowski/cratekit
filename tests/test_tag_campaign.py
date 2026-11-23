@@ -1,15 +1,10 @@
 """U294: ``crate tag campaign`` applies the needs genre backlog under one gate.
 
-Three layers, in the order they are trusted. The rules, pure: narrowing a made
-plan to the rows a campaign may write, an answer checked against the plan, and
-the one digest. Then the verb through the real dispatcher on a disposable
-database and real tagged containers, the ``tag backlog`` suite's fixtures: the
-two acts R34 requires, every step through its verb's own apply path, needs
-genre before and after, a step's refusal stopping the campaign with the
-earlier steps' writes intact and named, and a second run planning only what is
-left. Catalogue answers are recorded, never asked of the network.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The rules pure: narrowing a plan to the rows a campaign may write, an answer
+checked against it, the one digest. Then the verb through the dispatcher on the
+``tag backlog`` suite's fixtures: R34's two acts, each step's own apply path, a
+refusal stopping with earlier writes intact and named, and a second run
+planning what is left. Catalogue answers are recorded. D1 applies.
 """
 
 from __future__ import annotations
@@ -399,9 +394,7 @@ def test_a_word_left_or_unanswered_is_named_and_nothing_retags_it(acknowledged, 
 def test_rows_joining_needs_genre_and_any_other_routed_row_are_never_written(
     acknowledged, silence
 ):
-    """R-1734: tag rows would give row 70 a word no folder takes, and row 72 is
-    a routed row whose file carries another routed genre. The campaign writes
-    only the rows the backlog named."""
+    """R-1734: the campaign writes only the backlog's rows, never row 70's or routed row 72's."""
     cfg = acknowledged
     build(
         cfg,

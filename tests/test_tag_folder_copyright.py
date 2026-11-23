@@ -1,11 +1,9 @@
 """U240: tag folder tags each file by the registered label its copyright line names.
 
-A file with no label tag, swept with no ``--label``, is matched to the
-registry by the copyright line the downloader writes. Exactly one registered
-label named, carrying a genre: the file takes it and no catalogue is asked;
-anything else is asked of the catalogues as before. Four sections: the line
-read off each container, the engine's tier, the sweep through the real
-dispatcher, and the label go's tail step.
+A file with no label tag, swept with no ``--label``, naming exactly one
+registered label with a genre takes it, no catalogue asked; anything else is
+asked as before. The line per container, the engine's tier, the sweep, and the
+label go's tail step.
 """
 
 from __future__ import annotations
@@ -77,12 +75,7 @@ def downloaded(
     label: str | None = None,
     genre: str | None = None,
 ) -> Path:
-    """One FLAC file as the vendored downloader leaves it, with a picture.
-
-    The copyright line is written under the downloader's own key, ``COPYRIGHT``
-    through mutagen, never Cratekit's writer, so what is read is what a real
-    download carries rather than what this unit's own table writes.
-    """
+    """One FLAC as the vendored downloader leaves it, its ``COPYRIGHT`` written through mutagen."""
     from mutagen.flac import FLAC
 
     path = folder / f"{name}.flac"

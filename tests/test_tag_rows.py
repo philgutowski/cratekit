@@ -1,9 +1,8 @@
 """R-816: ``crate tag rows`` writes a row's genre from its file, and nothing else.
 
-The plan against a disposable database and real tagged containers, one row per
-outcome; the apply with every column of every row compared across the write;
-then the verb through the real dispatcher. The too coarse word is the shipped
-taxonomy's; the lookup rows are whatever this file seeds. D1 applies.
+The plan on a disposable database and real containers, one row per outcome;
+the apply with every column compared across the write; then the verb. The too
+coarse word is the shipped taxonomy's, the lookup rows this file's. D1 applies.
 """
 
 from __future__ import annotations
@@ -74,9 +73,8 @@ UNREADABLE = object()
 class Track:
     """One row to seed and the file it names.
 
-    ``file`` is the genre the file carries, an empty string for a readable file
-    with no genre, :data:`ABSENT` for no file, or :data:`UNREADABLE` for bytes
-    no tag library opens. ``recorded`` overrides the location the row records.
+    ``file`` is the file's genre, empty for none, :data:`ABSENT` for no file or
+    :data:`UNREADABLE`; ``recorded`` overrides the location the row records.
     """
 
     content_id: str
@@ -551,9 +549,7 @@ def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
 def test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word(
     machine, silence, monkeypatch
 ):
-    """A frame parsed as one genre and an empty value read as a word ending in
-    a null byte, which no lookup row matches, so the run told a person to make
-    a genre row for a row that already agreed."""
+    """An empty second value read as a word ending in a null byte asked for a needless row."""
     build(machine, silence, Track("30", DEEP, DEEP), Track("31", OLD, MELODIC))
     real = tags.read_tags_checked
     monkeypatch.setattr(
@@ -873,9 +869,7 @@ def test_a_blank_row_is_as_planned_however_the_database_spells_blank(held):
 def test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence(
     acknowledged, silence
 ):
-    """The write records a fingerprint after its commit. Recorded over a
-    database recovered out of band and never compared, it blessed the recovered
-    reading, and the native tree the restore emptied went unmarked for good."""
+    """A fingerprint recorded over an unmarked out of band restore would bless it for good."""
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC))
     tree_id = DECLARED.intake.id

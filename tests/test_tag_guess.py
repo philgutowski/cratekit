@@ -188,9 +188,7 @@ def test_an_exact_eighty_percent_share_is_high_as_tag_suggest_says():
 
 
 def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
-    """A playlist's voice of four shared three to two is twelve fifths against
-    eight fifths, exactly the sixty percent bound, and banded as the rules band
-    the same share of whole votes."""
+    """Twelve fifths against eight is exactly the sixty percent bound, banded as whole votes."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
     others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
     lone = _staged("lone", artist="Nobody Known")
@@ -449,9 +447,7 @@ def test_an_off_taxonomy_word_is_named_with_both_offers(machine, silence):
 
 
 def test_a_folders_own_name_in_another_case_is_named_with_its_one_answer(machine, silence):
-    """R-1184: the lowercased name of the breaks folder is off taxonomy, and
-    neither offer takes it as the warning puts it, so the warning names the
-    alias to its own folder that does."""
+    """R-1184: the warning names the alias to its own folder that takes the lowercased name."""
     build(machine, silence)
     _stage(machine, silence, "breaks", artist="Ana Vale", title="Breaks", genre="breaks / d&b / dubstep")
 
@@ -578,9 +574,7 @@ def test_a_guess_that_refuses_ends_the_chain(monkeypatch):
 
 
 def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
-    """Review round 1: the go's remaining commands from the tag step on include
-    the guess, which no go test stopping later reaches. Round 2: with no pass,
-    since a label go's pass names no account playlist."""
+    """A go stopped at its tag step names the guess next, with no pass, as a label go names none."""
     commands = label_sync._commands(
         Path("/staging"), ["--manifest", "m.json", "--pass", "p1"], tail.TAG
     )
@@ -608,9 +602,7 @@ def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monke
 
 
 def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
-    """Review round 2: one artist track and a ten track playlist of seven to
-    three is 24/5 against 6/5, exactly eighty percent of six votes, which the
-    float sum of the two read as just under."""
+    """24/5 against 6/5 is exactly eighty percent, which a float sum reads as just under."""
     members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
     members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
     lone = _staged("lone", artist="Ana Vale")

@@ -507,10 +507,7 @@ def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
 
 
 def test_rows_unread_only_by_a_catalogue_nobody_asked_do_not_stop_the_walk(machine):
-    """U244's review, round one, B2. With no Discogs token every row Beatport
-    misses rides ``unread``, and three of them in a row stopped the walk asking
-    Beatport too, telling the person the catalogues could not be read. A row
-    left unread only by a catalogue nobody asked is not a refusal."""
+    """U244 review B2: rows unread only by a catalogue nobody asked are no refusal."""
     from urllib.parse import quote_plus
 
     from cratekit.tagging import searchers
@@ -569,9 +566,7 @@ def test_a_kept_answer_keeps_what_it_passed_over(machine):
 
 
 def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_recorded(machine):
-    """U244's round two, B2. The morning's run had no token; a token is then
-    recorded, and the same day's run asks again rather than keeping the answer
-    that said none is recorded."""
+    """U244 round two, B2: a token recorded later the same day asks again."""
     today = date(2026, 11, 12)
     passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
     lookup = _Lookup({"t": passed})

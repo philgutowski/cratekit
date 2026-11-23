@@ -1,21 +1,12 @@
 """U292: ``crate tag backlog`` sorts the needs genre backlog by cause, writing nothing.
 
-Three layers, in the order they are trusted. The rules, pure: the cause of a
-row, a proposal's evidence, a word's question and its recommendation. The
-plan, against a disposable database and real tagged containers built by the
-``tag suggest`` suite's fixtures, so each verb's own plan is what is counted.
-Then the verb through the real dispatcher, its envelope validated, with a
-recorded catalogue and never the network.
+The rules pure, the plan on a disposable database with the ``tag suggest``
+suite's containers, and the verb through the dispatcher on a recorded catalogue.
 
-The genre words are the shipped taxonomy's. ``Indie Tech`` and ``Grime`` are
-words no folder takes. ``amapiano`` and ``mpb`` are tagging aliases of a genre
-folder already saved, which routing files nowhere, so each has one answer:
-``taxonomy alias`` retagging its files with no change to the copy.
-``alternative`` is a tagging alias of a style sub, which neither ``taxonomy
-alias`` nor ``taxonomy folder`` takes. Every answer is planned on the shipped
-template, written as the library's active copy.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The words are the shipped taxonomy's: ``Indie Tech`` and ``Grime`` no folder
+takes; ``amapiano`` and ``mpb`` alias a saved genre folder, answered by
+``taxonomy alias``; ``alternative`` aliases a style sub, which neither verb
+takes. Every answer is planned on the shipped template. D1 applies.
 """
 
 from __future__ import annotations
@@ -813,9 +804,7 @@ def test_discogs_passed_over_is_said_with_how_to_record_a_token(machine, silence
 def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_counts_them(
     machine, silence, monkeypatch
 ):
-    """U322, sitting 102's shape through the verb: Discogs reads no genre and
-    Beatport answers Cloudflare's challenge on every row. Every row is asked of
-    Discogs, Beatport is fetched three times, and the catalogue line counts it."""
+    """U322, sitting 102: Beatport refusing every row is fetched three times and counted."""
     from cratekit.core import tags
     from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import (
