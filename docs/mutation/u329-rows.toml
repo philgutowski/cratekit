@@ -1,0 +1,269 @@
+name = "u329"
+pass_kind = "light"
+
+# The card's own table over what U329 wrote: one call time accessor per split
+# module family that every part binds, config.Remedy as the canonical
+# vocabulary, watched_roots in one home, the soft delete guard reading the
+# accessor's new home, and the identical body check. Each row puts back the
+# shape the change replaced or a realistic slip in it. The guards the change
+# moved unchanged are held by the kill set replay under u329-replay/.
+
+[[rows]]
+id = "P1_rb_changes_wrong_family"
+description = "rb_changes binds _writer to the session's accessor, so every _writer().name reads the wrong module"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py", "tests/test_sync_removed.py", "tests/test_adopt_move.py", "tests/test_intake_land_native.py"]
+old = 'from cratekit.core.rb_call_time import writer as _writer'
+new = 'from cratekit.core.session_call_time import session as _writer'
+
+[[rows]]
+id = "P2_rb_copies_wrong_family"
+description = "rb_copies binds _writer to the session's accessor, so every _writer().name reads the wrong module"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py", "tests/test_paths_resolved.py", "tests/test_rb_snapshot.py"]
+old = 'from cratekit.core.rb_call_time import writer as _writer'
+new = 'from cratekit.core.session_call_time import session as _writer'
+
+[[rows]]
+id = "P3_rb_nodes_wrong_family"
+description = "rb_nodes binds _writer to the session's accessor, so every _writer().name reads the wrong module"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_inbox_rotate.py", "tests/test_cutover_cli.py", "tests/test_rb_writer_parts_guard.py", "tests/test_cli_contract.py"]
+old = 'from cratekit.core.rb_call_time import writer as _writer'
+new = 'from cratekit.core.session_call_time import session as _writer'
+
+[[rows]]
+id = "P4_rb_probes_wrong_family"
+description = "rb_probes binds _writer to the session's accessor, so every _writer().name reads the wrong module"
+file = "src/cratekit/core/rb_probes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_process_scan.py", "tests/test_process_guard.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_parts_guard.py"]
+old = 'from cratekit.core.rb_call_time import writer as _writer'
+new = 'from cratekit.core.session_call_time import session as _writer'
+
+[[rows]]
+id = "P5_rb_removal_wrong_family"
+description = "rb_removal binds _writer to the session's accessor, so every _writer().name reads the wrong module"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_rb_writer_guard.py", "tests/test_rb_writer_parts_guard.py"]
+old = 'from cratekit.core.rb_call_time import writer as _writer'
+new = 'from cratekit.core.session_call_time import session as _writer'
+
+[[rows]]
+id = "P6_session_ack_wrong_family"
+description = "session_ack binds _session to the writer's accessor, so every _session().name reads the wrong module"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py"]
+old = 'from cratekit.core.session_call_time import session as _session'
+new = 'from cratekit.core.rb_call_time import writer as _session'
+
+[[rows]]
+id = "P7_session_holders_wrong_family"
+description = "session_holders binds _session to the writer's accessor, so every _session().name reads the wrong module"
+file = "src/cratekit/core/session_holders.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py", "tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py"]
+old = 'from cratekit.core.session_call_time import session as _session'
+new = 'from cratekit.core.rb_call_time import writer as _session'
+
+[[rows]]
+id = "P8_session_volumes_wrong_family"
+description = "session_volumes binds _session to the writer's accessor, so every _session().name reads the wrong module"
+file = "src/cratekit/core/session_volumes.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = 'from cratekit.core.session_call_time import session as _session'
+new = 'from cratekit.core.rb_call_time import writer as _session'
+
+[[rows]]
+id = "A1_writer_accessor_returns_a_part"
+description = "rb_call_time.writer returns rb_tables, not rb_writer, so a seam read or patched on rb_writer is not what the parts reach"
+file = "src/cratekit/core/rb_call_time.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rb_writer_parts_guard.py", "tests/test_process_guard.py", "tests/test_sync_removed.py"]
+old = '''
+    from cratekit.core import rb_writer
+
+    return rb_writer'''
+new = '''
+    from cratekit.core import rb_tables
+
+    return rb_tables'''
+
+[[rows]]
+id = "A2_session_accessor_returns_the_writer"
+description = "session_call_time.session returns rb_writer, not session, so the session parts read the writer's names"
+file = "src/cratekit/core/session_call_time.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_deletion.py", "tests/test_session_ack_by_session.py"]
+old = '''
+    from cratekit.core import session
+
+    return session'''
+new = '''
+    from cratekit.core import rb_writer as session
+
+    return session'''
+
+[[rows]]
+id = "R1_config_remedy_drifts_from_the_canonical_text"
+description = "config.Remedy is a vocabulary of its own again, its run-setup token spelled differently from the canonical one"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_reserved_causes.py"]
+old = '''
+from cratekit.core.exit_codes import Remedy as Remedy
+'''
+new = '''
+from cratekit.core.exit_codes import Remedy as _Canonical
+
+Remedy = __import__("enum").StrEnum("Remedy", {m.name: m.value.replace("run-setup", "run-set-up") for m in _Canonical})
+'''
+
+[[rows]]
+id = "R2_run_setup_token_text"
+description = "the one home's run setup token is spelled differently, which config.Remedy now reads too"
+file = "src/cratekit/core/exit_codes.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_reserved_causes.py", "tests/test_doctor.py", "tests/test_config_update.py"]
+old = '    RUN_SETUP = "run-setup"'
+new = '    RUN_SETUP = "run-set-up"'
+
+[[rows]]
+id = "R3_retry_when_unlocked_token_text"
+description = "the one home's retry when unlocked token is spelled differently, which config.Remedy now reads too"
+file = "src/cratekit/core/exit_codes.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_reserved_causes.py", "tests/test_doctor.py", "tests/test_config_update.py"]
+old = '    RETRY_WHEN_UNLOCKED = "retry-when-unlocked"'
+new = '    RETRY_WHEN_UNLOCKED = "retry-when-unlock"'
+
+[[rows]]
+id = "R4_record_rekordbox_pin_token_text"
+description = "the one home's record rekordbox pin token is spelled differently, which config.Remedy now reads too"
+file = "src/cratekit/core/exit_codes.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_reserved_causes.py", "tests/test_doctor.py", "tests/test_config_update.py"]
+old = '    RECORD_REKORDBOX_PIN = "record-rekordbox-pin"'
+new = '    RECORD_REKORDBOX_PIN = "record-rekordbox-pins"'
+
+[[rows]]
+id = "W1_empty_watch_accepted"
+description = "watched_roots no longer refuses an empty root list, so a write's analysis watch watches nothing and reports clean"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_repair_rows.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
+old = '''
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:'''
+new = '''
+    watched = [Path(root) for root in analysis_roots]
+    if False:'''
+
+[[rows]]
+id = "W2_watch_drops_roots"
+description = "watched_roots keeps only the first root, so a grid written under a second root goes unwatched"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_repair_rows.py", "tests/test_repair_link.py", "tests/test_shared_homes.py", "tests/test_routing_workers.py", "tests/test_inbox_refill.py"]
+old = '''
+    watched = [Path(root) for root in analysis_roots]
+'''
+new = '''
+    watched = [Path(root) for root in analysis_roots][:1]
+'''
+
+[[rows]]
+id = "W3_rotate_holds_a_permissive_copy"
+description = "intake.rotate binds a watched_roots of its own that accepts an empty list, the copy the one home replaced"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py", "tests/test_inbox_shelve.py", "tests/test_routing_workers.py"]
+old = '''
+from cratekit.write.row_defaults import watched_roots
+'''
+new = '''
+def watched_roots(roots):
+    return [Path(root) for root in roots]
+'''
+
+[[rows]]
+id = "G1_guard_reads_the_old_accessor_name"
+description = "the soft delete guard looks for the accessor under its old name rb_writer, so _writer imported from rb_call_time names nothing"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py", "tests/test_no_beatgrid_ever.py", "tests/test_split_modules.py"]
+old = '                    if alias.name == RB_WRITER_ACCESSOR:'
+new = '                    if alias.name == "rb_writer":'
+
+[[rows]]
+id = "G2_guard_reads_the_old_home"
+description = "the soft delete guard looks for the accessor in core.call_time, a module that no longer exists"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py", "tests/test_no_beatgrid_ever.py", "tests/test_split_modules.py"]
+old = 'RB_WRITER_ACCESSOR_MODULE = "cratekit.core.rb_call_time"'
+new = 'RB_WRITER_ACCESSOR_MODULE = "cratekit.core.call_time"'
+
+[[rows]]
+id = "G3_guard_skips_the_relative_import"
+description = "the soft delete guard reads only the absolute import of the accessor, not from .rb_call_time"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py", "tests/test_no_beatgrid_ever.py", "tests/test_split_modules.py"]
+old = '                node.level == 1 and module =='
+new = '                node.level == 2 and module =='
+
+[[rows]]
+id = "D1_body_floor_four"
+description = "the identical body check counts from four lines, so a copied three line helper passes"
+file = "tests/test_duplication.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py"]
+old = 'BODY_LINES = 3'
+new = 'BODY_LINES = 4'
+
+[[rows]]
+id = "D2_three_files_to_copy"
+description = "the identical body check needs three files, so a helper copied once passes"
+file = "tests/test_duplication.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py"]
+old = '        if len({path for path, _ in found}) > 1'
+new = '        if len({path for path, _ in found}) > 2'
+
+[[rows]]
+id = "D3_docstring_kept"
+description = "the identical body check keeps the docstring, so a copy with its own docstring passes"
+file = "tests/test_duplication.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py"]
+old = '            body = node.body[1:] if ast.get_docstring(node, clean=False) is not None else node.body'
+new = '            body = node.body'
+
+[[rows]]
+id = "D4_arguments_ignored"
+description = "the identical body check drops the arguments, so two bodies taking different arguments read as one copy"
+file = "tests/test_duplication.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py"]
+old = '            key = ast.dump(node.args) + "".join('
+new = '            key = "".join('
+[[rows]]
+id = "S1_split_scan_skips_an_imported_accessor"
+description = "test_split_modules derives no part from an accessor imported from its family's call time part, round one's row 1, so a part off the glob holding the shared accessor passes"
+file = "tests/test_split_modules.py"
+surface = "maintainer"
+tests = ["tests/test_split_modules.py"]
+old = '''                    module = homes.get((node.module or "", alias.name))'''
+new = '''                    module = None'''
+
+[[dropped]]
+id = "D5_async_functions_unread"
+description = "the identical body check reads FunctionDef alone, so a copied async helper passes"
+reason = "the 25 row cap; round one drove it as a survivor and the fix round added the async case to test_a_method_a_nested_function_and_an_async_function_are_read, so it is named here rather than measured"
