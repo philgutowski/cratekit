@@ -88,6 +88,13 @@ def beatport_tag() -> str:
     return routing.suggest_tag(TAXONOMY, BUCKET_GENRE).tag
 
 
+def _both_answer(seen: list[str]):
+    """A fetch where Discogs files the track as Deep House and Beatport holds it too."""
+    return routed(
+        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
+    )
+
+
 # A. The order
 
 
@@ -272,9 +279,7 @@ def test_both_unread_still_refuse_as_unreadable():
 
 def test_an_explicit_walk_naming_beatport_first_is_honoured():
     seen: list[str] = []
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     hit = build(fetch, walk=(searchers.BEATPORT, searchers.DISCOGS))(ARTIST, TITLE)
     assert hit.source == searchers.BEATPORT
     assert said(hit) == [(searchers.BEATPORT, "matched"), (searchers.DISCOGS, searchers.NOT_ASKED)]
@@ -287,9 +292,7 @@ def test_an_explicit_walk_naming_beatport_first_is_honoured():
 
 def test_a_discogs_match_carries_a_picture_ask_and_spends_nothing_until_asked():
     seen: list[str] = []
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     hit = build(fetch)(ARTIST, TITLE)
     assert hit.ask_picture is not None
     assert (hit.art_url, hit.art_source) == ("", "")
@@ -385,9 +388,7 @@ class Images:
 def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, silence):
     seen: list[str] = []
     path = a_file(tmp_path, silence)
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.genre_written == discogs_tag("Deep House")
@@ -406,9 +407,7 @@ def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, s
 def test_a_file_discogs_tagged_that_has_a_picture_sends_beatport_nothing(tmp_path, silence):
     seen: list[str] = []
     path = a_file(tmp_path, silence, picture=True)
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.genre_written == discogs_tag("Deep House")
@@ -421,9 +420,7 @@ def test_a_file_discogs_tagged_that_has_a_picture_sends_beatport_nothing(tmp_pat
 def test_a_tagged_file_with_no_picture_keeps_its_genre_and_gets_the_cover(tmp_path, silence):
     seen: list[str] = []
     path = a_file(tmp_path, silence, genre="Somebody's Own Word")
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.skipped == tag.HAS_GENRE and result.genre_written is None
@@ -479,9 +476,7 @@ def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
     from cratekit.tagging import suggest
 
     seen: list[str] = []
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+    fetch = _both_answer(seen)
     asked = suggest.catalogue_lookup(build(fetch))(ARTIST, TITLE, "")
     assert asked.source_genre == "Deep House"
     assert beatport_asked(seen) == 0

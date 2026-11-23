@@ -62,6 +62,15 @@ def _ready(cfg: config.Config) -> Path:
     return _export(cfg)
 
 
+def _flip_refusal(cfg: config.Config, export: Path):
+    """The cause the flip of ``TREE_ID`` onto ``root-1`` refuses with."""
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.flip(
+            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
+        )
+    return excinfo.value.cause
+
+
 def test_a_ready_library_flips_one_tree_and_leaves_the_rest_on_the_bridge(cfg):
     export = _ready(cfg)
     after = tree_registry.flip(
@@ -91,11 +100,7 @@ def test_an_open_run_blocks_the_flip(cfg):
         ),
         cfg,
     )
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-open-run"
+    assert _flip_refusal(cfg, export).reason == "cutover-open-run"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
@@ -104,36 +109,20 @@ def test_a_pending_intake_xml_blocks_the_flip(cfg):
     staging = Path(cfg.paths.download_staging)
     staging.mkdir(parents=True)
     (staging / "run-1_synced.xml").write_text("<DJ_PLAYLISTS/>\n", encoding="utf-8")
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-xml-pending"
+    assert _flip_refusal(cfg, export).reason == "cutover-xml-pending"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
 def test_a_missing_export_blocks_the_flip(cfg):
     _snapshot(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg,
-            TREE_ID,
-            root_id="root-1",
-            on=CUTOVER_ON,
-            source=DERIVATION,
-            export=Path(cfg.library.root) / "nope.xml",
-        )
-    assert excinfo.value.cause.reason == "cutover-export-missing"
+    export = Path(cfg.library.root) / "nope.xml"
+    assert _flip_refusal(cfg, export).reason == "cutover-export-missing"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
 def test_a_missing_snapshot_blocks_the_flip(cfg):
     export = _export(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-snapshot-missing"
+    assert _flip_refusal(cfg, export).reason == "cutover-snapshot-missing"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
@@ -143,11 +132,7 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
     fake.mkdir(parents=True)
     (fake / snapshot.MANIFEST_NAME).write_text("{}\n", encoding="utf-8")
     export = _export(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.reason == "cutover-snapshot-missing"
+    assert _flip_refusal(cfg, export).reason == "cutover-snapshot-missing"
 
 
 def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
@@ -317,11 +302,7 @@ def test_a_record_nobody_can_read_refuses_the_revert_rather_than_reading_as_no_w
 def test_a_record_nobody_can_read_refuses_the_flip_rather_than_reading_as_no_open_run(cfg):
     export = _ready(cfg)
     torn = _unreadable_record(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
-    assert excinfo.value.cause.detail["unreadable"] == [str(torn)]
+    assert _flip_refusal(cfg, export).detail["unreadable"] == [str(torn)]
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
 
