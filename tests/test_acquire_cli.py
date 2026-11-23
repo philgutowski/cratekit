@@ -151,6 +151,15 @@ def test_audit_over_an_empty_library_is_a_well_formed_empty_review_set(configure
     assert envelope["data"] == {"queue": acquire_cli.AUDIT_QUEUE, "items": [], "unresolved": 0}
 
 
+def _music(tmp_path, *names: str):
+    """A ``Music`` folder holding a one byte file under each of ``names``."""
+    root = tmp_path / "Music"
+    root.mkdir()
+    for name in names:
+        (root / name).write_bytes(b"x")
+    return root
+
+
 def _kinds(root, *, policy, marker="[MP3]"):
     return {
         item["id"]: item["kind"]
@@ -160,11 +169,7 @@ def _kinds(root, *, policy, marker="[MP3]"):
 
 def test_strict_policy_reports_every_lossy_file_marked_or_not(tmp_path):
     """Strict reports a lossy track as unacquired, so the marker is irrelevant under it."""
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "plain.mp3").write_bytes(b"x")
-    (root / "Artist - Title [MP3].mp3").write_bytes(b"x")
-    (root / "keeper.flac").write_bytes(b"x")
+    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].mp3", "keeper.flac")
 
     found = _kinds(root, policy=LosslessPolicy.STRICT)
     assert found == {
@@ -173,10 +178,7 @@ def test_strict_policy_reports_every_lossy_file_marked_or_not(tmp_path):
 
 
 def test_permissive_policy_reports_only_the_unmarked_lossy_file(tmp_path):
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "plain.mp3").write_bytes(b"x")
-    (root / "Artist - Title [MP3].mp3").write_bytes(b"x")
+    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].mp3")
 
     found = _kinds(root, policy=LosslessPolicy.ALLOW_LOSSY_MARKED)
     assert found == {"plain.mp3": "lossy-unmarked"}
@@ -185,10 +187,7 @@ def test_permissive_policy_reports_only_the_unmarked_lossy_file(tmp_path):
 def test_a_lossless_file_wearing_the_marker_is_reported(tmp_path):
     """The naming engine strips the marker, so a lossless file carrying one collapses onto
     another recording."""
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "Artist - Title [MP3].flac").write_bytes(b"x")
-    (root / "honest.flac").write_bytes(b"x")
+    root = _music(tmp_path, "Artist - Title [MP3].flac", "honest.flac")
 
     for policy in LosslessPolicy:
         found = _kinds(root, policy=policy)
@@ -197,9 +196,7 @@ def test_a_lossless_file_wearing_the_marker_is_reported(tmp_path):
 
 def test_an_mp4_container_is_reported_undecided_rather_than_assumed(tmp_path):
     """ALAC and AAC share the container, so the suffix cannot answer under either policy."""
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "ambiguous.m4a").write_bytes(b"x")
+    root = _music(tmp_path, "ambiguous.m4a")
 
     for policy in LosslessPolicy:
         assert _kinds(root, policy=policy) == {"ambiguous.m4a": "format-undecided"}, policy
@@ -207,10 +204,7 @@ def test_an_mp4_container_is_reported_undecided_rather_than_assumed(tmp_path):
 
 def test_a_configuration_with_no_marker_text_decides_no_marker_question(tmp_path):
     """An empty marker means the marker kind is undecidable; the strict kind still fires."""
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "plain.mp3").write_bytes(b"x")
-    (root / "Artist - Title [MP3].flac").write_bytes(b"x")
+    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].flac")
 
     assert _kinds(root, policy=LosslessPolicy.ALLOW_LOSSY_MARKED, marker="") == {}
     assert _kinds(root, policy=LosslessPolicy.STRICT, marker="") == {
@@ -227,12 +221,7 @@ def test_a_music_directory_that_does_not_exist_is_empty_rather_than_an_error(tmp
 def test_non_audio_files_are_not_reported(tmp_path):
     """Artwork, playlists and system files are no findings; the marked artwork
     (``Artist - Title [MP3].jpg``) is the half that reaches ``classify``'s unknown branch."""
-    root = tmp_path / "Music"
-    root.mkdir()
-    (root / "cover.jpg").write_bytes(b"x")
-    (root / ".DS_Store").write_bytes(b"x")
-    (root / "notes.txt").write_bytes(b"x")
-    (root / "Artist - Title [MP3].jpg").write_bytes(b"x")
+    root = _music(tmp_path, "cover.jpg", ".DS_Store", "notes.txt", "Artist - Title [MP3].jpg")
 
     for policy in LosslessPolicy:
         assert _kinds(root, policy=policy) == {}, policy
