@@ -876,6 +876,7 @@ crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
 crate label registry adopt
 crate label sync
+crate label sync --genre "Deep House"
 crate label sync --go
 ```
 
@@ -911,6 +912,15 @@ a release it holds is never asked about. Without a terminal:
 crate label sync --next [--label "Some Label"]
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 ```
+
+`--genre GENRE` asks only the labels whose registry genre is GENRE (set with
+`registry set --genre`), in registry order, at the terminal or with `--next`,
+matched whatever its case; the run after a `quit` is told to name it again,
+so it resumes inside the group. `crate label registry list --genre GENRE`
+lists that group. A genre no followed label carries refuses, `label-unknown`,
+naming the genres they do carry. `--go` takes no genre: it stays the one gate
+over every answer saved, and a genre walk ends at that same gate, so it shows
+an answer saved earlier for a label outside the group too.
 
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a
@@ -1209,6 +1219,17 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   rekordbox's Genre column keeps the old word until rekordbox reads the file
   again. The first organize after the
   mirror exists reads every difference as rekordbox's.
+- A track with a second genre (`tag second`) sits in two genre folders, and
+  an edit in one leaves the other: a band move inside either changes the
+  energy, which moves it in both, and a move out of one folder into a third
+  genre replaces the genre whose folder it left. An edit that takes it out of
+  one of its two folders and leaves it in the other, or adds it to a third
+  without taking it out of exactly one, is listed and not taken, since the
+  account does not say which genre changed; `tag second` sets or clears it.
+  So is a move whose genres would then file it somewhere the account does not
+  show it: into `Electronica / Other`, which files by no genre beside a
+  second, or out of its folder when a second genre naming that same folder
+  would then name it too.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a
@@ -1311,9 +1332,33 @@ writes their genre tags.
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
+| `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
 | `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
+
+**A second genre folder.** A track can sit in a second genre folder of BY
+GENRE + ENERGY beside the one its genre names, with its energy band in each.
+`crate tag second "Tech House" --row 1234` writes `Tech House` into the file's
+own `SecondGenre` tag (rekordbox does not show it), behind
+`tag.second.confirm`; `--playlist "BY GENRE + ENERGY / Deep House / Med"`
+chooses a playlist's tracks, named folder by folder, and `--clear` takes the
+second genre off. The gate lists every chosen row with its second genre before
+and after, which is the undo, and why any is left: a second genre naming the
+folder the file's genre already names, or a file whose genre names no folder.
+The next `adopt apply` (or `organize --only adopt`) files the track into the
+second folder too, and from then on `adopt move`, `converge`, `rebuild`,
+`route resort` and `favorites refresh` keep it in both, an energy change
+moving it in both. This holds for a pair one of whose folders took tracks
+over from the other (Soul and R&B): the band of the one is the track's own
+band there, never a place `adopt move` takes it out of. A track with one
+genre is filed exactly as before. A cleared second genre leaves the track in
+that folder until it is taken out there; `converge` names it as a membership
+no genre files only while that playlist holds another track filed into it.
+The one exception is a Soul track's cleared R&B: its R&B band is Soul's split
+place again, which `adopt move` takes it out of.
+On the account, an edit inside one of the two folders leaves the other
+(below, under Organize).
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),
@@ -1662,6 +1707,7 @@ without one.
 | `analyze.adopt.confirm` | apply | `analyze adopt` |
 | `tag.remap.confirm` | apply | `tag remap` |
 | `tag.suggest.confirm` | apply | `tag suggest` |
+| `tag.second.confirm` | apply | `tag second` |
 | `tag.campaign.approve` | apply | `tag campaign` |
 | `taxonomy.upgrade.apply` | approve | `taxonomy upgrade` |
 | `taxonomy.alias.apply` | approve | `taxonomy alias` |
@@ -1794,7 +1840,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A blocked job | `job show` gives the cause, usually a review item or a credential. |
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
-| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`, or one genre's labels with `--genre GENRE`. |
 | `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
 | `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message, or `crate schedule install` or `remove` is changing the night's schedule. Wait for it to end, then run this again. |
 | `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed at the load leaves nothing installed, unless launchd may still hold the agent, when its plist is kept and the message says so; a bootout of the earlier agent that failed leaves it installed as it was. Read `crate schedule show`, then run the verb again. |

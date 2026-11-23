@@ -367,7 +367,7 @@ def apply_adoption(ctx) -> Envelope:
                 {
                     "code": "adoption-nothing-applicable",
                     "message": (
-                        f"this plan holds {len(plan.entries)} track(s) and none of "
+                        f"this plan holds {len(plan.firsts())} track(s) and none of "
                         f"them can be placed, so there is nothing to queue"
                     ),
                 },
