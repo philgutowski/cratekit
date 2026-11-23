@@ -74,14 +74,18 @@ def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
     return stops
 
 
+def _synced(world, name: str, *content_ids: str) -> tuple[str, str]:
+    """A GIG READY playlist of ``content_ids`` synced once: (rekordbox id, account id)."""
+    made = world.playlist(name, *content_ids, under=world.folder("GIG READY"))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    return made, world.titled(f"GIG READY {name}")
+
+
 @pytest.fixture
 def stopped(world, monkeypatch):
     """Synced on four, three added, stopped after two moves: (rekordbox, account, run)."""
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     stops = _stopping(world, monkeypatch, account_id, 2)
@@ -237,11 +241,7 @@ def test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_lea
 
 
 def test_a_stopped_write_that_skipped_rekordbox_still_finishes_its_order(world, monkeypatch):
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     stops = _stopping(world, monkeypatch, account_id, 2)
@@ -305,11 +305,7 @@ def test_a_runs_steps_that_cannot_be_read_are_named_never_read_as_no_write(world
 
 def test_an_addition_the_provider_left_out_is_never_read_as_taken_off(world, monkeypatch):
     """A track the provider would not add is left out silently, never read as taken off."""
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     real_add = world.account.add_tracks
@@ -336,11 +332,7 @@ def test_a_stopped_write_that_skipped_rekordbox_leaves_the_accounts_removal_to_b
     world, monkeypatch
 ):
     """Record both or neither: a base moved for the account alone loses its removal."""
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.account.playlists[account_id].remove("t2")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
@@ -503,11 +495,7 @@ def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatc
     """The record is kept before the first move, so a write that cannot keep it stops first."""
     from cratekit.core import held_plan
 
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
 
@@ -799,11 +787,7 @@ def _left_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
 @pytest.fixture
 def strayed(world, monkeypatch):
     """A GIG READY pair of seven reversed, stopped off the path: (rekordbox, account, run)."""
-    gig = world.folder("GIG READY")
-    closer = world.playlist("Closer", "1", "2", "3", "4", "5", "6", "7", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Closer")
+    closer, account_id = _synced(world, "Closer", "1", "2", "3", "4", "5", "6", "7")
     _reordered(world, closer, *BACK)
     stops = _left_off_the_path(world, monkeypatch, account_id)
     code, refused = sync()
@@ -1109,11 +1093,7 @@ def test_a_stop_this_version_recorded_with_no_move_sent_leaves_a_reorder_the_per
     world, monkeypatch
 ):
     """U234 keeps R-1420: an order refused before any move sent nothing, so the account leads."""
-    gig = world.folder("GIG READY")
-    closer = world.playlist("Closer", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Closer")
+    closer, account_id = _synced(world, "Closer", "1", "2", "3", "4")
     _reordered(world, closer, "4", "3", "1", "2")
     real = world.account.order_tracks
     refused: list[str] = []
