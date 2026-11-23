@@ -10,6 +10,15 @@ a batch it did not finish (only the partial sidecars #855 left, named with
 or two rows from one source. It runs no test and writes nothing but OUT.
 
     python docs/mutation/u325-replay/combine.py OUT NAME TABLE ... [--partial TABLE ...]
+        [--superseded ID ...]
+
+A row named by `--superseded` is one a partial table holds that a finished
+batch measured again, for a reason the record gives (#855's README asks for
+a row killed only by an inode bound test, under no scratch copy, to be
+measured again against one). The partial table's row is left out, the
+finished batch's row stands, and the header lists each, so nothing is
+replaced silently. A superseded id that no finished batch measured again is
+refused.
 """
 
 from __future__ import annotations
@@ -21,12 +30,13 @@ from pathlib import Path
 
 def main(argv: list[str]) -> int:
     out, name, *rest = argv
-    full, partial, into = [], [], None
+    full, partial, superseded, into = [], [], [], None
     for item in rest:
-        if item == "--partial":
-            into = partial
+        if item in ("--partial", "--superseded"):
+            into = partial if item == "--partial" else superseded
             continue
-        (into if into is not None else full).append(Path(item))
+        (into if into is not None else full).append(item if into is superseded else Path(item))
+    dropped = []
     batches, rows, mapped, seen, heads = [], [], [], set(), set()
     for path in [*partial, *full]:
         table = json.loads(path.read_text(encoding="utf-8"))
@@ -37,6 +47,9 @@ def main(argv: list[str]) -> int:
             raise SystemExit(f"{path}: not a finished batch: {reason}")
         heads.add(table.get("head"))
         for row in table.get("rows", []):
+            if path in partial and row.get("id") in superseded:
+                dropped.append({"id": row.get("id"), "from": table.get("name"), "status": row.get("status")})
+                continue
             source = row.get("source") or {}
             key = (source.get("table"), source.get("id"))
             if key in seen:
@@ -58,6 +71,10 @@ def main(argv: list[str]) -> int:
                 "when": table.get("when"),
             }
         )
+    again = {row.get("id") for row in rows}
+    missing = [one for one in superseded if one not in again or one not in {d["id"] for d in dropped}]
+    if missing:
+        raise SystemExit(f"superseded but not measured again, or not in a partial table: {missing}")
     if len(heads) != 1:
         raise SystemExit(f"the batches were measured on more than one commit: {sorted(heads)}")
     combined = {
@@ -67,6 +84,7 @@ def main(argv: list[str]) -> int:
         "valid": True,
         "invalid_reason": "",
         "combined_from": batches,
+        "superseded": dropped,
         "rows": rows,
         "mapped": mapped,
     }
