@@ -1368,7 +1368,7 @@ cannot be placed still fails the whole pass.
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
-| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder, or names a row whose file is outside the library root as one neither files. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
@@ -1402,7 +1402,9 @@ take the genre keeps its row's old genre and the run ends refused under
 the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
-that folder's energy band; the run's answer names what applies. A `with vox`
+that folder's energy band; the run's answer names what applies. A row whose
+file is outside the library root is written and named as one neither verb
+files or moves, since adoption leaves it alone. A `with vox`
 or Favorites membership the row holds in the old folder stays, and the answer
 says so: remove it in rekordbox.
 
@@ -1416,7 +1418,7 @@ second genre off. The gate lists every chosen row with its second genre before
 and after, which is the undo, and why any is left: a second genre naming the
 folder the file's genre already names, or a file whose genre names no folder.
 The next `adopt apply` (or `organize --only adopt`) files the track into the
-second folder too, and from then on `adopt move`, `converge`, `rebuild`,
+second folder too, unless its file is outside the library root, and from then on `adopt move`, `converge`, `rebuild`,
 `route resort` and `favorites refresh` keep it in both, an energy change
 moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own

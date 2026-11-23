@@ -404,30 +404,63 @@ def test_adopt_scan_counts_each_sampler_row_outside_the_root(sampled):
 # ── tag set's closing message (review D2) ──
 
 
+def _set_item(content_id: str, path: Path):
+    from cratekit.tagging import genre_set as gs
+
+    return gs.Item(content_id, str(path), content_id, "House", "House", "write", leaves="house")
+
+
+def _said(tmp_path: Path, items, took) -> list[str]:
+    from types import SimpleNamespace
+
+    from cratekit.tagging import genre_set_cli
+
+    plan = SimpleNamespace(genre="Deep House", writes=tuple(items))
+    written = SimpleNamespace(
+        files=SimpleNamespace(read_back=tuple(took)),
+        written=len(took),
+        read_back=len(took),
+        session_id="s",
+    )
+    return [one["message"] for one in genre_set_cli._written(plan, written, tmp_path / "library")]
+
+
 def test_tag_set_promises_adoption_only_for_rows_inside_the_root(tmp_path):
     """A written row outside the root is named as one neither verb files, and is
     not counted among the rows `adopt move` takes out of a genre folder."""
-    from types import SimpleNamespace
+    inside = _set_item("r-in", tmp_path / "library" / "Music" / "a.flac")
+    outside = _set_item("s-out", tmp_path / "Sampler" / PRESET)
 
-    from cratekit.tagging import genre_set as gs
-    from cratekit.tagging import genre_set_cli
+    said = _said(tmp_path, (inside, outside), ("r-in", "s-out"))
 
-    root = tmp_path / "library"
-    inside = gs.Item(
-        "r-in", str(root / "Music" / "a.flac"), "a", "House", "House", "write", leaves="house"
-    )
-    outside = gs.Item(
-        "s-out", str(tmp_path / "Sampler" / PRESET), "k", "House", "House", "write", leaves="house"
-    )
-    plan = SimpleNamespace(genre="Deep House", writes=(inside, outside))
-    written = SimpleNamespace(
-        files=SimpleNamespace(read_back=("a", "k")), written=2, read_back=2, session_id="s"
-    )
-
-    said = [one["message"] for one in genre_set_cli._written(plan, written, root)]
-
+    assert len(said) == 3, said
+    assert said[1].startswith("to file the rows under 'Deep House', run `crate adopt apply`")
     assert "takes the 1 row(s) the tree filed" in said[1]
     assert said[2] == (
         "1 written row(s) have their file outside the library root, which adoption "
         "leaves alone, so neither verb files or moves them: s-out"
+    )
+
+
+def test_tag_set_promises_no_adoption_when_every_written_row_is_outside(tmp_path):
+    """Review round two: with only outside rows written, no adoption verb is named."""
+    outside = _set_item("s-out", tmp_path / "Sampler" / PRESET)
+
+    said = _said(tmp_path, (outside,), ("s-out",))
+
+    assert len(said) == 2, said
+    assert "adopt apply" not in said[1]
+    assert said[1].endswith("neither verb files or moves them: s-out")
+
+
+def test_tag_set_names_only_rows_whose_file_took_the_genre(tmp_path):
+    """Review round two: a planned row whose file did not take is not called written."""
+    one = _set_item("s-one", tmp_path / "Sampler" / PRESET)
+    two = _set_item("s-two", tmp_path / "Sampler" / PRESET)
+
+    said = _said(tmp_path, (one, two), ("s-one",))
+
+    assert said[-1] == (
+        "1 written row(s) have their file outside the library root, which adoption "
+        "leaves alone, so neither verb files or moves them: s-one"
     )

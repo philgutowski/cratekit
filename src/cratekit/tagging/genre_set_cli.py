@@ -222,13 +222,17 @@ def _written(
     )]
     if written.written:
         # A ROW OUTSIDE THE LIBRARY ROOT IS ONE ADOPTION LEAVES ALONE (U956), so
-        # neither verb is promised for it; it is named instead.
+        # neither verb is promised for it; it is named instead. Over the rows
+        # whose file took the genre, never the plan's (review round two).
+        took = frozenset(files.read_back)
+        landed = [item for item in plan.writes if item.content_id in took]
         outside = sorted(
             item.content_id
-            for item in plan.writes
+            for item in landed
             if item.path and not adopt_scan.within_root(item.path, root)
         )
-        leaving = sum(1 for item in plan.writes if item.leaves and item.content_id not in outside)
+        inside = [item for item in landed if item.content_id not in outside]
+        leaving = sum(1 for item in inside if item.leaves)
         moved = (
             f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
             f"filed under their old genre out of that genre folder's energy band; "
@@ -237,12 +241,13 @@ def _written(
             if leaving
             else ""
         )
-        said.append(warning(
-            FILE_NEXT,
-            f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
-            f"files by its energy band each one the tree does not hold in that "
-            f"genre's folder yet{moved}",
-        ))
+        if inside:
+            said.append(warning(
+                FILE_NEXT,
+                f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
+                f"files by its energy band each one the tree does not hold in that "
+                f"genre's folder yet{moved}",
+            ))
         if outside:
             said.append(warning(
                 FILE_NEXT,
