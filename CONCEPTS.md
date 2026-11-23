@@ -293,6 +293,16 @@ own gate; adoption adds only.
 
 *Avoid:* reading it as a second favourites signal; All Favorites is the one.
 
+### Second genre
+A genre word in a file's own `SecondGenre` tag that files the track into a
+second genre folder beside the one its genre names, each in its own energy
+band (U340). It names a folder only beside a genre that names one, and only a
+different one (`routing.second_bucket`). Set and cleared by `crate tag second`;
+adoption gives such a track a second plan entry.
+
+*Avoid:* reading it as a second value of the genre tag, which rekordbox would
+join into one word.
+
 ### Off taxonomy
 A genre written onto a file that the taxonomy has no place for: the catalogue's
 own word passed through by the last tier of `routing.suggest_tag`. A third
