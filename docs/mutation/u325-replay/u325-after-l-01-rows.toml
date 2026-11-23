@@ -1,0 +1,1557 @@
+name = "u325-after-l-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "r691.N4_inbox_empty_envelope_drops_the_warning"
+source = { table = "r691.json", id = "N4_inbox_empty_envelope_drops_the_warning" }
+description = "the inbox-empty answer drops the planner's warning, so the screen and the answer name different reasons for one state"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
+            outcome=Outcome.NO_OP,
+            warnings=planned.warnings,
+'''
+new = '''
+            data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
+            outcome=Outcome.NO_OP,
+'''
+
+[[rows]]
+id = "r691.P1_destination_left_off_the_item"
+source = { table = "r691.json", id = "P1_destination_left_off_the_item" }
+description = "each item is listed with no destination, the defect R-691 recorded: a person answers a placement they cannot read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": vocal.get(str(path), ""),
+'''
+new = '''
+            "destination": "",
+            "vocal": vocal.get(str(path), ""),
+'''
+
+[[rows]]
+id = "r691.P2_vocal_left_off_the_item"
+source = { table = "r691.json", id = "P2_vocal_left_off_the_item" }
+description = "the vocal sub a track also files into is left off the item"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": vocal.get(str(path), ""),
+'''
+new = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": "",
+'''
+
+[[rows]]
+id = "r691.P4_digest_over_the_file_list"
+source = { table = "r691.json", id = "P4_digest_over_the_file_list" }
+description = "the digest is taken over the file list alone, the other half of the defect: a decision recorded against it stays valid while the routing under it changes"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    digest = digest_of({"kind": kind, "items": items})
+'''
+new = '''
+    digest = digest_of({
+        "kind": kind,
+        "items": [
+            {k: v for k, v in item.items() if k in ("path", "name", "track_id")}
+            for item in items
+        ],
+    })
+'''
+
+[[rows]]
+id = "r691.W1_write_ignores_the_plan"
+source = { table = "r691.json", id = "W1_write_ignores_the_plan" }
+description = "the write takes no placement from the plan, so the confirmed apply files nothing where the screen said it would"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            placements = planned.placements[tree_id]
+'''
+new = '''
+            placements = ()
+'''
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.A3_empty_folder_shortcircuit_removed"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "A3_empty_folder_shortcircuit_removed" }
+description = "A confirmed apply over an empty intake folder derives and opens a database rather than stopping"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not items:
+        # AN EMPTY FOLDER IS NOT A WRITE.'''
+new = '''
+    if False:
+        # AN EMPTY FOLDER IS NOT A WRITE.'''
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.A5_applied_always_true"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "A5_applied_always_true" }
+description = "Every apply reports itself as having applied, whatever it did"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK,'
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.R1_resort_drives_a_foreign_job"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "R1_resort_drives_a_foreign_job" }
+description = "The resort drives any queued job of any verb under its own envelope"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",'''
+new = '''
+    if False:
+        raise refuse(
+            "job-unknown",'''
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.U1_unplaced_constant_empty"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "U1_unplaced_constant_empty" }
+description = "Unplaced reports nothing whatever the library holds, which is the defect verbatim"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    items = [
+        {"content_id": row.content_id, "path": row.recorded}
+        for row in active
+        if row.content_id not in held
+    ]'''
+new = '    items = []'
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.U2_compared_true_without_a_tree"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "U2_compared_true_without_a_tree" }
+description = "A library with nothing native reports an empty answer as a comparison it made"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}'
+new = '        return [], {"compared": True, "reason": None, "collection": 0}'
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.U3_held_never_populated"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "U3_held_never_populated" }
+description = "Nothing is read out of the tree, so every row in the library reports as unplaced"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            for node in rebuild.read_tree(handle, root_id):
+                held |= set(node.content_ids)'''
+new = '            rebuild.read_tree(handle, root_id)'
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.U4_tombstones_reported"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "U4_tombstones_reported" }
+description = "A row rekordbox removed is reported as a track still waiting to be filed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    active = [row for row in rows if not row.deleted]'
+new = '    active = list(rows)'
+
+[[rows]]
+id = "u53-zero-rows-remeasured.I1_native_filter_dropped"
+source = { table = "u53-zero-rows-remeasured.json", id = "I1_native_filter_dropped" }
+description = "A resort queues an item for a tree still on the bridge, which no rebuild can write"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'
+new = '    return tuple(sorted(entries.tree_ids()))'
+
+[[rows]]
+id = "u86-b.E14_non_creating_writer"
+source = { table = "u86-b.json", id = "E14_non_creating_writer" }
+description = "Use the creating writer, so a sub the curated tree lacks is invented"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    report = trees.apply_playlist_changes(plan, buffer, tree=tree)'
+new = '    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)'
+
+[[rows]]
+id = "u86-b.E15_nothing_inserted_nothing_written"
+source = { table = "u86-b.json", id = "E15_nothing_inserted_nothing_written" }
+description = "Write the output file even when nothing was inserted"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not report.inserted:
+        return None, report'''
+new = ''
+
+[[rows]]
+id = "u86-b.E16_never_in_place"
+source = { table = "u86-b.json", id = "E16_never_in_place" }
+description = "Write the output over the export it read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    destination = export.with_name(export.stem + ROUTED_SUFFIX)'
+new = '    destination = export'
+
+[[rows]]
+id = "u86-b.E22_export_remedy"
+source = { table = "u86-b.json", id = "E22_export_remedy" }
+description = "Drop the warning that names --export on the database path"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '            if result["reason"] == "no-native-tree"'
+new = '            if False'
+
+[[rows]]
+id = "u86-b.E23_export_branch"
+source = { table = "u86-b.json", id = "E23_export_branch" }
+description = "Ignore --export and take the disk folder path"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if ctx.args.export:
+        return route_inbox_export(ctx, cfg, Path(ctx.args.export))'''
+new = ''
+
+[[rows]]
+id = "u86.E10_unreadable_not_routed"
+source = { table = "u86.json", id = "E10_unreadable_not_routed" }
+description = "Route a track whose file could not be found, through the fallback"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        if path is None:
+            warnings.append({'''
+new = '''
+        if False:
+            warnings.append({'''
+
+[[rows]]
+id = "u86.E11_is_file"
+source = { table = "u86.json", id = "E11_is_file" }
+description = "Accept a candidate path without asking whether it is a file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        if candidate and candidate.startswith("/") and Path(candidate).is_file():'
+new = '        if candidate and candidate.startswith("/"):'
+
+[[rows]]
+id = "u86.E12_prefix_map"
+source = { table = "u86.json", id = "E12_prefix_map" }
+description = "Ignore the prefix map and try the recorded path alone"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    for candidate in (resolved.path, decoded):'
+new = '    for candidate in (decoded,):'
+
+[[rows]]
+id = "u86.E2_governed_tree"
+source = { table = "u86.json", id = "E2_governed_tree" }
+description = "Hand the export writer an ungoverned tree, so the emitter guard is never armed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    report = trees.apply_playlist_changes(plan, buffer, tree=tree)'
+new = '    report = trees.apply_playlist_changes(plan, buffer, tree=rbxml.Tree(display=tree.display))'
+
+[[rows]]
+id = "u86.E3_mount_guard"
+source = { table = "u86.json", id = "E3_mount_guard" }
+description = "Drop the refusal of a library whose root is not there"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    if not Path(cfg.library.root).is_dir():'
+new = '    if False:'
+
+[[rows]]
+id = "u86.E4_export_absent"
+source = { table = "u86.json", id = "E4_export_absent" }
+description = "Drop the refusal of an export path that is not a file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    if not export.is_file():'
+new = '    if False:'
+
+[[rows]]
+id = "u86.E6_intake_absent"
+source = { table = "u86.json", id = "E6_intake_absent" }
+description = "Read an absent intake folder as an empty one instead of refusing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not isinstance(node, rbxml.NodeSpan):
+        why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+new = '''
+    if not isinstance(node, rbxml.NodeSpan):
+        return []
+        why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+
+[[rows]]
+id = "u86.E9_row_absent"
+source = { table = "u86.json", id = "E9_row_absent" }
+description = "Treat an intake key with no collection row as a row with no Location"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        row = by_id.get(key)'
+new = '        row = by_id.get(key, {})'
+
+[[rows]]
+id = "u87.G1a_empty_not_unrated"
+source = { table = "u87.json", id = "G1a_empty_not_unrated" }
+description = "_unrated: an EMPTY Rating no longer reads as unrated, only zero does"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return value is not None and value.strip() in ("", "0")'
+new = '    return value is not None and value.strip() in ("0",)'
+
+[[rows]]
+id = "u87.G1b_any_value_unrated"
+source = { table = "u87.json", id = "G1b_any_value_unrated" }
+description = "_unrated: drop the empty-or-zero test, so a hand set rating reads as unrated"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return value is not None and value.strip() in ("", "0")'
+new = '    return value is not None'
+
+[[rows]]
+id = "u87.G1c_absent_attribute_unrated"
+source = { table = "u87.json", id = "G1c_absent_attribute_unrated" }
+description = "_unrated: drop the presence check, so a row with no Rating attribute is planned"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return value is not None and value.strip() in ("", "0")'
+new = '    return (value or "").strip() in ("", "0")'
+
+[[rows]]
+id = "u87.G2_rates_flag"
+source = { table = "u87.json", id = "G2_rates_flag" }
+description = "_ratings: drop the rates = false skip"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        if not routing.rates(declared, placement.bucket):
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u88.D1_zero_is_a_length"
+source = { table = "u88.json", id = "D1_zero_is_a_length" }
+description = "_duration: a TotalTime of zero reads as a length rather than as unknown"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return seconds if seconds > 0 else None'
+new = '    return seconds if seconds >= 0 else None'
+
+[[rows]]
+id = "u88.D2_prefix_digits"
+source = { table = "u88.json", id = "D2_prefix_digits" }
+description = "_duration: match a leading run of digits instead of the whole value, so a fraction reaches int()"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = 'not _SECONDS.fullmatch(value.strip())'
+new = 'not _SECONDS.match(value.strip())'
+
+[[rows]]
+id = "u88.D3_absent_attribute"
+source = { table = "u88.json", id = "D3_absent_attribute" }
+description = "_duration: drop the absent attribute check, so a row with no TotalTime is read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    if value is None or not _SECONDS.fullmatch(value.strip()):'
+new = '    if not _SECONDS.fullmatch(value.strip()):'
+
+[[rows]]
+id = "u88.I1_items_outside_intake"
+source = { table = "u88.json", id = "I1_items_outside_intake" }
+description = "plan_export: a long track outside the intake gets no item, so the digest omits its addition"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        for key in long_plan.keys
+        if key not in intake
+'''
+new = '''
+        for key in ()
+'''
+
+[[rows]]
+id = "u88.I2_item_flag"
+source = { table = "u88.json", id = "I2_item_flag" }
+description = "plan_export: an intake item never names the long track playlist"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '            "long_track": playlist if key in lengthy else "",'
+new = '            "long_track": "",'
+
+[[rows]]
+id = "u88.L1_bound_strict"
+source = { table = "u88.json", id = "L1_bound_strict" }
+description = "_long_tracks: a track of exactly the bound becomes a member"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        elif seconds > long_tracks.over_seconds and key not in members:'
+new = '        elif seconds >= long_tracks.over_seconds and key not in members:'
+
+[[rows]]
+id = "u88.L2_bound_coefficient"
+source = { table = "u88.json", id = "L2_bound_coefficient" }
+description = "_long_tracks: raise the bound by a minute over the declared value"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        elif seconds > long_tracks.over_seconds and key not in members:'
+new = '        elif seconds > long_tracks.over_seconds + 60 and key not in members:'
+
+[[rows]]
+id = "u88.L3_existing_members_replanned"
+source = { table = "u88.json", id = "L3_existing_members_replanned" }
+description = "_long_tracks: drop the member exclusion, so the offered plan names tracks the playlist already holds"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        elif seconds > long_tracks.over_seconds and key not in members:'
+new = '        elif seconds > long_tracks.over_seconds:'
+
+[[rows]]
+id = "u88.L4_folder_warning_dropped"
+source = { table = "u88.json", id = "L4_folder_warning_dropped" }
+description = "_long_tracks: a root FOLDER of the playlist's name plans nothing and warns nothing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        warnings.append({
+            "code": "route-write-skipped",
+            "message": f"the {long_tracks.display!r} playlist was not built: {held}",
+        })
+'''
+new = ''
+
+[[rows]]
+id = "u88.L5_folder_refusal_bypassed"
+source = { table = "u88.json", id = "L5_folder_refusal_bypassed" }
+description = "_long_tracks: never take the refusal branch, so a root FOLDER is planned over and only the writer refuses"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if isinstance(held, str):
+        warnings.append({'''
+new = '''
+    if False:
+        warnings.append({'''
+
+[[rows]]
+id = "u88.T1_unreadable_count"
+source = { table = "u88.json", id = "T1_unreadable_count" }
+description = "route_inbox_export: the unreadable length count is reported as zero"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        duration_unreadable=long_plan.unreadable,'
+new = '        duration_unreadable=0,'
+
+[[rows]]
+id = "u89-e6.E6_vox_warnings"
+source = { table = "u89-e6.json", id = "E6_vox_warnings" }
+description = "_vox_subs: drop the vocal writer's per folder warnings"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    warnings.extend(
+        {"code": "route-write-skipped", "message": text} for text in report.warnings
+    )'''
+new = ''
+
+[[rows]]
+id = "u89.E1_export_threshold"
+source = { table = "u89.json", id = "E1_export_threshold" }
+description = "plan_export: derive with None instead of the loaded cut"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        declared, readings, vocal_threshold=threshold
+    )'''
+new = '''
+        declared, readings, vocal_threshold=None
+    )'''
+
+[[rows]]
+id = "u89.E2_no_vox_subs"
+source = { table = "u89.json", id = "E2_no_vox_subs" }
+description = "_vox_subs: skip the vocal writer, so no sub exists for the router to splice into"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        written, report = trees.add_vox_playlists(content, declared, tree=tree)'
+new = '        written, report = content, trees.VoxReport()'
+
+[[rows]]
+id = "u89.E3_subs_uncalibrated"
+source = { table = "u89.json", id = "E3_subs_uncalibrated" }
+description = "_vox_subs: drop the calibration condition, so an uncalibrated export gains empty vocal subs"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    if threshold is None or not any('
+new = '    if not any('
+
+[[rows]]
+id = "u89.E4_undeclared_sub"
+source = { table = "u89.json", id = "E4_undeclared_sub" }
+description = "_vox_subs: drop the declared vocal sub condition, so a taxonomy without one is asked for its display"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if threshold is None or not any(
+        entry.additive and entry.id == trees.VOX_SUB_CLASS for entry in declared.sub_classes
+    ):'''
+new = '    if threshold is None:'
+
+[[rows]]
+id = "u89.E5_unreachable_tree"
+source = { table = "u89.json", id = "E5_unreachable_tree" }
+description = "_vox_subs: narrow the except to DuplicateFolders, so an export with no routing tree raises"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    except (trees.TreeUnreachable, trees.DuplicateFolders) as exc:'
+new = '    except trees.DuplicateFolders as exc:'
+
+[[rows]]
+id = "u89.W1_resort_worker"
+source = { table = "u89.json", id = "W1_resort_worker" }
+description = "handle_resort: hand the engine None instead of the loaded cut"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        workflow=RESORT_WORKFLOW,
+        # THE CALIBRATED CUT, through the one loader, at the path the frozen
+        # configuration names. None on a library never calibrated (U89, D7).
+        vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'''
+new = '''
+        workflow=RESORT_WORKFLOW,
+        vocal_threshold=None,'''
+
+[[rows]]
+id = "u91-b.P1_inbox_decide_rows"
+source = { table = "u91-b.json", id = "P1_inbox_decide_rows" }
+description = "plan_export, existing guard sample: hand an intake key with no collection row to _decide anyway"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+                f"row in {export.name}, so it was not routed",
+            })
+            continue
+        rows.append((key, row))'''
+new = '''
+                f"row in {export.name}, so it was not routed",
+            })
+        rows.append((key, row or {}))'''
+
+[[rows]]
+id = "u91-b.U6_tree_named"
+source = { table = "u91-b.json", id = "U6_tree_named" }
+description = "apply_unplaced_export: stop naming the tree, so the emitter guard is unarmed and the genre folder is searched for across the whole playlist section"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)'
+new = '    report = trees.apply_unplaced_changes(plan, buffer, tree=None)'
+
+[[rows]]
+id = "u91.U10_unmounted_refusal"
+source = { table = "u91.json", id = "U10_unmounted_refusal" }
+description = "_refuse_off_the_bridge: never refuse an absent library root (shared with route inbox --export)"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not Path(cfg.library.root).is_dir():
+        raise refuse(
+            "library-volume-unmounted",'''
+new = '''
+    if False:
+        raise refuse(
+            "library-volume-unmounted",'''
+
+[[rows]]
+id = "u91.U12_write_warnings"
+source = { table = "u91.json", id = "U12_write_warnings" }
+description = "route_unplaced_export: drop the writer's skipped writes from the warnings"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        *({"code": "route-write-skipped", "message": text} for text in report.warnings),
+    ]
+    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND, the inbox sweep's'''
+new = '''
+    ]
+    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND, the inbox sweep's'''
+
+[[rows]]
+id = "u91.U14_no_native_warning"
+source = { table = "u91.json", id = "U14_no_native_warning" }
+description = "route_unplaced: drop the warning that names --export on a library with nothing native"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            if totals["reason"] == "no-native-tree"
+            else []'''
+new = '''
+            if False
+            else []'''
+
+[[rows]]
+id = "u91.U15_export_branch"
+source = { table = "u91.json", id = "U15_export_branch" }
+description = "route_unplaced: ignore --export and answer the report"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if ctx.args.export:
+        return route_unplaced_export(ctx, cfg, Path(ctx.args.export))'''
+new = '''
+    if False:
+        return route_unplaced_export(ctx, cfg, Path(ctx.args.export))'''
+
+[[rows]]
+id = "u91.U17_decide_unreadable"
+source = { table = "u91.json", id = "U17_decide_unreadable" }
+description = "_decide: route a row whose Location names no file here, by absent tags, instead of warning and skipping it"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+                f"not routed",
+            })
+            continue
+        files.setdefault(str(path), []).append(key)'''
+new = '''
+                f"not routed",
+            })
+        files.setdefault(str(path), []).append(key)'''
+
+[[rows]]
+id = "u91.U18_unplaced_threshold"
+source = { table = "u91.json", id = "U18_unplaced_threshold" }
+description = "plan_unplaced_export: route with no vocal cut instead of the calibrated one"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    decision = _decide(cfg, declared, [(key, by_id[key]) for key in keys], threshold, warnings)'
+new = '    decision = _decide(cfg, declared, [(key, by_id[key]) for key in keys], None, warnings)'
+
+[[rows]]
+id = "u91.U1_unplaced_rule"
+source = { table = "u91.json", id = "U1_unplaced_rule" }
+description = "unplaced_keys: return every collection key, so a track already under the routing tree is planned again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    return [key for key in by_id if key not in held]'
+new = '    return list(by_id)'
+
+[[rows]]
+id = "u91.U3_tree_absent_refusal"
+source = { table = "u91.json", id = "U3_tree_absent_refusal" }
+description = "_routing_tree_node: answer the playlist root when the tree is absent or wrong typed, instead of refusing governed-tree-absent"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if isinstance(node, rbxml.NodeSpan):
+        return node
+    why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+new = '''
+    if root is not None:
+        return node if isinstance(node, rbxml.NodeSpan) else root
+    why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+
+[[rows]]
+id = "u91.U4_tree_type"
+source = { table = "u91.json", id = "U4_tree_type" }
+description = "_routing_tree_node: look the tree up as a PLAYLIST rather than a folder"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        else rbxml.direct_child(content, root, display, rbxml.FOLDER_TYPE)'
+new = '        else rbxml.direct_child(content, root, display, rbxml.PLAYLIST_TYPE)'
+
+[[rows]]
+id = "u91.U5_creating_writer"
+source = { table = "u91.json", id = "U5_creating_writer" }
+description = "apply_unplaced_export: call the NON creating writer, so a bucket with no sub leaves its tracks unplaced"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)'
+new = '    report = trees.apply_playlist_changes(plan, buffer, tree=tree)'
+
+[[rows]]
+id = "u91.U7_nothing_written"
+source = { table = "u91.json", id = "U7_nothing_written" }
+description = "apply_unplaced_export: write the file even when nothing was inserted"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)
+    if not report.inserted:'''
+new = '''
+    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)
+    if False:'''
+
+[[rows]]
+id = "u91.U8_suffix"
+source = { table = "u91.json", id = "U8_suffix" }
+description = "PLACED_SUFFIX: write _routed.xml, the inbox sweep's name, so an unimported inbox routing is replaced"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = 'PLACED_SUFFIX = "_placed.xml"'
+new = 'PLACED_SUFFIX = "_routed.xml"'
+
+[[rows]]
+id = "u91.U9_cut_over_refusal"
+source = { table = "u91.json", id = "U9_cut_over_refusal" }
+description = "_refuse_off_the_bridge: never refuse a tree that has cut over (shared with route inbox --export)"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    if tree_registry.read(cfg).is_database_native(declared.tree.id):'
+new = '    if False:'
+
+[[rows]]
+id = "u88-b.W1_replace_not_append"
+source = { table = "u88-b.json", id = "W1_replace_not_append" }
+description = "add_to_root_playlist: write the new tracks alone, so the playlist's members are replaced"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    warning = rbxml.insert_root_playlist(name, [*existing, *new], content)'
+new = '    warning = rbxml.insert_root_playlist(name, new, content)'
+
+[[rows]]
+id = "u88-b.W3_dedupe"
+source = { table = "u88-b.json", id = "W3_dedupe" }
+description = "add_to_root_playlist: drop the dedupe, so a repeated id or an existing member is added again"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        if key not in held:'
+new = '        if True:'
+
+[[rows]]
+id = "u223.M10_report_wrong_name"
+source = { table = "u223.json", id = "M10_report_wrong_name" }
+description = "staged_report: read the report under a name staged_path never writes"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)'
+new = '    path = _staging_dir(cfg, job.job_id, item.ordinal) / f"{item.ordinal}.json"'
+
+[[rows]]
+id = "u223.M1_keep_intent"
+source = { table = "u223.json", id = "M1_keep_intent" }
+description = "staged_path: clear the rename intent with everything else, the shipped behaviour"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()'''
+new = '''
+                entry.name == "never-kept.json"
+                and entry.is_file()'''
+
+[[rows]]
+id = "u223.M21_discard_through_link"
+source = { table = "u223.json", id = "M21_discard_through_link" }
+description = "discard_rename_evidence: reach through a linked staging directory"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK'''
+new = '''
+    if not directory.exists():
+        # NOT THROUGH A LINK'''
+
+[[rows]]
+id = "u223.M22_discard_unlinks_directory"
+source = { table = "u223.json", id = "M22_discard_unlinks_directory" }
+description = "discard_rename_evidence: unlink a directory at the report name, failing the item for good"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)'''
+new = '''
+        if True:
+            entry.unlink(missing_ok=True)'''
+
+[[rows]]
+id = "u223.M23_intent_link_followed"
+source = { table = "u223.json", id = "M23_intent_link_followed" }
+description = "rename_intent: read an intent that is a link"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():'''
+new = '''
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if not path.is_file():'''
+
+[[rows]]
+id = "u223.M24_report_link_followed"
+source = { table = "u223.json", id = "M24_report_link_followed" }
+description = "staged_report: read a report that is a link"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None'''
+new = '''
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if not path.is_file():
+        return None'''
+
+[[rows]]
+id = "u223.M2_keep_linked_intent"
+source = { table = "u223.json", id = "M2_keep_linked_intent" }
+description = "staged_path: keep an intent that is a link, so the clear keeps it and rename_intent follows it"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):'''
+new = '''
+                and entry.is_file()
+            ):'''
+
+[[rows]]
+id = "u223.M4_subdir_unlinked"
+source = { table = "u223.json", id = "M4_subdir_unlinked" }
+description = "staged_path: unlink a subdirectory entry instead of removing its tree"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)'''
+new = '''
+            if False:
+                shutil.rmtree(entry)'''
+
+[[rows]]
+id = "u223.M5_discard_keeps_report"
+source = { table = "u223.json", id = "M5_discard_keeps_report" }
+description = "discard_rename_evidence: drop the intent only, round one's residual"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):'
+new = '    for name in (RENAME_INTENT_FILENAME,):'
+
+[[rows]]
+id = "u223.M6_discard_keeps_intent"
+source = { table = "u223.json", id = "M6_discard_keeps_intent" }
+description = "discard_rename_evidence: drop the report only, keeping the intent"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):'
+new = '    for name in (_report_name(item.ordinal),):'
+
+[[rows]]
+id = "u223.M7_report_any_item"
+source = { table = "u223.json", id = "M7_report_any_item" }
+description = "staged_report: accept a report for another item"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''
+    if not isinstance(loaded, dict):
+        return None
+    return loaded'''
+
+[[rows]]
+id = "u223.M8_report_not_mapping"
+source = { table = "u223.json", id = "M8_report_not_mapping" }
+description = "staged_report: drop the mapping check, so a list report raises"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''
+    if loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+
+[[rows]]
+id = "u223.M9_report_unparsed"
+source = { table = "u223.json", id = "M9_report_unparsed" }
+description = "staged_report: let a report that is not JSON raise"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''
+    except OSError:
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+
+[[rows]]
+id = "r395.M9_worker_literal"
+source = { table = "r395.json", id = "M9_worker_literal" }
+description = "Put the old bare pip literal back in the analysis worker refusal"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '"install": extras.install_command("analysis")'
+new = '''"install": "pip install 'cratekit[analysis]'"'''
+
+[[rows]]
+id = "u192.A3_restamp_wrong_resume"
+source = { table = "u192.json", id = "A3_restamp_wrong_resume" }
+description = "analyze_restamp: name the analyze run command as the one that resumes an interrupted restamp"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    return _settle(ctx, cfg, job, restamp_argv(job))'
+new = '    return _settle(ctx, cfg, job, analyze_argv(job))'
+
+[[rows]]
+id = "u223.M11_no_fallback"
+source = { table = "u223.json", id = "M11_no_fallback" }
+description = "_finalized_twin: no staged report fallback when the intent is gone"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if target is None:
+        target = _staged_twin(cfg, job, item)'''
+new = ''
+
+[[rows]]
+id = "u223.M12_renamed_to_unchecked"
+source = { table = "u223.json", id = "M12_renamed_to_unchecked" }
+description = "_staged_twin: accept an analysed report whatever its renamed_to says"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        if report.get("renamed_to") != target.name:
+            return None'''
+new = '        pass'
+
+[[rows]]
+id = "u223.M13_resumed_unchecked"
+source = { table = "u223.json", id = "M13_resumed_unchecked" }
+description = "_staged_twin: accept any prefixed skip, not only a resume's"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:'
+new = '    elif status != "skipped-prefixed":'
+
+[[rows]]
+id = "u223.M14_any_status"
+source = { table = "u223.json", id = "M14_any_status" }
+description = "_staged_twin: accept a report of any status"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:
+        return None'''
+new = '''
+    elif False:
+        return None'''
+
+[[rows]]
+id = "u223.M15_folder_unchecked"
+source = { table = "u223.json", id = "M15_folder_unchecked" }
+description = "_staged_twin: accept a path outside the item's own folder"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if target.parent != source.parent:
+        return None
+    return target'''
+new = '    return target'
+
+[[rows]]
+id = "u223.M17_claim_failure_keeps_evidence"
+source = { table = "u223.json", id = "M17_claim_failure_keeps_evidence" }
+description = "_finalize: keep the intent when the target name is taken"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        # read that unrelated file as this item's twin (U223).
+        artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '''        # read that unrelated file as this item's twin (U223).'''
+
+[[rows]]
+id = "u223.M18_refused_rename_keeps_evidence"
+source = { table = "u223.json", id = "M18_refused_rename_keeps_evidence" }
+description = "_finalize: keep the intent when the rename is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        target.unlink(missing_ok=True)
+        artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '        target.unlink(missing_ok=True)'
+
+[[rows]]
+id = "u223.M19_attempt_start_keeps_evidence"
+source = { table = "u223.json", id = "M19_attempt_start_keeps_evidence" }
+description = "handle_run: keep stale evidence when the source is still a file"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    # it renames (U223).
+    artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '    # it renames (U223).'
+
+[[rows]]
+id = "u223.M20_twin_target_unchecked"
+source = { table = "u223.json", id = "M20_twin_target_unchecked" }
+description = "_finalized_twin: an existing guard, accept a target that is not a file"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if target is None or not target.is_file():
+        return None
+    return target'''
+new = '''
+    if target is None:
+        return None
+    return target'''
+
+[[rows]]
+id = "u58-workers-and-wav.R2_extra_not_required"
+source = { table = "u58-workers-and-wav.json", id = "R2_extra_not_required" }
+description = "Drop the missing extra refusal in the run worker"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    _require_heavy(_fake_detect_bound(), "analysing a track")
+'''
+new = ''
+
+[[rows]]
+id = "u58-workers-and-wav.R4_keyless_finalized"
+source = { table = "u58-workers-and-wav.json", id = "R4_keyless_finalized" }
+description = "Finalize a track whose head found no key"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if partial.get("terminal") is not None:
+        return artifacts.produced(
+            cfg, job, item, {"item": item.item_id, "path": str(path), "status": partial["terminal"]}
+        )
+'''
+new = ''
+
+[[rows]]
+id = "u58-workers-and-wav.R5_tag_write_unchecked"
+source = { table = "u58-workers-and-wav.json", id = "R5_tag_write_unchecked" }
+description = "Ignore a failed tag write and rename anyway"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    _write_or_refuse(path, fields, untouched="The file is untouched and was not renamed")'
+new = '    tags.write_tags(path, fields)'
+
+[[rows]]
+id = "u58-workers-and-wav.R7_absent_energy_stamped"
+source = { table = "u58-workers-and-wav.json", id = "R7_absent_energy_stamped" }
+description = "Write a level for an absent energy"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '        "energylevel": scored.get("energy"),'
+new = '        "energylevel": scored.get("energy") or 5,'
+
+[[rows]]
+id = "u58-workers-and-wav.R8_title_without_head"
+source = { table = "u58-workers-and-wav.json", id = "R8_title_without_head" }
+description = "Write the bare stem as the title tag"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '        "title": rendered.title_tag,'
+new = '        "title": path.stem,'
+
+[[rows]]
+id = "u58-workers-and-wav.R9_missing_file_analysed"
+source = { table = "u58-workers-and-wav.json", id = "R9_missing_file_analysed" }
+description = "Drop the source-missing refusal for a file that vanished"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        if twin is None:
+            raise _refuse_missing(item, folder, path, "analyse")
+'''
+new = ''
+
+[[rows]]
+id = "u58-workers-and-wav.S2_unchanged_rewritten"
+source = { table = "u58-workers-and-wav.json", id = "S2_unchanged_rewritten" }
+description = "Rewrite a file whose level did not move"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if previous != level:'
+new = '    if True:'
+
+[[rows]]
+id = "u58-workers-and-wav.S3_queue_without_calibration"
+source = { table = "u58-workers-and-wav.json", id = "S3_queue_without_calibration" }
+description = "Queue a restamp over a library that has no calibration"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    # REFUSED AT THE QUEUE, not only in the worker: a job whose every item
+    # would fail on the same absence is a report over work nothing could do.
+    _calibration_or_refuse(cfg)
+'''
+new = ''
+
+[[rows]]
+id = "u90-a.A1_lower_bound_strict"
+source = { table = "u90-a.json", id = "A1_lower_bound_strict" }
+description = "The range guard's lower bound made strict, so a cut of 0 is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'
+new = '    if not VOCAL_SCORE_MIN < cut <= VOCAL_SCORE_MAX:'
+
+[[rows]]
+id = "u90-a.A2_upper_bound_strict"
+source = { table = "u90-a.json", id = "A2_upper_bound_strict" }
+description = "The range guard's upper bound made strict, so a cut of 100 is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'
+new = '    if not VOCAL_SCORE_MIN <= cut < VOCAL_SCORE_MAX:'
+
+[[rows]]
+id = "u90-a.A3_range_guard_off"
+source = { table = "u90-a.json", id = "A3_range_guard_off" }
+description = "The whole range guard switched off, so any float is written as the cut"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'
+new = '    if False:'
+
+[[rows]]
+id = "u90-a.A4_max_coefficient"
+source = { table = "u90-a.json", id = "A4_max_coefficient" }
+description = "The score range's top moved from 100 to 1000"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'VOCAL_SCORE_MAX = 100.0'
+new = 'VOCAL_SCORE_MAX = 1000.0'
+
+[[rows]]
+id = "u90-a.A5_min_coefficient"
+source = { table = "u90-a.json", id = "A5_min_coefficient" }
+description = "The score range's bottom moved from 0 to minus 1"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'VOCAL_SCORE_MIN = 0.0'
+new = 'VOCAL_SCORE_MIN = -1.0'
+
+[[rows]]
+id = "u90-a.A6_dispatch_truthiness"
+source = { table = "u90-a.json", id = "A6_dispatch_truthiness" }
+description = "The hand path dispatched on truthiness, so a cut of 0 falls through to the fit"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if ctx.args.vocal_cut is not None:'
+new = '    if ctx.args.vocal_cut:'
+
+[[rows]]
+id = "u90-a.A7_exclusive_group_gone"
+source = { table = "u90-a.json", id = "A7_exclusive_group_gone" }
+description = "The folder and the flag no longer mutually exclusive in the parser"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    chosen = parser.add_mutually_exclusive_group()'
+new = '    chosen = parser'
+
+[[rows]]
+id = "u90-b.B1_library_root_unchecked"
+source = { table = "u90-b.json", id = "B1_library_root_unchecked" }
+description = "The hand path stops requiring the library root before it writes"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    _require_library_root(cfg)
+    previous, before = _previous_vocal_cut(cfg)'''
+new = '    previous, before = _previous_vocal_cut(cfg)'
+
+[[rows]]
+id = "u90-b.B2_method_not_hand"
+source = { table = "u90-b.json", id = "B2_method_not_hand" }
+description = "A hand cut recorded under the fit's method, otsu"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'method=VOCAL_METHOD_HAND, note='
+new = 'method="otsu", note='
+
+[[rows]]
+id = "u90-b.B3_note_reworded"
+source = { table = "u90-b.json", id = "B3_note_reworded" }
+description = "The hand cut's note stops saying set by hand"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'note=f"set by hand on {today}"'
+new = 'note=f"entered on {today}"'
+
+[[rows]]
+id = "u90-b.B4_date_field_dropped"
+source = { table = "u90-b.json", id = "B4_date_field_dropped" }
+description = "The hand cut's set_on date field no longer written"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'note=f"set by hand on {today}", set_on=today'
+new = 'note=f"set by hand on {today}"'
+
+[[rows]]
+id = "u90-b.B5_previous_cut_not_reported"
+source = { table = "u90-b.json", id = "B5_previous_cut_not_reported" }
+description = "The summary reports no previous cut whatever was on record"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '"previous_vocal_cut": previous}'
+new = '"previous_vocal_cut": None}'
+
+[[rows]]
+id = "u90-b.B6_hand_detail_drops_old_cut"
+source = { table = "u90-b.json", id = "B6_hand_detail_drops_old_cut" }
+description = "The hand path's check detail stops naming the cut it replaced"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = 'f"cut set by hand at {cut:g}, written to {target}; {before}; "'
+new = 'f"cut set by hand at {cut:g}, written to {target}; "'
+
+[[rows]]
+id = "u90-b.B7_fit_detail_drops_old_cut"
+source = { table = "u90-b.json", id = "B7_fit_detail_drops_old_cut" }
+description = "The fit's check detail stops naming the cut it replaced"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '        f"written to {target}; {before}",'
+new = '        f"written to {target}",'
+
+[[rows]]
+id = "u90-b.B8_hand_reads_old_after_write"
+source = { table = "u90-b.json", id = "B8_hand_reads_old_after_write" }
+description = "The hand path reads the previous cut after its own write, so it reports itself"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    previous, before = _previous_vocal_cut(cfg)
+    today = _today()
+    target = _write_vocal_calibration(
+        cfg, cut, method=VOCAL_METHOD_HAND, note=f"set by hand on {today}", set_on=today
+    )'''
+new = '''
+    today = _today()
+    target = _write_vocal_calibration(
+        cfg, cut, method=VOCAL_METHOD_HAND, note=f"set by hand on {today}", set_on=today
+    )
+    previous, before = _previous_vocal_cut(cfg)'''
+
+[[rows]]
+id = "u90-c.C2_unreadable_refuses"
+source = { table = "u90-c.json", id = "C2_unreadable_refuses" }
+description = "An unreadable calibration refuses the hand cut instead of being replaced by it"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '        return None, "the calibration on record before could not be read, and this replaces it"'
+new = '        raise'
+
+[[rows]]
+id = "u90-c.C3_hand_branch_wrong_method"
+source = { table = "u90-c.json", id = "C3_hand_branch_wrong_method" }
+description = "The replaced cut is named as set by hand only when its method is otsu"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '    if record.get("method") == VOCAL_METHOD_HAND:'
+new = '    if record.get("method") == "otsu":'
+
+[[rows]]
+id = "u58-workers-and-wav.E1_beatless_cap"
+source = { table = "u58-workers-and-wav.json", id = "E1_beatless_cap" }
+description = "Drop the beatless cap in the energy scorer"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+    if calibration.onset_floor is not None:
+        density = float(features.get("onset_density", math.inf))
+        if not math.isnan(density) and density < calibration.onset_floor:
+            level = min(level, BEATLESS_CAP)
+'''
+new = ''
+
+[[rows]]
+id = "u58-workers-and-wav.S4_undo_overwritten"
+source = { table = "u58-workers-and-wav.json", id = "S4_undo_overwritten" }
+description = "Let a second restamp overwrite the first previous value"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        if key in log:
+            return False
+'''
+new = ''
+
+[[rows]]
+id = "r221-a.S3_flag_reads_a_key_nothing_freezes"
+source = { table = "r221-a.json", id = "S3_flag_reads_a_key_nothing_freezes" }
+description = "Read the rehearsal flag under a name the build does not freeze, so every job reads as a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return bool((job.payload or {}).get(DRY_RUN))'
+new = '    return bool((job.payload or {}).get("rehearsal"))'
+
+[[rows]]
+id = "r221-a.W1_rehearsal_never_said"
+source = { table = "r221-a.json", id = "W1_rehearsal_never_said" }
+description = "The warning is never carried, which is the exact state the ledger entry describes"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'
+new = '    return ()'
+
+[[rows]]
+id = "r221-a.W2_rehearsal_said_unconditionally"
+source = { table = "r221-a.json", id = "W2_rehearsal_said_unconditionally" }
+description = "Every run is told it copied nothing, including the real one that copied and published, which is the same defect pointing the other way"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'
+new = '    return (rehearsal_warning(),)'
+
+[[rows]]
+id = "r221-a.W3_queue_branch_warning_dropped"
+source = { table = "r221-a.json", id = "W3_queue_branch_warning_dropped" }
+description = "The identifier is handed back with no word about what it will do, and the detached child a resume spawns writes to a log nobody is watching"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+                *map(dict, backup.snapshot_identity_warning(cfg)),
+                *_rehearsal(job),
+            ),
+        )'''
+new = '''
+                *map(dict, backup.snapshot_identity_warning(cfg)),
+            ),
+        )'''
+
+[[rows]]
+id = "r221-a.W4_twin_branch_warning_dropped"
+source = { table = "r221-a.json", id = "W4_twin_branch_warning_dropped" }
+description = "A second ask reports the open rehearsal as the backup the person asked for, with nothing saying it is one"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+                    *_rehearsal(twin),
+                ),
+            )'''
+new = '''
+                ),
+            )'''
+
+[[rows]]
+id = "r221-a.W6_twin_branch_says_it_unconditionally"
+source = { table = "r221-a.json", id = "W6_twin_branch_says_it_unconditionally" }
+description = "The reported twin always carries the word, so a person asking twice for a REAL backup is told the open job copies nothing. Removing the helper's own guard is W2; this is the branch's own reading of the job it hands back"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '                    *_rehearsal(twin),'
+new = '                    rehearsal_warning(),'
+
+[[rows]]
+id = "r221-b.M1_refusal_step_dropped"
+source = { table = "r221-b.json", id = "M1_refusal_step_dropped" }
+description = "No refusal carries the sentence, so a rehearsal that failed reads as a real backup attempt that fell over"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '''
+    return error
+    cause = error.cause'''
+
+[[rows]]
+id = "r221-b.M2_refusal_step_unconditional"
+source = { table = "r221-b.json", id = "M2_refusal_step_unconditional" }
+description = "Every refusal gains the sentence, so a person whose REAL backup failed is told nothing was copied and stops looking for the half that was"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '    cause = error.cause'
+
+[[rows]]
+id = "r221-b.M4_steps_replaced_not_joined"
+source = { table = "r221-b.json", id = "M4_steps_replaced_not_joined" }
+description = "The sentence replaces the failure's own steps rather than joining them, so the thing a person has to do to fix it is gone"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '                steps=(*cause.remediation.steps, rehearsal_warning()["message"]),'
+new = '                steps=(rehearsal_warning()["message"],),'
+
+[[rows]]
+id = "r221-b.R1_refusal_is_its_own_cause"
+source = { table = "r221-b.json", id = "R1_refusal_is_its_own_cause" }
+description = "Raise the result from the original unconditionally, which is `raise exc from exc` on a real run and truncates the chain cause.classified walks. This is the defect the code review found"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    extended = _with_rehearsal_step(error, job)
+    if extended is error:
+        raise error
+    raise extended from error'''
+new = '    raise _with_rehearsal_step(error, job) from error'
+
+[[rows]]
+id = "r222-b.B10_archive_not_compared"
+source = { table = "r222-b.json", id = "B10_archive_not_compared" }
+description = "Compare only the mirror, so two jobs rotating one archive root from different mirrors are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '            frozen.backup.dest == cfg.backup.dest'
+
+[[rows]]
+id = "r222-b.B11_finished_jobs_are_twins"
+source = { table = "r222-b.json", id = "B11_finished_jobs_are_twins" }
+description = "Read every state from the queue, so a backup that is over stands in for a new one for ever"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    for job in jobs.list_jobs(store, states=open_states):'
+new = '    for job in jobs.list_jobs(store):'

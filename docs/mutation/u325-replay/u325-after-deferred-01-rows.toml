@@ -1,0 +1,60 @@
+name = "u325-after-deferred-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "r592-b.B5_step_names_no_file"
+source = { table = "r592-b.json", id = "B5_step_names_no_file" }
+description = "rerun_step: say the database rather than its file name, so the step does not say which file to remove"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        f"before running the recovery again, remove {database_target.name} and any "'
+new = '        f"before running the recovery again, remove the database and any "'
+
+[[rows]]
+id = "u27-restore-cli-author.P3_convergence_is_reported_for_a_run_that_spent_no_capture"
+source = { table = "u27-restore-cli-author.json", id = "P3_convergence_is_reported_for_a_run_that_spent_no_capture" }
+description = "Answer the capture restore's own question when no capture restore happened"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if outcome is not None:
+        totals["converged"] = outcome.converged
+        totals["outstanding"] = len(outcome.outstanding)'''
+new = '''
+    totals["converged"] = outcome.converged if outcome is not None else True
+    if outcome is not None:
+        totals["outstanding"] = len(outcome.outstanding)'''
+
+[[rows]]
+id = "u27-restore-cli-author.S6_the_named_decision_is_withdrawn"
+source = { table = "u27-restore-cli-author.json", id = "S6_the_named_decision_is_withdrawn" }
+description = "Tell the off-machine restore no decision exists, which R33 makes it refuse on"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '                    confirmed=True,'
+new = '                    confirmed=False,'
+
+[[rows]]
+id = "u96-a.A13_completed_halves_recorded"
+source = { table = "u96-a.json", id = "A13_completed_halves_recorded" }
+description = "Never record a completed half, so a database failure does not say the mirror arrived"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            completed.append(half)'
+new = '            pass'
+
+[[rows]]
+id = "u27-restore-cli-author.S1_plan_takes_its_own_lock"
+source = { table = "u27-restore-cli-author.json", id = "S1_plan_takes_its_own_lock" }
+description = "Let the off-machine PLAN acquire the library lock itself instead of taking the open guard"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''
+                    include_mirror=include_mirror,
+                    gates=held.guard,'''
+new = '                    include_mirror=include_mirror,'

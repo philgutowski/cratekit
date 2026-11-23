@@ -1,0 +1,16 @@
+name = "u325-before-clean-g8"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G8_target_unresolved"
+source = { table = "r926.json", id = "G8_target_unresolved" }
+description = "The target is compared as spelled, so a link inside the root aimed outside it passes"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    target = path.resolve()
+    if any(_is_inside(target, each) for each in allowed):'''
+new = '''
+    target = path
+    if any(_is_inside(target, each) for each in allowed):'''

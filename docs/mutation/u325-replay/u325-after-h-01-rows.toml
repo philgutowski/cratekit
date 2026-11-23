@@ -1,0 +1,823 @@
+name = "u325-after-h-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "u295.S10_stuck_accepted"
+source = { table = "u295.json", id = "S10_stuck_accepted" }
+description = "_boot_out: accept an agent still loaded after its bootout"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    after, check = loaded()
+    if after != NOT_LOADED:
+        if not out.ok:'''
+new = '''
+    after, check = loaded()
+    if after == UNKNOWN:
+        if not out.ok:'''
+
+[[rows]]
+id = "u295.S11_no_read_back"
+source = { table = "u295.json", id = "S11_no_read_back" }
+description = "_install: trust bootstrap's exit and never read launchd back"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    state, check = loaded() if answer.ok else (UNKNOWN, answer)'
+new = '    state, check = (LOADED, answer) if answer.ok else (UNKNOWN, answer)'
+
+[[rows]]
+id = "u295.S12_cleanup_ignores_launchd"
+source = { table = "u295.json", id = "S12_cleanup_ignores_launchd" }
+description = "_install: delete the plist on a failed load whatever launchd still holds"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+        failed = answer if not answer.ok else check
+        if after != NOT_LOADED:'''
+new = '''
+        failed = answer if not answer.ok else check
+        if False:'''
+
+[[rows]]
+id = "u295.S13_cleanup_keeps_plist"
+source = { table = "u295.json", id = "S13_cleanup_keeps_plist" }
+description = "_install: keep the plist written for a failed load, leaving an agent half installed"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+        _remove_plist(target)
+        earlier = '''
+new = '''
+        pass
+        earlier = '''
+
+[[rows]]
+id = "u295.S14_dirs_not_resolved"
+source = { table = "u295.json", id = "S14_dirs_not_resolved" }
+description = "environment: carry no resolved directory, so an XDG install's night reads another installation"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '        carried[name] = str(_absolute(directory))'
+new = '        pass'
+
+[[rows]]
+id = "u295.S15_override_relative"
+source = { table = "u295.json", id = "S15_override_relative" }
+description = "environment: carry an override as set, so a relative one names another place for launchd"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '            carried[name] = str(_absolute(value))'
+new = '            carried[name] = value'
+
+[[rows]]
+id = "u295.S16_any_bin_prefix"
+source = { table = "u295.json", id = "S16_any_bin_prefix" }
+description = "environment: carry every CRATEKIT_BIN_ name set, not only the binaries this build runs"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    for name in (*override_names(), *binary_names()):'
+new = '    for name in (*override_names(), *(n for n in source if n.startswith(binaries.ENV_PREFIX))):'
+
+[[rows]]
+id = "u295.S17_plist_mode"
+source = { table = "u295.json", id = "S17_plist_mode" }
+description = "PLIST_MODE: the plist readable by everyone on the Mac"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = 'PLIST_MODE = 0o600'
+new = 'PLIST_MODE = 0o644'
+
+[[rows]]
+id = "u295.S18_crate_exec_bit"
+source = { table = "u295.json", id = "S18_crate_exec_bit" }
+description = "crate_runs: never ask whether the crate is executable"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    return found.is_absolute() and found.is_file() and os.access(found, os.X_OK)'
+new = '    return found.is_absolute() and found.is_file()'
+
+[[rows]]
+id = "u295.S19_keys_unchecked"
+source = { table = "u295.json", id = "S19_keys_unchecked" }
+description = "read_agent: never compare the plist's keys, so a Program key passes"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if keys != PLIST_KEYS:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u295.S1_platform_guard"
+source = { table = "u295.json", id = "S1_platform_guard" }
+description = "_macos_only: never refuse another platform, so a schedule is attempted where there is no launchd"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if running != MACOS:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u295.S20_gone_crate_unchecked"
+source = { table = "u295.json", id = "S20_gone_crate_unchecked" }
+description = "read_agent: never ask whether the crate it runs can run"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if crate is not None and not crate_runs(crate):
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u295.S21_run_at_load_unchecked"
+source = { table = "u295.json", id = "S21_run_at_load_unchecked" }
+description = "read_agent: accept an agent that runs at load"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if document.get("RunAtLoad") is not False:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u295.S22_env_names_unchecked"
+source = { table = "u295.json", id = "S22_env_names_unchecked" }
+description = "read_agent: accept an environment name this build never carries"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    unknown = sorted(set(env) - allowed_names())'
+new = '    unknown = []'
+
+[[rows]]
+id = "u295.S23_show_always_clean"
+source = { table = "u295.json", id = "S23_show_always_clean" }
+description = "show: exit clean whatever problems were read"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if not problems:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP)'''
+new = '''
+    if True:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP)'''
+
+[[rows]]
+id = "u295.S24_loaded_without_plist"
+source = { table = "u295.json", id = "S24_loaded_without_plist" }
+description = "show: a loaded agent with no plist reads as a clean report"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+        if found is None and unreadable is None:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u295.S25_install_lockless"
+source = { table = "u295.json", id = "S25_install_lockless" }
+description = "install: boot the agent out without the staging lock, so a night in progress is ended"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    with staging_lock.held("crate schedule install", run_id=ctx.run.run_id):'
+new = '    with open(os.devnull):'
+
+[[rows]]
+id = "u295.S2_root_guard"
+source = { table = "u295.json", id = "S2_root_guard" }
+description = "_as_the_person: never refuse root, so the agent is bootstrapped into gui/0"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if uid() == 0:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u295.S3_argv_widened"
+source = { table = "u295.json", id = "S3_argv_widened" }
+description = "agent: the plist's program arguments carry an answer after sync night"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '        "ProgramArguments": [str(crate), *NIGHT_ARGV],'
+new = '        "ProgramArguments": [str(crate), *NIGHT_ARGV, "-d", "intake.land.native=go"],'
+
+[[rows]]
+id = "u295.S4_run_at_load"
+source = { table = "u295.json", id = "S4_run_at_load" }
+description = "agent: the plist runs the night at load, so an install starts a pass at once"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+        "RunAtLoad": False,
+    }'''
+new = '''
+        "RunAtLoad": True,
+    }'''
+
+[[rows]]
+id = "u295.S5_read_words_after_night"
+source = { table = "u295.json", id = "S5_read_words_after_night" }
+description = "read_agent: accept words after sync night, so show reads clean over an agent given an answer"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+        and program[1:] == NIGHT_ARGV
+'''
+new = '''
+        and program[1:3] == NIGHT_ARGV
+'''
+
+[[rows]]
+id = "u295.S6_daemons_directory"
+source = { table = "u295.json", id = "S6_daemons_directory" }
+description = "launch_agents_dir: the plist goes beside the system's daemons instead of the person's agents"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    return Path.home() / "Library" / "LaunchAgents"'
+new = '    return Path.home() / "Library" / "LaunchDaemons"'
+
+[[rows]]
+id = "u295.S7_user_domain"
+source = { table = "u295.json", id = "S7_user_domain" }
+description = "_domain: load into user/<uid> instead of the person's GUI login"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '    return f"gui/{uid()}"'
+new = '    return f"user/{uid()}"'
+
+[[rows]]
+id = "u295.S8_unknown_read_absent"
+source = { table = "u295.json", id = "S8_unknown_read_absent" }
+description = "loaded: any print failure reads as not loaded, absence read as evidence of absence"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if answer.code == NOT_LOADED_CODE:
+'''
+new = '''
+    if True:
+'''
+
+[[rows]]
+id = "u295.S9_skip_bootout_on_unknown"
+source = { table = "u295.json", id = "S9_skip_bootout_on_unknown" }
+description = "_boot_out: skip the bootout when launchd cannot be read"
+file = "src/cratekit/cli/schedule.py"
+surface = "user"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''
+    if state == NOT_LOADED:
+        return False
+    out = launchctl('''
+new = '''
+    if state != LOADED:
+        return False
+    out = launchctl('''
+
+[[rows]]
+id = "u265.M10_empty_index_scored"
+source = { table = "u265.json", id = "M10_empty_index_scored" }
+description = "_approximate: drop the early return on an empty index (an existing guard, sampled), so an empty library sorts the wanted token and asks the scorer"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '''
+    if not index.by_recording:
+        return ()
+    from rapidfuzz import fuzz, process
+
+    recordings, sorted_choices'''
+new = '''
+    from rapidfuzz import fuzz, process
+
+    recordings, sorted_choices'''
+
+[[rows]]
+id = "u265.M1_narrow_split_everywhere"
+source = { table = "u265.json", id = "M1_narrow_split_everywhere" }
+description = "_sorted_words: split every string on the narrow set, so a wide string keeps U+0085 and U+00A0 inside a word where the scorer splits"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '''
+    if token and max(token) > "\xff":
+        words = token.split()'''
+new = '''
+    if False:
+        words = token.split()'''
+
+[[rows]]
+id = "u265.M2_python_split_everywhere"
+source = { table = "u265.json", id = "M2_python_split_everywhere" }
+description = "_sorted_words: split every string on Python whitespace, so a narrow string splits on U+0085 and U+00A0 where the scorer does not"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '''
+    if token and max(token) > "\xff":
+        words = token.split()'''
+new = '''
+    if True:
+        words = token.split()'''
+
+[[rows]]
+id = "u265.M2b_width_off_by_one"
+source = { table = "u265.json", id = "M2b_width_off_by_one" }
+description = "_sorted_words: read a string as wide from U+00FF rather than U+0100, so a narrow name ending in y with a diaeresis splits on U+00A0 where the scorer does not (review round one's finding)"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '    if token and max(token) > "\xff":'
+new = '    if token and max(token) >= "\xff":'
+
+[[rows]]
+id = "u265.M3_words_not_sorted"
+source = { table = "u265.json", id = "M3_words_not_sorted" }
+description = "_sorted_words: join the words in their own order, so the pass scores plain ratio and an artist and title swap no longer matches"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '    return " ".join(sorted(words))'
+new = '    return " ".join(words)'
+
+[[rows]]
+id = "u265.M4_query_not_sorted"
+source = { table = "u265.json", id = "M4_query_not_sorted" }
+description = "_approximate: score the wanted token unsorted against the sorted library names"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '''
+        _sorted_words(wanted.recording),
+        sorted_choices,'''
+new = '''
+        wanted.recording,
+        sorted_choices,'''
+
+[[rows]]
+id = "u265.M5_hit_named_by_its_sorted_form"
+source = { table = "u265.json", id = "M5_hit_named_by_its_sorted_form" }
+description = "_approximate: look a hit up by its sorted string rather than its position, so any recording whose words were not already in order loses its files"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '        held for _sorted, _score, position in found for held in index.versions(recordings[position])'
+new = '        held for _sorted, _score, position in found for held in index.versions(_sorted)'
+
+[[rows]]
+id = "u265.M6_cache_misaligned"
+source = { table = "u265.json", id = "M6_cache_misaligned" }
+description = "sorted_recordings: build the sorted names in reverse, so a position the scorer returns names a different recording"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '            cached = (recordings, tuple(_sorted_words(token) for token in recordings))'
+new = '            cached = (recordings, tuple(_sorted_words(token) for token in reversed(recordings)))'
+
+[[rows]]
+id = "u265.M7_cache_never_kept"
+source = { table = "u265.json", id = "M7_cache_never_kept" }
+description = "sorted_recordings: never store the sorted names, so every wanted row sorts the whole library again (answers unchanged, cost back to per pair)"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '            object.__setattr__(self, "_sorted", cached)'
+new = '            pass'
+
+[[rows]]
+id = "u265.M8_other_scorer"
+source = { table = "u265.json", id = "M8_other_scorer" }
+description = "_approximate: score the sorted forms with WRatio instead of ratio, so scores and the floor's cut move"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '        scorer=fuzz.ratio,'
+new = '        scorer=fuzz.WRatio,'
+
+[[rows]]
+id = "u206-b.M10b_day_coefficient_halved"
+source = { table = "u206-b.json", id = "M10b_day_coefficient_halved" }
+description = "DAY_S halved, measured again once the tests write a day out as 86 400 seconds"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = 'DAY_S = 86_400'
+new = 'DAY_S = 43_200'
+
+[[rows]]
+id = "u206-b.M2b_disabled_recall_composite"
+source = { table = "u206-b.json", id = "M2b_disabled_recall_composite" }
+description = "Composite: drop recall's days 0 guard AND give every entry at least a day's life, so answers kept before the cache was turned off still answer"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        global _PROCESS_HITS
+        if not self.enabled:
+            return None'''
+new = '''
+        global _PROCESS_HITS
+        self.days = max(self.days, 1)'''
+
+[[rows]]
+id = "u206.M11_unreadable_answer_kept"
+source = { table = "u206.json", id = "M11_unreadable_answer_kept" }
+description = "Cache.remember: keep an answer holding a track that cannot be read"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if not all(_readable(track) for track in tracks):
+            return False'''
+new = '''
+        if False:
+            return False'''
+
+[[rows]]
+id = "u206.M12_corrupt_file_not_set_aside"
+source = { table = "u206.json", id = "M12_corrupt_file_not_set_aside" }
+description = "Cache._entries: a file that does not parse is read as empty and overwritten, never set aside"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if entries is None:
+            if locked:
+                self._set_aside_held()
+            else:
+                self._set_aside()
+            return {}'''
+new = '''
+        if entries is None:
+            return {}'''
+
+[[rows]]
+id = "u206.M13_write_without_merge"
+source = { table = "u206.json", id = "M13_write_without_merge" }
+description = "Cache.remember: write only this entry, dropping what another process wrote since"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+            merged = {
+                name: entry for name, entry in entries.items() if self._fresh(entry, now) is not None
+            }'''
+new = '            merged = {}'
+
+[[rows]]
+id = "u206.M16_said_not_found_widened"
+source = { table = "u206.json", id = "M16_said_not_found_widened" }
+description = "said_not_found: read InvalidISRC as a said not found too"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '    if type(exc).__name__ == "ObjectNotFound":'
+new = '    if type(exc).__name__ in ("ObjectNotFound", "InvalidISRC"):'
+
+[[rows]]
+id = "u206.M1_recall_never_hits"
+source = { table = "u206.json", id = "M1_recall_never_hits" }
+description = "Cache.recall: never answer from the file, so every lookup asks the provider again"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '        held = self._fresh(entries.get(key), self.clock())'
+new = '        held = None'
+
+[[rows]]
+id = "u206.M21_override_ignored"
+source = { table = "u206.json", id = "M21_override_ignored" }
+description = "_resolved: ignore CRATEKIT_ISRC_CACHE_DIR, so a hand copy run cannot share the live answers"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+    if override:
+        return Path(override) / config.state_file(key).relative'''
+new = '''
+    if False:
+        return Path(override) / config.state_file(key).relative'''
+
+[[rows]]
+id = "u206.M3_disabled_still_remembers"
+source = { table = "u206.json", id = "M3_disabled_still_remembers" }
+description = "Cache.remember: drop the days 0 guard, so a cache turned off still writes the file"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if not self.enabled:
+            return False
+        key = _key(isrc, country)
+        if key is None:
+            return False
+        tracks = list(tracks)'''
+new = '''
+        key = _key(isrc, country)
+        if key is None:
+            return False
+        tracks = list(tracks)'''
+
+[[rows]]
+id = "u206.M4_unfolded_spelling_kept"
+source = { table = "u206.json", id = "M4_unfolded_spelling_kept" }
+description = "_key: keep a spelling that is not its own fold under the folded key"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '    if not folded or folded != isrc:'
+new = '    if not folded:'
+
+[[rows]]
+id = "u206.M5_country_ignored"
+source = { table = "u206.json", id = "M5_country_ignored" }
+description = "_key: leave the country out, so an answer in one country answers another"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '    return f"{folded}|{country}"'
+new = '    return f"{folded}|"'
+
+[[rows]]
+id = "u206.M6_not_found_lives_as_found"
+source = { table = "u206.json", id = "M6_not_found_lives_as_found" }
+description = "_fresh: a not found lives as long as a found answer"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '        days = self.days if tracks else min(NOT_FOUND_DAYS, self.days)'
+new = '        days = self.days'
+
+[[rows]]
+id = "u206.M7_not_found_ignores_shorter_setting"
+source = { table = "u206.json", id = "M7_not_found_ignores_shorter_setting" }
+description = "_fresh: a not found lives a week even when the setting is shorter"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '        days = self.days if tracks else min(NOT_FOUND_DAYS, self.days)'
+new = '        days = self.days if tracks else NOT_FOUND_DAYS'
+
+[[rows]]
+id = "u206.M8_expiry_off_by_one"
+source = { table = "u206.json", id = "M8_expiry_off_by_one" }
+description = "_fresh: an entry exactly its lifetime old is still used"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '        if age < 0 or age >= days * DAY_S:'
+new = '        if age < 0 or age > days * DAY_S:'
+
+[[rows]]
+id = "u206.M9_future_stamp_trusted"
+source = { table = "u206.json", id = "M9_future_stamp_trusted" }
+description = "_fresh: an entry stamped later than now is used"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '        if age < 0 or age >= days * DAY_S:'
+new = '        if age >= days * DAY_S:'
+
+[[rows]]
+id = "u206.M18_catalogue_keeps_any_gone"
+source = { table = "u206.json", id = "M18_catalogue_keeps_any_gone" }
+description = "TidalCatalogue.tracks_for_isrc: keep every failure _gone reads as a not found, a FileNotFoundError among them"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+                    if isrc_cache.said_not_found(exc):
+                        answered.append(())'''
+new = '''
+                    if True:
+                        answered.append(())'''
+
+[[rows]]
+id = "u206.M14_account_keeps_invalid_isrc"
+source = { table = "u206.json", id = "M14_account_keeps_invalid_isrc" }
+description = "TidalAccount._isrc_tracks: keep any no match as a not found, InvalidISRC included"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+            if last["said_not_found"]:
+                self._cache.remember(wanted, country, ())'''
+new = '''
+            if True:
+                self._cache.remember(wanted, country, ())'''
+
+[[rows]]
+id = "u206.M17_account_hit_ignored"
+source = { table = "u206.json", id = "M17_account_hit_ignored" }
+description = "TidalAccount._isrc_tracks: never use a remembered answer"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if held is not None:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+new = '''
+        if False:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+
+[[rows]]
+id = "u206.M22_days_validation_dropped"
+source = { table = "u206.json", id = "M22_days_validation_dropped" }
+description = "_validate_provider: accept a negative isrc_cache_days"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 0):'
+new = '    if days is not None and (not isinstance(days, int) or isinstance(days, bool)):'
+
+[[rows]]
+id = "r1394.A1_recorder_never_told"
+source = { table = "r1394.json", id = "A1_recorder_never_told" }
+description = "adapter order: the recorder begun answers is never told before a move, so the record keeps sent and landed at 0 while moves land"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+                if told is not None:
+                    told(number, number - 1)'''
+new = '''
+                if False:
+                    told(number, number - 1)'''
+
+[[rows]]
+id = "r1394.A2_sent_one_short"
+source = { table = "r1394.json", id = "A2_sent_one_short" }
+description = "adapter order: the recorder is told one move fewer sent than is about to go, so a move in flight is read as known not to have landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '                    told(number, number - 1)'
+new = '                    told(number - 1, number - 1)'
+
+[[rows]]
+id = "r1394.A3_landed_overstated"
+source = { table = "r1394.json", id = "A3_landed_overstated" }
+description = "adapter order: the recorder is told the move about to go has already landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '                    told(number, number - 1)'
+new = '                    told(number, number)'
+
+[[rows]]
+id = "r1394.A4_412_not_brought_down"
+source = { table = "r1394.json", id = "A4_412_not_brought_down" }
+description = "adapter order: a move spent on its 412s is left as maybe landed, its sent count never brought back down"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '                        told(number - 1, number - 1)'
+new = '                        pass'
+
+[[rows]]
+id = "r1394.A5_any_failure_brought_down"
+source = { table = "r1394.json", id = "A5_any_failure_brought_down" }
+description = "adapter order: a move that failed any way, a dropped connection included, is told as not landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+                    if not _stale_tag(exc):
+                        raise
+                    if told is not None:'''
+new = '''
+                    if told is not None:
+                        told(number - 1, number - 1)
+                    if not _stale_tag(exc):
+                        raise
+                    if told is not None:'''
+
+[[rows]]
+id = "r1411.A1_agreed_order_always_stands"
+source = { table = "r1411.json", id = "A1_agreed_order_always_stands" }
+description = "the agreed order check passes every reading, so a reading in the order from before the stopped moves is planned from"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+    return [one for one in dict.fromkeys(reading) if one in named] == [
+        one for one in dict.fromkeys(str(one) for one in agreed) if one in held
+    ]'''
+new = '    return bool(named or held or True)'
+
+[[rows]]
+id = "r1411.A2_removed_tracks_asked_of_the_reading"
+source = { table = "r1411.json", id = "A2_removed_tracks_asked_of_the_reading" }
+description = "the agreed order check asks every agreed track of the reading, so a track this write took off refuses the finish"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '        one for one in dict.fromkeys(str(one) for one in agreed) if one in held'
+new = '        one for one in dict.fromkeys(str(one) for one in agreed)'
+
+[[rows]]
+id = "r1411.A3_added_tracks_asked_of_the_agreed_order"
+source = { table = "r1411.json", id = "A3_added_tracks_asked_of_the_agreed_order" }
+description = "the agreed order check reads every track of the reading, so a track this write added refuses the finish"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '    return [one for one in dict.fromkeys(reading) if one in named] == ['
+new = '    return [one for one in dict.fromkeys(reading)] == ['
+
+[[rows]]
+id = "r1411.A5_duplicates_counted_twice"
+source = { table = "r1411.json", id = "A5_duplicates_counted_twice" }
+description = "the agreed order check reads a track the reading holds twice at both places"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '    return [one for one in dict.fromkeys(reading) if one in named] == ['
+new = '    return [one for one in reading if one in named] == ['
+
+[[rows]]
+id = "r1411.E1_expect_compared_as_membership"
+source = { table = "r1411.json", id = "E1_expect_compared_as_membership" }
+description = "existing guard, U220: an expected reading is compared by the tracks it holds, not their order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '                return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))'
+new = '                return sorted(dict.fromkeys(reading)) == sorted(dict.fromkeys(known))'
+
+[[rows]]
+id = "r1411.E4_membership_always_agrees"
+source = { table = "r1411.json", id = "E4_membership_always_agrees" }
+description = "existing guard, U220: a reading after this command's own writes is taken whatever it holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '            return sorted(reading) == sorted(known)'
+new = '            return bool(reading) or True'
+
+[[rows]]
+id = "r1411.S1_settled_ignores_agreed"
+source = { table = "r1411.json", id = "S1_settled_ignores_agreed" }
+description = "the judged reading never asks the agreed order, so only what it holds is checked"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+            if agreed is not None and not _in_agreed_order(reading, agreed):
+                return False'''
+new = '''
+            if False:
+                return False'''
+
+[[rows]]
+id = "r1411.S2_agreed_stands_in_for_membership"
+source = { table = "r1411.json", id = "S2_agreed_stands_in_for_membership" }
+description = "a reading in the agreed order is taken without the check of what it holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+            if agreed is not None and not _in_agreed_order(reading, agreed):
+                return False'''
+new = '''
+            if agreed is not None:
+                return _in_agreed_order(reading, agreed)'''

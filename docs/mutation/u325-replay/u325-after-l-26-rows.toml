@@ -1,0 +1,992 @@
+name = "u325-after-l-26"
+pass_kind = "replay"
+
+[[rows]]
+id = "r703-a.A1_classifier_reads_text"
+source = { table = "r703-a.json", id = "A1_classifier_reads_text" }
+description = "classify_unavailable no longer holds NoFileLanded transient by type"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/test_acquire_cli.py", "tests/test_acquire_workers.py", "tests/test_adapter_contract.py", "tests/test_doctor.py", "tests/test_pacing.py", "tests/test_provider_gate.py"]
+old = '''
+    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+'''
+new = ''
+
+[[rows]]
+id = "u110-c.C8_plain_dot"
+source = { table = "u110-c.json", id = "C8_plain_dot" }
+description = "A name starting with a dot passes the plain name rule"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_landing.py", "tests/test_landing_head.py", "tests/test_landing_labels.py"]
+old = '''
+        and not text.startswith(".")
+'''
+new = ''
+
+[[rows]]
+id = "u208.M19_adapter_never_records_tie"
+source = { table = "u208.json", id = "M19_adapter_never_records_tie" }
+description = "match_track: never record a broken tie"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''
+                    elif tied:
+                        self._ties.add(key)'''
+new = '''
+                    elif False:
+                        self._ties.add(key)'''
+
+[[rows]]
+id = "u208.M20_adapter_stale_tie"
+source = { table = "u208.json", id = "M20_adapter_stale_tie" }
+description = "match_track: keep the last match's tie flag across a later match of the same row"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '        self._ties.discard(key)'
+new = '        pass'
+
+[[rows]]
+id = "u208.M21_adapter_every_choice_a_tie"
+source = { table = "u208.json", id = "M21_adapter_every_choice_a_tie" }
+description = "_among: call every any_agreeing choice a broken tie, an album naming one included"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'
+new = '            return _lowest(narrowed), "", True'
+
+[[rows]]
+id = "u208.M22_adapter_hearts_half"
+source = { table = "u208.json", id = "M22_adapter_hearts_half" }
+description = "_among: drop the hearts half of the tie flag, so two hearts the album narrows to one are not a tie"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'
+new = '            return _lowest(narrowed), "", len(narrowed) > 1'
+
+[[rows]]
+id = "r1255.S3_log_file_absent"
+source = { table = "r1255.json", id = "S3_log_file_absent" }
+description = "_listed: read a log path that is itself a file as not there, so it is no record"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_doctor.py"]
+old = '''
+        if os.path.lexists(directory):
+            raise
+        return None'''
+new = '        return None'
+
+[[rows]]
+id = "r1255.S4_under_a_file_unread"
+source = { table = "r1255.json", id = "S4_under_a_file_unread" }
+description = "_listed: read a log under a file as there and refused, rather than not there"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_doctor.py"]
+old = '''
+        if os.path.lexists(directory):
+            raise
+        return None'''
+new = '        raise'
+
+[[rows]]
+id = "u197-m6.M6_composite"
+source = { table = "u197-m6.json", id = "M6_composite" }
+description = "What the default does hold: default to the alternative, a name the fold leaves alone, so a fresh configuration selects streamrip"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '    adapter: str = "vendored"'
+new = '    adapter: str = "streamrip"'
+
+[[rows]]
+id = "r572.L1_local_track_drop_album"
+source = { table = "r572.json", id = "L1_local_track_drop_album" }
+description = "local_tracks stops carrying the file's album"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            isrc=found.isrc,
+            album=found.album,
+            release_title=release_title(entry, template=template),
+        )'''
+new = '''
+            isrc=found.isrc,
+            release_title=release_title(entry, template=template),
+        )'''
+
+[[rows]]
+id = "r572.S1_album_not_read"
+source = { table = "r572.json", id = "S1_album_not_read" }
+description = "file_identity drops the album it read"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '        album=str(read["album"] or "").strip(),'
+new = '        album="",'
+
+[[rows]]
+id = "r879-b.T1_one_track_never_asked_to_agree"
+source = { table = "r879-b.json", id = "T1_one_track_never_asked_to_agree" }
+description = "TidalAccount.match_track: return one track under a code whether or not agree is asked"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '                if len(tracks) == 1 and not agree:'
+new = '                if len(tracks) == 1:'
+
+[[rows]]
+id = "r746-a.G1_asking_for_any_table_is_not_refused"
+source = { table = "r746-a.json", id = "G1_asking_for_any_table_is_not_refused" }
+description = "guard_violations: a creation asked for in a table outside ADMITTABLE_ROW_TABLES is no longer itself a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''
+    for table in sorted(creatable - ADMITTABLE_ROW_TABLES):
+        violations.append('''
+new = '''
+    for table in ():
+        violations.append('''
+
+[[rows]]
+id = "r746-a.G2_admitted_row_judged_without_the_column_policy"
+source = { table = "r746-a.json", id = "G2_admitted_row_judged_without_the_column_policy" }
+description = "guard_violations: an admitted content row may declare any column, the ten included"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '            declared = {column for column in columns if column in CONTENT_ROW_EMPTY_COLUMNS}'
+new = '            declared = set()'
+
+[[rows]]
+id = "r746-a.G8_key_dropped_from_the_content_policy"
+source = { table = "r746-a.json", id = "G8_key_dropped_from_the_content_policy" }
+description = "CONTENT_ROW_EMPTY_COLUMNS: KeyID is no longer a column a new content row must leave empty"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''
+        "KeyID",
+        "SampleRate",'''
+new = '        "SampleRate",'
+
+[[rows]]
+id = "u156.L23_label_beside_manifest"
+source = { table = "u156.json", id = "L23_label_beside_manifest" }
+description = "_label_flag: accept --label beside --manifest, so one of two answers silently wins"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''
+    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+new = '''
+    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+
+[[rows]]
+id = "u156.L18_digest_native"
+source = { table = "u156.json", id = "L18_digest_native" }
+description = "native.identity: leave the label plan out of the landing's digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '    filed = {"labels": label_filing.identity(plan.labels)} if plan.labels is not None else {}'
+new = '    filed = {}'
+
+[[rows]]
+id = "u156.L19_write_called"
+source = { table = "u156.json", id = "L19_write_called" }
+description = "apply_rows: plan the labels and never write them"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '                labels_written = label_filing.write(db, plan.labels, by_target=by_target)'
+new = '                labels_written = None'
+
+[[rows]]
+id = "u156.L20_recorded"
+source = { table = "u156.json", id = "L20_recorded" }
+description = "_record_landing_commit: write the labels and record nothing of them on the session"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''
+    if labels_written is not None:
+        label_filing.record_commit(record, labels_written, cfg)'''
+new = '''
+    if False:
+        label_filing.record_commit(record, labels_written, cfg)'''
+
+[[rows]]
+id = "u169.N1_relative_read_against_cwd"
+source = { table = "u169.json", id = "N1_relative_read_against_cwd" }
+description = "root_path: take a relative root as it is, read under the working directory, the base's reading"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    return named if named.is_absolute() else library / named'
+new = '    return named'
+
+[[rows]]
+id = "u169.N2_empty_root_accepted"
+source = { table = "u169.json", id = "N2_empty_root_accepted" }
+description = "root_path: read an empty root as the working directory instead of refusing it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    if not given.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u169.N3_missing_folder_accepted"
+source = { table = "u169.json", id = "N3_missing_folder_accepted" }
+description = "root_folder: accept a folder that is not there"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if tried.is_dir():
+        return tried'''
+new = '''
+    if True:
+        return tried'''
+
+[[rows]]
+id = "u169.N4_name_apply_bypasses"
+source = { table = "u169.json", id = "N4_name_apply_bypasses" }
+description = "name apply: read --root as the base did, bypassing the helper"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    root = root_folder(ctx.args.root, cfg, verb="name apply")'
+new = '    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)'
+
+[[rows]]
+id = "u147-c.M14_made_in_mirror"
+source = { table = "u147-c.json", id = "M14_made_in_mirror" }
+description = "ledger._made_in: a mirrored playlist is no longer vouched for, so no track may come off it (R-836)"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''
+    # U147. A mirrored playlist is only ever created, never adopted.
+    for record in document["mirrors"].values():
+        for entry in (record.get("playlists") or {}).values():
+            if str(entry.get("remote_id") or "") == wanted:
+                return True
+'''
+new = ''
+
+[[rows]]
+id = "u147-c.M15_malformed_mirrors_read"
+source = { table = "u147-c.json", id = "M15_malformed_mirrors_read" }
+description = "ledger._load: a malformed mirror record is read rather than refused"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '        raise _unusable(path, "mirrors must be a map of mirrored folder records")'
+new = '        mirrors = {}'
+
+[[rows]]
+id = "u147-c.M16_folder_made_twice"
+source = { table = "u147-c.json", id = "M16_folder_made_twice" }
+description = "ledger.reserve_mirror_folder: a recorded folder is not reused, so a resume makes a second"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''
+        record = _mirror_entry(document, name)
+        recorded = str(record.get("folder_id") or "")
+        if recorded and recorded != stale:
+            return recorded, False
+'''
+new = '''
+        record = _mirror_entry(document, name)
+        recorded = str(record.get("folder_id") or "")
+'''
+
+[[rows]]
+id = "u147-c.M17_playlist_made_twice"
+source = { table = "u147-c.json", id = "M17_playlist_made_twice" }
+description = "ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''
+        playlists = _mirror_entry(document, folder)["playlists"]
+        recorded = str((playlists.get(name) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+'''
+new = '''
+        playlists = _mirror_entry(document, folder)["playlists"]
+'''
+
+[[rows]]
+id = "u147-c.M19_sweep_handoff"
+source = { table = "u147-c.json", id = "M19_sweep_handoff" }
+description = "sync.cli: the sync source hands the sweep no mirrored playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '            mirrored=mirrored,'
+new = ''
+
+[[rows]]
+id = "r837-a.A7_reserve_reuses_recorded"
+source = { table = "r837-a.json", id = "A7_reserve_reuses_recorded" }
+description = "ledger.reserve_set_playlist: a recorded set playlist is not reused, so the create runs again"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_export_set.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+        recorded = str((document["sets"].get(name) or {}).get("remote_id") or "")
+        if recorded:'''
+new = '''
+        recorded = str((document["sets"].get(name) or {}).get("remote_id") or "")
+        if False:'''
+
+[[rows]]
+id = "r837-a.A8_load_carries_sets"
+source = { table = "r837-a.json", id = "A8_load_carries_sets" }
+description = "ledger._load: the sets map is dropped on read, so every later write forgets each set playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_export_set.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '            for key, value in sets.items()'
+new = '            for key, value in ()'
+
+[[rows]]
+id = "r770-a.A1_switch_reads_the_other_mode"
+source = { table = "r770-a.json", id = "A1_switch_reads_the_other_mode" }
+description = "IntakeMedium.native: answer native for a tree on the bridge and bridge for a native one"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '        return self.registry.is_database_native(self.declared.intake.id)'
+new = '        return self.registry.is_on_the_bridge(self.declared.intake.id)'
+
+[[rows]]
+id = "r770-b.B2_gate_asked_before_the_acknowledgment"
+source = { table = "r770-b.json", id = "B2_gate_asked_before_the_acknowledgment" }
+description = "ask_then_write: ask the gate without reading the backup acknowledgment first, on both verbs"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''
+        session.assert_backup_acknowledged(cfg)
+'''
+new = ''
+
+[[rows]]
+id = "r770-b.B3_an_abort_writes"
+source = { table = "r770-b.json", id = "B3_an_abort_writes" }
+description = "ask_then_write: write whatever the answer was"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '        if option != "apply":'
+new = '        if option == "never":'
+
+[[rows]]
+id = "r770-d.C7_unresolved_target_planned_as_an_add"
+source = { table = "r770-d.json", id = "C7_unresolved_target_planned_as_an_add" }
+description = "native.plan_rows: read a target the matcher could not resolve as a file the collection does not hold"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '        if match.outcome is trees.MatchOutcome.UNRESOLVED:'
+new = '        if False:'
+
+[[rows]]
+id = "r1313.I1_cache_failure_alone"
+source = { table = "r1313.json", id = "I1_cache_failure_alone" }
+description = "said_not_found: read the 404 off the failure alone, as before R-1313, so an ISRC answered with a 404 page is never kept"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '    return answered_not_found(exc)'
+new = '    return getattr(getattr(exc, "response", None), "status_code", None) == 404'
+
+[[rows]]
+id = "r1313.I2_cache_keeps_any_status"
+source = { table = "r1313.json", id = "I2_cache_keeps_any_status" }
+description = "said_not_found: keep any failure carrying a status, so an outage is remembered for a week as filed under nothing"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '    return answered_not_found(exc)'
+new = '    return answered_not_found(exc) or getattr(getattr(exc, "response", None), "status_code", None) is not None'
+
+[[rows]]
+id = "r1418.F7_composite_ordering_start_unread"
+source = { table = "r1418.json", id = "F7_composite_ordering_start_unread" }
+description = "what F7 holds: a stopped write with no moving step reads no start from its ordering step, so the start F7 narrows is never read"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    begin = sent[1] if sent is not None else start'
+new = '    begin = sent[1] if sent is not None else ()'
+
+[[rows]]
+id = "r1434.S2_positions_compare_every_track_listed"
+source = { table = "r1434.json", id = "S2_positions_compare_every_track_listed" }
+description = "existing guard, U225: the path compares every track listed now, a track added since included, so an addition reads the account off the path"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    common = set(current) & set(start)'
+new = '    common = set(current)'
+
+[[rows]]
+id = "u40-author-full.F4_tombstone_indexed"
+source = { table = "u40-author-full.json", id = "F4_tombstone_indexed" }
+description = "First caller sample: stop dropping tombstones from the active row index, so a removed track claims its location"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_rebuild.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_xml_splice_golden.py"]
+old = '''
+    for row in rows:
+        if row.deleted:
+            continue
+        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)'''
+new = '''
+    for row in rows:
+        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)'''
+
+[[rows]]
+id = "r1305.L1_login_name_on_any_link"
+source = { table = "r1305.json", id = "L1_login_name_on_any_link" }
+description = "_rejected: read the client's authentication error by name on any link, so a reset met while handling one asks for a login"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        if declared and type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+new = '''
+        if type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+
+[[rows]]
+id = "r1305.L2_login_status_declared_only"
+source = { table = "r1305.json", id = "L2_login_status_declared_only" }
+description = "_rejected: read a status on the declared chain only, so a login answered 401 or 403 with a page is told to wait"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '        if answered_status(link) in REJECTED_STATUSES:'
+new = '        if declared and answered_status(link) in REJECTED_STATUSES:'
+
+[[rows]]
+id = "r1305.L3_login_name_dropped"
+source = { table = "r1305.json", id = "L3_login_name_dropped" }
+description = "_rejected: drop the client's authentication error by name, a sample of the guard as it stood before R-1305"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        if declared and type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+new = '''
+        if False:
+            return True
+    return False
+'''
+
+[[rows]]
+id = "u145.M2_placement_undated"
+source = { table = "u145.json", id = "M2_placement_undated" }
+description = "plan_placements: every heart is planned into Undated, its date ignored"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '        month = placeholders.month_label(hearted)'
+new = '        month = placeholders.month_label(None)'
+
+[[rows]]
+id = "u153.P3_writes_colours"
+source = { table = "u153.json", id = "P3_writes_colours" }
+description = "PlacementPlan.writes: ignore the colour count, so a colour-only plan reports no write and ends NO_OP"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '        return self.adds > 0 or self.colours > 0'
+new = '        return self.adds > 0'
+
+[[rows]]
+id = "u153.P4_identity_pink"
+source = { table = "u153.json", id = "P4_identity_pink" }
+description = "identity: drop the Pink row from the digest, so a colour change between plan and write is not caught"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '            "pink": self.pink,'
+new = '            "pink": "",'
+
+[[rows]]
+id = "u153.P5_recolour_dedup"
+source = { table = "u153.json", id = "P5_recolour_dedup" }
+description = "plan_placements recolour: drop the not-in-seen check, so a heart also named as a recolour is listed twice"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '            if row in titles and row not in seen'
+new = '            if row in titles'
+
+[[rows]]
+id = "u284.T1_pass_names_nothing"
+source = { table = "u284.json", id = "T1_pass_names_nothing" }
+description = "tail.tail_step: the pass never names the files the catalogues refused"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_tag_guess.py", "tests/test_tag_folder_copyright.py"]
+old = '''
+    if step == TAG:
+        refused_files(chain, chain.settled.get(step))'''
+new = '''
+    if False:
+        refused_files(chain, chain.settled.get(step))'''
+
+[[rows]]
+id = "u284.T2_pass_stop_unsaid"
+source = { table = "u284.json", id = "T2_pass_stop_unsaid" }
+description = "tail.tail_step: the pass's stop at its tag step says nothing of who refused or the token"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_tag_guess.py", "tests/test_tag_folder_copyright.py"]
+old = '        raise Stop(step, refused_stop(error, chain.settled.get(step)) if step == TAG else error)'
+new = '        raise Stop(step, error)'
+
+[[rows]]
+id = "u27-reports-round-3-fixes.F4_absent_flag_never_set"
+source = { table = "u27-reports-round-3-fixes.json", id = "F4_absent_flag_never_set" }
+description = "Never mark an absent Trash as absent, so doctor cannot tell it from an unwritable one"
+file = "src/cratekit/deletion/trash.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_doctor.py"]
+old = '            absent=not target.exists(),'
+new = '            absent=False,'
+
+[[rows]]
+id = "u278.M24_label_sync_not_narrowed"
+source = { table = "u278.json", id = "M24_label_sync_not_narrowed" }
+description = "label sync: ask and walk spend the reserve"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    if not args.go:
+        provider_gate.reading('''
+new = '''
+    if False:
+        provider_gate.reading('''
+
+[[rows]]
+id = "u278.M25_sweep_never_refuses"
+source = { table = "u278.json", id = "M25_sweep_never_refuses" }
+description = "label sync: the estimate never refuses"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if calls > left:'
+new = '    if False:'
+
+[[rows]]
+id = "u128-b.N3_native_owned_not_found"
+source = { table = "u128-b.json", id = "N3_native_owned_not_found" }
+description = "The native verb asks no candidate row for the owned tracks, so every one is left"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        cfg, named, native.candidate_rows(db, names)'
+new = '        cfg, named, ()'
+
+[[rows]]
+id = "u128.L2_native_warning_unsaid"
+source = { table = "u128.json", id = "L2_native_warning_unsaid" }
+description = "The native landing does not put the left rows on its warnings"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '    warnings.extend(account_playlists.left_warning(landed.collection.left))'
+new = '    warnings.extend(account_playlists.left_warning(()))'
+
+[[rows]]
+id = "u113-c.C3_native_found_by_name"
+source = { table = "u113-c.json", id = "C3_native_found_by_name" }
+description = "An account playlist is found by its name under INBOX and added to, rather than created"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '                created = db.create_playlist(one.name, parent=anchor)'
+new = '                created = rb_writer.ensure_playlist(db, one.name, anchor)'
+
+[[rows]]
+id = "u113-c.C4_native_record_unnamed"
+source = { table = "u113-c.json", id = "C4_native_record_unnamed" }
+description = "The native landing record does not list the account playlists by identifier"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        record.detail[INBOX_PLAYLISTS_KEY] = ['
+new = '        record.detail["inbox_playlists_unread"] = ['
+
+[[rows]]
+id = "u113-c.C5_removed_node_holds_name"
+source = { table = "u113-c.json", id = "C5_removed_node_holds_name" }
+description = "A removed node under INBOX still holds its name, so a free exact name takes a count"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        if not rb_writer.node_removed(row):'
+new = '        if True:'
+
+[[rows]]
+id = "r1255.R3_rotation_warning_gate"
+source = { table = "r1255.json", id = "R3_rotation_warning_gate" }
+description = "records_warnings: never warn, so the rotation ages a batch from its playlist's date unsaid"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''
+    if not plan.unreadable_records:
+        return []
+    unread = ('''
+new = '''
+    if True:
+        return []
+    unread = ('''
+
+[[rows]]
+id = "r1255.R4_rotation_warning_wording"
+source = { table = "r1255.json", id = "R4_rotation_warning_wording" }
+description = "records_warnings: word an unlisted log as a count of records"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''
+        if plan.log_unlisted
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+new = '''
+        if False
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+
+[[rows]]
+id = "r1255.R1_rotation_unlisted_from_scan"
+source = { table = "r1255.json", id = "R1_rotation_unlisted_from_scan" }
+description = "landings: never read the listing off the scan, so the classifier's reason counts one record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '    unlisted = session.log_unlisted(unreadable, cfg)'
+new = '    unlisted = False'
+
+[[rows]]
+id = "r1255.R2_plan_carries_unlisted"
+source = { table = "r1255.json", id = "R2_plan_carries_unlisted" }
+description = "plan_rotation: leave the plan's log_unlisted at its default, so the warning counts a record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '        log_unlisted=found.unlisted,'
+new = '        log_unlisted=False,'
+
+[[rows]]
+id = "r1305.A1_account_name_on_any_link"
+source = { table = "r1305.json", id = "A1_account_name_on_any_link" }
+description = "_session_refused: read the client's authentication error by name on any link, so a reset met while handling one drops the account and asks for a login"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '        if declared and type(link).__name__ == "AuthenticationError":'
+new = '        if type(link).__name__ == "AuthenticationError":'
+
+[[rows]]
+id = "r1305.A2_account_status_declared_only"
+source = { table = "r1305.json", id = "A2_account_status_declared_only" }
+description = "_session_refused: read a status on the declared chain only, so a session rejected mid sweep with a page is told to wait"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '        if answered_status(link) in SESSION_REFUSED_STATUSES:'
+new = '        if declared and answered_status(link) in SESSION_REFUSED_STATUSES:'
+
+[[rows]]
+id = "r1305.A4_account_reads_its_own_link_only"
+source = { table = "r1305.json", id = "A4_account_reads_its_own_link_only" }
+description = "_session_refused: read the failure alone and no link of it, so a rejection the client rewraps is told to wait"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '''
+    for link, declared in failure_links(exc):
+        if answered_status(link) in SESSION_REFUSED_STATUSES:'''
+new = '''
+    for link, declared in [(exc, True)]:
+        if answered_status(link) in SESSION_REFUSED_STATUSES:'''
+
+[[rows]]
+id = "u108-c.G21_listing_skips_already"
+source = { table = "u108-c.json", id = "G21_listing_skips_already" }
+description = "approved_cli.list_releases: a track another job already holds is listed again"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_sync_go.py", "tests/test_label_tidal_catalogue.py", "tests/test_landing_labels.py"]
+old = '            elif str(settled.wanted.ref or "").strip() in already:'
+new = '            elif False:'
+
+[[rows]]
+id = "u108-c.G22_listing_excuse_applies"
+source = { table = "u108-c.json", id = "G22_listing_excuse_applies" }
+description = "approved_cli.list_releases: an excused failure kind still refuses an empty listing"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_sync_go.py", "tests/test_label_tidal_catalogue.py", "tests/test_landing_labels.py"]
+old = '    unexcused = [one for one in failures if one.kind not in excuse]'
+new = '    unexcused = list(failures)'
+
+[[rows]]
+id = "r432-b.B5_lock_on_the_library_volume"
+source = { table = "r432-b.json", id = "B5_lock_on_the_library_volume" }
+description = "config: declare the landing locks library scoped, which puts them on the volume that is commonly exFAT"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+old = '''
+        key="landing_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,'''
+new = '''
+        key="landing_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,'''
+
+[[rows]]
+id = "r432-b.B6_lock_directory_renamed"
+source = { table = "r432-b.json", id = "B6_lock_directory_renamed" }
+description = "config: move the landing locks to another directory name under the state root"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+old = '        relative="landing_locks",'
+new = '        relative="landings",'
+
+[[rows]]
+id = "u82-a.A1_stat_oserror_is_the_refusal"
+source = { table = "u82-a.json", id = "A1_stat_oserror_is_the_refusal" }
+description = "require_output: stop turning an OSError out of the one stat into sync-marks-blocked, so a file gone at that moment is a bare FileNotFoundError again, which is R-398"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''
+    except OSError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+new = '''
+    except ZeroDivisionError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+
+[[rows]]
+id = "u82-a.A2_a_folder_is_not_a_file"
+source = { table = "u82-a.json", id = "A2_a_folder_is_not_a_file" }
+description = "require_output: drop the regular file check, so a folder named like the intake file counts as the importable file"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '    if not stat.S_ISREG(found.st_mode):'
+new = '    if False:'
+
+[[rows]]
+id = "u82-a.A3_an_empty_file_is_not_proof"
+source = { table = "u82-a.json", id = "A3_an_empty_file_is_not_proof" }
+description = "require_output: drop the empty file check, so a zero byte file lets the renames through"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '    if found.st_size == 0:'
+new = '    if False:'
+
+[[rows]]
+id = "u180.M11_new_month_seated"
+source = { table = "u180.json", id = "M11_new_month_seated" }
+description = "month_row: a month made under the folder is left at the end, the behaviour before U180"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '''
+    if parent is not None:
+        _seat_new(db, made, parent_id, source_id)'''
+new = '''
+    if False:
+        _seat_new(db, made, parent_id, source_id)'''
+
+[[rows]]
+id = "u180.M12_new_month_knows_the_source"
+source = { table = "u180.json", id = "M12_new_month_knows_the_source" }
+description = "_seat_new: the month just made is ranked as any other playlist, so it is seated at the end of the folder"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '    mine = rank(made, source_id)'
+new = '    mine = (placeholders.RANK_OTHER, 0)'
+
+[[rows]]
+id = "u180.M13_never_above_all_favorites"
+source = { table = "u180.json", id = "M13_never_above_all_favorites" }
+description = "_seat_new: the slot is looked for from the top of the folder, so a month can be seated above All Favorites, the round one finding"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '        (n for n, row in enumerate(others) if n >= floor and rank(row, source_id) > mine),'
+new = '        (n for n, row in enumerate(others) if rank(row, source_id) > mine),'
+
+[[rows]]
+id = "r835-a.L1_load_carries_the_label_map"
+source = { table = "r835-a.json", id = "L1_load_carries_the_label_map" }
+description = "ledger._load: the label map is dropped on load, so any other write to the ledger forgets every label's folder and year playlists"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '        "labels": {str(key): _label_document(path, value) for key, value in labels.items()},'
+new = '        "labels": {},'
+
+[[rows]]
+id = "r835-a.L3_recorded_year_never_created_again"
+source = { table = "r835-a.json", id = "L3_recorded_year_never_created_again" }
+description = "ledger.reserve_label_year: a year already recorded is created again, so a resumed build makes a second playlist for it"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+        recorded = str((years.get(year) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False'''
+new = '''
+        recorded = str((years.get(year) or {}).get("remote_id") or "")
+        if False:
+            return recorded, False'''
+
+[[rows]]
+id = "u128-b.B1_engine_stale_unchecked"
+source = { table = "u128-b.json", id = "B1_engine_stale_unchecked" }
+description = "The bridge engine does not read the owned entries again before its first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_landing.py", "tests/test_landing_head.py", "tests/test_landing_labels.py"]
+old = '    if now != planned:'
+new = '    if False:'
+
+[[rows]]
+id = "u128-b.B2_foreign_host_indexed"
+source = { table = "u128-b.json", id = "B2_foreign_host_indexed" }
+description = "Index an export entry whose Location names another machine, which raises out of the index"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_landing.py", "tests/test_landing_head.py", "tests/test_landing_labels.py"]
+old = '''
+        try:
+            locations.location_to_path(recorded)
+        except locations.LocationDecodeError:
+            continue
+        found.append'''
+new = '        found.append'
+
+[[rows]]
+id = "u211.W4_probe_wrapped_at_commit"
+source = { table = "u211.json", id = "W4_probe_wrapped_at_commit" }
+description = "commit: run the binding's commit without the careful probe, so its own walk meets the dying process"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_rb_writer_guard.py", "tests/test_sync_pair.py"]
+old = '''
+        with _binding_probe(strict=True):
+            db.commit()'''
+new = '''
+        with nullcontext():
+            db.commit()'''
+
+[[rows]]
+id = "u211.W5_probe_wrapped_at_open"
+source = { table = "u211.json", id = "W5_probe_wrapped_at_open" }
+description = "open_db: construct the binding without the careful probe, so the dying process reads as a damaged library"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_rb_writer_guard.py", "tests/test_sync_pair.py"]
+old = '''
+        with _binding_probe(strict=False):
+            db = Rekordbox6Database(path=str(target), unlock=unlock)'''
+new = '''
+        with nullcontext():
+            db = Rekordbox6Database(path=str(target), unlock=unlock)'''
+
+[[rows]]
+id = "u270.J2_claim_batch_order"
+source = { table = "u270.json", id = "J2_claim_batch_order" }
+description = "claim_batch: claim the highest ordinals first, so a batch writes its tracks in the reverse of the crate's order"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '            "ORDER BY ordinal LIMIT ?",'
+new = '            "ORDER BY ordinal DESC LIMIT ?",'
+
+[[rows]]
+id = "u270.J3_park_releases_the_batch"
+source = { table = "u270.json", id = "J3_park_releases_the_batch" }
+description = "drive: ignore a Parked among a batch's outcomes, so the batch is settled as failed and the next batch is the second request into a block"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''
+                if parked is not None:
+                    release_claims(store, job_id, driver=driver)'''
+new = '''
+                if False:
+                    release_claims(store, job_id, driver=driver)'''
+
+[[rows]]
+id = "u270.J4_signal_releases_the_batch"
+source = { table = "u270.json", id = "J4_signal_releases_the_batch" }
+description = "drive: commit a batch answered under a signal, so a stop part way settles what the handler cut short"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''
+                    return result
+                if interrupt.signalled:
+                    release_claims(store, job_id, driver=driver)
+                    result.interrupted = True
+                    break
+                for item in claimed:'''
+new = '''
+                    return result
+                for item in claimed:'''
+
+[[rows]]
+id = "r770-a.A3_assertion_refuses_nothing"
+source = { table = "r770-a.json", id = "A3_assertion_refuses_nothing" }
+description = "assert_intake_on_the_bridge: return for every tree, so a splice at a native tree reaches the emitter guard and its report-defect"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '    if not IntakeMedium(declared=declared, registry=registry).native:'
+new = '    if True:'

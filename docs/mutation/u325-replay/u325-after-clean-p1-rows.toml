@@ -1,0 +1,12 @@
+name = "u325-after-clean-p1"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.P1_config_path_leaves_root"
+source = { table = "r926.json", id = "P1_config_path_leaves_root" }
+description = "The brief's path resolution mutant: config_path answers a folder outside every temporary root, as a missed redirect would"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    return state_path("config")'
+new = '    return Path(os.sep, "cratekit-r926-mutant", "config.toml")'

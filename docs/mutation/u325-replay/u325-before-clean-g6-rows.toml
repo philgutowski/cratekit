@@ -1,0 +1,14 @@
+name = "u325-before-clean-g6"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G6_lock_unchecked"
+source = { table = "r926.json", id = "G6_lock_unchecked" }
+description = "_exclusive_lock no longer checks, so a session lock from an unisolated test is created anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+        _refuse_write_outside_test_root(self.path, system_temporary=True)
+        _mkdir_private(self.path.parent)'''
+new = '        _mkdir_private(self.path.parent)'

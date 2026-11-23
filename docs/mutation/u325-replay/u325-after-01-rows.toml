@@ -1,0 +1,485 @@
+name = "u325-after-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1705.M10_holds_always"
+source = { table = "r1705.json", id = "M10_holds_always" }
+description = "_holds_spelling answers yes for every title, so the lookup offers OK against O.K., U286's split class, where the score did not"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return any(word in _SPELLED_OUT for word in title.split())
+'''
+new = '''
+    return True
+'''
+
+[[rows]]
+id = "r1705.M11_holds_reads_artist"
+source = { table = "r1705.json", id = "M11_holds_reads_artist" }
+description = "_holds_spelling reads the artist half of the token rather than the title"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    _artist, _separator, title = recording.partition("\x1f")
+'''
+new = '''
+    title, _separator, _artist = recording.partition("\x1f")
+'''
+
+[[rows]]
+id = "r1705.M12_lookup_ignores_wanted_side"
+source = { table = "r1705.json", id = "M12_lookup_ignores_wanted_side" }
+description = "spelled_alike ignores a listed word in the WANTED title, so 4 U against a held For You for a short artist reads missing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        asks = _holds_spelling(recording)
+'''
+new = '''
+        asks = False
+'''
+
+[[rows]]
+id = "r1705.M13_lookup_ignores_held_side"
+source = { table = "r1705.json", id = "M13_lookup_ignores_held_side" }
+description = "spelled_alike ignores a listed word in the HELD title, so For You against a held 4 U for a short artist reads missing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+            if asks or _holds_spelling(token)
+'''
+new = '''
+            if asks
+'''
+
+[[rows]]
+id = "r1705.M14_lookup_key_drops_artist"
+source = { table = "r1705.json", id = "M14_lookup_key_drops_artist" }
+description = "_spelled_key drops the artist, so a spelled out copy by another artist is offered"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return f"{artist}{separator}{_spelled_out(title)}"
+'''
+new = '''
+    return f"{separator}{_spelled_out(title)}"
+'''
+
+[[rows]]
+id = "r1705.M15_lookup_key_spells_artist"
+source = { table = "r1705.json", id = "M15_lookup_key_spells_artist" }
+description = "_spelled_key spells the artist out too, so Lil Kid and Little Kid read as one artist"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return f"{artist}{separator}{_spelled_out(title)}"
+'''
+new = '''
+    return f"{_spelled_out(artist)}{separator}{_spelled_out(title)}"
+'''
+
+[[rows]]
+id = "r1705.M16_lookup_removed"
+source = { table = "r1705.json", id = "M16_lookup_removed" }
+description = "_resembling never reads the lookup, so a pair the discovery score misses (Prince, 4 U against For You) reads missing and downloads"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        for recording in index.spelled_alike(wanted.recording)
+'''
+new = '''
+        for recording in ()
+'''
+
+[[rows]]
+id = "r1705.M17_lookup_repeats_the_five"
+source = { table = "r1705.json", id = "M17_lookup_repeats_the_five" }
+description = "the lookup's hits are not checked against the five scored recordings, so a recording both hold is offered twice"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        if recording not in offered
+'''
+new = ''
+
+[[rows]]
+id = "r1705.M18_lookup_skips_every_scored"
+source = { table = "r1705.json", id = "M18_lookup_skips_every_scored" }
+description = "the lookup skips every recording discovery scored, round two's shape, so a lookup hit ranked sixth is cut by the cap, never offered and never counted withheld"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    offered = {held.recording for held in scored}
+'''
+new = '''
+    offered = {held.recording for held in _approximate(wanted, index, limit=None)}
+'''
+
+[[rows]]
+id = "r1705.M19_lookup_after_the_scored"
+source = { table = "r1705.json", id = "M19_lookup_after_the_scored" }
+description = "the lookup's hits follow the scored five rather than leading, so the same title under the reading sits behind fuzzy hits and is truncated"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return tuple(looked_up + scored)
+'''
+new = '''
+    return tuple(scored + looked_up)
+'''
+
+[[rows]]
+id = "r1705.M1_luv_unlisted"
+source = { table = "r1705.json", id = "M1_luv_unlisted" }
+description = "_SPELLED_OUT loses luv, so Luv U against a held Love You reads missing and downloads"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        "luv": "love",
+'''
+new = ''
+
+[[rows]]
+id = "r1705.M20_lookup_counts_in_the_five"
+source = { table = "r1705.json", id = "M20_lookup_counts_in_the_five" }
+description = "the lookup's hits are cut to the five with the scored ones, round one's shape, so a scored recording is pushed out with nothing withheld"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return tuple(looked_up + scored)
+'''
+new = '''
+    return tuple((looked_up + scored)[: len(scored)])
+'''
+
+[[rows]]
+id = "r1705.M2_four_numeral_unlisted"
+source = { table = "r1705.json", id = "M2_four_numeral_unlisted" }
+description = "_SPELLED_OUT loses 4, so 4 U against a held For You reads missing and downloads"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        "4": "for",
+'''
+new = ''
+
+[[rows]]
+id = "r1705.M3_too_unlisted"
+source = { table = "r1705.json", id = "M3_too_unlisted" }
+description = "_SPELLED_OUT loses too, so Luv U 2 against a held Love You Too reads missing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        "too": "to",
+'''
+new = ''
+
+[[rows]]
+id = "r1705.M4_2nite_unlisted"
+source = { table = "r1705.json", id = "M4_2nite_unlisted" }
+description = "_SPELLED_OUT loses 2nite, so 2Nite against Tonight reads missing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        "2nite": "tonight",
+'''
+new = ''
+
+[[rows]]
+id = "r1705.M5_spelled_test_removed"
+source = { table = "r1705.json", id = "M5_spelled_test_removed" }
+description = "_agree loses the spelled out equality, so a scored slang pair (Monkey Safari, Luv U against Love You) is dropped by the title test"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        one.replace(" ", "") == other.replace(" ", "")
+        or _spelled_out(one) == _spelled_out(other)
+'''
+new = '''
+        one.replace(" ", "") == other.replace(" ", "")
+'''
+
+[[rows]]
+id = "r1705.M6_spelled_test_a_ratio"
+source = { table = "r1705.json", id = "M6_spelled_test_a_ratio" }
+description = "_agree compares the spelled out forms by fuzz.ratio at the title floor rather than equality, so 2 against Tom (80) and N against Ant are offered"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        or _spelled_out(one) == _spelled_out(other)
+'''
+new = '''
+        or fuzz.ratio(_spelled_out(one), _spelled_out(other)) >= APPROXIMATE_TITLE_FLOOR
+'''
+
+[[rows]]
+id = "r1705.M7_spelled_replaces_written"
+source = { table = "r1705.json", id = "M7_spelled_replaces_written" }
+description = "_agree reads only the spelled out form, dropping U286's equality as written, so U Turn against UTurn no longer agrees"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        one.replace(" ", "") == other.replace(" ", "")
+        or _spelled_out(one) == _spelled_out(other)
+'''
+new = '''
+        _spelled_out(one) == _spelled_out(other)
+'''
+
+[[rows]]
+id = "r1705.M8_spelled_keeps_spaces"
+source = { table = "r1705.json", id = "M8_spelled_keeps_spaces" }
+description = "_spelled_out joins the words with a space, so 2 Nite against Tonight is no longer one string"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return "".join(_SPELLED_OUT.get(word, word) for word in folded.split())
+'''
+new = '''
+    return " ".join(_SPELLED_OUT.get(word, word) for word in folded.split())
+'''
+
+[[rows]]
+id = "r1705.M9_spelled_spells_nothing"
+source = { table = "r1705.json", id = "M9_spelled_spells_nothing" }
+description = "_spelled_out spells no word out, so the reading and the lookup join nothing the written form does not"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return "".join(_SPELLED_OUT.get(word, word) for word in folded.split())
+'''
+new = '''
+    return "".join(word for word in folded.split())
+'''
+
+[[rows]]
+id = "r1705.S1_discovery_floor_raised"
+source = { table = "r1705.json", id = "S1_discovery_floor_raised" }
+description = "SAMPLED existing guard: APPROXIMATE_FLOOR raised from 82 to 90, so fewer near hits are discovered"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+APPROXIMATE_FLOOR = 82
+'''
+new = '''
+APPROXIMATE_FLOOR = 90
+'''
+
+[[rows]]
+id = "r1705.S2_unreadable_title_dropped"
+source = { table = "r1705.json", id = "S2_unreadable_title_dropped" }
+description = "SAMPLED existing guard: _title_resembles answers no for a title that folds to nothing, so a hit discovery found reads missing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    if not asked or not found:
+        return True
+'''
+new = '''
+    if not asked or not found:
+        return False
+'''
+
+[[rows]]
+id = "u286.M10_swap_either_half"
+source = { table = "u286.json", id = "M10_swap_either_half" }
+description = "the swap allowance takes either crossed half rather than both, so an unrelated title by an artist sharing one word is offered"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), found)
+'''
+new = '''
+    return _agree(asked, fold(held.artist)) or _agree(fold(wanted.artist), found)
+'''
+
+[[rows]]
+id = "u286.M11_swap_removed"
+source = { table = "u286.json", id = "M11_swap_removed" }
+description = "the swap allowance removed, so a listing pasted title first reads missing and downloads the record the library holds"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), found)
+'''
+new = '''
+    return False
+'''
+
+[[rows]]
+id = "u286.M12_swap_second_half_artist"
+source = { table = "u286.json", id = "M12_swap_second_half_artist" }
+description = "the swap's second half compares artist with artist, which the shared artist always passes, so one crossed half is enough"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), found)
+'''
+new = '''
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), fold(held.artist))
+'''
+
+[[rows]]
+id = "u286.M13_filter_removed"
+source = { table = "u286.json", id = "M13_filter_removed" }
+description = "_resembling keeps every recording discovery finds, the base's behaviour, so Joy is offered Goodbye again"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''
+        if not _title_resembles(wanted, held[0]):
+            continue
+'''
+new = '''
+        if False:
+            continue
+'''
+
+[[rows]]
+id = "u132.W5_rebuild_note"
+source = { table = "u132.json", id = "W5_rebuild_note" }
+description = "The rebuild resume carries no skipped step note"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            *engine.favorites_skipped_warnings(declared, driven),
+'''
+new = ''
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.I3_rebuild_items_dropped"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "I3_rebuild_items_dropped" }
+description = "The rebuild files a job with no items, the state every rebuild was in before this unit"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            payload={"tree": tree_id, "actor": actor},
+            item_ids=items,'''
+new = '            payload={"tree": tree_id, "actor": actor},'
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.R2_rebuild_drives_a_foreign_job"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "R2_rebuild_drives_a_foreign_job" }
+description = "The rebuild drives another verb's job, without that verb's own resume checks"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if job.handler_key != ctx.entry.handler_key:
+        raise refuse(
+            "job-unknown",'''
+new = '''
+    if False:
+        raise refuse(
+            "job-unknown",'''
+
+[[rows]]
+id = "u53-routing-and-rebuild-workers.R4_rebuild_drives_an_itemless_job"
+source = { table = "u53-routing-and-rebuild-workers.json", id = "R4_rebuild_drives_an_itemless_job" }
+description = "A rebuild queued by an older build drives to succeeded having rebuilt nothing"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",'''
+new = '''
+        if False:
+            raise refuse(
+                "internal-error",'''
+
+[[rows]]
+id = "u53-zero-rows-remeasured.I6_tree_items_ignores_native"
+source = { table = "u53-zero-rows-remeasured.json", id = "I6_tree_items_ignores_native" }
+description = "The rebuild's items include trees the registry says are still on the bridge"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    native = tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))'
+new = '    native = tuple(sorted(entries.tree_ids()))'
+
+[[rows]]
+id = "u53-zero-rows-remeasured.I7_tree_items_ignores_the_named_tree"
+source = { table = "u53-zero-rows-remeasured.json", id = "I7_tree_items_ignores_the_named_tree" }
+description = "A rebuild of one named tree quietly rebuilds every tree in the library"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if tree_id is None:
+        return native
+    return tuple(t for t in native if t == tree_id)'''
+new = '    return native'
+
+[[rows]]
+id = "u89.W4_rebuild_worker"
+source = { table = "u89.json", id = "W4_rebuild_worker" }
+description = "cli/rebuild handle: hand the engine None instead of the loaded cut"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'
+new = '        vocal_threshold=None,'
+
+[[rows]]
+id = "u89.W6_rebuild_resume_loads_first"
+source = { table = "u89.json", id = "W6_rebuild_resume_loads_first" }
+description = "cli/rebuild _resume: do not read the cut before driving, so a corrupt calibration fails items instead of refusing"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))'
+new = '        threshold = 0.0'
+
+[[rows]]
+id = "r316.M3_inbox_gaps_leak_into_totals"
+source = { table = "r316.json", id = "M3_inbox_gaps_leak_into_totals" }
+description = "route_inbox reads the gaps without taking them out of the result, so they ride in the plan totals"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '    not_compared = result.pop("not_compared", ())'
+new = '    not_compared = result.get("not_compared", ())'
+
+[[rows]]
+id = "r686.E1_tracks_counts_every_item"
+source = { table = "r686.json", id = "E1_tracks_counts_every_item" }
+description = "tracks counts created playlists as tracks"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "tracks": len(tracks),
+'''
+new = '''
+        "tracks": len(items),
+'''

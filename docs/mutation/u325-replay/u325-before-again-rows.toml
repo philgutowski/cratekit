@@ -1,0 +1,16 @@
+name = "u325-before-again"
+pass_kind = "replay"
+
+[[rows]]
+id = "r289-c.B9r_children_unreadable_raises"
+source = { table = "r289-c.json", id = "B9r_children_unreadable_raises" }
+description = "Let an unlistable directory raise out of the sweep and fail the verb"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_acquire_workers.py", "tests/test_intake_missing.py", "tests/test_listdoc.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    try:
+        return tuple(sorted(directory.iterdir()))
+    except OSError:
+        return ()'''
+new = '    return tuple(sorted(directory.iterdir()))'

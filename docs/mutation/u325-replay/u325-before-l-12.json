@@ -1,0 +1,4169 @@
+{
+  "name": "u325-before-l-12",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "539638eb",
+  "when": "2026-11-22 22:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22663,
+  "baseline_exit": 1,
+  "pytest_runs": 133,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-22 22:13 UTC for commit `539638ebe629`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 13,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22663,
+    "baseline_collected": 22663,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u219.M3_due_again_said",
+      "description": "_due_again_warnings: count nothing due, so a resort that left a favourite for later reports a clean success (round two's third hold)",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6898e10466a394d5",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_organize_mirror_edits.py",
+        "tests/test_resort_scope.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 309,
+      "baseline_collected": 309,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_a_resort_that_left_a_favourite_for_later_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        count = int(report.get(\"due_again\") or 0)",
+      "new": "        count = 0",
+      "source": {
+        "table": "u219.json",
+        "id": "M3_due_again_said"
+      }
+    },
+    {
+      "id": "u219.R1_routed_trees",
+      "description": "_routed_trees: every native tree, so the resort queues the intake tree again",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef974b2fa926bbb2",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_organize_mirror_edits.py",
+        "tests/test_resort_scope.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 309,
+      "baseline_collected": 309,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_a_library_that_moved_after_the_gate_refuses_before_writing",
+        "tests/test_resort_scope.py::test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root",
+        "tests/test_resort_scope.py::test_a_resort_that_left_a_favourite_for_later_says_so",
+        "tests/test_resort_scope.py::test_a_resort_with_no_change_plans_nothing_and_queues_nothing",
+        "tests/test_resort_scope.py::test_a_resort_writes_no_favourite_its_gate_did_not_show",
+        "tests/test_resort_scope.py::test_an_abort_queues_nothing_and_writes_nothing",
+        "tests/test_resort_scope.py::test_an_answer_over_one_database_file_does_not_approve_another",
+        "tests/test_resort_scope.py::test_route_inbox_files_into_the_routing_tree_only",
+        "tests/test_resort_scope.py::test_the_digest_is_the_same_over_one_unchanged_library",
+        "tests/test_resort_scope.py::test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next",
+        "tests/test_resort_scope.py::test_the_gate_shows_every_add_and_only_the_routing_trees",
+        "tests/test_resort_scope.py::test_two_files_that_swap_places_after_the_gate_refuse_by_their_paths"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(t for t in _native_trees(entries) if rebuild.derivable(declared, t))",
+      "new": "    return _native_trees(entries)",
+      "source": {
+        "table": "u219.json",
+        "id": "R1_routed_trees"
+      }
+    },
+    {
+      "id": "u219.R2_inbox_routed_only",
+      "description": "plan_inbox: file the intake folder into every native tree, INBOX included",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fed7a9e48e7bbc6a",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_organize_mirror_edits.py",
+        "tests/test_resort_scope.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 309,
+      "baseline_collected": 309,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_route_inbox_files_into_the_routing_tree_only"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    native = _routed_trees(entries, declared)",
+      "new": "    native = _native_trees(entries)",
+      "source": {
+        "table": "u219.json",
+        "id": "R2_inbox_routed_only"
+      }
+    },
+    {
+      "id": "u219.R3_left_alone_named",
+      "description": "_passed_over: name no tree the resort left alone",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40fe14d63450463e",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_organize_mirror_edits.py",
+        "tests/test_resort_scope.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 309,
+      "baseline_collected": 309,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_the_gate_shows_every_add_and_only_the_routing_trees"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    skipped = [t for t in _native_trees(entries) if t in others]\n    if not skipped:\n        return []\n    named = \", \".join(f\"{others[t]} ({t})\" for t in skipped)\n    return [\n        {\n            \"code\": TREE_NOT_DERIVED,",
+      "new": "    skipped = [t for t in _native_trees(entries) if t in others]\n    if skipped:\n        return []\n    named = \", \".join(f\"{others[t]} ({t})\" for t in skipped)\n    return [\n        {\n            \"code\": TREE_NOT_DERIVED,",
+      "source": {
+        "table": "u219.json",
+        "id": "R3_left_alone_named"
+      }
+    },
+    {
+      "id": "r239-b.S11_readback_key_on",
+      "description": "the session read-back pins the old True default, which a plain database cannot open under",
+      "file": "src/cratekit/core/session.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5ad8dd8a839b511b",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg))",
+      "new": "    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg, unlock=True))",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S11_readback_key_on"
+      }
+    },
+    {
+      "id": "r239-b.S6_delete_key_off",
+      "description": "delete review's open passes unlock=False",
+      "file": "src/cratekit/deletion/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8825c7fe9937e5c5",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)",
+      "new": "    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, unlock=False)",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S6_delete_key_off"
+      }
+    },
+    {
+      "id": "r239-b.S7_metadata_key_off",
+      "description": "mytags' open passes unlock=False",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "197903fd8a55ba2a",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        require_closed=writing,\n        cfg=cfg,\n",
+      "new": "        require_closed=writing,\n        unlock=False,\n        cfg=cfg,\n",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S7_metadata_key_off"
+      }
+    },
+    {
+      "id": "r239-b.S2_unplaced_key_off",
+      "description": "route unplaced's open, unplaced_items, passes unlock=False again",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "03ff4e6e1b68655d",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself",
+        "tests/test_routing_workers.py::test_unplaced_compares_on_an_encrypted_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return [], {\"compared\": False, \"reason\": \"no-native-tree\", \"collection\": 0}\n    handle = rb_writer.open_db(cfg=cfg)\n",
+      "new": "        return [], {\"compared\": False, \"reason\": \"no-native-tree\", \"collection\": 0}\n    handle = rb_writer.open_db(cfg=cfg, unlock=False)\n",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S2_unplaced_key_off"
+      }
+    },
+    {
+      "id": "r239-b.S8_naming_key_off",
+      "description": "the naming verb's collection read passes unlock=False",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4e9f7385d3e5a77e",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            require_closed=False,\n            cfg=cfg,\n",
+      "new": "            require_closed=False,\n            unlock=False,\n            cfg=cfg,\n",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S8_naming_key_off"
+      }
+    },
+    {
+      "id": "u178.G6_fallback_refusal",
+      "description": "_declared_genre: never refuse a fallback genre, so Polka is stored unconfirmed",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8440fa2927b610c3",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_a_genre_routing_only_to_the_fallback_is_refused_and_nothing_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolution.match is routing.Match.FALLBACK and not accept_fallback:",
+      "new": "    if False:",
+      "source": {
+        "table": "u178.json",
+        "id": "G6_fallback_refusal"
+      }
+    },
+    {
+      "id": "u178.G7_fallback_confirm_ignored",
+      "description": "_declared_genre: refuse a fallback genre even with --accept-fallback",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "73f682321e8a626c",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_a_fallback_genre_is_kept_when_confirmed_and_the_screen_says_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolution.match is routing.Match.FALLBACK and not accept_fallback:",
+      "new": "    if resolution.match is routing.Match.FALLBACK:",
+      "source": {
+        "table": "u178.json",
+        "id": "G7_fallback_confirm_ignored"
+      }
+    },
+    {
+      "id": "u178.G8_clear_word_case",
+      "description": "_declared_genre: match the clearing word in its exact case, so --genre Default is stored as a genre",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ebaf277f2f4edc71",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_the_word_default_clears_a_genre_and_none_keeps_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if wanted.casefold() == CLEAR_GENRE:",
+      "new": "    if wanted == CLEAR_GENRE:",
+      "source": {
+        "table": "u178.json",
+        "id": "G8_clear_word_case"
+      }
+    },
+    {
+      "id": "u178.G9_accept_without_genre",
+      "description": "registry_cmd: accept --accept-fallback with no --genre, so it confirms nothing silently",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "877d39b111c9744c",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_accept_fallback_with_no_genre_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if accept_fallback and genre is None:",
+      "new": "    if False:",
+      "source": {
+        "table": "u178.json",
+        "id": "G9_accept_without_genre"
+      }
+    },
+    {
+      "id": "u178.G1_genre_length_bound",
+      "description": "check_genre: the bound read one past GENRE_MAX, so a 65 character genre is stored",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "da3f01eea0ec7b65",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_a_genre_that_could_never_be_one_refuses_at_the_store[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        or len(text) > GENRE_MAX\n",
+      "new": "        or len(text) > GENRE_MAX + 1\n",
+      "source": {
+        "table": "u178.json",
+        "id": "G1_genre_length_bound"
+      }
+    },
+    {
+      "id": "u178.G2_genre_needs_a_letter",
+      "description": "check_genre: drop the letter or digit rule, so a punctuation only genre is stored",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5922be0c3da25bb8",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_a_genre_that_could_never_be_one_refuses_at_the_store[---]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        or not any(char.isalnum() for char in text)\n",
+      "new": "",
+      "source": {
+        "table": "u178.json",
+        "id": "G2_genre_needs_a_letter"
+      }
+    },
+    {
+      "id": "u178.G3_genre_one_line",
+      "description": "check_genre: drop the control character rule, so a genre with a newline is stored",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0b1a064f91567330",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_a_genre_that_could_never_be_one_refuses_at_the_store[Romi\\nnimal]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        or any(unicodedata.category(char).startswith(\"C\") for char in text)\n",
+      "new": "",
+      "source": {
+        "table": "u178.json",
+        "id": "G3_genre_one_line"
+      }
+    },
+    {
+      "id": "u178.G4_edit_clear_genre",
+      "description": "edit: ignore clear_genre, so --genre default on set keeps the genre",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aee277fddb1de676",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_the_word_default_clears_a_genre_and_none_keeps_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                genre=None if clear_genre else (genre if genre is not None else existing.genre),",
+      "new": "                genre=genre if genre is not None else existing.genre,",
+      "source": {
+        "table": "u178.json",
+        "id": "G4_edit_clear_genre"
+      }
+    },
+    {
+      "id": "u178.G5_edit_none_keeps_genre",
+      "description": "edit: a genre of None drops the held genre, so an unrelated edit clears it",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8443652d17d02c21",
+      "subset": [
+        "tests/test_label_genre.py",
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 284,
+      "baseline_collected": 284,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre.py::test_the_word_default_clears_a_genre_and_none_keeps_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                genre=None if clear_genre else (genre if genre is not None else existing.genre),",
+      "new": "                genre=None if clear_genre else genre,",
+      "source": {
+        "table": "u178.json",
+        "id": "G5_edit_none_keeps_genre"
+      }
+    },
+    {
+      "id": "u52-item-derivation.H2_listing_passthrough_gone",
+      "description": "REMOVE THE LAYER ALONE: an adapter's own CratekitError refusal is rewritten as an unreadable playlist",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "87b60162c53ad869",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_cratekit_refusal_from_below_is_not_flattened_into_an_unreadable_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except CratekitError:\n        raise\n    except Exception as exc:\n        raise refuse(\n            \"label-playlist-unreadable\",\n            f\"the playlist {reference!r} could not be listed by the provider \"",
+      "new": "    except Exception as exc:\n        raise refuse(\n            \"label-playlist-unreadable\",\n            f\"the playlist {reference!r} could not be listed by the provider \"",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "H2_listing_passthrough_gone"
+      }
+    },
+    {
+      "id": "u52-item-derivation.H4_verification_boundary_gone",
+      "description": "THE THIRD PROVIDER CALL: hand from_tracks the bare seam method, so a provider that went away mid playlist becomes internal-error with report-defect",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b390913c2e79fecc",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_harvest_that_fails_mid_verification_names_what_it_already_offered",
+        "tests/test_label_workers.py::test_a_provider_that_fails_mid_verification_refuses_rather_than_reporting_a_defect"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            verify=_label_verifier(found, reference),",
+      "new": "            verify=found.check_label,",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "H4_verification_boundary_gone"
+      }
+    },
+    {
+      "id": "u52-item-derivation.H6_empty_playlist_reports_ok",
+      "description": "An empty playlist reports OK rather than NO_OP, so nothing found is indistinguishable from something found",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9c62ef8876488eeb",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_empty_harvest_still_names_that_nothing_was_offered",
+        "tests/test_label_workers.py::test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if report.offered else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK,",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "H6_empty_playlist_reports_ok"
+      }
+    },
+    {
+      "id": "u52-item-derivation.H7_unresolved_drops_nameless",
+      "description": "Count only the names a catalogue refused, so a playlist whose tracks carry no copyright string at all reports a clean zero unresolved",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b2ef54da9d5fa9da",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_track_with_no_copyright_string_is_counted_rather_than_dropped_silently"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    unresolved = len(report.dropped) + nameless",
+      "new": "    unresolved = len(report.dropped)",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "H7_unresolved_drops_nameless"
+      }
+    },
+    {
+      "id": "u52-item-derivation.I5_import_queues_no_item",
+      "description": "THE ZERO ITEM RULE at the import end: queue the single label job with no items at all",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1864bb54fdfcaeaa",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_import_queues_exactly_one_item_and_it_is_the_label_id",
+        "tests/test_label_workers.py::test_an_import_runs_its_one_item_to_done_through_the_same_worker",
+        "tests/test_label_workers.py::test_the_import_queues_without_a_warning_now_an_adapter_is_bound",
+        "tests/test_label_workers.py::test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        item_ids=(entry.label_id,),",
+      "new": "        item_ids=(),",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "I5_import_queues_no_item"
+      }
+    },
+    {
+      "id": "u52-item-derivation.I6_import_item_keyed_on_name",
+      "description": "The import's single item names the label by display name, which the worker then cannot resolve by id",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a34e14d5144cf1da",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_import_queues_exactly_one_item_and_it_is_the_label_id",
+        "tests/test_label_workers.py::test_an_import_runs_its_one_item_to_done_through_the_same_worker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        item_ids=(entry.label_id,),",
+      "new": "        item_ids=(entry.name,),",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "I6_import_item_keyed_on_name"
+      }
+    },
+    {
+      "id": "u52-item-derivation.R1_itemless_job_drives",
+      "description": "Drive a label job with no items, which jobs.drive transitions straight to SUCCEEDED over a registry nothing was read from",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1504c19b51279ebf",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_job_carrying_no_items_refuses_on_resume_and_is_left_open",
+        "tests/test_label_workers.py::test_the_itemless_refusal_names_the_cancel_that_gets_a_person_out",
+        "tests/test_label_workers.py::test_the_itemless_refusal_of_an_import_still_says_queue_it_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _refuse_an_itemless_job(store, job)",
+      "new": "            pass",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "R1_itemless_job_drives"
+      }
+    },
+    {
+      "id": "u52-item-derivation.S1_errors_branch_gone",
+      "description": "A sweep that could not offer some of the releases it listed exits 0 and reports the job done",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34c5fa9fc5f34a42",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_increment_that_could_not_offer_every_release_fails_the_item"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if result.errors:\n        raise refuse(\n            \"label-sweep-incomplete\",",
+      "new": "    if False:\n        raise refuse(\n            \"label-sweep-incomplete\",",
+      "source": {
+        "table": "u52-item-derivation.json",
+        "id": "S1_errors_branch_gone"
+      }
+    },
+    {
+      "id": "u52-zero-rows.H5_verifier_passthrough_gone",
+      "description": "REMOVE THE LAYER ALONE: the verification boundary swallows an adapter's own refusal into label-playlist-unreadable",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4fe49cc956957982",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 262,
+      "baseline_collected": 262,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except CratekitError:\n            raise\n        except Exception as exc:",
+      "new": "        except Exception as exc:",
+      "source": {
+        "table": "u52-zero-rows.json",
+        "id": "H5_verifier_passthrough_gone"
+      }
+    },
+    {
+      "id": "r838-c.R1_library_bound",
+      "description": "mark_record._recognize: accept a record written for another library",
+      "file": "src/cratekit/sync/mark_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e14930f59c2aec7e",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_an_unreadable_record_refuses_rather_than_reading_as_empty[{\"version\": 1, \"library_id\": \"another-library\", \"marks\": []}]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if library_id != self.cfg.library.volume_id:",
+      "new": "        if False:",
+      "source": {
+        "table": "r838-c.json",
+        "id": "R1_library_bound"
+      }
+    },
+    {
+      "id": "r838-c.R2_remark_clears",
+      "description": "mark_record.record_marked: append a second entry for a re-mark by the same pass rather than replacing the first",
+      "file": "src/cratekit/sync/mark_record.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "9896040e8b1652f9",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_mark_after_an_unmark_clears_the_stamp"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):\n                        entries[index] = fresh\n                        break",
+      "new": "                    if False:\n                        entries[index] = fresh\n                        break",
+      "source": {
+        "table": "r838-c.json",
+        "id": "R2_remark_clears"
+      }
+    },
+    {
+      "id": "r838-d.R3b_stamp_target",
+      "description": "mark_record.record_unmarked: stamp the playlist's mark under any pass, so another pass's mark reads as put back",
+      "file": "src/cratekit/sync/mark_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d66cb69691e6a739",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):\n                    entries[index] = replace(entry, unmarked=when)",
+      "new": "                if entry.playlist_id == playlist_id:\n                    entries[index] = replace(entry, unmarked=when)",
+      "source": {
+        "table": "r838-d.json",
+        "id": "R3b_stamp_target"
+      }
+    },
+    {
+      "id": "r838-a.U1_refuse_stranger",
+      "description": "unmark._narrowed: drop the refusal, so a playlist the pass never marked is silently passed over rather than refused",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f112fe8856584dc",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_playlist_the_pass_never_marked_is_refused_whatever_its_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if strangers:\n        raise _blocked(",
+      "new": "    if False:\n        raise _blocked(",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U1_refuse_stranger"
+      }
+    },
+    {
+      "id": "r838-a.U3_pass_filter",
+      "description": "unmark: take every pass's marks as the named pass's, so a playlist the pass never marked is planned",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f59ad0588041fb23",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix",
+        "tests/test_sync_unmark.py::test_a_pass_the_record_holds_nothing_for_is_a_gated_plan_of_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tuple(entry for entry in every if entry.pass_name == name),",
+      "new": "        tuple(entry for entry in every),",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U3_pass_filter"
+      }
+    },
+    {
+      "id": "r838-a.U4_already_unmarked_stamp",
+      "description": "unmark._item: ignore the unmarked stamp, so a second run is decided by the title alone",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "da2e7c7ef236bcca",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_second_run_plans_nothing_and_still_asks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if entry.unmarked:\n        return {",
+      "new": "    if False:\n        return {",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U4_already_unmarked_stamp"
+      }
+    },
+    {
+      "id": "r838-a.U5_marked_again",
+      "description": "unmark._item: ignore a later mark by another pass, so this pass's unmark takes off that pass's prefix",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ee5748b09bde856d",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    later = _later(entry, every)\n    if later:",
+      "new": "    later = _later(entry, every)\n    if False:",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U5_marked_again"
+      }
+    },
+    {
+      "id": "r838-a.U6_later_order",
+      "description": "unmark._later: an EARLIER mark by another pass also supersedes, so the latest pass's own unmark is refused",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "01adfaaa9a8c73fa",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and other.marked > entry.marked",
+      "new": "        and other.marked != entry.marked",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U6_later_order"
+      }
+    },
+    {
+      "id": "r838-a.U8_title_already_back",
+      "description": "unmark._item: no already-put-back branch, so a title already restored is reported as retitled by hand",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b99f39f95e0aec98",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_title_already_put_back_is_skipped_without_a_stamp"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current == entry.name:",
+      "new": "    if False:",
+      "source": {
+        "table": "r838-a.json",
+        "id": "U8_title_already_back"
+      }
+    },
+    {
+      "id": "r838-b.U10_digest_names",
+      "description": "unmark._payload: the digest omits the planned renames, so an answer to one plan carries out another",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b192a1928bc7d0f",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_an_answer_is_stale_once_the_account_moves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            (item[\"id\"], item[\"marked_as\"], item[\"to\"])\n            for item in items\n            if item[\"action\"] == UNMARK",
+      "new": "            (item[\"id\"], item[\"marked_as\"], item[\"to\"])\n            for item in items\n            if False",
+      "source": {
+        "table": "r838-b.json",
+        "id": "U10_digest_names"
+      }
+    },
+    {
+      "id": "r838-b.U13_recheck",
+      "description": "unmark: no recheck against the second listing, so a title changed after the answer is renamed anyway",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "140a25ddcdcc21f6",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if now.get(identity) != entry.to:",
+      "new": "            if False:",
+      "source": {
+        "table": "r838-b.json",
+        "id": "U13_recheck"
+      }
+    },
+    {
+      "id": "r838-b.U15_rename_target",
+      "description": "unmark: rename to the title the mark wrote rather than the one before it",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fc7e9a4dda53cbbd",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix",
+        "tests/test_sync_unmark.py::test_a_pass_that_marked_three_plans_three_renames_back_and_applies_them",
+        "tests/test_sync_unmark.py::test_a_playlist_retitled_by_hand_since_the_mark_is_listed_and_left",
+        "tests/test_sync_unmark.py::test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said",
+        "tests/test_sync_unmark.py::test_a_playlist_the_account_no_longer_lists_is_said_and_left",
+        "tests/test_sync_unmark.py::test_a_title_already_put_back_is_skipped_without_a_stamp",
+        "tests/test_sync_unmark.py::test_playlist_given_twice_narrows_to_both_marks_named",
+        "tests/test_sync_unmark.py::test_playlist_narrows_to_the_marks_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            remote.rename_playlist(identity, entry.name)",
+      "new": "            remote.rename_playlist(identity, entry.to)",
+      "source": {
+        "table": "r838-b.json",
+        "id": "U15_rename_target"
+      }
+    },
+    {
+      "id": "r838-b.U16_part_way_names",
+      "description": "unmark._failed_part_way: report nothing put back, so a partial failure loses what landed",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f0cb1881c1adbee",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_failure_part_way_names_what_was_put_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"unmarked\": list(landed),",
+      "new": "        \"unmarked\": [],",
+      "source": {
+        "table": "r838-b.json",
+        "id": "U16_part_way_names"
+      }
+    },
+    {
+      "id": "r838-b.U9_renamed_since",
+      "description": "unmark._item: plan any title carrying the prefix, so a playlist retitled by hand with the prefix kept is renamed",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "47c22c302d89af23",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_playlist_retitled_by_hand_since_the_mark_is_listed_and_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current != entry.to:\n        how =",
+      "new": "    if not playlists.is_swept_name(current):\n        how =",
+      "source": {
+        "table": "r838-b.json",
+        "id": "U9_renamed_since"
+      }
+    },
+    {
+      "id": "r838-c.U7b_not_listed_rerun",
+      "description": "U7 measured again after the not-listed test was added: no NOT_LISTED branch, so a playlist the account dropped falls through to the title comparison",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0dfd14d66b5d9654",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_playlist_the_account_no_longer_lists_is_said_and_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current is None:\n        return {\n            **base,\n            \"action\": SKIP,\n            \"reason\": NOT_LISTED,",
+      "new": "    if current is None and False:\n        return {\n            **base,\n            \"action\": SKIP,\n            \"reason\": NOT_LISTED,",
+      "source": {
+        "table": "r838-c.json",
+        "id": "U7b_not_listed_rerun"
+      }
+    },
+    {
+      "id": "r1394.S10_later_unsent_write_hides_the_pending",
+      "description": "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ef4a5ed1e0af081",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_stopped.py::test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):",
+      "new": "            if held is None or write.at > held[1].at:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S10_later_unsent_write_hides_the_pending"
+      }
+    },
+    {
+      "id": "r1394.S1_counts_beyond_the_moves_trusted",
+      "description": "stopped write: counts larger than the write's moves are trusted rather than read as nothing known",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "774039ae1dc6ec00",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sent is None or landed is None or not landed <= sent <= total:",
+      "new": "    if sent is None or landed is None or not landed <= sent:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S1_counts_beyond_the_moves_trusted"
+      }
+    },
+    {
+      "id": "r1394.S2_missing_counts_read_as_none_sent",
+      "description": "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f5f5a592b284aaac",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return 0, total\n    return landed, sent",
+      "new": "        return 0, 0\n    return landed, sent",
+      "source": {
+        "table": "r1394.json",
+        "id": "S2_missing_counts_read_as_none_sent"
+      }
+    },
+    {
+      "id": "r1394.S3_bool_count_read",
+      "description": "stopped write: a count written as true or false is read as a number",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c101b195bb470871",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(value, bool) or not isinstance(value, int) or value < 0:",
+      "new": "    if not isinstance(value, int) or value < 0:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S3_bool_count_read"
+      }
+    },
+    {
+      "id": "r1394.S4_negative_count_read",
+      "description": "stopped write: a negative count is read as one",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d90e989d5e36d901",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(value, bool) or not isinstance(value, int) or value < 0:",
+      "new": "    if isinstance(value, bool) or not isinstance(value, int):",
+      "source": {
+        "table": "r1394.json",
+        "id": "S4_negative_count_read"
+      }
+    },
+    {
+      "id": "r1394.S5_sent_read_as_landed",
+      "description": "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cbdba40134a9c6cf",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))",
+      "new": "    return at, start, end, _count(value.get(LANDED)), _count(value.get(LANDED))",
+      "source": {
+        "table": "r1394.json",
+        "id": "S5_sent_read_as_landed"
+      }
+    },
+    {
+      "id": "r1394.S6_counts_not_wired",
+      "description": "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8cc1c0acb9ffca32",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_settle.py::test_a_stopped_writes_counts_are_carried_past_its_runs_steps",
+        "tests/test_sync_pair_settle.py::test_every_move_accepted_and_an_agreed_reading_short_of_their_end_is_still_a_lag",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]",
+        "tests/test_sync_pair_stopped.py::test_every_move_accepted_reads_as_every_move_landed_whatever_the_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        landed=landed,\n        sent=reached_by,",
+      "new": "        landed=0,\n        sent=0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S6_counts_not_wired"
+      }
+    },
+    {
+      "id": "r1394.S8_positions_first_only",
+      "description": "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "430e32758eddd6e7",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )",
+      "new": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )[:1]",
+      "source": {
+        "table": "r1394.json",
+        "id": "S8_positions_first_only"
+      }
+    },
+    {
+      "id": "r1394.S9_moving_step_counts_dropped",
+      "description": "moving step: the record written carries a sent count of 0 whatever it is told",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a54cbeecc86f96a3",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 19,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[False]",
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[True]",
+        "tests/test_sync_pair_settle.py::test_a_finish_keeps_an_unread_track_the_stopped_write_did_not_move_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_reading",
+        "tests/test_sync_pair_settle.py::test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox",
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_settle.py::test_two_readings_agree_only_once_minutes_apart",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        SENT: int(sent),",
+      "new": "        SENT: 0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S9_moving_step_counts_dropped"
+      }
+    },
+    {
+      "id": "u234.O15_reordered_counts_additions",
+      "description": "reordered compares the readings whole, so a track added between them is read as a reorder",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8101060fac5a7981",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_track_added_or_taken_off_between_two_readings_is_no_reorder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [one for one in current if one in common] != [\n        one for one in dict.fromkeys(kept) if one in common\n    ]\n\n\n__all__",
+      "new": "    return current != list(dict.fromkeys(kept))\n\n\n__all__",
+      "source": {
+        "table": "u234.json",
+        "id": "O15_reordered_counts_additions"
+      }
+    },
+    {
+      "id": "r235-a.M11_session_lock_dropped",
+      "description": "a revert holds the registry lock and not the session lock",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c84185b6ad169b5",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_the_revert_holds_the_session_lock_while_it_asks_and_writes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):",
+      "new": "    with config._exclusive_lock(lock_path(cfg)):",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M11_session_lock_dropped"
+      }
+    },
+    {
+      "id": "r235-a.M12_second_record_replaces",
+      "description": "record_cutover replaces a tree already recorded native instead of refusing",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d81fa8d6d12e1338",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_a_tree_already_recorded_is_not_recorded_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if standing is not None and standing.mode == Mode.DATABASE:\n            # ASKED UNDER THE LOCK, which is the only place the answer holds.",
+      "new": "        if False:\n            # ASKED UNDER THE LOCK, which is the only place the answer holds.",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M12_second_record_replaces"
+      }
+    },
+    {
+      "id": "r235-a.M13_snapshot_check_dropped",
+      "description": "the verified snapshot check is no longer in the precheck table",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "226614c7e75cd6b3",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_leave_intake_xml-cutover-xml-pending-no-pending-intake-xml]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_open_a_run-cutover-open-run-no-open-run]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_export-cutover-export-missing-fresh-export]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_snapshot-cutover-snapshot-missing-verified-snapshot]",
+        "tests/test_cutover_cli.py::test_the_plan_names_the_root_and_approval_records_that_tree_alone",
+        "tests/test_cutover_cli.py::test_two_failing_prechecks_are_both_named_on_one_run",
+        "tests/test_cutover_precheck.py::test_a_missing_snapshot_blocks_the_flip",
+        "tests/test_cutover_precheck.py::test_an_unverified_capture_does_not_count_as_a_snapshot",
+        "tests/test_cutover_precheck.py::test_the_report_and_the_assertion_refuse_with_one_cause",
+        "tests/test_cutover_precheck.py::test_the_report_carries_each_refusal_and_does_not_stop_at_the_first",
+        "tests/test_cutover_precheck.py::test_the_report_names_every_check_in_the_order_the_assertion_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    (\"fresh-export\", _export_refusal),\n    (\"verified-snapshot\", _snapshot_refusal),\n)",
+      "new": "    (\"fresh-export\", _export_refusal),\n)",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M13_snapshot_check_dropped"
+      }
+    },
+    {
+      "id": "r235-a.M1_unreadable_log_skipped",
+      "description": "the registry gates no longer refuse on a session record they cannot read, so a torn record reads as no open run and no native write",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2116952fe9832f07",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_a_record_nobody_can_read_refuses_the_flip_rather_than_reading_as_no_open_run",
+        "tests/test_cutover_precheck.py::test_a_record_nobody_can_read_refuses_the_revert_rather_than_reading_as_no_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    parsed, unreadable = session.scan_log(cfg)\n    if unreadable:",
+      "new": "    parsed, unreadable = session.scan_log(cfg)\n    if False:",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M1_unreadable_log_skipped"
+      }
+    },
+    {
+      "id": "r235-a.M2_margin_zero",
+      "description": "the native write margin is no days, so a write whose universal time date is the day before the cutover day is left out",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "098522e2279f87fe",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts[2026-07-31T23:50:00Z]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "NATIVE_WRITE_MARGIN = timedelta(days=1)",
+      "new": "NATIVE_WRITE_MARGIN = timedelta(days=0)",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M2_margin_zero"
+      }
+    },
+    {
+      "id": "r235-a.M3_margin_two_days",
+      "description": "the native write margin is two days, so a write two days before the cutover day still counts",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0378711b74112a71",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_the_day_before_the_margin_is_the_first_day_left_out"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "NATIVE_WRITE_MARGIN = timedelta(days=1)",
+      "new": "NATIVE_WRITE_MARGIN = timedelta(days=2)",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M3_margin_two_days"
+      }
+    },
+    {
+      "id": "r235-a.M4_unparseable_start_predates",
+      "description": "a session start nothing can parse is read as before the cutover, so its write does not count",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fef3f2019f7428a2",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts[not a timestamp]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except ValueError:\n        return False\n    return began < cutover_on - NATIVE_WRITE_MARGIN",
+      "new": "    except ValueError:\n        return True\n    return began < cutover_on - NATIVE_WRITE_MARGIN",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M4_unparseable_start_predates"
+      }
+    },
+    {
+      "id": "r235-a.M5_updates_not_counted",
+      "description": "only a creation counts as a native write, an update does not",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cb89e1b5823e03f8",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_an_update_counts_as_a_native_write_as_a_creation_does"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            change.tree == tree_id and (change.created > 0 or change.updated > 0)",
+      "new": "            change.tree == tree_id and change.created > 0",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M5_updates_not_counted"
+      }
+    },
+    {
+      "id": "r235-a.M6_any_tree_counts",
+      "description": "a write to any tree counts as a write to this one",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2dab783193140d69",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_write_to_another_tree_does_not_close_this_trees_door",
+        "tests/test_cutover_precheck.py::test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            change.tree == tree_id and (change.created > 0 or change.updated > 0)",
+      "new": "            (change.created > 0 or change.updated > 0)",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M6_any_tree_counts"
+      }
+    },
+    {
+      "id": "r235-a.M7_zero_count_counts",
+      "description": "a record naming the tree with nothing added counts as a native write",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ceb6c35c8aec0e1a",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_write_to_another_tree_does_not_close_this_trees_door",
+        "tests/test_cutover_precheck.py::test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            change.tree == tree_id and (change.created > 0 or change.updated > 0)",
+      "new": "            change.tree == tree_id",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M7_zero_count_counts"
+      }
+    },
+    {
+      "id": "r235-a.M8_open_run_reverts",
+      "description": "a revert no longer refuses over an open run",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab7e57be642cc60e",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_an_open_run_refuses_the_revert_because_it_may_have_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if open_runs:\n        raise refuse(\n            \"cutover-open-run\",\n            f\"session {open_runs[0].session_id} has not reached a terminal \"",
+      "new": "    if False:\n        raise refuse(\n            \"cutover-open-run\",\n            f\"session {open_runs[0].session_id} has not reached a terminal \"",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M8_open_run_reverts"
+      }
+    },
+    {
+      "id": "r235-a.M9_library_guard_removed",
+      "description": "revert_cutover no longer asserts the tree is revertible, leaving only the verb's own check",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6d260091d6fc360f",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_a_record_nobody_can_read_refuses_the_revert_rather_than_reading_as_no_write",
+        "tests/test_cutover_precheck.py::test_a_revert_after_a_native_write_is_refused_by_the_library_itself",
+        "tests/test_cutover_precheck.py::test_an_open_run_refuses_the_revert_because_it_may_have_written",
+        "tests/test_cutover_precheck.py::test_the_revert_holds_the_session_lock_while_it_asks_and_writes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        assert_revertible(cfg, tree_id)\n        updated = read(cfg).without_record(tree_id)",
+      "new": "        updated = read(cfg).without_record(tree_id)",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M9_library_guard_removed"
+      }
+    },
+    {
+      "id": "r235-b.M14_empty_export_accepted",
+      "description": "an export of no bytes passes the fresh export check",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b8f3e6c53316218",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_an_empty_export_is_no_export"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if export_path.is_file() and export_path.stat().st_size != 0:",
+      "new": "    if export_path.is_file():",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M14_empty_export_accepted"
+      }
+    },
+    {
+      "id": "u79-a.A1_ambiguous_listed",
+      "description": "A title that reads two ways is listed on one candidate without a person",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eedb344f02f254d6",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_title_with_two_readings_is_never_listed_on_one_candidate[the-title-reading]",
+        "tests/test_intake_missing_search.py::test_a_title_with_two_readings_is_never_listed_on_one_candidate[the-version-reading]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answer.ambiguous or answer.full:\n        return None",
+      "new": "    if answer.full:\n        return None",
+      "source": {
+        "table": "u79-a.json",
+        "id": "A1_ambiguous_listed"
+      }
+    },
+    {
+      "id": "u79-a.A2_full_page_listed",
+      "description": "A full page is read as the whole answer, so its one exact hit is listed",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "18a5de6542c6c8a8",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_full_page_is_never_the_whole_answer_so_its_one_exact_hit_is_offered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answer.ambiguous or answer.full:\n        return None",
+      "new": "    if answer.ambiguous:\n        return None",
+      "source": {
+        "table": "u79-a.json",
+        "id": "A2_full_page_listed"
+      }
+    },
+    {
+      "id": "u79-a.A3_unreadable_ignored",
+      "description": "A row of the answer that could not be read no longer stops a listing",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2a21a536cd92052e",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answer.unreadable or not exact:",
+      "new": "    if not exact:",
+      "source": {
+        "table": "u79-a.json",
+        "id": "A3_unreadable_ignored"
+      }
+    },
+    {
+      "id": "u79-a.A4_no_identifier_listed",
+      "description": "Exact candidates carrying no identifier are one distinct value and are listed",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "136002343c5761b9",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemblance",
+        "tests/test_intake_missing_search.py::test_the_only_exact_candidate_carrying_no_identifier_is_not_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if any(not one.track.ref for one in exact):\n        return None",
+      "new": "    if False:\n        return None",
+      "source": {
+        "table": "u79-a.json",
+        "id": "A4_no_identifier_listed"
+      }
+    },
+    {
+      "id": "u79-a.A5_two_exact_picked",
+      "description": "Two exact candidates list the first, the pick the brief forbids",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0bd4675652bc8797",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_acceptance_naming_none_of_several_candidates_lists_nothing",
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_under_the_floor_of_nothing_is_still_first",
+        "tests/test_intake_missing_search.py::test_more_candidates_than_the_screen_holds_are_truncated_and_counted",
+        "tests/test_intake_missing_search.py::test_two_exact_candidates_are_offered_and_neither_is_picked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len({one.track.ref for one in exact}) != 1:",
+      "new": "    if len({one.track.ref for one in exact}) < 1:",
+      "source": {
+        "table": "u79-a.json",
+        "id": "A5_two_exact_picked"
+      }
+    },
+    {
+      "id": "u79-b.B1_floor_halved",
+      "description": "The floor's value is halved, so a weaker hit is shown",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff3c5a36f7d5d0e1",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_no_candidate_for_any_row_refuses_rather_than_reading_as_nothing_to_do"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CANDIDATE_FLOOR = 60.0",
+      "new": "CANDIDATE_FLOOR = 30.0",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B1_floor_halved"
+      }
+    },
+    {
+      "id": "u79-b.B2_score_before_exact",
+      "description": "A near miss scoring 100 leads an exact candidate",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f0b224f955dea97c",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_under_the_floor_of_nothing_is_still_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            (not one.exact, -one.score, position, one)",
+      "new": "            (False, -one.score, position, one)",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B2_score_before_exact"
+      }
+    },
+    {
+      "id": "u79-b.B3_no_identifier_offered",
+      "description": "A candidate with no identifier is offered as an option",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "00a5dab9ff41ec9a",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered",
+        "tests/test_intake_missing_search.py::test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemblance"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)\n        ),\n        key=",
+      "new": "            if (one.exact or one.score >= CANDIDATE_FLOOR)\n        ),\n        key=",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B3_no_identifier_offered"
+      }
+    },
+    {
+      "id": "u79-b.B4_rejected_read_as_accepted",
+      "description": "A rejected row falls through to the accepted path and its one candidate is listed",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "59543af313e63fdd",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_rejected_row_is_reported_and_never_searched_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if held.verdict is review.Verdict.REJECTED:",
+      "new": "    if False:",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B4_rejected_read_as_accepted"
+      }
+    },
+    {
+      "id": "u79-b.B5_unspecific_yes_takes_first",
+      "description": "An acceptance naming none of several candidates lists the first",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93ab3a6dcf1ece36",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_acceptance_naming_none_of_several_candidates_lists_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if chosen is None and len(held.options) == 1:",
+      "new": "    if chosen is None and len(held.options) >= 1:",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B5_unspecific_yes_takes_first"
+      }
+    },
+    {
+      "id": "u79-b.B6_option_track_mismatch",
+      "description": "An accepted option whose detail names another track is listed as that track",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "758f40b44770a5a5",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if track is None or not track.ref or track.ref != option.option_id:",
+      "new": "    if track is None or not track.ref:",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B6_option_track_mismatch"
+      }
+    },
+    {
+      "id": "u79-b.B7_identity_without_version",
+      "description": "The question is keyed without the version, so two versions are one item",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "83a0417f6e1c0876",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_search_question_about_one_emoji_title_is_not_another_ones",
+        "tests/test_intake_missing_search.py::test_the_identity_is_the_folded_row_and_not_its_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"version\": wanted.version_key,\n    }",
+      "new": "        \"version\": \"\",\n    }",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B7_identity_without_version"
+      }
+    },
+    {
+      "id": "u79-b.B8_open_item_searched_again",
+      "description": "A row already in front of a person is searched for again",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5aec3695f0a91ba",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_second_run_offers_nothing_new_and_spends_no_search"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if held.verdict is None:\n        return Proposal(",
+      "new": "    if held.verdict is None:\n        return None\n    if held.verdict is None:\n        return Proposal(",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B8_open_item_searched_again"
+      }
+    },
+    {
+      "id": "r757-c1.S4_rehearsal_says_it_sent",
+      "description": "comparison_warning: say sent over a rehearsal, the review's fix",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e46dc11b43034fa6",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if recorded.get(\"dry_run\")",
+      "new": "        if False",
+      "source": {
+        "table": "r757-c1.json",
+        "id": "S4_rehearsal_says_it_sent"
+      }
+    },
+    {
+      "id": "r757-c2.S5_unread_number_printed_as_zero",
+      "description": "comparison_warning: print a total that was not read as 0",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "deda920cf4058997",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 758,
+      "baseline_collected": 758,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_the_sentence_never_prints_an_unread_number_as_zero"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            return f\"an unread number of {unit}\"",
+      "new": "            return f\"0 {unit}\"",
+      "source": {
+        "table": "r757-c2.json",
+        "id": "S5_unread_number_printed_as_zero"
+      }
+    },
+    {
+      "id": "r757-c2.S6_twin_in_the_other_mode_says_nothing",
+      "description": "_already_queued: drop the sentence saying the open job runs the other comparison, the review's fix",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "247175c13c27accc",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 758,
+      "baseline_collected": 758,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_a_second_ask_in_the_other_mode_is_told_the_open_job_differs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if asked_full is not None and asked_full != _is_full(job):",
+      "new": "    if False:",
+      "source": {
+        "table": "r757-c2.json",
+        "id": "S6_twin_in_the_other_mode_says_nothing"
+      }
+    },
+    {
+      "id": "r757-c2.S7_verb_says_nothing_of_the_comparison",
+      "description": "backup_library: leave the comparison sentence off the resumed envelope",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "066d426e3027adfd",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "                *comparison_warning(reported[\"progress\"].get(OUTCOMES)),",
+      "new": "                *(),",
+      "source": {
+        "table": "r757-c2.json",
+        "id": "S7_verb_says_nothing_of_the_comparison"
+      }
+    },
+    {
+      "id": "u149.T2_two_folders_not_refused",
+      "description": "find_folder: drop the refusal of two live top level folders of one year, so the first is written to",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "81d3f166ccd006d1",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_an_existing_folder_is_reused_and_two_of_one_year_place_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(found) > 1:",
+      "new": "    if len(found) > 2:",
+      "source": {
+        "table": "u149.json",
+        "id": "T2_two_folders_not_refused"
+      }
+    },
+    {
+      "id": "u149.T3_folder_names_unread",
+      "description": "find_folder: read no names inside a live folder, so a held name is not seen",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a8eb1772d78ace33",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_twins.py::test_a_twin_name_the_folder_holds_is_left_and_named_and_the_landing_still_lands",
+        "tests/test_sync_twins.py::test_a_name_the_folder_already_holds_is_refused_by_name_never_counted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "held=_live_children(db, found[0]))",
+      "new": "held=frozenset())",
+      "source": {
+        "table": "u149.json",
+        "id": "T3_folder_names_unread"
+      }
+    },
+    {
+      "id": "u149.T4_removed_folder_live",
+      "description": "_live_top_folders: drop the soft delete filter, so a removed folder is reused",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56e14e14ba9db38a",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_removed_year_folder_is_not_reused_and_a_live_one_is_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"AND COALESCE({rb_writer.SOFT_DELETE_COLUMN}, 0) = 0 ORDER BY ID\"",
+      "new": "        f\"ORDER BY ID\"",
+      "source": {
+        "table": "u149.json",
+        "id": "T4_removed_folder_live"
+      }
+    },
+    {
+      "id": "u149.T5_held_name_counted_free",
+      "description": "place: drop the refusal of a name the folder holds, so a second twin of one name is made",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d572d906ca6320b7",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_twins.py::test_a_twin_name_the_folder_holds_is_left_and_named_and_the_landing_still_lands",
+        "tests/test_sync_twins.py::test_a_name_the_folder_already_holds_is_refused_by_name_never_counted",
+        "tests/test_sync_twins.py::test_place_refuses_a_held_name_a_taken_name_an_empty_name_and_an_unplaced_year"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if name in folder.held:",
+      "new": "    if False:",
+      "source": {
+        "table": "u149.json",
+        "id": "T5_held_name_counted_free"
+      }
+    },
+    {
+      "id": "u149.T6_taken_name_free",
+      "description": "place: drop the refusal of a name this run already gave, so two twins share one name",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1c8a2ada2e0d5e15",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_place_refuses_a_held_name_a_taken_name_an_empty_name_and_an_unplaced_year"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if name in taken:",
+      "new": "    if False:",
+      "source": {
+        "table": "u149.json",
+        "id": "T6_taken_name_free"
+      }
+    },
+    {
+      "id": "u213.M14_backfill_reason_check",
+      "description": "plan_backfill: leave a playlist for any refusal, so an expired session leaves every playlist instead of naming its act",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "026f148f1f8de1d8",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if exc.cause.reason not in PER_PLAYLIST_REASONS:\n                raise\n            twins.append(",
+      "new": "            if False:\n                raise\n            twins.append(",
+      "source": {
+        "table": "u213.json",
+        "id": "M14_backfill_reason_check"
+      }
+    },
+    {
+      "id": "u213.M15_backfill_left_action",
+      "description": "plan_backfill: plan a playlist whose listing was refused as a twin to make, with no rows",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "776cb620363fb170",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words",
+        "tests/test_sync_twins.py::test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made",
+        "tests/test_sync_twins.py::test_a_playlist_whose_row_carries_no_id_is_left_and_the_other_is_planned",
+        "tests/test_sync_twins.py::test_every_playlist_left_writes_nothing_and_opens_no_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    action=LEFT,\n                    why=f\"the account playlist could not be read: {exc.cause.message}\",",
+      "new": "                    action=CREATE,\n                    why=f\"the account playlist could not be read: {exc.cause.message}\",",
+      "source": {
+        "table": "u213.json",
+        "id": "M15_backfill_left_action"
+      }
+    },
+    {
+      "id": "u213.M16_backfill_digest_reason",
+      "description": "Twin.identity: put the provider's words in the digest again, so a varying message makes the approved run stale",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e755b5c0dc4b83d0",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"why\": self.refused or self.why,",
+      "new": "            \"why\": self.why,",
+      "source": {
+        "table": "u213.json",
+        "id": "M16_backfill_digest_reason"
+      }
+    },
+    {
+      "id": "u213.M17_backfill_unread_tracks",
+      "description": "plan_backfill: plan from the read tracks alone, so an unread track is in neither the twin's misses nor its snapshot",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9fde68dd2e516252",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_planned",
+        "tests/test_sync_twins.py::test_an_untitled_track_two_library_rows_carry_is_ambiguous_not_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            ref: listing.tracks[ref] if ref in listing.tracks else listing.unread[ref].said()\n            for ref in listing.order",
+      "new": "            ref: listing.tracks[ref]\n            for ref in listing.order\n            if ref in listing.tracks",
+      "source": {
+        "table": "u213.json",
+        "id": "M17_backfill_unread_tracks"
+      }
+    },
+    {
+      "id": "u213.M18_backfill_unread_reasons",
+      "description": "plan_backfill: hand matched no unread reasons, so an unread track the library lacks reads as merely not owned",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f2a828b681175e0e",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_planned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            {ref: one.why for ref, one in listing.unread.items()},",
+      "new": "            {},",
+      "source": {
+        "table": "u213.json",
+        "id": "M18_backfill_unread_reasons"
+      }
+    },
+    {
+      "id": "u213.M19_matched_ambiguous_first",
+      "description": "matched: say an unread track two rows carry is unreadable rather than ambiguous",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4987dd75a3efeb4",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_an_untitled_track_two_library_rows_carry_is_ambiguous_not_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    AMBIGUOUS\n                    if found\n                    else f\"{unread[remote_id]}, {UNREAD_NOT_FOUND}\"\n                    if remote_id in unread\n                    else NOT_OWNED",
+      "new": "                    f\"{unread[remote_id]}, {UNREAD_NOT_FOUND}\"\n                    if remote_id in unread\n                    else AMBIGUOUS\n                    if found\n                    else NOT_OWNED",
+      "source": {
+        "table": "u213.json",
+        "id": "M19_matched_ambiguous_first"
+      }
+    },
+    {
+      "id": "u213.M20_backfill_whole",
+      "description": "plan_backfill: read every listing as whole, so a short one is paired with a snapshot it does not have",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "64de66ffde351885",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_short_listing_pairs_the_twin_with_no_snapshot"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                whole=listing.short is None,",
+      "new": "                whole=True,",
+      "source": {
+        "table": "u213.json",
+        "id": "M20_backfill_whole"
+      }
+    },
+    {
+      "id": "u213.M2_backfill_refused_reason",
+      "description": "plan_backfill: record no refusal reason on a left playlist, so its digest carries the provider's words",
+      "file": "src/cratekit/sync/twins.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ac1ccc1130bb5d7",
+      "subset": [
+        "tests/test_sync_twins.py",
+        "tests/test_intake_land_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins.py::test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    refused=exc.cause.reason,",
+      "new": "                    refused=\"\",",
+      "source": {
+        "table": "u213.json",
+        "id": "M2_backfill_refused_reason"
+      }
+    },
+    {
+      "id": "r815-b.J1_one_refusal_ends_the_asking",
+      "description": "_asked: remember no refusal",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3cff22fbbf6df8c4",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if judged.answer == searchers.Answer.BLOCKED.value:\n        tools.refused = judged.reason",
+      "new": "    if False:\n        tools.refused = judged.reason",
+      "source": {
+        "table": "r815-b.json",
+        "id": "J1_one_refusal_ends_the_asking"
+      }
+    },
+    {
+      "id": "r815-b.J2_an_unread_catalogue_ends_the_run",
+      "description": "_asked: never stop on the gate's bound of unread releases",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4bfafdd88284e2ff",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if tools.asking.given_up:\n        raise refuse(",
+      "new": "    if False:\n        raise refuse(",
+      "source": {
+        "table": "r815-b.json",
+        "id": "J2_an_unread_catalogue_ends_the_run"
+      }
+    },
+    {
+      "id": "r815-b.J3_a_failing_provider_ends_the_run",
+      "description": "_asked: never stop on the reader's bound of failed reads",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d6ee4dfda88028bd",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if tools.reader.given_up:\n        raise refuse(",
+      "new": "    if False:\n        raise refuse(",
+      "source": {
+        "table": "r815-b.json",
+        "id": "J3_a_failing_provider_ends_the_run"
+      }
+    },
+    {
+      "id": "r815-b.J4_a_record_never_holds_on_its_own",
+      "description": "_judged: take a hold from recorded words without asking",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "049e4de9b3697e81",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item",
+        "tests/test_label_judge.py::test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_passes",
+        "tests/test_label_judge.py::test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded is not None and not recorded.held:\n        return recorded, False",
+      "new": "    if recorded is not None:\n        return recorded, False",
+      "source": {
+        "table": "r815-b.json",
+        "id": "J4_a_record_never_holds_on_its_own"
+      }
+    },
+    {
+      "id": "r815-c.J11_the_scope_reads_the_registry",
+      "description": "_Scope.holds: compare the identifier as text",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e9641bc918d4ba2",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return entry is not None and entry.label_id in self.label_ids",
+      "new": "        return label_id in self.label_ids",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J11_the_scope_reads_the_registry"
+      }
+    },
+    {
+      "id": "r815-c.J12_a_release_held_and_gone_is_counted_held",
+      "description": "_left_review: report gone whatever holds the release",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "734d9e7187a7106b",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_release_another_job_held_while_this_one_was_asking_is_counted_held",
+        "tests/test_label_judge.py::test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_redone",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-held-release]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if standing is not None and standing.state == review.HOLD_HELD:\n        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)",
+      "new": "    if False:\n        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J12_a_release_held_and_gone_is_counted_held"
+      }
+    },
+    {
+      "id": "r815-c.J13_the_refusal_carries_the_counts",
+      "description": "_resume: let the refusal leave without the summary",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e098595ba09fc4c",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_refusal_from_the_provider_parks_the_run_on_that_refusal",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-held-release]",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-passed-release]",
+        "tests/test_label_judge.py::test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise _with_summary(failed, cfg, store, queued.job_id) from failed",
+      "new": "            raise",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J13_the_refusal_carries_the_counts"
+      }
+    },
+    {
+      "id": "r815-c.J5_a_recorded_no_word_answer_is_not_asked_again",
+      "description": "_judged: ask about a release the catalogue already had no word for",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b353211c34679a05",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[matched]",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[miss]",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[no-isrc]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded is None and isinstance(said, str) and said in genre_gate.NO_WORD_ANSWERS:",
+      "new": "    if False:",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J5_a_recorded_no_word_answer_is_not_asked_again"
+      }
+    },
+    {
+      "id": "r815-c.J6_a_decided_item_is_not_judged",
+      "description": "_judge_one: judge an item a person has decided",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f821fcfda30c02e1",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_an_item_decided_after_the_job_was_queued_is_untouched[accepted]",
+        "tests/test_label_judge.py::test_an_item_decided_after_the_job_was_queued_is_untouched[rejected]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if found.stored_verdict is not None:\n            return _report(",
+      "new": "        if False:\n            return _report(",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J6_a_decided_item_is_not_judged"
+      }
+    },
+    {
+      "id": "r815-c.J7_a_returned_release_is_not_judged",
+      "description": "_judge_one: judge a release a person returned",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e148fcc528172cc3",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_returned_release_is_not_judged_again_and_nobody_is_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if genre_gate.returned_by(standing, found.payload):\n            return _report(",
+      "new": "        if False:\n            return _report(",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J7_a_returned_release_is_not_judged"
+      }
+    },
+    {
+      "id": "r815-c.J8_a_refusal_parks_and_fails_no_item",
+      "description": "handle: let a refusal fail the item",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db047e71f8ba53d4",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_refusal_from_the_provider_parks_the_run_on_that_refusal",
+        "tests/test_label_judge.py::test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except CratekitError as exc:\n        raise _parked(job, exc) from exc\n    return artifacts.produced(ARTIFACTS, cfg, job, item, report)",
+      "new": "    except CratekitError:\n        raise\n    return artifacts.produced(ARTIFACTS, cfg, job, item, report)",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J8_a_refusal_parks_and_fails_no_item"
+      }
+    },
+    {
+      "id": "r815-c.J9_a_park_drops_the_jobs_tools",
+      "description": "_parked: keep the job's tools across a park",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f62f24ce49a87428",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _JOB_TOOLS.pop(str(job.job_id), None)\n    if isinstance(error, jobs.Parked):",
+      "new": "    if isinstance(error, jobs.Parked):",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J9_a_park_drops_the_jobs_tools"
+      }
+    },
+    {
+      "id": "u103-a.A10_write_is_a_merge",
+      "description": "Replace the cache document with this pass's answers instead of laying them over what is kept",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e87d640cdb96735d",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_the_write_is_a_merge_so_an_overlapping_pass_does_not_drop_what_another_paid_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            merged = {**self.read(plan), **answers}",
+      "new": "            merged = dict(answers)",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A10_write_is_a_merge"
+      }
+    },
+    {
+      "id": "u103-a.A1_read_serves_only_answers",
+      "description": "Drop the reader's rule that only a match or a miss is served from a cache document",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e8d2cd73f363add",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_only_an_answer_is_kept_or_served_in_either_direction"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if classify(payload)[0] not in _KEPT_OUTCOMES:\n                continue\n            answers[offset] = payload",
+      "new": "            answers[offset] = payload",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A1_read_serves_only_answers"
+      }
+    },
+    {
+      "id": "u103-a.A2_write_keeps_only_answers",
+      "description": "Drop the writer's rule that only a match or a miss is kept, removed alone so the reader's copy of the rule is not what is measured",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a4b40f238bd99352",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_only_an_answer_is_kept_or_served_in_either_direction"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    for offset in sorted(merged)\n                    if classify(merged[offset])[0] in _KEPT_OUTCOMES",
+      "new": "                    for offset in sorted(merged)",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A2_write_keeps_only_answers"
+      }
+    },
+    {
+      "id": "u103-a.A3_document_must_carry_its_plan",
+      "description": "Stop checking that a cache document carries the plan it was asked for",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "89b7570749a383e7",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_a_document_that_cannot_be_trusted_is_a_miss_and_never_a_tracklist[another-plan]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if document.get(\"version\") != CACHE_VERSION or document.get(\"plan\") != plan.material():",
+      "new": "        if document.get(\"version\") != CACHE_VERSION:",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A3_document_must_carry_its_plan"
+      }
+    },
+    {
+      "id": "u103-a.A5_offset_must_be_planned",
+      "description": "Serve a kept answer at an offset the plan never asked for",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bbbe0a5a356b0e72",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_only_an_answer_is_kept_or_served_in_either_direction"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if offset not in planned or not isinstance(payload, dict):",
+      "new": "            if not isinstance(payload, dict):",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A5_offset_must_be_planned"
+      }
+    },
+    {
+      "id": "u103-a.A6_digest_in_the_key",
+      "description": "Take the recording's content digest out of the key material, so a changed file keeps its old key",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b944d2d44858b7a",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_a_changed_file_misses_the_cache",
+        "tests/intake/test_recognition.py::test_every_field_of_the_plan_moves_the_key[digest]",
+        "tests/intake/test_recognition.py::test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_grid",
+        "tests/intake/test_workers.py::test_a_changed_recording_misses_the_cache_and_is_paid_for",
+        "tests/intake/test_workers.py::test_two_recordings_sharing_a_stem_keep_a_tracklist_each"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"digest\": self.digest,\n            \"offsets\": list(self.offsets),",
+      "new": "            \"digest\": \"\",\n            \"offsets\": list(self.offsets),",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A6_digest_in_the_key"
+      }
+    },
+    {
+      "id": "u103-a.A7_offsets_in_the_key",
+      "description": "Take the offsets out of the key material, so a changed chunk plan keeps its old key",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "760d2663517335b2",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_a_changed_chunk_plan_misses_the_cache",
+        "tests/intake/test_recognition.py::test_every_field_of_the_plan_moves_the_key[offsets]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"offsets\": list(self.offsets),\n            \"chunk_s\": self.chunk_s,",
+      "new": "            \"offsets\": [],\n            \"chunk_s\": self.chunk_s,",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A7_offsets_in_the_key"
+      }
+    },
+    {
+      "id": "u103-a.A9_refresh_reads_nothing_kept",
+      "description": "Let a refreshing pass read the kept answers anyway",
+      "file": "src/cratekit/intake/acrcloud.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c68d628e78fdb1af",
+      "subset": [
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_intake_missing_isrc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 260,
+      "baseline_collected": 260,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_recognition.py::test_refresh_reads_nothing_kept_and_lays_the_new_answers_over_the_document",
+        "tests/intake/test_workers.py::test_refresh_pays_for_every_chunk_again_and_the_new_answers_replace_the_kept_ones"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    kept = kept_in.read(plan) if plan is not None and not refresh else {}",
+      "new": "    kept = kept_in.read(plan) if plan is not None else {}",
+      "source": {
+        "table": "u103-a.json",
+        "id": "A9_refresh_reads_nothing_kept"
+      }
+    },
+    {
+      "id": "u146-a.B12_landing_takes_keyless_rows",
+      "description": "owned_in_library: a row whose job froze no date key is placed by the landing, into Undated for good",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "134a5e2a93996648",
+      "subset": [
+        "tests/test_intake_land_owned_hearts_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_owned_hearts_native.py::test_an_owned_heart_whose_job_froze_no_date_key_is_left_to_the_backfill"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    known = [row for row in rows if row.known and row.paths]",
+      "new": "    known = [row for row in rows if row.paths]",
+      "source": {
+        "table": "u146-a.json",
+        "id": "B12_landing_takes_keyless_rows"
+      }
+    },
+    {
+      "id": "u146-b.B13_first_of_two_rows",
+      "description": "owned_in_library: a file two active rows claim answers with the first, so a duplicate import joins All Favorites by a guess",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e17ebacd4eef8bc1",
+      "subset": [
+        "tests/test_intake_land_owned_hearts_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_owned_hearts_native.py::test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    by_path = native.single_rows_for(db, cfg, paths)",
+      "new": "    by_path = native.content_ids_for(db, cfg, paths)",
+      "source": {
+        "table": "u146-b.json",
+        "id": "B13_first_of_two_rows"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
