@@ -15,21 +15,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cratekit.core import config, taxonomy
+from cratekit.core import config, parts, taxonomy
 from cratekit.core.cause import access_remedy, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.taxonomy_word import (
-    ALIAS_VERB,
-    ALREADY_FILED,
-    FOLDER_VERB,
-    WOULD_NOT_LOAD,
-    Edit,
-    Refused,
-    alias,
-    folder,
-    own_folder,
-    own_names,
-)
 
 _ORIGIN = ("core", "active_taxonomy")
 
@@ -107,9 +95,14 @@ def _shipped(name: str) -> taxonomy.Taxonomy:
     return taxonomy.load_taxonomy(text)
 
 
-# A feature package plans a word's edit of the copy this module loads
-# (``core.taxonomy_word``) through here, its one listed home (U331).
-__all__ = [
-    "ALIAS_VERB", "ALREADY_FILED", "FOLDER_VERB", "WOULD_NOT_LOAD", "Edit", "Refused",
-    "alias", "folder", "load", "own_folder", "own_names", "read_text",
-]
+#: A feature package plans a word's edit of the copy this module loads
+#: (``core.taxonomy_word``) through here, its one listed home (U331), loaded
+#: when first read: the part imports the upgrade, which imports this module.
+__getattr__ = parts.answering(__name__, {
+    "taxonomy_word": (
+        "ALIAS_VERB", "ALREADY_FILED", "FOLDER_VERB", "WOULD_NOT_LOAD", "Edit", "Refused",
+        "alias", "folder", "own_folder", "own_names",
+    ),
+})
+
+__all__ = ["load", "read_text"]

@@ -8,10 +8,11 @@ that only shrinks:
 
 1. **No private name crosses a package.**
 2. **A feature package imports from core only the named interface** below.
-   A listed module answers for the names it defines and the names it
-   re-exports from its parts, each one a counted core name. It never hands
-   over a module: one reached as an attribute of another, or imported from
-   it, is read as a reach of that module itself (U331).
+   A listed module answers for the names it defines and for the names of its
+   parts, re-exported or given in the literal table ``core.parts`` reads,
+   each one a counted core name. It never hands over a module: one reached
+   as an attribute of another, or imported from it, is read as a reach of
+   that module itself (U331).
 3. **An always on package never imports a toggleable one at module top
    level**; under a function it may.
 4. **With each toggle off, every remaining verb still builds**, read
@@ -52,10 +53,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: for the membership it resolves: art needs ``tags`` at import, so ``tags``
 #: cannot re-export it, and it borrows the two private container helpers the
 #: beat grid rule depends on, so it cannot leave core. Every other module the
-#: survey found off the list is a part of a listed one, which re-exports the
+#: survey found off the list is a part of a listed one, which answers for the
 #: names a feature package uses: ``discovery``, ``pool`` and ``cores`` of
 #: ``jobs``, ``processes`` of ``session``, ``drift`` of ``tags`` and
-#: ``taxonomy_word`` of ``active_taxonomy``.
+#: ``taxonomy_word`` of ``active_taxonomy``, loaded when first read wherever
+#: loading it with its module would cost every command (``core.parts``).
 CORE_INTERFACE = (
     "active_taxonomy",
     "analysis_store",
@@ -349,22 +351,90 @@ def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
     assert measure.core_names(tree) == {"analysis": {"cratekit.core.jobs.plan_pool"}}
 
 
+def test_a_part_named_in_a_listed_modules_table_is_reached_through_the_list():
+    """The table ``core.parts.answering`` is given holds the names, and only those."""
+    tree = _tree(
+        core__pool="def plan_pool(): ...\ndef map_workers(): ...\n",
+        core__jobs=(
+            "from cratekit.core import parts\n\ndef claim(): ...\n"
+            '__getattr__ = parts.answering(__name__, {"pool": ("plan_pool",)})\n'
+        ),
+        core__parts="def answering(module, table): ...\n",
+        analysis__light=(
+            "from cratekit.core import jobs\n\n"
+            "def run(jobs_given):\n"
+            "    jobs.plan_pool()\n    jobs.claim()\n    jobs.map_workers()\n"
+        ),
+    )
+    assert measure.off_interface(tree, ["jobs"]) == {}
+    assert measure.core_names(tree) == {
+        "analysis": {"cratekit.core.jobs.claim", "cratekit.core.jobs.plan_pool"}
+    }
+
+
+def test_a_part_whose_names_are_offered_under_others_is_counted_by_the_names_offered():
+    tree = _tree(
+        core__drift="VARIABLE = 1\n",
+        core__tags='__getattr__ = answering(__name__, {"drift": {"DRIFT_VARIABLE": "VARIABLE"}})\n',
+        intake__native=(
+            "from cratekit.core import tags\n\n"
+            "tags.DRIFT_VARIABLE\ntags.VARIABLE\n"
+        ),
+    )
+    assert measure.off_interface(tree, ["tags"]) == {}
+    assert measure.core_names(tree) == {"intake": {"cratekit.core.tags.DRIFT_VARIABLE"}}
+
+
+def test_a_getattr_given_no_literal_table_still_answers_for_any_name():
+    """Two tables, or names that are not literals, are not a list the rule can read."""
+    for bound in (
+        '__getattr__ = answering(__name__, {"pool": names})\n',
+        '__getattr__ = answering({"pool": ("a",)}, {"cores": ("b",)})\n',
+        "__getattr__ = some_function\n",
+    ):
+        tree = _tree(
+            core__jobs=bound,
+            sync__run="from cratekit.core import jobs\n\njobs.anything()\n",
+        )
+        assert measure.core_names(tree) == {"sync": {"cratekit.core.jobs.anything"}}, bound
+
+
 def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():
     """Or eleven modules could hide behind eleven counted names of the list."""
     handed = "from cratekit.core import art\n"
     tree = _tree(
-        core__art="def read(): ...\n",
+        core__art="def read(): ...\ndef write(): ...\n",
         core__tags=handed,
         tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
-        tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.read()\n",
+        tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.write()\n",
         sync__run="from cratekit.core import tags\n\nkept = tags.art\n",
     )
     assert _lines(measure.off_interface(tree, ["tags"])) == {
         "sync": ["off-interface cratekit.core.art"],
         "tagging": ["off-interface cratekit.core.art"],
     }
-    assert measure.core_names(tree) == {"tagging": {"cratekit.core.art.read"}}
+    assert measure.core_names(tree) == {
+        "tagging": {"cratekit.core.art.read", "cratekit.core.art.write"}
+    }
     assert measure.off_interface(tree, ["art", "tags"]) == {}
+
+
+def test_a_module_handed_over_twice_is_followed_to_the_module_it_is():
+    """A chain of any length ends at a module and a name in it, never at a name of the first."""
+    tree = _tree(
+        core__codec="def decode(): ...\n",
+        core__art="from cratekit.core import codec\n",
+        core__tags="import cratekit.core.art\nfrom cratekit.core import art\n",
+        tagging__tag=(
+            "from cratekit.core import tags\n\ntags.art.codec.decode()\n"
+            "tags.cratekit.core.codec.decode()\n"
+        ),
+        tagging__rows="from cratekit.core.tags import art\n\nart.codec.decode()\n",
+    )
+    assert _lines(measure.off_interface(tree, ["tags"])) == {
+        "tagging": ["off-interface cratekit.core.art", "off-interface cratekit.core.codec"]
+    }
+    assert measure.core_names(tree) == {"tagging": {"cratekit.core.codec.decode"}}
 
 
 def test_a_private_name_of_a_module_handed_over_is_still_a_crossing():

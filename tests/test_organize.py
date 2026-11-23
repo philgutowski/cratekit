@@ -22,6 +22,7 @@ from cratekit.core import (
     jobs,
     locations,
     preflight,
+    profiles,
     rb_writer,
     session,
     taxonomy,
@@ -1272,12 +1273,13 @@ def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, m
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
     _registry_unread()
-    real = organize_cli.profiles.resolve
+    real = profiles.resolve
 
     def without_labels(profile, explicit=None):
         return real(profile, {**dict(explicit or {}), account_area.LABELS_MODULE: False})
 
-    monkeypatch.setattr(organize_cli.profiles, "resolve", without_labels)
+    # The verb reads its membership from ``Config.membership()``, which resolves it here.
+    monkeypatch.setattr(profiles, "resolve", without_labels)
     envelope = _ok([*ONLY_FILE, "--report"])
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
 

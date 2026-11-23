@@ -32,7 +32,7 @@ POOL_PATH = PACKAGE_ROOT / "core" / "pool.py"
 POOL_MODULE = "cratekit.core.pool"
 #: The two doors to it (U331). A feature package may import only the named
 #: interface, so the analysis package reaches the planner through ``core.jobs``,
-#: which re-exports the sizing names; a use through either door is a use of
+#: which answers for the sizing names; a use through either door is a use of
 #: the planner, and a plan built by hand through either is a plan built by hand.
 POOL_DOORS = (POOL_MODULE, "cratekit.core.jobs")
 POOL_SOURCE = POOL_PATH.read_text()

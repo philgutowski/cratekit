@@ -424,8 +424,8 @@ class Use:
     ``import`` for a name written in an import statement and ``attribute`` for
     one reached through a module the file imported. ``lazy`` is an import
     inside a function, ``typing_only`` one under ``if TYPE_CHECKING``.
-    ``then`` is the attribute read off the name, kept so a name that is a
-    module can be followed into it, and ``local`` what an import binds.
+    ``rest`` is what is read off the name, kept so a name that is a module
+    can be followed into it, and ``local`` what an import binds.
     """
 
     path: str
@@ -435,7 +435,7 @@ class Use:
     kind: str
     lazy: bool = False
     typing_only: bool = False
-    then: str | None = None
+    rest: tuple[str, ...] = ()
     local: str | None = None
 
     @property
@@ -462,8 +462,8 @@ class _FileReading:
     functions: dict[str, tuple[int, int]]
     aliases: dict[str, str]
     defined: frozenset[str] | None
-    #: ``(local name, attribute, line)`` read off a name imported from a module.
-    chains: tuple[tuple[str, str, int], ...] = ()
+    #: ``(local name, attributes, line)`` read off a name imported from a module.
+    chains: tuple[tuple[str, tuple[str, ...], int], ...] = ()
 
 
 def _defined_names(tree: ast.Module) -> frozenset[str] | None:
@@ -471,9 +471,13 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
 
     None when the module can answer for any name, by a ``__getattr__`` of its
     own or a star import, so that nothing is ruled out on a list that is not
-    the whole of it.
+    the whole of it. A ``__getattr__`` bound to a call given a literal table of
+    names, ``{part: (its names)}`` or ``{part: {offered: held}}``, answers for
+    those names and no others (U331, ``cratekit.core.parts``), so they are
+    added and the list is whole.
     """
     names: set[str] = set()
+    answered: frozenset[str] | None = None
     pending: list[ast.AST] = list(tree.body)
     while pending:
         node = pending.pop()
@@ -485,6 +489,10 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
                 names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "__getattr__" for target in targets
+            ):
+                answered = _table_names(node.value)
         else:
             pending.extend(
                 child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt)
@@ -492,7 +500,29 @@ def _defined_names(tree: ast.Module) -> frozenset[str] | None:
             pending.extend(
                 inner for handler in getattr(node, "handlers", ()) for inner in handler.body
             )
-    return None if names & {"__getattr__", "*"} else frozenset(names)
+    if "*" in names or ("__getattr__" in names and answered is None):
+        return None
+    return frozenset(names | (answered or frozenset()))
+
+
+def _table_names(value: ast.expr | None) -> frozenset[str] | None:
+    """The names offered by the literal table a call is given, or None when it is not one."""
+    tables = [arg for arg in getattr(value, "args", ()) if isinstance(arg, ast.Dict)]
+    if not isinstance(value, ast.Call) or len(tables) != 1:
+        return None
+    found: set[str] = set()
+    for held in tables[0].values:
+        entries = (
+            held.keys if isinstance(held, ast.Dict)
+            else held.elts if isinstance(held, (ast.Tuple, ast.List))
+            else None
+        )
+        if entries is None or not all(
+            isinstance(one, ast.Constant) and isinstance(one.value, str) for one in entries
+        ):
+            return None
+        found.update(one.value for one in entries)
+    return frozenset(found)
 
 
 class Tree:
@@ -564,7 +594,17 @@ class Tree:
         """The module of the package that ``module`` binds ``name`` to, if it binds one."""
         path = self.modules.get(module)
         bound = self._read[path].aliases.get(name) if path is not None and name else None
-        return bound if bound in self.modules and bound != self.root_package else None
+        return bound if bound in self.modules else None
+
+    def _reached(self, module: str, rest: Sequence[str]) -> tuple[str, str | None]:
+        """Where ``module`` and what is read off it lead: a module, and a name in it or None."""
+        while rest:
+            module, more = self.resolve(".".join([module, *rest]))
+            handed = self._handed(module, more[0]) if more else None
+            if handed is None:
+                return module, more[0] if more else None
+            module, rest = handed, more[1:]
+        return module, None
 
     def _followed(self, read: _FileReading) -> list[Use]:
         """One file's uses, each name that is a module read as a use of that module."""
@@ -575,13 +615,13 @@ class Tree:
                 out.append(use)
             elif use.kind == "import":
                 out.append(replace(use, target=module, name=None))
-                out.extend(
-                    Use(use.path, module, attribute, line, "attribute")
-                    for local, attribute, line in read.chains
-                    if local == use.local
-                )
+                for local, chain, line in read.chains:
+                    if local == use.local:
+                        target, name = self._reached(module, chain)
+                        out.append(Use(use.path, target, name, line, "attribute"))
             else:
-                out.append(replace(use, target=module, name=use.then, then=None))
+                target, name = self._reached(module, use.rest)
+                out.append(replace(use, target=target, name=name, rest=()))
         return out
 
     def aliases(self, path: str) -> dict[str, str]:
@@ -660,7 +700,7 @@ class Tree:
                         local=local,
                     ))
 
-        chains: list[tuple[str, str, int]] = []
+        chains: list[tuple[str, tuple[str, ...], int]] = []
         for node in attributes:
             chain: list[str] = []
             current: ast.expr = node
@@ -669,15 +709,16 @@ class Tree:
                 current = current.value
             if not isinstance(current, ast.Name):
                 continue
+            chain.reverse()
             if current.id in named and current.id not in aliases:
-                chains.append((current.id, chain[-1], node.lineno))
+                chains.append((current.id, tuple(chain), node.lineno))
             if current.id not in aliases:
                 continue
-            chain.reverse()
             target, rest = self.resolve(".".join([aliases[current.id], *chain]))
             if rest and target in self.modules:
-                then = rest[1] if len(rest) > 1 else None
-                found.append(Use(path, target, rest[0], node.lineno, "attribute", then=then))
+                found.append(
+                    Use(path, target, rest[0], node.lineno, "attribute", rest=tuple(rest[1:]))
+                )
 
         top_level = {
             node.name: (node.lineno, node.end_lineno or node.lineno)
@@ -1266,8 +1307,8 @@ def imports_report(root: Path, *, names: bool, drive: bool, out) -> int:
 
 
 #: Run in a fresh interpreter by ``imports --drive``. It blocks each toggle's
-#: homes in turn, imports every remaining verb's module and runs its builder,
-#: and prints which verbs failed, as JSON.
+#: homes in turn, imports every remaining verb's module, runs its builder and
+#: formats its help, and prints which verbs failed, as JSON.
 _DRIVE = r"""
 import argparse, importlib, importlib.abc, json, sys
 
@@ -1295,7 +1336,9 @@ for toggle, owned in homes.items():
             continue
         try:
             module = importlib.import_module(entry.module)
-            getattr(module, entry.builder)(argparse.ArgumentParser(), entry)
+            parser = argparse.ArgumentParser()
+            getattr(module, entry.builder)(parser, entry)
+            parser.format_help()
         except Exception:
             broken.append(entry.name)
     out[toggle] = sorted(broken)

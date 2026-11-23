@@ -44,18 +44,24 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable, Sequence
 
-# A feature package reads the two drift tags' vocabulary (``core.drift``)
-# through this module, whose table holds them, each name carrying the part's
-# (U331); core and the shell import ``drift`` itself.
-from cratekit.core.drift import DYNAMIC_SETTINGS as DRIFT_DYNAMIC_SETTINGS  # noqa: F401
-from cratekit.core.drift import NORMAL_SETTINGS as DRIFT_NORMAL_SETTINGS  # noqa: F401
-from cratekit.core.drift import UNSCORED as DRIFT_UNSCORED  # noqa: F401
-from cratekit.core.drift import VARIABLE as DRIFT_VARIABLE  # noqa: F401
-from cratekit.core.drift import reading as drift_reading  # noqa: F401
-from cratekit.core.drift import shown as drift_shown  # noqa: F401
-from cratekit.core.drift import verdict as drift_verdict  # noqa: F401
+from cratekit.core import parts
 
 log = logging.getLogger(__name__)
+
+#: A feature package reads the two drift tags' vocabulary (``core.drift``)
+#: through this module, whose table holds them, each name carrying the part's
+#: (U331) and read when first asked for; core and the shell import ``drift``.
+__getattr__ = parts.answering(__name__, {
+    "drift": {
+        "DRIFT_DYNAMIC_SETTINGS": "DYNAMIC_SETTINGS",
+        "DRIFT_NORMAL_SETTINGS": "NORMAL_SETTINGS",
+        "DRIFT_UNSCORED": "UNSCORED",
+        "DRIFT_VARIABLE": "VARIABLE",
+        "drift_reading": "reading",
+        "drift_shown": "shown",
+        "drift_verdict": "verdict",
+    },
+})
 
 
 _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
