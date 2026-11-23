@@ -641,15 +641,6 @@ def read_genre_from_file(path: Path) -> str | None:
     return read_tag(path, "genre")
 
 
-def read_second_genre_checked(path: Path) -> str | None:
-    """The file's second genre (U340), None only when the file holds none.
-
-    Raises :class:`TagReadFailed` when the file cannot be read, so a census
-    never reads an unreadable file as one with a single genre.
-    """
-    return read_tags_checked(path, ("secondgenre",))["secondgenre"]
-
-
 def read_vox_from_file(path: Path) -> int | None:
     """The vocal-prominence level (0 to 100), or None."""
     return _read_int(path, "voxlevel")

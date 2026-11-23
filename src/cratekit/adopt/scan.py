@@ -281,7 +281,7 @@ def scan_rows(
     prefix_map: Sequence[locations.PrefixRule] = (),
     probe: Callable[[Path], Readability] = probe_readability,
     energy_reader: Callable[[Path], int | None] = tags.read_energy_checked,
-    second_reader: Callable[[Path], str | None] | None = tags.read_second_genre_checked,
+    second_reader: Callable[[Path], str | None] | None = None,
 ) -> Iterator[ScannedTrack]:
     """Classify every row, once, in one walk.
 
@@ -291,8 +291,8 @@ def scan_rows(
     raises are named here. The energy reading comes off the file through the
     reader the routing pass uses, and a reader failure is recorded on the track
     rather than read as absence. The second genre (U340) is read the same way
-    for a routed track, and ``second_reader`` None reads none, for a walk that
-    files nothing.
+    for a routed track, by :func:`read_second_genre` unless another reader is
+    handed in; :data:`NO_SECOND_GENRE` reads none, for a walk that files nothing.
     """
     for row in rows:
         if row.deleted:
@@ -318,8 +318,8 @@ def scan_rows(
         disposition, bucket, match = classify_genre(declared, row.genre)
         energy, unreadable = _energy_of(Path(path or ""), energy_reader)
         second = (
-            _second_of(Path(path or ""), second_reader)
-            if disposition is Disposition.ROUTE and second_reader is not None
+            _second_of(Path(path or ""), second_reader or read_second_genre)
+            if disposition is Disposition.ROUTE and second_reader is not NO_SECOND_GENRE
             else ""
         )
         yield ScannedTrack(
@@ -336,6 +336,21 @@ def scan_rows(
             second_genre=second,
             second_bucket=routing.second_bucket(declared, row.genre, second) or "",
         )
+
+
+def read_second_genre(path: Path) -> str | None:
+    """The file's second genre (U340), None only when it holds none.
+
+    Raises :class:`cratekit.core.tags.TagReadFailed` when the file cannot be
+    read, so the census never reads an unreadable file as one with one genre.
+    """
+    return tags.read_tags_checked(path, ("secondgenre",))["secondgenre"]
+
+
+def NO_SECOND_GENRE(path: Path) -> str | None:  # noqa: N802 - a sentinel reader
+    """The reader a walk that files nothing hands in: it reads no file."""
+    del path
+    return None
 
 
 def _second_of(path: Path, reader: Callable[[Path], str | None]) -> str:

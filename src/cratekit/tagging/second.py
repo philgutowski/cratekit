@@ -28,7 +28,7 @@ from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
 from cratekit.core import config, rb_writer, routing, tags, taxonomy
 from cratekit.core.cause import refuse
-from cratekit.tagging import rows
+from cratekit.tagging import remap, rows
 
 #: The name a plan digests under.
 WORKFLOW = "tag-second"
@@ -131,21 +131,10 @@ class SecondPlan:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class Written:
-    """What an apply did, the tuples paths and empty on a clean run;
-    ``rewritten`` is every item that read back, the undo of a run that refuses."""
-
-    written: int
-    read_back: int
-    wrong: tuple[str, ...] = ()
-    moved: tuple[str, ...] = ()
-    failed: tuple[str, ...] = ()
-    rewritten: tuple[Item, ...] = ()
-
-    @property
-    def clean(self) -> bool:
-        return not (self.wrong or self.moved or self.failed)
+#: What an apply did. ``tag remap``'s own record of a file write, since the two
+#: verbs write and read back a file the same way; ``rewritten`` holds this
+#: module's items and ``unrecorded`` is always empty, since nothing is recorded.
+Written = remap.Written
 
 
 def assert_genre_files(declared: taxonomy.Taxonomy, genre: str) -> None:
@@ -175,36 +164,33 @@ def playlist_members(db: Any, path: str) -> tuple[str, ...]:
     """The tracks one playlist of the library's tree holds, by its path.
 
     ``path`` names each folder from the top, joined by :data:`PATH_SEPARATOR`.
+    MATCHED WHOLE against every live playlist's own path, never split, since a
+    genre folder's name may hold the separator itself (``Minimal / Deep Tech``).
     Only live nodes and live memberships count. A path that names no playlist,
-    or more than one, REFUSES rather than choosing, since a choice would write
-    to rows nobody named.
+    a folder, or more than one playlist REFUSES rather than choosing, since a
+    choice would write to rows nobody named.
     """
-    names = [part.strip() for part in path.split(PATH_SEPARATOR)]
-    if not names or not all(names):
-        raise _no_playlist(path, "it names no folder or playlist")
-    found: list[Any] = []
-    parents: set[str] | None = None
-    for depth, name in enumerate(names):
-        found = [
-            node
-            for node in db.get_playlist(Name=name)
-            if not rb_writer.node_removed(node)
-            and (
-                str(getattr(node, "ParentID", "")) in rb_writer.ROOT_PARENT_SENTINELS
-                if parents is None
-                else str(getattr(node, "ParentID", "")) in parents
-            )
-        ]
-        if not found:
-            shown = PATH_SEPARATOR.join(names[: depth + 1])
-            raise _no_playlist(path, f"nothing in the tree is at {shown!r}")
-        parents = {str(node.ID) for node in found}
-    if len(found) != 1 or rb_writer.is_folder(found[0]):
-        raise _no_playlist(
-            path,
-            "it names a folder" if found and rb_writer.is_folder(found[0]) else
-            f"{len(found)} playlists answer to it",
-        )
+    wanted = PATH_SEPARATOR.join(part.strip() for part in path.split(PATH_SEPARATOR))
+    nodes = {str(node.ID): node for node in db.get_playlist() if not rb_writer.node_removed(node)}
+
+    def full(node: Any, seen: frozenset[str] = frozenset()) -> str | None:
+        parent = str(getattr(node, "ParentID", ""))
+        name = str(getattr(node, "Name", "") or "")
+        if parent in rb_writer.ROOT_PARENT_SENTINELS:
+            return name
+        above = nodes.get(parent)
+        if above is None or parent in seen:
+            return None
+        head = full(above, seen | {parent})
+        return None if head is None else f"{head}{PATH_SEPARATOR}{name}"
+
+    found = [node for node in nodes.values() if full(node) == wanted]
+    if not found:
+        raise _no_playlist(path, "nothing in the tree is at that path")
+    if len(found) > 1:
+        raise _no_playlist(path, f"{len(found)} nodes answer to it")
+    if rb_writer.is_folder(found[0]):
+        raise _no_playlist(path, "it names a folder")
     return tuple(
         sorted(
             {
