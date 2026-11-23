@@ -1,0 +1,80 @@
+name = "u328"
+pass_kind = "light"
+
+# Rows on the guards U328 added: the two script readers following the table's parts, and the
+# assembly of the parts in cli/registry.py. The rows the table already held are the replay's.
+
+[[rows]]
+id = "R1_starred_name_not_followed"
+description = "verbs_from: never follow a starred name into its part, so the split table's parts are not read"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            starred = isinstance(member, ast.Starred) and isinstance(member.value, ast.Name)'''
+new = '''            starred = False'''
+
+[[rows]]
+id = "R2_missing_part_read_as_empty"
+description = "verbs_from: a starred name no source holds yields nothing instead of raising, so a part the loader missed reads as no verbs"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            raise ValueError(f"the registry holds no {name} tuple")'''
+new = '''            return'''
+
+[[rows]]
+id = "R3_starred_attribute_crashes"
+description = "verbs_from: follow any starred member, so a starred attribute crashes on its missing id instead of being refused as unreadable"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            starred = isinstance(member, ast.Starred) and isinstance(member.value, ast.Name)'''
+new = '''            starred = isinstance(member, ast.Starred)'''
+
+[[rows]]
+id = "R4_loader_reads_the_registry_alone"
+description = "_load: hand verbs_from the registry's own file and none of its parts"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''    verbs = verbs_from(*(text for path, text in sources.items() if path.startswith(table)))'''
+new = '''    verbs = verbs_from(*(text for path, text in sources.items() if path == REGISTRY))'''
+
+[[rows]]
+id = "B1_board_reads_the_registry_alone"
+description = "planned_units: read cli/registry.py and none of its parts, so a planned_in marker in a part owes nothing and a closing trailer passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry*.py"))'''
+new = '''    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry.py"))'''
+
+[[rows]]
+id = "B2_board_reads_the_parts_alone"
+description = "planned_units: read the registry_*.py parts and not cli/registry.py, so its own markers and the constants it defines are lost"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry*.py"))'''
+new = '''    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry_*.py"))'''
+
+[[rows]]
+id = "S1_a_part_left_out_of_the_table"
+description = "ENTRIES: leave the modules part out of the assembly, so adoption, deletion, export and the utilities are not registered"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''    *MODULE_VERBS,
+'''
+new = ''''''
+
+[[rows]]
+id = "S2_two_parts_assembled_out_of_order"
+description = "ENTRIES: assemble the sync part before the pipeline part, so the table's order, which help follows, changes"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''    *PIPELINE_VERBS,
+    *SYNC_VERBS,
+'''
+new = '''    *SYNC_VERBS,
+    *PIPELINE_VERBS,
+'''
