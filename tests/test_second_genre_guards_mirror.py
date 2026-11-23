@@ -147,8 +147,10 @@ def test_a_folder_edit_into_one_of_the_two_folders_is_not_taken(folder, shown):
 
 
 def test_a_move_to_a_playlist_no_energy_files_into_is_not_taken():
-    """A move to a folder's vox playlist names no band, so no energy files the
-    track there by the folder's genre, and the edit is refused, not raised."""
+    """Built by hand: the decider emits no move to a vox playlist on a two
+    genre track today, so this edit is the guard's input, not a reachable one.
+    Such a move names no band, so no energy files the track there by the
+    folder's genre, and the edit is refused rather than raised."""
     edit = _decision(edits.MOVE, (DEEP, "with vox"), [_at(ONE, MED)], [(DEEP, "with vox")])
     why = mirror_edits._second_genre_tags(DECLARED, edit, TRUTH, TWO)
     assert isinstance(why, str)

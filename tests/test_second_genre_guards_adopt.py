@@ -64,13 +64,7 @@ def test_the_template_given_here_has_rnb_with_no_place_and_soul_as_shipped():
 
 
 @pytest.mark.parametrize(
-    "disposition",
-    [
-        WITHHELD,
-        adopt_scan.Disposition.NEEDS_GENRE,
-        adopt_scan.Disposition.EXCLUDED,
-        adopt_scan.Disposition.UNDECLARED,
-    ],
+    "disposition", [member for member in adopt_scan.Disposition if member is not ROUTE]
 )
 def test_a_track_that_does_not_route_gets_no_second_entry_whatever_its_census_says(disposition):
     """The census reads a second genre only for a routed track, so this row is
