@@ -242,10 +242,9 @@ def _five(cfg: config.Config, silence: Path, *, also: dict | None = None, codes:
 
 
 def test_a_new_track_taken_off_is_offered_and_an_owned_one_is_kept_as_held_before(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("New2"), track("Held2"), track("Held3")])
 
@@ -308,10 +307,9 @@ def test_a_track_still_on_another_synced_playlist_is_kept_by_id_isrc_and_recordi
 
 
 def test_a_track_in_a_playlist_of_yours_is_kept_and_its_own_filing_keeps_nothing(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     _hand_made(cfg, "Warmup Picks", "New1")
     _hand_made(cfg, "All Favorites", "New2")
     account = Account(monkeypatch)
@@ -385,11 +383,7 @@ def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
     assert stopped["state"] == shape
 
 
-def test_a_track_hearted_on_the_account_is_kept_by_the_hearts(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_a_track_hearted_on_the_account_is_kept_by_the_hearts(five_landed, monkeypatch):
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
     account.fake.hearts.append(track("New1"))
@@ -437,10 +431,8 @@ def test_hearts_not_read_whole_offer_nothing(
 
 
 def test_a_playlist_the_account_says_holds_none_is_read_empty_and_every_new_track_offered(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [], declared=0, counted=0)
 
@@ -452,10 +444,8 @@ def test_a_playlist_the_account_says_holds_none_is_read_empty_and_every_new_trac
 
 
 def test_a_downloaded_playlist_gone_from_the_account_is_named_and_offers_nothing(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
     Account(monkeypatch)
 
     out = _run()
@@ -486,11 +476,8 @@ def test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_it
     assert out["data"]["totals"]["playlists gone"] == 0
 
 
-def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(five_landed, monkeypatch):
+    cfg = five_landed
     gone = _row(cfg, "New1")
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", gone)
     twice = _row(cfg, "New2")
@@ -511,11 +498,8 @@ def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(
     assert answers["New2"]["why"] == set_playlist.AMBIGUOUS_ROWS
 
 
-def test_a_match_on_a_file_the_pass_did_not_file_is_kept(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_a_match_on_a_file_the_pass_did_not_file_is_kept(five_landed, monkeypatch):
+    cfg = five_landed
     landed = _row(cfg, "New1")
     ((folder,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", landed)
     # The landed row and file are gone, and a hand copy of the track sits
@@ -540,11 +524,8 @@ def test_a_match_on_a_file_the_pass_did_not_file_is_kept(
     assert answers["New1"]["content_id"] == "90001"
 
 
-def test_a_job_no_landing_names_is_not_read_as_downloaded(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_a_job_no_landing_names_is_not_read_as_downloaded(five_landed, monkeypatch):
+    cfg = five_landed
     # A later pass swept Deep Cuts and never landed.
     swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
     account = Account(monkeypatch)
@@ -560,11 +541,10 @@ def test_a_job_no_landing_names_is_not_read_as_downloaded(
 
 
 def test_a_playlist_a_later_pass_swept_and_never_landed_still_keeps_its_tracks(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
     """The cursor's file holds a finished job only after the next sweep."""
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
@@ -747,10 +727,9 @@ def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(
 
 
 def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
@@ -761,12 +740,8 @@ def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
     assert answers["New2"]["action"] == removed.OFFERED
 
 
-def test_a_playlist_still_titled_with_the_old_prefix_is_synced(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_playlist_still_titled_with_the_old_prefix_is_synced(five_landed, monkeypatch):
     """The prefix holds a playlist as taken until the strip records it (U242)."""
-    cfg, _root = native_library
-    _five(cfg, silence)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
     account.lists("pl-old", playlists.SWEPT_PREFIX + "Old Mix", [track("New1")])
@@ -793,11 +768,8 @@ def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(
     assert offer["removed_from"] == [SUNSET, DEEP]
 
 
-def test_nothing_is_written_and_the_digest_holds_until_an_answer_moves(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_nothing_is_written_and_the_digest_holds_until_an_answer_moves(five_landed, monkeypatch):
+    cfg = five_landed
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
     database = Path(cfg.library.db_path)
@@ -984,11 +956,24 @@ def _one_offered(cfg: config.Config, silence: Path, monkeypatch) -> Account:
     return account
 
 
-def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
-    native_library, silence, monkeypatch, offline
-):
+@pytest.fixture
+def one_offered(native_library, silence, monkeypatch, offline) -> config.Config:
+    """The configuration once :func:`_one_offered` ran, with no network."""
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
+    return cfg
+
+
+@pytest.fixture
+def five_landed(native_library, silence, offline) -> config.Config:
+    """The configuration once :func:`_five` ran, with no network."""
+    cfg, _root = native_library
+    _five(cfg, silence)
+    return cfg
+
+
+def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_offered):
+    cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     _give_state(cfg, offered, "gone")
     _give_state(cfg, held, "kept")
@@ -1034,11 +1019,8 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
     assert music.exists() and music.stat().st_size == size
 
 
-def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(one_offered):
+    cfg = one_offered
     offered = _row(cfg, "New1")
 
     code, acted, _ = _apply()
@@ -1062,9 +1044,8 @@ def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(
     assert item["removed"][0]["title"].endswith("New1")
 
 
-def test_abort_writes_nothing(native_library, silence, monkeypatch, offline):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_abort_writes_nothing(one_offered):
+    cfg = one_offered
     database = Path(cfg.library.db_path)
     before = hashlib.sha256(database.read_bytes()).hexdigest()
 
@@ -1076,12 +1057,9 @@ def test_abort_writes_nothing(native_library, silence, monkeypatch, offline):
     assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
 
 
-def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(one_offered, monkeypatch):
     """The engine takes the plan again on the write handle, and a moved digest refuses."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     real = removed_cli.written
     seen: dict = {}
 
@@ -1102,11 +1080,10 @@ def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(
 
 
 def test_a_row_a_my_tag_names_is_kept_and_never_offered_and_the_rest_is_removed(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
     """The landing's own vox My Tag would make the removal refuse, so the track keeps."""
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1"), track("Held2"), track("Held3")])
     tagged, clean = _row(cfg, "New1"), _row(cfg, "New2")
@@ -1162,9 +1139,8 @@ def test_the_writer_refuses_a_row_an_unmeasured_table_names_with_nothing_written
     assert _every_table(cfg) == before
 
 
-def test_a_uuid_map_row_is_left_as_rekordbox_leaves_it(native_library, silence, monkeypatch, offline):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_a_uuid_map_row_is_left_as_rekordbox_leaves_it(one_offered):
+    cfg = one_offered
     offered = _row(cfg, "New1")
     _sql(cfg, 'INSERT INTO "uuidIDMap" (ID, TableName, TargetUUID, CurrentID) VALUES (?, ?, ?, ?)', "u-1", "djmdContent", "uu", offered)
     handle = _handle(cfg)
@@ -1284,11 +1260,10 @@ def _handle(cfg: config.Config):
 
 
 def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at_its_commit(
-    native_library, silence, monkeypatch, offline
+    one_offered
 ):
     """Every commit but the removal's refuses a binding delete; a raw session delete is a residual."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     offered = _row(cfg, "New1")
     before = _every_table(cfg)
     handle = _handle(cfg)
@@ -1305,11 +1280,8 @@ def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at
     assert _every_table(cfg) == before
 
 
-def test_a_removal_that_changes_anything_it_did_not_plan_is_refused_before_its_commit(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_a_removal_that_changes_anything_it_did_not_plan_is_refused_before_its_commit(one_offered):
+    cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     _give_state(cfg, offered, "gone")
     before = _every_table(cfg)
@@ -1329,9 +1301,8 @@ def test_a_removal_that_changes_anything_it_did_not_plan_is_refused_before_its_c
     assert _every_table(cfg) == before
 
 
-def test_the_removal_refuses_a_row_that_is_not_live(native_library, silence, monkeypatch, offline):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_the_removal_refuses_a_row_that_is_not_live(one_offered):
+    cfg = one_offered
     offered = _row(cfg, "New1")
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", offered)
     handle = _handle(cfg)
@@ -1344,10 +1315,9 @@ def test_the_removal_refuses_a_row_that_is_not_live(native_library, silence, mon
         rb_writer.close_db(handle)
 
 
-def test_the_removal_writes_no_beat_grid_and_no_tempo(native_library, silence, monkeypatch, offline):
+def test_the_removal_writes_no_beat_grid_and_no_tempo(one_offered):
     """No tempo, BPM or grid column of any surviving row moves; the removal only deletes."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     columns = ("ID", "BPM", "KeyID", "AnalysisDataPath", "FileSize")
     before = _query(cfg, f"SELECT {', '.join(columns)} FROM djmdContent ORDER BY ID")
     offered = _row(cfg, "New1")
@@ -1394,12 +1364,7 @@ def test_a_recorded_removal_is_read_only_for_its_own_database_and_a_row_still_ab
 # U288: the write's guards, a restored row and the deletion pass's position
 
 
-def test_the_acknowledgment_is_read_before_the_gate_is_asked(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
-
+def test_the_acknowledgment_is_read_before_the_gate_is_asked(one_offered, monkeypatch):
     def missing(_cfg, **_kwargs):
         raise session.refuse(
             "backup-acknowledgment-missing",
@@ -1415,11 +1380,8 @@ def test_the_acknowledgment_is_read_before_the_gate_is_asked(
     assert out["cause"]["reason"] == "backup-acknowledgment-missing", out
 
 
-def test_rekordbox_running_at_the_write_refuses_before_any_session_opens(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_rekordbox_running_at_the_write_refuses_before_any_session_opens(one_offered, monkeypatch):
+    cfg = one_offered
     before = _every_table(cfg)
     real = removed_cli.written
 
@@ -1438,11 +1400,8 @@ def test_rekordbox_running_at_the_write_refuses_before_any_session_opens(
     assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
 
 
-def test_prepare_refuses_a_row_not_live_and_a_database_with_no_identity(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_prepare_refuses_a_row_not_live_and_a_database_with_no_identity(one_offered):
+    cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", held)
     handle = _handle(cfg)
@@ -1461,11 +1420,8 @@ def test_prepare_refuses_a_row_not_live_and_a_database_with_no_identity(
         rb_writer.close_db(handle)
 
 
-def test_commit_proves_the_removal_confined_before_it_commits(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_commit_proves_the_removal_confined_before_it_commits(one_offered):
+    cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     before = _every_table(cfg)
     handle = _handle(cfg)
@@ -1479,11 +1435,7 @@ def test_commit_proves_the_removal_confined_before_it_commits(
     assert _every_table(cfg) == before
 
 
-def test_a_read_back_that_disagrees_refuses_as_unverified(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_a_read_back_that_disagrees_refuses_as_unverified(one_offered, monkeypatch):
     monkeypatch.setattr(rb_writer.CollectionRemoval, "read_back", lambda self: ["a row moved"])
 
     code, acted, _ = _apply()
@@ -1493,11 +1445,8 @@ def test_a_read_back_that_disagrees_refuses_as_unverified(
     assert "a row moved" in acted["cause"]["message"]
 
 
-def test_a_commit_that_lands_and_then_raises_still_records_every_row(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_a_commit_that_lands_and_then_raises_still_records_every_row(one_offered, monkeypatch):
+    cfg = one_offered
     offered = _row(cfg, "New1")
     real = rb_writer.commit_guarded
 
@@ -1553,12 +1502,9 @@ def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
     assert offered not in {one.row.content_id for one in found.candidates}
 
 
-def test_a_track_added_after_a_removal_goes_past_the_highest_position(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_track_added_after_a_removal_goes_past_the_highest_position(one_offered):
     """The binding's count plus one would land on a live row's position."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
     handle = _handle(cfg)
@@ -1572,11 +1518,8 @@ def test_a_track_added_after_a_removal_goes_past_the_highest_position(
     assert numbers == [1, 3, 4], numbers
 
 
-def test_two_appends_after_a_removal_each_take_the_next_position(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_two_appends_after_a_removal_each_take_the_next_position(one_offered):
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
     handle = _handle(cfg)
@@ -1672,11 +1615,10 @@ def _remove(cfg: config.Config, *titles: str) -> rb_writer.CollectionRemoval:
 
 
 def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_else_moved(
-    native_library, silence, monkeypatch, offline
+    one_offered
 ):
     """A197's shape on a disposable library, compared byte for byte table by table."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     offered = _row(cfg, "New1")
     before = _every_table(cfg)
@@ -1713,11 +1655,8 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     assert len(renumbered) == len(removal.renumbered) == 8
 
 
-def test_two_removed_members_of_one_playlist_and_a_member_on_two_playlists(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_two_removed_members_of_one_playlist_and_a_member_on_two_playlists(one_offered):
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "New2", "Held3")
     other = _hand_made(cfg, "Other", "New1", "Held3", "Held1")
     untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
@@ -1730,11 +1669,8 @@ def test_two_removed_members_of_one_playlist_and_a_member_on_two_playlists(
     assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", untouched) == kept
 
 
-def test_the_last_member_removed_renumbers_nothing_in_its_playlist(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_the_last_member_removed_renumbers_nothing_in_its_playlist(one_offered):
+    cfg = one_offered
     last = _hand_made(cfg, "Last", "Held1", "Held2", "New1")
     kept = _query(
         cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo < 3 ORDER BY ID", last
@@ -1746,11 +1682,8 @@ def test_the_last_member_removed_renumbers_nothing_in_its_playlist(
     assert all(playlist != last for playlist, _was, _now in removal.renumbered.values())
 
 
-def test_an_append_after_a_renumbering_takes_the_next_position(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_an_append_after_a_renumbering_takes_the_next_position(one_offered):
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     _remove(cfg, "New1")
     handle = _handle(cfg)
@@ -1763,12 +1696,9 @@ def test_an_append_after_a_renumbering_takes_the_next_position(
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3), ("New2", 4)]
 
 
-def test_a_history_list_holding_others_keeps_its_numbers(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_history_list_holding_others_keeps_its_numbers(one_offered):
     """Unmeasured, so left as it is: only the removed track's own history row goes."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     for key, content_id, number in (("h-1", held, 1), ("h-2", offered, 2), ("h-3", held, 3)):
         _sql(
@@ -1788,10 +1718,9 @@ def test_a_history_list_holding_others_keeps_its_numbers(
 
 
 def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_written(
-    native_library, silence, monkeypatch, offline
+    one_offered, monkeypatch
 ):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
     before = _every_table(cfg)
@@ -1818,10 +1747,9 @@ def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_w
 
 
 def test_a_member_that_moved_after_the_prepare_refuses_its_renumbering_with_nothing_written(
-    native_library, silence, monkeypatch, offline
+    one_offered
 ):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     handle = _handle(cfg)
     try:
@@ -1842,11 +1770,10 @@ def test_a_member_that_moved_after_the_prepare_refuses_its_renumbering_with_noth
 
 
 def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stale(
-    native_library, silence, monkeypatch, offline
+    one_offered, monkeypatch
 ):
     """The count is in the digest: one more member after the offered row moves the plan."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     real = removed_cli.written
     seen: dict = {}
 
@@ -1874,12 +1801,9 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
     assert _every_table(cfg) == seen["tables"]
 
 
-def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(one_offered):
     """Marked New1 and live Held2 share 2, so counting the marked row doubles a number."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
     _sql(
         cfg,
@@ -1907,11 +1831,8 @@ def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_member
     assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", mine) == kept
 
 
-def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(one_offered):
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "Held2")
     handle = _handle(cfg)
     try:
@@ -1932,12 +1853,9 @@ def test_only_the_collection_removal_renumbers_memberships():
     assert callers == ["core/rb_writer.py"], callers
 
 
-def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_written(
-    native_library, silence, monkeypatch, offline
-):
+def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_written(one_offered):
     """Other readers take a NULL marker as live, so the renumbering refuses it."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
     _sql(
         cfg,
