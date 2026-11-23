@@ -56,5 +56,3 @@ def is_watched(cfg: config.Config, path: Path) -> bool:
     """Whether ``path`` is under a watched root, where new analysis files fail a session (R-338)."""
     return any(config.is_inside(Path(path), root) for root in watch_roots(cfg))
 
-
-__all__ = ["SHARE_DIRNAME", "analysis_file", "is_watched", "share_root", "watch_roots"]

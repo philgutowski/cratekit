@@ -277,15 +277,11 @@ def read_lock_holder(path: Path | str) -> Holder | None:
         raw = Path(path).read_text()
     except OSError:
         return None
-    if not raw.strip():
-        return None
     try:
+        # An empty or unparsable file says nobody, as json.loads refuses both.
         data = json.loads(raw)
-    except ValueError:
-        return None
-    if not isinstance(data, Mapping) or not data.get("holder"):
-        return None
-    try:
+        if not isinstance(data, Mapping) or not data.get("holder"):
+            return None
         return Holder.from_json(data["holder"])
     except (TypeError, ValueError, AttributeError):
         # A damaged record answers None too; the shell tells it from absent.

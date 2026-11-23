@@ -20,7 +20,7 @@ LAYER: infrastructure. It names no verb (D2) and no display name (R19).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -46,6 +46,11 @@ SCHEMA_VERSION = 1
 #: since sharing ``cratekit.write.trees.soft_delete_marker`` would be an upward
 #: import (KTD23); if a fourth appears, hoist it into the foundation.
 SOFT_DELETE_COLUMN = "rb_local_deleted"
+
+
+def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
+    """``refuse`` with the run scope and this module's origin, which every refusal here carries."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("convergence",), **fields)
 
 
 class Purpose(StrEnum):
@@ -118,12 +123,7 @@ class Fingerprint:
     taken: str = ""
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "schema_version": self.schema_version,
-            "active_rows": self.active_rows,
-            "local_usn": self.local_usn,
-            "taken": self.taken,
-        }
+        return asdict(self)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Fingerprint:
@@ -155,7 +155,7 @@ def probe(db: Any) -> Fingerprint:
     """
     session = getattr(db, "session", _NO_SESSION)
     if session is _NO_SESSION:
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             "this database handle exposes no session, so the autoflush guard "
             "this probe has to run under cannot be armed; a query issued outside "
@@ -163,8 +163,6 @@ def probe(db: Any) -> Fingerprint:
             "guard reads to decide what a commit would do, and the guard then "
             "passes a forbidden write it can no longer see",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"handle": type(db).__name__},
         )
     with rb_writer._no_autoflush(session):
@@ -193,14 +191,12 @@ def _reading(what: str, read: Callable[[], Any]) -> Any:
     except CratekitError:
         raise
     except Exception as exc:  # noqa: BLE001 - a database that cannot answer IS the answer
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             f"the database's {what} could not be read ({exc}), so whether this "
             f"is the database Cratekit last wrote to cannot be decided in either "
             f"direction",
             remedy=Remedy.RUN_DOCTOR,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"reading": what, "column": SOFT_DELETE_COLUMN},
         ) from exc
 
@@ -208,14 +204,12 @@ def _reading(what: str, read: Callable[[], Any]) -> Any:
 def _counted(what: str, value: Any) -> int:
     """A reading that must already BE a whole number, never one coerced into being."""
     if not _is_whole_number(value):
-        raise refuse(
+        raise _refuse(
             "library-fingerprint-unreadable",
             f"the database answered its {what} with {value!r}, which is not a "
             f"whole number; coercing it would build the comparison that decides "
             f"whether this library went backward out of a value nobody checked",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"reading": what, "found": type(value).__name__},
         )
     return value
@@ -384,10 +378,7 @@ class TreeConvergence:
         return self.unconverged and self.disposition is None
 
     def node(self, bucket: str, sub: str) -> DestinationNode | None:
-        for entry in self.nodes:
-            if entry.bucket == bucket and entry.sub == sub:
-                return entry
-        return None
+        return next((e for e in self.nodes if e.bucket == bucket and e.sub == sub), None)
 
     def with_nodes(self, nodes: Iterable[DestinationNode]) -> TreeConvergence:
         """This record with ``nodes`` replacing any entry for the same destination."""
@@ -494,85 +485,62 @@ def read(cfg: config.Config) -> ConvergenceState:
     misread can never be written back as an empty store.
     """
     path = path_for(cfg)
+
+    def state_unreadable(
+        message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR
+    ) -> ConvergenceStateUnreadable:
+        return ConvergenceStateUnreadable(message, path=path, remedy=remedy)
+
     try:
         raw = config.read_bytes_if_present(path)
     except OSError as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} exists and could not be read: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise state_unreadable(f"{path} exists and could not be read: {exc}") from exc
     if raw is None:
         return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} is not readable as JSON: {exc}", path=path, remedy=Remedy.RUN_DOCTOR
-        ) from exc
+        raise state_unreadable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise ConvergenceStateUnreadable(
-            f"{path} does not hold an object at its top level",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise state_unreadable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise ConvergenceStateUnreadable(
+        raise state_unreadable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
         )
     if version > SCHEMA_VERSION:
-        raise ConvergenceStateUnreadable(
+        raise state_unreadable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
-            path=path,
             remedy=Remedy.UPGRADE_CRATEKIT,
         )
 
     raw_fingerprint = data.get("fingerprint")
     if raw_fingerprint is not None and not isinstance(raw_fingerprint, dict):
-        raise ConvergenceStateUnreadable(
-            f"{path} holds a fingerprint that is not an object",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise state_unreadable(f"{path} holds a fingerprint that is not an object")
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise ConvergenceStateUnreadable(
-            f"{path} has no trees array", path=path, remedy=Remedy.RUN_DOCTOR
-        )
+        raise state_unreadable(f"{path} has no trees array")
 
     records: list[TreeConvergence] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise ConvergenceStateUnreadable(
-                f"{path} holds a tree record that is not an object",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            )
+            raise state_unreadable(f"{path} holds a tree record that is not an object")
         try:
             record = TreeConvergence.from_json(entry)
         except (KeyError, TypeError, ValueError) as exc:
             # Refused, not dropped, since a dropped record reads as fine.
-            raise ConvergenceStateUnreadable(
-                f"{path} holds an unusable tree record: {exc}",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            ) from exc
+            raise state_unreadable(f"{path} holds an unusable tree record: {exc}") from exc
         if record.tree_id in seen:
-            raise ConvergenceStateUnreadable(
+            raise state_unreadable(
                 f"{path} holds two records for the tree {record.tree_id!r}; a "
                 f"record that gives two answers for one tree cannot say whether "
                 f"it is converged, and resolving that by line order decides "
                 f"whether a write runs against a damaged library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         seen.add(record.tree_id)
         records.append(record)
@@ -580,11 +548,7 @@ def read(cfg: config.Config) -> ConvergenceState:
     try:
         taken = None if raw_fingerprint is None else Fingerprint.from_json(raw_fingerprint)
     except (KeyError, TypeError, ValueError) as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} holds an unusable fingerprint: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise state_unreadable(f"{path} holds an unusable fingerprint: {exc}") from exc
 
     return ConvergenceState(
         fingerprint=taken, trees=tuple(sorted(records, key=lambda e: e.tree_id))
@@ -702,7 +666,7 @@ def clear_unconverged(
     """
     outstanding = [str(entry) for entry in differences]
     if outstanding and disposition is None:
-        raise refuse(
+        raise _refuse(
             "tree-unconverged",
             f"the tree {tree_id!r} still differs from what this library declares "
             f"in {len(outstanding)} place(s), so its unconverged flag stays set; "
@@ -717,8 +681,6 @@ def clear_unconverged(
                 "somebody curated by hand under this tree, is answered by a "
                 "named person disposing of it for this tree alone",
             ),
-            scope=Scope.RUN,
-            origin=("convergence",),
             detail={"tree_id": tree_id, "differences": outstanding[:20]},
         )
 
@@ -729,7 +691,7 @@ def clear_unconverged(
         if disposition is not None:
             if not current.blocking:
                 # A disposition answers a refusal, and there is none to answer.
-                raise refuse(
+                raise _refuse(
                     "tree-unconverged",
                     f"the tree {tree_id!r} is not refusing anything, so there is "
                     f"no difference for anybody to dispose of; recording one now "
@@ -740,8 +702,6 @@ def clear_unconverged(
                         "run the convergence check for this tree and dispose of "
                         "what it actually reports",
                     ),
-                    scope=Scope.RUN,
-                    origin=("convergence",),
                     detail={"tree_id": tree_id, "actor": disposition.actor},
                 )
             settled = replace(
@@ -829,7 +789,7 @@ def assert_no_out_of_band_restore(
     found = checked.regression
     if found is None:
         return
-    raise refuse(
+    raise _refuse(
         "tree-unconverged",
         f"this library's database went backward since Cratekit last wrote to it "
         f"({str(found)}), which no snapshot restore of ours explains, so every "
@@ -843,8 +803,6 @@ def assert_no_out_of_band_restore(
             "is missing and what it holds that nothing declares",
             "run the rebuild for each tree it reports short",
         ),
-        scope=Scope.RUN,
-        origin=("convergence",),
         detail={
             "regression": str(found),
             "trees": list(checked.trees),
@@ -864,7 +822,7 @@ def assert_converged(cfg: config.Config, tree_id: str) -> None:
     record = read(cfg).tree(tree_id)
     if record is None or not record.blocking:
         return
-    raise refuse(
+    raise _refuse(
         "tree-unconverged",
         f"the tree {tree_id!r} has been unconverged since {record.since} "
         f"({record.reason}), so writing to it now would add to a tree that is "
@@ -876,8 +834,6 @@ def assert_converged(cfg: config.Config, tree_id: str) -> None:
             "a difference the rebuild cannot derive is answered by a named "
             "person disposing of it for this tree alone",
         ),
-        scope=Scope.RUN,
-        origin=("convergence",),
         detail={"tree_id": tree_id, "reason": record.reason, "since": record.since},
     )
 
@@ -905,36 +861,3 @@ def assert_tree_writable(
         return
     detect_out_of_band_restore(cfg, db, registry, now=now)
 
-
-__all__ = [
-    "EMPTY",
-    "LOCK_KEY",
-    "SCHEMA_VERSION",
-    "SOFT_DELETE_COLUMN",
-    "STATE_KEY",
-    "ConvergenceState",
-    "ConvergenceStateUnreadable",
-    "DestinationNode",
-    "Disposition",
-    "Fingerprint",
-    "Purpose",
-    "Regression",
-    "RestoreCheck",
-    "TreeConvergence",
-    "assert_converged",
-    "assert_injective",
-    "assert_no_out_of_band_restore",
-    "assert_tree_writable",
-    "clear_unconverged",
-    "detect_out_of_band_restore",
-    "lock_path",
-    "mark_unconverged",
-    "native_trees",
-    "path_for",
-    "probe",
-    "read",
-    "record_fingerprint",
-    "record_nodes",
-    "regression",
-    "write",
-]

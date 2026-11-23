@@ -15,9 +15,8 @@ import pytest
 
 from cratekit.core import config, restore, session, snapshot
 from cratekit.core import rb_writer as W
-from cratekit.core.cause import CratekitError
 from tests import test_rb_writer_db as fixture
-from tests.test_restore import acknowledge, gate_seams
+from tests.test_restore import _refusal, _refused, acknowledge, gate_seams
 
 
 @pytest.fixture
@@ -100,6 +99,26 @@ def _retitle(conn: sqlite3.Connection, content_id: str, title: str) -> None:
     conn.commit()
 
 
+def _retitled(database: Path, content_id: str, title: str) -> None:
+    conn = sqlite3.connect(database)
+    try:
+        _retitle(conn, content_id, title)
+    finally:
+        conn.close()
+
+
+def _captured_with_the_log_held(cfg) -> tuple[Path, snapshot.Capture]:
+    """A capture taken while a live handle holds a row in the log, uncheckpointed."""
+    database = _database(cfg)
+    live = sqlite3.connect(database)
+    try:
+        live.execute("PRAGMA wal_autocheckpoint=0")
+        _retitle(live, _first_id(database), "only in the log")
+        return database, snapshot.capture(cfg)
+    finally:
+        live.close()
+
+
 def _sidecar(path: Path, suffix: str) -> Path:
     return path.with_name(path.name + suffix)
 
@@ -153,11 +172,7 @@ def test_a_capture_taken_while_a_handle_holds_the_log_restores_what_it_recorded(
     assert all(path.exists() for path in on_disk), "the manifest lists a file the capture lost"
 
     record = _close_into_a_session(cfg, captured)
-    conn = sqlite3.connect(database)
-    try:
-        _retitle(conn, content, "written by the session")
-    finally:
-        conn.close()
+    _retitled(database, content, "written by the session")
 
     _restore(cfg, record)
 
@@ -197,14 +212,7 @@ def test_the_check_leaves_the_capture_exactly_as_it_was_copied(cfg, monkeypatch)
         return answer
 
     monkeypatch.setattr(W, "integrity_ok", watched)
-    database = _database(cfg)
-    live = sqlite3.connect(database)
-    try:
-        live.execute("PRAGMA wal_autocheckpoint=0")
-        _retitle(live, _first_id(database), "only in the log")
-        captured = snapshot.capture(cfg)
-    finally:
-        live.close()
+    database, captured = _captured_with_the_log_held(cfg)
 
     assert captured.verified
     assert seen["before"] == seen["after"]
@@ -213,14 +221,7 @@ def test_the_check_leaves_the_capture_exactly_as_it_was_copied(cfg, monkeypatch)
 
 def test_the_captured_database_still_verifies_after_the_capture(cfg):
     """The check can be asked again of the capture, and answers the same."""
-    database = _database(cfg)
-    live = sqlite3.connect(database)
-    try:
-        live.execute("PRAGMA wal_autocheckpoint=0")
-        _retitle(live, _first_id(database), "only in the log")
-        captured = snapshot.capture(cfg)
-    finally:
-        live.close()
+    database, captured = _captured_with_the_log_held(cfg)
 
     assert captured.verified
     assert W.integrity_ok(captured.database) is True
@@ -245,11 +246,7 @@ def test_a_database_in_rollback_journal_mode_captures_and_restores_as_before(cfg
     assert all(not entry.present for entry in captured.sources if entry.source in companions)
     before = _title(database, content)
     record = _close_into_a_session(cfg, captured)
-    conn = sqlite3.connect(database)
-    try:
-        _retitle(conn, content, "written by the session")
-    finally:
-        conn.close()
+    _retitled(database, content, "written by the session")
 
     _restore(cfg, record)
 
@@ -382,9 +379,8 @@ def test_a_check_that_removes_a_captured_companion_is_not_recorded_verified(
 
     assert not captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is False
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.assert_verified(captured)
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    cause = _refusal(snapshot.assert_verified, captured)
+    assert cause.reason == "snapshot-integrity-failed"
 
 
 def test_a_check_that_rewrites_the_captured_database_is_not_recorded_verified(
@@ -544,14 +540,7 @@ def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):
 @pytest.mark.parametrize("suffix", W.restored_sidecar_suffixes())
 def test_a_capture_that_lost_its_log_after_the_verdict_is_refused_by_the_plan(cfg, suffix):
     """A restore never accepts a capture missing data it records."""
-    database = _database(cfg)
-    live = sqlite3.connect(database)
-    try:
-        live.execute("PRAGMA wal_autocheckpoint=0")
-        _retitle(live, _first_id(database), "only in the log")
-        captured = snapshot.capture(cfg)
-    finally:
-        live.close()
+    database, captured = _captured_with_the_log_held(cfg)
     assert captured.verified
     lost = _sidecar(captured.database, suffix)
     lost.unlink()
@@ -559,8 +548,7 @@ def test_a_capture_that_lost_its_log_after_the_verdict_is_refused_by_the_plan(cf
 
     acknowledge(cfg)
     with restore.recovery_session(cfg, **gate_seams(cfg)) as held:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.plan(cfg, record.session_id, held=held)
+        error = _refused(restore.plan, cfg, record.session_id, held=held)
 
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
-    assert str(lost) in str(excinfo.value)
+    assert error.cause.reason == "snapshot-integrity-failed"
+    assert str(lost) in str(error)

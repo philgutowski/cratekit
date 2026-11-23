@@ -34,8 +34,8 @@ What left the coupled set (audio, provider renames, the Trash) is enumerated by
 reports nothing. A pre-cutover tree is handed to ``core.convergence``
 (:func:`_hand_tree_shortness_over`).
 
-Three parts hold the rest, each re-exported here (U300): the performing steps
-(``restore_perform``), retention and the prune (``restore_retention``, which cites
+Three parts hold the rest, each name a caller reads re-exported here (U300): the
+performing steps (``restore_perform``), retention and the prune (``restore_retention``, which cites
 :data:`RESIDUAL_CAPTURE_VOLUME_UNREPORTED`), and bare-metal recovery
 (``restore_recovery``, which cites :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`).
 A fourth, ``restore_tags``, is the files' half (R-1924): the title tag and key
@@ -63,7 +63,6 @@ from cratekit.core import (
     config,
     preflight,
     processes,
-    rb_writer,
     reconcile,
     restore_tags,
     session,
@@ -72,9 +71,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.restore_perform import (
-    PRE_CUTOVER_RESTORE,
-)
+from cratekit.core.restore_perform import PRE_CUTOVER_RESTORE as PRE_CUTOVER_RESTORE
 from cratekit.core.restore_perform import _assert_staging_is_free as _assert_staging_is_free
 from cratekit.core.restore_perform import _perform as _perform
 from cratekit.core.restore_perform import _replace_directory as _replace_directory
@@ -82,24 +79,13 @@ from cratekit.core.restore_perform import _replace_file as _replace_file
 from cratekit.core.restore_perform import _stage_companion_aside as _stage_companion_aside
 from cratekit.core.restore_recovery import _is_mount_point as _is_mount_point
 from cratekit.core.restore_recovery import _refuse_target as _refuse_target
-from cratekit.core.restore_recovery import (
-    assert_library_volume_is_gone,
-    assert_recovery_target,
-    bare_metal_session,
-    recovered_database_fileset,
-    recovery_lock_path,
-)
-from cratekit.core.restore_retention import (
-    DEFAULT_KEEP,
-    DEFAULT_MAX_AGE,
-    KEEP_STAGED_ATTEMPTS,
-    RetentionPlan,
-    RetentionPolicy,
-    StoredCapture,
-    prune,
-    retention_plan,
-    shares_the_database_volume,
-)
+from cratekit.core.restore_recovery import bare_metal_session as bare_metal_session
+from cratekit.core.restore_recovery import recovered_database_fileset as recovered_database_fileset
+from cratekit.core.restore_recovery import recovery_lock_path as recovery_lock_path
+from cratekit.core.restore_retention import KEEP_STAGED_ATTEMPTS as KEEP_STAGED_ATTEMPTS
+from cratekit.core.restore_retention import RetentionPolicy as RetentionPolicy
+from cratekit.core.restore_retention import prune as prune
+from cratekit.core.restore_retention import retention_plan as retention_plan
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +121,16 @@ RESIDUAL_CAPTURE_VOLUME_UNREPORTED = (
 RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH = (
     "Closing the bare-metal bypass removed the bare-metal write path"
 )
+
+
+def _defect(message: str, *, detail: Mapping[str, object]) -> CratekitError:
+    """A refusal that only a defect in this build can reach, reported as one."""
+    return refuse("internal-error", message, remedy=Remedy.REPORT_DEFECT, detail=detail)
+
+
+def _refuse_run(reason: str, message: str, **terms: object) -> CratekitError:
+    """A refusal scoped to this restore's run, as every restore step's refusal is."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("restore",), **terms)
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +206,8 @@ def list_sessions(cfg: config.Config) -> tuple[Restorable, ...]:
             listed.append(
                 Restorable(record=record, capture_root=root, unusable=exc.cause.message)
             )
-            continue
-        listed.append(Restorable(record=record, capture_root=root, capture=manifest))
+        else:
+            listed.append(Restorable(record=record, capture_root=root, capture=manifest))
     return tuple(sorted(listed, key=lambda entry: entry.started, reverse=True))
 
 
@@ -278,8 +274,6 @@ class Held:
         if self.token is None:
             return False
         terms = _ISSUED.get(id(self.token))
-        if terms is None:
-            return False
         if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
             return False
         return str(self.lock.absolute()) in session._HELD
@@ -465,6 +459,18 @@ def _rebased_capture(
     )
 
 
+def _spendable_capture(root: Path, recorded_root: Path, rooted_at: Path) -> snapshot.Capture:
+    """The capture at ``root``, re-based onto ``rooted_at``, or a refusal to spend it.
+
+    An unverified capture is no recovery point. Both the verdict and the bytes'
+    presence are asked, since a file can vanish after the verdict.
+    """
+    captured = _rebased_capture(snapshot.read_manifest(root), recorded_root, rooted_at)
+    snapshot.assert_verified(captured)
+    snapshot.assert_sources_present(captured)
+    return captured
+
+
 def _assert_plan_is_authorised(
     steps: Iterable[Step], pre_restore_root: Path, cfg: config.Config, held: Held
 ) -> None:
@@ -485,23 +491,19 @@ def _assert_plan_is_authorised(
             continue
         assert_gates_are_open(held, writing=step.target)
         if step.target not in allowed:
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"the plan would {step.act} at {step.target}, which is not a path "
                 f"any restore of {cfg.library.root} may replace",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"act": str(step.act), "target": str(step.target)},
             )
     assert_gates_are_open(held, writing=pre_restore_root)
     store = _pre_restore_root(cfg).parent
     if pre_restore_root.parent != store:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the plan stages live companion files under {pre_restore_root}, which "
             f"is not an attempt directory under {store}; the restore prunes the "
             f"directory above its staging, so that has to be the one store this "
             f"library derives",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"staging": str(pre_restore_root), "store": str(store)},
         )
 
@@ -599,12 +601,7 @@ def restorable_targets(cfg: config.Config) -> frozenset[Path]:
     not skipped. No lock or session record can be a member, and :func:`plan`
     asserts membership rather than trusting the layout.
     """
-    targets = {
-        *snapshot.database_paths(cfg),
-        *config.snapshot_sources(cfg),
-        config.state_path(snapshot.DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML,
-    }
-    return frozenset(targets)
+    return snapshot.captured_paths(cfg)
 
 
 def _captured_by_key(
@@ -669,20 +666,14 @@ def plan(
     _assert_rekordbox_closed(process_lister)
     record = session.read_record(session_id, cfg)
     if not record.snapshot_path:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"session {session_id} recorded no capture, so there is nothing to "
             f"restore it from",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id},
         )
     recorded_root, rooted_at = Path(configured.library.root), Path(cfg.library.root)
     root = capture_root_of(_rebased(record.snapshot_path, recorded_root, rooted_at))
-    captured = _rebased_capture(snapshot.read_manifest(root), recorded_root, rooted_at)
-    # An unverified capture is no recovery point. Both the verdict and the bytes'
-    # presence are asked, since a file can vanish after the verdict.
-    snapshot.assert_verified(captured)
-    snapshot.assert_sources_present(captured)
+    captured = _spendable_capture(root, recorded_root, rooted_at)
 
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, discarding)
@@ -870,7 +861,7 @@ def _assert_override_names_them(
     if named == expected:
         return
     summary = _merged_change(later)
-    raise refuse(
+    raise _refuse_run(
         "restore-discards-committed-work",
         f"restoring session {target.session_id} reaches back past "
         + (
@@ -888,8 +879,6 @@ def _assert_override_names_them(
         + "\nName every one of those sessions to proceed; naming none, or naming a "
         "different set, is refused rather than interpreted",
         remedy=Remedy.ANSWER_DECISION,
-        scope=Scope.RUN,
-        origin=("restore",),
         detail={
             "session_id": target.session_id,
             "discards": sorted(expected),
@@ -964,12 +953,10 @@ def _file_steps(
 
     for entry in captured.sources:
         if entry.source not in allowed:
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"the capture manifest names {entry.source}, which is not a path "
                 f"any restore may replace; refusing rather than restoring the "
                 f"subset this build happens to recognise",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"source": str(entry.source), "capture": str(captured.root)},
             )
         if entry.source in restored_companions:
@@ -1108,13 +1095,7 @@ def _preflight(
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, decided.discarded_sessions)
 
-    captured = _rebased_capture(
-        snapshot.read_manifest(decided.capture_root),
-        recorded_root,
-        Path(cfg.library.root),
-    )
-    snapshot.assert_verified(captured)
-    snapshot.assert_sources_present(captured)
+    _spendable_capture(decided.capture_root, recorded_root, Path(cfg.library.root))
 
     for step in decided.steps:
         if step.act in (Act.REPLACE, Act.REPLACE_TREE):
@@ -1173,24 +1154,25 @@ def _assert_source_usable(step: Step) -> None:
     """Refuse a replacement whose source is gone or is the wrong kind of thing."""
     source = step.source
     if source is None:  # pragma: no cover - a replacement always has a source
-        raise refuse(
-            "internal-error",
-            f"the step {step.act} on {step.target} carries no source",
-            remedy=Remedy.REPORT_DEFECT,
-            detail={"act": str(step.act), "target": str(step.target)},
-        )
+        raise _no_source(step)
     wanted_directory = step.act is Act.REPLACE_TREE
     if source.is_dir() if wanted_directory else source.is_file():
         return
-    raise refuse(
+    raise _refuse_run(
         "snapshot-integrity-failed",
         f"the restore would put {source} at {step.target} and that source is "
         + ("not a directory" if wanted_directory else "not a file that exists")
         + "; refusing before anything is replaced rather than part way through",
         remedy=Remedy.REPORT_DEFECT,
-        scope=Scope.RUN,
-        origin=("restore",),
         detail={"act": str(step.act), "source": str(source), "target": str(step.target)},
+    )
+
+
+def _no_source(step: Step) -> CratekitError:
+    """The refusal for a replacement step that carries no source, a defect."""
+    return _defect(
+        f"the step {step.act} on {step.target} carries no source",
+        detail={"act": str(step.act), "target": str(step.target)},
     )
 
 
@@ -1212,13 +1194,11 @@ def _assert_writable(step: Step) -> None:
 
 
 def _assert_directory_writable(step: Step, wanted: Path) -> None:
-    probe = wanted
-    while not probe.exists() and probe.parent != probe:
-        probe = probe.parent
+    probe = snapshot.nearest_existing(wanted)
     writable = probe if probe.is_dir() else probe.parent
     if os.access(writable, os.W_OK):
         return
-    raise refuse(
+    raise _refuse_run(
         "restore-step-failed",
         f"{writable} is not writable by this account, so the restore would stop "
         f"at {step.target} after having already replaced everything before it",
@@ -1226,8 +1206,6 @@ def _assert_directory_writable(step: Step, wanted: Path) -> None:
             "make the library's directories writable by this account, then run "
             "this again",
         ),
-        scope=Scope.RUN,
-        origin=("restore",),
         detail={
             "act": str(step.act),
             "target": str(step.target),
@@ -1245,34 +1223,28 @@ def assert_gates_are_open(held: Held, *, writing: Path | str | None = None) -> N
     session from a bare-metal one.
     """
     if held.intent is not session.Intent.RECOVERY:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"a restore was handed a {held.intent} session; a restore declares "
             f"itself a recovery, because the latches it answers would otherwise "
             f"refuse it",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"workflow": held.workflow, "intent": str(held.intent)},
         )
     if not held.still_open:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the destructive-session gates for {held.workflow} are not held by "
             f"this process, so this call would plan or write with the library lock "
             f"released and every other process free to commit underneath it; a "
             f"session value that was never issued by one of this module's own "
             f"guards reports the same thing, and for the same reason",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"workflow": held.workflow, "lock": str(held.lock)},
         )
     if writing is None or held.authorises_path(writing):
         return
-    raise refuse(
-        "internal-error",
+    raise _defect(
         f"the {held.issued_by} session open here authorises {held.authorises} and "
         f"this call would write at {writing}; the gates a session passed are gates "
         f"about a particular library, so spending one against a different one "
         f"would replace a database behind checks that were never asked of it",
-        remedy=Remedy.REPORT_DEFECT,
         detail={
             "workflow": held.workflow,
             "issued_by": str(held.issued_by),
@@ -1302,14 +1274,3 @@ def _assert_rekordbox_closed(process_lister: processes.ProcessLister | None = No
         detail={"running": list(running)},
     )
 
-
-__all__ = [
-    "BARE_METAL_WORKFLOW", "CAPTURE_RESTORE_WORKFLOW", "DEFAULT_KEEP", "DEFAULT_MAX_AGE",
-    "KEEP_STAGED_ATTEMPTS", "PRE_RESTORE_DIR", "PRE_CUTOVER_RESTORE", "RECOVERY_LOCK_KEY",
-    "RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH", "RESIDUAL_CAPTURE_VOLUME_UNREPORTED", "Act", "Guard",
-    "Held", "Plan", "RetentionPlan", "RestoreOutcome", "RetentionPolicy", "Restorable", "Step",
-    "StoredCapture", "assert_gates_are_open", "assert_library_volume_is_gone",
-    "assert_recovery_target", "recovered_database_fileset", "bare_metal_session", "capture_root_of",
-    "list_sessions", "plan", "prune", "recovery_lock_path", "recovery_session",
-    "restorable_targets", "space_peak_bytes", "retention_plan", "run", "shares_the_database_volume",
-]

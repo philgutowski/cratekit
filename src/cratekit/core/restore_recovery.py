@@ -1,14 +1,14 @@
 """Bare-metal recovery onto a replacement drive: its target checks and its session.
 
-Part of :mod:`cratekit.core.restore`, which re-exports every name here; read them there. A
-name of restore outside this file, every seam a test patches, and ``os`` and ``shutil``,
-which a test patches on restore to sample the disk, are read through ``restore`` at call
-time so a patch on restore bites here too (U300).
+Part of :mod:`cratekit.core.restore`, which re-exports every name its callers read; read
+them there. A name of restore outside this file, every seam a test patches, and ``os`` and
+``shutil``, which a test patches on restore to sample the disk, are read through ``restore``
+at call time, by the accessor ``restore_perform`` holds, so a patch on restore bites here
+too (U300).
 """
 
 from __future__ import annotations
 
-import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator, Sequence
@@ -18,21 +18,11 @@ from cratekit.core import (
     preflight,
     session,
 )
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError
+from cratekit.core.restore_perform import _restore, logger
 
 if TYPE_CHECKING:
     from cratekit.core.restore import Held
-
-
-#: The restore logger, so a record reads as it did before the split.
-logger = logging.getLogger("cratekit.core.restore")
-
-
-def _restore():
-    """``restore`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import restore
-
-    return restore
 
 
 #: The mount verdicts that mean the configured library is NOT THERE, as opposed
@@ -55,12 +45,10 @@ def recovery_lock_path() -> Path:
 
 
 def _refuse_target(message: str, steps: Sequence[str], **detail: object) -> CratekitError:
-    return refuse(
+    return _restore()._refuse_run(
         "recovery-target-refused",
         message,
         steps=tuple(steps),
-        scope=Scope.RUN,
-        origin=("restore",),
         detail=dict(detail),
     )
 

@@ -32,12 +32,7 @@ def _edge(value: str) -> datetime | None:
     found = _YEAR.match(value) if isinstance(value, str) else None
     if found is None:
         return None
-    year = int(found.group(1))
-    if year == FLOOR.year:
-        return FLOOR
-    if year == CEILING.year:
-        return CEILING
-    return None
+    return {FLOOR.year: FLOOR, CEILING.year: CEILING}.get(int(found.group(1)))
 
 
 def placeable(convert: Callable[[str], datetime]) -> Callable[[str], datetime]:
@@ -58,11 +53,7 @@ def placeable(convert: Callable[[str], datetime]) -> Callable[[str], datetime]:
         if moment.tzinfo is not None:
             # Not what the pinned binding answers; an aware value is not comparable to a bound.
             return moment
-        if moment < FLOOR:
-            return FLOOR
-        if moment > CEILING:
-            return CEILING
-        return moment
+        return min(max(moment, FLOOR), CEILING)
 
     setattr(string_to_datetime, _MARK, True)
     string_to_datetime.__wrapped__ = convert  # type: ignore[attr-defined]
@@ -111,5 +102,3 @@ def installed() -> bool:
         and getattr(aux_files.MasterPlaylistXml.update, _MARK, False)
     )
 
-
-__all__ = ["CEILING", "FLOOR", "install", "installed", "keeps_bounds", "placeable"]

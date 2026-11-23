@@ -87,6 +87,11 @@ class BackupFactsUnreadable(Exception):
         self.remedy = remedy
 
 
+def _damaged(path: Path, message: str) -> BackupFactsUnreadable:
+    """The fact file read and not understood, which a repair answers."""
+    return BackupFactsUnreadable(message, path=path, remedy=Remedy.REPAIR_BACKUP_FACTS)
+
+
 @dataclass(frozen=True, slots=True)
 class BackupFact:
     """One portion's last successful completion, and where, since an age needs its destination."""
@@ -161,34 +166,21 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], dict[str, obje
                 path=path,
                 remedy=Remedy.GRANT_PATH_ACCESS,
             ) from exc
-        raise BackupFactsUnreadable(
-            f"{path} exists but could not be read: {exc}",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
-        ) from exc
+        raise _damaged(path, f"{path} exists but could not be read: {exc}") from exc
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise BackupFactsUnreadable(
-            f"{path} is not readable as JSON: {exc}",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
-        ) from exc
+        raise _damaged(path, f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise BackupFactsUnreadable(
-            f"{path} does not hold an object at its top level",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
-        )
+        raise _damaged(path, f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise BackupFactsUnreadable(
+        raise _damaged(
+            path,
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
     if version > SCHEMA_VERSION:
         raise BackupFactsUnreadable(
@@ -200,11 +192,7 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], dict[str, obje
 
     entries = data.get("portions")
     if not isinstance(entries, dict):
-        raise BackupFactsUnreadable(
-            f"{path} has no portions table",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
-        )
+        raise _damaged(path, f"{path} has no portions table")
 
     facts: dict[Portion, BackupFact] = {}
     known = {p.value for p in Portion}
@@ -242,11 +230,10 @@ def _full_comparison(
         return None
     path = path_for(cfg)
     if not isinstance(held, dict):
-        raise BackupFactsUnreadable(
+        raise _damaged(
+            path,
             f"{path} holds something other than an object or null under "
             f"{key!r}",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
     return _fact(Portion.FILES, held, named=key, path=path)
 
@@ -257,19 +244,17 @@ def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFac
     try:
         completed = datetime.fromisoformat(str(stamp))
     except (TypeError, ValueError) as exc:
-        raise BackupFactsUnreadable(
+        raise _damaged(
+            path,
             f"{path} records {named!r} as completing at {stamp!r}, which is "
             f"not an ISO timestamp",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
         ) from exc
     if completed.tzinfo is None:
         # A naive timestamp is unanswerable, since installations can sit in different zones.
-        raise BackupFactsUnreadable(
+        raise _damaged(
+            path,
             f"{path} records {named!r} without a time zone offset, so the "
             f"instant it names depends on who reads it",
-            path=path,
-            remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
     kind = entry.get("kind")
     summary = entry.get("summary")
@@ -306,22 +291,19 @@ def _age_of(portion: Portion, fact: BackupFact | None, moment: datetime) -> Port
 
 def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
     """How long ago the file mirror last compared folder by folder (R-757), as a files age."""
-    moment = now or datetime.now(timezone.utc)
-    facts, held = _read(cfg)
-    return _age_of(
-        Portion.FILES, _full_comparison(cfg, facts, held[FULL_COMPARISON_KEY]), moment
-    )
+    return _held_age(cfg, FULL_COMPARISON_KEY, now)
 
 
 def full_check_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
     """How long ago the last full check ran (U317); an absent key answers the files fact."""
+    return _held_age(cfg, FULL_CHECK_KEY, now)
+
+
+def _held_age(cfg: config.Config, key: str, now: datetime | None) -> PortionAge:
+    """The held key ``key`` as a files age; an absent key answers the files fact."""
     moment = now or datetime.now(timezone.utc)
     facts, held = _read(cfg)
-    return _age_of(
-        Portion.FILES,
-        _full_comparison(cfg, facts, held[FULL_CHECK_KEY], key=FULL_CHECK_KEY),
-        moment,
-    )
+    return _age_of(Portion.FILES, _full_comparison(cfg, facts, held[key], key=key), moment)
 
 
 def took(seconds: object) -> str:
@@ -417,16 +399,12 @@ def record(
         )
     if kind is not None and kind not in KINDS:
         raise ValueError(f"{kind!r} is not a kind of backup run; the kinds are {KINDS}")
-    read, held_keys = _read(cfg)
+    read, held = _read(cfg)
     facts = dict(read)
-    held = held_keys[FULL_COMPARISON_KEY]
-    checked = held_keys[FULL_CHECK_KEY]
-    if held is _ABSENT:
-        # BEFORE THE NEW FACT REPLACES THE OLD ONE, which an earlier build's file implies.
-        held = _as_held(read.get(Portion.FILES))
-    if checked is _ABSENT:
-        # The same reading for the full check, for the same reason.
-        checked = _as_held(read.get(Portion.FILES))
+    for key in _HELD_KEYS:
+        if held[key] is _ABSENT:
+            # BEFORE THE NEW FACT REPLACES THE OLD ONE, which an earlier build's file implies.
+            held[key] = _as_held(read.get(Portion.FILES))
     facts[portion] = BackupFact(
         portion=portion,
         completed_at=completed_at,
@@ -434,21 +412,17 @@ def record(
         kind=kind,
         summary=dict(summary) if summary is not None else None,
     )
-    if full_comparison:
-        held = _as_held(facts[portion])
-    if full_check:
-        checked = _as_held(facts[portion])
+    for key, moved in ((FULL_COMPARISON_KEY, full_comparison), (FULL_CHECK_KEY, full_check)):
+        if moved:
+            held[key] = _as_held(facts[portion])
     payload = {
         "schema_version": SCHEMA_VERSION,
-        # ALWAYS WRITTEN, null included, since absence marks a one mode build, and
-        # CARRIED THROUGH AS IT WAS HELD, so cannot be read never becomes never ran.
-        FULL_COMPARISON_KEY: held,
-        # Always written, null included, for the reason the key above is.
-        FULL_CHECK_KEY: checked,
+        # Both held keys ALWAYS WRITTEN, null included, since absence marks a one mode
+        # build, and CARRIED THROUGH AS HELD, so cannot be read never becomes never ran.
+        **held,
         "portions": {
             fact.portion.value: {
-                "completed_at": fact.completed_at.isoformat(),
-                "destination": fact.destination,
+                **_as_held(fact),
                 **({"kind": fact.kind} if fact.kind is not None else {}),
                 **({"summary": dict(fact.summary)} if fact.summary is not None else {}),
             }
@@ -523,42 +497,3 @@ def read_outcomes(job_id: str) -> dict[str, dict] | None:
             found[path.stem] = {"unreadable": f"{path}: {exc}"}
     return found or None
 
-
-__all__ = [
-    "FULL_CHECK_DAYS",
-    "FULL_CHECK_KEY",
-    "FULL_COMPARISON_KEY",
-    "KINDS",
-    "KIND_FULL",
-    "KIND_QUICK",
-    "KIND_SKIPPED",
-    "KIND_SNAPSHOT",
-    "KIND_UNCHANGED",
-    "FUTURE_TOLERANCE",
-    "OUTCOMES_FIELD",
-    "OUTCOMES_KEY",
-    "PORTIONS",
-    "SCHEMA_VERSION",
-    "STATE_KEY",
-    "UNLISTABLE",
-    "AgeState",
-    "BackupFact",
-    "BackupFactsUnreadable",
-    "Portion",
-    "PortionAge",
-    "Remedy",
-    "ages",
-    "clear_outcome",
-    "encode_outcome",
-    "full_check_age",
-    "full_check_due",
-    "took",
-    "full_comparison_age",
-    "oldest_usable_age",
-    "outcome_path",
-    "path_for",
-    "read_facts",
-    "read_outcomes",
-    "record",
-    "write_outcome",
-]

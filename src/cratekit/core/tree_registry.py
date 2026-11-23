@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from cratekit.core import config, session, snapshot
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
@@ -83,6 +83,23 @@ NOT_REBUILDABLE: frozenset[DerivationSource] = frozenset(DerivationSource) - REB
 DEFAULT_MODE: Mode = Mode.XML
 
 
+def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
+    """``refuse`` with the run scope and this module's origin, which every refusal here carries."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("tree_registry",), **fields)
+
+
+def _cause(reason: str, message: str, remedy: Remedy, detail: dict[str, Any]) -> Cause:
+    """The cause each of this module's own exception types carries, scoped like ``_refuse``."""
+    return Cause(
+        reason=reason,
+        message=message,
+        remediation=Remediation(remedy=remedy),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail=detail,
+    )
+
+
 def cutover_trees(declared: Taxonomy) -> frozenset[str]:
     """The trees a cutover may record, by stable identifier (R-787).
 
@@ -102,16 +119,7 @@ class TreeRegistryUnreadable(CratekitError):
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-registry-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"path": str(path)},
-            )
-        )
+        super().__init__(_cause("tree-registry-unusable", message, remedy, {"path": str(path)}))
         self.path = path
         self.remedy = remedy
 
@@ -132,16 +140,8 @@ class TreeModeRefused(CratekitError):
         attempted: str,
         remedy: Remedy,
     ) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-unconverged",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"tree_id": tree_id, "mode": str(mode), "attempted": str(attempted)},
-            )
-        )
+        detail = {"tree_id": tree_id, "mode": str(mode), "attempted": str(attempted)}
+        super().__init__(_cause("tree-unconverged", message, remedy, detail))
         self.tree_id = tree_id
         self.mode = mode
         self.attempted = attempted
@@ -156,16 +156,8 @@ class RegistrySkew(CratekitError):
     """
 
     def __init__(self, message: str, *, tree_id: str, root_id: str | None) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-unconverged",
-                message=message,
-                remediation=Remediation(remedy=Remedy.RESTORE_FROM_SNAPSHOT),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"tree_id": tree_id, "root_id": root_id},
-            )
-        )
+        detail = {"tree_id": tree_id, "root_id": root_id}
+        super().__init__(_cause("tree-unconverged", message, Remedy.RESTORE_FROM_SNAPSHOT, detail))
         self.tree_id = tree_id
         self.root_id = root_id
         self.remedy = Remedy.RESTORE_FROM_SNAPSHOT
@@ -242,10 +234,7 @@ def by_tree_id(entries, tree_id: str):
 
     A scan, so no reader is handed a mapping to key on a name.
     """
-    for entry in entries:
-        if entry.tree_id == tree_id:
-            return entry
-    return None
+    return next((entry for entry in entries if entry.tree_id == tree_id), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,8 +290,7 @@ class Registry:
 
         A revert only before the tree has taken a native write.
         """
-        kept = tuple(entry for entry in self.trees if entry.tree_id != tree_id)
-        return Registry(kept)
+        return Registry(tuple(entry for entry in self.trees if entry.tree_id != tree_id))
 
 
 #: The registry every library starts with, and what an absent file resolves to.
@@ -333,82 +321,61 @@ def read_path(path: Path) -> Registry:
     Only for a restore comparing a capture's registry with the live one; split
     from :func:`read` so a path is never passed by accident.
     """
+
+    def registry_unreadable(
+        message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR
+    ) -> TreeRegistryUnreadable:
+        return TreeRegistryUnreadable(message, path=path, remedy=remedy)
+
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
         return EMPTY
     except OSError as exc:
-        raise TreeRegistryUnreadable(
-            f"{path} exists but could not be read: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise registry_unreadable(f"{path} exists but could not be read: {exc}") from exc
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise TreeRegistryUnreadable(
-            f"{path} is not readable as JSON: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise registry_unreadable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise TreeRegistryUnreadable(
-            f"{path} does not hold an object at its top level",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise registry_unreadable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise TreeRegistryUnreadable(
+        raise registry_unreadable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
         )
     if version > SCHEMA_VERSION:
-        raise TreeRegistryUnreadable(
+        raise registry_unreadable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
-            path=path,
             remedy=Remedy.UPGRADE_CRATEKIT,
         )
 
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise TreeRegistryUnreadable(
-            f"{path} has no trees array",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise registry_unreadable(f"{path} has no trees array")
 
     records: list[TreeRecord] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise TreeRegistryUnreadable(
-                f"{path} holds a tree entry that is not an object",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            )
+            raise registry_unreadable(f"{path} holds a tree entry that is not an object")
         tree_id = entry.get("tree")
         if not isinstance(tree_id, str) or not tree_id.strip():
-            raise TreeRegistryUnreadable(
+            raise registry_unreadable(
                 f"{path} holds a tree entry with no identifier; a record that "
                 f"cannot say which tree it describes is worse than no record",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         if tree_id in seen:
             # Two answers for one tree are refused, never resolved by line order.
-            raise TreeRegistryUnreadable(
+            raise registry_unreadable(
                 f"{path} holds two records for the tree {tree_id!r}; a registry "
                 f"that gives two answers for one tree cannot say which medium "
                 f"owns it, and guessing decides which writer runs against a "
                 f"real library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         seen.add(tree_id)
         stamp = entry.get("cutover_on")
@@ -417,11 +384,9 @@ def read_path(path: Path) -> Registry:
             try:
                 cutover = date.fromisoformat(str(stamp))
             except (TypeError, ValueError) as exc:
-                raise TreeRegistryUnreadable(
+                raise registry_unreadable(
                     f"{path} records {tree_id!r} as cutting over on {stamp!r}, "
                     f"which is not an ISO date",
-                    path=path,
-                    remedy=Remedy.RUN_DOCTOR,
                 ) from exc
         root_id = entry.get("root")
         raw_source = entry.get("source")
@@ -429,14 +394,12 @@ def read_path(path: Path) -> Registry:
         if raw_mode is None:
             # NO DEFAULT: XML would read a cut over tree as on the bridge and
             # empty the restore detector's input.
-            raise TreeRegistryUnreadable(
+            raise registry_unreadable(
                 f"{path} holds a record for {tree_id!r} with no mode; the medium "
                 f"that owns a tree is the one thing this file exists to say, and "
                 f"the value it would default to sends the bridge writer at a tree "
                 f"the database may already own and switches the restore detector "
                 f"off for every tree in this library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         try:
             records.append(
@@ -450,11 +413,7 @@ def read_path(path: Path) -> Registry:
             )
         except ValueError as exc:
             # Refused, not dropped, since a dropped record reads as on the bridge.
-            raise TreeRegistryUnreadable(
-                f"{path} holds an unusable record: {exc}",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            ) from exc
+            raise registry_unreadable(f"{path} holds an unusable record: {exc}") from exc
 
     return Registry(tuple(sorted(records, key=lambda e: e.tree_id)))
 
@@ -513,15 +472,13 @@ def record_cutover(
         standing = current.record(tree_id)
         if standing is not None and standing.mode == Mode.DATABASE:
             # Asked under the lock, so two cutovers of one tree cannot both pass.
-            raise refuse(
+            raise _refuse(
                 "cutover-already-recorded",
                 f"the tree {tree_id!r} is already recorded as database native, "
                 f"anchored to root {standing.root_id!r} since "
                 f"{standing.cutover_on}; recording it again would move the "
                 f"anchor or the day under a tree that may have taken writes",
                 steps=("leave the record as it is; a tree cuts over once",),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
                 detail={
                     "tree_id": tree_id,
                     "root_id": standing.root_id,
@@ -556,14 +513,12 @@ def pending_intake_xml(cfg: config.Config) -> tuple[Path, ...]:
     A Fresh Export is not in the set. The U22 ``*_synced.xml`` stub counts,
     because a cutover over debris starts dirty.
     """
-    roots = (Path(cfg.library.root), Path(cfg.paths.download_staging))
     found: list[Path] = []
-    for root in roots:
+    for root in (Path(cfg.library.root), Path(cfg.paths.download_staging)):
         if not root.is_dir():
             continue
         for path in root.rglob("*.xml"):
-            name = path.name
-            if any(name.endswith(suffix) for suffix in PENDING_XML_SUFFIXES):
+            if any(path.name.endswith(suffix) for suffix in PENDING_XML_SUFFIXES):
                 found.append(path)
     return tuple(sorted(found))
 
@@ -595,13 +550,11 @@ def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, .
     """
     parsed, unreadable = session.scan_log(cfg)
     if unreadable:
-        raise refuse(
+        raise _refuse(
             "internal-error",
             f"{session.unread_clause(unreadable, cfg)}, so {so}; refusing rather than "
             "writing the tree registry against a log it cannot read",
             remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={
                 "unreadable": [str(path) for path in unreadable],
                 "unlisted": session.log_unlisted(unreadable, cfg),
@@ -610,14 +563,15 @@ def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, .
     return parsed
 
 
-def _open_runs(records: tuple[session.SessionRecord, ...]) -> list[session.SessionRecord]:
+def _open_runs(cfg: config.Config) -> list[session.SessionRecord]:
     """The runs that have not reached a terminal state and still owe something.
 
-    A run owing only a deferred placement is not one (R-501).
+    Read off the whole log, or a refusal. A run owing only a deferred placement
+    is not one (R-501).
     """
     return [
         record
-        for record in records
+        for record in _whole_log(cfg, so="whether a run is still open was not established")
         if not record.terminal and not session.owes_only_deferred_routing(record)
     ]
 
@@ -625,9 +579,7 @@ def _open_runs(records: tuple[session.SessionRecord, ...]) -> list[session.Sessi
 def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
     """An open run still holds a capture, and possibly an un-imported export."""
     del export
-    open_runs = _open_runs(
-        _whole_log(cfg, so="whether a run is still open was not established")
-    )
+    open_runs = _open_runs(cfg)
     if not open_runs:
         return None
     first = open_runs[0]
@@ -645,15 +597,13 @@ def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
                 "import any export a run left in awaiting-import, then close it",
             )
         )
-    return refuse(
+    return _refuse(
         "cutover-open-run",
         f"session {first.session_id} has not reached a terminal state, so "
         f"a cutover would flip a tree while that run still holds a capture "
         f"and possibly an un-imported export",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=tuple(owed),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={
             "sessions": [record.session_id for record in open_runs],
             "states": {record.session_id: str(record.state) for record in open_runs},
@@ -667,7 +617,7 @@ def _pending_xml_refusal(cfg: config.Config, export: Path) -> CratekitError | No
     pending = pending_intake_xml(cfg)
     if not pending:
         return None
-    return refuse(
+    return _refuse(
         "cutover-xml-pending",
         f"{len(pending)} un-imported intake XML file(s) are still sitting "
         f"in this library, so a cutover would proceed over work the next "
@@ -677,8 +627,6 @@ def _pending_xml_refusal(cfg: config.Config, export: Path) -> CratekitError | No
             "import or remove each pending intake XML",
             "do not treat a U22 stub listing as an importable splice",
         ),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"paths": [str(path) for path in pending]},
     )
 
@@ -689,14 +637,12 @@ def _export_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
     export_path = Path(export)
     if export_path.is_file() and export_path.stat().st_size != 0:
         return None
-    return refuse(
+    return _refuse(
         "cutover-export-missing",
         "a Fresh Export has to exist before a tree flips, so a failed "
         "validation still has an XML-era copy of the tree to walk back to",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=("take a Fresh Export from rekordbox and pass that file in",),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"export": str(export_path)},
     )
 
@@ -715,14 +661,12 @@ def _snapshot_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
                 continue
             if record.verified:
                 return None
-    return refuse(
+    return _refuse(
         "cutover-snapshot-missing",
         "no verified snapshot exists for this library, so a failed "
         "cutover would have nothing to restore from in the same session",
         remedy=Remedy.COMPLETE_PENDING_ACTION,
         steps=("take a library snapshot before flipping a tree",),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
         detail={"store": str(store)},
     )
 
@@ -746,10 +690,9 @@ def cutover_precheck(cfg: config.Config, *, export: Path) -> tuple[PrecheckResul
     the guard: :func:`flip` asserts for itself.
     """
     target = Path(export)
-    results: list[PrecheckResult] = []
-    for name, check in CUTOVER_CHECKS:
-        results.append(PrecheckResult(check=name, refusal=check(cfg, target)))
-    return tuple(results)
+    return tuple(
+        PrecheckResult(check=name, refusal=check(cfg, target)) for name, check in CUTOVER_CHECKS
+    )
 
 
 def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
@@ -831,7 +774,7 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
     """
     taken = native_writes(cfg, tree_id)
     if taken:
-        raise refuse(
+        raise _refuse(
             "cutover-native-write-taken",
             f"the tree {tree_id!r} has taken {len(taken)} native write(s) since "
             f"it cut over, so the database owns it and it cannot go back on the "
@@ -842,23 +785,17 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
                 "to undo the writes themselves, restore a capture taken before "
                 "the cutover, which carries the registry back with the database",
             ),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={"tree_id": tree_id, "sessions": list(taken)},
         )
-    open_runs = _open_runs(
-        _whole_log(cfg, so="whether a run is still open was not established")
-    )
+    open_runs = _open_runs(cfg)
     if open_runs:
-        raise refuse(
+        raise _refuse(
             "cutover-open-run",
             f"session {open_runs[0].session_id} has not reached a terminal "
             f"state, so whether it wrote the tree {tree_id!r} natively is not "
             f"established and the tree cannot go back on the XML bridge yet",
             remedy=Remedy.COMPLETE_PENDING_ACTION,
             steps=("close or abandon every open run, then revert",),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
             detail={
                 "tree_id": tree_id,
                 "sessions": [record.session_id for record in open_runs],
@@ -982,44 +919,3 @@ def anchored_root(
         )
     return root_id
 
-
-__all__ = [
-    "CUTOVER_CHECKS",
-    "DEFAULT_MODE",
-    "EMPTY",
-    "LOCK_KEY",
-    "MODES",
-    "NOT_REBUILDABLE",
-    "REBUILDABLE",
-    "SCHEMA_VERSION",
-    "STATE_KEY",
-    "DerivationSource",
-    "Mode",
-    "NATIVE_WRITE_MARGIN",
-    "PrecheckResult",
-    "Registry",
-    "RegistrySkew",
-    "TreeModeRefused",
-    "TreeRecord",
-    "TreeRegistryUnreadable",
-    "PENDING_XML_SUFFIXES",
-    "anchored_root",
-    "assert_cutover_ready",
-    "assert_rebuildable",
-    "assert_revertible",
-    "by_tree_id",
-    "cutover_precheck",
-    "cutover_trees",
-    "flip",
-    "lock_path",
-    "native_writes",
-    "path_for",
-    "pending_intake_xml",
-    "read",
-    "read_path",
-    "record_cutover",
-    "refuse_bridge_write",
-    "refuse_database_write",
-    "revert_cutover",
-    "write",
-]
