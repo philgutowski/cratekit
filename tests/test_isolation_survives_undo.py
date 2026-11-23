@@ -1,15 +1,9 @@
 """The suite's isolation outlives a test body's ``monkeypatch.undo()`` (R-658).
 
-``monkeypatch`` is one instance shared by the test body and every fixture that
-requests it, and ``undo()`` reverts all of it, so isolation recorded on it was
-once undone and a test overwrote the live configuration. The isolation holds
-its own instance; these tests undo the body's patches and then reach for
-everything it redirects.
-
-EVERY CHECK RESOLVES BEFORE IT WRITES, so a regression fails here without
-doing the damage it describes. The last test bans a body ``undo()`` on the
-shared instance everywhere in ``tests/`` but here, since modules keep guards
-of their own on it.
+The shared ``monkeypatch``'s ``undo()`` once reverted the isolation and a test
+overwrote the live configuration. These tests undo the body's patches and reach
+for everything redirected, resolving before writing, and the last bans a body
+``undo()`` on the shared instance anywhere else in ``tests/``.
 """
 
 from __future__ import annotations
@@ -54,9 +48,7 @@ def _inside(path: Path, root: Path) -> bool:
 def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
     _isolate_state_roots, _isolate_keychain, _block_real_library_paths, monkeypatch
 ):
-    """The exact 2026-09-20 shape: undo, resolve the config location, write.
-    The state directory rides along: the secrets presence index lives there.
-    The keychain stub, the library root and the refusals hold too."""
+    """The 2026-09-20 shape: undo, resolve the config location, write."""
     monkeypatch.setenv("CRATEKIT_R658_PROBE", "the body's own patch")
     monkeypatch.undo()
     assert "CRATEKIT_R658_PROBE" not in os.environ, "the undo did not run"
@@ -116,12 +108,8 @@ def _body_undoes(tree: ast.AST) -> list[int]:
 
 
 def test_no_test_undoes_the_shared_monkeypatch():
-    """Reverse one patch with a ``pytest.MonkeyPatch.context()`` around it.
-    Exempt by exact path, this file only. A scoped instance's own ``undo()``
-    reverts only what it recorded, so the ban is on the shared fixture's name.
-    Only a file whose text holds that spelling is parsed, since no call
-    without it is one. The walk answers an empty list for a clean tree, so it is
-    shown one first.
+    """Reverse one patch with a ``pytest.MonkeyPatch.context()`` around it; a scoped
+    instance's ``undo()`` is allowed. This file alone is exempt.
     """
     assert _body_undoes(ast.parse("def t(monkeypatch):\n    monkeypatch.undo()\n")) == [2]
     assert _body_undoes(ast.parse("zone.undo()\n")) == []

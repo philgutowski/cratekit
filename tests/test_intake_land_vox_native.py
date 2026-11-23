@@ -1,9 +1,8 @@
 """U127 (R-841): every native landing writes the vox My Tag from the file's score.
 
-A row whose ``voxlevel`` is at or above the calibrated cut joins carrying the
-tag in the same gated commit, read back by adoption's reader. An unscored file
-is named and never tagged on a guess, no calibration tags nothing and says
-why, and no tag on a row is taken off. D1 applies.
+A row at or above the calibrated cut joins carrying the tag in the same gated
+commit; an unscored file is named and never tagged, no calibration tags nothing,
+and no tag is taken off. D1 applies.
 """
 
 from __future__ import annotations
@@ -173,9 +172,7 @@ def test_a_landed_row_is_tagged_vox_exactly_when_its_score_clears_the_cut(
 def test_the_tag_is_written_under_the_vocals_category_and_a_file_with_no_score_is_named(
     calibrated, silence
 ):
-    """The writer is the vocals verb's, so the association hangs on the one vox
-    value the library holds, counted under the verb's own key; an unscored file
-    gets no tag and is named."""
+    """The vocals verb's writer, counted under its own key; an unscored file is named."""
     cfg = calibrated
     _scored(cfg, silence, "One.flac", 60)
     _scored(cfg, silence, "Two.flac", 30)
@@ -220,9 +217,8 @@ def test_a_library_with_another_category_only_gains_the_vocals_category(native_l
 def test_a_batch_mostly_unscored_carries_a_warning_with_its_code_on_the_gate_screen(
     calibrated, silence
 ):
-    """U181 (sitting 51's batch, which the plan said in one clause): more than half
-    the added rows unscored is a warning with a code naming the way on. The bound
-    is more than half: one in two is the line's alone."""
+    """U181: more than half the added rows unscored is a warning naming the way on;
+    one in two is the line's alone."""
     cfg = calibrated
     _scored(cfg, silence, "One.flac", 60)
     _scored(cfg, silence, "Two.flac", None)
@@ -286,9 +282,7 @@ def test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch(
     ]
     assert said in acted["warnings"][1]["message"]
 def test_a_tag_written_under_a_removed_category_is_said_and_never_counted(calibrated, silence):
-    """The writer finds the category by name and reads no marker, so over a removed
-    Vocals category it writes where nobody sees: the read back is adoption's own,
-    so the report counts no tag and the warning names the row."""
+    """Over a removed Vocals category the read back counts no tag and names the row."""
     cfg = calibrated
     _execute(cfg, "UPDATE djmdMyTag SET rb_local_deleted = 1 WHERE ID = ?", CATEGORY_ID)
     _scored(cfg, silence, "One.flac", 60)
@@ -305,9 +299,7 @@ def test_a_tag_written_under_a_removed_category_is_said_and_never_counted(calibr
 
 # Additive only
 def test_a_hand_placed_tag_on_a_row_already_present_survives(calibrated, silence):
-    """The landing tags only rows it adds and removes none: a row the collection
-    held, tagged by hand, keeps its tag whatever its file scores. Landed into
-    again by its own name (U164), so the batch goes back to its filed folder."""
+    """A row the collection held keeps its hand tag whatever its file scores (U164)."""
     cfg = calibrated
     _scored(cfg, silence, "Zero.flac", 1)
     code, first, _refused = _two_acts(_land())
@@ -333,9 +325,7 @@ def test_a_refused_commit_leaves_no_tag(calibrated, silence, monkeypatch):
 def test_the_screen_counts_the_tagged_rows_and_the_digest_moves_with_a_tag_and_the_cut(
     calibrated, silence
 ):
-    """The same file rescored across the cut is another plan, so an approval for
-    a row with no tag is not applied to one with a tag; and a recalibration is
-    another plan even when the answer for each file is the same at both cuts."""
+    """A rescore across the cut, or a recalibration, is another plan."""
     cfg = calibrated
     path = _scored(cfg, silence, "One.flac", 2)
     _scored(cfg, silence, "Two.flac", 1)
