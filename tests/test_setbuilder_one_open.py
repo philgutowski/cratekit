@@ -1,23 +1,8 @@
 """U266: the set builder's index reads each file through one container open.
 
-``read_index_tags`` used to ask ``core.tags.read_tag`` for each of the seven
-``INDEX_FIELDS`` in turn, and each call opened the file again, so the first
-``crate setbuild`` over a library (and the first after any template or cache
-version change) opened every file seven times. It now reads the seven fields
-through one :func:`cratekit.core.tags.read_tags` call, the shared one open
-reader the match index and the derivations already use.
-
-WHAT THESE TESTS HOLD, and why the count is the assertion. The saving is an
-open count, so the proof is the number of ``mutagen.File`` calls, which is
-exact on any machine, rather than a wall clock threshold, which is not. The
-index must not move by a single value, because it decides which tracks a set
-is built from: every reading below is compared with the seven single field
-reads that were the function's whole body before this unit, and literal
-expectations pin the values themselves, so an equality cannot hold merely
-because both sides read nothing.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real
-person, or a real track.
+The assertion is the ``mutagen.File`` call count, exact on any machine, and every
+reading is compared with the seven single field reads it replaced, plus literal
+expectations. Nothing below names a real volume, person or track (D1).
 """
 
 from __future__ import annotations
@@ -89,18 +74,11 @@ def _tagged(probes, folder: Path, suffix: str, name: str, fields: dict[str, obje
 # library keeps it (the solution on the head in the title tag).
 READINGS: dict[str, dict[str, object]] = {
     "every-field": {
-        "title": "08A - 124 - Sun Path",
-        "artist": "Nova Reef",
-        "genre": "Deep House",
-        "initialkey": "08A",
-        "energylevel": 6,
-        "voxlevel": 40,
-        "voxgender": "female",
+        "title": "08A - 124 - Sun Path", "artist": "Nova Reef", "genre": "Deep House",
+        "initialkey": "08A", "energylevel": 6, "voxlevel": 40, "voxgender": "female",
     },
     "lossy-marked": {
-        "title": "11B - 122 - [MP3] Low Tide",
-        "artist": "Alder",
-        "genre": "Garage",
+        "title": "11B - 122 - [MP3] Low Tide", "artist": "Alder", "genre": "Garage",
         "initialkey": "11B",
     },
     "two-fields": {"title": "Unheaded Work", "artist": "Birch"},
@@ -112,13 +90,8 @@ READINGS: dict[str, dict[str, object]] = {
 
 #: What the every field shape reads back as, on every container.
 EVERY_FIELD_READ = {
-    "title": "08A - 124 - Sun Path",
-    "artist": "Nova Reef",
-    "genre": "Deep House",
-    "initialkey": "08A",
-    "energylevel": "6",
-    "voxlevel": "40",
-    "voxgender": "female",
+    "title": "08A - 124 - Sun Path", "artist": "Nova Reef", "genre": "Deep House",
+    "initialkey": "08A", "energylevel": "6", "voxlevel": "40", "voxgender": "female",
 }
 
 
@@ -152,24 +125,13 @@ def test_the_values_read_are_the_values_written(tmp_path, probes):
     assert setbuilder.read_index_tags(path) == EVERY_FIELD_READ
     padded = _tagged(probes, tmp_path / "lib", ".mp3", "padded", READINGS["padded"])
     assert setbuilder.read_index_tags(padded) == {
-        "title": "03A - 120 - Spaced",
-        "artist": None,
-        "genre": "Disco",
-        "initialkey": None,
-        "energylevel": "7",
-        "voxlevel": None,
-        "voxgender": None,
+        "title": "03A - 120 - Spaced", "artist": None, "genre": "Disco", "initialkey": None,
+        "energylevel": "7", "voxlevel": None, "voxgender": None,
     }
 
 
-def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(
-    tmp_path, probes, opens
-):
-    """An MP4 freeform atom whose bytes are not text: that field alone reads None.
-
-    Today each field was its own read, so one bad field could not take its
-    neighbours with it. The one open reads per field leniently, and must agree.
-    """
+def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path, probes, opens):
+    """An MP4 freeform atom whose bytes are not text: that field alone reads None."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
     path = _tagged(
@@ -246,9 +208,8 @@ def _mixed_library(probes, root: Path) -> list[Path]:
                 # Its own work, so the duplicate collapse keeps every keyed file
                 # and the comparison below is over the whole walk.
                 fields["title"] = f"{fields['title']} {suffix.lstrip('.')} {offset}"
-            made.append(
-                _tagged(probes, root / suffix.lstrip("."), suffix, f"{case}-{offset}", fields)
-            )
+            folder = root / suffix.lstrip(".")
+            made.append(_tagged(probes, folder, suffix, f"{case}-{offset}", fields))
     stray = root / "stray.aac"
     stray.write_bytes(b"\x00" * 64)
     made.append(stray)
@@ -256,14 +217,8 @@ def _mixed_library(probes, root: Path) -> list[Path]:
     return made
 
 
-def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(
-    tmp_path, probes, opens
-):
-    """A cold walk over mixed containers: one open a file, the same index and cache.
-
-    Then a warm walk opens only the files whose read held no index field, which
-    the cache refuses to store by design, and answers the same index.
-    """
+def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(tmp_path, probes, opens):
+    """A cold walk over mixed containers: one open a file, the same index and cache."""
     root = tmp_path / "lib"
     made = _mixed_library(probes, root)
     walked = list(setbuilder.iter_audio(root))
@@ -286,13 +241,10 @@ def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(
     keyed = [p for p in made if p.stem.rsplit("-", 1)[0] in KEYED_SHAPES]
     assert len(keyed) >= 2 * len(CONTAINERS), "the fixture holds too few works"
     assert sorted(t.path for t in cold) == sorted(str(p) for p in keyed)
-    assert json.loads(cache.read_text(encoding="utf-8")) == json.loads(
-        today_cache.read_text(encoding="utf-8")
-    ), "the cache stored something other than today's reader stored"
+    stored = json.loads(cache.read_text(encoding="utf-8"))
+    assert stored == json.loads(today_cache.read_text(encoding="utf-8")), "the cache differs"
 
-    never_cached = sorted(
-        p for p in openable if not any(v is not None for v in _field_wise(p).values())
-    )
+    never_cached = sorted(p for p in openable if all(v is None for v in _field_wise(p).values()))
     assert never_cached, "the fixture has no wholly empty read to keep uncached"
     opens.clear()
 

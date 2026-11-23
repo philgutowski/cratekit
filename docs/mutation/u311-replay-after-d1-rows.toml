@@ -1,0 +1,463 @@
+name = "u311-replay-after-d1"
+pass_kind = "replay"
+
+[[rows]]
+id = "r221-a.E1_outcome_forgets_the_run"
+source = { table = "r221-a.json", id = "E1_outcome_forgets_the_run" }
+description = "The outcome records False whatever the run was, which is the state before this unit: a rehearsal and a real run render identically"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=dry_run)'
+new = '    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=False)'
+
+[[rows]]
+id = "r221-a.E2_outcome_payload_drops_the_key"
+source = { table = "r221-a.json", id = "E2_outcome_payload_drops_the_key" }
+description = "The renderer stops carrying the flag, so every reader of a rendered run is back to guessing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+        "dry_run": outcome.dry_run,
+        "portions": ['''
+new = '        "portions": ['
+
+[[rows]]
+id = "r338-a.B3_capture_is_a_copy"
+source = { table = "r338-a.json", id = "B3_capture_is_a_copy" }
+description = "_plan_database: capture the share with copy and not sync, so a grid rekordbox deleted stays in the mirror for ever and the mirror stops being the share"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '                    rclone, "sync", str(share), f"{kept}/current",'
+new = '                    rclone, "copy", str(share), f"{kept}/current",'
+
+[[rows]]
+id = "r338-a.B4_no_undo_archive"
+source = { table = "r338-a.json", id = "B4_no_undo_archive" }
+description = "_plan_database: drop the backup-dir, so a share emptied by a reinstall empties its only copy with nothing to undo it"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+                    "--backup-dir", f"{kept}/archive/{stamp}",
+'''
+new = ''
+
+[[rows]]
+id = "r338-a.B5_one_mirror_for_every_library"
+source = { table = "r338-a.json", id = "B5_one_mirror_for_every_library" }
+description = "share_destination: key every library's share under the one unrecorded folder, so two libraries under one snapshot root archive each other's grids"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]'
+new = '    key = SHARE_UNRECORDED'
+
+[[rows]]
+id = "r338-a.B6_identity_interpolated_raw"
+source = { table = "r338-a.json", id = "B6_identity_interpolated_raw" }
+description = "share_destination: interpolate the configured identity as typed and unvalidated, so a value with a separator writes the share somewhere else on the remote"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]'
+new = '    key = SHARE_UNRECORDED if identity is None else identity'
+
+[[rows]]
+id = "r338-a.B7_rehearsal_transfers_the_share"
+source = { table = "r338-a.json", id = "B7_rehearsal_transfers_the_share" }
+description = "TRANSFERRING_LABELS: leave the share's capture out, so a dry run really syncs gigabytes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+        SNAPSHOT_SHARE,
+        RESTORE_MIRROR,'''
+new = '        RESTORE_MIRROR,'
+
+[[rows]]
+id = "r338-a.B8_contained_share_copied_twice"
+source = { table = "r338-a.json", id = "B8_contained_share_copied_twice" }
+description = "_outside_share: read every layout as the outside one, so a share the mirror already carries is synced a second time"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return None
+    return analysis_store.share_root(cfg)'''
+new = '''
+    if False:
+        return None
+    return analysis_store.share_root(cfg)'''
+
+[[rows]]
+id = "r338-b.R1_missing_directory_refuses"
+source = { table = "r338-b.json", id = "R1_missing_directory_refuses" }
+description = "share_is_held: stop reading rclone's missing directory exit as no mirror, so every backup older than this fix refuses its restore"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        return False'''
+new = '''
+    if False:
+        return False'''
+
+[[rows]]
+id = "r338-b.R2_missing_directory_exit_moved"
+source = { table = "r338-b.json", id = "R2_missing_directory_exit_moved" }
+description = "RCLONE_DIRECTORY_NOT_FOUND: move the exit to 4, rclone's file not found, a nearby value, so a missing mirror refuses"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = 'RCLONE_DIRECTORY_NOT_FOUND = 3'
+new = 'RCLONE_DIRECTORY_NOT_FOUND = 4'
+
+[[rows]]
+id = "r338-b.R4_empty_listing_read_as_held"
+source = { table = "r338-b.json", id = "R4_empty_listing_read_as_held" }
+description = "share_is_held: read a listing that names nothing as a mirror, so a copy from an empty folder is planned and reported as pulled"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '    return bool(result.stdout.strip())'
+new = '    return True'
+
+[[rows]]
+id = "r338-b.R5_pulled_under_the_watch"
+source = { table = "r338-b.json", id = "R5_pulled_under_the_watch" }
+description = "_plan_restore_inside_the_gates: stop withholding a landing place the analysis watch covers, the defect the built in review found: a live restore ends refused after the database is replaced"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '        if not pull_share or analysis_store.is_watched(cfg, landing):'
+new = '        if not pull_share:'
+
+[[rows]]
+id = "r338-b.R6_switch_ignored"
+source = { table = "r338-b.json", id = "R6_switch_ignored" }
+description = "_plan_restore_inside_the_gates: ignore pull_share, so the bare metal recovery asks the remote about a share it will not pull and can be refused over it"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '        if not pull_share or analysis_store.is_watched(cfg, landing):'
+new = '        if analysis_store.is_watched(cfg, landing):'
+
+[[rows]]
+id = "r338-b.R7_restore_is_a_sync"
+source = { table = "r338-b.json", id = "R7_restore_is_a_sync" }
+description = "_plan_restore_inside_the_gates: pull the share with sync, which deletes every analysis file beside the restored database that the mirror never saw"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+                        rclone, "copy",
+                        f"{share_destination(cfg, identity=whose)}/current",'''
+new = '''
+                        rclone, "sync",
+                        f"{share_destination(cfg, identity=whose)}/current",'''
+
+[[rows]]
+id = "r338-b.R8_unmarked_snapshot_orphans_the_share"
+source = { table = "r338-b.json", id = "R8_unmarked_snapshot_orphans_the_share" }
+description = "_plan_restore_inside_the_gates: drop the fallback to this library's identity, so a snapshot whose marker failed to write looks for its share under the unrecorded folder"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '        whose = resolved.recorded_volume or cfg.library.volume_id'
+new = '        whose = resolved.recorded_volume'
+
+[[rows]]
+id = "r338-b.R9_contained_restore_asks_about_a_share"
+source = { table = "r338-b.json", id = "R9_contained_restore_asks_about_a_share" }
+description = "_plan_restore_inside_the_gates: treat every layout as the outside one on restore, so a contained library lists and pulls a share mirror it never wrote"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    share = ShareRestore.MIRRORED
+    if _outside_share(cfg) is not None:'''
+new = '''
+    share = ShareRestore.MIRRORED
+    if True:'''
+
+[[rows]]
+id = "r338-c.C1_absent_share_never_said"
+source = { table = "r338-c.json", id = "C1_absent_share_never_said" }
+description = "absent_analysis_share: never warn, so an outside share that is not a directory reads as a share that was carried"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    share = _outside_share(cfg)
+    if share is None or share.is_dir():
+        return ()'''
+new = '''
+    share = _outside_share(cfg)
+    if True:
+        return ()'''
+
+[[rows]]
+id = "r338-c.C2_carried_share_still_warned"
+source = { table = "r338-c.json", id = "C2_carried_share_still_warned" }
+description = "absent_analysis_share: warn whenever the share is outside the root, carried or not, which is the retired warning back under a new code"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    share = _outside_share(cfg)
+    if share is None or share.is_dir():
+        return ()'''
+new = '''
+    share = _outside_share(cfg)
+    if share is None:
+        return ()'''
+
+[[rows]]
+id = "r338-c.C3_rehearsed_restore_pulls_the_share"
+source = { table = "r338-c.json", id = "C3_rehearsed_restore_pulls_the_share" }
+description = "TRANSFERRING_LABELS: leave the share's restore out, so a rehearsed restore really downloads it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+        RESTORE_DATABASE,
+        RESTORE_SHARE,
+    }'''
+new = '''
+        RESTORE_DATABASE,
+    }'''
+
+[[rows]]
+id = "r388-a.M1_named_identity_listing_back_to_absence"
+source = { table = "r388-a.json", id = "M1_named_identity_listing_back_to_absence" }
+description = "A named snapshot whose identity marker listing exits 1 raises no-snapshot-available again, the defect the unit fixes"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which library'''
+new = '''
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which library'''
+
+[[rows]]
+id = "r388-a.M2_identity_listing_message_reworded"
+source = { table = "r388-a.json", id = "M2_identity_listing_message_reworded" }
+description = "Reword could not be listed to could not be read in the identity listing refusal (R-387's row)"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+could not "
+            f"be listed, so which library'''
+new = '''
+could not "
+            f"be read, so which library'''
+
+[[rows]]
+id = "r388-a.M3_contents_listing_back_to_absence"
+source = { table = "r388-a.json", id = "M3_contents_listing_back_to_absence" }
+description = "A named snapshot whose db folder listing exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore'''
+new = '''
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore'''
+
+[[rows]]
+id = "r388-a.M4_contents_listing_message_reworded"
+source = { table = "r388-a.json", id = "M4_contents_listing_message_reworded" }
+description = "Reword could not be listed to could not be read in the contents listing refusal, the sidecar row R-387 recorded as G9"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+could not "
+            f"be listed; a restore'''
+new = '''
+could not "
+            f"be read; a restore'''
+
+[[rows]]
+id = "r388-a.M5_root_listing_back_to_absence"
+source = { table = "r388-a.json", id = "M5_root_listing_back_to_absence" }
+description = "A snapshot root listing that exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the dated database snapshots under {root} could not be listed'''
+new = '''
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the dated database snapshots under {root} could not be listed'''
+
+[[rows]]
+id = "r388-a.M6_root_listing_message_reworded"
+source = { table = "r388-a.json", id = "M6_root_listing_message_reworded" }
+description = "Reword could not be listed to could not be read in the root listing refusal"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = 'snapshots under {root} could not be listed, so '
+new = 'snapshots under {root} could not be read, so '
+
+[[rows]]
+id = "r388-b.M10_named_stamp_absent_read_as_failure"
+source = { table = "r388-b.json", id = "M10_named_stamp_absent_read_as_failure" }
+description = "Drop the exit 3 branch on the identity listing, so a mistyped stamp sends the person to the remote"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A mistyped or pruned stamp.'''
+new = '''
+    if False:
+        # A mistyped or pruned stamp.'''
+
+[[rows]]
+id = "r388-b.M11_db_folder_absent_read_as_failure"
+source = { table = "r388-b.json", id = "M11_db_folder_absent_read_as_failure" }
+description = "Drop the exit 3 branch on the contents listing, so a cut off backup sends the person to the remote"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A backup cut off before its database folder was written.'''
+new = '''
+    if False:
+        # A backup cut off before its database folder was written.'''
+
+[[rows]]
+id = "r388-b.M7_share_listing_back_to_absence"
+source = { table = "r388-b.json", id = "M7_share_listing_back_to_absence" }
+description = "An analysis share listing that exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the analysis share mirror'''
+new = '''
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the analysis share mirror'''
+
+[[rows]]
+id = "r388-b.M8_share_listing_message_reworded"
+source = { table = "r388-b.json", id = "M8_share_listing_message_reworded" }
+description = "Reword could not be listed to could not be read in the share listing refusal"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+could not "
+            f"be listed (exit {result.returncode})'''
+new = '''
+could not "
+            f"be read (exit {result.returncode})'''
+
+[[rows]]
+id = "r388-b.M9_root_absent_read_as_failure"
+source = { table = "r388-b.json", id = "M9_root_absent_read_as_failure" }
+description = "Drop the exit 3 branch on the root listing, so a root no backup wrote is a listing failure"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A root no backup has written yet is an empty root, not a remote that
+        # did not answer, and its answer is to take a backup.
+        return ()
+'''
+new = ''
+
+[[rows]]
+id = "r388-c.M17_slug_respelled"
+source = { table = "r388-c.json", id = "M17_slug_respelled" }
+description = "Respell the enum value, so the engine raises a slug nothing reserved"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '    SNAPSHOT_LISTING_FAILED = "snapshot-listing-failed"'
+new = '    SNAPSHOT_LISTING_FAILED = "snapshot-listing-error"'
+
+[[rows]]
+id = "r1761.P11_move_nothing_dropped"
+source = { table = "r1761.json", id = "P11_move_nothing_dropped" }
+description = "_full_commands: a new library's mirror is not told to delete nothing, so a stray state folder archives the mirror"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                *(MOVE_NOTHING if move_nothing else ()),'
+new = '                *(()),'
+
+[[rows]]
+id = "r1761.P12_history_census_ignored"
+source = { table = "r1761.json", id = "P12_history_census_ignored" }
+description = "_history: the census is not read, so a failed run that removed the record leaves no history"
+file = "src/cratekit/modules/tools/backup_proof.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    census = backup_record.read_census(cfg)
+    if census is not None:'''
+new = '''
+    census = backup_record.read_census(cfg)
+    if False:'''
+
+[[rows]]
+id = "r1761.P13_history_record_ignored"
+source = { table = "r1761.json", id = "P13_history_record_ignored" }
+description = "_history: the record is not read, so an upgrade from a record with no census has no history"
+file = "src/cratekit/modules/tools/backup_proof.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        manifest is not None
+        and manifest.library_root == str(cfg.library.root)'''
+new = '''
+        manifest is None
+        and manifest.library_root == str(cfg.library.root)'''

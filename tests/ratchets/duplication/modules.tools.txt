@@ -3,5 +3,3 @@
 # ever removed, by hand or with: scripts/refactor_measure.py prune modules.tools
 # A line whose copy is gone fails nothing. To see where a window stands:
 # scripts/refactor_measure.py duplicates --where DIGEST
-bc1047105b2069c9
-bc1047105b2069c9

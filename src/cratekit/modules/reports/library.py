@@ -1,45 +1,17 @@
 """``report.library``: what this library actually contains, as one read-only answer.
 
-The source system has no such report. It has a playlist scanner that prints
-folder names, a genre auditor that prints unplaced tracks, and nothing at all
-that says how big the collection is, which declared buckets have never been used,
-or what tempo range the library actually spans. A person answering "do I have
-enough deep house to play a two hour set" reads a folder in rekordbox and counts.
+- **Genres**: one row per folder directly beneath the governed tree, counted by
+  DISTINCT track, since summing sub playlists double counts a track filed twice.
+- **Tempo spread**: read from the naming head through the DECLARED template,
+  never a private pattern; unreadable heads are counted, not dropped.
+- **Tree shape**: the declared depth beside the deepest governed path, since a
+  deeper tree is one the XML bridge cannot write.
+- **Gaps**: undeclared folders, unused buckets, entries without a head, and a
+  COUNT of entries in no playlist (``audit.coverage`` lists them).
 
-Four questions, and each one exists because its absence cost something:
+Nothing here is a policy: every number is a fact about the export.
 
-**Genres.** One row per folder directly beneath the governed tree, counted by
-DISTINCT track rather than by playlist membership. Summing the sub-playlists
-double counts every track filed under two energy bands, and that is the number a
-person would otherwise use to decide a folder is twice the size it is.
-
-**Tempo spread.** Read from the naming head through the DECLARED template, never
-through a pattern of this module's own. The source system's set builder hardcoded
-``key - bpm - title``, did not know about the lossy marker, and therefore matched
-nothing at all for every marked file; the number it produced was a confident
-answer over a fraction of the library. Entries whose head cannot be read are
-counted and reported rather than dropped, because "the spread of what I could
-read" and "the spread of the library" are different claims and only one of them
-is checkable.
-
-**Tree shape.** The declared depth beside the deepest path the export actually
-holds, with the folder and playlist counts. A tree deeper than the template
-declares is the shape the XML bridge cannot write, and knowing that before a
-write attempt is the difference between a report and an incident.
-
-**Gaps.** Three of them, kept separate because they are answered by three
-different acts: a declared bucket with no folder is a taxonomy nobody has grown
-into, an entry with no readable head is a file the naming pass has not reached,
-and an entry in no playlist at all is what ``audit.coverage`` reports in full.
-The last is a COUNT here and a list there, deliberately: a summary that inlined
-ten thousand track names would be a summary of nothing.
-
-**Nothing here is a policy.** No threshold decides a library is too small, no
-bucket is called under-used, and no tempo is called wrong. Every number is a fact
-about the export, and the judgement belongs to the person reading it.
-
-Layer note: MODULES. Gated by the ``reports`` toggle (R5), like the aging report
-it sits beside.
+Layer note: MODULES. Gated by the ``reports`` toggle (R5).
 """
 
 from __future__ import annotations
@@ -53,13 +25,7 @@ from cratekit.modules.reports.export import LibraryView
 
 @dataclass(frozen=True, slots=True)
 class GenreRow:
-    """One folder directly beneath the governed tree, and what it holds.
-
-    ``bucket_id`` is None for a folder the taxonomy does not declare. That is not
-    an error and is not reported as one: a person is allowed folders the template
-    has never heard of, and the row exists so they can see which ones those are
-    without the report deciding anything about them.
-    """
+    """One folder beneath the governed tree; ``bucket_id`` None if undeclared."""
 
     path: tuple[str, ...]
     tracks: int
@@ -75,14 +41,9 @@ class GenreRow:
 class TempoSpread:
     """The tempo range of the entries whose head could be read.
 
-    ``readable`` and ``unreadable`` are both carried, and the reason is the whole
-    point of this type: a spread over 40 percent of a library is a real number
-    about an unreal population, and a consumer that sees only the range cannot
-    tell that case from a complete one.
-
-    Every field is None when nothing was readable, rather than zero. Zero beats
-    per minute is a value a head can genuinely carry, and collapsing "no data"
-    into it is how an empty report renders as a library of stopped records.
+    ``readable`` and ``unreadable`` are both carried, so a partial spread is
+    visible as one. Every range field is None when nothing was readable, never
+    zero, which is a tempo a head can carry.
     """
 
     readable: int = 0
@@ -94,14 +55,7 @@ class TempoSpread:
 
 @dataclass(frozen=True, slots=True)
 class TreeShape:
-    """What the export's tree looks like beside what the template declares.
-
-    ``deepest`` counts the governed tree's own node, so a template declaring
-    depth 3 and an export whose deepest governed playlist path is three segments
-    long agree. Measuring one of them from the root and the other from the tree
-    is how two numbers that describe one structure come to disagree by one
-    forever.
-    """
+    """The export's tree beside the template; ``deepest`` counts the tree's node."""
 
     declared_depth: int
     deepest: int
@@ -137,19 +91,8 @@ class LibraryStatistics:
 
 
 def _bpm_of(name: str, *, template: NameTemplate) -> float | None:
-    """The tempo written into one name's head, or None when there is not one.
-
-    Parsed rather than pattern matched, and the value is taken as written: a head
-    carrying ``124`` and one carrying ``124.0`` are one tempo, and normalizing
-    through ``float`` is what makes them compare as one. A head with no ``bpm``
-    field at all, which a template declaring the field optional can produce,
-    answers None rather than raising, because an optional field that is absent is
-    a name this template accepts.
-    """
-    fields = parse_head(name, template=template)
-    if not fields:
-        return None
-    written = fields.get("bpm")
+    """The tempo in one name's head as a float, or None when there is none."""
+    written = (parse_head(name, template=template) or {}).get("bpm")
     if written is None:
         return None
     try:
@@ -161,9 +104,7 @@ def _bpm_of(name: str, *, template: NameTemplate) -> float | None:
 def _median(values: list[float]) -> float:
     """The middle value, averaged across the pair when the count is even.
 
-    Written here rather than imported because the allowlist governing this
-    package admits no module that provides one, and that restriction is the
-    reason the package cannot reach a disk. Four lines is the price.
+    Written here because the package's allowlist admits no module providing one.
     """
     ordered = sorted(values)
     middle = len(ordered) // 2
@@ -194,14 +135,8 @@ def tempo_spread(view: LibraryView, *, template: NameTemplate) -> TempoSpread:
 
 
 def genre_rows(view: LibraryView, *, declared: taxonomy.Taxonomy) -> tuple[GenreRow, ...]:
-    """One row per folder sitting directly under the governed tree.
-
-    DISTINCT TRACKS, counted through a set per folder. The energy bands under a
-    genre are separate playlists and a track sits in exactly one of them today,
-    but nothing in the format enforces that and the taxonomy's own ``single_sub``
-    shape exists because some buckets do not band at all. A sum over the
-    sub-playlists is right until the first library that files a track twice, and
-    then it is wrong in the direction that looks like success.
+    """One row per folder directly under the governed tree, counting DISTINCT
+    tracks through a set, since nothing stops a track being filed twice.
     """
     tree_display = declared.tree.display
     by_display = {bucket.display: bucket.id for bucket in declared.buckets}
@@ -228,20 +163,10 @@ def genre_rows(view: LibraryView, *, declared: taxonomy.Taxonomy) -> tuple[Genre
 
 
 def _depth_under(path: tuple[str, ...], tree_display: str) -> int:
-    """How deep ``path`` sits counting the governed tree's own node as one.
+    """How deep ``path`` sits, counting the governed tree's own node as one.
 
-    MEASURED FROM THE TREE, NOT FROM THE PLAYLIST ROOT, which is what
-    :class:`TreeShape` promises and what the first version of this module did not
-    do. A person who files the routing tree inside another folder has organized
-    their library, and measuring their tree from the export root made every path
-    one segment longer than the template declares, so a correctly shaped tree
-    reported itself as deeper than the XML bridge can write. Driven on a tree
-    nested one level down: declared depth 3, reported 4.
-
-    The FIRST occurrence is the anchor, matching the widening everywhere else in
-    this package: a tree carrying the declared display twice is measured from the
-    outermost one, so the answer describes the whole structure rather than the
-    deepest fragment of it.
+    Measured from the FIRST occurrence of the tree, not the playlist root, so a
+    tree filed inside another folder reports its true depth.
     """
     try:
         return len(path) - path.index(tree_display)
@@ -250,12 +175,8 @@ def _depth_under(path: tuple[str, ...], tree_display: str) -> int:
 
 
 def tree_shape(view: LibraryView, *, declared: taxonomy.Taxonomy) -> TreeShape:
-    """The declared depth beside the deepest path the governed tree actually holds.
-
-    Measured over the GOVERNED tree only. A catalog tree is declared with its own
-    node and a person's own top-level folders are theirs; counting either one
-    here would report a library as deeper than the template allows because of a
-    structure the template never claimed to describe.
+    """The declared depth beside the deepest path the GOVERNED tree holds; other
+    trees are structures the template never claimed to describe.
     """
     tree_display = declared.tree.display
     governed_folders = [
@@ -279,13 +200,7 @@ def tree_shape(view: LibraryView, *, declared: taxonomy.Taxonomy) -> TreeShape:
 def statistics(
     view: LibraryView, *, declared: taxonomy.Taxonomy, template: NameTemplate
 ) -> LibraryStatistics:
-    """Describe one export. The whole report, so a caller makes one call.
-
-    NOT CALLED ``library``, which is the module's own name, and not called ``run``
-    either. This repository already records what two things called ``run`` in one
-    call path cost, and a function whose dotted path repeats its module reads as a
-    package attribute rather than as a call at every site that uses it.
-    """
+    """Describe one export in one call; not ``library`` or ``run``, by rule."""
     rows = genre_rows(view, declared=declared)
     declared_ids = {bucket.id for bucket in declared.buckets}
     present_ids = {row.bucket_id for row in rows if row.bucket_id is not None}
@@ -305,16 +220,3 @@ def statistics(
             entries_in_no_playlist=sum(1 for entry in view.entries if not entry.playlists),
         ),
     )
-
-
-__all__ = [
-    "Gaps",
-    "GenreRow",
-    "LibraryStatistics",
-    "TempoSpread",
-    "TreeShape",
-    "genre_rows",
-    "statistics",
-    "tempo_spread",
-    "tree_shape",
-]
