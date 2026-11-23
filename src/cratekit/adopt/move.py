@@ -27,6 +27,13 @@ of, in the declaring bucket alone. A track leaves either like any other place;
 nothing is ever moved INTO one, and a track sitting in one that no entry moves
 it out of is listed, so the old playlist is never read as empty.
 
+A GENRE A PERSON MOVED (U339) is the one move across buckets. ``tag set``
+records, in :mod:`cratekit.adopt.genre_moves`, the bucket a row's old genre
+filed it in, and that bucket is asked for that row even when the track holds
+it once: the move adds the track to its new bucket's sub when adoption has not,
+and takes it out of every sub of the old one. Nothing else is moved across
+buckets, so a track a person put in a second genre folder by hand stays.
+
 Layer: modules. It performs no input. Everything it reads is handed in.
 """
 
@@ -98,14 +105,26 @@ class Move:
     holds: tuple[str, ...]
     energy: int | None
     genre: str
+    #: The bucket ``target`` is a sub of when it is not ``bucket``: a genre a
+    #: person moved (U339), whose ``remove`` and ``holds`` are the old bucket's.
+    #: Empty for every other move.
+    target_bucket: str = ""
+
+    @property
+    def into(self) -> str:
+        """The bucket the track is filed into: ``target_bucket``, else ``bucket``."""
+        return self.target_bucket or self.bucket
 
     @property
     def decided_by(self) -> str:
         """What decided the move, as the gate names it.
 
         A move with no reading leaves a former place for the no reading sub,
-        and what sent it there is its genre, never energy (R-797).
+        and what sent it there is its genre, never energy (R-797), as a move
+        across buckets is decided by the genre a person gave (U339).
         """
+        if self.target_bucket:
+            return DECIDED_BY_GENRE
         if self.kind == routing.Competing.BAND.value and self.energy is not None:
             return DECIDED_BY_ENERGY
         return DECIDED_BY_GENRE
@@ -128,10 +147,18 @@ class Left:
 
 
 def move_id_for(
-    tree: str, content_id: str, bucket: str, target: str, remove: tuple[str, ...]
+    tree: str,
+    content_id: str,
+    bucket: str,
+    target: str,
+    remove: tuple[str, ...],
+    target_bucket: str = "",
 ) -> str:
-    """The stable identifier of one move. A function of the work, as an entry's is."""
+    """The stable identifier of one move. A function of the work, as an entry's is.
+    A move within one bucket is identified as it was before U339."""
     work = {"tree": tree, "content": content_id, "bucket": bucket, "target": target}
+    if target_bucket:
+        work["into"] = target_bucket
     digest = hashlib.sha256(canonical_json({**work, "remove": list(remove)}).encode()).hexdigest()
     return f"{MOVE_ID_PREFIX}_{digest[:24]}"
 
@@ -139,7 +166,7 @@ def move_id_for(
 #: A move row's fields after its ``id``, in the order the gate shows them.
 _MOVE_ROW = (
     "content_id", "location", "bucket", "kind", "add", "remove", "holds", "target",
-    "decided_by", "energy", "genre",
+    "decided_by", "energy", "genre", "target_bucket",
 )  # fmt: skip
 
 
@@ -564,19 +591,96 @@ def standing_in(
     *,
     tree: str,
     refused: frozenset[str] = frozenset(),
+    moved: Mapping[str, frozenset[str]] | None = None,
 ) -> Move | Left | None:
     """What one track comes to in one bucket: a move, a track left, or neither.
 
     ONE BODY FOR THE PLAN AND FOR THE WORKER'S CHECK OF IT, over every bucket a
     move can name. The bucket the entry claims goes to :func:`standing`, R-758's
-    rule; every other goes to the tree path R-780 added. ``refused`` is
-    :func:`refused_buckets` over the plan the entry came from.
+    rule; a bucket a person moved the track's genre out of to
+    :func:`moved_out_of` (U339); every other to the tree path R-780 added.
+    ``refused`` is :func:`refused_buckets` over the plan the entry came from,
+    ``moved`` :func:`cratekit.adopt.genre_moves.read`.
     """
     if not placements.read:
         return None
     if claims(entry, bucket):
         return standing(entry, placements, declared, tree=tree)
+    if genre_moved_out_of(entry, bucket, declared, moved):
+        return moved_out_of(entry, bucket, placements, declared, tree=tree, refused=refused)
     return _standing_in_tree(entry, bucket, placements, declared, tree=tree, refused=refused)
+
+
+def genre_moved_out_of(
+    entry: PlanEntry,
+    bucket: str,
+    declared: taxonomy.Taxonomy,
+    moved: Mapping[str, frozenset[str]] | None,
+) -> bool:
+    """Whether a person moved this track's genre out of ``bucket`` (U339) and it
+    still does not name it: a genre moved back is the tree path's again."""
+    return (
+        bool(moved)
+        and bucket in (moved or {}).get(entry.content_id, frozenset())
+        and not claims(entry, bucket)
+        and not genre_names(entry, bucket, declared)
+    )
+
+
+def moved_out_of(
+    entry: PlanEntry,
+    bucket: str,
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    *,
+    tree: str,
+    refused: frozenset[str] = frozenset(),
+) -> Move | Left | None:
+    """What a track comes to in a bucket a person moved its genre out of (U339).
+
+    EVERY COMPETING SUB IT HOLDS THERE IS LEFT, ONE MEMBERSHIP AS MUCH AS TWO,
+    for the sub its new genre's entry resolved in the bucket that entry claims,
+    added when the track is not in it yet. Listed and never moved: a playlist
+    held under another name, an entry that claims no bucket (no reading), and a
+    new bucket a person's verdict refused or that names a former or split place.
+    """
+    kind, competing = routing.competing_subs(declared, bucket)
+    held = held_in_tree(entry, bucket, placements, declared, competing)
+    if not held:
+        return None
+    into = entry.bucket
+    unnamed = _unnamed(placements, entry, bucket, held)
+    target = entry.sub if claims(entry, into) else ""
+    if target and (
+        routing.former_place(declared, into, target) is not None
+        or routing.split_place(declared, into, target) is not None
+        or target not in routing.competing_subs(declared, into)[1]
+    ):
+        target = ""
+    if unnamed:
+        reason = LEFT_UNNAMED
+    elif into in refused or entry.withheld_by == WITHHELD_BY_VERDICT:
+        reason = LEFT_VERDICT
+    elif not target:
+        reason = LEFT_NO_READING
+    else:
+        reason = ""
+    if reason:
+        return _left(entry, bucket, kind, reason, target, held, unnamed)
+    return Move(
+        move_id=move_id_for(tree, entry.content_id, bucket, target, held, into),
+        content_id=entry.content_id,
+        location=entry.recorded,
+        bucket=bucket,
+        kind=str(kind.value),
+        target=target,
+        add="" if target in placements.holds(into, entry.content_id) else target,
+        remove=held,
+        holds=held,
+        energy=entry.energy,
+        genre=entry.genre,
+        target_bucket=into,
+    )
 
 
 def buckets_asked(
@@ -584,12 +688,14 @@ def buckets_asked(
     placements: Placements,
     declared: taxonomy.Taxonomy,
     competing: Mapping[str, tuple[routing.Competing, frozenset[str]]],
+    moved: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[str, ...]:
     """Every bucket the plan asks about one track, in the taxonomy's order.
 
     The bucket the entry claims, every bucket the track holds nothing in but a
     former place (R-797) or holds a split place no entry moves it out of
-    (U118), and every band bucket that holds the track twice or more, through
+    (U118), every bucket a person moved its genre out of that holds it at all
+    (U339), and every band bucket that holds the track twice or more, through
     two subs or two rows of one. Declared order, so two plans over one tree
     list the same rows in the same order and digest the same.
     """
@@ -606,6 +712,11 @@ def buckets_asked(
             asked.append(bucket.id)
             continue
         if held_in_split_place(entry, bucket.id, placements, declared):
+            asked.append(bucket.id)
+            continue
+        if genre_moved_out_of(entry, bucket.id, declared, moved) and held_in_tree(
+            entry, bucket.id, placements, declared, subs
+        ):
             asked.append(bucket.id)
             continue
         if not tree_path_decides(kind):
@@ -635,12 +746,17 @@ def _doubled_rows(
     return _left(entry, bucket, routing.Competing.BAND, LEFT_DOUBLED_ROWS, target, held, ())
 
 
-def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan:
+def build_move_plan(
+    plan: AdoptionPlan,
+    declared: taxonomy.Taxonomy,
+    moved: Mapping[str, frozenset[str]] | None = None,
+) -> MovePlan:
     """Every track holding a competing sub its reading does not name.
 
     OVER EVERY BUCKET THE TREE HOLDS EACH TRACK IN (R-780): the entry's own
     bucket first, as R-758 asked it, then every band bucket the track doubles
-    in. A TREE NOBODY READ PLANS NOTHING and the plan says ``unread``, so an
+    in, and every bucket ``moved`` says a person moved its genre out of (U339).
+    A TREE NOBODY READ PLANS NOTHING and the plan says ``unread``, so an
     approval given over it is not honoured once the tree can be read.
     """
     moves: list[Move] = []
@@ -651,9 +767,10 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
         }
         refused = refused_buckets(plan.entries)
         for entry in plan.entries:
-            for bucket in buckets_asked(entry, plan.placements, declared, competing):
+            for bucket in buckets_asked(entry, plan.placements, declared, competing, moved):
                 found = standing_in(
-                    entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused
+                    entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused,
+                    moved=moved,
                 )
                 if isinstance(found, Move):
                     moves.append(found)
@@ -686,7 +803,9 @@ def from_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[Move, ...]:
     """The moves an approval froze, read back out of a job's payload.
 
     Every field is read by name and none is defaulted, so a payload short of
-    one raises here rather than moving a track on half a row.
+    one raises here rather than moving a track on half a row, BUT
+    ``target_bucket``, which a job frozen before U339 does not carry and which
+    is empty for every move within one bucket.
     """
     return tuple(
         Move(
@@ -698,6 +817,7 @@ def from_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[Move, ...]:
             holds=tuple(str(sub) for sub in row["holds"]),
             energy=None if row["energy"] is None else int(row["energy"]),
             genre=str(row["genre"]),
+            target_bucket=str(row.get("target_bucket") or ""),
         )
         for row in rows
     )
