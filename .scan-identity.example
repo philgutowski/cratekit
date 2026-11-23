@@ -11,6 +11,13 @@
 # Entries shorter than four characters are ignored, as are common words like
 # "root" and "runner", because a guard that fires on ordinary prose gets muted.
 #
+# A detected name that is an ordinary English word (a machine called by a plain
+# word, say; the list is scripts/scan_ordinary_words.txt) is caught only where
+# it names the machine or volume: /Users/<name>/, /Volumes/<name>/, <name>.local
+# or <name>.lan. Anywhere else it is the word in its plain sense. A name declared
+# here is caught bare everywhere, in any case, so declare one you want caught in
+# prose too.
+#
 # This file is gitignored and must stay that way: it is the one file in the
 # repository that names a specific person's things.
 #
