@@ -236,7 +236,7 @@ def pending_units() -> dict[int, list[str]]:
         return {}
     owed: dict[int, list[str]] = {}
     for node in ast.walk(ast.parse(source.read_text())):
-        if not isinstance(node, ast.AnnAssign | ast.Assign) or not isinstance(node.value, ast.Dict):
+        if not isinstance(node, (ast.AnnAssign, ast.Assign)) or not isinstance(node.value, ast.Dict):
             continue
         targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
         if not any(isinstance(t, ast.Name) and t.id == "PENDING" for t in targets):
@@ -1444,8 +1444,8 @@ def main() -> int:
             help="judge every commit after this ref instead of one message file")
     closing("--pull-request-head", help="a pull request's head branch; a `cloud/N-slug` head is "
             "judged as closing card N, the trailer its merge will write")
-    residuals = command("residuals", "list the residual files waiting for a number, or number them",
-                        cmd_residuals)
+    residuals = command("residuals",
+                        "list the residual files waiting for a number, or number them", cmd_residuals)
     residuals("--land", action="store_true",
               help="on main, give each file the next R number and append it to the ledger")
     residuals("--search", nargs="+", metavar="WORD",
