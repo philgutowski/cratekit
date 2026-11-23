@@ -1,9 +1,8 @@
 """U167: ``crate analyze check`` reads rekordbox's result for the landed rows.
 
 The engine's pure parts on values built here, and the verb through the real
-dispatcher on the native landing suite's disposable database, rekordbox's
-analysis simulated by its columns, an analysis file and a key. The files are
-built byte by byte, and pyrekordbox's own reader parses one. D1 applies.
+dispatcher on a disposable database with rekordbox's analysis simulated by its
+columns, a byte built analysis file and a key. D1 applies.
 """
 
 from __future__ import annotations
@@ -54,11 +53,8 @@ def _tag(kind: bytes, header: bytes, body: bytes = b"") -> bytes:
 
 
 def anlz(tempos: list[int] | None, *, before: bytes = b"") -> bytes:
-    """An analysis file holding a beat grid with one tick per tempo, in hundredths.
-
-    ``None`` writes a file with no grid tag at all. ``before`` is a tag placed
-    ahead of the grid, so the walk has to step over one to find it.
-    """
+    """An analysis file whose grid has one tick per tempo, in hundredths; ``None``
+    writes no grid tag, ``before`` is a tag the walk must step over."""
     tags = before
     if tempos is not None:
         ticks = b"".join(
@@ -137,8 +133,7 @@ def test_a_missing_file_reads_missing(tmp_path):
             id="a-tag-shorter-than-its-header",
         ),
         pytest.param(
-            # A tag ahead of the grid declaring no length at all, which without
-            # the length guard would walk in place for ever (review round two).
+            # A tag ahead of the grid declaring no length, which the length guard refuses.
             lambda data: data[:28] + struct.pack(">4sII", b"PPTH", 16, 0) + data[40:],
             id="a-tag-of-length-zero-before-the-grid",
         ),
@@ -152,9 +147,7 @@ def test_a_damaged_file_reads_unreadable_never_absent(tmp_path, damage):
     path = tmp_path / "ANLZ0000.DAT"
     path.write_bytes(damage(anlz(CONSTANT_GRID)))
 
-    # READ ON A THREAD WITH A BOUND, because one damage here (a tag of length
-    # zero) walks in place for ever without the guard that refuses it, and a
-    # read that never returns must fail this test rather than hang the suite.
+    # Read on a thread with a bound, so a walk in place for ever fails rather than hangs.
     answered: list[rc.Grid] = []
     reader = threading.Thread(target=lambda: answered.append(rc.read_grid(path)), daemon=True)
     reader.start()
@@ -499,9 +492,7 @@ def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(native_lib
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
-    # NO LANDING RECORDED, said as that and not as a landing whose rows went:
-    # the two share a slug, and the mutation table's zero on this guard was the
-    # sentence nothing pinned.
+    # No landing recorded, said as that: it shares a slug with a landing whose rows went.
     assert "no closed landing is recorded" in envelope["cause"]["message"]
 
 
@@ -582,8 +573,7 @@ def test_no_file_under_the_library_is_opened_for_writing(native_library, silence
             writes.append((str(path), f"flags {flags:#o}"))
         return real_os_open(path, flags, *args, **kwargs)
 
-    # A WATCH OF ITS OWN, undone when the drive ends, so the fixtures' shared
-    # patches stay in place for their own teardown.
+    # A watch of its own, undone when the drive ends, so the shared patches stay.
     with pytest.MonkeyPatch.context() as watch:
         watch.setattr(builtins, "open", watching_open)
         watch.setattr(io, "open", watching_open)
@@ -704,17 +694,11 @@ def test_a_removed_dyn_mark_does_not_excuse_a_variable_grid(native_library, sile
     assert _items(envelope)["Charlie"]["dyn"] is False
 
 
-# ---------------------------------------------------------------------------
 # U259: the collection read in a handful of statements, the answer unchanged
-# ---------------------------------------------------------------------------
 #
-# The reference below is a VERBATIM COPY of the per row reads the check made
-# before U259, kept here as the answer the batched reads must equal: the scope
-# of every row rekordbox has not analysed judged by reading each collection row
-# again by its ID, and each row in scope read twice more, once for the clear's
-# judgment and once for its key, title head and analysis path. It reads through
-# ``analyzed.member``, the read by ID, so it holds today's judgment of a row as
-# well as today's reads.
+# The reference below is a verbatim copy of the per row reads the check made
+# before U259, the answer the batched reads must equal. It reads through
+# ``analyzed.member``, so it holds today's judgment of a row as well as its reads.
 
 
 def _unanalysed_today(db):
@@ -801,11 +785,9 @@ def _both(monkeypatch, argv: list[str]) -> tuple[dict, dict]:
 def _mixed(cfg: config.Config, silence: Path) -> None:
     """Every kind of row the check tells apart, landed into INBOX / Analyze.
 
-    Alpha analysed on a constant grid with an equal key; Bravo on a variable
-    grid, marked dyn; Charlie on a variable grid, unmarked; Delta not analysed;
-    Echo marked analysed with no analysis path; Foxtrot analysed with its file
-    missing; Golf analysed with no key; Hotel removed by rekordbox; India
-    deleted from the collection while its membership stays.
+    Alpha constant grid; Bravo variable, marked dyn; Charlie variable, unmarked;
+    Delta not analysed; Echo no analysis path; Foxtrot file missing; Golf no key;
+    Hotel removed by rekordbox; India deleted with its membership kept.
     """
     _land(cfg, silence, "2026-10-31_mixed", MIXED)
     _visit(cfg, "Alpha")
@@ -851,8 +833,7 @@ def test_the_mixed_library_reads_as_the_per_row_reads_read_it_in_inbox_analyze(
         "Golf": rc.ANALYSED,
         "Hotel": rc.GONE,
     }
-    # India has left the collection, so it has no title to be named by: it is
-    # the one row whose title is empty, and it is read as gone.
+    # India left the collection, so its empty title reads as gone.
     gone = [item for item in summary["items"] if not item["title"]]
     assert [item["state"] for item in gone] == [rc.GONE]
     assert gone[0]["why"] == analyzed.NO_ROW
@@ -871,8 +852,7 @@ def test_the_mixed_library_reads_as_the_per_row_reads_read_it_over_every_row(
     summary = batched["data"]["summary"]
     assert summary["scope"] == rc.SCOPE_UNANALYSED
     waiting = sorted(item["title"].rsplit(" - ", 1)[-1] for item in summary["items"])
-    # Delta and Echo wait, Echo for its missing path; nothing removed or gone is
-    # in this scope, and no row analysed is.
+    # Delta and Echo wait; nothing removed, gone or analysed is in scope.
     assert {"Delta", "Echo"} <= set(waiting)
     assert not {"Alpha", "Bravo", "Charlie", "Foxtrot", "Golf", "Hotel", "India"} & set(waiting)
 
@@ -903,11 +883,8 @@ def _empty_analyze(cfg: config.Config, root_id: str) -> None:
 def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
     native_library, silence, monkeypatch, scope
 ):
-    """The first row that cannot say whether it was removed refuses, the same row and words.
-
-    Two such rows, so the test pins WHICH refuses: the first in the scope's
-    order, Bravo, as when each row was read by itself.
-    """
+    """The first row in scope order that cannot say whether it was removed refuses,
+    Bravo of two, with the same words as the per row read."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     if scope == rc.SCOPE_UNANALYSED:
@@ -929,9 +906,7 @@ def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
 def test_a_row_the_binding_cannot_load_after_one_that_refuses_still_refuses_as_it_did(
     native_library, silence, monkeypatch
 ):
-    """A batch read loads every row first, so an unparseable later row must not
-    pre-empt an earlier row's refusal.
-    """
+    """An unparseable later row does not pre-empt an earlier row's refusal."""
     cfg, _root = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     conn = sqlite3.connect(cfg.library.db_path)
@@ -953,10 +928,7 @@ def test_a_row_the_binding_cannot_load_after_one_that_refuses_still_refuses_as_i
 def test_a_row_whose_id_is_not_text_stays_out_of_every_row_as_it_did(
     native_library, silence, monkeypatch
 ):
-    """Review round one: a collection row whose ID is stored as bytes was never
-    found by a read of its ID, so it was never in the scope of every row not
-    analysed. Judged in hand it would be, so the check leaves it out as before.
-    """
+    """A collection row whose ID is stored as bytes stays out of scope, as before."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     _empty_analyze(cfg, root_id)
@@ -998,10 +970,8 @@ def _redeclare_content_id(cfg: config.Config, declared: str) -> None:
 def test_a_collection_whose_ids_are_stored_as_integers_reads_as_it_did(
     native_library, silence, monkeypatch, scope
 ):
-    """Review round two: an ID column of integer affinity holds integers, which a
-    read by the ID's text always found. Round one's fix left every such row out
-    of the scope of every row not analysed, and the check answered nothing to
-    check over rows still waiting; only an ID stored as bytes is left out."""
+    """An ID of integer affinity is in scope, as the read by its text found it; only
+    an ID stored as bytes is left out."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     _visit(cfg, "Alpha")
@@ -1101,10 +1071,7 @@ def _statements(monkeypatch, *, scope: str) -> tuple[int, int]:
 def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
     native_library, silence, monkeypatch, scope
 ):
-    """The statements one check issues are the same at two sizes, and few (U259).
-
-    The count is the assertion, not a clock.
-    """
+    """The statements one check issues are the same at two sizes, and few (U259)."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     analyze = _analyze_id(cfg, root_id) if scope == rc.SCOPE_ANALYZE else None
@@ -1120,20 +1087,17 @@ def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
     assert (small, large) == (_HANDFUL, _HANDFUL)
 
 
-#: The statements one check issues whatever the library's size, measured at 6
-#: in both scopes on 2026-11-12. Pinned exactly, since one more is a read the
-#: check did not make before (review round one: a bound of 8 let the
-#: unanalysed rows be read a second time). A check that needs another
-#: statement for a reason of its own raises this with the reason.
+#: The statements one check issues whatever the library's size, measured at 6 on
+#: 2026-11-12. Pinned exactly: a bound of 8 let rows be read twice. A new
+#: statement with a reason of its own raises this with the reason.
 _HANDFUL = 6
 
 
 def test_a_scope_past_one_chunk_is_read_a_statement_a_500_and_answers_as_the_per_row_reads(
     native_library, silence, monkeypatch
 ):
-    """1,015 rows in INBOX / Analyze, three chunks of 500, with a row removed, a row
-    deleted and a row analysed past the first chunk: the answer is the per row
-    reads' and the statements are two more than one chunk's."""
+    """1,015 rows, three chunks, with a row removed, deleted and analysed past the
+    first: the answer is the per row reads' at two statements over one chunk's."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     _clone(cfg, "Alpha", 1010, analyze=_analyze_id(cfg, root_id))

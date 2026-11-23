@@ -1,11 +1,8 @@
 """Tests for ``scripts/behaviour_compare.py`` and the stage under ``tests/behaviour`` (U297).
 
-The comparison is what a refactor shows instead of an argument: the branch
-prints and writes what its base does. A comparison that misses a changed byte
-certifies a behaviour change as none, and a capture that could run against a
-real library would be worse than no capture. So each kind of difference is
-planted alone in a capture small enough to read, each refusal is driven, and
-one test runs the real capture twice over every shipped scenario.
+A comparison that misses a changed byte certifies a behaviour change as none,
+so each kind of difference is planted alone in a small capture, each refusal is
+driven, and one test runs the real capture twice over every shipped scenario.
 """
 
 from __future__ import annotations
@@ -33,8 +30,8 @@ SCRIPT = REPO_ROOT / "scripts" / "behaviour_compare.py"
 #: The script as the stage loaded it, so a refusal raised there is the class caught here.
 compare = stage_fixtures.compare
 
-#: A path that is not inside the temporary directory wherever the checkout is: the
-#: directory the temporary one sits in. Never created; the refusals only resolve it.
+#: The directory the temporary one sits in, so outside it wherever the checkout
+#: is. Never created; the refusals only resolve it.
 OUTSIDE = compare.temporary_directory().parent / "cratekit-outside-the-temporary-directory"
 
 #: The two words a capture's process is known by: its id and when it started.
@@ -42,9 +39,7 @@ FIRST_PROCESS = ["3409", "1795265299.040"]
 SECOND_PROCESS = ["3467", "1795265311.350"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Building a capture small enough to read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _database(path: Path, rows: list[tuple[int, str]], *, tables: tuple[str, ...] = ("tracks",)):
@@ -122,9 +117,7 @@ def _differences(first: Path, second: Path) -> list[str]:
     return [line for line in found if not line.startswith("    ")]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # compare: equal, and each difference alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_two_captures_of_one_world_are_equal_though_two_processes_took_them(tmp_path, capsys):
@@ -430,10 +423,7 @@ NAMED_LIKE = "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY
 
 
 def test_a_column_named_like_a_constraint_is_a_column_and_keeps_its_place():
-    """The review's finding: ``checksum`` and ``unique_key`` were read as constraints.
-
-    Two such columns swapped in an empty table compared as no difference.
-    """
+    """``checksum`` and ``unique_key`` are columns, so swapping two is a difference."""
     swapped = NAMED_LIKE.replace("checksum TEXT, unique_key TEXT", "unique_key TEXT, checksum TEXT")
     canonical = compare.canonical_declaration("table", NAMED_LIKE)
     assert canonical != compare.canonical_declaration("table", swapped)
@@ -613,9 +603,7 @@ def test_a_long_difference_is_cut_unless_asked_for_whole(tmp_path, capsys):
     assert "+line 199" in capsys.readouterr().out
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The one declared equivalence: a capture's own words
-# ═══════════════════════════════════════════════════════════════════════════
 
 WORDS = [("3409", "3467"), ("1795265299.040", "1795265311.350")]
 
@@ -702,9 +690,7 @@ def test_another_files_inode_in_that_row_is_a_difference(tmp_path):
     assert found.startswith("write/route: file state/inode.txt: bytes differ, first at offset ")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # compare: what it will not read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_captures_taken_under_two_roots_are_refused(tmp_path, capsys):
@@ -765,9 +751,7 @@ def test_a_capture_taken_with_another_python_says_so(tmp_path):
     assert "taken with Python" in summary and "3.99.0" in summary
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # capture: what it refuses before anything runs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -1042,13 +1026,7 @@ def test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open(
 def test_a_scenario_file_that_collected_nothing_keeps_the_capture_open(
     tmp_path, monkeypatch, capsys
 ):
-    """The review's second finding on records: a file skipped as it was imported.
-
-    Its fixtures come from a test module that skips itself where an extra is
-    absent, so the file collects no scenario, the run's list never names one,
-    and base and branch would compare clean without it. Every scenario file
-    the run was handed must have left a record.
-    """
+    """A scenario file skipped as it was imported collects nothing, and is caught."""
     out = tmp_path / "out"
     monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
     checkout = _checkout(tmp_path, "write.py", "analysis.py")
@@ -1147,14 +1125,8 @@ def test_a_checkout_with_no_scenario_files_is_refused(tmp_path, capsys, no_run):
 def test_a_run_that_failed_with_every_record_written_is_not_a_capture(
     tmp_path, monkeypatch, capsys
 ):
-    """Every scenario recorded and listed, and the run still exited 1.
-
-    A fixture that fails as it is torn down does this: the stage has written
-    its record by then. Nothing is missing, so the run's own exit code is the
-    one thing that says a scenario went wrong, and the mutation table of U297
-    found no test held it: the tests of a failed run above also trip the
-    reading of what was left unrecorded.
-    """
+    """Every scenario recorded, and the run still exited 1, as a fixture failing at
+    teardown does: the exit code alone says it (U297)."""
     out = tmp_path / "out"
     passing = _passing_run(out, tmp_path, ["write/route"])
 
@@ -1212,9 +1184,7 @@ def test_the_suite_does_not_collect_a_scenario_file():
         assert not stem.startswith("test_") and not stem.endswith("_test.py"), name
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The source a capture runs against
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _git(root: Path, *args: str) -> None:
@@ -1264,9 +1234,7 @@ def test_a_revision_git_does_not_know_is_refused(checkout, tmp_path):
         compare.place_source(checkout, "no-such-branch", tmp_path / "placed")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The stage: roots, pins and the refusal inside the run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_config_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp_path):
@@ -1340,12 +1308,8 @@ def test_fails_after_a_command(stage):
 
 
 def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
-    """The stage's fixtures around a scratch scenario file, in a run of their own.
-
-    The file lives outside the repository, so the suite's conftest and the
-    stage's are loaded as plugins by name: the same fixtures, set up in the
-    same order, around scenarios written to trip each refusal.
-    """
+    """The stage's fixtures around a scratch scenario file outside the repository,
+    in a run of their own with both conftests as plugins."""
     scenarios = tmp_path / "scenarios"
     scenarios.mkdir(exist_ok=True)
     (scenarios / "wired.py").write_text(WIRED_SCENARIOS, encoding="utf-8")
@@ -1362,13 +1326,8 @@ def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
 
 
 def test_in_a_real_run_only_a_scenario_that_took_the_stage_and_passed_is_recorded(tmp_path):
-    """Each refusal is a function with a test of its own; this holds that the fixtures call them.
-
-    Five scenarios, one of which should record. The one with no stage is
-    refused at set up, the skipped one and the two that fail leave nothing,
-    and the run still lists all five as collected, which is what lets the
-    capture see the four are missing.
-    """
+    """The fixtures call each refusal: of five scenarios one records, and all five
+    are listed as collected, so the capture sees the four that are missing."""
     done = _wired_run(tmp_path)
     assert done.returncode == 1, done.stdout[-2000:]
     assert "would pass and leave no record" in done.stdout
@@ -1480,11 +1439,8 @@ def test_the_pins_hold_the_clock_and_count_the_ids_and_come_off_again():
 
 
 def test_a_reference_that_outlives_the_pins_is_the_real_thing_again():
-    """The review's finding: a default argument bound while pinned kept the pinned clock.
-
-    Nothing can reach such a reference to put the real name back, so each
-    pinned name asks whether the pins are on every time it is called.
-    """
+    """A default argument bound while pinned does not keep the pinned clock: each
+    pinned name asks whether the pins are on every call."""
     with pytest.MonkeyPatch.context() as patch:
         unpin = behaviour.pin(patch)
 
@@ -1563,20 +1519,12 @@ def test_the_process_is_known_by_its_id_and_its_start_as_the_product_spells_them
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The real thing: every shipped scenario, captured twice
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
-    """Every shipped scenario, run twice by the script itself, in two processes.
-
-    Under one root, so the paths agree, and against the working tree both
-    times, so an uncommitted edit to the product cannot make this fail: what
-    is held is that a capture depends on nothing but the tree it ran. This is
-    the test that goes red when a scenario prints or writes something the
-    stage did not pin.
-    """
+    """Every shipped scenario, run twice by the script in two processes under one
+    root: a capture depends on nothing but the tree it ran."""
     root = tmp_path / "root"
     captures = []
     for name in ("first", "second"):
@@ -1828,8 +1776,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     )
     rows = landed["library/db/master.db"]["tables"]["djmdContent"]
     assert sum("One.flac" in row or "Two.flac" in row for row in rows) == 2
-    # The roots moved into the scenario's own directory: the job queue the
-    # verb wrote is in the capture, not in a directory the suite numbered.
+    # The roots moved into the scenario's own directory, so the job queue is captured.
     written = json.loads((captures[0] / "write/guarded_tree_write/files.json").read_text())
     assert written["state/cratekit/jobs/queue.db"]["kind"] == "database"
     assert written["library/db/master.db"]["kind"] == "database"

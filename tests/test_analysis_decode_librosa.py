@@ -35,8 +35,7 @@ def _in_key(tonic: int, seconds: float) -> np.ndarray:
         piece = 0.06 * tone * fade
         stop = min(out.size, start + chord)
         out[start:stop] += piece[: stop - start]
-    # A kick on every beat at 124, with a sharp attack, so the tempo survives
-    # a lossy encode and the head is compared on its key and its tempo.
+    # A sharp kick on every beat at 124, so the tempo survives a lossy encode.
     beat = 60.0 / 124.0
     length = int(0.12 * rate)
     k = np.arange(length) / rate
@@ -68,11 +67,8 @@ def keyed(tmp_path_factory):
 @pytest.mark.parametrize("fallback", ["installed", "none"])
 @pytest.mark.parametrize("codec", ["aac", "alac"])
 def test_an_m4a_gets_a_head_and_the_key_the_flac_gets(keyed, codec, fallback, request):
-    """The card's defect, red on librosa 1.0 before this unit: the M4A was
-    ``skipped-undecodable`` while the same audio as FLAC was analysed.
-
-    Once with the installed librosa as it is, and once with its fallback taken
-    away, so the decode through ffmpeg is driven whichever release is here."""
+    """The card's defect: an M4A was ``skipped-undecodable`` on librosa 1.0 while the
+    same audio as FLAC was analysed. Driven with and without librosa's fallback."""
     if fallback == "none":
         request.getfixturevalue("no_fallback")
     flac = detect.analyse_file(keyed["flac"])
@@ -99,11 +95,7 @@ def test_an_alac_m4a_measures_exactly_what_its_wav_measures(keyed):
 @pytest.mark.parametrize("name", ["wav", "flac", "aiff", "mp3"])
 @pytest.mark.parametrize("rate", [detect.MEASURE_RATE, vocal.MODEL_SAMPLE_RATE])
 def test_a_format_libsndfile_reads_decodes_exactly_as_librosa_load(keyed, name, rate, monkeypatch):
-    """The card's merge bar: nothing changes for a format that decodes today.
-
-    Bit for bit against the call each site made before this unit, and ffmpeg
-    is never started for such a file.
-    """
+    """Nothing changes for a format that decodes today, bit for bit, without ffmpeg."""
     expected, expected_rate = librosa.load(str(keyed[name]), sr=rate, mono=True)
     monkeypatch.setattr(decode, "_ffmpeg_samples", _never)
     samples, got_rate = decode.load(keyed[name], rate)
@@ -149,12 +141,10 @@ def test_an_offset_and_a_duration_between_frames_cut_as_libsndfile_cuts(keyed):
 
 
 def test_the_energy_measure_takes_the_centre_of_an_m4a(keyed, monkeypatch, no_fallback):
-    """The segment is centred on the length ``decode.duration`` reads, which
-    for an M4A on librosa 1.0 only the ffmpeg decode can give. Shortened so
-    the 30 second fixture is longer than it."""
+    """The segment is centred on ``decode.duration``, which for an M4A on librosa 1.0
+    only ffmpeg gives; shortened under the 30 second fixture."""
     monkeypatch.setattr(energy, "SEGMENT_SECONDS", 10.0)
-    # The middle ten seconds of the thirty, read and measured without the
-    # code under test choosing where they are.
+    # The middle ten seconds, chosen without the code under test.
     middle, rate = librosa.load(
         str(keyed["wav"]), sr=energy.MEASURE_RATE, mono=True, offset=10.0, duration=10.0
     )
@@ -175,10 +165,8 @@ def test_a_file_libsndfile_opens_and_cannot_read_is_never_handed_to_ffmpeg(keyed
 
 
 def test_an_m4a_an_older_librosa_reads_itself_is_left_to_it(keyed, monkeypatch):
-    """An older librosa decodes an M4A through its own fallback, and its read
-    is what the analysis measures, mixed and resampled as its own ``load``
-    does after the read (U264), so no result on such a copy moves. Simulated
-    here by a read that succeeds."""
+    """An older librosa's own fallback read is what is measured, mixed and resampled
+    as its ``load`` does (U264), simulated by a read that succeeds."""
     own = _awkward_stereo(20_001, seed=3).T
     asked = []
 
@@ -206,13 +194,8 @@ def test_a_truncated_m4a_is_still_undecodable(keyed, tmp_path, no_fallback):
 
 @pytest.fixture
 def no_fallback(monkeypatch):
-    """librosa as 1.0 ships it, whichever release is installed.
-
-    An older librosa reads an M4A through its own fallback, which finds
-    ffmpeg by itself, so a test of what this package does when librosa
-    cannot read a file has to take that fallback away. Its own read of a file
-    libsndfile opens is left as it is.
-    """
+    """librosa as 1.0 ships it: an older release's M4A fallback, which finds ffmpeg
+    by itself, is taken away; its read of a libsndfile file is left."""
     shipped = librosa.load
 
     def load(path, *args, **kwargs):
@@ -242,13 +225,8 @@ def test_the_vocal_pass_decodes_an_m4a_at_the_models_rate(keyed):
     assert np.array_equal(samples, expected)
 
 
-# ---------------------------------------------------------------------------
-# U264: the mono mix is one add, and the samples are the same bits
-# ---------------------------------------------------------------------------
-#
-# ``array_equal`` reads minus zero as equal to plus zero, and a zero's sign is
-# the one thing the ways of mixing two channels differ in, so every claim here
-# compares the bits.
+# U264: the mono mix is one add, and the samples are the same bits. ``array_equal``
+# reads minus zero as plus zero, the one thing mixes differ in, so bits are compared.
 
 #: The smallest float32 subnormal.
 _TINY = np.float32(1.401298464324817e-45)
@@ -263,11 +241,8 @@ def _same_bits(got, expected) -> bool:
 
 
 def _awkward_stereo(frames: int, seed: int) -> np.ndarray:
-    """Frames by two channels of float32 that hold every value a mix can mistake.
-
-    Silence in both signs, a frame of minus zero in both channels, the
-    smallest subnormals, a clipped run, noise and random bit patterns.
-    """
+    """Float32 frames holding every value a mix can mistake: signed zeros, subnormals,
+    a clipped run, noise and random bit patterns."""
     rng = np.random.default_rng(seed)
     out = rng.uniform(-1, 1, (frames, 2)).astype(np.float32)
     out[: frames // 8] = 0.0
@@ -277,9 +252,7 @@ def _awkward_stereo(frames: int, seed: int) -> np.ndarray:
     out[frames // 4 + 128 : frames // 4 + 192] = [3 * _TINY, -0.0]
     out[frames // 3 : frames // 3 + 999] = [1.0, -1.0]  # clipped
     patterns = np.frombuffer(rng.integers(0, 2**32, 2 * 4096, dtype=np.uint32).tobytes(), "<f4")
-    # Finite and under 1e38, so no frame's sum overflows: a finite pair whose
-    # sum overflows is refused as librosa refuses it, which
-    # ``test_audio_that_is_not_finite_is_refused_as_before`` drives.
+    # Finite and under 1e38, so no sum overflows; that refusal has its own test.
     keep = np.isfinite(patterns) & (np.abs(patterns) < 1e38)
     patterns = np.where(keep, patterns, np.float32(0.25)).reshape(-1, 2)
     out[frames // 2 : frames // 2 + 4096] = patterns
@@ -288,8 +261,7 @@ def _awkward_stereo(frames: int, seed: int) -> np.ndarray:
 
 @pytest.fixture(scope="module")
 def awkward(tmp_path_factory):
-    """Generated files whose decode exercises the mix: stereo of odd length as
-    float and 16 bit WAV, FLAC and MP3, a mono WAV and a three channel WAV."""
+    """Generated files whose decode exercises the mix, in every channel count."""
     root = tmp_path_factory.mktemp("awkward")
     stereo = _awkward_stereo(NATIVE_RATE * 7 + 1, seed=264)
     made = {"float": root / "float.wav"}
@@ -309,20 +281,14 @@ def awkward(tmp_path_factory):
     "layout", ["transposed", "contiguous"], ids=["soundfile-view", "channels-first"]
 )
 def test_the_mix_is_the_installed_librosas_to_mono_bit_for_bit(layout):
-    """The installed release's own ``to_mono`` is the reference, on the values
-    where the ways of mixing could differ, in the layout each decoder hands
-    over: soundfile's frames by channels transposed, and a contiguous copy."""
+    """The installed release's ``to_mono`` is the reference, in each decoder's layout."""
     frames = _awkward_stereo(300_001, seed=7)
     stereo = frames.T if layout == "transposed" else np.ascontiguousarray(frames.T)
     assert _same_bits(decode.mono(stereo), librosa.to_mono(stereo))
 
 
 def test_the_installed_release_takes_the_one_add(monkeypatch):
-    """The equality above is the one add's, not a fallback that equals itself.
-
-    On a release not yet measured the mix is ``to_mono``'s by design, and this
-    says so rather than passing over it.
-    """
+    """The equality above is the one add's; an unmeasured release says it is ``to_mono``'s."""
     measured = decode._measured_zero_rule(librosa.__version__) is not None
     calls = []
     real = librosa.to_mono
@@ -364,8 +330,7 @@ def test_an_unmeasured_release_is_to_monos(monkeypatch):
 @pytest.mark.parametrize("name", ["float", "pcm", "flac", "mp3", "mono", "three"])
 @pytest.mark.parametrize("rate", [detect.MEASURE_RATE, vocal.MODEL_SAMPLE_RATE])
 def test_a_file_decodes_to_the_bits_librosa_load_gives(awkward, name, rate, monkeypatch):
-    """The card's bar: the samples the head and the vocal pass take are the
-    bits ``librosa.load`` returns, at both rates, for every channel count."""
+    """The samples taken are the bits ``librosa.load`` returns, at both rates."""
     expected, expected_rate = librosa.load(str(awkward[name]), sr=rate, mono=True)
     monkeypatch.setattr(decode, "_ffmpeg_samples", _never)
     samples, got_rate = decode.load(awkward[name], rate)
@@ -383,8 +348,7 @@ def test_an_offset_and_a_duration_decode_to_librosas_bits(awkward, name):
 
 
 def test_a_float_file_keeps_its_minus_zero_frames_as_librosa_does(awkward):
-    """The float WAV is where a zero's sign reaches the mix: the native read,
-    at the file's own rate, is the mix with no resampler after it."""
+    """The float WAV at its own rate is the mix with no resampler after it."""
     expected, _ = librosa.load(str(awkward["float"]), sr=NATIVE_RATE, mono=True)
     samples, _ = decode.load(awkward["float"], NATIVE_RATE)
     assert _same_bits(samples, expected)
@@ -394,8 +358,7 @@ def test_a_float_file_keeps_its_minus_zero_frames_as_librosa_does(awkward):
 
 @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
 def test_the_mix_itself_refuses_audio_that_is_not_finite_as_to_mono_does(bad):
-    """The resampler after it would refuse the mix as well; the mix refuses
-    first, as ``to_mono`` does, so it is ``to_mono`` wherever it is called."""
+    """The mix refuses before the resampler would, as ``to_mono`` does."""
     stereo = np.zeros((2, 9), dtype=np.float32)
     stereo[0, 4] = bad
     with pytest.raises(librosa.util.exceptions.ParameterError) as before:
@@ -411,9 +374,8 @@ def test_the_mix_itself_refuses_audio_that_is_not_finite_as_to_mono_does(bad):
     ids=["nan", "inf", "minus-inf", "finite-pair-overflows", "finite-pair-overflows-down"],
 )
 def test_audio_that_is_not_finite_is_refused_as_before(tmp_path, bad):
-    """A sample that is not finite, and a finite pair whose float32 sum is
-    not: librosa's mean overflows on the pair, where a float64 sum would
-    halve it to a finite value, and the one add must overflow with it."""
+    """A sample that is not finite, and a finite pair whose float32 sum is not: the one
+    add overflows with librosa's mean, where a float64 sum would not."""
     stereo = _awkward_stereo(NATIVE_RATE, seed=1)
     stereo[NATIVE_RATE // 2] = bad
     path = tmp_path / "bad.wav"
@@ -429,8 +391,7 @@ def test_audio_that_is_not_finite_is_refused_as_before(tmp_path, bad):
 
 @pytest.mark.parametrize("name", ["wav", "flac", "mp3"])
 def test_the_head_is_what_it_was_with_librosas_own_load(keyed, name, monkeypatch):
-    """Every feature of the head, key, energy and all, against the head the
-    same file gets when the decode is ``librosa.load`` as it was before U263."""
+    """Every feature of the head against the head a ``librosa.load`` decode gave before U263."""
     now = detect.analyse_file(keyed[name])
     monkeypatch.setattr(
         decode,
@@ -444,9 +405,8 @@ def test_the_head_is_what_it_was_with_librosas_own_load(keyed, name, monkeypatch
 
 @pytest.mark.parametrize("rate", [detect.MEASURE_RATE, vocal.MODEL_SAMPLE_RATE, NATIVE_RATE])
 def test_the_ffmpeg_path_mixes_minus_zero_frames_as_to_mono_does(keyed, rate, monkeypatch, no_fallback):
-    """The M4As made here come from 16 bit PCM and hold no minus zero, so the
-    ffmpeg path's mix is driven here on samples that do, in the layout
-    ``_ffmpeg_samples`` hands over, against U263's ``to_mono`` and resampler."""
+    """The ffmpeg path's mix on samples holding minus zero, in ``_ffmpeg_samples``'s
+    layout, against U263's ``to_mono`` and resampler."""
     native = np.ascontiguousarray(_awkward_stereo(30_001, seed=11)).T
     monkeypatch.setattr(decode, "_ffmpeg_samples", lambda _path: (native, NATIVE_RATE))
     samples, got = decode.load(keyed["aac"], rate)

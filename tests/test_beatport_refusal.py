@@ -1,9 +1,7 @@
 """U281: Beatport's refusal is read as one, and a run stops asking a catalogue that refused it.
 
 Sitting 97 measured every Beatport lookup answering 403 with ``Cf-Mitigated:
-challenge``, each recorded ``unreachable``. This is the searcher's half: the
-read of the refusal, the run count that stops asking, a refused file never a
-miss, and a catalogue that answered never stopped. The sweep's half is in
+challenge``. This is the searcher's half; the sweep's is in
 ``tests/test_tag_workers.py``. Nothing touches the network.
 """
 
@@ -48,12 +46,8 @@ class _Response:
 
 
 def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
-    """The shipped fetch over a getter answering Beatport and Discogs by URL.
-
-    ``beatport`` is one reply, or a list taken one per Beatport request.
-    ``discogs`` answers the search and the one release it names, and is a miss
-    when not given.
-    """
+    """The shipped fetch over a getter answering by URL: ``beatport`` one reply or a
+    list, one per request; ``discogs`` a miss when not given."""
     replies = list(beatport) if isinstance(beatport, list) else None
     search = discogs if discogs is not None else _Response(200, results())
 
@@ -161,9 +155,8 @@ def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
 
 
 def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
-    """A page that carries Beatport's payload is a results page, whatever script Cloudflare put
-    on it, so a match or a miss is never read as a refusal (U281's review): a bot managed site
-    can carry the detection script on every ordinary page."""
+    """A page carrying Beatport's payload is a results page whatever script Cloudflare
+    put on it, so a match or a miss is never a refusal."""
     script = '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
     found = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]) + script
     empty = _beatport_page([]) + script
@@ -252,11 +245,7 @@ def test_a_beatport_answer_with_results_still_matches():
 
 
 def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
-    """``count`` files searched as a worker searches them, one searcher per file.
-
-    That is why the count is handed in: a count kept by the searcher would
-    start again at every file.
-    """
+    """``count`` files searched one searcher per file, so the count is handed in."""
     seen: list[str] = []
     fetch = _over_the_wire(list(replies), discogs=discogs, seen=seen)
     asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
@@ -276,8 +265,7 @@ def test_three_refusals_then_the_fourth_file_is_not_sent_and_records_blocked():
         assert said.answer == "blocked"
         assert said.note.startswith(searchers.NOT_SENT)
         assert "refused this client on its last 3 lookups in this sweep" in said.note
-        # The refusal it is standing on is quoted, so the record still says what
-        # Beatport answered when it was last asked.
+        # The refusal it stands on is quoted, so the record says what Beatport answered.
         assert said.note.endswith(
             "Then, the catalogue refused this client, Cloudflare challenge, HTTP 403"
         )
@@ -350,8 +338,7 @@ def test_blocked_miss_blocked_blocked_does_not_stop_the_run():
 
 
 def test_an_outage_between_refusals_ends_the_run_of_them():
-    """Only refusals with nothing between them stop the run; an outage is an
-    answer of its own, so the count starts again after it."""
+    """Only refusals with nothing between them stop the run; an outage restarts the count."""
     _hits, seen = _sweep(
         [REFUSED, REFUSED, _Response(503), REFUSED, REFUSED], refusals=searchers.Refusals()
     )
@@ -387,8 +374,7 @@ def test_a_searcher_given_no_count_keeps_its_own_for_its_life():
 
 
 def test_a_stopped_catalogue_is_answered_without_a_wait():
-    """The point of stopping is the paced second and a half per file, so a
-    catalogue answered from the count is not waited for either."""
+    """A catalogue answered from the count is not waited for its paced second and a half."""
     refusals = searchers.Refusals()
     _sweep([REFUSED] * 3, refusals=refusals)
     naps: list[float] = []

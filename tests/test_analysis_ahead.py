@@ -1,11 +1,8 @@
 """U241: ``analyze run`` measures its heads ahead of the driver, with no worse results.
 
-The first test runs one folder through the real verb refused a pool and
-affording four workers and holds the two to the same bytes; the rest drive
-each way a head measured ahead stops being the driver's, and what the run says
-about its pool on both exits. THE WORKERS ARE REAL, so the detector is a module
-level function a spawned child can import; the machine's cores and memory are
-injected.
+A pooled run and a serial one leave the same bytes, and each way a head measured
+ahead stops being the driver's is driven. The workers are real, so the detector
+is a module level function; the machine's cores and memory are injected.
 """
 
 from __future__ import annotations
@@ -34,19 +31,15 @@ from tests.test_config import valid_data
 GIB = 1024**3
 MIB = 1024**2
 
-#: Where a head leaves a mark saying which process measured it, and the process
-#: that is the driver, both read from the environment so a spawned worker sees
-#: what the test set.
+#: Where a head marks which process measured it, and the driver's process, read
+#: from the environment so a spawned worker sees them.
 SEEN = "CRATEKIT_AHEAD_SEEN"
 DRIVER = "CRATEKIT_AHEAD_DRIVER"
 
 
 def fake_head(path: Path) -> dict | None:
-    """A head read off the file's NAME, marked with who read it.
-
-    ``slow`` waits in a worker, ``dies`` takes it down, ``raises`` raises,
-    ``keyless`` finds no key, ``broken`` could not be decoded.
-    """
+    """A head read off the file's name, marked with who read it; ``slow``, ``dies``,
+    ``raises``, ``keyless`` and ``broken`` act as they say."""
     name = path.name
     in_a_worker = str(os.getpid()) != os.environ.get(DRIVER, "")
     marks = os.environ.get(SEEN)
@@ -413,8 +406,7 @@ def test_a_resume_with_nothing_left_to_measure_keeps_the_pool_that_measured_the_
     first = artifacts.pool_record(cfg, job_id)
     assert first["workers"] == 3
 
-    # Finish the two files left by hand, as a second run would, so the resume
-    # finds every name carrying its head and has nothing to measure.
+    # Finish the two files left by hand, so the resume has nothing to measure.
     monkeypatch.setattr(artifacts, "produced", real)
     for path in sorted(folder.iterdir()):
         if not analysis_cli.carries_head(path, cfg):
@@ -546,8 +538,7 @@ def test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_
     with jobs.open_store() as store:
         stored = jobs.get(store, job_of(pooled)).cause
     cause = pooled["cause"]
-    # The stored cause is carried through, never rebuilt: its trail and its own
-    # steps are a prefix of what the person is shown.
+    # The stored cause is carried through, never rebuilt.
     assert tuple(cause["origin"])[: len(stored.origin)] == stored.origin
     steps = cause["remediation"]["steps"]
     assert steps[: len(stored.remediation.steps)] == list(stored.remediation.steps)
@@ -890,11 +881,8 @@ def test_each_measured_mac_peak_is_under_what_its_length_declares(seconds, peak)
 
 
 def test_the_declared_line_keeps_the_linux_margin_over_the_macs_measured_line():
-    """A ninth over the steeper measured slope, an eighth over the higher intercept.
-
-    Linux measured 1.35 megabytes a second and declared 1.5, a ninth above;
-    it measured an intercept of 284 and declared 320, an eighth above.
-    """
+    """A ninth over the steeper measured slope (1.35 MB a second, declared 1.5), an
+    eighth over the higher intercept (284, declared 320)."""
     lines = _line_through(MAC_PEAKS)
     slope = max(s for s, _ in lines)
     intercept = max(i for _, i in lines)
@@ -966,10 +954,8 @@ def test_six_mac_tracks_plan_no_more_workers_than_memory_holds(monkeypatch, avai
     assert planned.worker_bytes == light.worker_bytes(729.0) >= 2346 * MIB
     assert planned.workers <= max(1, available_gib * GIB // planned.worker_bytes)
     if planned.workers > 1:
-        # Every worker at the largest peak the Mac measured still fits in what
-        # the planner keeps for workers: the reading less the reserve, under
-        # the headroom. The figures before U275 planned 3 at 8 GB and 5 at 12,
-        # which this refuses.
+        # Every worker at the Mac's largest peak fits what the planner keeps for
+        # workers; the figures before U275 planned 3 at 8 GB and 5 at 12.
         budget = (available_gib * GIB - pool.DEFAULT_MEMORY_RESERVE_BYTES) * (
             pool.DEFAULT_HEADROOM_PERCENT
         ) // 100
@@ -1005,9 +991,8 @@ def test_a_file_stored_at_a_high_rate_costs_its_decode_and_not_only_its_length()
     """The decode reads the file at its own rate; everything after it works at 22050."""
     cd_quality = light.worker_bytes(660.0, rate=44100, channels=2)
     assert cd_quality == 384 * MIB + 660 * 3276800, "CD audio is the analysis line, unchanged"
-    # At 96 kilohertz the decode is still under the analysis line the Mac's
-    # peaks set (U275); 1213 megabytes were measured on Linux, and the
-    # declared figure is above that.
+    # At 96 kHz the decode is under the analysis line the Mac's peaks set (U275),
+    # above the 1213 MB measured on Linux.
     middle = light.worker_bytes(660.0, rate=96000, channels=2)
     assert 660 * 96000 * 4 * (2 + 3) < 660 * light.LIGHT_BYTES_PER_SECOND
     assert middle == cd_quality > 1213 * MIB

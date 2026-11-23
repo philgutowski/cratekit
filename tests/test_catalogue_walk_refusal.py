@@ -1,16 +1,8 @@
 """U322: a refusing catalogue no longer stops tag suggest and tag backlog asking the ones that answer.
 
-Measured at sitting 102 on 2026-11-21: ``crate tag backlog --catalogue`` on a
-copy of the library asked the catalogues about 10 of 675 rows and stopped.
-Discogs matched three of them and read no genre on the other seven, while
-Beatport answered every lookup with Cloudflare's challenge. ``suggest`` read a
-row as unread when only Beatport refused it, so three such rows in a row
-stopped the walk, and 665 rows were never sent to Discogs or Deezer. U281's
-own stop, which passes Beatport over after three refusals, never got the
-chance to take effect.
-
-The walk here is the shipped searcher over recorded pages, Discogs' empty
-result set and Beatport's 403 carrying ``Cf-Mitigated: challenge``, and a
+At sitting 102 a backlog asked about 10 of 675 rows and stopped: Beatport
+answered every lookup with a challenge, and a row only Beatport refused read
+as unread. The walk here is the shipped searcher over recorded pages and a
 general catalogue that records what it was asked. Nothing touches the network.
 """
 
@@ -86,9 +78,7 @@ def _asked(machine, search, opinion, rows=8, unasked=frozenset()):
     return kept, answers
 
 
-# ---------------------------------------------------------------------------
 # A. The defect: a refusing Beatport beside a Discogs that answers
-# ---------------------------------------------------------------------------
 
 
 def test_a_discogs_miss_beside_a_refusing_beatport_does_not_stop_the_walk(machine):
@@ -144,9 +134,7 @@ def test_a_deezer_genre_past_a_refusing_beatport_is_the_rows_match(machine):
         )
 
 
-# ---------------------------------------------------------------------------
 # B. The walk's stop, which still holds where every catalogue refused
-# ---------------------------------------------------------------------------
 
 
 def test_every_catalogue_refusing_three_rows_in_a_row_still_stops_the_walk(machine):
@@ -205,8 +193,7 @@ def test_partly_read_rows_never_count_toward_the_stop(machine):
 
 
 def test_a_catalogue_nobody_asked_neither_counts_nor_resets(machine):
-    """U244's case: a row unread only by an unasked catalogue sits between two
-    refusals without ending their run, and three of them never stop it."""
+    """U244: a row unread only by an unasked catalogue does not end a refusal run."""
     kept, table, said = _run(machine, REFUSED_ROW, REFUSED_ROW, PASSED, REFUSED_ROW, PARTLY)
     assert kept.stopped and table.asked == 4
     assert said[4].note == STOPPED
@@ -215,9 +202,7 @@ def test_a_catalogue_nobody_asked_neither_counts_nor_resets(machine):
     assert not kept.stopped and table.asked == 4
 
 
-# ---------------------------------------------------------------------------
 # C. What a row's answer carries and is kept with
-# ---------------------------------------------------------------------------
 
 
 def test_the_words_of_a_refusal_by_every_catalogue_are_read_off_its_detail():
@@ -260,8 +245,7 @@ def test_a_kept_answer_keeps_its_words(machine):
 
 @pytest.mark.parametrize("said", [suggest.MATCHED, suggest.DECLINED, suggest.UNREAD])
 def test_an_answer_kept_before_the_words_is_asked_again_once(machine, said):
-    """U322's review, round one, 3: an answer main kept carries no words, and
-    read as kept the backlog's line counted its Discogs match as not asked."""
+    """An answer main kept carries no words, so its Discogs match counts as matched."""
     import json
     from datetime import date
 
@@ -281,9 +265,7 @@ def test_an_answer_kept_before_the_words_is_asked_again_once(machine, said):
         assert kept.answer("1", "a", "t", "") == PARTLY and kept.asked == 0
 
 
-# ---------------------------------------------------------------------------
 # D. The general catalogue's gate, narrowed for the suggest verbs only
-# ---------------------------------------------------------------------------
 
 
 def _hit(*answers: tuple[str, str], unread=()) -> SearchHit:
@@ -347,9 +329,7 @@ def test_the_suggest_binder_is_built_over_the_one_lookup(monkeypatch):
     assert general.asked == [ISRCS[1]]
 
 
-# ---------------------------------------------------------------------------
 # E. What the two verbs say
-# ---------------------------------------------------------------------------
 
 
 def _item(content_id: str, asked: suggest.Asked) -> suggest.Item:
@@ -367,18 +347,19 @@ def _item(content_id: str, asked: suggest.Asked) -> suggest.Item:
     )
 
 
-def test_tag_suggest_says_a_partly_read_row_apart_from_one_nobody_could_read():
+def _unread_warning(*items: suggest.Item) -> str:
+    """The one catalogue unread advisory ``tag suggest`` gives over these rows."""
     plan = suggest.SuggestPlan(
-        items=(_item("1", REFUSED_ROW), _item("2", PARTLY), _item("3", PARTLY)),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
+        items=items, counts=defaultdict(int), changes=None, band="", catalogue=True
     )
     (warning,) = [
         w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
     ]
-    message = warning["message"]
+    return warning["message"]
+
+
+def test_tag_suggest_says_a_partly_read_row_apart_from_one_nobody_could_read():
+    message = _unread_warning(_item("1", REFUSED_ROW), _item("2", PARTLY), _item("3", PARTLY))
     assert "the catalogues could not be read for 1 row(s), 1," in message
     assert "beatport could not be read for 2 row(s) another catalogue answered, 2, 3," in message
 
@@ -422,9 +403,7 @@ def test_the_backlogs_catalogue_line_counts_each_catalogues_answers():
     }
 
 
-# ---------------------------------------------------------------------------
 # F. Round one of the review
-# ---------------------------------------------------------------------------
 
 DEEZER_MATCH = _fake(
     {"discogs": "miss", "beatport": "blocked", "deezer": "matched"},
@@ -435,22 +414,10 @@ DEEZER_MATCH = _fake(
 
 
 def test_a_row_written_from_deezer_while_beatport_refused_is_named_in_the_warning():
-    """Round one, 1: a Deezer genre past a refusing Beatport was suggested with
-    no word that Beatport was read for none of the rows."""
-    plan = suggest.SuggestPlan(
-        items=(_item("1", DEEZER_MATCH), _item("2", REFUSED_ROW)),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
-    )
-    (warning,) = [
-        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
-    ]
-    assert "beatport could not be read for 1 row(s) another catalogue answered, 1," in (
-        warning["message"]
-    )
-    assert "the catalogues could not be read for 1 row(s), 2," in warning["message"]
+    """A Deezer genre past a refusing Beatport is suggested with Beatport named."""
+    message = _unread_warning(_item("1", DEEZER_MATCH), _item("2", REFUSED_ROW))
+    assert "beatport could not be read for 1 row(s) another catalogue answered, 1," in message
+    assert "the catalogues could not be read for 1 row(s), 2," in message
 
 
 def test_rows_are_sorted_by_why_they_were_not_read_whole():
@@ -482,8 +449,7 @@ def test_rows_are_sorted_by_why_they_were_not_read_whole():
 
 
 def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_the_walk(machine):
-    """Round one, 2: the searcher raises a token Discogs refused whatever
-    Beatport answered, and three such rows stopped a walk Beatport answered."""
+    """A token Discogs refused does not stop a walk Beatport answered."""
     from tests.test_beatport_refusal import MISSED
 
     search, _opinion, seen = _walk(MISSED, discogs=_Response(401, "{}", {}))
@@ -494,8 +460,7 @@ def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_t
     for answer in answers:
         assert answer.passed_over == (searchers.DISCOGS,)
         assert answer.answers == ((searchers.DISCOGS, searchers.NOT_ASKED),)
-        # One note on every row, the one sent and those after it, since the
-        # note is in the plan's digest (round two of the review, 1).
+        # One note on every row, since the note is in the plan's digest.
         assert answer.note == f"unread: discogs, {suggest.TOKEN_UNUSABLE}"
     unread = suggest.sort_unread((str(n), a) for n, a in enumerate(answers))
     assert unread.token_unusable == tuple(str(n) for n in range(8)) and not unread.refused
@@ -509,8 +474,7 @@ def test_a_rejected_token_beside_a_refusing_beatport_sends_beatport_nothing_past
 
 
 def test_the_words_are_left_out_of_a_plans_digest():
-    """Round one, 4: which of a refusing catalogue's rows were sent moves with
-    the rows a run asks, and refused a plan answered the next day as stale."""
+    """Which refusing rows were sent is not in the digest, or a plan goes stale overnight."""
     sent = _fake({"discogs": "miss", "beatport": "blocked"}, note="unread: beatport")
     passed = _fake({"discogs": "miss", "beatport": suggest.NOT_SENT}, note="unread: beatport")
 
@@ -584,8 +548,7 @@ def test_a_declined_and_a_passed_over_row_carry_their_words():
 
 
 def test_a_row_passed_over_for_a_refused_token_is_kept_for_the_day(machine):
-    """Round two, 1: the recorded token is not None, so a kept row passed over
-    for it read as askable and the applying act asked every one again."""
+    """A kept row passed over for the recorded token is not asked again."""
     from tests.test_beatport_refusal import MISSED
 
     def run():
@@ -608,21 +571,12 @@ def test_the_suggest_verb_says_a_token_that_could_not_be_used():
         note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}",
         passed_over=("discogs",),
     )
-    plan = suggest.SuggestPlan(
-        items=(_item("1", unusable),),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
-    )
-    (warning,) = [
-        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
-    ]
-    assert warning["message"].startswith(
+    message = _unread_warning(_item("1", unusable))
+    assert message.startswith(
         "Discogs was not read for 1 row(s), 1, because the recorded Discogs token could "
         "not be used, so those were suggested without it; to record a new one: "
     )
-    assert "no Discogs token is recorded" not in warning["message"]
+    assert "no Discogs token is recorded" not in message
 
 
 def test_a_backlog_rows_digest_leaves_the_words_out_and_its_envelope_keeps_them():

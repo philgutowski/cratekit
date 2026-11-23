@@ -1,14 +1,10 @@
 """U118: Soul and Hip-Hop are folders of their own, and their tracks move in.
 
-R&B's bands stay R&B's, so Soul declares them as SPLIT PLACES: a track whose
-genre names Soul leaves the R&B band for the Soul band its reading names, and
-an R&B track is never touched. Hip-Hop is promoted the way R&B was, through a
-former place. Held here: where the words route and tag, the declaration, what
-competes and is read, adoption, the move plan, the worker's check, and the verb
-against a disposable library with real tags. Identifiers are derived from the
-shipped declarations, except the genre words, which are the author's.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+Soul declares R&B's bands as split places: a track whose genre names Soul
+leaves the R&B band for the Soul band its reading names, and an R&B track is
+never touched. Hip-Hop is promoted through a former place. Identifiers are
+derived from the shipped declarations, except the author's genre words. D1
+applies.
 """
 
 from __future__ import annotations
@@ -70,11 +66,8 @@ VOX = next(entry for entry in DECLARED.sub_classes if entry.id == "with_vox")
 
 
 def _in_rnb(content_id: str, *bands: str, soul: tuple[str, ...] = ()) -> dict:
-    """What the placement reader answers for a track in R&B's bands.
-
-    Under R&B as its own bands, and under Soul as the split places they are,
-    whatever the track's genre. ``soul`` is the Soul bands it holds as well.
-    """
+    """What the placement reader answers for a track in R&B's bands, under R&B and
+    under Soul; ``soul`` is the Soul bands it holds as well."""
     return {
         RNB.id: {content_id: tuple(bands)},
         SOUL.id: {content_id: (*(SPLIT[band].id for band in bands), *soul)},
@@ -116,8 +109,7 @@ def test_each_word_routes_to_the_folder_the_author_gave_it(word, folder):
     ],
 )
 def test_each_word_tags_as_the_folder_the_author_gave_it_and_the_tag_routes_there(word, folder):
-    """A tag the tagger writes is a folder's name, and routing resolves it to
-    that folder, so a tagged track lands where its word was meant to."""
+    """A tag the tagger writes is a folder's name, and routing resolves it there."""
     suggestion = routing.suggest_tag(DECLARED, word)
     assert (suggestion.tag, suggestion.sub_id) == (folder, None)
     assert DECLARED.bucket(suggestion.bucket_id).display == folder
@@ -279,8 +271,7 @@ def test_a_soul_track_in_r_and_b_med_moves_to_the_soul_band_its_reading_names(ge
 
 
 def test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted():
-    """Its genre sent it out of R&B, so no reading is needed to leave, and the
-    no reading sub says nothing false about it."""
+    """Its genre sent it out of R&B, so it leaves with no reading needed."""
     plan = _moves([_scanned("t", energy=None, genre="Soul")], _in_rnb("t", MED))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
@@ -301,10 +292,8 @@ def test_a_soul_track_already_in_its_soul_band_only_leaves_r_and_b():
 
 
 def test_a_soul_track_in_two_r_and_b_bands_leaves_both_in_one_move_and_r_and_b_plans_none():
-    """R&B's own tree path would move a track held in two of its bands to the
-    one its reading names. That band is Soul's to settle here, or the two
-    buckets would plan competing moves and the read back would report one of
-    them unfinished."""
+    """A track in two R&B bands is Soul's to settle here, or the two buckets plan
+    competing moves."""
     plan = _moves([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", MED, HIGH))
     (move,) = plan.moves
     assert (move.bucket, move.add, set(move.remove)) == (
@@ -348,8 +337,7 @@ def test_a_soul_track_in_a_renamed_r_and_b_band_is_left_since_the_writer_cannot_
 
 
 def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved():
-    """Listed so the split can be seen to be unfinished before its declaration
-    is deleted, under the renamed playlist where it sits in one."""
+    """Listed, under the renamed playlist, so the split is seen to be unfinished."""
     excluded = _scanned("t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED)
     held = _in_rnb("t", MED)
     plan = _moves([excluded], held)
@@ -370,8 +358,7 @@ def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved()
 
 
 def test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing():
-    """R&B's own tree path must not move it between R&B's bands, a folder its
-    genre does not name, though no entry claims Soul."""
+    """R&B's own tree path does not move it between R&B's bands its genre does not name."""
     refused = _refused_over([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", LOW, HIGH))
     plan = adopt_move.build_move_plan(refused, DECLARED)
     assert plan.moves == ()
@@ -393,8 +380,7 @@ def _in_old_soul_rnb(content_id: str) -> dict:
 
 
 def test_a_soul_track_in_the_old_soul_r_and_b_playlist_moves_to_soul_and_is_withheld_until():
-    """Found by the review: it was filed in Soul by adoption while it sat in
-    the old playlist, and nothing took it out."""
+    """Filed in Soul by adoption while in the old playlist, it is taken out of it."""
     tracks = [_scanned("t", energy=5, genre="Soul / R&B")]
     (entry,) = _adoption(tracks, _in_old_soul_rnb("t")).entries
     assert entry.held_elsewhere and not entry.applicable
@@ -468,9 +454,8 @@ def test_a_track_retagged_out_of_soul_since_the_approval_is_a_stale_decision(gen
 
 # The verb, against a disposable library filed under the shape before U118
 
-#: Content identifier, genre, energy tag, and the places seeded: ``old`` is the
-#: Hip-Hop playlist of the non electronic folder, ``vox`` R&B's vocal sub, and
-#: anything else an R&B band.
+#: Content identifier, genre, energy tag and seeded places: ``old`` the Hip-Hop
+#: playlist of the non electronic folder, ``vox`` R&B's vocal sub, else a band.
 _SEEDED = (
     ("s-med", "Soul", "5", (MED, "vox")),
     ("s-combined", "Soul / R&B", "9", (MED,)),
@@ -510,8 +495,7 @@ def _seeded_place(place: str) -> tuple[str, str]:
 
 @pytest.fixture
 def split(machine, silence):  # noqa: F811
-    """A library whose Soul tracks sit in R&B's bands and whose Hip-Hop tracks
-    sit in the non electronic folder's Hip-Hop playlist, as on 2026-10-08."""
+    """Soul tracks in R&B's bands and Hip-Hop in the old Hip-Hop playlist, as on 2026-10-08."""
     tracks = [(content_id, genre, tag) for content_id, genre, tag, _held in _SEEDED]
     places = [
         (*_seeded_place(place), content_id)

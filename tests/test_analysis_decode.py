@@ -1,9 +1,7 @@
 """U263: the ffmpeg half of the one decoder, which needs no librosa.
 
-Needs numpy and ffmpeg only, so it runs everywhere: the piped WAV is read
-right, a lossless M4A is its PCM, a damaged one fails, a bad cover does not,
-and nothing is written to disk. The librosa half is
-``tests/test_analysis_decode_librosa.py``. Every file is generated here.
+Needs numpy and ffmpeg only; every file is generated here. The librosa half is
+``tests/test_analysis_decode_librosa.py``.
 """
 
 from __future__ import annotations
@@ -70,11 +68,7 @@ def test_a_header_that_is_not_32_bit_float_is_refused(blob):
 
 @pytest.mark.parametrize("channels", [1, 2, 6])
 def test_a_lossless_m4a_decodes_to_the_pcm_it_was_made_from(tmp_path, channels):
-    """The scaling, the channel order and the length, bit for bit.
-
-    ALAC is lossless, so the samples ffmpeg hands back must be the 16 bit PCM
-    divided by 32768, which is how libsndfile reads the same PCM as float.
-    """
+    """ALAC is lossless, so the samples are the 16 bit PCM over 32768, bit for bit."""
     pcm = pcm16(1.37, channels=channels, seed=channels)
     alac = encode_m4a(tmp_path, write_wav(tmp_path / "source.wav", pcm), "alac")
     native, rate = decode._ffmpeg_samples(alac)
@@ -90,8 +84,7 @@ def test_a_lossless_m4a_decodes_to_the_pcm_it_was_made_from(tmp_path, channels):
 
 
 def test_a_path_with_a_colon_is_read_as_a_file(tmp_path, monkeypatch):
-    """ffmpeg reads ``name:rest`` as a protocol, so a relative name like this
-    one would be refused as an unknown protocol without the ``file:`` prefix."""
+    """ffmpeg reads ``name:rest`` as a protocol, so the name takes a ``file:`` prefix."""
     pcm = pcm16(0.5)
     encode_m4a(tmp_path, write_wav(tmp_path / "source.wav", pcm), "alac", name="Artist: Title.m4a")
     monkeypatch.chdir(tmp_path)
@@ -111,10 +104,8 @@ def test_a_truncated_m4a_fails_rather_than_yielding_the_part_before_the_damage(t
 def test_an_m4a_damaged_in_the_middle_fails_rather_than_yielding_its_first_half(
     tmp_path, codec
 ):
-    """Driven by the review of U263: with the index first and the damage in
-    the middle of the audio, ffmpeg 6.1 under ``-xerror`` stops at the error
-    and exits 0 with the part before it on the pipe. The error it reports is
-    what fails the decode."""
+    """With the damage mid audio, ffmpeg 6.1 under ``-xerror`` exits 0 with the part
+    before it on the pipe; the error it reports fails the decode."""
     source = write_wav(tmp_path / "source.wav", pcm16(12.0))
     whole = tmp_path / f"whole-{codec}.m4a"
     extra = ["-b:a", "192k"] if codec == "aac" else []
@@ -129,10 +120,8 @@ def test_an_m4a_damaged_in_the_middle_fails_rather_than_yielding_its_first_half(
 
 
 def test_an_m4a_with_its_index_first_cut_inside_a_packet_fails(tmp_path):
-    """The other truncation: the index is whole and promises audio the file
-    no longer holds, so ffmpeg has decoded most of it before it fails. A cut
-    at 95 percent lands inside a packet; one exactly on a packet boundary
-    decodes short with nothing said, which is a residual of U263."""
+    """A whole index promising audio the file lacks fails at 95 percent; a cut on a
+    packet boundary decodes short unsaid, a residual of U263."""
     source = write_wav(tmp_path / "source.wav", pcm16(12.0))
     whole = tmp_path / "whole.m4a"
     ffmpeg("-i", str(source), "-c:a", "aac", "-movflags", "+faststart", str(whole))
@@ -163,10 +152,8 @@ def test_the_first_audio_stream_is_the_one_decoded(tmp_path):
     ids=["webp-as-jpeg", "gif-as-jpeg", "broken-png"],
 )
 def test_a_cover_ffmpeg_cannot_read_leaves_a_whole_track_decodable(tmp_path, cover, kind):
-    """Driven by round two of the review: ffmpeg probes the cover before it
-    decodes the audio, and logs a cover it cannot read as an error while the
-    audio comes out whole. The vendored downloader embeds whatever bytes a
-    cover URL returned, so such a cover is a tag, not damage."""
+    """A cover ffmpeg cannot read is logged as an error while the audio comes out
+    whole; the downloader embeds whatever a cover URL returned, so it is a tag."""
     from mutagen import mp4
 
     pcm = pcm16(1.0)
@@ -206,9 +193,7 @@ def test_the_first_audio_stream_is_taken_even_when_another_is_the_default(tmp_pa
 
 
 def test_an_ffmpeg_that_exits_non_zero_saying_nothing_fails(tmp_path, monkeypatch):
-    """The exit code is half the rule on its own: an ffmpeg that wrote a
-    whole, valid stream and then failed in silence is not trusted. Bound
-    through the override variable every binary obeys."""
+    """An ffmpeg that wrote a valid stream and then failed in silence is not trusted."""
     samples = np.linspace(-0.5, 0.5, 64, dtype="<f4")
     stream = tmp_path / "stream.wav"
     stream.write_bytes(_wav_header(_fmt(3, 2, 44100, 32), samples.tobytes()))
@@ -241,8 +226,7 @@ def test_no_ffmpeg_raises_the_missing_decoder_and_runs_nothing(tmp_path, monkeyp
 
 
 def test_the_decoder_is_found_where_every_other_binary_is(tmp_path, monkeypatch):
-    """The override variable a person sets for ffmpeg is the one this decode
-    obeys, so doctor's ``binary.ffmpeg`` row and the decode agree."""
+    """The decode obeys the person's ffmpeg override, as doctor's ``binary.ffmpeg`` does."""
     asked: list[str] = []
     monkeypatch.setattr(binaries, "find", lambda name: asked.append(name))
     with pytest.raises(decode.DecoderMissing):
@@ -251,9 +235,8 @@ def test_the_decoder_is_found_where_every_other_binary_is(tmp_path, monkeypatch)
 
 
 def test_the_decode_writes_no_file(tmp_path, monkeypatch):
-    """The card's rule: nothing is written by the decode, beside the track or
-    in a temporary directory. The temporary directory ffmpeg would reach for
-    is pointed at an empty one and read after."""
+    """Nothing is written by the decode, beside the track or in ffmpeg's temporary
+    directory, which is pointed at an empty one and read after."""
     source = tmp_path / "in"
     source.mkdir()
     alac = encode_m4a(source, write_wav(source / "source.wav", pcm16(1.0)), "alac")
@@ -291,15 +274,8 @@ def _bits(values) -> list[str]:
 
 @pytest.mark.parametrize("zero_after", [False, True], ids=["0.10-0.11", "1.0"])
 def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
-    """Every value that is not a zero is the correctly rounded half sum.
-
-    The expectation is taken in float64, where a sum of two float32 values
-    and its halving are exact, and rounded to float32 once: a value the code
-    under test does not compute. Random bit patterns reach subnormals and
-    every exponent. A sum past float32's largest value is the one place
-    float64 differs, and librosa's float32 reduction overflows there as the
-    one add does; the table below pins it.
-    """
+    """Every value that is not a zero is the correctly rounded half sum, taken in
+    float64 and rounded once; overflow, where float64 differs, is pinned below."""
     rng = np.random.default_rng(264)
     frames = 200_003  # odd, so no length is a power of two
     raw = np.frombuffer(rng.integers(0, 2**32, 2 * frames, dtype=np.uint32).tobytes(), "<f4")
@@ -328,29 +304,21 @@ def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
         (0.0, -0.0, "00000000", "00000000"),
         (-0.0, 0.0, "00000000", "00000000"),
         (0.5, -0.5, "00000000", "00000000"),
-        # A half sum of minus the smallest subnormal rounds to minus zero, which
-        # librosa 1.0's buffer of zeros turns to plus zero.
+        # A half sum of minus the smallest subnormal is minus zero; librosa 1.0's is plus.
         (-_TINY, 0.0, "80000000", "00000000"),
         (-0.0, -_TINY, "80000000", "00000000"),
         (_TINY, -0.0, "00000000", "00000000"),
         # Three halves of the smallest subnormal is a tie, to the even two.
         (3 * _TINY, 0.0, "00000002", "00000002"),
         (-3 * _TINY, -0.0, "80000002", "80000002"),
-        # A sum past float32's largest value overflows in librosa's float32
-        # reduction as in the one add, and the resampler then refuses it.
+        # An overflow past float32's largest, as librosa's reduction, refused after.
         (3e38, 3e38, "7f800000", "7f800000"),
         (-3e38, -3e38, "ff800000", "ff800000"),
     ],
 )
 def test_a_zero_takes_the_sign_each_measured_release_gives_it(left, right, before_1_0, on_1_0):
-    """The sign of a zero is the one place the ways of mixing differ, and an
-    overflow the one place float64 would.
-
-    The expected bits were read from ``librosa.to_mono`` on 0.10.2,
-    0.10.2.post1 and 0.11.0 (``before_1_0``) and on 1.0.0 (``on_1_0``), on
-    numpy 2.5 and 1.26; the librosa half of this file checks the installed
-    release against its own ``to_mono``.
-    """
+    """The sign of a zero and an overflow are where mixes differ; the bits were read
+    from ``librosa.to_mono`` before 1.0 and on 1.0.0."""
     stereo = np.array([[left], [right]], dtype=np.float32)
     assert _bits(decode._mean_of_two(stereo, zero_after=False)) == [before_1_0]
     assert _bits(decode._mean_of_two(stereo, zero_after=True)) == [on_1_0]

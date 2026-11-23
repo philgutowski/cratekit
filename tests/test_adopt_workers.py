@@ -1,10 +1,7 @@
 """U55: both adopt verbs driving their own queued work, end to end, item by item.
 
-The apply's happy path needs a cut-over library, so the fixture records one as
-``tests/test_tree_writer.py`` does. Properties read off one approved apply are
-asserted over one drive rather than one drive per property.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The apply needs a cut-over library, recorded as ``tests/test_tree_writer.py``
+does; properties of one approved apply are asserted over one drive. D1 applies.
 """
 
 from __future__ import annotations
@@ -59,8 +56,8 @@ def _release_process_locks():
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """What THIS machine cannot speak for on behalf of a temporary library; that
-    each guard refuses is proved in ``tests/test_rb_writer_db.py``."""
+    """What this machine cannot speak for on a temporary library; the guards are
+    proved in ``tests/test_rb_writer_db.py``."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -213,13 +210,8 @@ def test_both_adopt_keys_resolve_to_a_worker():
 
 
 def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine, monkeypatch):
-    """Pending to done through the real resume argv, and the artifacts read back:
-    only they say the missing row is missing, and the counts come from them.
-
-    The worker gets the FROZEN configuration (KTD9), read on the artifact root,
-    which no environment variable overrides, and the active taxonomy is parsed
-    ONCE however many rows the census drives (U247).
-    """
+    """Pending to done through the real resume argv, counted from the artifacts, on the
+    frozen configuration (KTD9), the taxonomy parsed once per census (U247)."""
     text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
     _active_copy(machine, text)
     parses = counted(monkeypatch)
@@ -294,8 +286,7 @@ def test_an_empty_library_queues_nothing_and_says_so(machine, tombstones):
 
 @pytest.mark.parametrize("edit", ["deleted", "tombstoned"])
 def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(machine, edit):
-    """The collection is re-read at drive time, so a row deleted since the queueing
-    fails its own item with its own slug, never as a defect."""
+    """A row deleted since the queueing fails its own item with its own slug."""
     drive(["adopt", "scan"])
     job = _scan_job()
 
@@ -316,8 +307,7 @@ def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(mach
 
 @pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
 def test_a_job_queued_with_no_items_refuses_rather_than_reporting_success(machine, verb):
-    """A job frozen by an older build carries no items, and ``core.jobs`` reports
-    a zero item job as SUCCEEDED, so driving one would report work never done."""
+    """A zero item job would be SUCCEEDED for work never done, so it refuses."""
     payload: dict = {"tree": DECLARED.tree.id}
     argv = ["adopt", "scan"]
     if verb == "adopt.apply":
@@ -366,14 +356,10 @@ def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
 
 
 def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monkeypatch):
-    """The happy path, READ BACK from the database rather than from the report.
+    """The happy path, read back from the database rather than from the report.
 
-    First, the membership write needs locations: ``membership_plan`` groups
-    content identifiers, which ``write_tree_membership`` matches to nothing. On
-    the drive: no tag and every file's bytes kept (R16), the actor in the payload
-    (R34), one capture per job (KTD6). A second worker run adds no row, read off
-    its STAGED report, and one over a taxonomy with no favourites class names
-    the Favorites step's refusal code (U132).
+    No tag and every byte kept (R16), the actor in the payload (R34), one capture
+    per job (KTD6), a second run adds no row, and no favourites class refuses (U132).
     """
     from cratekit.core import active_taxonomy
     from cratekit.write import genre_favorites, trees
@@ -478,9 +464,8 @@ def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_
 
 @pytest.mark.parametrize("root_id", [None, "no-such-root"])
 def test_an_uncut_library_marks_nothing_and_the_job_stays_resumable(machine, root_id):
-    """The state every real library is in: an unrecorded registry IS the bridge.
-    A registry naming a root the library does not have is its own refusal. Both
-    share the slug ``tree-unconverged``, so the refusal's detail tells them apart."""
+    """An unrecorded registry is the bridge, and one naming another root refuses too;
+    both are ``tree-unconverged``, told apart by the detail."""
     if root_id is not None:
         _record_cutover(machine, root_id)
     _run_id, job_id = approve_and_queue(APPLY, GATE)
@@ -539,8 +524,7 @@ def test_a_collection_that_moved_after_approval_refuses_rather_than_applying(cut
 
 
 def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine):
-    """R-225: a census or apply stopped by a signal is CANCELLED, with ``jobs.cancel``'s
-    cause, and exits non zero."""
+    """R-225: a census or apply stopped by a signal is CANCELLED and exits non zero."""
     drive(["adopt", "scan"])
     scan_id = _scan_job().job_id
     run_id, apply_id = approve_and_queue(APPLY, GATE)
@@ -561,9 +545,8 @@ def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine):
 
 
 def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
-    """R-290 for the one key ``tests/test_job_outcome.py`` cannot drive, since
-    ``adopt apply`` opens its session before it looks at the job. That population
-    test names this function, and fails if it is ever removed."""
+    """R-290 for ``adopt apply``, which ``tests/test_job_outcome.py`` cannot drive and
+    names; it fails if this is removed."""
 
     def parks(job, item, cfg):
         raise jobs.Parked(refuse("provider-blocked", "the run must stop", origin=("test",)).cause)
@@ -581,8 +564,7 @@ def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
 
 
 def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_over, monkeypatch):
-    """``apply_plan`` returns its failures and ``jobs.drive`` fails only on a raise, so
-    the worker raises after committing the artifact (the report is substituted)."""
+    """``jobs.drive`` fails only on a raise, so the worker raises after committing."""
     real = apply_cli.apply_outstanding
 
     def failing(cfg, plan, declared, **kwargs):
@@ -600,8 +582,7 @@ def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_
 
 
 def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch):
-    """``require_closed=True`` on the apply's own handle: the application pin is what
-    only the flag holds, so the refusal is the open's."""
+    """``require_closed=True`` on the apply's own handle, so the pin refusal is the open's."""
     plan = apply_cli.current_plan(cut_over, DECLARED)
     for seam, answer, reason in (
         ("rekordbox_running", lambda: True, "rekordbox-running"),
@@ -615,8 +596,7 @@ def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch)
 
 
 def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(cut_over, monkeypatch):
-    """R-148: a row the writer could not resolve to one live row is never marked
-    applied, driven by the write reporting one row skipped."""
+    """R-148: a row the writer could not resolve to one live row is never marked applied."""
     from cratekit.write import trees
 
     real = apply_cli._write_memberships
@@ -729,9 +709,8 @@ def _band(level: int) -> str:
     return next(band.id for band in DECLARED.energy.bands if level <= band.max)
 
 
-#: One placed library, as data: each track, the energy its file carries, the sub
-#: it already sits in (a sub, a sub class, or None for nowhere), and the sub the
-#: plan names.
+#: One placed library: each track, its file's energy, the sub it sits in (a sub, a
+#: sub class, or None), and the sub the plan names.
 _PLACED_ENERGY = (
     ("p-med-reads-high", "8", "band:5", "band:8"),
     ("p-nowhere", "8", None, "band:8"),
@@ -850,8 +829,7 @@ def destination_names(bucket_id: str, sub_id: str) -> tuple[str, str]:
 
 
 def test_an_uncut_library_reads_neither_its_tree_nor_its_vocals(machine):
-    """With no cutover the tree is not read, so no vocal membership is planned
-    either, whatever the tag and the calibration say."""
+    """With no cutover the tree is not read, so no vocal membership is planned."""
     _calibrate(machine)
     _tag_vox(machine, "a1")
     plan = apply_cli.current_plan(machine, DECLARED)
@@ -864,12 +842,9 @@ def test_an_uncut_library_reads_neither_its_tree_nor_its_vocals(machine):
 
 
 def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
-    """The plan reads the tree the census database holds, and the gate counts the
-    withheld by kind and lists every one, to the person reading it too. An
-    approved apply leaves each withheld track where it sat, adds the rest and
-    removes nothing; a second apply over the same tree shows the same screen and
-    digest, adds nothing and withholds the same. Then a planned sub renamed in
-    rekordbox withholds rather than doubles, and a track moved after an approval
+    """The gate counts and lists the withheld; an approved apply leaves each where it
+    sat, adds the rest and removes nothing, and a second apply adds nothing. A
+    renamed planned sub withholds rather than doubles, and a move after an approval
     is a stale decision."""
     plan = apply_cli.current_plan(placed, DECLARED)
     assert plan.placements.read is True
@@ -1077,9 +1052,8 @@ def _never(what: str):
 
 
 def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
-    """A calibrated library with no vox tag says so and plans no vocal membership.
-    Once the tag exists on another track the dimension is read, and
-    ``p-vox-only``, in the vocal sub with no tag, is never removed from it."""
+    """A calibrated library with no vox tag plans no vocal membership; an untagged
+    track in the vocal sub is never removed from it."""
     _calibrate(placed)
     shown = _shown(APPLY)
     assert shown["vocals"] == "no-tag"
@@ -1096,9 +1070,8 @@ def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
 
 
 def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed, monkeypatch):
-    """The routing pass files nothing under the vocal sub without a cut, and a
-    tag written from the default cut is not the person's answer. With no cut on
-    record the tag tables are not even opened."""
+    """Without a cut the routing pass files nothing under the vocal sub and opens no
+    tag table; a tag from the default cut is not the person's answer."""
     _tag_vox(placed, *sorted(_VOX_TAGGED))
     vocal = _vocal_place()
     with monkeypatch.context() as patched:
@@ -1118,9 +1091,8 @@ def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed, monkey
 
 
 def test_a_calibration_that_cannot_be_read_refuses_before_the_library_is_walked(voxed, monkeypatch):
-    """A taxonomy with no vocal sub reads neither the calibration nor the tag,
-    since nothing vocal can be filed there. Nor does the move verb, through the
-    plan it shows and the plan its worker checks against."""
+    """A taxonomy with no vocal sub reads neither the calibration nor the tag, in the
+    move verb's plan and its worker's too."""
     from cratekit.adopt import move_cli
     from cratekit.write import metadata_cli
 
@@ -1158,13 +1130,10 @@ def test_a_calibration_that_cannot_be_read_refuses_before_the_library_is_walked(
 
 
 def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxed):
-    """The plan reads the tag and the vocal subs off the census database and the
-    gate names the vocal count and lists every membership. An approved apply
-    adds the vocal sub beside the band, leaves what is already there, gains a
-    withheld track nothing, never adds an untagged track and removes nothing.
-    The plan it approved is the plan it rebuilds to, so a stopped run resumes.
-    Then a track tagged after an approval is a stale decision, and a renamed
-    vocal playlist gains no second one."""
+    """The gate names the vocal count and lists every membership. An approved apply
+    adds the vocal sub beside the band, never adds an untagged track and removes
+    nothing; it resumes against the plan it approved. A track tagged after approval
+    is stale, and a renamed vocal playlist gains no second one."""
     plan = apply_cli.current_plan(voxed, DECLARED)
     bucket = _energy_bucket().id
     assert plan.vocals.state == "read"

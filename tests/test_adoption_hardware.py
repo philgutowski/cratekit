@@ -1,13 +1,9 @@
 """U23 on real removable media: the volume proofs this unit deferred.
 
-rekordbox exports live on FAT, and the revert ledger records identities and
-vacancies about files on that volume, so the filesystem's behaviour is part of
-the contract; a temp directory on APFS has other identity semantics and is never
-unmounted. :func:`tests._hardware.fat_volume` refuses below FAT32's 33 MB floor,
-and :func:`tests._hardware.filesystem_kind` reads the mount table because the
-msdos driver allows symlinks. These FAIL rather than skip without ``hdiutil``,
-since a skipped proof reads as a passing one. D1 applies to every name here, and
-nothing here touches the live rekordbox database.
+rekordbox exports live on FAT, so the filesystem's identity behaviour is part
+of the revert ledger's contract. :func:`tests._hardware.fat_volume` refuses
+below FAT32's floor. These fail rather than skip without ``hdiutil``, since a
+skipped proof reads as passing. D1 applies; no live database is touched.
 """
 
 from __future__ import annotations
