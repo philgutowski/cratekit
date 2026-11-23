@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22934,
   "baseline_exit": 1,
-  "pytest_runs": 170,
+  "pytest_runs": 172,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -4429,6 +4429,73 @@
       "source": {
         "table": "u72.json",
         "id": "M8_registry_digest_source"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.S1_limit_floor",
+      "description": "Pass the limit through unfloored, so a negative one becomes a slice from the end",
+      "file": "src/cratekit/cli/reports.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae255caf22ffc058",
+      "subset": [
+        "tests/test_reports_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reports_cli.py::test_a_negative_limit_is_read_as_zero_rather_than_as_a_slice_from_the_end"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    limit = max(0, int(ctx.args.limit))",
+      "new": "    limit = int(ctx.args.limit)",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "S1_limit_floor"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.S2_truncation_row",
+      "description": "Drop the row that says the list was capped",
+      "file": "src/cratekit/cli/reports.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "87ec2c8bec5a904c",
+      "subset": [
+        "tests/test_reports_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reports_cli.py::test_a_limit_of_zero_lists_nothing_and_still_counts_everything",
+        "tests/test_reports_cli.py::test_a_limit_that_drops_rows_says_so_and_still_reports_the_true_total"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(listed) < len(report.uncovered):\n        findings.append(\n            Finding(\n                key=\"coverage.truncated\",\n                title=\"the list above is not the whole answer\",\n                status=Status.INFO,\n                detail=(\n                    f\"{len(listed)} of {len(report.uncovered)} uncovered tracks \"\n                    f\"are listed; raise the limit to see the rest\"\n                ),\n            )\n        )\n",
+      "new": "",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "S2_truncation_row"
       }
     }
   ],
