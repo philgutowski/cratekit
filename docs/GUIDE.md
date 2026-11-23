@@ -257,19 +257,24 @@ Then, in order:
 
 **The rekordbox visit.** Cratekit never analyses inside rekordbox and never
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
-rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
-BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same.
+rows with the `dyn` My Tag first, with Analysis Mode Dynamic; then rows without
+`dyn` last, with Analysis Mode Normal, high precision off, BPM/Grid, Phrase and
+KEY on, the Dynamic run's other settings the same. The order matters: the last
+Analyze Tracks run sets the mode the next launch's Auto Analysis dialog shows,
+so a visit that ends on Dynamic leaves that dialog reading Dynamic.
 
 With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
 rekordbox and bring its window to the front: it raises one dialog saying Auto
 Analysis is starting, with the fields it will use. Press OK only when it shows
 every one of the Normal settings above with Vocal and CUE off and no field set
 otherwise, and it analyses every row waiting with no selection; otherwise,
-Cancel it and select as above. Auto Analysis runs on its preference's own mode,
-so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
-Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
-finds unanalysed, however it came in, so whether it is on is yours to choose.
+Cancel it and select as above. Auto Analysis runs on its preference's own
+mode, so rows with `dyn` still take Analyze Tracks with Dynamic, and after
+them one row without `dyn` takes Analyze Tracks with Normal again, so the
+visit ends on Normal; a batch whose every row has `dyn` ends on Dynamic, and
+the next launch's dialog is cancelled. Cratekit never turns Auto Analysis on or off.
+rekordbox's Auto Analysis analyses every track it finds unanalysed, however it
+came in, so whether it is on is yours to choose.
 
 Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
