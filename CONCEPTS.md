@@ -894,7 +894,9 @@ beat from its BPM column rounded half up to a whole beat, takes rekordbox's, spl
 spans of the row's `Title`, the file's title tag and its `initialkey`. The file
 name keeps its old head, so every reader that would put it back (`name apply`,
 the library index) reads the title tag's head first. Never writes `KeyID`, the
-BPM column, a grid or a tempo tag.
+BPM column, a grid or a tempo tag. A title with no head is **stamped** (U342):
+given the naming engine's head of rekordbox's key and tempo before the whole
+title, both halves or none.
 
 *Avoid:* adoption, `crate adopt`, which takes a library's playlists over; and
 re-stamping, which is `analyze restamp`'s energy tag alone.
