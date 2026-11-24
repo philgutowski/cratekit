@@ -251,6 +251,14 @@ def test_adoption_leaves_an_r_and_b_track_in_its_band_as_it_was(genre):
 # ── the move plan ──────────────────────────────────────────────────────────
 
 
+def _moved(tracks, held, **kwargs):
+    """The one move the plan makes, which leaves nothing listed."""
+    plan = _moves(tracks, held, **kwargs)
+    (move,) = plan.moves
+    assert plan.left == ()
+    return move
+
+
 @pytest.mark.parametrize(
     ("genre", "level", "band"),
     [("Soul / R&B", 5, MED), ("Soul", 9, HIGH), ("Soul", 2, LOW)],
@@ -272,8 +280,7 @@ def test_a_soul_track_in_r_and_b_med_moves_to_the_soul_band_its_reading_names(ge
 
 def test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted():
     """Its genre sent it out of R&B, so it leaves with no reading needed."""
-    plan = _moves([_scanned("t", energy=None, genre="Soul")], _in_rnb("t", MED))
-    (move,) = plan.moves
+    move = _moved([_scanned("t", energy=None, genre="Soul")], _in_rnb("t", MED))
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
         SOUL.id,
         SINK,
@@ -282,7 +289,6 @@ def test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted():
         None,
     )
     assert move.decided_by == adopt_move.DECIDED_BY_GENRE
-    assert plan.left == ()
 
 
 def test_a_soul_track_already_in_its_soul_band_only_leaves_r_and_b():
@@ -294,14 +300,12 @@ def test_a_soul_track_already_in_its_soul_band_only_leaves_r_and_b():
 def test_a_soul_track_in_two_r_and_b_bands_leaves_both_in_one_move_and_r_and_b_plans_none():
     """A track in two R&B bands is Soul's to settle here, or the two buckets plan
     competing moves."""
-    plan = _moves([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", MED, HIGH))
-    (move,) = plan.moves
+    move = _moved([_scanned("t", energy=9, genre="Soul")], _in_rnb("t", MED, HIGH))
     assert (move.bucket, move.add, set(move.remove)) == (
         SOUL.id,
         HIGH,
         {SPLIT[MED].id, SPLIT[HIGH].id},
     )
-    assert plan.left == ()
 
 
 @pytest.mark.parametrize("genre", ["R&B", "MPB"])
@@ -312,10 +316,8 @@ def test_an_r_and_b_track_in_r_and_b_med_is_never_asked_about_in_soul(genre):
 
 def test_an_r_and_b_track_in_two_r_and_b_bands_is_still_r_and_bs_to_settle():
     """R-780's rule in R&B, unchanged: Soul does not list or move it."""
-    plan = _moves([_scanned("t", energy=9, genre="R&B")], _in_rnb("t", MED, HIGH))
-    (move,) = plan.moves
+    move = _moved([_scanned("t", energy=9, genre="R&B")], _in_rnb("t", MED, HIGH))
     assert (move.bucket, move.target, move.remove) == (RNB.id, HIGH, (MED,))
-    assert plan.left == ()
 
 
 @pytest.mark.parametrize("genre", ["", "Deep House"], ids=["no-genre", "another-folder"])
@@ -384,19 +386,15 @@ def test_a_soul_track_in_the_old_soul_r_and_b_playlist_moves_to_soul_and_is_with
     tracks = [_scanned("t", energy=5, genre="Soul / R&B")]
     (entry,) = _adoption(tracks, _in_old_soul_rnb("t")).entries
     assert entry.held_elsewhere and not entry.applicable
-    plan = _moves(tracks, _in_old_soul_rnb("t"))
-    (move,) = plan.moves
+    move = _moved(tracks, _in_old_soul_rnb("t"))
     assert (move.bucket, move.add, move.remove) == (SOUL.id, MED, (SPLIT[RNB_FORMER.id].id,))
-    assert plan.left == ()
     (written,) = move_cli.membership_moves([move], DECLARED)
     assert written.remove == (OLD_SOUL_RNB,)
 
 
 def test_an_r_and_b_track_in_the_old_soul_r_and_b_playlist_still_moves_to_r_and_b():
-    plan = _moves([_scanned("t", energy=5, genre="R&B")], _in_old_soul_rnb("t"))
-    (move,) = plan.moves
+    move = _moved([_scanned("t", energy=5, genre="R&B")], _in_old_soul_rnb("t"))
     assert (move.bucket, move.add, move.remove) == (RNB.id, MED, (RNB_FORMER.id,))
-    assert plan.left == ()
 
 
 def test_an_entry_naming_a_split_place_as_its_sub_is_never_a_move():
@@ -408,15 +406,13 @@ def test_an_entry_naming_a_split_place_as_its_sub_is_never_a_move():
 @pytest.mark.parametrize("genre", ["Hip-Hop", "Hip-Hop / R&B", "Hip-hop & Rap"])
 def test_a_hip_hop_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(genre):
     held = {HIPHOP.id: {"t": (HH_FORMER.id,)}, NONELEC.id: {"t": (HH_FORMER.id,)}}
-    plan = _moves([_scanned("t", energy=5, genre=genre)], held)
-    (move,) = plan.moves
+    move = _moved([_scanned("t", energy=5, genre=genre)], held)
     assert (move.bucket, move.target, move.add, move.remove) == (
         HIPHOP.id,
         MED,
         MED,
         (HH_FORMER.id,),
     )
-    assert plan.left == ()
 
 
 # ── the writer's list and the worker's check ───────────────────────────────

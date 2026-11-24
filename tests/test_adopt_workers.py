@@ -6,6 +6,7 @@ does; properties of one approved apply are asserted over one drive. D1 applies.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import sqlite3
@@ -120,6 +121,16 @@ def machine(library, monkeypatch):
     return resolved
 
 
+@contextlib.contextmanager
+def _db(cfg: config.Config):
+    """A handle on the library database, closed however the block ends."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
+
+
 def _record_cutover(cfg: config.Config, root_id: str, on: date = date(2026, 9, 2)) -> None:
     tree_registry.record_cutover(
         cfg,
@@ -133,13 +144,10 @@ def _record_cutover(cfg: config.Config, root_id: str, on: date = date(2026, 9, 2
 @pytest.fixture
 def cut_over(machine):
     """A library whose tree the registry records as database native, so the write runs."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
-    try:
+    with _db(machine) as handle:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         handle.session.commit()
         root_id = str(root.ID)
-    finally:
-        rb_writer.close_db(handle)
     _record_cutover(machine, root_id)
     return machine
 
@@ -182,8 +190,7 @@ def _worker(job_id: str, job_of=lambda job: job):
 
 def _memberships(cfg: config.Config) -> dict[str, list[str]]:
     """What the database holds, read through a fresh handle rather than the report."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _db(cfg) as handle:
         found: dict[str, list[str]] = {}
         for row in handle.get_playlist():
             songs = handle.get_playlist_songs(PlaylistID=str(row.ID))
@@ -191,8 +198,6 @@ def _memberships(cfg: config.Config) -> dict[str, list[str]]:
             if members:
                 found[str(row.Name)] = sorted(members)
         return found
-    finally:
-        rb_writer.close_db(handle)
 
 
 # ── Both keys are bound ──
@@ -357,11 +362,8 @@ def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
 
 
 def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monkeypatch):
-    """The happy path, read back from the database rather than from the report.
-
-    No tag and every byte kept (R16), the actor in the payload (R34), one capture
-    per job (KTD6), a second run adds no row, and no favourites class refuses (U132).
-    """
+    """The happy path, read back from the database: no tag and every byte kept (R16), the
+    actor in the payload (R34), one capture per job (KTD6), no favourites refusal (U132)."""
     from cratekit.core import active_taxonomy
     from cratekit.write import genre_favorites, trees
 
@@ -439,11 +441,8 @@ def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monke
 
 
 def test_an_apply_records_the_node_of_each_destination_it_filed_into(cut_over):
-    """R-1991: a folder renamed after an adoption is still read as its genre's.
-
-    The record is read back from the state file and each node from a fresh
-    handle, so the playlist it names is the one bearing the destination's names.
-    """
+    """R-1991: a folder renamed after an adoption is still read as its genre's, so each
+    recorded node, read from a fresh handle, bears the destination's names."""
     from cratekit.core import convergence
 
     plan = apply_cli.current_plan(cut_over, DECLARED)
@@ -456,8 +455,7 @@ def test_an_apply_records_the_node_of_each_destination_it_filed_into(cut_over):
     record = convergence.read(cut_over).tree(plan.tree)
     assert record is not None and not record.unconverged
     assert {(entry.bucket, entry.sub) for entry in record.nodes} == wanted
-    handle = rb_writer.open_db(rb_writer.live_db_path(cut_over), unlock=False, cfg=cut_over)
-    try:
+    with _db(cut_over) as handle:
         for entry in record.nodes:
             playlist = handle.get_playlist(ID=entry.playlist_id)
             folder = handle.get_playlist(ID=entry.folder_id)
@@ -465,8 +463,6 @@ def test_an_apply_records_the_node_of_each_destination_it_filed_into(cut_over):
             assert (str(folder.Name), str(playlist.Name)) == destination(
                 DECLARED, entry.bucket, entry.sub
             )
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_planned_destinations_name_each_pair_once_and_skip_what_names_none(monkeypatch):
@@ -850,23 +846,19 @@ def placed(machine, silence):
     ]
     seeded.append((style.id, first.id, "p-style"))
 
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
-    try:
+    with _db(machine) as handle:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         for bucket_id, sub_id, content_id in seeded:
             _file_into(handle, root, bucket_id, sub_id, content_id)
         handle.session.commit()
         root_id = str(root.ID)
-    finally:
-        rb_writer.close_db(handle)
     _record_cutover(machine, root_id, on=date(2026, 9, 27))
     return machine
 
 
 def _filed(cfg: config.Config) -> dict[str, set[tuple[str, str]]]:
     """Every track's places in the tree, as folder and playlist names, read back."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _db(cfg) as handle:
         names = {str(row.ID): (str(row.Name), str(row.ParentID)) for row in handle.get_playlist()}
         found: dict[str, set[tuple[str, str]]] = {}
         for playlist_id, (name, parent) in names.items():
@@ -875,8 +867,6 @@ def _filed(cfg: config.Config) -> dict[str, set[tuple[str, str]]]:
                     (names.get(parent, ("", ""))[0], name)
                 )
         return found
-    finally:
-        rb_writer.close_db(handle)
 
 
 def _shown(verb: list[str]) -> dict:
@@ -989,13 +979,10 @@ def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
     # A track moved after the approval is a stale decision, run on the worker directly.
     _run_id, job_id = approve_and_queue(APPLY, GATE)
 
-    handle = rb_writer.open_db(rb_writer.live_db_path(placed), unlock=False, cfg=placed)
-    try:
+    with _db(placed) as handle:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         _file_into(handle, root, _energy_bucket().id, _band(1), "p-med-reads-high")
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
     before = _filed(placed)
 
     with pytest.raises(Exception) as raised:
@@ -1008,8 +995,7 @@ def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -
     """Rename one destination's playlist in rekordbox after a write recorded its node."""
     from cratekit.core import convergence
 
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _db(cfg) as handle:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         folder_display, sub_display = destination_names(bucket_id, sub_id)
         folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
@@ -1022,8 +1008,6 @@ def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -
         )
         playlist.Name = to
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
     convergence.record_nodes(cfg, DECLARED.tree.id, [node])
 
 
