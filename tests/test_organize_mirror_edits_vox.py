@@ -200,3 +200,40 @@ def test_the_plan_reads_the_tag_once(calibrated, monkeypatch):
         "2": {"Tech House / Low"},
     }, joins
     assert step.key == mirror_edits.KIND
+
+
+def _untagged_in(machine: Machine, content_id: str) -> list[str]:
+    """Each vocal sub the check names this track ``untagged`` in (R-2056)."""
+    reports, _opened = rebuild.preview_governed_trees(
+        machine.cfg, tree_ids=(taxonomy.default_taxonomy().tree.id,), vocal_threshold=CUT
+    )
+    path = str(machine.files[content_id])
+    return [
+        f"{entry.folder} / {entry.playlist}"
+        for report in reports
+        for entry in report.untagged
+        if entry.location == path or entry.content_id == content_id
+    ]
+
+
+def test_an_untagged_member_of_its_own_folders_with_vox_keeps_it_on_a_move_within_the_folder(
+    calibrated,
+):
+    """R-2056 leaves an untagged vocal membership for a person: the resort keeps it and
+    ``converge`` names it. A move of its energy on the account is not that decision, so
+    the mirror keeps it too, in the library and on the account."""
+    machine = calibrated
+    _vocal(machine, "1", OVER)
+    _tag_vox(machine.cfg, "2")
+    _hold_in(machine, ("Deep House", VOX), "1")
+    machine.run()
+    assert _untagged_in(machine, "1") == [f"Deep House / {VOX}"]
+
+    change = _moved(machine, "Deep House High")
+    assert change["leaves"] == ["Deep House / Low"], change
+    assert change["joins"] == ["Deep House / High"], change
+    assert change["keeps untagged"] == [f"Deep House / {VOX}"], change
+    assert machine.places("1") == {("Deep House", "High"), ("Deep House", VOX)}
+    assert _untagged_in(machine, "1") == [f"Deep House / {VOX}"], "converge stopped naming it"
+    _settled(machine)
+    assert machine.held(f"Deep House {VOX}") == ["r1"]

@@ -1389,7 +1389,9 @@ crate inbox rotate
   carried the tag or in rekordbox for one whose tag was taken off, or by
   taking it out of the playlist; then `converge` again. A track moved on the
   account keeps or joins its new folder's `with vox` by its tag and leaves
-  the old one, so the next `route resort` adds nothing back. `route inbox`
+  the old one, so the next `route resort` adds nothing back; an `untagged`
+  one moved within its folder keeps that folder's `with vox`, listed under
+  `keeps untagged` on the gate, until it is tagged or taken out. `route inbox`
   reads the tag before its gate and warns `inbox-vocal-untagged`, naming each
   intake file that clears the cut and whose row carries no `vox` tag; it goes
   in without `with vox` until `crate metadata mytags-vocals --apply` tags it

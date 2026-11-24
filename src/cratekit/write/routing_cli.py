@@ -173,7 +173,8 @@ def _untagged_warnings(untagged: Iterable[rebuild.DeclaredPlacement]) -> list[di
             f"carries the vox My Tag, which is what files the vocal sub, so they "
             f"are filed without it: {'; '.join(names)}. crate metadata "
             f"mytags-vocals --apply tags a row whose file clears the cut and that "
-            f"never carried the tag, and route resort then files it"
+            f"never carried the tag, and route resort then files it; a file "
+            f"rekordbox has not imported has no row to tag until it is imported"
         ),
     }]
 
