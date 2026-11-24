@@ -47,9 +47,6 @@ ACCENTED = "Café Track.flac"
 ARTIST = "A Synthesized Artist"
 
 
-# Fixtures
-
-
 @pytest.fixture
 def library_root(tmp_path, monkeypatch):
     root = tmp_path / "library"
@@ -59,18 +56,15 @@ def library_root(tmp_path, monkeypatch):
     return root
 
 
+def _pinned(root, **overrides) -> dict:
+    """Configuration data with the application pin RECORDED, since an unset one refuses."""
+    pins = {"pinned_app_version": RECORDED_APP_VERSION, "pin_validated_on": "2026-08-02"}
+    return valid_data(root, rekordbox=pins, **overrides)
+
+
 @pytest.fixture
 def cfg(library_root):
-    """Configuration with the application pin RECORDED, since an unset one refuses."""
-    return config.from_dict(
-        valid_data(
-            library_root,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "pin_validated_on": "2026-08-02",
-            },
-        )
-    )
+    return config.from_dict(_pinned(library_root))
 
 
 def _volume_agrees_and_rekordbox_is_shut(cfg, monkeypatch) -> None:
@@ -103,22 +97,25 @@ def _home(tmp_path) -> Path:
     return home
 
 
+def _refusal(verb, *given, **named):
+    """The cause of the ``CratekitError`` that ``verb`` refuses with."""
+    with pytest.raises(CratekitError) as excinfo:
+        verb(*given, **named)
+    return excinfo.value.cause
+
+
+def _active(recorded: str, content_id: str = "9", *, deleted: bool = False):
+    return trees.ContentRow(content_id=content_id, recorded=recorded, deleted=deleted)
+
+
 def _row(cfg, name: str, content_id: str, *, deleted: bool = False):
-    return trees.ContentRow(
-        content_id=content_id,
-        recorded=str(Path(cfg.library.root) / "Music" / name),
-        deleted=deleted,
-    )
+    return _active(str(Path(cfg.library.root) / "Music" / name), content_id, deleted=deleted)
 
 
 def _removed(cfg, name: str, content_id: str, *, sequence: int = 10, size: int | None = 11):
     return library.RemovedRow(
-        content_id=content_id,
-        recorded=str(Path(cfg.library.root) / "Music" / name),
-        sequence=sequence,
-        size=size,
-        artist=ARTIST,
-        title=Path(name).stem,
+        content_id=content_id, recorded=str(Path(cfg.library.root) / "Music" / name),
+        sequence=sequence, size=size, artist=ARTIST, title=Path(name).stem,
     )
 
 
@@ -128,40 +125,6 @@ class FakeRow:
     def __init__(self, **columns):
         for key, value in columns.items():
             setattr(self, key, value)
-
-
-class FakeQuery:
-    """The binding hands back a query, not a list, and the guarded canary uses it."""
-
-    def __init__(self, rows):
-        self._rows = list(rows)
-
-    def __iter__(self):
-        return iter(self._rows)
-
-    def first(self):
-        return self._rows[0] if self._rows else None
-
-    def count(self):
-        return len(self._rows)
-
-
-class SpentQuery:
-    """A query whose rows can be WALKED once, which is what a raw cursor is."""
-
-    def __init__(self, rows):
-        self._rows = list(rows)
-        self._declared = len(self._rows)
-        self._walked = False
-
-    def __iter__(self):
-        if self._walked:
-            return iter(())
-        self._walked = True
-        return iter(self._rows)
-
-    def count(self):
-        return self._declared
 
 
 class MuteQuery:
@@ -174,19 +137,54 @@ class MuteQuery:
         return iter(self._rows)
 
 
+class FakeQuery(MuteQuery):
+    """The binding hands back a query, not a list, and the guarded canary uses it."""
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def count(self):
+        return len(self._rows)
+
+
+class UndercountQuery(MuteQuery):
+    """A query that DECLARES fewer rows than it hands back."""
+
+    def __init__(self, rows, declared):
+        super().__init__(rows)
+        self._declared = declared
+
+    def count(self):
+        return self._declared
+
+
+class SpentQuery(UndercountQuery):
+    """A query whose rows can be WALKED once, which is what a raw cursor is."""
+
+    def __init__(self, rows):
+        super().__init__(rows, len(rows))
+        self._walked = False
+
+    def __iter__(self):
+        if self._walked:
+            return iter(())
+        self._walked = True
+        return iter(self._rows)
+
+
+class FailingWalk(UndercountQuery):
+    """A query whose walk raises partway through. ``count()`` answers normally."""
+
+    def __iter__(self):
+        yield from self._rows
+        raise RuntimeError("the cursor was closed underneath the walk")
+
+
 class FakeDb:
     """A binding that answers the five questions the pass asks and nothing else."""
 
-    def __init__(
-        self,
-        rows=(),
-        memberships=(),
-        *,
-        usn=100,
-        identity="db-identity-1",
-        memberships_walk_once=False,
-        memberships_cannot_count=False,
-    ):
+    def __init__(self, rows=(), memberships=(), *, usn=100, identity="db-identity-1",
+                 memberships_walk_once=False, memberships_cannot_count=False):
         self.rows = list(rows)
         self.memberships = list(memberships)
         self.usn = usn
@@ -216,23 +214,23 @@ def _membership(content_id, *, deleted=False):
     return FakeRow(ID=f"m{content_id}", ContentID=content_id, rb_local_deleted=1 if deleted else 0)
 
 
-def _at(folder, content_id, *, deleted=False, usn=None, size=11, title=None, isrc=None):
+def _at(folder, content_id, *, deleted=False, usn=None, size=11, title=None, isrc=None, **columns):
     """A collection row recorded at ``folder``, titled by its stem unless told otherwise."""
-    return FakeRow(
-        ID=content_id,
-        FolderPath=folder,
-        FileSize=size,
-        rb_local_deleted=1 if deleted else 0,
-        rb_local_usn=usn,
-        Title=title if title is not None else Path(folder).stem,
-        ArtistName=ARTIST,
-        ISRC=isrc,
+    base = dict(
+        ID=content_id, FolderPath=folder, FileSize=size, rb_local_deleted=1 if deleted else 0,
+        rb_local_usn=usn, Title=title if title is not None else Path(folder).stem,
+        ArtistName=ARTIST, ISRC=isrc,
     )
+    return FakeRow(**{**base, **columns})
 
 
-def _content(cfg, name, content_id, *, deleted=False, usn=None, size=11, title=None, isrc=None):
-    folder = str(Path(cfg.library.root) / "Music" / name)
-    return _at(folder, content_id, deleted=deleted, usn=usn, size=size, title=title, isrc=isrc)
+def _content(cfg, name, content_id, **columns):
+    return _at(str(Path(cfg.library.root) / "Music" / name), content_id, **columns)
+
+
+def _read(*rows):
+    """The removed rows the reader takes from ``rows``."""
+    return library.read_collection(FakeQuery(rows)).removed
 
 
 # Part 1: the watermark
@@ -487,16 +485,17 @@ def test_a_hard_link_from_an_active_row_is_a_collision(cfg):
     assert answered[0].category is candidates.Category.COLLIDES_WITH_ACTIVE_ROW
 
 
-def test_a_file_of_a_different_size_is_never_deletable(cfg):
-    """A path later reclaimed by a different track through name truncation."""
-    _music(cfg, ONE, body=b"a completely different recording")
-    answered = _categorize(cfg, [_removed(cfg, ONE, "1", size=11)], _references(cfg, []))
-    assert answered[0].category is candidates.Category.SIZE_MISMATCH
-
-
-def test_a_row_that_recorded_no_size_can_never_be_proved(cfg):
-    _music(cfg, ONE)
-    answered = _categorize(cfg, [_removed(cfg, ONE, "1", size=None)], _references(cfg, []))
+@pytest.mark.parametrize(
+    ("body", "size"),
+    [
+        # A path later reclaimed by a different track through name truncation.
+        pytest.param(b"a completely different recording", 11, id="a-different-size"),
+        pytest.param(b"audio bytes", None, id="no-size-recorded"),
+    ],
+)
+def test_a_file_whose_size_does_not_prove_it_is_never_deletable(cfg, body, size):
+    _music(cfg, ONE, body=body)
+    answered = _categorize(cfg, [_removed(cfg, ONE, "1", size=size)], _references(cfg, []))
     assert answered[0].category is candidates.Category.SIZE_MISMATCH
 
 
@@ -536,8 +535,7 @@ def test_a_row_with_no_artist_and_no_title_is_never_deletable(cfg):
 
 def test_an_unresolvable_active_row_makes_the_whole_run_refuse(cfg):
     """Absence of evidence is not evidence. The proof is over EVERY active row."""
-    active = [trees.ContentRow(content_id="9", recorded="/nowhere/known/x.flac", deleted=False)]
-    references = _references(cfg, active)
+    references = _references(cfg, [_active("/nowhere/known/x.flac")])
     assert not references.complete
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
@@ -569,14 +567,7 @@ RECORDED_ELSEWHERE = "/recorded/on/another/machine"
 
 def _elsewhere(count: int = 50):
     """``count`` active rows recorded under a prefix only a rule can resolve."""
-    return [
-        trees.ContentRow(
-            content_id=f"e{index}",
-            recorded=f"{RECORDED_ELSEWHERE}/Music/Track {index}.flac",
-            deleted=False,
-        )
-        for index in range(count)
-    ]
+    return [_active(f"{RECORDED_ELSEWHERE}/Music/Track {at}.flac", f"e{at}") for at in range(count)]
 
 
 def _identified(cfg, target: str) -> locations.PrefixRule:
@@ -584,9 +575,9 @@ def _identified(cfg, target: str) -> locations.PrefixRule:
     return locations.PrefixRule(RECORDED_ELSEWHERE, target, cfg.library.volume_id)
 
 
-def _populate(volume: Path, rows) -> None:
-    for row in rows:
-        target = Path(str(volume) + row.recorded[len(RECORDED_ELSEWHERE) :])
+def _populate(volume: Path, recorded) -> None:
+    for path in recorded:
+        target = Path(str(volume) + path[len(RECORDED_ELSEWHERE) :])
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"audio bytes")
 
@@ -594,7 +585,7 @@ def _populate(volume: Path, rows) -> None:
 def test_a_prefix_rule_whose_target_is_not_there_refuses_rather_than_proving_nothing(cfg, tmp_path):
     """One wrong character in a prefix rule used to delete the completeness proof."""
     volume = tmp_path / "other-volume"
-    _populate(volume, _elsewhere())
+    _populate(volume, [row.recorded for row in _elsewhere()])
     correct = _references(
         cfg, _elsewhere(), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
     )
@@ -640,14 +631,7 @@ def test_a_dangling_symlink_is_still_one_missing_file_and_still_does_not_refuse(
 
 def test_a_folder_the_user_deleted_under_the_root_is_still_served(cfg):
     """The false positive the ANCHOR choice exists to avoid."""
-    rows = [
-        trees.ContentRow(
-            content_id=str(index),
-            recorded=str(Path(cfg.library.root) / "Music" / "An Album" / f"{index}.flac"),
-            deleted=False,
-        )
-        for index in range(5)
-    ]
+    rows = [_row(cfg, f"An Album/{at}.flac", str(at)) for at in range(5)]
     references = _references(cfg, rows)
     assert len(references.missing) == 5 and references.unanchored == ()
     assert references.complete
@@ -672,8 +656,7 @@ def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
     cfg, gates_pass, tmp_path
 ):
     """End to end: a dead rule refuses the plan before a collision it hides is offered."""
-    _music(cfg, ONE)
-    _baseline(cfg)
+    _baselined(cfg, ONE)
     elsewhere = _at(f"{RECORDED_ELSEWHERE}/Music/Track 0.flac", "9", usn=45)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50), elsewhere], usn=50)
     with pytest.raises(CratekitError) as excinfo:
@@ -684,11 +667,7 @@ def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
 
 def test_a_nul_byte_in_a_recorded_path_refuses_rather_than_escaping_as_a_defect(cfg):
     """``os.stat`` raises ValueError here, not OSError, and it must still refuse (S4)."""
-    poisoned = trees.ContentRow(
-        content_id="9",
-        recorded=str(Path(cfg.library.root) / "Music" / "Bad\x00Name.flac"),
-        deleted=False,
-    )
+    poisoned = _row(cfg, "Bad\x00Name.flac", "9")
     references = _references(cfg, [poisoned])
     assert references.uninspectable == ("9",) and not references.complete
     row = replace(_removed(cfg, ONE, "1"), recorded=poisoned.recorded)
@@ -698,8 +677,7 @@ def test_a_nul_byte_in_a_recorded_path_refuses_rather_than_escaping_as_a_defect(
 
 
 def test_a_streamed_row_is_neither_indexed_nor_counted_against_the_proof(cfg):
-    streamed = trees.ContentRow(content_id="9", recorded="tidal:track:123", deleted=False)
-    references = _references(cfg, [streamed])
+    references = _references(cfg, [_active("tidal:track:123")])
     assert references.complete and not references.by_identity and not references.unmapped
     assert references.not_a_path == ("9",), "a row excused from the proof must still be counted"
 
@@ -716,8 +694,7 @@ def test_a_recorded_prefix_the_map_covers_resolves_on_both_sides(cfg, library_ro
     older = "/an/older/mount"
     rules = [locations.PrefixRule(older, str(library_root))]
     _music(cfg, ONE)
-    active = [trees.ContentRow(content_id="9", recorded=f"{older}/Music/{ONE}", deleted=False)]
-    references = _references(cfg, active, prefix_map=rules)
+    references = _references(cfg, [_active(f"{older}/Music/{ONE}")], prefix_map=rules)
     row = replace(_removed(cfg, ONE, "1"), recorded=f"{older}/Music/{ONE}")
     answered = _categorize(cfg, [row], references, prefix_map=rules)
     assert answered[0].category is candidates.Category.COLLIDES_WITH_ACTIVE_ROW
@@ -779,34 +756,35 @@ def _confirm_every(cfg, db, **plan):
     return found
 
 
-def _confirm_first(cfg, db, **plan):
-    """Plan, offer, and confirm the first offered item, as a person would; returns the plan."""
+def _confirm_first(cfg, db, verdict=review.Verdict.ACCEPTED, **plan):
+    """Plan, offer, and answer the first offered item, as a person would; returns the plan."""
     found = run.plan(cfg, db, actor="cli", **plan)
-    _confirm(cfg, run.present(cfg, found)[0].item_id)
+    _confirm(cfg, run.present(cfg, found)[0].item_id, verdict)
     return found
 
 
 def _confirmed_one(cfg, tmp_path, verdict=review.Verdict.ACCEPTED):
     """A home with a Trash, and a baselined library whose one removal is answered."""
-    home = _home(tmp_path)
-    db = _prepared(cfg)
-    found = run.plan(cfg, db, actor="cli")
-    _confirm(cfg, run.present(cfg, found)[0].item_id, verdict)
+    home, db = _home(tmp_path), _prepared(cfg)
+    _confirm_first(cfg, db, verdict)
     return home, db
 
 
 def _baseline(cfg) -> None:
     """The watermark a first run over ``FakeDb([], usn=40)`` leaves, written directly."""
-    watermark.WatermarkStore(cfg).baseline(
-        database_identity="db-identity-1", sequence=40, actor="cli"
-    )
+    watermark.WatermarkStore(cfg).baseline(database_identity="db-identity-1", sequence=40, actor="cli")
+
+
+def _baselined(cfg, *names) -> None:
+    """``names`` on disk, and the watermark a first run leaves."""
+    for name in names:
+        _music(cfg, name)
+    _baseline(cfg)
 
 
 def _prepared(cfg, *, names=(ONE,), usn=50):
     """A library that has been baselined, with ``names`` removed after that."""
-    for name in names:
-        _music(cfg, name)
-    _baseline(cfg)
+    _baselined(cfg, *names)
     rows = [
         _content(cfg, name, str(index + 1), deleted=True, usn=usn + index)
         for index, name in enumerate(names)
@@ -887,9 +865,7 @@ def test_a_confirmed_item_invalidated_before_the_move_is_refused_at_move_time(
     db.rows.append(_content(cfg, ONE, "99", deleted=False, usn=60))
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == ()
-    assert [item.category for item in report.refused] == [
-        candidates.Category.COLLIDES_WITH_ACTIVE_ROW
-    ]
+    assert [one.category for one in report.refused] == [candidates.Category.COLLIDES_WITH_ACTIVE_ROW]
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
@@ -962,9 +938,7 @@ def test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves(
     cfg, gates_pass, monkeypatch, tmp_path
 ):
     """R38: a restored clone mounted where the real library belongs is refused."""
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: "SOME-OTHER-ID"
-    )
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: lambda _path: "SOME-OTHER-ID")
     _music(cfg, ONE)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50)
     with pytest.raises(CratekitError) as excinfo:
@@ -1189,9 +1163,7 @@ def test_the_preview_and_the_write_run_the_same_categoriser():
     """A destructive verb whose dry run and real run take different code paths."""
     tree = ast.parse((PACKAGE_ROOT / "candidates.py").read_text())
     recheck = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "recheck"
+        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "recheck"
     )
     calls = {
         node.func.id
@@ -1230,16 +1202,7 @@ def _drive(argv):
 @pytest.fixture
 def deletion_enabled(cfg, library_root):
     """The same library, saved to disk under a profile that switches deletion on."""
-    on_disk = config.from_dict(
-        valid_data(
-            library_root,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "pin_validated_on": "2026-08-02",
-            },
-            profile={"name": "full"},
-        )
-    )
+    on_disk = config.from_dict(_pinned(library_root, profile={"name": "full"}))
     config.save(on_disk)
     config.reset_cache()
     return on_disk
@@ -1284,18 +1247,21 @@ def test_tombstone_list_refuses_an_identifier_that_resolves_in_neither_store(cfg
 # Part 6: findings the review accepted, fixed and held
 
 
-def test_a_verdict_does_not_travel_to_whatever_the_row_resolves_to_later(cfg, gates_pass, tmp_path):
-    """A person was shown one path, accepted, and a DIFFERENT file was moved."""
-    first = tmp_path / "volume-one"
-    second = tmp_path / "volume-two"
+def _on_two_volumes(cfg, tmp_path):
+    """ONE on two volumes, and its removal past a baseline taken through a rule to the first."""
+    first, second = tmp_path / "volume-one", tmp_path / "volume-two"
     for volume in (first, second):
         (volume / "Music").mkdir(parents=True)
         (volume / "Music" / ONE).write_bytes(b"audio bytes")
-    to_first = [_identified(cfg, str(first))]
-    to_second = [_identified(cfg, str(second))]
+    to_first, to_second = [_identified(cfg, str(first))], [_identified(cfg, str(second))]
     run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=to_first)
-    removed = _at(f"{RECORDED_ELSEWHERE}/Music/{ONE}", "1", deleted=True, usn=50)
-    db = FakeDb([removed], usn=50)
+    db = FakeDb([_at(f"{RECORDED_ELSEWHERE}/Music/{ONE}", "1", deleted=True, usn=50)], usn=50)
+    return first, second, to_first, to_second, db
+
+
+def test_a_verdict_does_not_travel_to_whatever_the_row_resolves_to_later(cfg, gates_pass, tmp_path):
+    """A person was shown one path, accepted, and a DIFFERENT file was moved."""
+    first, second, to_first, to_second, db = _on_two_volumes(cfg, tmp_path)
     found = run.plan(cfg, db, actor="cli", prefix_map=to_first)
     offered = run.present(cfg, found)
     assert offered[0].payload["path"] == str(first / "Music" / ONE)
@@ -1321,18 +1287,27 @@ def test_a_name_the_filesystem_will_not_take_refuses_for_that_one_file(tmp_path)
     assert excinfo.value.cause.scope is Scope.ITEM
 
 
-def test_a_disk_that_will_not_take_any_name_still_stops_the_run(tmp_path, monkeypatch):
-    """The other side of the same split, asserted so the narrowing did not go too far."""
+@pytest.mark.parametrize(
+    ("number", "made"),
+    [
+        # The other side of the same split, asserted so the narrowing did not go too far.
+        pytest.param(errno.ENOSPC, True, id="a-disk-that-takes-no-name"),
+        # ENAMETOOLONG and EINVAL can be facts about the DESTINATION, not the name.
+        pytest.param(errno.ENAMETOOLONG, False, id="a-trash-directory-that-is-the-problem"),
+    ],
+)
+def test_a_trash_fault_wider_than_one_name_stops_the_run(tmp_path, monkeypatch, number, made):
     directory = tmp_path / "trash"
-    directory.mkdir()
+    if made:
+        directory.mkdir()
 
-    def full(*args, **kwargs):
-        raise OSError(errno.ENOSPC, "no space left on device")
+    def refused(*args, **kwargs):
+        raise OSError(number, os.strerror(number))
 
-    monkeypatch.setattr(os, "open", full)
+    monkeypatch.setattr(os, "open", refused)
     with pytest.raises(OSError) as excinfo:
         trash._free_name(directory, ONE)
-    assert excinfo.value.errno == errno.ENOSPC
+    assert excinfo.value.errno == number, "a Trash fault became an item skip"
 
 
 def test_one_impossible_name_costs_one_file_rather_than_the_whole_pass(
@@ -1401,15 +1376,9 @@ def test_a_name_that_is_all_suffix_is_numbered_without_a_leading_space(tmp_path)
 
 def test_the_reference_set_it_built_is_reported_on_every_run(cfg, gates_pass, caplog):
     """The module docstring sells this as the answer, so it is asserted like one."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    db = FakeDb(
-        [
-            _content(cfg, ONE, "1", deleted=False, usn=44),
-            _content(cfg, "Never Existed.flac", "2", deleted=False, usn=45),
-        ],
-        usn=50,
-    )
+    _baselined(cfg, ONE)
+    missing = _content(cfg, "Never Existed.flac", "2", deleted=False, usn=45)
+    db = FakeDb([_content(cfg, ONE, "1", deleted=False, usn=44), missing], usn=50)
     with caplog.at_level(logging.INFO, logger="cratekit.deletion.run"):
         run.plan(cfg, db, actor="cli")
     said = [
@@ -1423,8 +1392,7 @@ def test_an_anchor_that_answered_nothing_is_named_in_a_warning(cfg, gates_pass, 
     """The all-or-nothing version of this was silenced by ONE unrelated good row."""
     wrong = tmp_path / "real-but-not-the-one"
     wrong.mkdir()
-    _music(cfg, ONE)
-    _baseline(cfg)
+    _baselined(cfg, ONE)
     elsewhere = _at(f"{RECORDED_ELSEWHERE}/Music/Track 0.flac", "9", usn=45)
     db = FakeDb([_content(cfg, ONE, "1", deleted=False, usn=44), elsewhere], usn=50)
     with caplog.at_level(logging.WARNING, logger="cratekit.deletion.run"):
@@ -1464,9 +1432,8 @@ def test_an_anchor_with_one_missing_row_and_one_good_row_is_not_suspect(cfg):
     assert references.suspect_anchors == ()
 
 
-def test_a_volume_that_goes_away_mid_walk_refuses_rather_than_shrinking_the_proof(cfg, tmp_path):
-    """The cache has a direction and the unsafe one used to win silently."""
-    volume = tmp_path / "ejected-halfway"
+def _ejecting(volume: Path, *, nothing_else_exists: bool = False):
+    """A ``stat`` that finds ``volume`` on its first look and gone on every look after."""
     volume.mkdir()
     real = os.stat
     asked = {"count": 0}
@@ -1476,14 +1443,18 @@ def test_a_volume_that_goes_away_mid_walk_refuses_rather_than_shrinking_the_proo
             asked["count"] += 1
             if asked["count"] > 1:
                 raise FileNotFoundError(path)
+        elif nothing_else_exists:
+            raise FileNotFoundError(path)
         return real(path)
 
-    references = _references(
-        cfg,
-        _elsewhere(3),
-        prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))],
-        stat=ejects_after_the_first_look,
-    )
+    return ejects_after_the_first_look
+
+
+def test_a_volume_that_goes_away_mid_walk_refuses_rather_than_shrinking_the_proof(cfg, tmp_path):
+    """The cache has a direction and the unsafe one used to win silently."""
+    volume = tmp_path / "ejected-halfway"
+    rules = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    references = _references(cfg, _elsewhere(3), prefix_map=rules, stat=_ejecting(volume))
     assert references.missing == ("e0", "e1", "e2"), "the shape the old cache produced"
     assert references.unstable_anchors == (str(volume),)
     assert not references.complete
@@ -1499,13 +1470,7 @@ def test_a_rule_onto_the_filesystem_root_names_an_anchor_a_person_can_read(cfg):
     rule = locations.PrefixRule(RECORDED_ELSEWHERE, "/")
     assert rule.target == ""
     references = _references(
-        cfg,
-        [
-            trees.ContentRow(
-                content_id="9", recorded=f"{RECORDED_ELSEWHERE}/no/such/file.flac", deleted=False
-            )
-        ],
-        prefix_map=[rule],
+        cfg, [_active(f"{RECORDED_ELSEWHERE}/no/such/file.flac")], prefix_map=[rule]
     )
     assert references.unanchored == () and references.dead_anchors == ()
     assert references.missing == ("9",)
@@ -1516,9 +1481,7 @@ def test_the_library_root_anchor_is_folded_the_way_a_rule_target_is(cfg):
     # Explicit escapes, so an editor that normalizes cannot make the forms equal.
     composed = "/library/Caf\u00e9"
     decomposed = "/library/Cafe\u0301"
-    under_root = locations.ResolvedPath(
-        locations.Resolution.UNDER_ROOT, path=f"{decomposed}/Music/x.flac"
-    )
+    under_root = locations.ResolvedPath(locations.Resolution.UNDER_ROOT, path=f"{decomposed}/Music/x.flac")
     rule = locations.PrefixRule(RECORDED_ELSEWHERE, composed)
     remapped = locations.ResolvedPath(
         locations.Resolution.REMAPPED, path=f"{composed}/Music/x.flac", rule_index=0
@@ -1542,10 +1505,7 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
     cfg, gates_pass, tmp_path, monkeypatch
 ):
     """The queue is written FIRST, and this is why the order is the design."""
-    home = _home(tmp_path)
-    db = _prepared(cfg)
-    found = run.plan(cfg, db, actor="cli")
-    _confirm(cfg, run.present(cfg, found)[0].item_id, review.Verdict.REJECTED)
+    home, db = _confirmed_one(cfg, tmp_path, review.Verdict.REJECTED)
     run.apply(cfg, db, actor="cli", home=home)
     held = stores.declines(cfg).suppressions()[0]
     real = review.clear
@@ -1580,19 +1540,6 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
     assert run.present(cfg, reopened)[0].verdict is None
 
 
-def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(tmp_path, monkeypatch):
-    """ENAMETOOLONG and EINVAL can be facts about the DESTINATION, not the name."""
-    absent = tmp_path / "no-such-trash"
-
-    def too_long(*args, **kwargs):
-        raise OSError(errno.ENAMETOOLONG, "file name too long")
-
-    monkeypatch.setattr(os, "open", too_long)
-    with pytest.raises(OSError) as excinfo:
-        trash._free_name(absent, ONE)
-    assert excinfo.value.errno == errno.ENAMETOOLONG, "a Trash fault became an item skip"
-
-
 # Part 8: the round-three findings
 
 
@@ -1618,8 +1565,7 @@ def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_p
 
 def test_a_refusal_with_no_dead_anchor_offers_no_directory_to_mount(cfg):
     """The other branch, which is what stops the step being unconditional."""
-    active = [trees.ContentRow(content_id="9", recorded="/nowhere/known/x.flac", deleted=False)]
-    references = _references(cfg, active)
+    references = _references(cfg, [_active("/nowhere/known/x.flac")])
     assert references.dead_anchors == ()
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
@@ -1669,25 +1615,21 @@ def test_a_row_with_no_mix_name_keeps_the_identity_it_always_had(cfg):
 
 def test_the_reader_takes_the_mix_name_from_either_column(cfg):
     """``RemixerName`` first, ``Subtitle`` second, and never both joined."""
-    remixer = _content(cfg, ONE, "1", deleted=True, usn=50, title="Strobe")
-    remixer.RemixerName = "Michael Woods Remix"
-    remixer.Subtitle = "Ignored"
-    subtitle = _content(cfg, TWO, "2", deleted=True, usn=51, title="Strobe")
-    subtitle.RemixerName = ""
-    subtitle.Subtitle = "Extended Mix"
-    seen = library.read_collection(FakeQuery([remixer, subtitle]))
-    assert [row.version for row in seen.removed] == ["Michael Woods Remix", "Extended Mix"]
-    assert stores.version_of(seen.removed[0])["title"] == "strobe (michael woods remix)"
+    remixer = _content(
+        cfg, ONE, "1", deleted=True, usn=50, title="Strobe",
+        RemixerName="Michael Woods Remix", Subtitle="Ignored",
+    )
+    subtitle = _subtitled(cfg, TWO, "2", title="Strobe", subtitle="Extended Mix", usn=51)
+    seen = _read(remixer, subtitle)
+    assert [row.version for row in seen] == ["Michael Woods Remix", "Extended Mix"]
+    assert stores.version_of(seen[0])["title"] == "strobe (michael woods remix)"
 
 
 def test_a_row_from_a_binding_with_no_version_column_still_answers(cfg):
     """``_text`` defaults, so a binding without the column is "" rather than a raise."""
-    bare = _at(
-        str(Path(cfg.library.root) / "Music" / ONE), "1", deleted=True, usn=50, title="Strobe"
-    )
-    seen = library.read_collection(FakeQuery([bare]))
-    assert seen.removed[0].version == ""
-    assert stores.version_of(seen.removed[0])["title"] == "strobe"
+    (seen,) = _read(_content(cfg, ONE, "1", deleted=True, usn=50, title="Strobe"))
+    assert seen.version == ""
+    assert stores.version_of(seen)["title"] == "strobe"
 
 
 def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
@@ -1696,15 +1638,11 @@ def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
     music = _music(cfg, ONE)
     second = _music(cfg, TWO)
     rb_writer.close_db(real_db)
-    _write_rows(
-        db_path,
-        [("1", str(music), True, 51, 99, "Strobe"), ("2", str(second), True, 52, 99, "Strobe")],
-    )
+    rows = [("1", str(music), True, 51, 99, "Strobe"), ("2", str(second), True, 52, 99, "Strobe")]
+    _write_rows(db_path, rows)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
-            "INSERT INTO djmdArtist (ID, Name) VALUES (?, ?)", ("77", "Michael Woods Remix")
-        )
+        conn.execute("INSERT INTO djmdArtist (ID, Name) VALUES (?, ?)", ("77", "Michael Woods Remix"))
         conn.execute("UPDATE djmdContent SET RemixerID = ? WHERE ID = ?", ("77", "1"))
         conn.execute("UPDATE djmdContent SET Subtitle = ? WHERE ID = ?", ("Extended Mix", "2"))
         conn.commit()
@@ -1716,9 +1654,7 @@ def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
     finally:
         rb_writer.close_db(handle)
     versions = {row.content_id: row.version for row in seen.removed}
-    assert versions == {"1": "Michael Woods Remix", "2": "Extended Mix"}, (
-        "the version columns went unread"
-    )
+    assert versions == {"1": "Michael Woods Remix", "2": "Extended Mix"}, "the columns went unread"
     by_id = {row.content_id: row for row in seen.removed}
     assert stores.version_of(by_id["1"])["title"] == "strobe (michael woods remix)"
     assert stores.version_of(by_id["1"]) != stores.version_of(by_id["2"])
@@ -1766,19 +1702,28 @@ def test_a_decline_the_queue_simply_does_not_hold_is_still_addressable(cfg, gate
 # ── F5: the assertion the re-check dropped ───────────────────────────────────
 
 
-def _decline_between_the_plan_and_the_move(cfg, monkeypatch, row):
-    """Record a decline in the window apply's re-check is supposed to cover."""
+def _after_the_plan(monkeypatch, then):
+    """Patch the playlist read, so its second and later calls answer through ``then``."""
     real = run.library.playlist_referenced
     calls = {"count": 0}
 
     def after_the_plan(memberships):
         calls["count"] += 1
-        if calls["count"] == 2:
-            stores.record_decline(cfg, row, actor="somebody-else")
-        return real(memberships)
+        return then(calls["count"], real(memberships))
 
     monkeypatch.setattr(run.library, "playlist_referenced", after_the_plan)
     return calls
+
+
+def _decline_between_the_plan_and_the_move(cfg, monkeypatch, row):
+    """Record a decline in the window apply's re-check is supposed to cover."""
+
+    def declined(count, held):
+        if count == 2:
+            stores.record_decline(cfg, row, actor="somebody-else")
+        return held
+
+    return _after_the_plan(monkeypatch, declined)
 
 
 def test_a_decline_recorded_between_the_plan_and_the_move_stops_the_move(
@@ -1810,15 +1755,7 @@ def test_a_playlist_that_takes_the_file_after_the_plan_stops_the_move(
 ):
     """The re-check's playlist read is fresh, and a file it finds held is not moved."""
     home, db = _confirmed_one(cfg, tmp_path)
-    real = run.library.playlist_referenced
-    calls = {"count": 0}
-
-    def held_after_the_plan(memberships):
-        calls["count"] += 1
-        held = real(memberships)
-        return held | {"1"} if calls["count"] >= 2 else held
-
-    monkeypatch.setattr(run.library, "playlist_referenced", held_after_the_plan)
+    _after_the_plan(monkeypatch, lambda count, held: held | {"1"} if count >= 2 else held)
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == (), "a file a playlist took after the plan was trashed"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()

@@ -26,14 +26,7 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_intake_land_native import (
-    DECLARED,
-    INTAKE,
-    TODAY,
-    _members,
-    _music,
-    _query,
-    _seed_binding_rows,
-    _two_acts,
+    DECLARED, INTAKE, TODAY, _members, _music, _query, _seed_binding_rows, _two_acts
 )
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
@@ -247,8 +240,6 @@ def _actions(plan: rotate.RotationPlan) -> dict[str, str]:
 
 
 # The scenarios the brief names, on this medium
-
-
 def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
     native_library, silence
 ):
@@ -260,12 +251,10 @@ def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
     folder = _music(cfg, BATCH)
     assert sorted(p.name for p in folder.iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
     assert _inbox(cfg, root_id) == {
-        "Sunset Warmup 2026-10-03": ["One", "Two"],
-        "Deep Cuts 2026-10-03": ["Three", "Two"],
+        "Sunset Warmup 2026-10-03": ["One", "Two"], "Deep Cuts 2026-10-03": ["Three", "Two"]
     }
     assert [(item["playlist"], item["account"], item["count"]) for item in _written(acted)] == [
-        ("Sunset Warmup 2026-10-03", "pl-a", 2),
-        ("Deep Cuts 2026-10-03", "pl-b", 2),
+        ("Sunset Warmup 2026-10-03", "pl-a", 2), ("Deep Cuts 2026-10-03", "pl-b", 2)
     ]
     assert acted["data"]["totals"]["memberships"] == 4
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'Two'")) == 1
@@ -339,8 +328,6 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
 
 
 # The record, and the rotation ageing what the landing wrote
-
-
 def test_the_record_names_each_account_playlist_by_identifier(native_library, silence):
     """And the rotation ages that playlist by its landing date, read off the record."""
     cfg, root_id = native_library
@@ -442,8 +429,6 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(nativ
 
 
 # U128: the INBOX playlist mirrors the whole account playlist, owned rows too
-
-
 def _owned(cfg: config.Config, silence: Path, titles: tuple[str, ...]) -> None:
     """Land ``titles`` first under a name of their own and no pass, so each is a row."""
     for title in titles:

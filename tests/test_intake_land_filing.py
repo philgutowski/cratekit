@@ -116,9 +116,7 @@ def test_five_files_land_and_file_under_one_answer(filing_library, silence):
     assert filing.FILED_DIFFERENTLY_WARNING not in codes
     assert filing.NOT_FILED_WARNING not in codes
     for name, genre, energy in (
-        ("One.flac", "deep_house", 7),
-        ("Two.flac", "techno", 8),
-        ("Three.flac", "tech_house", None),
+        ("One.flac", "deep_house", 7), ("Two.flac", "techno", 8), ("Three.flac", "tech_house", None)
     ):
         words = {"deep_house": "Deep House", "techno": "Techno", "tech_house": "Tech House"}
         place = filing.plan_engine.predicted_place(DECLARED, words[genre], energy, vox=False)

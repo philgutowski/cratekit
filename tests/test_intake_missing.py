@@ -34,8 +34,6 @@ from tests.test_intake_missing_isrc import library as library  # noqa: PLC0414 -
 from tests.test_intake_missing_isrc import lists_dir
 
 # Fixtures
-
-
 @pytest.fixture
 def cfg(library) -> config.Config:
     """A configured machine naming the fake adapter, so one config serves intake and download."""
@@ -49,7 +47,6 @@ def cfg(library) -> config.Config:
     config.save(built)
     config.reset_cache()
     return built
-
 
 
 class Track:
@@ -148,7 +145,6 @@ def human(argv: list[str]) -> tuple[int, str]:
     return code, out.getvalue() + err.getvalue()
 
 
-
 def tombstone(cfg: config.Config, artist: str, title: str) -> None:
     """A deletion recorded by the REAL recorder, not an imitation of it."""
     stores.record_tombstone(
@@ -159,8 +155,6 @@ def tombstone(cfg: config.Config, artist: str, title: str) -> None:
 
 
 # What is listed
-
-
 def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp_path):
     """One job read every way it is listed: refused, elsewhere, here, again, and downloaded."""
     job_id = mixed_job(library, monkeypatch)
@@ -279,8 +273,6 @@ def test_a_held_track_is_owned_and_nothing_is_listed(
 
 
 # R-502: a missing row is asked again at listing time
-
-
 def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(
     cfg, library, monkeypatch, tmp_path
 ):
@@ -353,8 +345,6 @@ def test_a_row_a_person_answered_as_another_track_stays_listed(cfg, library, mon
 
 
 # R-503: an offered row is listable once a person answers it
-
-
 def offered_item(job_id: str) -> str:
     """The review item the worker named on the job's one offered report."""
     with jobs.open_store() as store:
@@ -486,8 +476,6 @@ def test_a_job_with_nothing_missing_is_no_op_and_writes_nothing(cfg, library, mo
 
 
 # R-504: hearts the provider counts and does not serve
-
-
 class Withholding(StrictCatalogue):
     """The seam as the adapter answers a listing short of the declared count."""
 
@@ -549,8 +537,6 @@ def test_hearts_all_withheld_are_not_read_as_an_account_with_none(cfg, library, 
 
 
 # What is refused
-
-
 def test_an_open_job_is_refused_and_nothing_is_written(cfg, library, monkeypatch):
     job_id = queued(monkeypatch, hearts())
     envelope = refused(job_id)
@@ -658,8 +644,6 @@ def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_
 
 
 # Tombstones: a deliberately deleted track and the download it would cost
-
-
 def test_a_track_deleted_on_purpose_is_suppressed_and_not_listed(cfg, library, monkeypatch):
     mixed_library(library)
     tombstone(cfg, "Lumen Drift", "Salt Road")
@@ -916,8 +900,6 @@ def test_job_and_run_together_are_refused_by_the_parser(cfg):
 
 
 # The registry
-
-
 def test_the_entry_is_landed_diagnostic_and_declares_no_write():
     entry = registry.entry("intake.missing")
     assert entry.landed
@@ -985,5 +967,3 @@ def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(cfg, libr
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
     assert len(playlist_withheld(envelope)) == 1
-
-

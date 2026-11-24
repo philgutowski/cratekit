@@ -82,16 +82,14 @@ def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks
     assert code == int(ExitCode.OK), acted
     assert _twins(cfg) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
     assert _inbox(cfg, root_id) == {
-        "Sunset Warmup 2026-10-03": ["One", "Two"],
-        "Deep Cuts 2026-10-03": ["Three"],
+        "Sunset Warmup 2026-10-03": ["One", "Two"], "Deep Cuts 2026-10-03": ["Three"]
     }
     held = pairs.PairStore(cfg).all()
     assert sorted(held) == ["pl-a", "pl-b"]
     assert all(one.twin and one.first for one in held.values())
     made = [item for item in acted["data"]["items"] if item["action"] == land_cli.TWIN]
     assert [(item["playlist"], item["account_id"], item["count"]) for item in made] == [
-        (f"{FOLDER} / Sunset Warmup", "pl-a", 2),
-        (f"{FOLDER} / Deep Cuts", "pl-b", 1),
+        (f"{FOLDER} / Sunset Warmup", "pl-a", 2), (f"{FOLDER} / Deep Cuts", "pl-b", 1)
     ]
     assert {one["id"] for one in made} == {one.rekordbox_id for one in held.values()}
     assert twins.LANDED in _codes(acted)

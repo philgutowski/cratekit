@@ -26,12 +26,7 @@ from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 from tests.test_intake_land_vox_native import (
-    _add_rows,
-    _added,
-    _content_id,
-    _my_tag,
-    _plan,
-    _refused_at_the_commit,
+    _add_rows, _added, _content_id, _my_tag, _plan, _refused_at_the_commit
 )
 
 #: A category of the person's own, which the writer copies the Analysis category's shape from.

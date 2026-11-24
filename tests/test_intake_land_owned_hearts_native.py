@@ -18,16 +18,7 @@ from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import PASS, _stage
 from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
 from tests.test_intake_land_hearts_native import (
-    NOV,
-    PINK_ID,
-    RED_ID,
-    SEP,
-    SOURCE,
-    UNKNOWN,
-    _colour_of,
-    _favorites,
-    _home,
-    hearts_swept,
+    NOV, PINK_ID, RED_ID, SEP, SOURCE, UNKNOWN, _colour_of, _favorites, _home, hearts_swept
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams
 from tests.test_intake_land_native import _query, _two_acts

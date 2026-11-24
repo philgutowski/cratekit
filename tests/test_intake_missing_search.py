@@ -110,8 +110,6 @@ def resolve(item_id: str, verdict: str, *extra: str) -> None:
 
 
 # One exact candidate is listed without review
-
-
 def test_one_exact_candidate_is_listed_without_review(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     fake = searching(monkeypatch, {SUN: [
@@ -168,8 +166,6 @@ def test_the_same_exact_track_served_twice_is_one_candidate(cfg, library, tmp_pa
 
 
 # Two exact candidates are offered, not picked
-
-
 def two_exact() -> FakeCatalogue:
     return FakeCatalogue(
         searches={
@@ -256,8 +252,6 @@ def test_a_title_with_two_readings_is_offered_when_each_reading_has_a_candidate(
 
 
 # A near miss is offered with its score and never listed until accepted
-
-
 def near_miss() -> FakeCatalogue:
     return FakeCatalogue(
         searches={
@@ -309,8 +303,6 @@ def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
 
 
 # An accepted candidate is listed by the next run
-
-
 def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     searching(monkeypatch, {SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")]})
@@ -359,8 +351,6 @@ def test_a_rejected_row_is_reported_and_never_searched_again(cfg, library, tmp_p
 
 
 # No candidates is reported, not silent
-
-
 def test_no_candidate_beside_a_listed_row_is_a_failing_check(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Mira Vale - Glass Hour")
     bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", "Aurora Bloom", "Sun Path")]}))
@@ -413,8 +403,6 @@ def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(
 
 
 # The library is asked first
-
-
 def test_an_owned_row_is_never_searched_for(cfg, library, tmp_path, monkeypatch):
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
@@ -458,8 +446,6 @@ def test_the_same_line_twice_is_searched_once_and_listed_once(cfg, library, tmp_
 
 
 # The unlisted list of an earlier run is the input, and the names do not collide
-
-
 def test_the_unlisted_list_is_read_and_its_found_list_sits_beside_the_jobs(
     cfg, library, tmp_path, monkeypatch
 ):
@@ -534,8 +520,6 @@ def test_the_verb_declares_that_it_adjudicates():
 
 
 # What the unit's review drove
-
-
 def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
     cfg, library, tmp_path, monkeypatch
 ):
@@ -703,8 +687,6 @@ def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
 
 
 # The proposal, below the verb
-
-
 def answer_of(line: str, *hits: Hit) -> tuple[match.Wanted, candidates.Answer]:
     wanted = match.read_text_lines(line)[0]
     return wanted, candidates.read_answer(wanted, tuple(hits))
@@ -832,5 +814,3 @@ def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, mon
     assert sorted(fake.searched_for) == sorted([("Aurora Bloom", drop), ("Aurora Bloom", wave)])
     body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
     assert sorted(t["id"] for t in body["tracks"]) == ["7001", "7002"]
-
-

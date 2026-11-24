@@ -19,15 +19,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import native
 from tests._containers import synth_container
 from tests.test_intake_land_native import (
-    BATCH,
-    INTAKE,
-    _land,
-    _landed_rows,
-    _music,
-    _query,
-    _stage,
-    _staging,
-    _two_acts,
+    BATCH, INTAKE, _land, _landed_rows, _music, _query, _stage, _staging, _two_acts
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams
 from tests.test_intake_land_native import _release_process_locks as _release_process_locks

@@ -50,12 +50,8 @@ from tests.test_sync_mark import _cut_over_intake
 PASS = "LABEL_RUN_synced"
 BY_PASS = ["label", "mark", LABEL, "--pass", PASS]
 
-#: Every year the followed label's build makes, by the fake account's id.
-BUILT = {"pl-1": "Kompakt 2021", "pl-2": "Kompakt 2022", "pl-3": "Kompakt 2023"}
-
 
 def _filed(year: int, *, label: str = LABEL, tracks: int = 1) -> dict:
-    """One entry as ``label_filing.record_commit`` writes it."""
     return {"id": f"db-{year}", "name": f"{label} {year}", "label": label, "year": year, "tracks": tracks}
 
 
@@ -99,7 +95,6 @@ def native_built(built):
     return built
 
 
-# 1. The years are the landings' own
 def test_a_native_pass_marks_exactly_the_years_its_landing_filed(native_built):
     cfg, _fake, account = native_built
     _record_landing(cfg, _filed(2021, tracks=2), _filed(2023))
@@ -136,7 +131,6 @@ def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(nati
     assert _took(account) == ["pl-3"]
 
 
-# 2. Nothing filed, and no proof
 @pytest.mark.parametrize(
     "filed", [(), (_filed(2021, label="Another Label"),), (_filed(2019),)],
     ids=["no-label-filed", "another-label", "a-year-never-built"],
@@ -151,8 +145,8 @@ def test_a_pass_whose_landings_filed_none_of_the_built_years_marks_nothing_and_s
     assert done["outcome"] == "no_op" and account.renamed == []
     assert account._writes == calls
     (warned,) = done["warnings"]
-    assert warned["code"] == "label-mark-nothing-filed"
-    assert warned["message"] == f"{LABEL}: {label_mark_cli.NOTHING_FILED_SAID}"
+    said = f"{LABEL}: {label_mark_cli.NOTHING_FILED_SAID}"
+    assert (warned["code"], warned["message"]) == ("label-mark-nothing-filed", said)
     assert {item["reason"] for item in done["data"]["items"]} == {label_mark_cli.NOT_IN_BATCH}
 
 
@@ -166,10 +160,8 @@ def test_a_bridge_batch_of_another_label_says_it_filed_nothing_too(built):
 
 @pytest.mark.parametrize(
     "landing",
-    [
-        None, {"state": session.SessionState.ABANDONED}, {"source": session.SourceState.REFUSED},
-        {"name": "ANOTHER_synced"},
-    ],
+    [None, {"state": session.SessionState.ABANDONED}, {"source": session.SourceState.REFUSED},
+     {"name": "ANOTHER_synced"}],
     ids=["no-landing", "abandoned", "never-committed", "another-pass"],
 )
 def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(native_built, landing):
@@ -209,10 +201,8 @@ def test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again(
     native_built, monkeypatch
 ):
     from cratekit.sync import mark_cli as sync_mark_cli
-    monkeypatch.setattr(
-        sync_mark_cli.ingest, "intake_medium",
-        lambda cfg: sync_mark_cli.ingest.IntakeMedium(declared=None, registry=None),
-    )
+    unreachable = sync_mark_cli.ingest.IntakeMedium(declared=None, registry=None)
+    monkeypatch.setattr(sync_mark_cli.ingest, "intake_medium", lambda cfg: unreachable)
     refused = _exits(ExitCode.PRECONDITION, drive(BY_PASS))
     steps = refused["cause"]["remediation"]["steps"]
     assert "mount the library volume, then run crate label mark again" in steps
@@ -251,19 +241,15 @@ def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
     assert account.renamed == []
 
 
-# 3. The answer covers the landings it was shown
 def test_a_landing_of_the_pass_after_the_answer_makes_it_stale(native_built):
     cfg, _fake, account = native_built
     _record_landing(cfg, _filed(2021))
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(BY_PASS))
     run_id = refused["run_id"]
-    code, _ = drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"])
-    assert code == int(ExitCode.OK)
+    _exits(ExitCode.OK, drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"]))
     # The same year again, so the marks alone would not move the digest.
     _record_landing(cfg, _filed(2021), stamp="130000")
-    _exits(
-        ExitCode.DECISION_STALE, drive(["--run", run_id, "label", "mark", LABEL, "--pass", PASS])
-    )
+    _exits(ExitCode.DECISION_STALE, drive(["--run", run_id, *BY_PASS]))
     assert account.renamed == []
 
 
@@ -301,45 +287,37 @@ def test_sync_unmark_takes_a_native_label_mark_off_again(native_built):
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
-# 4. The record reader
-#: The session the reader's own records are read as.
-ONE_LANDING = "20261007T120000-landing"
-
-
 def _record(labels) -> session.SessionRecord:
     return session.SessionRecord(
-        session_id=ONE_LANDING, workflow=native.WORKFLOW, started="2026-10-07T12:00:00+00:00",
-        state=session.SessionState.CLOSED, sources={},
+        session_id="20261007T120000-landing", workflow=native.WORKFLOW,
+        started="2026-10-07T12:00:00+00:00", state=session.SessionState.CLOSED, sources={},
         detail={} if labels is None else {label_filing.RECORD_KEY: labels},
     )
 
 
-def test_a_record_with_no_label_filing_filed_no_year():
-    assert label_filing.years_filed(_record(None), LABEL) == frozenset()
-    assert label_filing.years_filed(_record([]), LABEL) == frozenset()
+@pytest.mark.parametrize(
+    ("filing", "years"),
+    [
+        pytest.param(None, set(), id="no-label-filing-filed-no-year"),
+        pytest.param([], set(), id="an-empty-label-filing-filed-no-year"),
+        pytest.param([_filed(2021, label="kompakt"), _filed(2022, label="Kompakt ")], set(),
+                     id="a-label-is-compared-exactly-otherwise"),
+        pytest.param([_filed(987), _filed(2021, tracks=3)], {"0987", "2021"},
+                     id="a-year-is-four-digits-as-the-ledger-spells-it"),
+    ],
+)
+def test_a_record_filed_the_years_its_label_filing_names(filing, years):
+    assert label_filing.years_filed(_record(filing), LABEL) == frozenset(years)
 
 
 def test_a_label_spelled_decomposed_on_either_side_is_the_same_label():
     composed = unicodedata.normalize("NFC", "Kompäkt")
     decomposed = unicodedata.normalize("NFD", composed)
     assert composed != decomposed
-    record = _record([_filed(2021, label=decomposed)])
-    assert label_filing.years_filed(record, composed) == frozenset({"2021"})
-    record = _record([_filed(2021, label=composed)])
-    assert label_filing.years_filed(record, decomposed) == frozenset({"2021"})
+    for written, asked in ((decomposed, composed), (composed, decomposed)):
+        assert label_filing.years_filed(_record([_filed(2021, label=written)]), asked) == {"2021"}
 
 
-def test_a_label_is_compared_exactly_otherwise():
-    record = _record([_filed(2021, label="kompakt"), _filed(2022, label="Kompakt ")])
-    assert label_filing.years_filed(record, LABEL) == frozenset()
-
-
-def test_a_year_is_four_digits_as_the_ledger_spells_it():
-    record = _record([_filed(987), _filed(2021, tracks=3)])
-    assert label_filing.years_filed(record, LABEL) == frozenset({"0987", "2021"})
-
-
-# 5. A real native landing, then the mark
 @pytest.fixture
 def landed_natively(native_library, monkeypatch):
     """The native landing machine; ``follow`` then follows Kompakt and builds its years."""
@@ -372,10 +350,8 @@ def test_a_label_batch_landed_natively_with_a_manifest_is_marked_by_its_pass(
     cfg, follow = landed_natively
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
-    manifest = _manifest(
-        tmp_path,
-        [("1", "Probe", "One", LABEL, 2022), ("2", "Probe", "Two", "Another Label", 2023)],
-    )
+    rows = [("1", "Probe", "One", LABEL, 2022), ("2", "Probe", "Two", "Another Label", 2023)]
+    manifest = _manifest(tmp_path, rows)
     code, acted, _ = _land_two_acts(_land("--manifest", str(manifest), "--pass", PASS))
     assert code == int(ExitCode.OK), acted
     account = follow()

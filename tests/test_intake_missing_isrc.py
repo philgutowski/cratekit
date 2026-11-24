@@ -95,8 +95,6 @@ def three() -> tuple[dict, ...]:
 
 
 # One id is listed, anything else is handed on
-
-
 def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     cfg, library, recognised, monkeypatch
 ):
@@ -156,8 +154,7 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     manifest = json.loads(Path(summary["manifest"]).read_text())
     assert manifest["rows"]["9001"]["source"] == "set"
     assert [(t["artist"], t["title"], t["why"]) for t in summary["unlisted_tracks"]] == [
-        ("Nova Reef", "Tide", missing_cli.SEVERAL),
-        ("Mira Vale", "Glass Hour", missing_cli.NO_ISRC),
+        ("Nova Reef", "Tide", missing_cli.SEVERAL), ("Mira Vale", "Glass Hour", missing_cli.NO_ISRC)
     ]
     assert "9002, 9003" in summary["unlisted_tracks"][0]["reason"]
     assert summary["unlisted_tracks"][0]["isrc"] == TWO
@@ -239,8 +236,6 @@ def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(cfg, library, r
 
 
 # Nothing is written unless every answer is in hand
-
-
 def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
@@ -301,8 +296,6 @@ def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(cf
 
 
 # U206: the shipped catalogue keeps an ISRC answer, so a second run asks nothing
-
-
 class _ProviderTrack:
     """A provider track the matcher can read: an identifier, an artist, a title."""
 
@@ -327,5 +320,3 @@ class _CountingClient:
         if code not in self.answers:
             raise ObjectNotFound()
         return list(self.answers[code])
-
-

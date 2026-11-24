@@ -164,8 +164,7 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
     # And the report says what it placed.
     placed = [item for item in acted["data"]["items"] if item["action"] == land_cli.FAVORITES]
     assert [(i["playlist"], i["count"], i.get("created")) for i in placed] == [
-        (SOURCE, 1, None),
-        ("2026-11", 1, True),
+        (SOURCE, 1, None), ("2026-11", 1, True)
     ]
     assert placed[0]["id"] == source_id
     assert acted["data"]["totals"]["hearts placed"] == 2
@@ -193,14 +192,11 @@ def test_a_heart_of_the_twentieth_of_october_joins_its_month_and_an_undated_one_
     _hearted(cfg, silence, {"October": "2026-10-20T18:30:00+00:00", "Hearted": None})
     _acted, refused = _landed()
     assert _favorites(cfg, folder_id) == {
-        SOURCE: ["Hearted", "October"],
-        "2026-10": ["October"],
-        "Undated": ["Hearted"],
+        SOURCE: ["Hearted", "October"], "2026-10": ["October"], "Undated": ["Hearted"]
     }
     assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name LIKE '%-Q_'") == []
     assert refused["cause"]["detail"]["shown"]["month playlists"] == [
-        "2026-10 (1 file(s)), made",
-        "Undated (1 file(s)), made",
+        "2026-10 (1 file(s)), made", "Undated (1 file(s)), made"
     ]
 
 
@@ -284,8 +280,7 @@ def test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made(
     assert sorted(found[SOURCE]) == ["Newer", "Older"]
     assert found["2026-09"] == ["Older"] and found["2026-11"] == ["Newer"]
     assert refused["cause"]["detail"]["shown"]["month playlists"] == [
-        "2026-09 (1 file(s))",
-        "2026-11 (1 file(s)), made",
+        "2026-09 (1 file(s))", "2026-11 (1 file(s)), made"
     ]
     assert acted["data"]["totals"]["hearts placed"] == 4
     assert {_colour_of(cfg, "Older"), _colour_of(cfg, "Newer")} <= {"", "0"}
@@ -428,8 +423,7 @@ def test_the_pass_jobs_hearts_are_read_from_the_job_and_a_playlist_job_claims_no
     rows = account_playlists.hearts(cfg, PASS)
     assert sorted(row.ref for row in rows) == ["tid-Hearted", "tid-Nowhere"]
     assert {row.ref: row.hearted.isoformat() for row in rows} == {
-        "tid-Hearted": NOV,
-        "tid-Nowhere": SEP,
+        "tid-Hearted": NOV, "tid-Nowhere": SEP
     }
     # Two hearts jobs in one pass, one with no date: the claim takes the one that
     # knows, as the backfill does.

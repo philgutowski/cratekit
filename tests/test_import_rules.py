@@ -47,79 +47,51 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ── The lists. Literals, because the script reads them without importing this. ───
 
-#: The core modules a feature package may import: the named interface. Twenty
-#: one are among the 25 that three or more feature packages reached when
-#: U290's survey measured them. The list is capped below and is not a place to
-#: park a reach: a module joins only when it replaces one that leaves.
+#: The core modules a feature package may import: the named interface. Twenty one are among
+#: the 25 that three or more feature packages reached in U290's survey. The list is capped
+#: below and is no place to park a reach: a module joins only when one leaves.
 #:
-#: U331 MADE FOUR SWAPS, each for a module a feature package must import
-#: itself: ``art`` needs ``tags`` at import and borrows the two private
-#: container helpers the beat grid rule depends on; ``pool`` is the module the
-#: sizing guards of ``tests/test_pool_sizing.py`` are keyed on, and loads the
-#: process pool's machinery; ``restore`` imports ``session``, the module that
-#: would have to answer for it, and ``taxonomy_word`` imports the upgrade and
-#: ``routing``, which ``active_taxonomy`` answering for it would load with
-#: every importer (a cycle, until the upgrade read the loader where it calls
-#: it). The four that left are each
-#: re-exported by a listed module that loads what it needs already:
-#: ``profiles`` by ``config``, ``preflight`` and ``snapshot`` by ``session``,
-#: and ``foreign_tree`` by ``active_taxonomy``, which has the taxonomy loaded
-#: where ``tree_registry`` would load it for the restore; so every module
-#: importing ``active_taxonomy`` at its top loads the foreign tree too, which
-#: is why the doctor's two readers import it where they call it (U331's merge
-#: of U343 put the doctor's help at its ceiling). ``session`` answers
-#: for ``processes`` the same way, ``jobs`` for ``discovery``, and ``pool`` for
-#: the cores' ceiling, so a spawned worker loads nothing more for it.
+#: U331 MADE FOUR SWAPS, each for a module a feature package must import itself: ``art``
+#: needs ``tags`` at import and borrows the two private container helpers the beat grid rule
+#: depends on; ``pool`` is the module the sizing guards of ``tests/test_pool_sizing.py`` are
+#: keyed on, and loads the process pool's machinery; ``restore`` imports ``session``, the
+#: module that would have to answer for it, and ``taxonomy_word`` imports the upgrade and
+#: ``routing``, which ``active_taxonomy`` answering for it would load with every importer (a
+#: cycle, until the upgrade read the loader where it calls it). The four that left are each
+#: re-exported by a listed module that loads what it needs already: ``profiles`` by
+#: ``config``, ``preflight`` and ``snapshot`` by ``session``, and ``foreign_tree`` by
+#: ``active_taxonomy``, which has the taxonomy loaded where ``tree_registry`` would load it
+#: for the restore; so every module importing ``active_taxonomy`` at its top loads the foreign
+#: tree too, which is why the doctor's two readers import it where they call it (U331's merge
+#: of U343 put the doctor's help at its ceiling). ``session`` answers for ``processes`` the
+#: same way, ``jobs`` for ``discovery``, and ``pool`` for the cores' ceiling, so a spawned
+#: worker loads nothing more for it.
 #:
-#: A RE-EXPORT IS NEVER FREE, which is why the list is not emptied into it:
-#: the listed module imports the other with every command that imports it, a
-#: guard that follows imports follows it there, and a test that patches the
-#: name patches it where the caller reads it. Loading it on demand instead
-#: hides it from those guards (``tests/modules/test_reports.py`` refuses a
-#: computed import), so it is not done.
+#: A RE-EXPORT IS NEVER FREE, which is why the list is not emptied into it: the listed module
+#: imports the other with every command that imports it, a guard that follows imports follows
+#: it there, and a test that patches the name patches it where the caller reads it. Loading
+#: it on demand instead hides it from those guards (``tests/modules/test_reports.py`` refuses
+#: a computed import), so it is not done.
 CORE_INTERFACE = (
-    "active_taxonomy",
-    "analysis_store",
-    "art",
-    "backup_facts",
-    "binaries",
-    "cause",
-    "config",
-    "convergence",
-    "exit_codes",
-    "jobs",
-    "locations",
-    "naming",
-    "pool",
-    "provider_gate",
-    "rb_writer",
-    "restore",
-    "review",
-    "routing",
-    "secrets",
-    "session",
-    "tags",
-    "taxonomy",
-    "taxonomy_word",
-    "tombstone",
-    "tree_registry",
+    "active_taxonomy", "analysis_store", "art", "backup_facts", "binaries", "cause", "config",
+    "convergence", "exit_codes", "jobs", "locations", "naming", "pool", "provider_gate",
+    "rb_writer", "restore", "review", "routing", "secrets", "session", "tags", "taxonomy",
+    "taxonomy_word", "tombstone", "tree_registry",
 )
 CORE_INTERFACE_LIMIT = 25
 
-#: The modules and packages each toggle of ``core.profiles.MODULES`` owns. A
-#: package holding any is toggleable, every other always on. ``web`` and
-#: ``desktop`` are deferred, and ``identify`` and ``repair`` gate verbs in
-#: always on packages, so those four own nothing.
+#: The modules and packages each toggle of ``core.profiles.MODULES`` owns. A package holding
+#: any is toggleable, every other always on. ``web`` and ``desktop`` are deferred, and
+#: ``identify`` and ``repair`` gate verbs in always on packages, so those four own nothing.
 #:
-#: A HOME NEVER HOLDS WHAT BUILDS A VERB ITS TOGGLE DOES NOT GATE (U331), which
-#: rule four fails; a verb a toggle gates may still be built outside any home,
-#: as ``label.sync`` is in the shell. ``favorites`` gates one verb,
-#: ``sync.favorites`` in ``favorites/cli.py``; the rest of that package builds
-#: four verbs no toggle gates and the landing, so the toggle owns the module,
-#: as ``duplicates`` owns one module of ``reports``. ``export`` gates the verbs
-#: of ``cratekit.export``; the outbound package under ``modules`` is what the
-#: favourites sweep is built on too, and what organize, sync, label and intake
-#: call, so no toggle owns it, and rules three and four no longer read it.
+#: A HOME NEVER HOLDS WHAT BUILDS A VERB ITS TOGGLE DOES NOT GATE (U331), which rule four
+#: fails; a verb a toggle gates may still be built outside any home, as ``label.sync`` is in
+#: the shell. ``favorites`` gates one verb, ``sync.favorites`` in ``favorites/cli.py``; the
+#: rest of that package builds four verbs no toggle gates and the landing, so the toggle owns
+#: the module, as ``duplicates`` owns one module of ``reports``. ``export`` gates the verbs of
+#: ``cratekit.export``; the outbound package under ``modules`` is what the favourites sweep is
+#: built on too, and what organize, sync, label and intake call, so no toggle owns it, and
+#: rules three and four no longer read it.
 TOGGLE_HOMES = {
     "analysis": ("cratekit.analysis",),
     "vocals": ("cratekit.vocals",),
@@ -139,42 +111,37 @@ TOGGLE_HOMES = {
     "skills": ("cratekit.skills",),
 }
 
-#: The most distinct core names feature packages may use between them: 437 on
-#: the commit U290's survey measured, and 446 on the day this check landed,
-#: U292 having added nine for the taxonomy word edits its backlog plans while
-#: this was built. It moves down only, and by the card that lowers the count;
-#: ``refactor_measure.py imports --names`` lists the names, so two runs of it
-#: say which one a failing branch added.
+#: The most distinct core names feature packages may use between them: 437 on the commit
+#: U290's survey measured, and 446 on the day this check landed, U292 having added nine for
+#: the taxonomy word edits its backlog plans while this was built. It moves down only, and by
+#: the card that lowers the count; ``refactor_measure.py imports --names`` lists the names, so
+#: two runs of it say which one a failing branch added.
 #:
-#: ONE CARD RAISED IT, U298, by the coordinator's call on R-1746, and that call
-#: is no rule for any other card. U298 gave every helper the packages had each
-#: written one home, and a home in core that a feature package calls is a
-#: name. It added thirteen and freed seven, so the ceiling rose by six:
+#: ONE CARD RAISED IT, U298, by the coordinator's call on R-1746, and that call is no rule for
+#: any other card. U298 gave every helper the packages had each written one home, and a home
+#: in core that a feature package calls is a name. It added thirteen and freed seven, so the
+#: ceiling rose by six:
 #:
-#:   added   backup_facts.took, config.RemediedError, config.held,
-#:           config.lock_within, config.read_bytes_if_present,
-#:           config.read_json, config.read_json_as_text, config.read_json_map,
-#:           jobs.Artifacts, jobs.advance, jobs.reported, jobs.resumed,
-#:           preflight.device_of
-#:   freed   artifacts.Location, artifacts.committed, artifacts.produced,
-#:           naming.MarkerRule, session.attach_capture,
-#:           snapshot.assert_verified, snapshot.capture
+#:   added   backup_facts.took, config.RemediedError, config.held, config.lock_within,
+#:           config.read_bytes_if_present, config.read_json, config.read_json_as_text,
+#:           config.read_json_map, jobs.Artifacts, jobs.advance, jobs.reported,
+#:           jobs.resumed, preflight.device_of
+#:   freed   artifacts.Location, artifacts.committed, artifacts.produced, naming.MarkerRule,
+#:           session.attach_capture, snapshot.assert_verified, snapshot.capture
 #:
-#: The three private names it made public (config.exclusive_lock,
-#: config.mkdir_private, preflight.names_one_path) each replaced the private
-#: spelling of itself and moved nothing.
+#: The three private names it made public (config.exclusive_lock, config.mkdir_private,
+#: preflight.names_one_path) each replaced the private spelling of itself and moved nothing.
 #:
-#: 2026-11-23, U342, by the coordinator's call for #994, raised by one for
-#: naming.stamp_head, which analyze adopt calls to give a title with no head
-#: one: the naming engine is the one place a head is rendered, and building it
-#: in a feature package would undo what the refactor is for. U331 (#980) counts
-#: it as an interface name.
+#: 2026-11-23, U342, by the coordinator's call for #994, raised by one for naming.stamp_head,
+#: which analyze adopt calls to give a title with no head one: the naming engine is the one
+#: place a head is rendered, and building it in a feature package would undo what the
+#: refactor is for. U331 (#980) counts it as an interface name.
 #:
-#: U331 lowered it from 453 to 432, the count measured once every reach went
-#: through the list: a name re-exported by a listed module replaced the one it
-#: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
-#: names of the modules that moved to the feature that used them (``held_plan``
-#: to sync, ``rehearsal`` and ``drift`` to intake) are core names no longer.
+#: U331 lowered it from 453 to 432, the count measured once every reach went through the
+#: list: a name re-exported by a listed module replaced the one it stood for,
+#: ``Config.membership()`` replaced ``profiles.resolve``, and the names of the modules that
+#: moved to the feature that used them (``held_plan`` to sync, ``rehearsal`` and ``drift`` to
+#: intake) are core names no longer.
 CORE_NAMES_CEILING = 432
 
 
@@ -201,84 +168,113 @@ def _lines(found: dict[str, collections.Counter[str]]) -> dict[str, list[str]]:
 HOMES = {"labels": ("cratekit.label",), "export": ("cratekit.export",), "repair": ()}
 
 
+def _private(tree) -> dict[str, list[str]]:
+    return _lines(measure.private_crossings(tree))
+
+
+def _off(tree, *listed: str) -> dict[str, list[str]]:
+    return _lines(measure.off_interface(tree, list(listed) or ["config"]))
+
+
+def _top(tree, **reading) -> dict[str, list[str]]:
+    return _lines(measure.top_level_toggleable(tree, HOMES, **reading))
+
+
+LOCK = "def _exclusive_lock(): ...\n"
+IMPORT_LOCK = "from cratekit.core.config import _exclusive_lock\n"
+LOCK_CROSSING = {"sync": ["private cratekit.core.config._exclusive_lock"]}
+ROLLBACK = "def _rollback_quietly(): ...\n"
+ROLLED = "_rollback_quietly()\n"
+REGISTRY = "class Registry: ...\n"
+
+
 # ── Rule one: no private name crosses a package ──────────────────────────────
 
 
-def test_a_private_name_imported_across_packages_fails():
-    tree = _tree(
-        core__config="def _exclusive_lock(): ...\n",
-        sync__run="from cratekit.core.config import _exclusive_lock\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "sync": ["private cratekit.core.config._exclusive_lock"]
-    }
-
-
-def test_the_same_private_import_inside_its_own_package_passes():
-    tree = _tree(
-        core__config="def _exclusive_lock(): ...\n",
-        core__session="from cratekit.core.config import _exclusive_lock\n",
-    )
-    assert measure.private_crossings(tree) == {}
-
-
-def test_a_lazy_private_import_across_packages_still_fails():
-    tree = _tree(
-        core__config="def _exclusive_lock(): ...\n",
-        sync__run=(
-            "def lock():\n"
-            "    from cratekit.core.config import _exclusive_lock\n"
-            "    return _exclusive_lock()\n"
+@pytest.mark.parametrize(
+    "modules, expected",
+    [
+        pytest.param({"core__config": LOCK, "sync__run": IMPORT_LOCK}, LOCK_CROSSING, id="direct"),
+        pytest.param(
+            {
+                "core__config": LOCK,
+                "sync__run": (
+                    "def lock():\n"
+                    "    from cratekit.core.config import _exclusive_lock\n"
+                    "    return _exclusive_lock()\n"
+                ),
+            },
+            LOCK_CROSSING, id="a-lazy-import-still-fails",
         ),
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "sync": ["private cratekit.core.config._exclusive_lock"]
-    }
+        pytest.param(
+            {"core__config": LOCK, "sync__run": "from ..core.config import _exclusive_lock\n"},
+            LOCK_CROSSING, id="a-relative-import-is-resolved-and-cannot-hide-it",
+        ),
+        # The import statement names a public module; the crossing is the attribute.
+        pytest.param(
+            {
+                "write__trees": ROLLBACK,
+                "tagging__rows": "from cratekit.write import trees\n\ntrees._rollback_quietly()\n",
+            },
+            {"tagging": ["private cratekit.write.trees._rollback_quietly"]},
+            id="reached-through-an-imported-module",
+        ),
+        pytest.param(
+            {
+                "core___locks": "def take(): ...\n",
+                "sync__run": (
+                    "from cratekit.core._locks import take\nfrom cratekit import __version__\n"
+                ),
+            },
+            {"sync": ["private cratekit.core._locks.take"]},
+            id="a-private-module-of-another-package-and-a-dunder-does-not",
+        ),
+        pytest.param(
+            {
+                "write__trees": ROLLBACK,
+                "tagging__rows": "import cratekit.write.trees as writer\n\nwriter." + ROLLED,
+                "intake__land": "import cratekit.write.trees\n\ncratekit.write.trees." + ROLLED,
+            },
+            {
+                "intake": ["private cratekit.write.trees._rollback_quietly"],
+                "tagging": ["private cratekit.write.trees._rollback_quietly"],
+            },
+            id="a-dotted-import-under-another-name-is-followed-to-its-module",
+        ),
+        pytest.param(
+            {
+                "core__art": "def _open(): ...\n",
+                "core__tags": "from cratekit.core import art\n",
+                "tagging__tag": "from cratekit.core import tags\n\ntags.art._open()\n",
+            },
+            {"tagging": ["private cratekit.core.art._open"]},
+            id="a-name-of-a-module-handed-over",
+        ),
+    ],
+)
+def test_a_private_name_crossing_a_package_fails_however_it_is_reached(modules, expected):
+    assert _private(_tree(**modules)) == expected
 
 
-def test_a_private_name_reached_through_an_imported_module_fails():
-    """The import statement names a public module; the crossing is the attribute."""
-    tree = _tree(
-        write__trees="def _rollback_quietly(): ...\n",
-        tagging__rows="from cratekit.write import trees\n\ntrees._rollback_quietly()\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "tagging": ["private cratekit.write.trees._rollback_quietly"]
-    }
-
-
-def test_a_private_module_of_another_package_fails_and_a_dunder_does_not():
-    tree = _tree(
-        core___locks="def take(): ...\n",
-        sync__run="from cratekit.core._locks import take\nfrom cratekit import __version__\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "sync": ["private cratekit.core._locks.take"]
-    }
-
-
-def test_the_vendored_tree_is_not_a_private_crossing():
-    tree = _tree(acquire__vendored="from cratekit._vendor.streamrip import client\n")
-    assert measure.private_crossings(tree) == {}
+@pytest.mark.parametrize(
+    "modules",
+    [
+        pytest.param({"core__config": LOCK, "core__session": IMPORT_LOCK}, id="its-own-package"),
+        pytest.param(
+            {"acquire__vendored": "from cratekit._vendor.streamrip import client\n"},
+            id="the-vendored-tree",
+        ),
+    ],
+)
+def test_a_private_import_that_crosses_no_package_passes(modules):
+    assert measure.private_crossings(_tree(**modules)) == {}
 
 
 def test_a_private_crossing_is_one_line_however_many_files_hold_it():
     """So splitting the module that holds it adds no line to the allowance."""
     source = "from cratekit.core.config import _mkdir_private\n"
     tree = _tree(core__config="def _mkdir_private(): ...\n", adopt__move=source, adopt__scan=source)
-    assert _lines(measure.private_crossings(tree)) == {
-        "adopt": ["private cratekit.core.config._mkdir_private"]
-    }
-
-
-def test_a_relative_import_is_resolved_and_cannot_hide_a_crossing():
-    tree = _tree(
-        core__config="def _exclusive_lock(): ...\n",
-        sync__run="from ..core.config import _exclusive_lock\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "sync": ["private cratekit.core.config._exclusive_lock"]
-    }
+    assert _private(tree) == {"adopt": ["private cratekit.core.config._mkdir_private"]}
 
 
 def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
@@ -286,76 +282,66 @@ def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
     sources = {
         "src/cratekit/__init__.py": "",
         "src/cratekit/core/__init__.py": "",
-        "src/cratekit/core/config.py": "def _exclusive_lock(): ...\n",
-        "src/cratekit/sync/__init__.py": (
-            "from ..core.config import _exclusive_lock\nfrom .run import _go\n"
-        ),
+        "src/cratekit/core/config.py": LOCK,
+        "src/cratekit/sync/__init__.py": "from ..core.config import _exclusive_lock\n"
+        "from .run import _go\n",
         "src/cratekit/sync/run.py": "def _go(): ...\n",
     }
-    assert _lines(measure.private_crossings(measure.Tree(sources))) == {
-        "sync": ["private cratekit.core.config._exclusive_lock"]
-    }
-
-
-def test_a_dotted_import_under_another_name_is_followed_to_its_module():
-    tree = _tree(
-        write__trees="def _rollback_quietly(): ...\n",
-        tagging__rows="import cratekit.write.trees as writer\n\nwriter._rollback_quietly()\n",
-        intake__land="import cratekit.write.trees\n\ncratekit.write.trees._rollback_quietly()\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "intake": ["private cratekit.write.trees._rollback_quietly"],
-        "tagging": ["private cratekit.write.trees._rollback_quietly"],
-    }
+    assert _private(measure.Tree(sources)) == LOCK_CROSSING
 
 
 # ── Rule two: a feature package imports only the named interface of core ─────
 
 
-def test_a_core_module_off_the_list_fails_from_a_feature_package():
-    tree = _tree(
-        core__config="",
-        core__drift="def check(): ...\n",
-        intake__landing="from cratekit.core import config\nfrom cratekit.core.drift import check\n",
-    )
-    assert _lines(measure.off_interface(tree, ["config"])) == {
-        "intake": ["off-interface cratekit.core.drift"]
-    }
+@pytest.mark.parametrize(
+    "modules, expected",
+    [
+        pytest.param(
+            {
+                "core__config": "",
+                "core__drift": "def check(): ...\n",
+                "intake__landing": (
+                    "from cratekit.core import config\nfrom cratekit.core.drift import check\n"
+                ),
+            },
+            {"intake": ["off-interface cratekit.core.drift"]},
+            id="imported",
+        ),
+        pytest.param(
+            {
+                "core__pool": "def size(): ...\n",
+                "analysis__run": (
+                    "def go():\n    from cratekit.core import pool\n    return pool.size()\n"
+                ),
+            },
+            {"analysis": ["off-interface cratekit.core.pool"]},
+            id="a-lazy-reach-still-fails",
+        ),
+        pytest.param(
+            {
+                "core__restore": "class Plan: ...\n",
+                "session__cli": (
+                    "from typing import TYPE_CHECKING\n"
+                    "if TYPE_CHECKING:\n"
+                    "    from cratekit.core.restore import Plan\n"
+                ),
+            },
+            {"session": ["off-interface cratekit.core.restore"]},
+            id="a-reach-under-type-checking-is-still-a-reach",
+        ),
+    ],
+)
+def test_a_core_module_off_the_list_fails_from_a_feature_package(modules, expected):
+    assert _off(_tree(**modules)) == expected
 
 
 def test_the_same_import_passes_from_core_write_and_the_shell():
     source = "from cratekit.core.drift import check\n"
     tree = _tree(
-        core__drift="def check(): ...\n",
-        core__session=source,
-        write__trees=source,
+        core__drift="def check(): ...\n", core__session=source, write__trees=source,
         cli__doctor=source,
     )
     assert measure.off_interface(tree, ["config"]) == {}
-
-
-def test_a_lazy_reach_off_the_list_still_fails():
-    tree = _tree(
-        core__pool="def size(): ...\n",
-        analysis__run="def go():\n    from cratekit.core import pool\n    return pool.size()\n",
-    )
-    assert _lines(measure.off_interface(tree, ["config"])) == {
-        "analysis": ["off-interface cratekit.core.pool"]
-    }
-
-
-def test_a_reach_under_type_checking_is_still_a_reach():
-    tree = _tree(
-        core__restore="class Plan: ...\n",
-        session__cli=(
-            "from typing import TYPE_CHECKING\n"
-            "if TYPE_CHECKING:\n"
-            "    from cratekit.core.restore import Plan\n"
-        ),
-    )
-    assert _lines(measure.off_interface(tree, ["config"])) == {
-        "session": ["off-interface cratekit.core.restore"]
-    }
 
 
 def test_a_module_on_the_list_passes_from_a_feature_package():
@@ -379,24 +365,20 @@ def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
 
 def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():
     """Or eleven modules could hide behind eleven counted names of the list."""
-    handed = "from cratekit.core import art\n"
     tree = _tree(
         core__art="def read(): ...\ndef write(): ...\n",
-        core__tags=handed,
+        core__tags="from cratekit.core import art\n",
         tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
         tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.write()\n",
         sync__run="from cratekit.core import tags\n\nkept = tags.art\n",
     )
-    assert _lines(measure.off_interface(tree, ["tags"])) == {
-        "sync": ["off-interface cratekit.core.art"],
-        "tagging": ["off-interface cratekit.core.art"],
+    assert _off(tree, "tags") == {
+        "sync": ["off-interface cratekit.core.art"], "tagging": ["off-interface cratekit.core.art"]
     }
     # The name of ``tags`` that was written is counted too, beside what was read through it.
     assert measure.core_names(tree) == {
         "sync": {"cratekit.core.tags.art"},
-        "tagging": {
-            "cratekit.core.art.read", "cratekit.core.art.write", "cratekit.core.tags.art",
-        },
+        "tagging": {"cratekit.core.art.read", "cratekit.core.art.write", "cratekit.core.tags.art"},
     }
     assert measure.off_interface(tree, ["art", "tags"]) == {}
 
@@ -413,7 +395,7 @@ def test_a_module_handed_over_twice_is_followed_to_the_module_it_is():
         ),
         tagging__rows="from cratekit.core.tags import art\n\nart.codec.decode()\n",
     )
-    assert _lines(measure.off_interface(tree, ["tags"])) == {
+    assert _off(tree, "tags") == {
         "tagging": ["off-interface cratekit.core.art", "off-interface cratekit.core.codec"]
     }
     assert measure.core_names(tree) == {
@@ -432,9 +414,7 @@ def test_a_module_passed_on_by_name_through_a_third_module_is_followed_to_it():
         tagging__tag="from cratekit.core import tags\n\ntags.covers.read()\n",
         tagging__rows="from cratekit.core.tags import covers\n\ncovers.read()\n",
     )
-    assert _lines(measure.off_interface(tree, ["tags"])) == {
-        "tagging": ["off-interface cratekit.core.art"]
-    }
+    assert _off(tree, "tags") == {"tagging": ["off-interface cratekit.core.art"]}
     assert "cratekit.core.art.read" in measure.core_names(tree)["tagging"]
 
 
@@ -450,16 +430,12 @@ def test_the_module_an_import_names_is_still_reached_when_the_name_is_a_module()
         sync__run="from cratekit.label.registry import cause\n",
         adopt__move="from cratekit.core._hidden import cause\n",
     )
-    assert _lines(measure.off_interface(tree, ["cause"])) == {
+    assert _off(tree, "cause") == {
         "adopt": ["off-interface cratekit.core._hidden"],
         "intake": ["off-interface cratekit.core.preflight"],
     }
-    assert _lines(measure.top_level_toggleable(tree, HOMES)) == {
-        "sync": ["top-level cratekit.label.registry.cause"]
-    }
-    assert _lines(measure.private_crossings(tree)) == {
-        "adopt": ["private cratekit.core._hidden.cause"]
-    }
+    assert _top(tree) == {"sync": ["top-level cratekit.label.registry.cause"]}
+    assert _private(tree) == {"adopt": ["private cratekit.core._hidden.cause"]}
 
 
 def test_a_function_that_imports_its_module_when_called_is_not_that_module():
@@ -479,45 +455,71 @@ def test_a_function_that_imports_its_module_when_called_is_not_that_module():
     assert measure.off_interface(tree, ["tags"]) == {}
 
 
-def test_a_private_name_of_a_module_handed_over_is_still_a_crossing():
-    tree = _tree(
-        core__art="def _open(): ...\n",
-        core__tags="from cratekit.core import art\n",
-        tagging__tag="from cratekit.core import tags\n\ntags.art._open()\n",
-    )
-    assert _lines(measure.private_crossings(tree)) == {
-        "tagging": ["private cratekit.core.art._open"]
-    }
-
-
 def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
     """Rule three reads the module a name is, not the always on module that passed it on."""
     tree = _tree(
-        label__registry="class Registry: ...\n",
+        label__registry=REGISTRY,
         intake__landing="from cratekit.label import registry\n",
         sync__run="from cratekit.intake.landing import registry\n",
     )
-    assert _lines(measure.top_level_toggleable(tree, HOMES))["sync"] == [
-        "top-level cratekit.label.registry"
-    ]
+    assert _top(tree)["sync"] == ["top-level cratekit.label.registry"]
 
 
 # ── Rule three: an always on package never imports a toggleable one at top level ───
 
 
-def test_a_top_level_import_of_a_toggleable_package_fails_from_an_always_on_package():
-    tree = _tree(
-        label__registry="class Registry: ...\n",
-        sync__run="from cratekit.label.registry import Registry\n",
-    )
-    assert _lines(measure.top_level_toggleable(tree, HOMES)) == {
-        "sync": ["top-level cratekit.label.registry.Registry"]
-    }
+@pytest.mark.parametrize(
+    "modules, expected",
+    [
+        pytest.param(
+            {"sync__run": "from cratekit.label.registry import Registry\n"},
+            {"sync": ["top-level cratekit.label.registry.Registry"]},
+            id="at-top-level-from-an-always-on-package-fails",
+        ),
+        pytest.param(
+            {"sync__run": "class Pass:\n    from cratekit.label import registry\n"},
+            {"sync": ["top-level cratekit.label.registry"]},
+            id="in-a-class-body-runs-at-import-time-and-fails",
+        ),
+        pytest.param(
+            {
+                "sync__run": (
+                    "from typing import TYPE_CHECKING\n"
+                    "if TYPE_CHECKING:\n"
+                    "    from cratekit.label.registry import Registry\n"
+                    "else:\n"
+                    "    from cratekit.label import registry\n"
+                ),
+            },
+            {"sync": ["top-level cratekit.label.registry"]},
+            id="under-type-checking-never-runs-and-passes",
+        ),
+        pytest.param(
+            {
+                "sync__run": (
+                    "import typing\n"
+                    "if typing.TYPE_CHECKING:\n"
+                    "    from cratekit.label.registry import Registry\n"
+                ),
+            },
+            {},
+            id="type-checking-spelled-through-its-module-is-read-the-same",
+        ),
+        # Rule three is about the always on packages. Rule four reads the rest.
+        pytest.param(
+            {"export__cli": "from cratekit.label.registry import Registry\n"},
+            {},
+            id="a-toggleable-package-may-import-another",
+        ),
+    ],
+)
+def test_an_import_of_a_toggleable_package_is_read_by_when_it_runs(modules, expected):
+    assert _top(_tree(label__registry=REGISTRY, **modules)) == expected
 
 
 def test_the_same_import_under_a_function_passes():
     tree = _tree(
-        label__registry="class Registry: ...\n",
+        label__registry=REGISTRY,
         sync__run=(
             "def favourites():\n"
             "    from cratekit.label.registry import Registry\n"
@@ -525,56 +527,7 @@ def test_the_same_import_under_a_function_passes():
         ),
     )
     assert measure.top_level_toggleable(tree, HOMES) == {}
-    assert _lines(measure.top_level_toggleable(tree, HOMES, lazy=True)) == {
-        "sync": ["top-level cratekit.label.registry.Registry"]
-    }
-
-
-def test_an_import_in_a_class_body_runs_at_import_time_and_fails():
-    tree = _tree(
-        label__registry="class Registry: ...\n",
-        sync__run="class Pass:\n    from cratekit.label import registry\n",
-    )
-    assert _lines(measure.top_level_toggleable(tree, HOMES)) == {
-        "sync": ["top-level cratekit.label.registry"]
-    }
-
-
-def test_an_import_under_type_checking_never_runs_and_passes():
-    tree = _tree(
-        label__registry="class Registry: ...\n",
-        sync__run=(
-            "from typing import TYPE_CHECKING\n"
-            "if TYPE_CHECKING:\n"
-            "    from cratekit.label.registry import Registry\n"
-            "else:\n"
-            "    from cratekit.label import registry\n"
-        ),
-    )
-    assert _lines(measure.top_level_toggleable(tree, HOMES)) == {
-        "sync": ["top-level cratekit.label.registry"]
-    }
-
-
-def test_type_checking_spelled_through_its_module_is_read_the_same():
-    tree = _tree(
-        label__registry="class Registry: ...\n",
-        sync__run=(
-            "import typing\n"
-            "if typing.TYPE_CHECKING:\n"
-            "    from cratekit.label.registry import Registry\n"
-        ),
-    )
-    assert measure.top_level_toggleable(tree, HOMES) == {}
-
-
-def test_a_toggleable_package_may_import_another_at_top_level_under_this_rule():
-    """Rule three is about the always on packages. Rule four reads the rest."""
-    tree = _tree(
-        label__registry="class Registry: ...\n",
-        export__cli="from cratekit.label.registry import Registry\n",
-    )
-    assert measure.top_level_toggleable(tree, HOMES) == {}
+    assert _top(tree, lazy=True) == {"sync": ["top-level cratekit.label.registry.Registry"]}
 
 
 def test_each_imported_name_is_one_place():
@@ -597,13 +550,17 @@ def _verb(name: str, module: str, toggle: str | None = None, builder: str = "bui
     return measure.Verb(name=name, module=module, builder=builder, toggle=toggle)
 
 
+def _dangling(tree, *verbs: measure.Verb) -> list:
+    """The toggles of HOMES read over ``verbs``, the one ``sync`` verb when none is named."""
+    return measure.dangling(tree, list(verbs) or [_verb("sync", "cratekit.sync.cli")], HOMES)
+
+
 def test_a_core_verb_whose_module_imports_a_toggled_off_package_dangles():
     tree = _tree(
         label__registry="",
         organize__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n",
     )
-    verbs = [_verb("organize", "cratekit.organize.cli")]
-    (labels, export, repair) = measure.dangling(tree, verbs, HOMES)
+    (labels, export, repair) = _dangling(tree, _verb("organize", "cratekit.organize.cli"))
     assert (labels.toggle, labels.verbs) == ("labels", ("organize",))
     assert labels.edges == (("cratekit.organize.cli", "cratekit.label.registry"),)
     assert export.verbs == () and repair.verbs == ()
@@ -614,8 +571,8 @@ def test_a_core_verb_whose_module_imports_a_toggled_off_package_dangles():
 
 def test_the_toggles_own_verbs_are_off_and_so_never_dangle():
     tree = _tree(label__cli="from cratekit.label import registry\n", label__registry="")
-    verbs = [_verb("label.sweep", "cratekit.label.cli", toggle="labels")]
-    assert [item.verbs for item in measure.dangling(tree, verbs, HOMES)] == [(), (), ()]
+    found = _dangling(tree, _verb("label.sweep", "cratekit.label.cli", toggle="labels"))
+    assert [item.verbs for item in found] == [(), (), ()]
 
 
 def test_a_verb_dangles_through_a_module_it_only_reaches_indirectly():
@@ -625,7 +582,7 @@ def test_a_verb_dangles_through_a_module_it_only_reaches_indirectly():
         intake__landing="from cratekit.label import registry\n",
         sync__cli="from cratekit.intake import landing\n\ndef build(parser, entry): ...\n",
     )
-    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
+    found = _dangling(tree)
     assert found[0].verbs == ("sync",)
     assert _lines(measure.dangling_lines(tree, found)) == {
         "intake": ["dangling labels cratekit.label.registry"]
@@ -633,16 +590,9 @@ def test_a_verb_dangles_through_a_module_it_only_reaches_indirectly():
 
 
 def test_an_import_under_a_function_does_not_dangle_a_verb():
-    tree = _tree(
-        label__registry="",
-        sync__cli=(
-            "def build(parser, entry): ...\n"
-            "def run(args):\n"
-            "    from cratekit.label import registry\n"
-        ),
-    )
-    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
-    assert [item.verbs for item in found] == [(), (), ()]
+    run = "def run(args):\n    from cratekit.label import registry\n"
+    tree = _tree(label__registry="", sync__cli="def build(parser, entry): ...\n" + run)
+    assert [item.verbs for item in _dangling(tree)] == [(), (), ()]
 
 
 def test_an_import_written_in_the_builder_runs_when_the_verb_builds_and_dangles():
@@ -657,11 +607,11 @@ def test_an_import_written_in_the_builder_runs_when_the_verb_builds_and_dangles(
             "def build_other(parser, entry): ...\n"
         ),
     )
-    verbs = [
+    found = _dangling(
+        tree,
         _verb("intake.set", "cratekit.intake.cli", builder="build_set"),
         _verb("intake.other", "cratekit.intake.cli", builder="build_other"),
-    ]
-    found = measure.dangling(tree, verbs, HOMES)
+    )
     assert found[0].verbs == ("intake.set",)
 
 
@@ -670,7 +620,7 @@ def test_a_home_imported_directly_in_the_builder_dangles_the_verb():
         label__registry="",
         sync__cli="def build(parser, entry):\n    from cratekit.label import registry\n",
     )
-    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
+    found = _dangling(tree)
     assert found[0].verbs == ("sync",)
     assert found[0].edges == (("cratekit.sync.cli", "cratekit.label.registry"),)
 
@@ -688,8 +638,8 @@ def test_an_import_under_type_checking_is_never_loaded_for_a_verb():
             "        from cratekit.label import registry\n"
         ),
     )
-    verbs = [_verb("sync", "cratekit.sync.cli"), _verb("intake", "cratekit.intake.cli")]
-    assert [item.verbs for item in measure.dangling(tree, verbs, HOMES)] == [(), (), ()]
+    verbs = (_verb("sync", "cratekit.sync.cli"), _verb("intake", "cratekit.intake.cli"))
+    assert [item.verbs for item in _dangling(tree, *verbs)] == [(), (), ()]
 
 
 def test_an_import_guarded_by_try_is_read_as_one_that_runs():
@@ -705,13 +655,12 @@ def test_an_import_guarded_by_try_is_read_as_one_that_runs():
             "def build(parser, entry): ...\n"
         ),
     )
-    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
-    assert found[0].verbs == ("sync",)
+    assert _dangling(tree)[0].verbs == ("sync",)
 
 
 def test_a_verb_the_registry_loads_from_inside_a_home_it_is_not_gated_by_dangles():
     tree = _tree(label__cli="def build(parser, entry): ...\n")
-    found = measure.dangling(tree, [_verb("label.heard", "cratekit.label.cli")], HOMES)
+    found = _dangling(tree, _verb("label.heard", "cratekit.label.cli"))
     assert found[0].verbs == ("label.heard",)
     assert found[0].edges == ((measure.REGISTRY_LOADS, "cratekit.label.cli"),)
     assert _lines(measure.dangling_lines(tree, found)) == {
@@ -728,7 +677,7 @@ def test_a_package_initializer_is_loaded_with_any_module_inside_it():
         "src/cratekit/sync/__init__.py": "from cratekit.label import registry\n",
         "src/cratekit/sync/cli.py": "def build(parser, entry): ...\n",
     }
-    found = measure.dangling(measure.Tree(sources), [_verb("sync", "cratekit.sync.cli")], HOMES)
+    found = _dangling(measure.Tree(sources))
     assert found[0].verbs == ("sync",)
     assert found[0].edges == (("cratekit.sync", "cratekit.label.registry"),)
 
@@ -740,7 +689,7 @@ def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
         label__registry="from cratekit.export import cli\n",
         sync__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n",
     )
-    labels, export, _ = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
+    labels, export, _ = _dangling(tree)
     assert labels.edges == (("cratekit.sync.cli", "cratekit.label.registry"),)
     assert export.edges == (("cratekit.label.registry", "cratekit.export.cli"),)
 
@@ -774,9 +723,7 @@ def test_a_name_imported_from_the_core_package_itself_is_a_core_name():
 
 def test_a_name_bound_in_an_except_branch_is_a_name_the_module_defines():
     tree = _tree(
-        core__config=(
-            "try:\n    import tomllib\nexcept ImportError:\n    def fallback(): ...\n"
-        ),
+        core__config="try:\n    import tomllib\nexcept ImportError:\n    def fallback(): ...\n",
         sync__run="from cratekit.core import config\n\nconfig.fallback()\nconfig.tomllib\n",
     )
     assert measure.core_names(tree) == {
@@ -803,10 +750,7 @@ def test_a_module_that_answers_for_any_name_has_every_attribute_counted():
     tree = _tree(
         core__config="def __getattr__(name): ...\n",
         core__naming="from os.path import *\n",
-        sync__run=(
-            "from cratekit.core import config, naming\n\n"
-            "config.anything()\nnaming.join()\n"
-        ),
+        sync__run="from cratekit.core import config, naming\n\nconfig.anything()\nnaming.join()\n",
     )
     assert measure.core_names(tree) == {
         "sync": {"cratekit.core.config.anything", "cratekit.core.naming.join"}

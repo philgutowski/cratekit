@@ -21,15 +21,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, land_cli, landing, native, rehearsal
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
-    BATCH,
-    _land,
-    _land_first,
-    _landed_rows,
-    _music,
-    _stage,
-    _staged_names,
-    _staging,
-    _two_acts,
+    BATCH, _land, _land_first, _landed_rows, _music, _stage, _staged_names, _staging, _two_acts
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
@@ -77,8 +69,6 @@ def cfg(native_library, silence) -> config.Config:
 
 
 # Nothing live moves, and the digest is the live plan's
-
-
 def _rehearse_two_untouched(cfg: config.Config, silence: Path, name: str) -> dict:
     """Stage two files and rehearse them: applied on the copy, nothing live moved."""
     _stage(cfg, silence, "One.flac")
@@ -151,8 +141,6 @@ def test_a_live_plan_names_its_own_batch_s_rehearsal_and_the_lines(cfg, silence)
 
 
 # Refusals
-
-
 def test_empty_staging_rehearses_nothing_and_rekordbox_refuses(
     native_library, silence, monkeypatch
 ):
@@ -199,8 +187,6 @@ def test_a_scratch_plan_not_the_live_plan_applies_nothing(cfg, monkeypatch):
 
 
 # Areas are per run, and a failed one is kept and named
-
-
 def test_two_areas_are_apart_and_copy_library_state_only(native_library):
     """Land reads the newest rehearsal of its own folder and batch."""
     cfg, _root = native_library
@@ -293,8 +279,6 @@ def test_a_failed_rehearsal_keeps_its_area_and_names_it(cfg, monkeypatch, failur
 
 
 # The helper's own guards
-
-
 def test_the_witness_refuses_a_live_change(native_library, silence, tmp_path):
     cfg, _root = native_library
     staged = _stage(cfg, silence, "One.flac")
@@ -318,9 +302,7 @@ def test_a_clone_is_never_a_hard_link_and_the_plan_lines_name_every_leaf(tmp_pat
     assert rehearsal.differing(["a = 1", "b = 2"], ["a = 1", "b = 3"]) == ["- b = 2", "+ b = 3"]
     assert rehearsal.differing(["a = 1"], ["a = 1"]) == []
     assert rehearsal.lines({"b": [1, {"c": "x"}], "a": True}) == [
-        "a = true",
-        "b[0] = 1",
-        'b[1].c = "x"',
+        "a = true", "b[0] = 1", 'b[1].c = "x"'
     ]
     source = tmp_path / "one.flac"
     source.write_bytes(b"audio")
@@ -334,8 +316,6 @@ def test_a_clone_is_never_a_hard_link_and_the_plan_lines_name_every_leaf(tmp_pat
 
 
 # The review's round one
-
-
 def test_a_name_the_live_folder_holds_is_refused_at_the_area(native_library, silence):
     """The area holds the live folder's names, so the rehearsal refuses what the live
     landing will."""
@@ -417,8 +397,6 @@ def test_a_landed_row_the_read_back_refuses_is_refused(cfg, monkeypatch, check, 
 
 
 # A library whose rekordbox base drive is not its mount (U188)
-
-
 def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) -> str:
     """Record the database as made on a drive no longer mounted; answers the base drive."""
     base = base or str(tmp_path.parent / "old-drive")
@@ -512,8 +490,7 @@ def test_mapped_applies_the_longest_spelling_first_and_the_refusal_names_each_fi
     value = {"a": "/old/drive/area/Music/a.flac", "b": ["/drive/area/Music/b.flac"]}
     for pairs in ((short, long), (long, short)):
         assert rehearsal.mapped(value, pairs + (("", "/nowhere"),)) == {
-            "a": "/old/stored/Music/a.flac",
-            "b": ["/drive/live/Music/b.flac"],
+            "a": "/old/stored/Music/a.flac", "b": ["/drive/live/Music/b.flac"]
         }
     assert land_cli._fields_of(
         [
@@ -526,8 +503,6 @@ def test_mapped_applies_the_longest_spelling_first_and_the_refusal_names_each_fi
 
 
 # The rehearsal's check of its scratch database with no room for its copy (R-1677)
-
-
 def _is_the_area_database(target) -> bool:
     """The rehearsal's scratch database, rather than its capture's copy of it."""
     path = Path(target)

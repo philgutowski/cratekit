@@ -19,14 +19,7 @@ from cratekit.intake import land_cli, native
 from cratekit.write import metadata_cli
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
-    _asked,
-    _execute,
-    _hold,
-    _land,
-    _music,
-    _query,
-    _stage,
-    _two_acts,
+    _asked, _execute, _hold, _land, _music, _query, _stage, _two_acts
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
