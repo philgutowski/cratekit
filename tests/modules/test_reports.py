@@ -3029,23 +3029,6 @@ def _field_value(name, spec):
     return getattr(spec, name)
 """
 
-#: An admitted module writing when IMPORTED: no name to list, no call to avoid.
-ADMITTED_MODULE_LEVEL_WRITE = """
-from pathlib import Path
-
-Path("ledger").write_text("seen")
-
-
-def read(path):
-    return Path(path).read_text()
-"""
-
-#: An attribute read named like a verb, the false positive the receiver check prevents.
-ADMITTED_GENERIC_ATTRIBUTE_READ = """
-def describe(spec):
-    return spec.load
-"""
-
 #: Its own writer reached bare, which needs the bare name qualified by its module.
 ADMITTED_MODULE_REACHING_ITS_OWN_WRITER = """
 def refresh(cfg):
@@ -3125,8 +3108,17 @@ def test_the_audit_stays_quiet_on_the_reflective_reads_it_was_loosened_for():
 
 
 def test_the_audit_refuses_a_module_that_writes_when_it_is_imported():
-    """The ``loose`` branch, which no admitted module takes today."""
-    found = _unnamed_writers("cratekit.core.planted", ADMITTED_MODULE_LEVEL_WRITE)
+    """The ``loose`` branch: no name to list and no call to avoid, and no module takes it."""
+    imported = """
+from pathlib import Path
+
+Path("ledger").write_text("seen")
+
+
+def read(path):
+    return Path(path).read_text()
+"""
+    found = _unnamed_writers("cratekit.core.planted", imported)
     assert len(found) == 1
     assert found[0].startswith("<at import time>")
     assert "write_text" in found[0]
@@ -3134,7 +3126,11 @@ def test_the_audit_refuses_a_module_that_writes_when_it_is_imported():
 
 def test_the_audit_does_not_call_an_ordinary_attribute_read_a_writer():
     """P7 inside the audit itself, which is where the over-restriction landed."""
-    assert _unnamed_writers("cratekit.core.planted", ADMITTED_GENERIC_ATTRIBUTE_READ) == []
+    named_like_a_verb = """
+def describe(spec):
+    return spec.load
+"""
+    assert _unnamed_writers("cratekit.core.planted", named_like_a_verb) == []
 
 
 def test_the_audit_reads_a_modules_own_bare_call_as_qualified_by_that_module():
@@ -3515,14 +3511,6 @@ def go(counts):
     ),
 ]
 
-#: The most ordinary use of rule 4's dunder: it forwards its own name and calls nothing.
-ORDINARY_DUNDER_DELEGATION = """
-
-class Row:
-    def __getattribute__(self, name):
-        return super().__getattribute__(name)
-"""
-
 #: Real writes the flat table missed: a tuple, a conditional, a nested container.
 MISSED_WRITES_IN_A_REPORT = [
     (
@@ -3569,7 +3557,13 @@ def go(cfg, override):
 
 def test_the_dunder_that_forwards_its_own_name_is_not_a_write():
     """The collateral rule 4's own comment said naming the dunder did not have."""
-    assert filesystem_mutations(AGING_SOURCE + ORDINARY_DUNDER_DELEGATION) == []
+    forwarding = """
+
+class Row:
+    def __getattribute__(self, name):
+        return super().__getattribute__(name)
+"""
+    assert filesystem_mutations(AGING_SOURCE + forwarding) == []
     assert filesystem_mutations("def stash(p, n, d):\n    object.__getattribute__(p, n)(d)\n")
 
 
@@ -3752,8 +3746,9 @@ def test_the_binding_table_is_scoped_and_the_object_half_is_not():
     assert filesystem_mutations(stored)
 
 
-#: Two classes, one spelling: with one class any key is coarse enough.
-TWO_SELVES_IN_ONE_FILE = """
+def test_two_classes_spelling_one_attribute_do_not_share_a_binding():
+    """Both directions of the qualified key: with one class any key is coarse enough."""
+    two_selves = """
 
 class Injected:
     def __init__(self, config):
@@ -3770,11 +3765,7 @@ class Holder:
     def refresh(self, cfg):
         self.config.save(cfg)
 """
-
-
-def test_two_classes_spelling_one_attribute_do_not_share_a_binding():
-    """Both directions of the qualified key, in one file, against the real module."""
-    found = filesystem_mutations(AGING_SOURCE + TWO_SELVES_IN_ONE_FILE)
+    found = filesystem_mutations(AGING_SOURCE + two_selves)
     assert [one for one in found if "config.load" in one] == [], found
     assert [one for one in found if "config.save" in one], found
 
