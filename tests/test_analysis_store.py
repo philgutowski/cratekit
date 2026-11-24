@@ -132,8 +132,7 @@ def test_a_stored_analysis_path_joins_to_the_share_and_not_to_the_library_root(
     )
     assert cache.is_file()
     assert not (volume / STORED.lstrip("/")).exists(), (
-        "the fixture lets the library root join find a file, so it cannot tell "
-        "the right join from the wrong one"
+        "the root join finds a file here, so the right join and the wrong are one"
     )
 
 
@@ -176,8 +175,7 @@ def test_an_outside_share_is_watched_alongside_the_library_root(outside, volume,
     _both_trees(volume)
     grid = _plant(home / "share" / "PIONEER" / "USBANLZ" / "8d2" / KEY / "ANLZ0000.DAT")
     assert grid not in session.analysis_files_under([volume]), (
-        "the fixture put the outside grid under the library root, so it cannot "
-        "show that the root alone misses it"
+        "the outside grid sits under the root, so the root alone cannot miss it"
     )
 
     roots = analysis_store.watch_roots(outside)
@@ -495,7 +493,7 @@ class _Remote:
         return [c for c in self.commands if c.label == label]
 
 
-def _planned(cfg: config.Config, target: Path, remote: _Remote) -> backup.RestorePlan:
+def _planned(cfg: config.Config, target: Path, remote: _Remote, **options) -> backup.RestorePlan:
     target.mkdir(parents=True, exist_ok=True)
     return backup.plan_restore(
         cfg,
@@ -505,6 +503,7 @@ def _planned(cfg: config.Config, target: Path, remote: _Remote) -> backup.Restor
         runner=remote,
         process_lister=lambda: (),
         gates=_open_gates,
+        **options,
     )
 
 
@@ -609,8 +608,7 @@ def test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_as
         assert plan.share is backup.ShareRestore.WITHHELD, target
         assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
         assert remote.labelled(backup.LIST_SHARE) == [], (
-            "the remote was asked a question whose answer could change nothing, "
-            "and a listing that fails refuses the restore"
+            "a listing whose answer changes nothing was asked, and a failed one refuses"
         )
 
 
@@ -618,19 +616,8 @@ def test_a_caller_that_will_not_spend_the_database_half_is_not_refused_over_the_
     outside, rclone_on_path, tmp_path
 ):
     remote = _Remote(share="", share_exit=1)
-    target = tmp_path / "recovered"
-    target.mkdir()
 
-    plan = backup.plan_restore(
-        outside,
-        target=target,
-        confirmed=True,
-        snapshot=STAMP,
-        pull_share=False,
-        runner=remote,
-        process_lister=lambda: (),
-        gates=_open_gates,
-    )
+    plan = _planned(outside, tmp_path / "recovered", remote, pull_share=False)
 
     assert plan.share is backup.ShareRestore.WITHHELD
     assert remote.labelled(backup.LIST_SHARE) == []

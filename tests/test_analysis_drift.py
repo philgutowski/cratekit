@@ -67,8 +67,7 @@ def test_a_constant_tempo_scores_steady(known):
 
 
 def test_a_constant_tempo_with_a_long_beatless_breakdown_still_scores_steady():
-    """Forty seconds of pad and hiss in a steady track are gated out, not read as 125
-    to 136 and scored variable."""
+    """Forty seconds of pad and hiss are gated out, not read as 125 to 136, variable."""
     samples = _drums(lambda _at: 124.0)
     rng = np.random.default_rng(1)
     start, stop = int(40 * RATE), int(80 * RATE)
@@ -79,8 +78,7 @@ def test_a_constant_tempo_with_a_long_beatless_breakdown_still_scores_steady():
 
 
 def test_a_human_timing_wobble_on_a_constant_tempo_scores_steady():
-    """Every hit up to about a dozen milliseconds off the grid, the looseness of
-    a played part, around a tempo that does not move."""
+    """Every hit up to a dozen milliseconds off the grid, as a played part is."""
     rng = np.random.default_rng(2)
     clean = _drums(lambda _at: 112.0)
     shifted = np.zeros_like(clean)
@@ -93,17 +91,16 @@ def test_a_human_timing_wobble_on_a_constant_tempo_scores_steady():
     assert moved is not None and moved < CUT, moved
 
 
-def test_a_tempo_ramp_scores_variable():
-    """118 to 126 over two minutes, a band pushing through a track."""
-    _tempo, moved = _drift(_drums(lambda at: 118.0 + 8.0 * at / SECONDS))
-    assert moved is not None and moved > 3.0, moved
-    assert drift.verdict(moved, CUT) == drift.VARIABLE
-
-
-def test_a_stepped_change_scores_variable():
-    """120 for the first minute and 128 for the second, an edit of two takes."""
-    _tempo, moved = _drift(_drums(lambda at: 120.0 if at < 60.0 else 128.0))
-    assert moved is not None and moved > 5.0, moved
+@pytest.mark.parametrize(
+    ("curve", "least"),
+    [
+        pytest.param(lambda at: 118.0 + 8.0 * at / SECONDS, 3.0, id="a-ramp-a-band-pushes"),
+        pytest.param(lambda at: 120.0 if at < 60.0 else 128.0, 5.0, id="a-step-of-two-takes"),
+    ],
+)
+def test_a_tempo_that_moves_scores_variable(curve, least):
+    _tempo, moved = _drift(_drums(curve))
+    assert moved is not None and moved > least, moved
     assert drift.verdict(moved, CUT) == drift.VARIABLE
 
 
@@ -113,16 +110,14 @@ def test_a_stepped_change_scores_variable():
     ids=["up-a-sixth", "up-a-sixth-slower", "up-a-quarter", "down-a-seventh"],
 )
 def test_a_step_wider_than_the_heads_own_section_still_scores_variable(first, second):
-    """The other section's windows are still read, or a two tempo track is tagged
-    steady."""
+    """The other section's windows are still read, or a two tempo track is steady."""
     _tempo, moved = _drift(_drums(lambda at: first if at < 60.0 else second))
     assert moved is not None and moved > 10.0, moved
     assert drift.verdict(moved, CUT) == drift.VARIABLE
 
 
 def test_a_section_of_hats_at_three_to_two_over_a_steady_pulse_is_not_a_drift():
-    """Hats three to every two beats over a steady 100 pulse; a window searched wide
-    enough would read 150 and call the track variable."""
+    """Hats at three to two over a steady 100: a window searched wide would read 150."""
     samples = _drums(lambda _at: 100.0)
     start, stop = int(40 * RATE), int(80 * RATE)
     hats = 0.6 * _train(lambda _at: 150.0, SECONDS)

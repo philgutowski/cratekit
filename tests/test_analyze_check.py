@@ -268,8 +268,7 @@ def test_an_analysed_row_with_no_head_in_its_title_is_counted_for_adopt_and_neve
               _row(state=rc.NOT_ANALYSED, headed=False)),
     )
     assert found.headless == (bare,), (
-        "a row not analysed is not yet adopt's, and adopt leaves one whose file name "
-        "has a head and one rekordbox answered half"
+        "an unanalysed row, a headed file name, a half answer: none is adopt's to stamp"
     )
     summary = found.summary()
     assert summary["headless"] == 1 and summary["differs"] == 0
