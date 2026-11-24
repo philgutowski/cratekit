@@ -814,6 +814,15 @@ def _the_one_record(cfg) -> session.SessionRecord:
     return recorded[0]
 
 
+def _abandoned(cfg, committed: tuple, trees: tuple) -> session.SessionRecord:
+    """The one record, abandoned, claiming ``committed`` sources and ``trees`` changed."""
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == committed
+    assert record.change.trees == trees
+    return record
+
+
 def test_a_membership_write_is_listed_as_restorable_with_its_per_tree_counts(
     cfg, gates_pass, db, adopted_root
 ):
@@ -867,11 +876,7 @@ def test_a_membership_write_that_fails_is_abandoned_and_claims_no_commit(
     with pytest.raises(RuntimeError, match="mid-sweep"):
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.snapshot_path
-    assert record.committed_sources() == ()
-    assert record.change.trees == ()
+    assert _abandoned(cfg, (), ()).snapshot_path
 
 
 def test_a_failure_after_the_commit_still_reads_as_committed_work(
@@ -885,10 +890,7 @@ def test_a_failure_after_the_commit_still_reads_as_committed_work(
     with pytest.raises(RuntimeError, match="state write failed"):
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == (TREE_ID,)
-    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+    _abandoned(cfg, (TREE_ID,), (session.TreeChange(tree=TREE_ID, created=1, updated=0),))
 
 
 def test_the_write_commits_behind_a_verified_capture(cfg, gates_pass, db, adopted_root, monkeypatch):
@@ -935,10 +937,7 @@ def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     assert _playlists(db, SUB_DISPLAY), "the fixture did not land the commit it claims to"
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == (TREE_ID,)
-    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+    _abandoned(cfg, (TREE_ID,), (session.TreeChange(tree=TREE_ID, created=1, updated=0),))
 
 
 def test_a_moves_removal_commit_that_lands_and_then_raises_is_still_recorded(
@@ -1010,7 +1009,4 @@ def test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit(
         _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
 
     assert calls["n"] == 2, "the fixture never reached the second playlist"
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == ()
-    assert record.change.trees == ()
+    _abandoned(cfg, (), ())
