@@ -16,6 +16,7 @@ Layer: write.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -136,13 +137,57 @@ class InboxPlan:
     warnings: list[dict[str, str]]
 
 
+#: The warning naming each intake file the vocal score clears and the vox My
+#: Tag does not file, so it goes in without its vocal sub (R-2062).
+INBOX_VOCAL_UNTAGGED = "inbox-vocal-untagged"
+
+
+def _inbox_vox(
+    cfg: config.Config, declared: taxonomy.Taxonomy, threshold: float | None
+) -> Callable[[str], bool] | None:
+    """The vox My Tag's answer for each intake file, read before the gate (R-2062).
+
+    The intake rows are in the database by the time the inbox files them, so
+    the plan opens one read, as ``route resort``'s preview does, and the gate
+    does not move. Read only where the tag could file something, so an
+    uncalibrated library opens nothing here.
+    """
+    if not rebuild.reads_vox_tag(declared, threshold):
+        return None
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        return rebuild.vox_carrier(cfg, handle, list(routing_pass.content_rows(handle)))
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _untagged_warnings(untagged: Iterable[rebuild.DeclaredPlacement]) -> list[dict[str, str]]:
+    """The one warning naming every intake file filed without the vocal sub its score clears."""
+    names = sorted({Path(entry.location).name for entry in untagged})
+    if not names:
+        return []
+    return [{
+        "code": INBOX_VOCAL_UNTAGGED,
+        "message": (
+            f"{len(names)} intake file(s) clear the vocal cut and no row of theirs "
+            f"carries the vox My Tag, which is what files the vocal sub, so they "
+            f"are filed without it: {'; '.join(names)}. crate metadata "
+            f"mytags-vocals --apply tags a row whose file clears the cut and that "
+            f"never carried the tag, and route resort then files it"
+        ),
+    }]
+
+
 def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
-    """Decide where every intake file goes, without opening the database.
+    """Decide where every intake file goes, before the gate.
 
     By the calls the write makes, so the screen and the write cannot disagree
     (R-691). The calibrated cut is read here so a corrupt one refuses before any
-    write (U89), and only when something will be derived. A library with nothing
-    native reads no file and carries the export remedy.
+    write (U89), and only when something will be derived. THE VOX MY TAG FILES
+    THE VOCAL SUB (U127, R-2062), read here on the one database read this plan
+    makes, and only on a calibrated library with a vocal sub. A library with
+    nothing native reads no file, opens no database and carries the export
+    remedy.
     """
     folder = Path(cfg.library.root) / declared.intake.display
     files = _inbox_files(folder)
@@ -160,18 +205,20 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     elif files:
         threshold = metadata_cli.load_vocal_threshold(cfg)
         readings = [rebuild.read_truth(path) for path in files]
-        # NO DATABASE IS READ BEFORE THIS GATE, so the score stands in for the
-        # vox My Tag the landing wrote from it (R-2056).
+        carries = _inbox_vox(cfg, declared, threshold)
         derived: dict[tree_registry.DerivationSource | None, rebuild.Membership] = {}
+        untagged: list[rebuild.DeclaredPlacement] = []
         for tree_id in native:
             source = entries.derivation_source(tree_id)
             if source not in derived:
                 derived[source] = rebuild.declared_membership(
                     cfg, declared, tree_id=tree_id, source=source, vocal_threshold=threshold,
-                    truth=readings,
+                    truth=readings, carries_vox=carries,
                 )
+                untagged.extend(derived[source].untagged)
             placements[tree_id] = derived[source].placements
             gaps.update(derived[source].not_compared)
+        warnings.extend(_untagged_warnings(untagged))
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
     genre: dict[str, str] = {}
@@ -538,6 +585,8 @@ def route_inbox(ctx) -> Envelope:
             [{"code": "no-native-tree", "message": export_remedy(planned.declared)}]
             if result["reason"] == "no-native-tree"
             else [
+                # The plan's own, the untagged vocal files among them (R-2062).
+                *planned.warnings,
                 *rebuild.not_compared_warnings(not_compared),
                 *skipped_warnings(result["skipped_files"]),
             ]

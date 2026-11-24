@@ -2261,16 +2261,90 @@ def test_the_loader_says_absent_as_none_and_the_tagging_cut_still_defaults(tmp_p
     assert metadata_cli.vocal_cut(cfg) == CUT
 
 
-@pytest.mark.parametrize("level, filed", [(6, True), (4, False)], ids=["above", "below"])
-def test_a_calibrated_inbox_files_a_track_over_the_cut_under_with_vox(
-    acknowledged, native, vox_levels, level, filed
+@pytest.mark.parametrize(
+    "level, tagged, filed",
+    [(4, True, True), (6, False, False), (4, False, False)],
+    ids=["tagged-under-the-cut", "untagged-over-the-cut", "untagged-under-the-cut"],
+)
+def test_a_calibrated_inbox_files_with_vox_by_the_tag(
+    acknowledged, native, vox_levels, level, tagged, filed
 ):
+    """The vox My Tag files the vocal sub, never the file's score (U127, R-2062)."""
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = level
+    if tagged:
+        _tag_vox(acknowledged, "2")
+    shown = _blocked_inbox()
+    assert [bool(item["vocal"]) for item in shown["items"]] == [filed], shown["items"]
     applied = exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     assert _vox_members(acknowledged, native) == ({"2"} if filed else set())
     assert _vocal_warnings(applied) == [], "a compared dimension was warned as not compared"
+    named = _inbox_untagged(applied)
+    assert named == ([ARRIVED] if level > CUT and not tagged else []), applied["warnings"]
+
+
+def _inbox_untagged(envelope: dict) -> list[str]:
+    """The intake files the inbox names as over the cut with no vox My Tag, in its words."""
+    found = [w for w in envelope["warnings"] if w["code"] == routing_cli.INBOX_VOCAL_UNTAGGED]
+    return [name for name in (ARRIVED, SHELVED) if any(name in w["message"] for w in found)]
+
+
+def test_an_untagged_intake_file_over_the_cut_is_named_on_the_gate_and_the_answer(
+    acknowledged, native, vox_levels
+):
+    """R-2062: the score files it nowhere now, so the gate says why and what tags it."""
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 6
+    shown = _blocked_inbox()
+    (warned,) = [w for w in shown["warnings"] if ARRIVED in w]
+    assert "metadata mytags-vocals --apply" in warned, warned
+    declined = exited(_decline_inbox())
+    assert _inbox_untagged(declined) == [ARRIVED], declined["warnings"]
+
+
+def test_a_tagged_intake_file_is_not_added_again_by_the_resort(acknowledged, native, vox_levels):
+    """The inbox and the resort file the vocal sub by one rule, so the resort adds nothing."""
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 4
+    _tag_vox(acknowledged, "2")
+    exited(_apply_inbox())
+    reports, _opened = rebuild.preview_governed_trees(
+        acknowledged, tree_ids=(TREE_ID,), vocal_threshold=CUT
+    )
+    vocal = [
+        row
+        for report in reports
+        for row in rebuild.additions(report)
+        if row["playlist"] == _vox_display()
+    ]
+    assert vocal == [], vocal
+
+
+def test_an_uncalibrated_inbox_reads_no_tag(acknowledged, native, vox_levels, monkeypatch):
+    """The tag is read only where it could file something (R-2062)."""
+    vox_levels[ARRIVED] = 60
+
+    def unread(_db):
+        raise AssertionError("the inbox read the vox My Tag on an uncalibrated library")
+
+    monkeypatch.setattr(vox_tag, "vox_tagged", unread)
+    exited(_decline_inbox())
+
+
+def test_a_vox_tag_that_cannot_be_read_refuses_the_inbox_before_its_gate(
+    acknowledged, native, vox_levels, monkeypatch
+):
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 4
+
+    def unreadable(_db):
+        raise refuse("soft-delete-marker-unreadable", "the marker cannot be read", origin=("test",))
+
+    monkeypatch.setattr(vox_tag, "vox_tagged", unreadable)
+    refused = _fails(_apply_inbox())
+    assert refused["cause"]["reason"] == "soft-delete-marker-unreadable", refused
+    assert _membership(acknowledged, native) == set()
 
 
 def test_an_uncalibrated_inbox_warns_and_files_nothing_under_with_vox(
@@ -2296,6 +2370,7 @@ def test_a_corrupt_calibration_refuses_the_inbox_and_writes_nothing(
 def test_a_second_calibrated_inbox_creates_no_second_vocal_sub(acknowledged, native, vox_levels):
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = 6
+    _tag_vox(acknowledged, "2")
     for _ in range(2):
         exited(_apply_inbox())
     nodes = _vox_nodes(acknowledged, native)
@@ -2628,6 +2703,7 @@ def test_the_database_apply_files_the_track_where_the_gate_said(acknowledged, na
     """The plan the gate showed is the plan the write consumes, vocal sub included."""
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = 6
+    _tag_vox(acknowledged, "2")
     shown = _blocked_inbox()
     (item,) = shown["items"]
     vox = _vox_display()
@@ -2649,6 +2725,7 @@ def test_the_database_digest_binds_the_destinations_not_the_file_list(
     assert [item["vocal"] for item in before["items"]] == [""]
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = 6
+    _tag_vox(acknowledged, "2")
     after = _blocked_inbox()
     assert [item["name"] for item in after["items"]] == [item["name"] for item in before["items"]]
     assert [item["vocal"] for item in after["items"]] != [""]

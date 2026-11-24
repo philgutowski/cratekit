@@ -461,6 +461,11 @@ def _decide(
 
     One decision for both export sweeps and the database medium (U91). A row
     whose Location names no file here is a warning and is not routed.
+
+    THE BRIDGE FILES THE VOCAL SUB BY THE FILE'S SCORE, named (R-2062): every
+    database path files it by the vox My Tag (U127), which is read from the
+    database, and this one reads an export, so the score against the cut
+    stands in, the rule the landing writes the tag by.
     """
     files: dict[str, list[str]] = {}
     for key, row in rows:
