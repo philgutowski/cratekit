@@ -2124,37 +2124,40 @@ def _invoked_reads(tree: ast.AST) -> frozenset[int]:
     keys = _called_keys(tree)
     returned = _invoked_results(tree)
     found: set[int] = set()
-
-    def hand(expression: ast.AST | None) -> None:
-        found.update(id(read) for read in _handed_over(expression))
-
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            hand(node.func)
+            for read in _handed_over(node.func):
+                found.add(id(read))
             if isinstance(node.func, ast.Call):
                 supplied = [
                     *node.func.args,
                     *(keyword.value for keyword in node.func.keywords),
                 ]
                 for argument in supplied:
-                    hand(argument)
+                    for read in _handed_over(argument):
+                        found.add(id(read))
             if isinstance(node.func, ast.Subscript) and isinstance(node.func.slice, ast.Constant):
                 for index, element in _elements(node.func.value):
                     if index == node.func.slice.value:
-                        hand(element)
+                        for read in _handed_over(element):
+                            found.add(id(read))
         for decorator in getattr(node, "decorator_list", []):
-            hand(decorator)
+            for read in _handed_over(decorator):
+                found.add(id(read))
         for key, value in _stored(node):
             if key in keys:
-                hand(value)
+                for read in _handed_over(value):
+                    found.add(id(read))
             for index, element in _elements(value):
                 if f"{key}[{index!r}]" in keys:
-                    hand(element)
+                    for read in _handed_over(element):
+                        found.add(id(read))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.name in returned or f"{node.name}()" in keys:
                 for child in _scope_nodes(node):
                     if isinstance(child, ast.Return):
-                        hand(child.value)
+                        for read in _handed_over(child.value):
+                            found.add(id(read))
     return frozenset(found)
 
 
