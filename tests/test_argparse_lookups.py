@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
+import gc
 import gettext
 import inspect
 import io
@@ -34,13 +35,16 @@ class _Config:
 
 @contextlib.contextmanager
 def _argparse_as_it_was():
-    """Put argparse's lookups and the conftest's stack back exactly as they were."""
+    """Put argparse's lookups, the collector's thresholds and the conftest's stacks back."""
     kept = {name: getattr(argparse, name) for name in conftest._ARGPARSE_LOOKUPS}
     stack = list(conftest._lookups_before)
+    thresholds, kept_thresholds = list(conftest._thresholds_before), gc.get_threshold()
     try:
         yield
     finally:
         conftest._lookups_before[:] = stack
+        conftest._thresholds_before[:] = thresholds
+        gc.set_threshold(*kept_thresholds)
         for name, lookup in kept.items():
             setattr(argparse, name, lookup)
 
@@ -60,7 +64,12 @@ def _on_gettext() -> bool:
 
 
 def _argparse_lookups() -> tuple[list[str], list[tuple[str, str]]]:
-    """Every literal message argparse's own source looks up, by ``_`` and by ``ngettext``."""
+    """Every literal message argparse's own source looks up, by ``_`` and by ``ngettext``.
+
+    Its two lookups of a caller's title and description are not literals; the
+    stand in hands back whatever it is given, as ``gettext`` does without a
+    catalogue, and the crate parser's help below goes through both.
+    """
     single, plural = [], []
     for node in ast.walk(ast.parse(inspect.getsource(argparse))):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
@@ -90,7 +99,7 @@ def test_with_no_catalogue_the_suite_runs_on_the_stand_in():
     assert argparse.ngettext.__self__ is argparse._.__self__
 
 
-def test_the_stand_in_answers_every_lookup_argparse_makes_as_gettext_does():
+def test_the_stand_in_answers_every_literal_message_argparse_looks_up_as_gettext_does():
     single, plural = _argparse_lookups()
     assert len(single) > 30 and len(plural) >= 2, (len(single), len(plural))
     for message in [*single, "", "crate sync pair"]:

@@ -1434,11 +1434,13 @@ def test_a_swept_module_holding_a_pinned_name_reads_the_pins_and_then_the_real_o
     try:
         with pytest.MonkeyPatch.context() as patch:
             unpin = behaviour.pin(patch)
-            assert holder.stamp is behaviour.PinnedDatetime
-            assert holder.mint is uuid.uuid4 is not real_uuid4
-            assert holder.token is secrets.token_hex is not real_token
-            assert holder.other == 7
-            unpin()
+            try:
+                assert holder.stamp is behaviour.PinnedDatetime
+                assert holder.mint is uuid.uuid4 is not real_uuid4
+                assert holder.token is secrets.token_hex is not real_token
+                assert holder.other == 7
+            finally:
+                unpin()
         assert (holder.stamp, holder.mint, holder.token) == (real_now, real_uuid4, real_token)
     finally:
         sys.modules.pop(holder.__name__, None)
