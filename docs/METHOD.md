@@ -192,6 +192,9 @@ dropped and why, so a truncation is not read as coverage.
 - **Mutate to a realistic nearby value, and mutate coefficients too.**
 - **Remove each guard layer alone**: one covered by another is covered by nothing.
 - **A timing row carries a repeat count and a pass rate,** never one number.
+  **A time bar is a ratio**, the base and the branch each timed three times,
+  interleaved, on one container (U336): two containers differ by more than a
+  bar's margin, and one container drifts by five to ten percent in an hour.
 - **Every number was measured or the report says it was not.** Offer no
   mechanism for a discrepancy without a measurement showing it operating.
 

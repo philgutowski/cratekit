@@ -35,7 +35,9 @@ deleted temp tree.
 
 from __future__ import annotations
 
+import argparse
 import gc
+import gettext
 import importlib
 import importlib.util
 import traceback
@@ -390,9 +392,56 @@ COLLECTOR_THRESHOLDS = (50_000, 20, 20)
 _thresholds_before: list[tuple[int, int, int]] = []
 
 
+#: argparse looks up every message of a parser through ``gettext``, about four
+#: hundred lookups a parser, and the suite builds the whole command tree once
+#: per verb it drives, about 12,600 times (U336). Where no catalogue exists
+#: for the domain, ``gettext`` answers each lookup with the message itself, as
+#: ``NullTranslations`` does, but only after reading four environment variables
+#: and expanding the language list every time: about a third of a parser's
+#: build. So where ``gettext.find`` finds no catalogue, as on every machine the
+#: suite runs on, argparse is handed the answer it would get, directly, and
+#: ``pytest_unconfigure`` hands its own back.
+_ARGPARSE_LOOKUPS = ("_", "ngettext")
+
+#: One entry per ``pytest_configure`` not yet unconfigured, as the collector's
+#: thresholds are kept: argparse's own lookups where that configure put the
+#: stand in on, None where it found it on already or found a catalogue. So a
+#: run configured inside the run, by a test, leaves the outer run's stand in.
+_lookups_before: list[dict[str, object] | None] = []
+
+
+def _no_message_catalogue() -> bool:
+    """Whether ``gettext`` would answer argparse's lookups with the messages themselves."""
+    domain = gettext.textdomain()
+    return not gettext.find(domain, gettext.bindtextdomain(domain), all=True)
+
+
+def _answer_argparse_untranslated() -> bool:
+    """Hand argparse ``NullTranslations``' lookups where no catalogue exists; say if it did.
+
+    Pairs with :func:`_give_argparse_its_lookups_back`, one entry each.
+    """
+    if any(_lookups_before) or not _no_message_catalogue():
+        _lookups_before.append(None)
+        return False
+    _lookups_before.append({name: getattr(argparse, name) for name in _ARGPARSE_LOOKUPS})
+    untranslated = gettext.NullTranslations()
+    argparse._ = untranslated.gettext
+    argparse.ngettext = untranslated.ngettext
+    return True
+
+
+def _give_argparse_its_lookups_back() -> None:
+    """Close the latest :func:`_answer_argparse_untranslated`, putting back what it replaced."""
+    replaced = _lookups_before.pop() if _lookups_before else None
+    for name, lookup in (replaced or {}).items():
+        setattr(argparse, name, lookup)
+
+
 def pytest_configure(config):
     _thresholds_before.append(gc.get_threshold())
     gc.set_threshold(*COLLECTOR_THRESHOLDS)
+    _answer_argparse_untranslated()
     config.addinivalue_line(
         "markers",
         f"{REAL_PROCESS_TABLE}: keep the host's real process table, which every "
@@ -403,6 +452,7 @@ def pytest_configure(config):
 def pytest_unconfigure(config):
     if _thresholds_before:
         gc.set_threshold(*_thresholds_before.pop())
+    _give_argparse_its_lookups_back()
 
 
 class _NoProcesses:

@@ -166,6 +166,8 @@ def pin(patch):
             continue
         if module_name == __name__:
             continue  # this module's own names for the real classes stay real
+        if pinned.keys().isdisjoint(map(id, list(vars(module).values()))):
+            continue  # holds none of the names, asked of every value at once (U336)
         for name, value in list(vars(module).items()):
             replacement = pinned.get(id(value))
             if replacement is not None:
@@ -183,8 +185,13 @@ def pin(patch):
         held, since a module imported under the pins took a pinned name as its own."""
         _PINS["on"] = False
         random.setstate(state)
+        held = real.keys()
         for module in list(sys.modules.values()):
             if not isinstance(module, types.ModuleType) or module.__name__ == __name__:
+                continue
+            # Most modules hold no pinned name, and asking that of the ids at
+            # once is a fifth of the cost of the loop below (U336).
+            if held.isdisjoint(map(id, list(vars(module).values()))):
                 continue
             for name, value in list(vars(module).items()):
                 original = real.get(id(value))
