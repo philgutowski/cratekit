@@ -10,7 +10,7 @@ lines at `55e958b`) to end at or under 62,155 lines, so the four slices
 together bring `tests/` under point 5's bar of 249,132. Eight builders cut it
 by Phillip's answer A on #847: parametrize folds, shared setup within a file
 or a support file of the slice, deleting a test only where another checks all
-it checks, and prose cut to the rule and its reason. They reached 70,701, 2,558
+it checks, and prose cut to the rule and its reason. They reached 70,702 by `scripts/refactor_measure.py lines`, 2,557
 lines fewer. Every builder stopped short and measured why (1.6 to 7.0 percent
 per group): the tests left are distinct end to end scenarios whose setup
 differs test to test; a table of strings is as long as the tests it would
@@ -23,7 +23,7 @@ already split over lines) or deleting tests that still guard something, and the
 card took neither. R-1941 measured the same wall across the whole suite.
 
 **Measured cost.** None to a person using the verbs. Point 5 of #847 stays
-unmet by about 8,546 lines in this slice; the question on #981 asked Phillip
+unmet by about 8,547 lines in this slice; the question on #981 asked Phillip
 how to treat the miss, and the card took the recommended option, land with
 the miss named.
 
