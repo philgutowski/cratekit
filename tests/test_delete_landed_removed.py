@@ -40,9 +40,6 @@ from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 GATE = "delete.review.confirm"
 
 
-# ═══ The library, landed, and a removal as rekordbox makes one ══════════════
-
-
 def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed batch") -> None:
     for title in titles:
         _stage(cfg, silence, f"{title}.flac")
@@ -52,8 +49,7 @@ def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed b
 
 def _row(cfg: config.Config, title: str) -> tuple[str, Path]:
     ((content_id, folder),) = _query(
-        cfg,
-        "SELECT ID, FolderPath FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0",
+        cfg, "SELECT ID, FolderPath FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0",
         f"% - {title}",
     )
     return str(content_id), Path(folder)
@@ -88,10 +84,8 @@ def _count_at(cfg: config.Config, value: int) -> None:
 def _remove_outright(cfg: config.Config, content_id: str) -> None:
     """rekordbox's Remove from Collection: the row and its memberships, gone, the count past them."""
     _sql(
-        cfg,
-        ("DELETE FROM djmdSongPlaylist WHERE ContentID = ?", (content_id,)),
-        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)),
-        _moved_on(12),
+        cfg, ("DELETE FROM djmdSongPlaylist WHERE ContentID = ?", (content_id,)),
+        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)), _moved_on(12),
     )
 
 
@@ -300,9 +294,6 @@ def test_a_declined_landed_removal_is_not_offered_again_and_a_trashed_one_is_ret
     assert _shown(_gated())["offered"] == 1
     assert {item.row.content_id for item in _plan(cfg).deletable} == {two}
     assert two_file.exists() and not one_file.exists()
-
-
-# ═══ Never offered ═════════════════════════════════════════════════════════
 
 
 def test_a_landed_file_a_new_row_now_references_is_never_offered(ready):
@@ -643,9 +634,6 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
         assert {key: one.landed for key, one in found.absent.items()} == {"7": 9}
 
 
-# ═══ The mutation table's two zeros, each given its test ═══════════════════
-
-
 def _edit_landing(cfg: config.Config, content_id: str, change) -> None:
     landing = _landing_record(cfg, content_id)
     _edit_record(cfg, landing.session_id, lambda detail: change(detail[native.LANDED_ROWS_KEY]))
@@ -684,10 +672,8 @@ def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(ready):
 def _delete_playlist_outright(cfg: config.Config, playlist_id: str) -> None:
     """rekordbox's sidebar delete (A200): the playlist row and its members, gone, no marker."""
     _sql(
-        cfg,
-        ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
-        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)),
-        _moved_on(3),
+        cfg, ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
+        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)), _moved_on(3),
     )
 
 

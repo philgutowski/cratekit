@@ -42,9 +42,6 @@ def shipped_modules() -> list[Path]:
     ]
 
 
-# The reading
-
-
 def test_the_allowance_of_this_process_is_preferred_to_the_machines_count(monkeypatch):
     monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0, 1, 2}, raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: 64)
@@ -80,9 +77,6 @@ def test_with_no_allowance_the_machines_count_is_read_and_a_non_count_is_unknown
         assert cores.usable_cores() == expected
 
 
-# The ceiling
-
-
 @pytest.mark.parametrize(
     "count,reserved,expected",
     [(11, 2, 9), (4, 2, 2), (3, 2, 1), (2, 2, 1), (1, 2, 1), (8, 0, 8), (8, 1, 7)],
@@ -116,9 +110,6 @@ def test_the_reader_is_looked_up_when_called_so_a_test_can_stand_in(monkeypatch)
     assert cores.worker_ceiling(reserved=2) == 8
 
 
-# The count is read here and nowhere else
-
-
 def core_count_reads(source: str) -> list[str]:
     """Every way this source names a core count: as a name, or as a string for ``getattr``."""
     found: list[str] = []
@@ -142,8 +133,7 @@ def core_count_reads(source: str) -> list[str]:
     "source",
     [
         "import os\nwidth = os.cpu_count() - 2\n",
-        "import os\nwidth = len(os.sched_getaffinity(0))\n",
-        "from os import process_cpu_count\n",
+        "import os\nwidth = len(os.sched_getaffinity(0))\n", "from os import process_cpu_count\n",
         "import os\nwidth = getattr(os, 'cpu_count')()\n",
         "import psutil\nwidth = len(psutil.Process().cpu_affinity())\n",
     ],
@@ -177,9 +167,6 @@ def test_no_shipped_module_but_the_one_reader_reads_a_core_count():
         f"is a ceiling handed to the planner and is read in one place."
     )
     assert core_count_reads(CORES_PATH.read_text()), "the one reader reads no core count"
-
-
-# What the reader answers reaches the planner's ceiling and nothing else
 
 
 def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
@@ -261,9 +248,6 @@ def test_every_shipped_use_of_the_core_ceiling_is_the_planners_ceiling():
     assert not offenders, f"the core ceiling is used as other than plan_pool's: {offenders}"
     light = (PACKAGE_ROOT / "analysis" / "light.py").read_text()
     assert "worker_ceiling" in light, "the light pass no longer takes its ceiling from the cores"
-
-
-# And the planner still decides underneath it
 
 
 def _calm() -> pool.Pressure:

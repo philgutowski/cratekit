@@ -34,8 +34,7 @@ from tests.test_deletion import library_root as library_root  # noqa: PLC0414 - 
 from tests.test_deletion import review_cli as review_cli  # noqa: PLC0414 - fixture
 
 STREAMED = (
-    "/v4/catalog/tracks/12345678/", "/v4/catalog/tracks/87654321", "/v4/catalog/tracks/AbC9/"
-)
+    "/v4/catalog/tracks/12345678/", "/v4/catalog/tracks/87654321", "/v4/catalog/tracks/AbC9/")
 
 
 def _active(*recorded: str) -> list[trees.ContentRow]:
@@ -81,8 +80,7 @@ def test_a_library_with_streaming_rows_offers_the_removed_file(cfg):
         "/v5/catalog/tracks/123/",
         "/Elsewhere/v4/catalog/tracks/123/",
         "/v4/catalog/tracks/123/\n",
-    ],
-)
+    ])
 def test_a_path_shaped_only_near_a_streaming_row_still_refuses(cfg, recorded):
     """Only the exact spelling is excused: anything else could be a real path."""
     references = _references(cfg, _active(recorded), stat=_absent)
@@ -95,8 +93,7 @@ def test_a_path_shaped_only_near_a_streaming_row_still_refuses(cfg, recorded):
 
 
 @pytest.mark.parametrize(
-    "answer", [None, PermissionError("no"), NotADirectoryError("no"), ValueError("nul")]
-)
+    "answer", [None, PermissionError("no"), NotADirectoryError("no"), ValueError("nul")])
 def test_a_streaming_spelling_with_anything_at_it_still_refuses(cfg, answer):
     """FAILS CLOSED: something there, or a question the filesystem would not answer."""
 
@@ -129,10 +126,8 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
         cfg,
         _active(
             "/Users/someone/Music/a.flac", "/Users/someone/Music/b.flac", "/Old Drive/Music/c.flac",
-            STREAMED[0],
-        ),
-        stat=_absent,
-    )
+            STREAMED[0]),
+        stat=_absent)
     assert references.streaming == ("a3",)
     assert references.unmapped == ("a0", "a1", "a2")
     assert references.unmapped_prefixes == (("/Users/someone", 2), ("/Old Drive/Music", 1))
@@ -174,8 +169,7 @@ def _insert_active(db_path: Path, rows: list[tuple[str, str]]) -> None:
             conn.execute(
                 "INSERT INTO djmdContent (ID, FolderPath, rb_local_deleted, rb_local_usn, "
                 "Title) VALUES (?, ?, 0, 20, ?)",
-                (content_id, recorded, f"Streamed {content_id}"),
-            )
+                (content_id, recorded, f"Streamed {content_id}"))
         conn.commit()
     finally:
         conn.close()
@@ -189,8 +183,7 @@ def _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active):
     handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
     try:
         watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle), sequence=40, actor="cli"
-        )
+            database_identity=library.database_identity(handle), sequence=40, actor="cli")
     finally:
         rb_writer.close_db(handle)
     removed = ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem)
@@ -212,8 +205,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
     assert refused["cause"]["detail"]["shown"]["offered"] == 1
     run_id = refused["run_id"]
     code, _, err = _drive(
-        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
+        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"])
     assert code == int(ExitCode.OK), err
     code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
     assert code == int(ExitCode.OK), err or out

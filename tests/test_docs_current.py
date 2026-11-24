@@ -286,10 +286,8 @@ def test_every_config_key_a_doc_spells_exists(doc: Path) -> None:
 # ── The readers on doctored text, which is the proof each check can fail ─────
 
 _VERBS: dict[str, frozenset[str] | None] = {
-    "status": frozenset({"--help"}),
-    "sync pair": frozenset({"--rekordbox", "--help"}),
-    "sync land": frozenset({"--pass-run", "--help"}),
-    "tombstone list": None,
+    "status": frozenset({"--help"}), "sync pair": frozenset({"--rekordbox", "--help"}),
+    "sync land": frozenset({"--pass-run", "--help"}), "tombstone list": None,
 }
 
 
@@ -350,19 +348,16 @@ def test_a_settings_row_with_a_changed_default_disagrees() -> None:
     text = (
         f"{SETTINGS_HEADING}\n\nprose\n\n| Key | Default |\n|---|---|\n"
         '| `labels.offer_per_sweep` | 12 |\n| `outbound.pair_skip_folders` | `["ARCHIVE"]` (gloss) |\n'
-        '| `library.music_dir` | `"Music"` |\n\nafter\n'
-    )
+        '| `library.music_dir` | `"Music"` |\n\nafter\n')
     table = settings_table(text)
     assert table == {
-        "labels.offer_per_sweep": "12",
-        "outbound.pair_skip_folders": '["ARCHIVE"]',
+        "labels.offer_per_sweep": "12", "outbound.pair_skip_folders": '["ARCHIVE"]',
         "library.music_dir": '"Music"',
     }
     # Judged against a fixed schema rather than the live one, so the reader is
     # what this proves and a real change of a default cannot redden it.
     schema = {
-        "labels.offer_per_sweep": "10",
-        "outbound.pair_skip_folders": '["ARCHIVE"]',
+        "labels.offer_per_sweep": "10", "outbound.pair_skip_folders": '["ARCHIVE"]',
         "library.music_dir": '"Music"',
     }
     assert {key for key in schema if table[key] != schema[key]} == {"labels.offer_per_sweep"}

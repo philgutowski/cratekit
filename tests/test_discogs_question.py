@@ -49,8 +49,7 @@ def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
     pages = {
         f"{searchers.DISCOGS_RELEASE}{number}": release(
             number, artist=artist, title=title,
-            tracks=[{"position": "A1", "type_": "track", "title": title}], styles=(style,),
-        )
+            tracks=[{"position": "A1", "type_": "track", "title": title}], styles=(style,))
         for artist, title, number, style in CATALOGUE
     }
 
@@ -75,8 +74,7 @@ def build(fetch, *, token: str | None = SENT, walk=None):
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     extra = {} if walk is None else {"walk": walk}
     return searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, **extra
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, **extra)
 
 
 def discogs_questions(seen: list[str]) -> list[dict[str, str]]:
@@ -123,8 +121,7 @@ def tagged(tmp_path: Path, silence: Path, name: str, **fields: str) -> Path:
 def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_path, silence):
     path = tagged(
         tmp_path, silence, "03B - 83 - Earth, Wind & Fire - That's the Way of the World.flac",
-        title="03B - 83 - That's the Way of the World", artist="Earth, Wind & Fire",
-    )
+        title="03B - 83 - That's the Way of the World", artist="Earth, Wind & Fire")
     result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "That's the Way of the World"
     assert discogs_questions(seen)[0]["artist"] == "Earth, Wind & Fire"
@@ -132,8 +129,7 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
     assert (result.source, result.source_genre) == (searchers.DISCOGS, "Funk")
     assert tags.read_genre_from_file(path) == genre_of("Funk")
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
-        "Earth, Wind & Fire", "That's the Way of the World", titles.Read.PAST_HEAD.value
-    )
+        "Earth, Wind & Fire", "That's the Way of the World", titles.Read.PAST_HEAD.value)
 
 
 def test_the_same_title_asked_with_its_head_misses_as_it_did_at_the_sitting():
@@ -157,8 +153,7 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
     # Past the older naming's _PN tail too (R-1724, ``tests/test_name_tail.py``).
     assert question["track"] == "On The Rocks"
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
-        "Obiman", "On The Rocks (Cafe Del Mar Mix)", titles.Read.BY_NAME.value
-    )
+        "Obiman", "On The Rocks (Cafe Del Mar Mix)", titles.Read.BY_NAME.value)
 
 
 def test_an_untagged_file_named_artist_and_title_takes_the_release_that_names_both(tmp_path, silence):
@@ -343,8 +338,7 @@ def test_the_headed_cases_are_asked_past_their_head():
         ("83 - 03B - On My Way", "Kerri Chandler", "On My Way"),
         ("03B - On My Way", "Kerri Chandler", "On My Way"),
         ("03B - 83 - On My Way", "", "On My Way"),
-    ],
-)
+    ])
 def test_the_question_reads_past_the_head_the_marker_and_the_artists_own_part(title, artist, asked):
     question = titles.question(title, artist)
     assert (question.artist, question.title, question.read) == (artist, asked, titles.Read.PAST_HEAD)
@@ -365,8 +359,7 @@ def test_the_question_reads_past_the_head_the_marker_and_the_artists_own_part(ti
         ("8A - 122", "", titles.Read.HEAD_ALONE),
         ("Kerri Chandler - On My Way", "", titles.Read.AS_WRITTEN),
         ("122 - Kerri Chandler - On My Way", "", titles.Read.AS_WRITTEN),
-    ],
-)
+    ])
 def test_a_name_splits_only_when_it_reads_to_exactly_one_artist_and_title(stem, artist, read):
     split = titles.by_name(stem)
     assert (split.artist, split.read) == (artist, read)

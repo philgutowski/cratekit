@@ -81,20 +81,16 @@ MITA_GAMI = ("As You Fly (Mita Gami Extended Mix)", AS_YOU_FLY, "As You Fly")
         pytest.param(
             "", TIM_GREEN, TWO_MONTHS_OFF_TRACKS,
             "Discogs release 8532080 holds no track with this version (tim green)",
-            id="the-tim-green-remix-refuses-a-release-of-four-other-mixes",
-        ),
+            id="the-tim-green-remix-refuses-a-release-of-four-other-mixes"),
         pytest.param(
             "", MITA_GAMI, AS_YOU_FLY_TRACKS,
             "Discogs release 28513768 holds no track with this version (mita gami)",
-            id="the-mita-gami-extended-mix-refuses-the-16bl-remix-single",
-        ),
+            id="the-mita-gami-extended-mix-refuses-the-16bl-remix-single"),
         # Headed as the library writes them, they refuse too.
         pytest.param("04A - 126 - ", TIM_GREEN, TWO_MONTHS_OFF_TRACKS, None, id="headed-tim-green"),
         pytest.param(
-            "09B - 122 - [MP3] ", MITA_GAMI, AS_YOU_FLY_TRACKS, None, id="headed-mita-gami"
-        ),
-    ],
-)
+            "09B - 122 - [MP3] ", MITA_GAMI, AS_YOU_FLY_TRACKS, None, id="headed-mita-gami"),
+    ])
 def test_the_sitting_files_refuse_a_release_that_lacks_their_mix(head, sitting, tracks, note):
     title, number, release_title = sitting
     said = asked(head + title, number, release_title=release_title, tracks=tracks)
@@ -106,8 +102,7 @@ def test_the_sitting_files_refuse_a_release_that_lacks_their_mix(head, sitting, 
 def test_each_sitting_file_still_takes_a_release_that_carries_its_mix():
     assert matched(
         "Two Months Off (Tim Green Remix)", release_title="Two Months Off",
-        tracks=(*TWO_MONTHS_OFF_TRACKS, "Two Months Off (Tim Green Remix)"),
-    )
+        tracks=(*TWO_MONTHS_OFF_TRACKS, "Two Months Off (Tim Green Remix)"))
     assert matched(
         "As You Fly (Mita Gami Extended Mix)", release_title="As You Fly",
         tracks=("As You Fly (Mita Gami Remix)",),
@@ -118,16 +113,14 @@ def test_the_refused_file_is_left_untagged_with_the_reason_in_its_record(tmp_pat
     path = tmp_path / "two months off.flac"
     shutil.copy2(silence, path)
     assert tags.write_tags(
-        path, {"artist": ARTIST, "title": "04A - 126 - Two Months Off (Tim Green Remix)"}
-    )
+        path, {"artist": ARTIST, "title": "04A - 126 - Two Months Off (Tim Green Remix)"})
     fetch = pressings({TWO_MONTHS_OFF: ("Two Months Off", *TWO_MONTHS_OFF_TRACKS)})
     result = tag.tag_one(path, searcher=searcher(fetch))
     assert result.genre_written is None
     assert tags.read_genre_from_file(path) in (None, "")
     (discogs,) = [said for said in result.answers if said.source == searchers.DISCOGS]
     assert (discogs.answer, discogs.note) == (
-        "miss", "Discogs release 8532080 holds no track with this version (tim green)"
-    )
+        "miss", "Discogs release 8532080 holds no track with this version (tim green)")
     # The walk goes on to Beatport, as after any Discogs miss.
     (beatport,) = [said for said in result.answers if said.source == searchers.BEATPORT]
     assert beatport.answer == "miss"
@@ -136,8 +129,7 @@ def test_the_refused_file_is_left_untagged_with_the_reason_in_its_record(tmp_pat
 def test_a_refused_release_gives_way_to_a_later_one_that_carries_the_mix():
     fetch = pressings(
         {1: ("Two Months Off", *TWO_MONTHS_OFF_TRACKS), 2: ("Remixes", TIM_GREEN[0])},
-        styles={2: ("Techno",)},
-    )
+        styles={2: ("Techno",)})
     said = discogs_answer(searcher(fetch)(ARTIST, "Two Months Off (Tim Green Remix)"))
     assert said.answer == "matched"
     assert "release 2" in said.note
@@ -167,8 +159,7 @@ def test_an_unread_release_beside_a_version_refusal_is_unread_not_a_miss():
         releases={
             1: release(1, artist=ARTIST, title="Two Months Off", tracks=listed("Two Months Off")),
             2: searchers.Fetched(text="<html>", status=200),
-        },
-    )
+        })
     said = discogs_answer(searcher(fetch)(ARTIST, "Two Months Off (Tim Green Remix)"))
     assert said.answer not in ("miss", "matched")
 
@@ -195,8 +186,7 @@ def test_an_unread_release_beside_a_version_refusal_is_unread_not_a_miss():
         pytest.param("X (Tim Green Vocal Mix)", ("X",), False, id="named-vocal-mix-plain"),
         pytest.param("X (Tim Green Vocal Mix)", ("X (Tim Green Remix)",), True, id="named-vocal"),
         pytest.param("X (Main Tim Green Mix)", ("X (Dark Lane Mix)",), False, id="main-named-mix"),
-    ],
-)
+    ])
 def test_a_release_is_taken_only_for_the_version_it_writes(title, tracks, taken):
     assert matched(title, tracks=tracks) is taken
 
@@ -210,8 +200,7 @@ def test_a_release_is_taken_only_for_the_version_it_writes(title, tracks, taken)
         pytest.param("X", ("Original Mix", "B Remix"), False, id="refuses-another-version-alone"),
         pytest.param("X (A Remix)", ("Side One",), True, id="takes-its-own-title-writing-it"),
         pytest.param("X (B Remix)", ("Side One",), False, id="refuses-its-own-title-writing-other"),
-    ],
-)
+    ])
 def test_the_single_fallback_takes_only_a_release_that_writes_the_version(
         release_title, tracks, taken):
     assert matched("X (A Remix)", release_title=release_title, tracks=tracks) is taken
@@ -229,8 +218,7 @@ def test_the_single_fallback_takes_only_a_release_that_writes_the_version(
         "X (Short Edit)",
         "X (Clean Edit)",
         "X (Extended Vocal Mix)",
-    ],
-)
+    ])
 def test_a_mix_that_names_no_one_still_takes_the_plain_title(title):
     """A mix description (``titles.MIX_DESCRIPTIONS``) names no other mix."""
     assert matched(title, tracks=("X",))
@@ -250,8 +238,7 @@ def test_a_mix_that_names_no_one_still_takes_the_plain_title(title):
         ("08A - 124 - X (A Remix)", "X (A Remix)"),
         ("X (a remix)", "X (A REMIX)"),
         ("X (A Remix)", "X A Remix"),
-    ],
-)
+    ])
 def test_a_version_is_read_as_the_reader_reads_it_wherever_it_is_written(title, track):
     assert matched(title, tracks=(track,))
 
@@ -268,8 +255,7 @@ def test_a_version_is_read_as_the_reader_reads_it_wherever_it_is_written(title, 
         ("X - A Remix", "X"),
         ("08A - 124 - X (A Remix)", "X (Original Mix)"),
         ("X (A Remix) (Extended)", "X (B Remix)"),
-    ],
-)
+    ])
 def test_another_version_or_none_takes_nothing(title, track):
     assert not matched(title, tracks=(track,))
 
@@ -285,8 +271,7 @@ def test_an_artist_that_does_not_match_still_refuses_a_track_that_writes_the_ver
 def test_the_shared_matcher_still_reads_a_remix_as_its_title():
     """``titles.matches`` is unchanged, so the other sources read the row as they did."""
     assert searchers._title_matches(
-        "Two Months Off (Tim Green Remix)", "Two Months Off", artist=ARTIST
-    )
+        "Two Months Off (Tim Green Remix)", "Two Months Off", artist=ARTIST)
 
 
 def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
@@ -294,11 +279,9 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         search=results(),
         beatport=searchers.Fetched(
             text=_beatport_page(
-                [_beatport_track(ARTIST, "Two Months Off", BUCKET_GENRE, mix="Original Mix")]
-            ),
+                [_beatport_track(ARTIST, "Two Months Off", BUCKET_GENRE, mix="Original Mix")]),
             status=200,
-        ),
-    )
+        ))
     hit = searcher(fetch, token=None)(ARTIST, "Two Months Off (Tim Green Remix)")
     assert hit.genre == BUCKET_GENRE
 
@@ -351,8 +334,7 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         # An ambiguous name's splits carry its version already.
         (f"{ARTIST} - Sunrise Mood Tim Green Remix", set()),
         ("", set()),
-    ],
-)
+    ])
 def test_a_files_named_versions(title, named):
     assert titles.named_versions(titles.read_file(title, ARTIST)) == frozenset(named)
 
@@ -387,8 +369,7 @@ def test_a_files_named_versions(title, named):
         ("Lost And Found Tim Green", False, False),
         ("Lost And Found Tim Green Dub", True, False),
         ("", False, False),
-    ],
-)
+    ])
 def test_a_catalogue_title_writes_a_version(row, titled, alone):
     named = frozenset({("tim", "green")})
     assert titles.writes_version(row, named, titled=True) is titled
@@ -472,8 +453,7 @@ def test_a_mix_named_by_a_word_no_list_holds_is_read_as_its_makers():
         ("Sunrise Mood (Tim Green Remix)", "Sunrise Mood (Tim Green Rmx)"),
         ("Sunrise Mood (Tim Green Rmx)", "Sunrise Mood (Tim Green Remix)"),
         ("Sunrise Mood (Main Tim Green Mix)", "Sunrise Mood (Tim Green Remix)"),
-    ],
-)
+    ])
 def test_a_maker_is_folded_as_a_name_is(title, row):
     assert matched(title, tracks=(row,))
 
@@ -482,12 +462,10 @@ def test_the_single_fallback_reads_no_other_track_of_the_release_as_the_mix():
     """Round one's finding 6: another title's remix is no evidence the single holds one."""
     assert not matched(
         "Sunrise Mood (Tide Remix)", release_title="Sunrise Mood",
-        tracks=("Sunrise Mood", "Sun Path (Tide Remix)"),
-    )
+        tracks=("Sunrise Mood", "Sun Path (Tide Remix)"))
     assert matched(
         "Sunrise Mood (Tide Remix)", release_title="Sunrise Mood",
-        tracks=("Sunrise Mood", "(Tide Remix)"),
-    )
+        tracks=("Sunrise Mood", "(Tide Remix)"))
 
 
 def test_a_row_written_as_the_file_is_written_matches_whatever_its_dash_parts():
@@ -514,8 +492,7 @@ def test_a_row_written_as_the_file_is_written_matches_whatever_its_dash_parts():
         ("Two Months Off (Main Tim Green Mix)", ARTIST, {("tim", "green")}),
         ("Two Months Off (Tim Green's Remix)", ARTIST, {("tim", "green")}),
         ("Two Months Off (2009 Digital Remaster)", ARTIST, set()),
-    ],
-)
+    ])
 def test_what_a_title_names_as_its_mix(title, artist, named):
     assert titles.named_versions(titles.read_file(title, artist)) == frozenset(named)
 
@@ -535,14 +512,12 @@ def test_the_miss_names_a_release_refused_on_its_tracks_alone_or_its_title_alone
 def test_a_title_naming_two_mixes_lists_them_in_order_in_the_note():
     said = asked("X (Tide Remix) (Bloom Edit)", 6, tracks=("X",))
     assert (said.answer, said.note) == (
-        "miss", "Discogs release 6 holds no track with this version (bloom or tide)"
-    )
+        "miss", "Discogs release 6 holds no track with this version (bloom or tide)")
 
 
 @pytest.mark.parametrize(
     "group",
-    ["feat. Tom Tom Club", "feat. Culture Club", "ft. Amp Live", "with Bombay Bicycle Club"],
-)
+    ["feat. Tom Tom Club", "feat. Culture Club", "ft. Amp Live", "with Bombay Bicycle Club"])
 def test_a_credit_group_ending_in_a_version_word_is_no_version(group):
     """Round two's row 7: a feature credit is never a mix, so the plain track matches."""
     assert titles.named_versions(titles.read_file(f"Song ({group})", ARTIST)) == frozenset()
@@ -625,8 +600,7 @@ def test_another_maker_is_still_a_version_miss_with_the_note():
     for title in ("What Else Is There? (Trentemøller Remix)", WHAT_ELSE):
         said = asked(title, 9, tracks=("What Else Is There? (Vitalic Remix)",))
         assert (said.answer, said.note) == (
-            "miss", "Discogs release 9 holds no track with this version (trentemoller)"
-        )
+            "miss", "Discogs release 9 holds no track with this version (trentemoller)")
 
 
 @pytest.mark.parametrize(
@@ -638,8 +612,7 @@ def test_another_maker_is_still_a_version_miss_with_the_note():
         ("Straße", "Strase"),
         ("Þór", "Tor"),
         ("Đorđe", "Dorje"),
-    ],
-)
+    ])
 def test_a_different_spelling_is_still_another_maker(mine, theirs):
     assert not matched(f"Sunrise Mood ({mine} Remix)", tracks=(f"Sunrise Mood ({theirs} Remix)",))
     assert not matched(f"Sunrise Mood ({theirs} Remix)", tracks=(f"Sunrise Mood ({mine} Remix)",))

@@ -166,9 +166,6 @@ def _cut_over(export: Path) -> dict:
     return _acted(_cutover(export), CUTOVER_GATE, "approve")[0]
 
 
-# ═══ The cutover ════════════════════════════════════════════════════════════
-
-
 def test_the_plan_names_the_root_and_approval_records_that_tree_alone(ready):
     cfg, export, root_id = ready
     acted, refused = _acted(_cutover(export), CUTOVER_GATE, "approve")
@@ -466,9 +463,6 @@ def test_after_the_cutover_adoption_writes_membership_under_the_adopted_root(rea
     )
 
 
-# ═══ The revert ═════════════════════════════════════════════════════════════
-
-
 def test_a_revert_before_any_native_write_puts_the_tree_back_on_the_bridge(ready):
     cfg, export, root_id = ready
     _cut_over(export)
@@ -549,9 +543,6 @@ def test_a_write_to_another_tree_does_not_close_this_trees_door(ready):
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
 
 
-# ═══ Doctor ═════════════════════════════════════════════════════════════════
-
-
 def _tree_finding(cfg: config.Config) -> doctor.Finding:
     report = doctor.run(cfg)
     (finding,) = [f for f in report.findings if f.key == "tree.registry"]
@@ -592,9 +583,6 @@ def test_doctor_fails_on_a_registry_it_cannot_read_rather_than_listing_the_bridg
     assert "XML bridge" not in finding.detail, (
         "an unreadable registry was reported as every tree being on the bridge"
     )
-
-
-# ═══ Edge cases of the cutover's remedies ══════════════════════════════════
 
 
 def test_the_steps_the_refused_adoption_names_are_the_steps_that_work(ready):

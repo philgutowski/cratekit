@@ -56,8 +56,7 @@ def build(fetch, *, token: str | None = SENT, walk=None, refusals=None):
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     extra = {} if walk is None else {"walk": walk}
     return searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals, **extra
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals, **extra)
 
 
 def said(hit: SearchHit) -> list[tuple[str, str]]:
@@ -134,13 +133,11 @@ def test_a_discogs_miss_asks_beatport_and_beatport_decides():
 @pytest.mark.parametrize(
     "styles",
     [(UNMAPPED,), (FALLBACK_GENRE,), (UNMAPPED, FALLBACK_GENRE), ()],
-    ids=["unmapped", "fallback-only", "both", "styleless"],
-)
+    ids=["unmapped", "fallback-only", "both", "styleless"])
 def test_a_discogs_decline_goes_on_to_beatport_which_decides(styles):
     seen: list[str] = []
     fetch = routed(
-        search=results(7), releases=matching_release(*styles), beatport=beatport_row(), seen=seen
-    )
+        search=results(7), releases=matching_release(*styles), beatport=beatport_row(), seen=seen)
     hit = build(fetch)(ARTIST, TITLE)
     assert beatport_asked(seen) == 1
     assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
@@ -165,8 +162,7 @@ def test_a_discogs_decline_beside_a_beatport_miss_keeps_discogs_word_and_is_not_
         (searchers.Fetched(note="timed out"), "unreachable"),
         (searchers.Fetched(text="<html>no payload</html>", status=200), "parse-break"),
     ],
-    ids=["refused", "outage", "reshaped"],
-)
+    ids=["refused", "outage", "reshaped"])
 def test_a_discogs_decline_beside_an_unread_beatport_is_a_decline_never_an_outage(refusal, answer):
     fetch = routed(search=results(7), releases=matching_release(UNMAPPED), beatport=refusal)
     hit = build(fetch)(ARTIST, TITLE)
@@ -178,8 +174,8 @@ def test_a_discogs_decline_beside_an_unread_beatport_is_a_decline_never_an_outag
 
 def test_two_declines_keep_discogs_word_and_beatport_s_picture():
     fetch = routed(
-        search=results(7), releases=matching_release(UNMAPPED), beatport=beatport_row(FALLBACK_GENRE)
-    )
+        search=results(7), releases=matching_release(UNMAPPED),
+        beatport=beatport_row(FALLBACK_GENRE))
     hit = build(fetch)(ARTIST, TITLE)
     assert hit.genre is None
     assert (hit.source, hit.source_genre) == (searchers.DISCOGS, UNMAPPED)
@@ -211,8 +207,7 @@ def test_with_no_token_a_beatport_miss_is_still_sources_unread_and_never_no_hit(
 @pytest.mark.parametrize(
     "discogs, answer",
     [(CHALLENGE, "blocked"), (searchers.Fetched(note="timed out"), "unreachable")],
-    ids=["refused", "outage"],
-)
+    ids=["refused", "outage"])
 def test_an_unread_discogs_goes_on_to_beatport_and_beside_its_miss_is_never_no_hit(discogs, answer):
     fetch = routed(search=discogs)
     hit = build(fetch)(ARTIST, TITLE)
@@ -236,8 +231,7 @@ def test_a_refused_beatport_beside_a_discogs_match_tags_the_file():
     for _ in range(searchers.REFUSALS_BEFORE_STOP):
         # Three files Discogs misses, each refused by Beatport.
         build(routed(search=results(), beatport=CHALLENGE, seen=seen), refusals=refusals)(
-            ARTIST, TITLE
-        )
+            ARTIST, TITLE)
     assert beatport_asked(seen) == searchers.REFUSALS_BEFORE_STOP
     hit = build(fetch, refusals=refusals)(ARTIST, TITLE)
     assert (hit.source, hit.genre) == (searchers.DISCOGS, discogs_tag("Deep House"))
@@ -468,8 +462,7 @@ def test_a_token_refused_beside_a_refused_beatport_is_still_the_runs_refusal():
 def test_a_401_is_sent_once_and_beatport_decides_every_file():
     seen: list[str] = []
     fetch = routed(
-        search=searchers.Fetched(note="HTTP 401", status=401), beatport=beatport_row(), seen=seen
-    )
+        search=searchers.Fetched(note="HTTP 401", status=401), beatport=beatport_row(), seen=seen)
     searcher = build(fetch)
     for _ in range(3):
         hit = searcher(ARTIST, TITLE)
@@ -505,8 +498,7 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
 
     fetch = routed(search=results(), beatport=beatport_row())
     searcher = searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken()
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken())
     with pytest.raises(CratekitError) as raised:
         searcher(ARTIST, TITLE)
     assert raised.value.cause.reason == "internal-error"

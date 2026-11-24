@@ -222,9 +222,6 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
     assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
 
 
-# ═══ Edge cases of the report and the revert guard ══════════════════════════
-
-
 def _unreadable_record(cfg: config.Config) -> Path:
     directory = session.log_dir(cfg)
     directory.mkdir(parents=True, exist_ok=True)

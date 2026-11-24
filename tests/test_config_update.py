@@ -98,12 +98,11 @@ def lock_is_free() -> bool:
     lock.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(fd, fcntl.LOCK_UN)
         return True
+    except BlockingIOError:
+        return False
     finally:
         os.close(fd)
 
@@ -149,9 +148,6 @@ def _between_setup_read_and_write(monkeypatch, act) -> None:
     _between_the_read_and_the_write(monkeypatch, setup_verb, "_propose_pin", act)
 
 
-# 1. Neither set of answers is lost.
-
-
 def test_a_profile_change_made_while_the_wizard_was_deciding_survives_the_wizard(
     configured, monkeypatch, tmp_path
 ):
@@ -179,9 +175,6 @@ def test_a_wizard_that_finished_while_a_profile_change_was_deciding_survives_it(
     written = on_disk()
     assert written["paths"]["download_staging"] == elsewhere, "profile set erased the wizard"
     assert written["profile"]["name"] == "slim"
-
-
-# 2. A value both changed is a refusal, never a pick.
 
 
 def test_two_wizards_answering_one_key_differently_refuse_and_write_nothing(
@@ -223,9 +216,6 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
     assert written["modules"] == {toggled: False}
 
 
-# 3. The lock is not held while a person is being asked.
-
-
 def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypatch, tmp_path):
     """The question is reached with the lock free, so no command waits on someone typing."""
     monkeypatch.setattr(doctor, "Probes", lambda: doctor_machines.green())
@@ -246,9 +236,6 @@ def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypa
     assert observed, "the profile was never asked, so this test observed nothing"
     assert all(observed), "the write lock was held while a person was being asked"
     assert on_disk()["profile"]["name"] == "slim"
-
-
-# 4. The cycle itself.
 
 
 def test_update_reads_the_document_after_it_holds_the_lock(configured, monkeypatch, tmp_path):
@@ -403,8 +390,7 @@ def test_three_real_processes_writing_at_once_all_keep_their_answers(configured,
             ready = tmp_path / f"ready-{module}"
             worker = subprocess.Popen(
                 [sys.executable, "-c", _WORKER, module, str(ready), str(go)],
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                stderr=subprocess.PIPE,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, stderr=subprocess.PIPE,
             )
             workers.append((ready, worker))
         deadline = time.monotonic() + 60
@@ -421,9 +407,6 @@ def test_three_real_processes_writing_at_once_all_keep_their_answers(configured,
                 worker.kill()
                 worker.wait()
     assert on_disk()["modules"] == {module: False for module in sorted(modules)}
-
-
-# 5. merge_changes(base, desired, current).
 
 
 BASE = {"a": {"x": 1, "y": 2}, "b": {"z": [1, 2]}, "top": "t"}
@@ -490,9 +473,6 @@ def test_a_merge_shares_nothing_mutable_with_the_documents_it_was_given():
 
 def test_a_conflict_carries_the_setup_remedy_as_a_token():
     assert config.ConfigConflict.remedy is config.Remedy.RUN_SETUP
-
-
-# 6. Nothing writes the document any other way.
 
 
 def _calls_config_save(tree: ast.AST) -> list[int]:

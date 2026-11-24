@@ -218,9 +218,6 @@ def test_questions_wait_for_the_report(flat):
     assert "The questions no rule answers" in flat
 
 
-# ═══ Step 3, driven: stopped landing, rehearsal, re-plan, and one decide ═════
-
-
 def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
     native_library, silence
 ):

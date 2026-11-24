@@ -135,9 +135,6 @@ def _unsent(settings, declared, **given):
     return cyanite.run(settings, declared, send=refused_send, say=lambda _l: None, **given)
 
 
-# Fixtures: real MP3s with a genre each, filed by hand
-
-
 @pytest.fixture(scope="module")
 def probe_mp3(tmp_path_factory):
     folder = tmp_path_factory.mktemp("probe")
@@ -204,9 +201,6 @@ def _run(settings, declared, fake, events=None, **kw):
 
 def _rows(path: Path) -> dict[str, dict[str, str]]:
     return {Path(row["file"]).name: row for row in cyanite.read_table(path).values()}
-
-
-# Nothing is sent without the opt in, the cap, the price and the key
 
 
 def test_without_the_opt_in_the_run_is_a_plan_and_sends_nothing(chosen, tmp_path, declared, keyed):
@@ -340,9 +334,6 @@ def test_a_block_or_an_outage_at_the_preflight_stops_before_any_upload(chosen, t
     assert fake.uploaded() == []
 
 
-# The key goes in one place
-
-
 def test_the_key_goes_only_in_the_authorization_header_of_the_api_requests(chosen, tmp_path, declared, keyed):
     fake = Recorded()
     _run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared, fake)
@@ -419,9 +410,6 @@ def test_a_transport_failure_is_said_by_its_type_never_its_text(monkeypatch):
 
 
 
-# Nothing tempo shaped
-
-
 def test_no_query_asks_for_a_tempo_or_a_key():
     for query in cyanite.QUERIES:
         assert not cyanite.TEMPO_SHAPED.search(query), query
@@ -455,9 +443,6 @@ def test_the_table_carries_no_tempo_or_key_a_reply_held(chosen, out, declared, k
     assert "124" not in text and "aMinor" not in text and "4/4" not in text
 
 
-# The trial writes its own table and nothing else
-
-
 def _tree(root: Path) -> dict[str, bytes]:
     return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
 
@@ -474,9 +459,6 @@ def test_the_trial_writes_its_table_and_summary_and_nothing_else(chosen, tmp_pat
     after = _tree(tmp_path)
     assert set(after) - set(before) == {"t.tsv", "t-agreement.tsv"}
     assert {name: after[name] for name in before} == before
-
-
-# The table, the folders and the agreement
 
 
 def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen, out, declared, keyed):
@@ -587,9 +569,6 @@ def test_an_identifier_is_read_as_the_words_it_spells(identifier, words):
     assert cyanite.spelled(identifier) == words
 
 
-# What stops a run and what is one file's
-
-
 def test_a_full_library_stops_the_run_and_keeps_the_rows_written(chosen, out, declared, keyed):
     fake = Recorded(create_errors={"jazzy": (cyanite.LIBRARY_FULL, "basic tier limit")})
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
@@ -674,9 +653,6 @@ def test_resume_asks_again_about_an_unfinished_analysis_without_uploading(chosen
     assert ran.uploaded == 0 and ran.asked_again == 4
     assert later.uploaded() == []
     assert _rows(out)["deep.mp3"]["agreement"] == cyanite.SAME_FOLDER
-
-
-# The script
 
 
 def _script():

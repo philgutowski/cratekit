@@ -25,23 +25,17 @@ def touch(folder: Path, relative: str) -> Path:
 #: (files, recursive, expected items); a recursive id is posix, read back later.
 TREES = {
     "one-level-default-skips-a-subfolder": (
-        ["top.flac", "genre/nested.flac"], False, ("top.flac",)
-    ),
+        ["top.flac", "genre/nested.flac"], False, ("top.flac",)),
     "non-audio-suffix": (["cover.jpg", "notes.txt", "track.flac"], False, ("track.flac",)),
     "suffix-case-insensitive": (["shouted.FLAC"], False, ("shouted.FLAC",)),
     "nested-every-file-once-sorted": (
-        ["house/b.flac", "house/a.flac", "techno/deep/c.aiff", "top.mp3"],
-        True,
-        ("house/a.flac", "house/b.flac", "techno/deep/c.aiff", "top.mp3"),
-    ),
+        ["house/b.flac", "house/a.flac", "techno/deep/c.aiff", "top.mp3"], True,
+        ("house/a.flac", "house/b.flac", "techno/deep/c.aiff", "top.mp3")),
     "appledouble-sidecar-skipped": (
-        ["house/track.flac", "house/._track.flac", "house/.DS_Store.flac"],
-        True,
-        ("house/track.flac",),
-    ),
+        ["house/track.flac", "house/._track.flac", "house/.DS_Store.flac"], True,
+        ("house/track.flac",)),
     "dot-directory-not-descended": (
-        ["keep.flac", ".Trashes/deleted.flac", ".Spotlight-V100/index.flac"], True, ("keep.flac",)
-    ),
+        ["keep.flac", ".Trashes/deleted.flac", ".Spotlight-V100/index.flac"], True, ("keep.flac",)),
     "posix-separator": (["a/b/c.flac"], True, ("a/b/c.flac",)),
 }
 
@@ -83,8 +77,7 @@ def test_a_top_level_file_has_the_same_id_in_both_modes(tmp_path):
     touch(tmp_path, "top.flac")
     assert discovery.scan_audio(tmp_path).items == ("top.flac",)
     assert discovery.scan_audio(tmp_path).items == (
-        discovery.scan_audio(tmp_path, recursive=True).items
-    )
+        discovery.scan_audio(tmp_path, recursive=True).items)
 
 
 # Symlinks: the loop hazard, and the skip said out loud
@@ -189,8 +182,7 @@ def test_both_omissions_ride_together_links_first(tmp_path):
 def test_an_error_carrying_no_filename_is_still_reported(tmp_path):
     """The collected trace is the only evidence the omission happened at all."""
     (warning,) = discovery.walk_warnings(
-        unreadable=(discovery._relative_or_absolute(tmp_path, None),)
-    )
+        unreadable=(discovery._relative_or_absolute(tmp_path, None),))
     assert "an unnamed folder under this tree" in warning["message"]
 
 
@@ -237,8 +229,7 @@ def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_rais
 
 
 @pytest.mark.parametrize(
-    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"]
-)
+    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"])
 def test_an_id_joins_under_the_folder(tmp_path, item):
     """A bare filename too: ``analyze run`` never gets the flag, so its ids stay one segment."""
     assert discovery.item_path(tmp_path, item) == tmp_path / item

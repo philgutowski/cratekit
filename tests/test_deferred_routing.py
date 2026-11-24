@@ -89,8 +89,7 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
+        rb_writer, "read_rekordbox_settings",
         lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
     )
 
@@ -419,6 +418,12 @@ def adopted_root(db):
     return folder
 
 
+@pytest.fixture
+def gated_root(gates_pass, adopted_root):
+    """The adopted root, on a library whose volume agrees and whose acknowledgment is recorded."""
+    return adopted_root
+
+
 def _route(cfg, db, adopted, declared_taxonomy, *, rows=None, registry=None, session_id=SESSION_ID, **kwargs):
     if registry is None:
         registry = _registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID))
@@ -433,12 +438,10 @@ def _memberships(db, content_id: str) -> int:
     return db.get_playlist_songs(ContentID=str(content_id)).count()
 
 
-def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(
-    cfg, gates_pass, db, adopted_root
-):
+def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(cfg, db, gated_root):
     """The happy path, end to end: decide, import, route, and the mark follows."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert report.readiness is routing_pass.Readiness.READY
     assert len(report.routed) == 1
     assert report.memberships[0].added == 1
@@ -447,24 +450,24 @@ def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(
     assert _memberships(db, "2") == 1
 
 
-def test_the_track_lands_inside_the_tree_the_cutover_adopted(cfg, gates_pass, db, adopted_root):
+def test_the_track_lands_inside_the_tree_the_cutover_adopted(cfg, db, gated_root):
     """Proved by walking UP from the membership row, never down by name."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    _route(cfg, db, adopted_root, DECLARED)
+    _route(cfg, db, gated_root, DECLARED)
     folder_display, sub_display = routing_pass.destination(DECLARED, *_destination(DECLARED))
     playlist, folder = _filed_under(db, "2")
     assert playlist.Name == sub_display
     assert folder.Name == folder_display
-    assert str(folder.ParentID) == str(adopted_root.ID)
+    assert str(folder.ParentID) == str(gated_root.ID)
 
 
-def test_the_pass_run_before_the_import_is_read_only(cfg, gates_pass, db, adopted_root):
+def test_the_pass_run_before_the_import_is_read_only(cfg, db, gated_root):
     """Asserted against the FILESYSTEM."""
     routing_pass.record_intents(cfg, [_not_yet_there(cfg, DECLARED)])
     # The state tree is all a pass could write; a WAL read touches the database's index.
     roots = (config.library_state_dir(cfg), config.installation_state_dir(), config.config_dir())
     before = _state_fingerprint(*roots)
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert _state_fingerprint(*roots) == before, "the pass wrote before deciding it was ready"
     assert report.readiness is routing_pass.Readiness.NOT_READY
     assert report.routed == ()
@@ -472,9 +475,7 @@ def test_the_pass_run_before_the_import_is_read_only(cfg, gates_pass, db, adopte
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
 
-def test_a_crash_between_the_commit_and_the_mark_converges(
-    cfg, gates_pass, db, adopted_root, monkeypatch
-):
+def test_a_crash_between_the_commit_and_the_mark_converges(cfg, db, gated_root, monkeypatch):
     """Driven by an ACTUAL crash in the window."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     real_mark = routing_pass.mark
@@ -484,45 +485,43 @@ def test_a_crash_between_the_commit_and_the_mark_converges(
 
     monkeypatch.setattr(routing_pass, "mark", die)
     with pytest.raises(RuntimeError, match="between the commit and the mark"):
-        _route(cfg, db, adopted_root, DECLARED)
+        _route(cfg, db, gated_root, DECLARED)
     # The commit landed and the ledger did not move: what a kill in the window leaves.
     assert _memberships(db, "2") == 1
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
     # The restart puts back only the mark, keeping the platform seams.
     monkeypatch.setattr(routing_pass, "mark", real_mark)
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert report.memberships[0].added == 0
     assert report.memberships[0].already_present == 1
     assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-def test_a_second_pass_over_a_settled_run_writes_nothing(cfg, gates_pass, db, adopted_root):
+def test_a_second_pass_over_a_settled_run_writes_nothing(cfg, db, gated_root):
     """Re-running is the recovery procedure, so re-running must be free."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    _route(cfg, db, adopted_root, DECLARED)
-    second = _route(cfg, db, adopted_root, DECLARED)
+    _route(cfg, db, gated_root, DECLARED)
+    second = _route(cfg, db, gated_root, DECLARED)
     assert second.placed == ()
     assert second.memberships == ()
     assert _memberships(db, "2") == 1
 
 
-def test_a_track_whose_membership_cannot_be_proved_is_not_marked(
-    cfg, gates_pass, db, adopted_root, monkeypatch
-):
+def test_a_track_whose_membership_cannot_be_proved_is_not_marked(cfg, db, gated_root, monkeypatch):
     """The fail-safe direction on the read-back."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     monkeypatch.setattr(routing_pass, "membership_proven", lambda *args, **kwargs: False)
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert report.routed == ()
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
 
-def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(cfg, gates_pass, db, adopted_root):
+def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(cfg, db, gated_root):
     """U18's inverse guard reaches the caller with its remedy, and the ledger is untouched."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
-        _route(cfg, db, adopted_root, DECLARED, registry=_registry(tree_registry.Mode.XML))
+        _route(cfg, db, gated_root, DECLARED, registry=_registry(tree_registry.Mode.XML))
     assert isinstance(excinfo.value, CratekitError)
     assert excinfo.value.cause.remediation.remedy is excinfo.value.remedy
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
@@ -576,53 +575,48 @@ def test_a_run_with_a_pending_track_refuses_to_close(cfg, gates_pass):
     assert session.read_record(SESSION_ID, cfg).state is session.SessionState.OPEN
 
 
-def test_a_run_closes_once_the_routing_pass_has_placed_its_track(cfg, gates_pass, db, adopted_root):
-    """The same run, after the pass."""
+def test_a_run_closes_once_the_routing_pass_has_placed_its_track(cfg, db, gated_root):
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     _refused_by(routing_pass.close_run, record, cfg)
-    _route(cfg, db, adopted_root, DECLARED)
+    _route(cfg, db, gated_root, DECLARED)
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
 
 
-def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
-    cfg, gates_pass, db, adopted_root
-):
+def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(cfg, db, gated_root):
     """The pass ran, said not-ready, and settled nothing. The run stays open."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_not_yet_there(cfg, DECLARED)])
-    assert _route(cfg, db, adopted_root, DECLARED).readiness is routing_pass.Readiness.NOT_READY
+    assert _route(cfg, db, gated_root, DECLARED).readiness is routing_pass.Readiness.NOT_READY
     _refused_by(routing_pass.close_run, record, cfg)
 
 
-def test_a_track_deleted_after_import_is_surfaced(cfg, gates_pass, db, adopted_root):
+def test_a_track_deleted_after_import_is_surfaced(cfg, db, gated_root):
     """Surfaced, never auto-skipped."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    report = _route(cfg, db, adopted_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
+    report = _route(cfg, db, gated_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
     assert report.readiness is routing_pass.Readiness.READY
     assert [item.placement for item in report.withdrawn] == [routing_pass.Placement.WITHDRAWN]
     assert report.routed == ()
     assert report.memberships == ()
 
 
-def test_the_routing_pass_never_acknowledges_a_track_by_itself(cfg, gates_pass, db, adopted_root):
+def test_the_routing_pass_never_acknowledges_a_track_by_itself(cfg, db, gated_root):
     """The separation that makes surfacing mean anything."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    _route(cfg, db, adopted_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
+    _route(cfg, db, gated_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
     states = {entry.state for entry in routing_pass.read(cfg).for_session(SESSION_ID)}
     assert states == {routing_pass.TrackState.INTENDED}
 
 
-def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
-    cfg, gates_pass, db, adopted_root
-):
+def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(cfg, db, gated_root):
     """Acknowledgment is the ONLY way out of a surfaced track."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     removed = [_row(cfg, PLAIN, "2", deleted=True)]
     for _ in range(2):
-        _route(cfg, db, adopted_root, DECLARED, rows=removed)
+        _route(cfg, db, gated_root, DECLARED, rows=removed)
         _refused_by(routing_pass.close_run, record, cfg)
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="a-person", note="removed in rekordbox")
@@ -826,9 +820,7 @@ def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg):
     assert len(routing_pass.read(cfg).outstanding("run-one")) == 1
 
 
-def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
-    cfg, gates_pass, db, adopted_root
-):
+def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(cfg, db, gated_root):
     """Both runs driven to completion, and neither closes while it still owes work."""
     first = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one")
     second = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-two")
@@ -838,10 +830,10 @@ def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
     second_destination = routing_pass.destination(DECLARED, *_destination(DECLARED, 1))
     assert first_destination != second_destination
     # Run one places its track while run two still owes its own.
-    _route(cfg, db, adopted_root, DECLARED, session_id="run-one")
+    _route(cfg, db, gated_root, DECLARED, session_id="run-one")
     assert routing_pass.close_run(first, cfg).state is session.SessionState.CLOSED
     assert _refused_by(routing_pass.close_run, second, cfg).reason == "routing-outstanding"
-    _route(cfg, db, adopted_root, DECLARED, session_id="run-two")
+    _route(cfg, db, gated_root, DECLARED, session_id="run-two")
     assert routing_pass.close_run(second, cfg).state is session.SessionState.CLOSED
     landed = sorted(_where(db, "2"))
     assert landed == sorted([first_destination, second_destination]), f"the library holds {landed}"
@@ -874,14 +866,12 @@ def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(cfg)
     assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
 
 
-def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
-    cfg, gates_pass, db, adopted_root
-):
+def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(cfg, db, gated_root):
     """The good track is placed, and the bad one is reported rather than raised."""
     good = _intent(cfg, DECLARED, PLAIN)
     stale = replace(_intent(cfg, DECLARED, COMPOSED), sub="a-sub-this-library-dropped")
     routing_pass.record_intents(cfg, [good, stale])
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert _memberships(db, "2") == 1, "the good track was blocked by the stale one"
     assert report.routed == (good.track,)
     reasons = {item.intent.track: item.placement for item in report.placed}
@@ -921,14 +911,14 @@ def _rename_bucket_folder(db, declared_taxonomy) -> None:
 
 
 def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating(
-    cfg, gates_pass, db, adopted_root, monkeypatch
+    cfg, db, gated_root, monkeypatch
 ):
     """With no recorded node map a rename refuses, rather than duplicating (R19, D5)."""
-    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, DECLARED, monkeypatch)
+    _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     # The node map the pass wrote is what makes a rename converge; wiped, the refusal stands.
     convergence.record_nodes(cfg, TREE_ID, (), replace_all=True)
     _rename_bucket_folder(db, DECLARED)
-    cause = _refused_by(_route, cfg, db, adopted_root, DECLARED)
+    cause = _refused_by(_route, cfg, db, gated_root, DECLARED)
     assert cause.reason == "routing-destination-renamed"
     assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
@@ -943,54 +933,50 @@ def _taxonomy_with_the_first_bucket_renamed(new_display: str):
 
 
 def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicating(
-    cfg, gates_pass, db, adopted_root, monkeypatch
+    cfg, db, gated_root, monkeypatch
 ):
     """The template moved, not the library. The node map still names the folder."""
-    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, DECLARED, monkeypatch)
+    _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     renamed = _taxonomy_with_the_first_bucket_renamed("A Bucket Renamed")
     assert renamed.buckets[0].id == DECLARED.buckets[0].id
-    report = _route(cfg, db, adopted_root, renamed)
+    report = _route(cfg, db, gated_root, renamed)
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 1
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
 def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
-    cfg, gates_pass, db, adopted_root, monkeypatch
+    cfg, db, gated_root, monkeypatch
 ):
     """P5's countdown for the refusal above, so it cannot become permanent."""
-    _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, DECLARED, monkeypatch)
+    _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     _rename_bucket_folder(db, DECLARED)
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
-    cfg, gates_pass, db, adopted_root
-):
+def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(cfg, db, gated_root):
     """P7, the other direction. A guard that fires on correct code gets routed around."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN, session_id="run-one")])
-    _route(cfg, db, adopted_root, DECLARED, session_id="run-one")
+    _route(cfg, db, gated_root, DECLARED, session_id="run-one")
     routing_pass.record_intents(cfg, [_elsewhere(cfg, DECLARED, "run-two")])
-    report = _route(cfg, db, adopted_root, DECLARED, session_id="run-two")
+    report = _route(cfg, db, gated_root, DECLARED, session_id="run-two")
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 2
 
 
-def test_two_playlists_of_the_destinations_name_leave_its_node_unrecorded(
-    cfg, gates_pass, db, adopted_root
-):
+def test_two_playlists_of_the_destinations_name_leave_its_node_unrecorded(cfg, db, gated_root):
     """The node map never binds a destination to whichever of two namesakes came first."""
     bucket_id, sub_id = _destination(DECLARED)
     folder_display, sub_display = routing_pass.destination(DECLARED, bucket_id, sub_id)
-    folder = db.create_playlist_folder(folder_display, parent=adopted_root)
+    folder = db.create_playlist_folder(folder_display, parent=gated_root)
     db.create_playlist(sub_display, parent=folder)
     db.create_playlist(sub_display, parent=folder)
     db.session.commit()
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
-    report = _route(cfg, db, adopted_root, DECLARED)
+    report = _route(cfg, db, gated_root, DECLARED)
     assert report.memberships[0].added == 1
     record = convergence.read(cfg).tree(TREE_ID)
     assert record is None or record.node(bucket_id, sub_id) is None
@@ -1027,10 +1013,8 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
     environment["PYTHONPATH"] = os.pathsep.join([str(SRC_ROOT), str(REPO_ROOT)])
     processes = [
         subprocess.Popen(
-            [sys.executable, str(script), str(library), run, str(each)],
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            [sys.executable, str(script), str(library), run, str(each)], env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         for run in ("run-one", "run-two")
     ]
@@ -1167,16 +1151,14 @@ def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(cfg)
     assert routing_pass.readiness(placed) is not routing_pass.Readiness.NOT_READY
 
 
-def test_every_readiness_answer_except_ready_writes_nothing(
-    cfg, gates_pass, db, adopted_root, monkeypatch
-):
+def test_every_readiness_answer_except_ready_writes_nothing(cfg, db, gated_root, monkeypatch):
     """DERIVED over the enum, so a member added later cannot acquire the writing answer."""
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     for answer in routing_pass.Readiness:
         if answer is routing_pass.Readiness.READY:
             continue
         monkeypatch.setattr(routing_pass, "readiness", lambda _placed, _held=answer: _held)
-        report = _route(cfg, db, adopted_root, DECLARED)
+        report = _route(cfg, db, gated_root, DECLARED)
         assert report.readiness is answer
         assert report.routed == ()
         assert report.memberships == ()
@@ -1234,8 +1216,7 @@ def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
 @pytest.mark.parametrize(
     "source",
     [
-        'routing_pass.acknowledge(cfg, t, actor="cli")',
-        "acknowledge(cfg, t, actor='cli')",
+        'routing_pass.acknowledge(cfg, t, actor="cli")', "acknowledge(cfg, t, actor='cli')",
         'routing_pass.acknowledge(cfg, t, actor=f"cli")',
         'ACTOR = "cli"\nrouting_pass.acknowledge(cfg, t, actor=ACTOR)',
         'routing_pass.acknowledge(cfg, t, actor="cli" if x else "cli")',
