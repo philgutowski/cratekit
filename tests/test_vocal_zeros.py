@@ -52,17 +52,22 @@ def _series(frames: int, *, heard: float, at: float, floor_noise: float) -> np.n
     return series
 
 
-def _score(monkeypatch, singing: np.ndarray, *, signal: np.ndarray | None = None) -> dict:
-    """Score one track through ``analyse`` with the playback model bound."""
-    frames = int(singing.size)
-    samples = signal if signal is not None else np.full(frames * SAMPLES_PER_FRAME, 0.1, np.float32)
-    model = _Playback(singing)
-    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: model)
+def _bind(monkeypatch, loader, samples: np.ndarray) -> None:
+    """A fresh model slot loading through ``loader``, every file decoding to ``samples``."""
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", loader)
     monkeypatch.setattr(vocals, "_VOCAL_MODEL", None)
     monkeypatch.setattr(vocals, "_VOCAL_FAILED", False)
     monkeypatch.setattr(vocals, "_VOCAL_FAILURE", None)
     monkeypatch.setattr(vocals, "_VOCAL_COLUMNS", None)
     monkeypatch.setattr(vocals, "_DECODER", lambda path: samples)
+
+
+def _score(monkeypatch, singing: np.ndarray, *, signal: np.ndarray | None = None) -> dict:
+    """Score one track through ``analyse`` with the playback model bound."""
+    frames = int(singing.size)
+    samples = signal if signal is not None else np.full(frames * SAMPLES_PER_FRAME, 0.1, np.float32)
+    model = _Playback(singing)
+    _bind(monkeypatch, lambda: model, samples)
     return vocals.analyse({"path": "track.flac"})
 
 
@@ -99,12 +104,7 @@ class _Listening(_Playback):
 
 def test_silence_is_heard_and_scores_zero_rather_than_no_score(monkeypatch):
     """A silent file was listened to, so 0, never None; a loud signal scores 100."""
-    monkeypatch.setattr(vocals, "_VOCAL_LOADER", _Listening)
-    monkeypatch.setattr(vocals, "_VOCAL_MODEL", None)
-    monkeypatch.setattr(vocals, "_VOCAL_FAILED", False)
-    monkeypatch.setattr(vocals, "_VOCAL_FAILURE", None)
-    monkeypatch.setattr(vocals, "_VOCAL_COLUMNS", None)
-    monkeypatch.setattr(vocals, "_DECODER", lambda path: np.zeros(FRAMES * SAMPLES_PER_FRAME, np.float32))
+    _bind(monkeypatch, _Listening, np.zeros(FRAMES * SAMPLES_PER_FRAME, np.float32))
     scored = vocals.analyse({"path": "silence.flac"})
     assert scored["vocal_active"] is True
     assert scored["vocal_reason"] is None
