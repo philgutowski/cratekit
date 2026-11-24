@@ -558,31 +558,25 @@ def test_a_sweep_whose_estimate_crosses_into_the_reserve_refuses_before_its_firs
     assert any("--next --label" in step for step in cause["remediation"]["steps"])
 
 
-def test_a_genre_walk_is_refused_in_its_own_words_over_its_group_alone(two_followed):
-    """U341: the estimate and the refusal speak of the one group asked."""
+@pytest.mark.parametrize(
+    ("argv", "labels_said"),
+    [(["--next", "--genre", "deep house"], 1), (["--genre", "Deep House"], None)],
+    ids=["a-genre-walk-is-refused-in-its-own-words-over-its-group-alone",
+         "a-genre-walk-at-the-terminal-is-refused-over-its-group-alone"],
+)
+def test_a_genre_walk_is_refused_over_its_group_alone(two_followed, argv, labels_said):
+    """U341: the estimate and the refusal speak of the one group asked, at either call site."""
     labels.RegistryStore().edit("Tide Works", genre="Deep House")
     _spent_on_the_account(250)  # 50 of 300 left; the group is one label at 100
-    code, envelope = ls.sync("--next", "--genre", "deep house")
+    code, envelope = ls.sync(*argv)
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     cause = envelope["cause"]
     assert cause["message"].startswith(
         "walking the labels of genre 'Deep House' may ask the streaming provider about "
         "100 calls over 1 label,"
     )
-    assert cause["detail"]["labels"] == 1
-    assert two_followed.asked_for == []
-
-
-def test_a_genre_walk_at_the_terminal_is_refused_over_its_group_alone(two_followed):
-    """U341: the walk's own call site says the group, as ``--next``'s does."""
-    labels.RegistryStore().edit("Tide Works", genre="Deep House")
-    _spent_on_the_account(250)
-    code, envelope = ls.sync("--genre", "Deep House")
-    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
-    assert envelope["cause"]["message"].startswith(
-        "walking the labels of genre 'Deep House' may ask the streaming provider about "
-        "100 calls over 1 label,"
-    )
+    if labels_said is not None:
+        assert cause["detail"]["labels"] == labels_said
     assert two_followed.asked_for == []
 
 

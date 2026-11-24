@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from pathlib import Path
 
 from cratekit.core.locations import location_to_path, location_url
 from cratekit.write import rbxml
@@ -458,6 +459,17 @@ def _labels_doc(children: list[str]) -> bytes:
     ])
 
 
+def _label(name: str, playlist: str, keys: list[int]) -> list[str]:
+    """A held label folder at the label indent, holding one playlist of ``keys``."""
+    return [
+        f'        <NODE Name="{name}" Type="0" Count="1">',
+        f'          <NODE Name="{playlist}" Type="1" KeyType="0" Entries="{len(keys)}">',
+        *(f'            <TRACK Key="{key}"/>' for key in keys),
+        "          </NODE>",
+        "        </NODE>",
+    ]
+
+
 def _catalog(content: bytes, label: str, pairs) -> tuple[bytes, str | None]:
     work = bytearray(content)
     warning = rbxml.insert_catalog_folder(work, label, pairs, tree=_LABELS)
@@ -540,16 +552,7 @@ def test_track_ids_are_deduplicated_inside_a_playlist():
     keys = re.findall(rb'<TRACK Key="(\d+)"/>', twice)
     assert keys == [b"1", b"2", b"3", b"4"]
 
-    held = _labels_doc(
-        [
-            '        <NODE Name="Kompakt" Type="0" Count="1">',
-            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">',
-            '            <TRACK Key="7"/>',
-            '            <TRACK Key="7"/>',
-            "          </NODE>",
-            "        </NODE>",
-        ]
-    )
+    held = _labels_doc(_label("Kompakt", "Kompakt 2025", [7, 7]))
     out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [7, 8])])
     assert warning is None
     assert re.findall(rb'<TRACK Key="(\d+)"/>', out) == [b"7", b"7", b"8"]
@@ -557,15 +560,7 @@ def test_track_ids_are_deduplicated_inside_a_playlist():
 
 
 def test_a_playlist_that_gains_nothing_is_left_byte_identical():
-    held = _labels_doc(
-        [
-            '        <NODE Name="Kompakt" Type="0" Count="1">',
-            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
-            '            <TRACK Key="7"/>',
-            "          </NODE>",
-            "        </NODE>",
-        ]
-    )
+    held = _labels_doc(_label("Kompakt", "Kompakt 2025", [7]))
     out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [7])])
     assert warning is None
     assert out == held
@@ -574,16 +569,7 @@ def test_a_playlist_that_gains_nothing_is_left_byte_identical():
 def test_a_similarly_named_sibling_folder_is_untouched():
     """A longer name or one differing by case is another label; both neighbours keep every byte."""
     neighbours = [
-        '        <NODE Name="Kompakt Extra" Type="0" Count="1">',
-        '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
-        '            <TRACK Key="7"/>',
-        "          </NODE>",
-        "        </NODE>",
-        '        <NODE Name="KOMPAKT" Type="0" Count="1">',
-        '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
-        '            <TRACK Key="8"/>',
-        "          </NODE>",
-        "        </NODE>",
+        *_label("Kompakt Extra", "Kompakt 2025", [7]), *_label("KOMPAKT", "Kompakt 2025", [8])
     ]
     held = _labels_doc(neighbours)
     out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1])])
@@ -599,15 +585,7 @@ def test_a_name_drawn_two_ways_in_unicode_is_one_folder():
     decomposed = unicodedata.normalize("NFD", "Café Records")
     composed = unicodedata.normalize("NFC", "Café Records")
     assert decomposed != composed
-    held = _labels_doc(
-        [
-            f'        <NODE Name="{decomposed}" Type="0" Count="1">',
-            f'          <NODE Name="{decomposed} 2025" Type="1" KeyType="0" Entries="1">',
-            '            <TRACK Key="7"/>',
-            "          </NODE>",
-            "        </NODE>",
-        ]
-    )
+    held = _labels_doc(_label(decomposed, f"{decomposed} 2025", [7]))
     out, warning = _catalog(held, composed, [(f"{composed} 2025", [7, 8])])
     assert warning is None
     assert out.count(b'Type="0" Count="1">') == 2, "a second folder was written"
@@ -781,8 +759,6 @@ def test_a_merge_point_sharing_its_line_refuses_and_writes_nothing():
 
 def test_location_roundtrip():
     """Percent encoding survives a round trip, spaces and ampersands included."""
-    from pathlib import Path
-
     path = "/library/Music/Processed_Tracks/2026/x/01A - 124 - It's A & B.flac"
     assert location_to_path(location_url(Path(path))) == path
     assert location_to_path("file:///library/x/a%20b.flac") == "/library/x/a b.flac"
