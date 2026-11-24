@@ -142,6 +142,13 @@ def test_the_resumes_gate_shows_the_playlist_the_plan_could_not_read(
     ]
 
 
+def test_a_fresh_plan_over_no_routed_tree_records_an_empty_list(acknowledged):
+    """A plan that routed nothing still records the list, or it reads as an older build's."""
+    shown = _offered()
+    assert shown["trees"] == [] and shown["adds"] == 0, shown
+    assert shown["playlists not compared"] == [], shown
+
+
 def test_a_job_an_older_build_froze_says_its_plan_did_not_record_them(
     acknowledged, native, leftover
 ):
