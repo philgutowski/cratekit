@@ -1,9 +1,11 @@
 """Who carries the vox My Tag: the one reader every path that files a vocal sub asks.
 
 U127 gave the vocal sub to the ``vox`` My Tag (R-841). Adoption files by it,
-and since R-2056 so do the derivation the convergence check, ``tree rebuild``
-and ``route resort`` share, so a membership one verb wrote by the tag is never
-another verb's leftover. THE ONE READER, here in the write layer because the
+since R-2056 so do the derivation the convergence check, ``tree rebuild`` and
+``route resort`` share, and since R-2062 the account's mirror edits and
+``route inbox``, so a membership one verb wrote by the tag is never another
+verb's leftover. The export bridge alone reads no database and files by the
+score. THE ONE READER, here in the write layer because the
 rebuild cannot import adoption; adoption reads it through
 :mod:`cratekit.adopt.placements` and the native landing reads it back after
 its commit.

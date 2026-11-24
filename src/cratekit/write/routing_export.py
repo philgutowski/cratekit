@@ -461,6 +461,11 @@ def _decide(
 
     One decision for both export sweeps and the database medium (U91). A row
     whose Location names no file here is a warning and is not routed.
+
+    THE BRIDGE FILES THE VOCAL SUB BY THE FILE'S SCORE, named (R-2062): every
+    database path files it by the vox My Tag (U127), which is read from the
+    database, and this one reads an export, so the score against the cut
+    stands in, the rule the landing writes the tag by.
     """
     files: dict[str, list[str]] = {}
     for key, row in rows:
@@ -517,9 +522,10 @@ def plan_export(
     """Read one fresh export and decide where each intake track goes.
 
     No star rating is planned (R-688), only counted: see :func:`_owed_ratings`.
-    The decision is :func:`_decide`'s, the same calls :func:`plan_inbox` makes, and
-    the genre is the FILE's. The calibrated cut is the one loader's (U89); with
-    none the vocal dimension is named in ``gaps``.
+    The decision is :func:`_decide`'s, the same calls :func:`plan_inbox` makes
+    but for the vox My Tag, which the database path reads and this one cannot
+    (R-2062), and the genre is the FILE's. The calibrated cut is the one
+    loader's (U89); with none the vocal dimension is named in ``gaps``.
     """
     content = _read_export(export)
     if declared is None:

@@ -15,7 +15,9 @@ has it and never carried here.
 
 ONE GUARDED SESSION FOR EVERY TRACK: the file's two tags first, each read back,
 then the row's genre where rekordbox already holds that name, then the tree
-memberships by the rule ``route resort`` writes by. A file whose tag did not
+memberships by the rule ``route resort`` writes by, its vocal sub by the row's
+``vox`` My Tag and never the file's score (U127, R-2062), so a membership taken
+here is never one the next resort adds back. A file whose tag did not
 take keeps its row. Nothing leaves the collection and no beat grid is written:
 the two tags are the only fields, and the writable field set refuses a tempo.
 An unfile cannot empty the row's genre, so the Genre column keeps its word until
@@ -27,7 +29,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -313,6 +315,9 @@ class Change:
     join: tuple[tuple[str, str, str], ...] = ()
     #: Places the new tags file into that the tree does not hold yet.
     missing: tuple[str, ...] = ()
+    #: Held vocal subs kept because the score places the track there and its
+    #: row carries no vox My Tag, ``(playlist id, folder, playlist)`` (R-2062).
+    untagged: tuple[tuple[str, str, str], ...] = ()
     why: str = ""
     #: Which tree the edit is in (U204); a genre edit alone writes file tags.
     #: Spelled as ``edits.GENRE``'s value, since that module sits behind the toggle.
@@ -360,6 +365,14 @@ class Change:
             )
         if self.missing:
             shown["not in the tree yet"] = list(self.missing)
+        if self.untagged:
+            shown["keeps untagged"] = [f"{folder} / {playlist}" for _pid, folder, playlist in self.untagged]
+            shown["vocal note"] = (
+                "its file clears the vocal cut and its row carries no vox My Tag, so it "
+                "stays where it is and converge names it, until crate metadata "
+                "mytags-vocals --apply tags it or it is taken out of that playlist in "
+                "rekordbox; taken out on the account, the next organize puts it back"
+            )
         if self.outcome == edits.UNFILE:
             shown["note"] = (
                 "rekordbox's Genre column keeps its word until a reread; routing reads "
@@ -510,10 +523,15 @@ def _plan_genre(
     from cratekit.core import routing
     from cratekit.modules.outbound import mirror_edits as edits
     from cratekit.organize import account_mirror
-    from cratekit.write import rebuild, routing_pass
+    from cratekit.write import rebuild, routing_pass, vox_tag
 
     tree = read_tree(db, declared, registry)
     routed = _routed(declared)
+    # THE VOX MY TAG FILES THE VOCAL SUB (U127, R-2062), as the resort after
+    # this reads it: read once for every edit, and only where it could file
+    # something. A library with no vox tag carries it on no row.
+    reads_tag = rebuild.reads_vox_tag(declared, vocal_threshold)
+    tagged = (vox_tag.vox_tagged(db) or frozenset()) if reads_tag else frozenset()
     changes: list[Change] = []
     for decision in carried:
         row = live(decision)
@@ -559,16 +577,17 @@ def _plan_genre(
         held = sorted(pid for pid in _live_in(db, decision.content_id) if pid in tree.names)
         missing: list[str] = []
         join: list[tuple[str, str, str]] = []
+        kept: list[str] = []
         if decision.outcome == edits.UNFILE:
             leave_ids = held
         else:
+            moved = rebuild.Truth(
+                location=str(path), genre=genre, energy=energy, voxlevel=truth.voxlevel,
+                second_genre=second,
+            )
             placements, _gaps = rebuild.derive_from_taxonomy(
-                declared,
-                [rebuild.Truth(
-                    location=str(path), genre=genre, energy=energy, voxlevel=truth.voxlevel,
-                    second_genre=second,
-                )],
-                vocal_threshold=vocal_threshold,
+                declared, [moved], vocal_threshold=vocal_threshold,
+                carries_vox=_carries(tagged, decision.content_id),
             )
             wanted: set[str] = set()
             for placement in placements:
@@ -578,7 +597,11 @@ def _plan_genre(
                     missing.append(f"{names[0]} / {names[1]}")
                 else:
                     wanted.add(pid)
-            leave_ids = [pid for pid in held if pid not in wanted and routed(tree.names[pid])]
+            kept = _untagged_held(declared, tree, moved, placements, vocal_threshold, held) if reads_tag else []
+            leave_ids = [
+                pid for pid in held
+                if pid not in wanted and pid not in kept and routed(tree.names[pid])
+            ]
             join = [(pid, *tree.names[pid]) for pid in sorted(wanted) if pid not in held]
         changes.append(Change(
             decision.content_id, decision.track, decision.outcome, _shown(row), str(path),
@@ -588,10 +611,40 @@ def _plan_genre(
             leave=tuple((pid, *tree.names[pid]) for pid in leave_ids),
             join=tuple(join),
             missing=tuple(missing),
+            untagged=tuple((pid, *tree.names[pid]) for pid in kept),
             why=decision.why,
             tree=edits.GENRE,
         ))
     return changes
+
+
+def _untagged_held(
+    declared: Any, tree: Tree, moved: Any, placements: Sequence[Any],
+    vocal_threshold: float | None, held: Sequence[str],
+) -> list[str]:
+    """Each held vocal sub the score places the moved track in and its tag does not.
+
+    THE UNTAGGED STATE IS A PERSON'S TO SETTLE (R-2056): the resort keeps such a
+    membership and ``converge`` names it ``untagged`` until the row is tagged
+    or the track is taken out. An energy moved on the account is neither, so
+    the mirror keeps it too (R-2062); it never joins one, since only the tag
+    files the vocal sub. The two derivations differ only in vocal places.
+    """
+    from cratekit.write import rebuild, routing_pass
+
+    scored, _gaps = rebuild.derive_from_taxonomy(declared, [moved], vocal_threshold=vocal_threshold)
+    placed = set(placements)
+    found = (
+        tree.playlists.get(routing_pass.destination(declared, entry.bucket, entry.sub))
+        for entry in scored
+        if entry not in placed
+    )
+    return sorted(pid for pid in found if pid is not None and pid in held)
+
+
+def _carries(tagged: frozenset[str], content_id: str) -> Callable[[str], bool]:
+    """The vox My Tag's answer for the edit's own row, whichever file the derivation names."""
+    return lambda _location: content_id in tagged
 
 
 def _tagless(decision: edits.Decision, row: Any, tree: str, **rest: Any) -> Change:

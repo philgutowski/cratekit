@@ -1,0 +1,265 @@
+name = "r2062"
+pass_kind = "light"
+
+# The mirror edits (organize/mirror_edits.py, _plan_genre and _carries).
+
+[[rows]]
+id = "M1_score_again"
+description = "_plan_genre: the genre edit's derivation is handed no tag answer, so the file's score files the vocal sub (the pre R-2062 rule)"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''                carries_vox=_carries(tagged, decision.content_id),
+'''
+new = ''''''
+
+[[rows]]
+id = "M2_carries_every_row"
+description = "_carries: every edited row carries the tag"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    return lambda _location: content_id in tagged'''
+new = '''    return lambda _location: True'''
+
+[[rows]]
+id = "M3_carries_no_row"
+description = "_carries: no edited row carries the tag"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    return lambda _location: content_id in tagged'''
+new = '''    return lambda _location: False'''
+
+[[rows]]
+id = "M4_carries_by_location"
+description = "_carries: ask the tagged rows for the file's location instead of the edit's row id"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    return lambda _location: content_id in tagged'''
+new = '''    return lambda _location: _location in tagged'''
+
+[[rows]]
+id = "M5_rule_inverted"
+description = "_plan_genre: read the tag only where it could file nothing"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    reads_tag = rebuild.reads_vox_tag(declared, vocal_threshold)'''
+new = '''    reads_tag = not rebuild.reads_vox_tag(declared, vocal_threshold)'''
+
+[[rows]]
+id = "M7_no_tag_library"
+description = "_plan_genre: keep the reader's None for a library with no vox tag, so a calibrated genre edit cannot be planned"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    tagged = (vox_tag.vox_tagged(db) or frozenset()) if reads_tag else frozenset()'''
+new = '''    tagged = vox_tag.vox_tagged(db) if reads_tag else frozenset()'''
+
+# The one read rule (write/rebuild.py, reads_vox_tag).
+
+[[rows]]
+id = "R1_uncalibrated_reads"
+description = "reads_vox_tag: read the tag on an uncalibrated library"
+file = "src/cratekit/write/rebuild.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return vocal_threshold is not None and bool(_additive_ids(declared, taxonomy.SIGNAL_VOX))'''
+new = '''    return bool(_additive_ids(declared, taxonomy.SIGNAL_VOX))'''
+
+[[rows]]
+id = "R2_no_vocal_sub_reads"
+description = "reads_vox_tag: read the tag on a declaration with no vocal sub"
+file = "src/cratekit/write/rebuild.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return vocal_threshold is not None and bool(_additive_ids(declared, taxonomy.SIGNAL_VOX))'''
+new = '''    return vocal_threshold is not None'''
+
+[[rows]]
+id = "R3_never_reads"
+description = "reads_vox_tag: never read the tag, so every path files by nothing"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return vocal_threshold is not None and bool(_additive_ids(declared, taxonomy.SIGNAL_VOX))'''
+new = '''    return False'''
+
+# route inbox (write/routing_cli.py).
+
+[[rows]]
+id = "I1_score_again"
+description = "plan_inbox: the derivation is handed no tag answer, so the score files the vocal sub (the pre R-2062 rule)"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''                    truth=readings, carries_vox=carries,'''
+new = '''                    truth=readings,'''
+
+[[rows]]
+id = "I2_rule_inverted"
+description = "_inbox_vox: read the tag only where it could file nothing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''    if not rebuild.reads_vox_tag(declared, threshold):
+        return None'''
+new = '''    if rebuild.reads_vox_tag(declared, threshold):
+        return None'''
+
+[[rows]]
+id = "I3_rule_dropped"
+description = "_inbox_vox: open the database and read the tag on every plan, an uncalibrated library included"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''    if not rebuild.reads_vox_tag(declared, threshold):
+        return None'''
+new = ''''''
+
+[[rows]]
+id = "I4_warning_dropped"
+description = "plan_inbox: an intake file the score clears and the tag does not goes in without with vox, unnamed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''        warnings.extend(_untagged_warnings(untagged))'''
+new = ''''''
+
+[[rows]]
+id = "I5_untagged_not_gathered"
+description = "plan_inbox: the membership's untagged placements are not gathered"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''                untagged.extend(derived[source].untagged)
+'''
+new = ''''''
+
+[[rows]]
+id = "I6_answer_drops_plan_warnings"
+description = "route_inbox: the applied answer carries the engine's warnings and not the plan's"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''                *planned.warnings,
+                *rebuild.not_compared_warnings(not_compared),'''
+new = '''                *rebuild.not_compared_warnings(not_compared),'''
+
+[[rows]]
+id = "I7_empty_warning"
+description = "_untagged_warnings: warn when nothing is untagged and stay silent when something is"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''    if not names:
+        return []
+    return [{
+        "code": INBOX_VOCAL_UNTAGGED,'''
+new = '''    if names:
+        return []
+    return [{
+        "code": INBOX_VOCAL_UNTAGGED,'''
+
+[[rows]]
+id = "I8_remedy_reworded"
+description = "_untagged_warnings: name a write that does not tag vocals as the step"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''            f"are filed without it: {'; '.join(names)}. crate metadata "
+            f"mytags-vocals --apply tags a row whose file clears the cut and that "'''
+new = '''            f"are filed without it: {'; '.join(names)}. crate metadata "
+            f"mytags --apply tags a row whose file clears the cut and that "'''
+
+[[rows]]
+id = "I9_handle_left_open"
+description = "_inbox_vox: the plan's read handle is never closed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''        return rebuild.vox_carrier(cfg, handle, list(routing_pass.content_rows(handle)))
+    finally:
+        rb_writer.close_db(handle)'''
+new = '''        return rebuild.vox_carrier(cfg, handle, list(routing_pass.content_rows(handle)))
+    finally:
+        pass'''
+
+[[rows]]
+id = "I10_names_cut"
+description = "_untagged_warnings: name only the first intake file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_second_genre_guards_counts.py"]
+old = '''    names = sorted({Path(entry.location).name for entry in untagged})'''
+new = '''    names = sorted({Path(entry.location).name for entry in untagged})[:1]'''
+
+# The keep of an untagged vocal sub (round one's fix).
+
+[[rows]]
+id = "K1_kept_ignored"
+description = "_plan_genre: leave an untagged held vocal sub of the track's own folder on a move within it"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''                if pid not in wanted and pid not in kept and routed(tree.names[pid])'''
+new = '''                if pid not in wanted and routed(tree.names[pid])'''
+
+[[rows]]
+id = "K2_kept_every_vocal"
+description = "_untagged_held: keep every held place the score makes, the tag's own included, so nothing is told apart"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''        for entry in scored
+        if entry not in placed
+    )'''
+new = '''        for entry in scored
+    )'''
+
+[[rows]]
+id = "K3_kept_unheld"
+description = "_untagged_held: name a vocal sub the track was never in as kept"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u340.py"]
+old = '''    return sorted(pid for pid in found if pid is not None and pid in held)'''
+new = '''    return sorted(pid for pid in found if pid is not None)'''
+
+# A fixed sample of the existing guards this unit now leans on (R-2056's).
+
+[[rows]]
+id = "S1_derive_tag_ignored"
+description = "derive_from_taxonomy: the score files the vocal sub even when the tag was read (R-2056's D1, now under the mirror and the inbox too)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''                carries_vox(entry.location)
+                if carries_vox is not None
+                else routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+new = '''                routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+
+[[rows]]
+id = "S2_carrier_every_match"
+description = "vox_carrier: every matched file carries the tag (R-2056's C2, now the inbox's answer)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        return match.outcome is trees.MatchOutcome.MATCHED and match.content_id in tagged'''
+new = '''        return match.outcome is trees.MatchOutcome.MATCHED'''
+
+[[rows]]
+id = "S3_untagged_dropped"
+description = "_untagged: the score's vocal placements the tag does not make are never returned (R-2056's, now the inbox's warning)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_vox.py", "tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return tuple(entry for entry in scored if entry.sub in vocal and entry not in placed)'''
+new = '''    return ()'''
+
+[[dropped]]
+id = "M6_rule_dropped"
+description = "_plan_genre: read the tag on every plan, an uncalibrated library included"
+reason = "at the cap; the same guard family as M5 and R1, both measured, and the uncalibrated test that would kill it is the one R1 runs"
