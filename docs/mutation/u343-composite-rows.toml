@@ -1,0 +1,14 @@
+name = "u343-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C13_headless_counts_headed_rows_with_the_name_guard_off"
+description = "M13's composite: drop both the title's headed guard and the head_key and head_tempo guard, so a row with a head in its title is counted as bare and adopt named for it"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            if not row.headed
+            and row.head_key is None
+            and row.head_tempo is None
+            and row.key'''
+new = '''            if row.key'''
