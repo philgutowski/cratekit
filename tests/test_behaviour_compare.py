@@ -1425,6 +1425,27 @@ def test_the_binding_stamps_a_row_with_the_pinned_instant_and_then_with_the_real
     assert abs((column.default.arg(None) - datetime.datetime.now()).total_seconds()) < 60
 
 
+def test_a_swept_module_holding_a_pinned_name_reads_the_pins_and_then_the_real_one():
+    """The pins reach a name a product module took at import, and only that module's."""
+    real_now, real_uuid4, real_token = datetime.datetime, uuid.uuid4, secrets.token_hex
+    holder = type(sys)("tests._u336_swept_holder")
+    holder.stamp, holder.mint, holder.token, holder.other = real_now, real_uuid4, real_token, 7
+    sys.modules[holder.__name__] = holder
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            unpin = behaviour.pin(patch)
+            try:
+                assert holder.stamp is behaviour.PinnedDatetime
+                assert holder.mint is uuid.uuid4 is not real_uuid4
+                assert holder.token is secrets.token_hex is not real_token
+                assert holder.other == 7
+            finally:
+                unpin()
+        assert (holder.stamp, holder.mint, holder.token) == (real_now, real_uuid4, real_token)
+    finally:
+        sys.modules.pop(holder.__name__, None)
+
+
 def test_a_module_imported_while_pinned_gets_the_real_clock_back(tmp_path, monkeypatch):
     """Undoing the patch does not reach a name a module took while it was set."""
     (tmp_path / "late_import_probe.py").write_text(
