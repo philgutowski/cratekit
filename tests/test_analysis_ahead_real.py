@@ -5,7 +5,6 @@ Nothing faked on the measuring side; skipped where the analysis extra is absent.
 
 from __future__ import annotations
 
-import hashlib
 import multiprocessing
 import shutil
 from pathlib import Path
@@ -13,14 +12,15 @@ from pathlib import Path
 import pytest
 
 from cratekit.analysis import ahead, artifacts, energy, light, vocals
-from cratekit.core import config, cores, jobs, pool, tags
+from cratekit.core import cores, jobs, pool, tags
 from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
-from tests.test_config import valid_data
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("librosa")
 soundfile = pytest.importorskip("soundfile")
+
+from tests.test_analysis_ahead import cfg, what_is_on_disk  # noqa: E402, F401
 
 GIB = 1024**3
 RATE = 44100
@@ -68,18 +68,6 @@ def audio(tmp_path_factory) -> Path:
     return folder
 
 
-@pytest.fixture
-def cfg(tmp_path, monkeypatch) -> config.Config:
-    library = tmp_path / "library"
-    (library / "Music").mkdir(parents=True)
-    (library / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    built = config.from_dict(valid_data(library, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    return built
-
-
 @pytest.fixture(autouse=True)
 def shipped_seams(monkeypatch):
     """Nothing bound: the verb binds the shipped detector, here and in its workers."""
@@ -108,14 +96,7 @@ def machine(monkeypatch, *, swap: int = 0) -> None:
     )
 
 
-def what_is_on_disk(folder: Path) -> dict[str, str]:
-    return {
-        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(folder.iterdir())
-    }
-
-
-def reports(cfg, envelope: dict) -> list[dict]:
+def reports(cfg, envelope: dict) -> list[dict]:  # noqa: F811
     cleaned = []
     for report in artifacts.committed(cfg, envelope["data"]["job_id"]):
         report = dict(report)
@@ -125,7 +106,7 @@ def reports(cfg, envelope: dict) -> list[dict]:
 
 
 def test_the_shipped_detector_in_workers_leaves_what_it_leaves_in_the_driver(
-    cfg, audio, tmp_path, monkeypatch
+    cfg, audio, tmp_path, monkeypatch  # noqa: F811
 ):
     energy.save_calibration(
         cfg,
