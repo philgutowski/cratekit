@@ -1,0 +1,12 @@
+name = "u337-r926"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G9_temporary_unresolved"
+source = { table = "r926.json", id = "G9_temporary_unresolved" }
+description = "The system temporary directory is compared as spelled, /var against /private/var on macOS, so every scratch write is refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
+old = '        allowed.append(Path(tempfile.gettempdir()).resolve())'
+new = '        allowed.append(Path(tempfile.gettempdir()))'

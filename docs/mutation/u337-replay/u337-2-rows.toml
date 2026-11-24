@@ -1,0 +1,546 @@
+name = "u337-2"
+pass_kind = "replay"
+
+[[rows]]
+id = "u272.S13_parents_before_children"
+source = { table = "u272.json", id = "S13_parents_before_children" }
+description = "_flush: walk top down, so a directory is flushed before the files in it"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = 'capture_root, topdown=False, onerror=_raise_walk_error'
+new = 'capture_root, topdown=True, onerror=_raise_walk_error'
+
+[[rows]]
+id = "u51-item-derivation.H1_export_item_not_payload"
+source = { table = "u51-item-derivation.json", id = "H1_export_item_not_payload" }
+description = "The export handler reads the playlist key as its track, not the claimed item"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '    report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))'
+new = '    report = run_export_item(payload, str(payload[PLAYLIST]), cfg, account.resolve(cfg))'
+
+[[rows]]
+id = "r424.B4_warning_copied"
+source = { table = "r424.json", id = "B4_warning_copied" }
+description = "Hand callers the module level dict instead of a copy per call"
+file = "src/cratekit/favorites/cli.py"
+surface = "maintainer"
+tests = ["tests/test_rebuild.py"]
+old = '    return (dict(LOCAL_WRITE_WARNING),)'
+new = '    return (LOCAL_WRITE_WARNING,)'
+
+[[rows]]
+id = "u113-a.A2_queue_order"
+source = { table = "u113-a.json", id = "A2_queue_order" }
+description = "The account playlists are taken newest job first, the order the store lists them"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''
+        queued = sorted(
+            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+        )'''
+new = '        queued = batch_name.pass_jobs(cfg, pass_name)'
+
+[[rows]]
+id = "u113-a.A3_no_pass_splits_nothing"
+source = { table = "u113-a.json", id = "A3_no_pass_splits_nothing" }
+description = "A landing given no pass still splits, by every named job on the library"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    if not pass_name or not files:
+        return ()
+    found = sources(cfg, pass_name)'''
+new = '''
+    if not files:
+        return ()
+    found = sources(cfg, pass_name or "")'''
+
+[[rows]]
+id = "u165.F5_report_failed"
+source = { table = "u165.json", id = "F5_report_failed" }
+description = "file_landed: report a filing whose entries failed as filed"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''
+    if report.failed:
+        return Filed(
+            state=NOT_FILED,'''
+new = '''
+    if False:
+        return Filed(
+            state=NOT_FILED,'''
+
+[[rows]]
+id = "u188.M5_repeat_kept"
+source = { table = "u188.json", id = "M5_repeat_kept" }
+description = "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )'''
+new = '''
+    return (
+        (str(area.staging), str(planned.folder)),
+        (str(scratch_target), str(target)),
+        stored,
+    )'''
+
+[[rows]]
+id = "u71-b.B13_unlink_destination"
+source = { table = "u71-b.json", id = "B13_unlink_destination" }
+description = "Leave the intake file behind when place_files fails after writing it"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py"]
+old = '''
+        destination.unlink(missing_ok=True)
+'''
+new = ''
+
+[[rows]]
+id = "u69-b.M16_next_command"
+source = { table = "u69-b.json", id = "M16_next_command" }
+description = "Drop the literal next command from the written check a person reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'written to {written.list_path}; next: {command}"'
+new = 'written to {written.list_path}"'
+
+[[rows]]
+id = "u146-e.N3_owned_out_of_digest"
+source = { table = "u146-e.json", id = "N3_owned_out_of_digest" }
+description = "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if self.owned:
+            identity["owned"] = ['''
+new = '''
+        if self.owned and False:
+            identity["owned"] = ['''
+
+[[rows]]
+id = "r504-a.A11_boundary_refuses"
+source = { table = "r504-a.json", id = "A11_boundary_refuses" }
+description = "The verb boundary no longer catches the shortfall, so it is refused as an unreadable listing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_sync_all.py"]
+old = '''
+    except catalogue.HeartsShortfall as short:
+        return list(short.rows), short
+'''
+new = ''
+
+[[rows]]
+id = "u190.G5_resume_one_job_only"
+source = { table = "u190.json", id = "G5_resume_one_job_only" }
+description = "_resume: take the first earlier job's tail whatever the count, so two manifests share one landing"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '    land = lands[0] if len(lands) == 1 else None'
+new = '    land = lands[0] if lands else None'
+
+[[rows]]
+id = "u239.M07_beside_done"
+source = { table = "u239.json", id = "M07_beside_done" }
+description = "_beside: count only an open later go job, so one that downloaded and settled is ignored"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '        if other.is_open() or any('
+new = '        if other.is_open() or False and any('
+
+[[rows]]
+id = "u193.M25_crawl_spent_ignored"
+source = { table = "u193.json", id = "M25_crawl_spent_ignored" }
+description = "Estimate.over_ceiling: ignore the calls the listing already spent"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '        return self.spent + self.calls > self.ceiling'
+new = '        return self.calls > self.ceiling'
+
+[[rows]]
+id = "u100-a.R1_slug_only_presence"
+source = { table = "u100-a.json", id = "R1_slug_only_presence" }
+description = "RegistryStore.adopt checks presence by slug alone, the R-381 hazard: a label held under sueno is filed again as sue-o"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_tidal_catalogue.py"]
+old = '                held = Registry(labels=current).resolve(name)'
+new = '                held = Registry(labels=current).by_id(label_id)'
+
+[[rows]]
+id = "u99-a.A13_by_name_unnormalized"
+source = { table = "u99-a.json", id = "A13_by_name_unnormalized" }
+description = "_folded: drop the NFC normalization, so a decomposed accented name resolves nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '    return unicodedata.normalize("NFC", name.strip()).casefold()'
+new = '    return name.strip().casefold()'
+
+[[rows]]
+id = "r259.O1_no_tracks_guard"
+source = { table = "r259.json", id = "O1_no_tracks_guard" }
+description = "A release the provider lists with no track reads as owned, since all over nothing is True"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+        if not rows:
+            return False
+'''
+new = ''
+
+[[rows]]
+id = "r259.O5_memo"
+source = { table = "r259.json", id = "O5_memo" }
+description = "The answer is not kept, so the increment's scope reads every release a second time"
+file = "src/cratekit/label/sweep.py"
+surface = "maintainer"
+tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+        if identity not in self._answers:
+            self._answers[identity] = self._holds(identity)
+        return self._answers[identity]'''
+new = '        return self._holds(identity)'
+
+[[rows]]
+id = "r1308.M10_count_unchecked"
+source = { table = "r1308.json", id = "M10_count_unchecked" }
+description = "_removal_read_back: drop the whole number check on the count"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = 'if not _count(declared) or not _count(videos) or videos != 0'
+new = 'if not _count(videos) or videos != 0'
+
+[[rows]]
+id = "u226.M18_waited_unformatted"
+source = { table = "u226.json", id = "M18_waited_unformatted" }
+description = "_waited: seconds named as 7.0 rather than 7"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '    return f"{seconds:g}"'
+new = '    return f"{seconds}"'
+
+[[rows]]
+id = "r757-a.E9_stats_interval_zero"
+source = { table = "r757-a.json", id = "E9_stats_interval_zero" }
+description = "MIRROR_STATS_ARGS: a stats interval of zero, at which rclone logs no totals at all"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    "--stats", "1h",'
+new = '    "--stats", "0",'
+
+[[rows]]
+id = "r757-b1.E13_runner_times_nothing"
+source = { table = "r757-b1.json", id = "E13_runner_times_nothing" }
+description = "subprocess_runner: report no elapsed time"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        elapsed=time.monotonic() - started,'
+new = '        elapsed=None,'
+
+[[rows]]
+id = "r592-b.B6_restore_mirror_carries_the_database"
+source = { table = "r592-b.json", id = "B6_restore_mirror_carries_the_database" }
+description = "_plan_restore_inside_the_gates: exclude volume clutter only from the restore mirror, so a mirror still holding the database lands it where the database half writes"
+file = "src/cratekit/modules/tools/backup_snapshot.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_restore_cli.py", "tests/test_backup_cli.py", "tests/test_restore.py"]
+old = '''
+                    rclone, "copy", str(cfg.backup.dest), str(target),
+                    *_exclude_args(_mirror_excludes(cfg)),'''
+new = '''
+                    rclone, "copy", str(cfg.backup.dest), str(target),
+                    *_exclude_args(VOLUME_EXCLUDES),'''
+
+[[rows]]
+id = "u112-b.A6_exported_not_product_made"
+source = { table = "u112-b.json", id = "A6_exported_not_product_made" }
+description = "An exported playlist the ledger records as product made is listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))'
+new = '            | frozenset()'
+
+[[rows]]
+id = "u116.M13_utc_year"
+source = { table = "u116.json", id = "M13_utc_year" }
+description = "year_of_mark: the year is taken from the UTC stamp digits rather than local time"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''
+    if when.tzinfo is not None:
+        when = when.astimezone()
+    return f"{when.year:04d}"'''
+new = '    return str(marked or "")[:4]'
+
+[[rows]]
+id = "u227.R12_tree_filter"
+source = { table = "u227.json", id = "R12_tree_filter" }
+description = "filed: read ledger entries of every tree, not the routing tree's alone"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '        if entry.tree == tree and entry.digest not in by_person:'
+new = '        if entry.digest not in by_person:'
+
+[[rows]]
+id = "u214.M12_frozen_pairs"
+source = { table = "u214.json", id = "M12_frozen_pairs" }
+description = "_unmirrored: accept a frozen node of any length"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '        isinstance(one, list) and len(one) == 2 and all(isinstance(part, str) for part in one)'
+new = '        isinstance(one, list) and all(isinstance(part, str) for part in one)'
+
+[[rows]]
+id = "r338-c.C4_bare_metal_asks_about_the_share"
+source = { table = "r338-c.json", id = "C4_bare_metal_asks_about_the_share" }
+description = "recover_under_bare_metal_session: let the plan ask the remote about a share the skipped database half will never pull"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '                pull_share=False,'
+new = '                pull_share=True,'
+
+[[rows]]
+id = "r338-c.C5_report_loses_the_word"
+source = { table = "r338-c.json", id = "C5_report_loses_the_word" }
+description = "restore_under_one_session: stop carrying the plan's share word onto the report, so the totals say null whatever happened to the grids"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+                "share": str(pulled.share),
+'''
+new = ''
+
+[[rows]]
+id = "r367.G10_the_report_drops_the_absent_field"
+source = { table = "r367.json", id = "G10_the_report_drops_the_absent_field" }
+description = "the off machine half ran and the person is not told the sidecar was missing"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            missing = pulled.absent_sidecars'
+new = '            missing = ()'
+
+[[rows]]
+id = "r368-round-2.G14_the_destination_check_is_equality_only"
+source = { table = "r368-round-2.json", id = "G14_the_destination_check_is_equality_only" }
+description = "re-measured: drop the name-plus-parent half, so a landing path that is not on disk yet passes"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if _same_place(landing, live) or (
+        landing.name == live.name and _same_place(landing.parent, live.parent)
+    ):
+'''
+new = '''
+    if _same_place(landing, live):
+'''
+
+[[rows]]
+id = "r368-round-2.G6_ancestors_not_walked"
+source = { table = "r368-round-2.json", id = "G6_ancestors_not_walked" }
+description = "re-measured: ask samefile of the candidate alone, so a differently cased ancestor is missed"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))
+'''
+new = '''
+    return _same_place(place, root)
+'''
+
+[[rows]]
+id = "r368.G5_paths_compared_as_strings"
+source = { table = "r368.json", id = "G5_paths_compared_as_strings" }
+description = "the review's finding, restored: compare spellings rather than places"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    try:
+        return one.samefile(other)
+    except OSError:
+        return one == other
+'''
+new = '''
+    return one == other
+'''
+
+[[rows]]
+id = "r592-b.B1_step_on_every_failure"
+source = { table = "r592-b.json", id = "B1_step_on_every_failure" }
+description = "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if not dry_run:'
+
+[[rows]]
+id = "r592-b.B2_step_on_the_wrong_half"
+source = { table = "r592-b.json", id = "B2_step_on_the_wrong_half" }
+description = "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if not dry_run and half == MIRROR_HALF:'
+
+[[rows]]
+id = "r592-b.B4_step_names_the_wrong_directory"
+source = { table = "r592-b.json", id = "B4_step_names_the_wrong_directory" }
+description = "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        f"companion of it in {database_target.parent} if one is there, because a "'
+new = '        f"companion of it in {database_target.parent.parent} if one is there, because a "'
+
+[[rows]]
+id = "r592-c.C1_step_on_a_rehearsal_remeasured"
+source = { table = "r592-c.json", id = "C1_step_on_a_rehearsal_remeasured" }
+description = "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing (B3 of r592-b, re-measured)"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if half == DATABASE_HALF:'
+
+[[rows]]
+id = "u27-restore-cli-author.P2_a_mirror_pull_is_reported_as_nothing"
+source = { table = "u27-restore-cli-author.json", id = "P2_a_mirror_pull_is_reported_as_nothing" }
+description = "Leave the off-machine transfers out of the report, which is the defect this shape fixed"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    items: list[dict[str, Any]] = [
+        {"half": "off-machine", "transfer": label} for label in report.pulled
+    ]'''
+new = '    items: list[dict[str, Any]] = []'
+
+[[rows]]
+id = "u27-restore-cli-round-2.S7_a_rehearsal_performs_the_mirror_pull"
+source = { table = "u27-restore-cli-round-2.json", id = "S7_a_rehearsal_performs_the_mirror_pull" }
+description = "Ignore dry_run on the off-machine half, so a preview transfers for real"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    pulled,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''
+                    pulled,
+                    cfg,
+                    dry_run=False,'''
+
+[[rows]]
+id = "u96-a.A12_which_half_failed"
+source = { table = "u96-a.json", id = "A12_which_half_failed" }
+description = "_half_failed: swap the two failure sentences, so a failed mirror is reported as a failed database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    elif half == MIRROR_HALF:
+        message = ('''
+new = '''
+    elif half == DATABASE_HALF:
+        message = ('''
+
+[[rows]]
+id = "u96-a.A15_report_names_where_the_database_is"
+source = { table = "u96-a.json", id = "A15_report_names_where_the_database_is" }
+description = "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            "database_target": str(report.database_elsewhere or report.database_target),'
+new = '            "database_target": str(report.database_target),'
+
+[[rows]]
+id = "u96-a.A16_no_absent_companion_for_a_half_that_did_not_run"
+source = { table = "u96-a.json", id = "A16_no_absent_companion_for_a_half_that_did_not_run" }
+description = "Report the plan's absent companions even when the database half was skipped"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            absent=decided.absent_sidecars if elsewhere is None else (),'
+new = '            absent=decided.absent_sidecars,'
+
+[[rows]]
+id = "u96-a.A7_rekordbox_asked_again"
+source = { table = "u96-a.json", id = "A7_rekordbox_asked_again" }
+description = "Disarm the second rekordbox check, the one before the database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    if running:
+                        raise backup.BackupRefused('''
+new = '''
+                    if False:
+                        raise backup.BackupRefused('''
+
+[[rows]]
+id = "u96-a.A8_database_elsewhere_is_skipped"
+source = { table = "u96-a.json", id = "A8_database_elsewhere_is_skipped" }
+description = "Run the database half even when the configured database was never on the lost volume"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            if half == DATABASE_HALF and elsewhere is not None:'
+new = '            if False:'
+
+[[rows]]
+id = "u96-a.A9_a_rehearsal_stays_a_rehearsal"
+source = { table = "u96-a.json", id = "A9_a_rehearsal_stays_a_rehearsal" }
+description = "Pass dry_run=False to run_restore whatever was asked, so a rehearsal transfers"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    portion,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''
+                    portion,
+                    cfg,
+                    dry_run=False,'''

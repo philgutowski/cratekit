@@ -1,0 +1,505 @@
+name = "u337-1"
+pass_kind = "replay"
+
+[[rows]]
+id = "u197.M9_adoption_ignores_new"
+source = { table = "u197.json", id = "M9_adoption_ignores_new" }
+description = "path_config_base: adopt whenever the old directory exists, even with the new one present"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '    if not os.path.lexists(path_base) and os.path.isdir(path_before):'
+new = '    if os.path.isdir(path_before):'
+
+[[rows]]
+id = "r289-c.B9r_children_unreadable_raises"
+source = { table = "r289-c.json", id = "B9r_children_unreadable_raises" }
+description = "Let an unlistable directory raise out of the sweep and fail the verb"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_acquire_workers.py", "tests/test_intake_missing.py", "tests/test_listdoc.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    try:
+        return tuple(sorted(directory.iterdir()))
+    except OSError:
+        return ()'''
+new = '    return tuple(sorted(directory.iterdir()))'
+
+[[rows]]
+id = "r668-a.M11_no_frozen_list_skip"
+source = { table = "r668-a.json", id = "M11_no_frozen_list_skip" }
+description = "a job whose payload names no list is compared against an empty path and refuses any list named beside it"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    if not frozen:
+        return
+    try:'''
+new = '    try:'
+
+[[rows]]
+id = "u42-author.W1_onerror_hook"
+source = { table = "u42-author.json", id = "W1_onerror_hook" }
+description = "Revert the walk to Path.rglob, which swallows the PermissionError"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py"]
+old = '''
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=note):
+        here = Path(dirpath)
+        for name in filenames:
+            path = here / name'''
+new = '''
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if True:'''
+
+[[rows]]
+id = "u42-author.W3_onerror_silent"
+source = { table = "u42-author.json", id = "W3_onerror_silent" }
+description = "Keep os.walk but make the error hook a no-op, the half-fix"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py"]
+old = '        unreadable.append(Path(exc.filename) if exc.filename else root)'
+new = '        return None'
+
+[[rows]]
+id = "u62.S7_naive_expiry_as_local"
+source = { table = "u62.json", id = "S7_naive_expiry_as_local" }
+description = "Read the client's naive expiry as local time"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+old = '        if value.tzinfo is None:'
+new = '        if value.tzinfo is None and False:'
+
+[[rows]]
+id = "u23-round-8-independent-composites.X6_adoptable_widens_to_online_only__rerun"
+source = { table = "u23-round-8-independent-composites.json", id = "X6_adoptable_widens_to_online_only__rerun" }
+description = "The X6 row again, now that a guard test for it exists. Was zero against the branch as delivered."
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = 'ADOPTABLE: frozenset[Readability] = frozenset({Readability.READABLE})'
+new = '''
+ADOPTABLE: frozenset[Readability] = frozenset(
+    {Readability.READABLE, Readability.ONLINE_ONLY}
+)'''
+
+[[rows]]
+id = "r349-b.B3_clear_before_attempt"
+source = { table = "r349-b.json", id = "B3_clear_before_attempt" }
+description = "The handler no longer clears the previous attempt's record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    backup_facts.clear_outcome(job.job_id, named)
+    report = perform_backup('''
+new = '    report = perform_backup('
+
+[[rows]]
+id = "r349-b.B4_stage_error_completes"
+source = { table = "r349-b.json", id = "B4_stage_error_completes" }
+description = "A staging write error escapes the handler instead of completing the item"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError:
+        return None
+    return jobs.Produced'''
+new = '''
+    except KeyError:
+        return None
+    return jobs.Produced'''
+
+[[rows]]
+id = "r349-c.C2_write_failure_step"
+source = { table = "r349-c.json", id = "C2_write_failure_step" }
+description = "A failed record write returns the refusal without the step saying the record is missing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError as exc:
+        cause = refusal.cause'''
+new = '''
+    except OSError as exc:
+        return refusal
+        cause = refusal.cause'''
+
+[[rows]]
+id = "r757-c1.S4_rehearsal_says_it_sent"
+source = { table = "r757-c1.json", id = "S4_rehearsal_says_it_sent" }
+description = "comparison_warning: say sent over a rehearsal, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        if recorded.get("dry_run")'
+new = '        if False'
+
+[[rows]]
+id = "r757-c2.S7_verb_says_nothing_of_the_comparison"
+source = { table = "r757-c2.json", id = "S7_verb_says_nothing_of_the_comparison" }
+description = "backup_library: leave the comparison sentence off the resumed envelope"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *comparison_warning(reported["progress"].get(OUTCOMES)),'
+new = '                *(),'
+
+[[rows]]
+id = "u50-author.W1_no_narrowing"
+source = { table = "u50-author.json", id = "W1_no_narrowing" }
+description = "Ignore the portion and run the whole plan for every item, so each item does the whole backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if portion is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u27-round-8-independent.E7_readonly_sentence_is_permission"
+source = { table = "u27-round-8-independent.json", id = "E7_readonly_sentence_is_permission" }
+description = "Give a read only volume the permission-grant sentence, the defect round 8 closed one layer up"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''
+        cause_module.AccessKind.READ_ONLY: (
+            "The volume holding it is mounted read only, so it refuses every writer on "
+            "this machine and no permission grant can change that. Remount it read write, "
+            "release the medium's write protection, or write somewhere else"
+        ),'''
+new = '''
+        cause_module.AccessKind.READ_ONLY: (
+            "The operating system refused this account, which is a permission to grant "
+            "rather than a defect in this program. Grant this interpreter access to the "
+            "path, or choose one it can already reach"
+        ),'''
+
+[[rows]]
+id = "u27-round-8-independent.S1_act_always_generic"
+source = { table = "u27-round-8-independent.json", id = "S1_act_always_generic" }
+description = "_act stops asking render.access_note and always closes with the generic clause"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    note = render.access_note(exc)
+    return f" {note}" if note is not None else f" {otherwise}"'''
+new = '    return f" {otherwise}"'
+
+[[rows]]
+id = "u27-round-8-independent.S2_template_write_no_error"
+source = { table = "u27-round-8-independent.json", id = "S2_template_write_no_error" }
+description = "The wizard's template WRITE site stops handing its exception to the finding"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+            + _act(exc, "Choose a library root this account can already write"),
+            Remedy.GRANT_PATH_ACCESS,
+            error=exc,'''
+new = '''
+            + _act(exc, "Choose a library root this account can already write"),
+            Remedy.GRANT_PATH_ACCESS,'''
+
+[[rows]]
+id = "u27-round-8-independent.S3_unreachable_root_hardcoded"
+source = { table = "u27-round-8-independent.json", id = "S3_unreachable_root_hardcoded" }
+description = "Put the hard coded Full Disk Access advice back into _unreachable_root"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+        f"defect and it is not a missing drive."
+    ) + _act(exc, "Choose a library root this account can already reach")'''
+new = '''
+        f"defect and it is not a missing drive. Grant this interpreter access "
+        f"to the path, or choose a library root it can already reach"
+    )'''
+
+[[rows]]
+id = "u212.S2_download_refused_all"
+source = { table = "u212.json", id = "S2_download_refused_all" }
+description = "sync_land._download: a download that landed nothing ends the pass whatever is staged, round one's F1"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_crate_sync_skill.py", "tests/test_inbox_analyzed.py", "tests/test_rekordbox_visit_skill.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py"]
+old = '''
+        if not listed.staged:
+            raise _Done(DOWNLOAD)
+        return 0
+    report.check('''
+new = '''
+        raise _Done(DOWNLOAD)
+    report.check('''
+
+[[rows]]
+id = "u212.S3_no_list_download"
+source = { table = "u212.json", id = "S3_no_list_download" }
+description = "sync_land._download: no early return for a pass with no list, so it asks the download verb for a list that is not there"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_crate_sync_skill.py", "tests/test_inbox_analyzed.py", "tests/test_rekordbox_visit_skill.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py"]
+old = '''
+    if listed.path is None:
+        report.check(DOWNLOAD, "info", "nothing downloaded: every missing track is staged already")
+        return 0'''
+new = ''
+
+[[rows]]
+id = "r685-a.L6_a_permission_is_a_defect_to_report"
+source = { table = "r685-a.json", id = "L6_a_permission_is_a_defect_to_report" }
+description = "The unreadable branch always says report a defect, never grant access"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+'''
+new = '''
+            remedy=Remedy.REPORT_DEFECT,
+'''
+
+[[rows]]
+id = "r349-b.B2_iterdir"
+source = { table = "r349-b.json", id = "B2_iterdir" }
+description = "Revert the listing to Path.glob, which swallows a permission error"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        files = sorted(p for p in directory.iterdir() if p.suffix == ".json")'
+new = '        files = sorted(directory.glob("*.json"))'
+
+[[rows]]
+id = "u27-r80-write-probe-replacement.W1_permission_branch"
+source = { table = "u27-r80-write-probe-replacement.json", id = "W1_permission_branch" }
+description = "Drop the os.access branch, so a mode or ACL refusal is not attributed"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+'''
+new = ''
+
+[[rows]]
+id = "u27-r80-write-probe-replacement.W2_immutable_branch"
+source = { table = "u27-r80-write-probe-replacement.json", id = "W2_immutable_branch" }
+description = "Drop the immutable branch, so a Finder Locked file reports permission"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if _immutable(path):
+            return AccessRefusal(kind=AccessKind.LOCKED, path=path)
+'''
+new = ''
+
+[[rows]]
+id = "u27-r80-write-probe-replacement.W4_order_access_first"
+source = { table = "u27-r80-write-probe-replacement.json", id = "W4_order_access_first" }
+description = "Ask os.access before ST_RDONLY, so a read only volume reads as a permission"
+file = "src/cratekit/core/cause.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if os.statvfs(path).f_flag & os.ST_RDONLY:
+            return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+        if _immutable(path):
+            return AccessRefusal(kind=AccessKind.LOCKED, path=path)
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+'''
+new = '''
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+        if os.statvfs(path).f_flag & os.ST_RDONLY:
+            return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+        if _immutable(path):
+            return AccessRefusal(kind=AccessKind.LOCKED, path=path)
+'''
+
+[[rows]]
+id = "u27-r80-write-probe-zero-rows-repinned.W11_route_path_attribute"
+source = { table = "u27-r80-write-probe-zero-rows-repinned.json", id = "W11_route_path_attribute" }
+description = "Drop the path attribute the connection site attaches, so the driver route classifies nothing"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+    if name.startswith("SQLITE_CANTOPEN"):
+        return _probe_readable(str(path))
+    return _probe_writable(str(path))'''
+new = '''
+    if name.startswith("SQLITE_CANTOPEN"):
+        return _probe_readable(str(path))
+    return None'''
+
+[[rows]]
+id = "u27-r80-write-probe-zero-rows-repinned.W3_read_only_branch"
+source = { table = "u27-r80-write-probe-zero-rows-repinned.json", id = "W3_read_only_branch" }
+description = "Drop the ST_RDONLY branch, so a read only volume reports permission. Was zero before the pin"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if os.statvfs(path).f_flag & os.ST_RDONLY:
+            return AccessRefusal(kind=AccessKind.READ_ONLY, path=path)
+'''
+new = ''
+
+[[rows]]
+id = "u27-r80-write-probe-zero-rows-repinned.W5_read_delegation"
+source = { table = "u27-r80-write-probe-zero-rows-repinned.json", id = "W5_read_delegation" }
+description = "Drop the read probe delegation, so an unreachable path answers silence. Was zero before the pin"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+    refused = _probe_readable(path)
+    if refused is not None:
+        return refused
+'''
+new = ''
+
+[[rows]]
+id = "u27-round-8-independent.C13_name_db_top_only"
+source = { table = "u27-round-8-independent.json", id = "C13_name_db_top_only" }
+description = "Record the database path on the handed-in exception only, not along the declared chain"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py"]
+old = '''
+    for current in _chain(exc):
+        try:
+            setattr(current, DATABASE_PATH_ATTRIBUTE, spelled)
+        except AttributeError:  # pragma: no cover - defensive
+            continue
+    return exc'''
+new = '''
+    try:
+        setattr(exc, DATABASE_PATH_ATTRIBUTE, spelled)
+    except AttributeError:  # pragma: no cover - defensive
+        pass
+    return exc'''
+
+[[rows]]
+id = "u27-round-8-independent.C8_two_path_precondition"
+source = { table = "u27-round-8-independent.json", id = "C8_two_path_precondition" }
+description = "Drop the both-paths-present precondition, so a one-path permission error is re-measured"
+file = "src/cratekit/core/cause.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if exc.filename2 is not None and exc.filename is not None:
+            path = _refused_of_two(exc, path)'''
+new = '        path = _refused_of_two(exc, path)'
+
+[[rows]]
+id = "u93-recursive-analysis.D9_onerror"
+source = { table = "u93-recursive-analysis.json", id = "D9_onerror" }
+description = "Drop the error callback, so an unreadable folder contributes nothing and is never named"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+tests = ["tests/test_discovery.py", "tests/test_vocals_cli.py"]
+old = 'os.walk(root, followlinks=False, onerror=note)'
+new = 'os.walk(root, followlinks=False)'
+
+[[rows]]
+id = "r390-a.A1_retry_re_arms_unconditionally"
+source = { table = "r390-a.json", id = "A1_retry_re_arms_unconditionally" }
+description = "the original defect: retry re-arms every failed item whatever the job cause says"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_master_cli.py", "tests/test_acquire_workers.py"]
+old = '''
+    if current.cause is not None and not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",
+            f"job {job_id} {current.state} with a cause that is not retryable, "
+            f"so resuming it cannot succeed and its items were left as they are",
+            steps=(
+                "inspect each failed item's cause on the job's own record",
+                "queue the work again the way it was queued the first time, "
+                "once the reason is addressed",
+            ),
+            origin=("jobs",),
+            detail={
+                "job_id": job_id,
+                "state": str(current.state),
+                # Named on the refusal as the job cause names them (R-391), so
+                # a person is not sent into the nested cause to learn which.
+                **_permanent_reasons_of(current.cause),
+            },
+            inner=current.cause,
+        )
+'''
+new = ''
+
+[[rows]]
+id = "r746-a.G7_sql_value_check_disarmed"
+source = { table = "r746-a.json", id = "G7_sql_value_check_disarmed" }
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''
+            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''
+            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "r746-d.G5_content_row_read_back_against_five_not_ten"
+source = { table = "r746-d.json", id = "G5_content_row_read_back_against_five_not_ten" }
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in. Measured again after the key taint test its zero bought"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'
+new = '        policy = GRIDLESS_ON_CREATE_COLUMNS'
+
+[[rows]]
+id = "u27-round-8-independent.W2_composite_wrong_file"
+source = { table = "u27-round-8-independent.json", id = "W2_composite_wrong_file" }
+description = "COMPOSITE for W2: the canary names a file that is not the one it opened"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '        named = path if path is not None else handle_path(db)'
+new = '        named = (str(path) + "-not-this-file") if path is not None else handle_path(db)'
+
+[[rows]]
+id = "u27-round-8-independent.W3_canary_no_name_the_database"
+source = { table = "u27-round-8-independent.json", id = "W3_canary_no_name_the_database" }
+description = "Drop the name_the_database hand-off in the canary, so a chmod 000 database is unclassifiable"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '''
+        if named is not None:
+            name_the_database(exc, named)'''
+new = ''
+
+[[rows]]
+id = "u27-round-8-independent.W5_canary_message_no_path"
+source = { table = "u27-round-8-independent.json", id = "W5_canary_message_no_path" }
+description = "Reword the canary refusal so its sentence no longer names the database file"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '''
+            f"the rekordbox database{where} opened but could not be read as "
+            f"expected: {exc}",'''
+new = '''
+            f"the rekordbox database could not be read as expected after it "
+            f"opened: {exc}",'''

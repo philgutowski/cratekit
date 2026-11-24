@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""U337: the survey's kill set, read against every replay under U290, and the rows it still owes.
+
+The survey of U290 counted 7,093 live killed rows at `ff8e5ec` (`killset.py
+--repo-root <a checkout of ff8e5ec> list`). Each card under the epic replayed
+the rows of the files it owned, so a row whose file no card owned was never
+measured after. This script reads, for every survey row, every replay table
+under `docs/mutation/` (at the top level and in this directory) that names it
+by its source table and id, or failing that by its file and text, and says
+where it stands.
+
+    survey.py --survey-root <ff8e5ec checkout> owed
+    survey.py --survey-root <ff8e5ec checkout> rows --out-dir DIR
+    survey.py --survey-root <ff8e5ec checkout> join --out-dir DIR
+
+`owed` prints each survey row that has no killed measurement after, and no
+mapping: the newest replay of it on an after side read it not killed, or no
+replay after names it. `rows` writes the replay row files for those of them
+that are live on this checkout, in batches: the rows whose tests need the
+analysis extra, any row of `r926.json` (its mutant can leave a folder outside
+the test roots) alone, and the rest in groups by file. `join` writes the two
+tables `killset.py check` reads for the whole survey: `survey-before.json`,
+every survey row owed a kill as its own table recorded it, and
+`survey-after.json`, the newest measurement of each after U290's cards and
+this card's batches, with every mapping they made. A survey row not owed a
+kill is left out of the before table and named in its `excluded` list with
+the reason, so the count `check` prints and that list add up to 7,093.
+
+Nothing here runs a test or writes a source file; it only reads tables and
+the two trees, and writes row files and tables.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+import killset as K  # noqa: E402
+
+TABLES = REPO_ROOT / "docs" / "mutation"
+
+#: The batch of rows naming a test file that skips whole without the analysis
+#: extra (`pytest.importorskip` of numpy or librosa at module level).
+ANALYSIS_EXTRA = "analysis"
+
+
+def side_of(name: str) -> str:
+    if "before" in name:
+        return "before"
+    return "after"
+
+
+def replay_tables() -> list[tuple[Path, dict]]:
+    found = []
+    for path in sorted([*TABLES.glob("*.json"), *TABLES.glob("*/*.json")]):
+        table = K.load_table(path)
+        if table is None or table.get("pass_kind") != K.REPLAY:
+            continue
+        if path.parent == HERE and path.name.startswith("survey-"):
+            continue
+        found.append((path, table))
+    return found
+
+
+class Measurements:
+    """Every replay row, by the source it came from and by its text."""
+
+    def __init__(self) -> None:
+        self.by_source: dict[tuple[str, str], list[tuple]] = defaultdict(list)
+        self.by_text: dict[tuple, list[tuple]] = defaultdict(list)
+        self.mapped: dict[tuple[str, str], list[tuple[Path, dict, dict]]] = defaultdict(list)
+        for path, table in replay_tables():
+            when = str(table.get("when") or "")
+            side = side_of(path.name)
+            for row in table["rows"]:
+                if not isinstance(row, dict):
+                    continue
+                entry = (when, str(path.relative_to(REPO_ROOT)), side, row, table)
+                source = K.source_of(row)
+                if source is not None:
+                    self.by_source[source].append(entry)
+                self.by_text[(row.get("file"), row.get("old"), row.get("new"))].append(entry)
+            for mapping in table.get("mapped") or []:
+                source = K.source_of(mapping) if isinstance(mapping, dict) else None
+                if source is not None:
+                    self.mapped[source].append((path, table, mapping))
+
+    def of(self, row: K.Recorded) -> tuple[list[tuple], str]:
+        found = self.by_source.get(row.source)
+        if found:
+            return sorted(found, key=lambda one: (one[0], one[1])), "source"
+        found = self.by_text.get(row.anchor.key)
+        if found:
+            return sorted(found, key=lambda one: (one[0], one[1])), "text"
+        return [], ""
+
+
+def survey_rows(survey_root: Path) -> list[K.Recorded]:
+    return [row for row in K.read_kill_set(survey_root).rows if row.state == K.LIVE]
+
+
+def standing(row: K.Recorded, seen: Measurements) -> dict:
+    measured, how = seen.of(row)
+    after = [one for one in measured if one[2] == "after"]
+    newest = after[-1] if after else None
+    return {
+        "measured": measured,
+        "how": how,
+        "after": after,
+        "newest": newest,
+        "held": bool(newest and K.killed(newest[3])) or bool(seen.mapped.get(row.source)),
+    }
+
+
+def owed(survey: list[K.Recorded], seen: Measurements) -> list[K.Recorded]:
+    return [row for row in survey if not standing(row, seen)["held"]]
+
+
+def cmd_owed(args) -> int:
+    seen = Measurements()
+    survey = survey_rows(args.survey_root)
+    now = {row.source: row for row in K.read_kill_set(REPO_ROOT).rows}
+    rows = owed(survey, seen)
+    print(f"{len(survey)} survey rows, {len(rows)} with no killed measurement after and no mapping")
+    for row in rows:
+        here = now.get(row.source)
+        print(f"{here.state if here else 'absent':<9} {row.anchor.file}  {row.table}  {row.id}")
+    return 0
+
+
+def needs_extra(tests: tuple[str, ...]) -> bool:
+    """Whether any of a row's test files skips whole without the analysis extra.
+
+    Such a row is measured where the extra is installed, so every test it
+    names runs; a container without it would run only the rest.
+    """
+    for name in {one.split("::", 1)[0] for one in tests}:
+        path = REPO_ROOT / name
+        head = (
+            "\n".join(path.read_text(encoding="utf-8").splitlines()[:60]) if path.exists() else ""
+        )
+        if 'importorskip("librosa")' in head or 'importorskip("numpy")' in head:
+            return True
+    return False
+
+
+def recorded_text(source: tuple[str, str]) -> tuple:
+    table = K.load_table(TABLES / source[0]) or {"rows": []}
+    for row in table["rows"]:
+        if isinstance(row, dict) and str(row.get("id")) == source[1]:
+            return (row.get("file"), row.get("old"), row.get("new"))
+    return (None, None, None)
+
+
+def moved_reason(row: K.Recorded, seen: Measurements) -> str:
+    """The `moved` reason the replay that anchored a row where it now is wrote, or none
+    when the row stands at the text its own table recorded."""
+    if row.anchor.key == recorded_text(row.source):
+        return ""
+    for entry in reversed(
+        sorted(seen.by_source.get(row.source, []), key=lambda one: (one[0], one[1]))
+    ):
+        replayed = entry[3]
+        if (replayed.get("file"), replayed.get("old"), replayed.get("new")) == row.anchor.key:
+            reason = str(replayed.get("moved") or "").strip()
+            if reason:
+                return reason
+    raise SystemExit(f"{row.table} {row.id}: anchored away from its text with no moved reason")
+
+
+def cmd_rows(args) -> int:
+    seen = Measurements()
+    survey = survey_rows(args.survey_root)
+    wanted = {row.source for row in owed(survey, seen)}
+    now = [
+        row
+        for row in K.read_kill_set(REPO_ROOT).rows
+        if row.source in wanted and row.state == K.LIVE
+    ]
+    groups: dict[str, list[K.Recorded]] = defaultdict(list)
+    plain: list[K.Recorded] = []
+    for row in sorted(now, key=lambda one: (one.anchor.file, one.table, one.id)):
+        if row.table == "r926.json":
+            groups["r926"].append(row)
+        elif needs_extra(row.anchor.tests):
+            groups[ANALYSIS_EXTRA].append(row)
+        else:
+            plain.append(row)
+    by_file: dict[str, list[K.Recorded]] = defaultdict(list)
+    for row in plain:
+        by_file[row.anchor.file].append(row)
+    size = -(-len(plain) // args.batches)
+    batch, count = 1, 0
+    for name in sorted(by_file):
+        if count >= size and batch < args.batches:
+            batch, count = batch + 1, 0
+        groups[str(batch)] += by_file[name]
+        count += len(by_file[name])
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for group, rows in sorted(groups.items()):
+        name = f"u337-{group}"
+        body: list[str] = []
+        for row in rows:
+            body += K.render_row(
+                row.source, row.description, row.surface, row.anchor, moved_reason(row, seen)
+            )
+        K.write_rows(args.out_dir / f"{name}-rows.toml", name, body)
+        print(f"{name}: {len(rows)} rows in {len({row.anchor.file for row in rows})} files")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--survey-root", type=Path, required=True)
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    verbs.add_parser("owed").set_defaults(run=cmd_owed)
+    rows = verbs.add_parser("rows")
+    rows.add_argument("--out-dir", type=Path, default=HERE)
+    rows.add_argument("--batches", type=int, default=3)
+    rows.set_defaults(run=cmd_rows)
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    args = build_parser().parse_args(argv[1:])
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

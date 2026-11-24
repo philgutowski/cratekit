@@ -1,0 +1,295 @@
+name = "u337-3"
+pass_kind = "replay"
+
+[[rows]]
+id = "u28-skills-independent.S10_stamp_skill_name"
+source = { table = "u28-skills-independent.json", id = "S10_stamp_skill_name" }
+description = "the stamp stops recording which skill it belongs to, so a copied stamp cannot be told from its own"
+file = "src/cratekit/skills/cli.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py"]
+old = '\nskill = "{name}"'
+new = ''
+
+[[rows]]
+id = "u28-skills-independent.S13_expanduser"
+source = { table = "u28-skills-independent.json", id = "S13_expanduser" }
+description = "--into stops expanding a tilde, so a target given as ~/skills is created as a literal directory named ~"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '    into = Path(ctx.args.into).expanduser() if ctx.args.into else default_target()'
+new = '    into = Path(ctx.args.into) if ctx.args.into else default_target()'
+
+[[rows]]
+id = "u28-skills-independent.S17_outcome_always_ok"
+source = { table = "u28-skills-independent.json", id = "S17_outcome_always_ok" }
+description = "the envelope reports OK even when nothing was installed, so an empty package reads as a successful install"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '        outcome=Outcome.OK if checks else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK,'
+
+[[rows]]
+id = "u28-skills-independent.S20_packaged_root_via_file"
+source = { table = "u28-skills-independent.json", id = "S20_packaged_root_via_file" }
+description = "packaged_root resolves by path arithmetic from __file__ rather than through importlib.resources"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '    return resources.files("cratekit.skills") / "assets"'
+new = '    return Path(__file__).resolve().parent / "assets"'
+
+[[rows]]
+id = "u130-a.A1_removal_beats_addition"
+source = { table = "u130-a.json", id = "A1_removal_beats_addition" }
+description = "A removal wins over an addition, so a track removed on one side and re-added on the other is dropped"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '        if added or not removed:'
+new = '        if not removed:'
+
+[[rows]]
+id = "r799-b.P6_one_file_is_one_group"
+source = { table = "r799-b.json", id = "P6_one_file_is_one_group" }
+description = "plan: key a file under the library by its resolved name and not by the file itself"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return ("name", str(resolved))
+    return ("file", stat.st_dev, stat.st_ino)'''
+new = '    return ("name", str(resolved))'
+
+[[rows]]
+id = "u118-d.T4_hip_hop_former"
+source = { table = "u118-d.json", id = "T4_hip_hop_former" }
+description = "Hip-Hop declares no former place, so its tracks are never moved out of the old playlist"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_taxonomy.py", "tests/test_adopt_former_place.py"]
+old = '''
+[[bucket.formerly]]
+id = "non_electronic_hip_hop"
+bucket = "non_electronic"
+sub = "hip_hop"
+display = "Hip-Hop"
+'''
+new = ''
+
+[[rows]]
+id = "u133-b.T11_nonelec_alias_back"
+source = { table = "u133-b.json", id = "T11_nonelec_alias_back" }
+description = "NonElectronic files the word Jazz again beside the Jazz bucket"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py", "tests/test_vocabulary.py"]
+old = '''
+  "Indie Rock",
+  "Latin",
+'''
+new = '''
+  "Indie Rock",
+  "Jazz",
+  "Latin",
+'''
+
+[[rows]]
+id = "u119.G16_read_back_blind_to_leftovers"
+source = { table = "u119.json", id = "G16_read_back_blind_to_leftovers" }
+description = "_read_back: a track still in Favorites after the removals is not a disagreement"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py"]
+old = '        if removed_too and live - wanted:'
+new = '        if False:'
+
+[[rows]]
+id = "r816-e.D2_survey_total"
+source = { table = "r816-e.json", id = "D2_survey_total" }
+description = "_is_a_file: let a refusal to answer raise out of the survey"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_metadata_cli.py", "tests/test_paths_resolved.py"]
+old = '''
+    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False'''
+new = '    return path.is_file()'
+
+[[rows]]
+id = "r923.N12_digest_drops_values"
+source = { table = "r923.json", id = "N12_digest_drops_values" }
+description = "The digest no longer covers the values written"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''
+                "defaults": {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()},
+'''
+new = ''
+
+[[rows]]
+id = "u115.F17_bound_is_zero"
+source = { table = "u115.json", id = "F17_bound_is_zero" }
+description = "The volume's inode bound is reported as zero rather than measured from a fresh file"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = '        inode=measured.st_ino, device=measured.st_dev, filesystem=filesystem_of(directory)'
+new = '        inode=0, device=measured.st_dev, filesystem=filesystem_of(directory)'
+
+[[rows]]
+id = "u115.F8_matching_inode_renumbered"
+source = { table = "u115.json", id = "F8_matching_inode_renumbered" }
+description = "A row above the bound whose file reads the same inode is renumbered to itself rather than left"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+            elif str(inode) == str(row[FILE_ID]).strip():
+                matched += 1'''
+new = '''
+            elif False:
+                matched += 1'''
+
+[[rows]]
+id = "u59.G1_load_context"
+source = { table = "u59.json", id = "G1_load_context" }
+description = "Count a Store target as a read again, re-admitting every row double"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
+old = '''
+            if not isinstance(node.ctx, ast.Load):
+                continue'''
+new = ''
+
+[[rows]]
+id = "u59.G3_with_as_dropped"
+source = { table = "u59.json", id = "G3_with_as_dropped" }
+description = "Drop `with ... as` from the binding forms alone, leaving the others"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
+old = '''
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                bind(item.optional_vars)'''
+new = ''
+
+[[rows]]
+id = "u59.G4_except_as_dropped"
+source = { table = "u59.json", id = "G4_except_as_dropped" }
+description = "Drop `except ... as` alone, so one layer is removed by itself"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
+old = '''
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.add(node.name)'''
+new = ''
+
+[[rows]]
+id = "r658-a.C7_state_roots_not_redirected"
+source = { table = "r658-a.json", id = "C7_state_roots_not_redirected" }
+description = "Composite for C1: the state roots fixture sets no HOME, so the platformdirs config resolves to the process home"
+file = "tests/conftest.py"
+surface = "user"
+tests = ["tests/test_isolation_survives_undo.py"]
+old = '''
+    monkeypatch.setenv("HOME", str(home))
+'''
+new = ''
+
+[[rows]]
+id = "u125.D1_derive_test_tautology"
+source = { table = "u125.json", id = "D1_derive_test_tautology" }
+description = "Restore the derive test's cause-total assert to x == x so a broken reserved count stays green there"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (len(causes), len(non_reserved), len(CAUSES)), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
+new = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
+
+[[rows]]
+id = "u28-skills-independent.L14_rule_a_name_match"
+source = { table = "u28-skills-independent.json", id = "L14_rule_a_name_match" }
+description = "rule (a) stops requiring the frontmatter name to match the directory"
+file = "tests/test_skills_lint.py"
+surface = "user"
+tests = ["tests/test_skills_lint.py"]
+old = '            if not match or match.group(1) != directory.name:'
+new = '            if not match:'
+
+[[rows]]
+id = "u28-skills-independent.L6_rule_h_fenced_half"
+source = { table = "u28-skills-independent.json", id = "L6_rule_h_fenced_half" }
+description = "rule (h) stops looking inside fenced blocks and checks only inline code spans"
+file = "tests/test_skills_lint.py"
+surface = "user"
+tests = ["tests/test_skills_lint.py"]
+old = '        for span in _CODE_SPANS.findall(text) + _FENCED.findall(text):'
+new = '        for span in _CODE_SPANS.findall(text):'
+
+[[rows]]
+id = "u28-skills-independent.L7_rule_h_code_span_half"
+source = { table = "u28-skills-independent.json", id = "L7_rule_h_code_span_half" }
+description = "rule (h) stops looking inside inline code spans and checks only fenced blocks"
+file = "tests/test_skills_lint.py"
+surface = "user"
+tests = ["tests/test_skills_lint.py"]
+old = '        for span in _CODE_SPANS.findall(text) + _FENCED.findall(text):'
+new = '        for span in _FENCED.findall(text):'
+
+[[rows]]
+id = "u28-skills-independent.L8_rule_h_substring_to_equality"
+source = { table = "u28-skills-independent.json", id = "L8_rule_h_substring_to_equality" }
+description = "rule (h) matches a display name only when it is the whole span, so a name used as a path segment passes"
+file = "tests/test_skills_lint.py"
+surface = "user"
+tests = ["tests/test_skills_lint.py"]
+old = '                if name in span:'
+new = '                if name == span:'
+
+[[rows]]
+id = "u28-skills-independent.L9_command_comment_split"
+source = { table = "u28-skills-independent.json", id = "L9_command_comment_split" }
+description = "the fenced text stops being split into command and comment, so a retired name in a history note is checked as a command"
+file = "tests/test_skills_lint.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py"]
+old = '''
+            elif " #" in line:
+                command, _, tail = line.partition(" #")
+                command_parts.append(command)
+                comment_parts.append(tail)'''
+new = '''
+            elif " #" in line:
+                command_parts.append(line)'''
