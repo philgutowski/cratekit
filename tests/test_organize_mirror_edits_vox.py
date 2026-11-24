@@ -118,6 +118,7 @@ def test_an_untagged_track_over_the_cut_leaves_with_vox_and_joins_none(calibrate
     change = _moved(machine, "Tech House Med")
     assert set(change["leaves"]) == {"Deep House / Low", f"Deep House / {VOX}"}, change
     assert change["joins"] == ["Tech House / Med"], change
+    assert "keeps untagged" not in change, "a vocal sub it never held is named as kept"
     assert machine.places("1") == {("Tech House", "Med")}
     assert _vox_adds(machine, "1") == []
     _settled(machine)
