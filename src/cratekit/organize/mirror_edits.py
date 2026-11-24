@@ -357,9 +357,11 @@ class Change:
             shown["not in the tree yet"] = list(self.missing)
         if self.untagged:
             shown["keeps untagged"] = [f"{folder} / {playlist}" for _pid, folder, playlist in self.untagged]
-            shown["untagged"] = (
+            shown["vocal note"] = (
                 "its file clears the vocal cut and its row carries no vox My Tag, so it "
-                "stays where it is and converge names it until it is tagged or taken out"
+                "stays where it is and converge names it, until crate metadata "
+                "mytags-vocals --apply tags it or it is taken out of that playlist in "
+                "rekordbox; taken out on the account, the next organize puts it back"
             )
         if self.outcome == edits.UNFILE:
             shown["note"] = (

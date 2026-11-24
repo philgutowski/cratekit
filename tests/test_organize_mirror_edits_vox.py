@@ -86,22 +86,25 @@ def _moved(machine: Machine, to: str) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "to, kept",
+    "to, level, kept",
     [
-        ("Tech House Med", {("Tech House", "Med"), ("Tech House", VOX)}),
-        ("Deep House High", {("Deep House", "High"), ("Deep House", VOX)}),
+        ("Tech House Med", UNDER, {("Tech House", "Med"), ("Tech House", VOX)}),
+        ("Deep House High", UNDER, {("Deep House", "High"), ("Deep House", VOX)}),
+        # Over the cut too, the score and the tag agree, so nothing is untagged.
+        ("Deep House High", OVER, {("Deep House", "High"), ("Deep House", VOX)}),
     ],
-    ids=["to-another-genre", "within-its-genre"],
+    ids=["to-another-genre", "within-its-genre", "within-its-genre-over-the-cut"],
 )
-def test_a_tagged_track_under_the_cut_keeps_or_joins_its_new_folders_with_vox(calibrated, to, kept):
+def test_a_tagged_track_keeps_or_joins_its_new_folders_with_vox(calibrated, to, level, kept):
     machine = calibrated
-    _vocal(machine, "1", UNDER)
+    _vocal(machine, "1", level)
     _tag_vox(machine.cfg, "1")
     _hold_in(machine, ("Deep House", VOX), "1")
     machine.run()
     assert machine.places("1") == {("Deep House", "Low"), ("Deep House", VOX)}
 
     change = _moved(machine, to)
+    assert "keeps untagged" not in change, "a tagged row is named as carrying no tag"
     assert machine.places("1") == kept, change
     assert _vox_adds(machine, "1") == [], "the resort would add back what the mirror left"
     _settled(machine)
@@ -234,6 +237,7 @@ def test_an_untagged_member_of_its_own_folders_with_vox_keeps_it_on_a_move_withi
     assert change["leaves"] == ["Deep House / Low"], change
     assert change["joins"] == ["Deep House / High"], change
     assert change["keeps untagged"] == [f"Deep House / {VOX}"], change
+    assert "mytags-vocals --apply" in change["vocal note"], change
     assert machine.places("1") == {("Deep House", "High"), ("Deep House", VOX)}
     assert _untagged_in(machine, "1") == [f"Deep House / {VOX}"], "converge stopped naming it"
     _settled(machine)
