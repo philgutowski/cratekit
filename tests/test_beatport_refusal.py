@@ -97,61 +97,55 @@ MISSED = _Response(200, _beatport_page([]))
 # A. Beatport's answer, read the way the fallbacks' is
 
 
-def test_a_403_carrying_cloudflares_challenge_header_is_blocked_and_named():
-    hit = _searcher(_over_the_wire(REFUSED))(ARTIST, TITLE)
+SCRIPT_ONLY = (
+    "<html><head><title>beatport</title></head><body>"
+    '<script src="/cdn-cgi/challenge-platform/h/b/x"></script></body></html>'
+)
+REFUSED_403 = "the catalogue refused this client, HTTP 403"
+
+
+@pytest.mark.parametrize(
+    "reply, answer, note, has, lacks",
+    [
+        (REFUSED, "blocked", "the catalogue refused this client, Cloudflare challenge, HTTP 403",
+         (), ()),
+        (_Response(403, "", {"Server": "nginx"}), "blocked", REFUSED_403, (),
+         (searchers.CLOUDFLARE_CHALLENGE,)),
+        # The challenge header is read whatever case its name and value arrive in.
+        (_Response(403, "", {"CF-MITIGATED": " Challenge "}), None, None,
+         (searchers.CLOUDFLARE_CHALLENGE,), ()),
+        (_Response(403, "", {"Cf-Mitigated": "block"}), None, REFUSED_403, (), ()),
+        # R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it was a parser
+        # defect and, beside an unread Discogs, a refusal telling the person to report one.
+        (_Response(200, CHALLENGE_PAGE), "blocked", None,
+         (searchers.CLOUDFLARE_CHALLENGE, "Just a moment..."), ()),
+        (_Response(200, SCRIPT_ONLY), "blocked", None, (searchers.CLOUDFLARE_CHALLENGE,), ()),
+        (_Response(200, "<html><title>x</title></html>"), "parse-break", None, (), ()),
+        (_Response(503), "unreachable", None, (), ()),
+        (_Response(500), "unreachable", None, (), ()),
+        (_Response(502, CHALLENGE_PAGE), "unreachable", None, (), ()),
+        # A 429 that outlasts the backoff is blocked, as the fallbacks read it.
+        (_Response(429), "blocked", None, ("rate limited",), ()),
+    ],
+    ids=[
+        "403-with-cloudflares-challenge-header", "403-without-the-header",
+        "header-in-any-case", "another-mitigation-is-no-challenge", "200-just-a-moment-page",
+        "200-page-with-only-cloudflares-script", "200-with-no-payload-and-no-challenge",
+        "503", "500", "502-with-a-page", "429-outlasting-the-backoff",
+    ],
+)
+def test_beatports_answer_is_read_the_way_the_fallbacks_is(reply, answer, note, has, lacks):
+    hit = _searcher(_over_the_wire(reply))(ARTIST, TITLE)
 
     said = _beatport(hit)
-    assert said.answer == "blocked"
-    assert said.note == "the catalogue refused this client, Cloudflare challenge, HTTP 403"
-    assert searchers.BEATPORT in hit.unread
-
-
-def test_a_403_without_the_header_is_blocked_and_says_only_the_status():
-    hit = _searcher(_over_the_wire(_Response(403, "", {"Server": "nginx"})))(ARTIST, TITLE)
-
-    said = _beatport(hit)
-    assert said.answer == "blocked"
-    assert said.note == "the catalogue refused this client, HTTP 403"
-    assert searchers.CLOUDFLARE_CHALLENGE not in said.note
-
-
-def test_the_challenge_header_is_read_whatever_case_its_name_and_value_arrive_in():
-    hit = _searcher(_over_the_wire(_Response(403, "", {"CF-MITIGATED": " Challenge "})))(
-        ARTIST, TITLE
-    )
-
-    assert searchers.CLOUDFLARE_CHALLENGE in _beatport(hit).note
-
-
-def test_another_mitigation_is_not_called_a_challenge():
-    hit = _searcher(_over_the_wire(_Response(403, "", {"Cf-Mitigated": "block"})))(
-        ARTIST, TITLE
-    )
-
-    assert _beatport(hit).note == "the catalogue refused this client, HTTP 403"
-
-
-def test_a_200_just_a_moment_page_is_blocked_not_a_parse_break():
-    """R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it was a parser defect
-    and, beside an unread Discogs, a refusal telling the person to report one."""
-    hit = _searcher(_over_the_wire(_Response(200, CHALLENGE_PAGE)))(ARTIST, TITLE)
-
-    said = _beatport(hit)
-    assert said.answer == "blocked"
-    assert searchers.CLOUDFLARE_CHALLENGE in said.note
-    assert "Just a moment..." in said.note
-
-
-def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
-    page = (
-        "<html><head><title>beatport</title></head><body>"
-        '<script src="/cdn-cgi/challenge-platform/h/b/x"></script></body></html>'
-    )
-    hit = _searcher(_over_the_wire(_Response(200, page)))(ARTIST, TITLE)
-
-    said = _beatport(hit)
-    assert said.answer == "blocked"
-    assert searchers.CLOUDFLARE_CHALLENGE in said.note
+    if answer is not None:
+        assert said.answer == answer
+    if note is not None:
+        assert said.note == note
+    assert all(part in said.note for part in has)
+    assert not any(part in said.note for part in lacks)
+    if answer == "blocked":
+        assert searchers.BEATPORT in hit.unread
 
 
 def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
@@ -167,13 +161,6 @@ def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
     assert _beatport(matched).answer == "matched"
     assert matched.genre == BUCKET_GENRE
     assert _beatport(missed).answer == "miss"
-
-
-def test_a_200_page_with_no_payload_and_no_challenge_is_still_a_parse_break():
-    hit_or_raise = _searcher(_over_the_wire(_Response(200, "<html><title>x</title></html>")))
-    hit = hit_or_raise(ARTIST, TITLE)
-
-    assert _beatport(hit).answer == "parse-break"
 
 
 def test_a_200_challenge_beside_an_unread_discogs_refuses_as_unreachable_not_parse_broken():
@@ -198,17 +185,6 @@ def test_a_bandcamp_client_challenge_title_is_blocked_and_not_called_cloudflare(
     assert searchers.CLOUDFLARE_CHALLENGE not in said.note
 
 
-@pytest.mark.parametrize(
-    "reply",
-    [_Response(503), _Response(500), _Response(502, CHALLENGE_PAGE)],
-    ids=["503", "500", "502-with-a-page"],
-)
-def test_a_server_error_from_beatport_stays_unreachable(reply):
-    hit = _searcher(_over_the_wire(reply))(ARTIST, TITLE)
-
-    assert _beatport(hit).answer == "unreachable"
-
-
 def test_a_transport_failure_from_beatport_stays_unreachable():
     def get(url, headers, timeout):
         if url.startswith(searchers.BEATPORT_SEARCH):
@@ -223,14 +199,6 @@ def test_a_transport_failure_from_beatport_stays_unreachable():
     said = _beatport(hit)
     assert said.answer == "unreachable"
     assert "name or service not known" in said.note
-
-
-def test_a_429_that_outlasts_the_backoff_is_blocked_as_the_fallbacks_read_it():
-    hit = _searcher(_over_the_wire(_Response(429)))(ARTIST, TITLE)
-
-    said = _beatport(hit)
-    assert said.answer == "blocked"
-    assert "rate limited" in said.note
 
 
 def test_a_beatport_answer_with_results_still_matches():
@@ -254,6 +222,13 @@ def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
         for n in range(count if count is not None else len(replies))
     ]
     return hits, seen
+
+
+def _stopped() -> searchers.Refusals:
+    """A run's count after three refusals in a row."""
+    refusals = searchers.Refusals()
+    _sweep([REFUSED] * 3, refusals=refusals)
+    return refusals
 
 
 def test_three_refusals_then_the_fourth_file_is_not_sent_and_records_blocked():
@@ -294,11 +269,9 @@ def test_discogs_is_still_asked_on_every_file_beatport_was_not():
 def test_a_discogs_match_after_a_stopped_beatport_is_written_and_names_beatport_unread():
     """Discogs decides before Beatport is reached since U282, and the stopped
     Beatport is named unread when the file's picture asks it."""
-    refusals = searchers.Refusals()
-    _sweep([REFUSED] * 3, refusals=refusals)
     seen: list[str] = []
     fetch = _over_the_wire([], discogs=_Response(200, results(1)), seen=seen)
-    hit = _searcher(fetch, refusals=refusals)(ARTIST, TITLE)
+    hit = _searcher(fetch, refusals=_stopped())(ARTIST, TITLE)
 
     assert _beatport_requests(seen) == 0
     assert hit.genre is not None
@@ -312,45 +285,34 @@ def test_a_discogs_match_after_a_stopped_beatport_is_written_and_names_beatport_
 
 
 def test_a_stopped_beatport_and_a_discogs_with_no_token_refuse_rather_than_decline():
-    refusals = searchers.Refusals()
-    _sweep([REFUSED] * 3, refusals=refusals)
     with pytest.raises(CratekitError) as raised:
-        _searcher(_over_the_wire([]), refusals=refusals, token=None)(ARTIST, TITLE)
+        _searcher(_over_the_wire([]), refusals=_stopped(), token=None)(ARTIST, TITLE)
 
     cause = raised.value.cause
     assert cause.reason == searchers.UNREACHABLE_REASON
     assert cause.detail["answers"] == ["blocked"]
 
 
-def test_blocked_miss_blocked_blocked_does_not_stop_the_run():
-    hits, seen = _sweep(
-        [REFUSED, MISSED, REFUSED, REFUSED, MISSED], refusals=searchers.Refusals()
-    )
+MATCHED_TWO = _Response(200, _beatport_page([_beatport_track(ARTIST, f"{TITLE} 2", BUCKET_GENRE)]))
+
+
+@pytest.mark.parametrize(
+    "replies, answers",
+    [
+        ([REFUSED, MISSED, REFUSED, REFUSED, MISSED],
+         ["blocked", "miss", "blocked", "blocked", "miss"]),
+        # Only refusals with nothing between them stop the run; an outage restarts the count.
+        ([REFUSED, REFUSED, _Response(503), REFUSED, REFUSED], None),
+        ([REFUSED, REFUSED, MATCHED_TWO, REFUSED, REFUSED], None),
+    ],
+    ids=["a-miss-between", "an-outage-between", "a-match-between"],
+)
+def test_an_answer_between_refusals_ends_the_run_of_them(replies, answers):
+    hits, seen = _sweep(replies, refusals=searchers.Refusals())
 
     assert _beatport_requests(seen) == 5
-    assert [_beatport(hit).answer for hit in hits] == [
-        "blocked",
-        "miss",
-        "blocked",
-        "blocked",
-        "miss",
-    ]
-
-
-def test_an_outage_between_refusals_ends_the_run_of_them():
-    """Only refusals with nothing between them stop the run; an outage restarts the count."""
-    _hits, seen = _sweep(
-        [REFUSED, REFUSED, _Response(503), REFUSED, REFUSED], refusals=searchers.Refusals()
-    )
-
-    assert _beatport_requests(seen) == 5
-
-
-def test_a_match_resets_the_count_as_a_miss_does():
-    page = _Response(200, _beatport_page([_beatport_track(ARTIST, f"{TITLE} 2", BUCKET_GENRE)]))
-    _hits, seen = _sweep([REFUSED, REFUSED, page, REFUSED, REFUSED], refusals=searchers.Refusals())
-
-    assert _beatport_requests(seen) == 5
+    if answers is not None:
+        assert [_beatport(hit).answer for hit in hits] == answers
 
 
 def test_a_new_run_asks_again_from_its_first_file():
@@ -375,8 +337,7 @@ def test_a_searcher_given_no_count_keeps_its_own_for_its_life():
 
 def test_a_stopped_catalogue_is_answered_without_a_wait():
     """A catalogue answered from the count is not waited for its paced second and a half."""
-    refusals = searchers.Refusals()
-    _sweep([REFUSED] * 3, refusals=refusals)
+    refusals = _stopped()
     naps: list[float] = []
     fetch = _over_the_wire([])
     asker = searchers.discogs_asker(token=None, fetch=fetch, sleep=lambda _s: None)
@@ -501,9 +462,7 @@ def _never_asked(isrc: object) -> published.Published:
 
 @pytest.mark.parametrize("stopped", [False, True], ids=["refused", "not-sent"])
 def test_deezer_is_still_not_asked_beside_a_blocked_beatport(stopped):
-    refusals = searchers.Refusals()
-    if stopped:
-        _sweep([REFUSED] * 3, refusals=refusals)
+    refusals = _stopped() if stopped else searchers.Refusals()
     hit = _searcher(_over_the_wire(REFUSED), refusals=refusals)(ARTIST, TITLE)
     assert _beatport(hit).answer == "blocked"
 
