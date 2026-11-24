@@ -1,0 +1,518 @@
+name = "u328-replay-after"
+pass_kind = "replay"
+
+[[rows]]
+id = "a32.R1_gate_not_explicit"
+source = { table = "a32.json", id = "R1_gate_not_explicit" }
+description = "The confirm gate is answerable inline"
+file = "src/cratekit/cli/registry_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_state.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_repair_link.py", "tests/test_cli_contract.py"]
+old = '''
+                prompt="Write these probe values onto these rows?",
+                #: Explicit (R34): a write to a row of a live library.
+                explicit=True, digest_source="plan",'''
+new = '''
+                prompt="Write these probe values onto these rows?",
+                #: Explicit (R34): a write to a row of a live library.
+                explicit=False, digest_source="plan",'''
+
+[[rows]]
+id = "r185-r246-author.D2_cloud_gate_restored"
+source = { table = "r185-r246-author.json", id = "D2_cloud_gate_restored" }
+description = "Declare the cloud sync decision on a verb that opens no database, the half the contract suite calls spurious"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/intake/test_workers.py", "tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_workers.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_pending_units.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+                explicit=True, digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+new = '''
+                explicit=True, digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+
+[[rows]]
+id = "r312.R1_summary_promises_a_replace"
+source = { table = "r312.json", id = "R1_summary_promises_a_replace" }
+description = "Put the registry summary back to the promise the verb does not keep"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/intake/test_workers.py", "tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_workers.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_pending_units.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+        summary=(
+            "add already-routed tracks to their new place after a genre or energy "
+            "change, additive, the old membership stays and is named"
+        ),'''
+new = '        summary="re-place already-routed tracks after a genre or energy change",'
+
+[[rows]]
+id = "r372-b.B12_verb_does_not_declare_the_check"
+source = { table = "r372-b.json", id = "B12_verb_does_not_declare_the_check" }
+description = "registry: the My Tags verb stops declaring library.paths_resolved"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_paths_resolved.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''
+            # The ratio the verb refuses on, unmapped rows tag nothing (R-372).
+            "library.paths_resolved",'''
+new = '            # The ratio the verb refuses on, unmapped rows tag nothing (R-372).'
+
+[[rows]]
+id = "r424.A1_writes_narrowed"
+source = { table = "r424.json", id = "A1_writes_narrowed" }
+description = "Restore the four local write surfaces the verb never reaches"
+file = "src/cratekit/cli/registry_sync.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '        writes=frozenset({"remote"}), adjudicates=True, destructive=True,'
+new = '        writes=frozenset({"db_tree", "db_metadata", "xml", "files", "remote"}), adjudicates=True, destructive=True,'
+
+[[rows]]
+id = "r424.A2_cloud_gate_absent"
+source = { table = "r424.json", id = "A2_cloud_gate_absent" }
+description = "Restore the cloud sync decision on a verb that never opens the database"
+file = "src/cratekit/cli/registry_sync.py"
+surface = "user"
+moved = "U328 moved sync.favorites' entry to the sync part, which does not import the shared gate's name, so the row as written ended in a NameError and broke collection with no death; the same gate is added to the same entry's gates, spelled out as the equal value"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '''
+                explicit=True, digest_source="plan",
+            ),
+        ),
+        # Landed (U33, R-130).'''
+new = '''
+                explicit=True, digest_source="plan",
+            ),
+            GateSpec(
+                name="write.cloudsync.unreadable", options=("proceed", "abort"),
+                prompt="Cloud Library Sync state could not be read; proceed anyway?",
+                explicit=True,
+            ),
+        ),
+        # Landed (U33, R-130).'''
+
+[[rows]]
+id = "r424.A3_rekordbox_checks"
+source = { table = "r424.json", id = "A3_rekordbox_checks" }
+description = "Restore both rekordbox doctor checks for a verb that reads an export"
+file = "src/cratekit/cli/registry_sync.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py", "tests/test_doctor.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+new = '''
+        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+
+[[rows]]
+id = "r424.A4_library_mounted"
+source = { table = "r424.json", id = "A4_library_mounted" }
+description = "Drop library.mounted, which the outbound write ledger needs"
+file = "src/cratekit/cli/registry_sync.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py", "tests/test_doctor.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+
+[[rows]]
+id = "r424.A5_summary_both_ways"
+source = { table = "r424.json", id = "A5_summary_both_ways" }
+description = "Restore the summary that claims the verb moves favourites both ways"
+file = "src/cratekit/cli/registry_sync.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '''        summary="heart the library's favourites on the streaming service; add-only, never un-hearts",'''
+new = '        summary="sync hearted tracks both ways; add-only, never un-hearts",'
+
+[[rows]]
+id = "r770-d.C8_native_gate_answered_inline"
+source = { table = "r770-d.json", id = "C8_native_gate_answered_inline" }
+description = "registry: declare intake.file.native as an ordinary gate, answerable on the run that found it"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_intake_writers_native.py", "tests/test_cli_contract.py"]
+old = '                prompt="Add this file to the collection?", explicit=True, digest_source="plan",'
+new = '                prompt="Add this file to the collection?", explicit=False, digest_source="plan",'
+
+[[rows]]
+id = "r773-b.R1_doctor_check_not_declared"
+source = { table = "r773-b.json", id = "R1_doctor_check_not_declared" }
+description = "registry: the verb no longer declares library.paths_resolved"
+file = "src/cratekit/cli/registry_later.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_later.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_export_collection.py"]
+old = '        doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),'
+new = '        doctor_checks=("library.mounted", "rekordbox.closed"),'
+
+[[rows]]
+id = "r923.N20_gate_takes_inline_answer"
+source = { table = "r923.json", id = "N20_gate_takes_inline_answer" }
+description = "The repair's gate accepts an inline answer, so a flag on the command writes the rows"
+file = "src/cratekit/cli/registry_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_state.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+                prompt="Give these rows rekordbox's own defaults?",
+                #: Explicit (R34): a write to rows of a live library.
+                explicit=True, digest_source="plan",'''
+new = '''
+                prompt="Give these rows rekordbox's own defaults?",
+                #: Explicit (R34): a write to rows of a live library.
+                explicit=False, digest_source="plan",'''
+
+[[rows]]
+id = "u103-b.M1_identify_declared_adjudicating"
+source = { table = "u103-b.json", id = "M1_identify_declared_adjudicating" }
+description = "Take the adjudicates declaration off intake.identify"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/intake/test_workers.py", "tests/test_cli_contract.py"]
+old = '        adjudicates=True, emits=frozenset({"match"}), output_schema="match/1",'
+new = '        emits=frozenset({"match"}), output_schema="match/1",'
+
+[[rows]]
+id = "u129-author.A10_export_set_without_library_mounted"
+source = { table = "u129-author.json", id = "A10_export_set_without_library_mounted" }
+description = "Drop library.mounted from export.set so the INSPIRATION backfill opens a database doctor never checked"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="export.set.confirm",'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.set.confirm",'''
+
+[[rows]]
+id = "u129-author.A11_export_archive_without_library_mounted"
+source = { table = "u129-author.json", id = "A11_export_archive_without_library_mounted" }
+description = "Drop library.mounted from export.archive so the no-name backfill opens library paths doctor never checked"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="export.archive.confirm",'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.archive.confirm",'''
+
+[[rows]]
+id = "u129-author.A9_land_without_provider_check"
+source = { table = "u129-author.json", id = "A9_land_without_provider_check" }
+description = "Drop credential.provider from intake.land so doctor never names the archive's session"
+file = "src/cratekit/cli/registry_later.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_later.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+            "credential.provider",
+        ),'''
+new = '''
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),'''
+
+[[rows]]
+id = "u263.D22_restamp_declares"
+source = { table = "u263.json", id = "D22_restamp_declares" }
+description = "registry: analyze restamp no longer declares binary.ffmpeg"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '        doctor_checks=("library.mounted", "rekordbox.pins", "binary.ffmpeg"),'
+new = '        doctor_checks=("library.mounted", "rekordbox.pins"),'
+
+[[rows]]
+id = "u27-adopt-apply-author.R1_marker_restored"
+source = { table = "u27-adopt-apply-author.json", id = "R1_marker_restored" }
+description = "Put planned_in back on the entry, so the conformance suite stops driving the landed verb"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "U328 moved adopt.move's entry to the modules part, which does not import ADOPT_APPLY_CLI_UNIT, so the row as written ended in a NameError and broke collection for another reason; the same marker is put back on the same entry, by the constant's value, U27"
+tests = ["tests/test_cli_contract.py", "tests/test_adoption.py", "tests/test_pending_units.py"]
+old = '''
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    # ── Deletion: one surface, two modules'''
+new = '''
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+        planned_in="U27",
+    ),
+    # ── Deletion: one surface, two modules'''
+
+[[rows]]
+id = "u27-reports-round-1.R1_delete_review_precondition"
+source = { table = "u27-reports-round-1.json", id = "R1_delete_review_precondition" }
+description = "Stop delete.review declaring the Trash check as a precondition"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '            "library.mounted", "library.identity", "library.trash", "rekordbox.closed",'
+new = '            "library.mounted", "library.identity", "rekordbox.closed",'
+
+[[rows]]
+id = "u27-restore-cli-independent.I_H1_the_landed_verb_keeps_its_marker"
+source = { table = "u27-restore-cli-independent.json", id = "I_H1_the_landed_verb_keeps_its_marker" }
+description = "Put planned_in back on restore.list, which is what would disarm the conformance properties again"
+file = "src/cratekit/cli/registry_state.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_state.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_pending_units.py"]
+old = '        # Landed (U27); three of the nine conformance properties arm against it.'
+new = '''
+        planned_in="U27",
+        # Landed (U27); three of the nine conformance properties arm against it.'''
+
+[[rows]]
+id = "u28-skills-independent.R1_planned_in_restored"
+source = { table = "u28-skills-independent.json", id = "R1_planned_in_restored" }
+description = "the skills.install registry entry gets planned_in back, so the conformance properties skip it again"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py"]
+old = '''
+        output_schema="diagnostic/1",
+        # Landed (U28).'''
+new = '''
+        output_schema="diagnostic/1",
+        planned_in="U28",
+        # Landed (U28).'''
+
+[[rows]]
+id = "u39-author-full.W2_unreachable_gate_restored"
+source = { table = "u39-author-full.json", id = "W2_unreachable_gate_restored" }
+description = "name.apply redeclares the cloud sync decision its work can never raise"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+                prompt="Apply these renames?", digest_source="plan",
+            ),
+        ),'''
+new = '''
+                prompt="Apply these renames?", digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),'''
+
+[[rows]]
+id = "u40-author-full.R3_ungated"
+source = { table = "u40-author-full.json", id = "R3_ungated" }
+description = "Drop the module toggle, so a Module row ships on in the slim profile (R5)"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py"]
+old = '        module_id="repair", argv_builder="retag_argv", long_running=True,'
+new = '        argv_builder="retag_argv", long_running=True,'
+
+[[rows]]
+id = "u40-author-full.R5_row_unclaimed"
+source = { table = "u40-author-full.json", id = "R5_row_unclaimed" }
+description = "Claim no feature row, so row 18 becomes a Module the product owes and no verb cites"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '        feature_rows=(18,),'
+new = '        feature_rows=(),'
+
+[[rows]]
+id = "u40-author-full.R6_row_still_cut"
+source = { table = "u40-author-full.json", id = "R6_row_still_cut" }
+description = "Leave row 18 dispositioned Cut while a verb claims it, which is the coupling across two trees"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '    Feature(18, "genre correction for a tag already too coarse", "module"),'
+new = '    Feature(18, "genre correction for a tag already too coarse", "cut"),'
+
+[[rows]]
+id = "u42-author-round-2.R2_handler_lookup_imports"
+source = { table = "u42-author-round-2.json", id = "R2_handler_lookup_imports" }
+description = "Make by_handler_key import the module, which is what the rewritten guard forbids"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = 'def by_handler_key(key: str) -> Entry:'
+new = '''
+def by_handler_key(key: str) -> Entry:
+    import importlib
+
+    importlib.import_module("cratekit.acquire.cli")'''
+
+[[rows]]
+id = "u42-author.R1_planned_marker_returns"
+source = { table = "u42-author.json", id = "R1_planned_marker_returns" }
+description = "Restore planned_in on acquire.download, which is the state that hid rows 6 and 7"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_acquire_cli.py", "tests/test_cutover_parity.py", "tests/test_cli_contract.py"]
+old = '''
+        destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
+        # Landed (U42).'''
+new = '''
+        destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
+        planned_in="U15",
+        # Landed (U42).'''
+
+[[rows]]
+id = "u43-author-light.R1_marker_restored"
+source = { table = "u43-author-light.json", id = "R1_marker_restored" }
+description = "The planned_in marker is put back on the setbuild entry, which withdraws the verb from every conformance property that only drives landed entries"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        # Landed (U43).'''
+new = '''
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        planned_in="U35",
+        # Landed (U43).'''
+
+[[rows]]
+id = "u44-author.D1_registry_drops_long_running"
+source = { table = "u44-author.json", id = "D1_registry_drops_long_running" }
+description = "Remove long_running from the master entry, which should shrink two derived populations"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = 'argv_builder="master_argv", long_running=True,'
+new = 'argv_builder="master_argv",'
+
+[[rows]]
+id = "u45-round-1.V3_marker_restored"
+source = { table = "u45-round-1.json", id = "V3_marker_restored" }
+description = "Put planned_in back, so the verb reads as unlanded and every conformance property stops arming against it"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        output_schema="job_state/1", doctor_checks=("library.mounted", "binary.rclone"),
+        # Landed (U45).'''
+new = '''
+        output_schema="job_state/1", doctor_checks=("library.mounted", "binary.rclone"),
+        planned_in="U35",
+        # Landed (U45).'''
+
+[[rows]]
+id = "u45-round-1.V5_module_toggle_dropped"
+source = { table = "u45-round-1.json", id = "V5_module_toggle_dropped" }
+description = "Drop the module toggle, so the verb is offered on a slim install that has no backup module"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = 'source_scripts=("backup.sh",), module_id="backup",'
+new = 'source_scripts=("backup.sh",),'
+
+[[rows]]
+id = "u69-b.M20_registry_schema"
+source = { table = "u69-b.json", id = "M20_registry_schema" }
+description = "Declare the verb plan/1 in the registry, which the human renderer does not show"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_intake_missing.py", "tests/test_cli_contract.py"]
+old = '''
+        # the list's path and the download command (R-400).
+        emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",'''
+new = '''
+        # the list's path and the download command (R-400).
+        emits=frozenset({"plan"}), output_schema="plan/1",'''
+
+[[rows]]
+id = "u72.M8_registry_digest_source"
+source = { table = "u72.json", id = "M8_registry_digest_source" }
+description = "The registry gate declares no digest source"
+file = "src/cratekit/cli/registry_later.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_later.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_intake_land.py"]
+old = '''
+                prompt="Move these files into the library and write the intake file?",
+                digest_source="plan",'''
+new = '                prompt="Move these files into the library and write the intake file?",'
+
+[[rows]]
+id = "u91.G1_registry_xml"
+source = { table = "u91.json", id = "G1_registry_xml" }
+description = "registry route.unplaced: declare no write surface, so doctor and conformance 8 no longer see the xml write"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py"]
+old = '        writes=frozenset({"xml"}), taxonomy_terms=("genre_energy",),'
+new = '        taxonomy_terms=("genre_energy",),'
+
+[[rows]]
+id = "u96-b.B1_no_library_check_declared"
+source = { table = "u96-b.json", id = "B1_no_library_check_declared" }
+description = "registry: declare library.mounted on the recovery verb, a check it needs to FAIL"
+file = "src/cratekit/cli/registry_state.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_state.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_restore_cli.py", "tests/test_cli_contract.py"]
+old = '''
+        doctor_checks=("rekordbox.closed",),
+        # U96, a verb'''
+new = '''
+        doctor_checks=("rekordbox.closed", "library.mounted"),
+        # U96, a verb'''

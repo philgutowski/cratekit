@@ -116,3 +116,333 @@ is written or skipped wrongly.
 head, a no answer word for `skipped-no-key`) and the summary key renamed, with
 every reader of each moved in the same change, or a decision records keeping
 them. Ledger only: a wording in a report, no file or row at risk.
+
+---
+
+## R-2025. A machine named by a plain word is caught only in the host forms the scan lists, not a tailnet name, an unlisted suffix or a host typed in a shell prompt
+
+**Found:** at the review of #1025, U957, 2026-11-23.
+
+**The mechanism.** `_host_forms` in `scripts/scan_repo.py` lists the shapes
+in which a detected ordinary word names the machine: `<t>.local`, `.lan`,
+`.localdomain`, `.home.arpa`, `user@<t>`, `//<t>/` or `//<t>:port`, a UNC
+`\\<t>\`, and `<t>:/path` or `<t>:~`. The base matched the bare word anywhere,
+so every other form it used to catch now passes: a tailnet or router suffix
+(`.ts.net`, `.fritz.box`), `.home` and `.internal`, which were tried and
+removed because `Path.home()` and attribute access read as hosts, a default
+shell prompt (`<user>@<t> ~ %` is caught by the `@` form, `<t>:~ <user>$` by
+the scp form, but `[<t> ~]` is not), and a UNC path inside a source literal
+with doubled backslashes.
+
+**Measured cost.** Round one drove thirteen such forms: the base flagged all,
+the first head none; the fix round restored the listed ones. The tree writes
+none of the remaining forms today (grepped), so no producer was driven. The
+other way, the `user@<t>` form reads `someone@somewhere` and `line@hours`
+in two test files as hosts, so a machine named `somewhere` or `hours` is red
+there (round two, through `scan_tree`); a URL host such as `https://host/x`
+is red by design.
+
+**Closes when:** a form that names the machine and not ordinary prose is
+added to `_host_forms` with a test, after driving it over the tree for the
+words the tree writes. Ledger only: maintainer facing.
+
+---
+
+## R-2026. A detected login or home name that is also a common word, such as a given name, passes the scan in prose
+
+**Found:** at the review of #1025, U957, 2026-11-23.
+
+**The mechanism.** `machine_identity_tokens` relaxes every detected token
+whose lower case form is on `scripts/scan_ordinary_words.txt` to the path and
+host shapes, the login and the home directory name as well as the hostname
+and the volumes. SCOWL size 35 carries many given names in lower case as
+common nouns or verbs (mark, frank, grace, rose, amber, heather among the
+thirteen the review probed), so a contributor whose login is one of them is
+caught at `/Users/<name>` and `<name>.local` but no longer in prose such as
+"curated by <Name>".
+
+**Measured cost.** Driven with the login and home patched to a probed given
+name: the base flagged the bare name once, the branch not at all. No real
+producer was driven; it is the price the brief sets on purpose, since the
+same rule is what lets a machine named by a plain word pass.
+
+A login or home name that is both on the list and a stand in segment
+(account, example, library, music, name, somebody, someone, volume) is not
+caught in its own home path either, since a stand in segment does not count
+as naming the machine; round two drove `USER=music` over `/Users/music/...`:
+round one's head reported it, the fix round's does not. The home directory
+class already treats those segments as anonymous, so the cost is marginal,
+the trade for `/Volumes/Music` in the docs.
+
+**Closes when:** the login and home tiers are kept bare unless declared
+otherwise, or the contributor declares the name in `.scan-identity`, which
+the docs already advise. Ledger only: maintainer facing, nothing a DJ pays.
+
+---
+
+## R-2027. A Python attribute named local reads as a host form, so a machine named by a word the code uses as a variable stays red
+
+**Found:** at U957, #1025, 2026-11-23, driving the words the brief's ten files share.
+
+**The mechanism.** The `<t>.local` host form cannot tell `first.local !=
+second.local` or `str(self.local / "config")` in code from a host name in
+prose. A machine named by one of the words the tree writes as a variable
+with a `local` attribute (first, second, other, self, area, among the words
+driven) still fails the scan on those files.
+
+**Measured cost.** Driven with the hostname patched to each word: the files
+`tests/test_intake_land_rehearse.py` and `src/cratekit/core/rehearsal.py`,
+and three mutation records quoting the latter, are red for those words. The
+base was red for them too, bare, so nothing regressed; the brief's goal is
+unmet for a machine named by one of them.
+
+**Closes when:** the `.local` form refuses an attribute shape it can tell
+apart (a following operator, method or path join) without missing a host in
+prose, or the variables are renamed. Ledger only: maintainer facing.
+
+---
+
+## R-2028. a resort or rebuild resume refused because another driver holds the job carries the holder's findings so far as its own steps
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** Each resume drives inside `ReportedDrive.owing()`, which
+adds the after check's sentences, read from the committed item reports, to any
+refusal raised there. `job-driver-held` is raised inside it, before this run
+claims anything, so the refusal names what the other driver's finished trees
+left and did not compare, counted so far while it keeps going. That is
+against the rule `test_a_refusal_raised_before_the_drive_carries_no_leftover_step`
+states for the resort's calibration refusal (a run that drove nothing answers
+for no tree). The resort did this on the base; the rebuild does it from
+R-2020. `rebuilt` also turns `DriverHeld` into a plain `CratekitError`, keeping
+its reason and exit code; no reader in the process tells them apart for these
+verbs.
+
+**Measured cost.** Driven with the driver lock held in process: exit 20,
+`job-driver-held`, with the leftover and the not compared sentences of the one
+committed tree as steps. True of that tree, and partial. Not driven with two
+processes.
+
+**Closes when:** `owing()` adds the steps only when this run claimed an item,
+or the driver held refusal is raised before it. Ledger only.
+
+---
+
+## R-2029. a resort job an older build queued is told at its gate that the drive names the playlists not compared, and a drive over an older build's item reports names none
+
+**Found:** at the review of #1036, R-2020, round two, 2026-11-24.
+
+**The mechanism.** `routing_cli.UNRECORDED_UNREAD`, the gate's line over
+facts frozen before R-2020, says "the drive names any it finds". A job the
+older build already finished, or that this build finished, has no drive left,
+and `--job` answers `ok succeeded` with no warning. And `rebuild.after_messages`
+reads an item report with no `unidentified` key, which an older build's resort
+worker wrote, as nothing unread, so a job left open with one tree done by the
+older build names no unread playlist for that tree on either exit.
+
+**Measured cost.** Driven: the base queued a job, this branch drove it (named
+the playlist), and a second `--job` showed the gate's promise over a job no
+drive was left for. A job the base itself finished was not produced (its
+worker refused on volume identity in the harness). The second shape was
+driven only with a stand in report; its producer needs two routed trees or a
+crash window, and the shipped taxonomy derives one tree. The gate's line
+already says the count may leave some out, so neither is a clean report.
+
+**Closes when:** the line says a drive still to run names them, and a report
+without the key is named as one that did not record them. Ledger only; it
+closes by itself once no job queued before R-2020 is open.
+
+---
+
+## R-2030. the favorites step skipped warning reads every item the drive did not find done, and counting a done one too kills no test
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `rebuild.ReportedDrive.of` reads `driven`, the trees this
+run drives, as every item not yet done, and only the favorites step skipped
+warning (U132) reads it. The round one review changed the filter to keep every
+item, done or not, and no test died; the base's two resumes read the same
+filter and had the same gap.
+
+**Measured cost.** None measured: a job continued with a tree already done and
+a taxonomy whose favorites class is missing would name that done tree's skipped
+step again, which is true of the tree and only says it twice. Not driven.
+
+**Closes when:** a resume over a job with one tree done and one pending, under a
+taxonomy with no favorites class, asserts the warning names only the pending
+tree. Ledger only.
+
+---
+
+## R-2031. the rebuild and resort workers build and stage their item report after the write landed, so a failure there fails an item whose write is done
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `cli/rebuild.handle` and `routing_cli.handle_resort` call
+`rebuild.after_report`, which loads the taxonomy again, and stage the report
+under the queue store, after `rebuild_governed_tree` committed the membership
+and cleared the flag. A raise there (an unreadable taxonomy, a queue store
+that cannot be written) fails the item over a write that landed, and a resume
+drives the tree again, which adds nothing the second time. The resort had this
+shape on the base; the rebuild has it from R-2020.
+
+**Measured cost.** Not driven: the producer, a queue store that refuses a write
+between the commit and the staging, was not built.
+
+**Closes when:** the report's inputs are read before the write, or a failure
+staging it is said rather than failing the item. Ledger only.
+
+---
+
+## R-2032. the playlists a resort or rebuild did not compare are named without their tree, so two trees' same named playlists read as one name twice
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `rebuild.unidentified_message` names each playlist as
+`FOLDER/PLAYLIST`, the way `crate converge` names it inside one tree's line.
+The resort's gate facts and `rebuild.after_messages` gather every tree's
+playlists into one list, so over two routed trees holding a playlist of the
+same folder and name the sentence says that name twice, "under the tree", and
+a person cannot tell which tree each is under.
+
+**Measured cost.** Driven only with a stand in: a second process continuing a
+rebuild over the same tree twice named `Loud! Room/Unsorted` twice. A library
+whose taxonomy derives two routing trees, each with such a playlist, was not
+driven; the shipped taxonomy derives one.
+
+**Closes when:** each entry carries its tree where more than one tree is named,
+or the day a taxonomy derives two trees. Ledger only.
+
+---
+
+## R-2033. A mutation row on a part of the verb table derives the full suite as its subset
+
+**Found:** at the review of #977, U328, round one, 2026-11-23.
+
+**The mechanism.** A row with no `tests` of its own is given the test files
+that import the mutated module (`mutate_table.derive_subset`). 91 test files
+import `cratekit.cli.registry`; no test imports a part, since a verb is read
+through the registry, so a row on `cli/registry_*.py` falls back to the full
+suite.
+
+**Measured cost.** Driven by the reviewer through `derive_subset`:
+`cli/registry.py` gives 91 test files and each of the five parts the full
+suite. The fallback is the safe direction, so no kill is missed; the cost is
+a full run, about seven minutes on the cloud container, for each row a later
+card writes on a verb's entry without naming its tests. Not timed on a real
+row. The 35 replayed rows carry the tests their recorded kills name.
+
+**Closes when:** `derive_subset` reads a part of a split module as its
+module, the registry's parts by `cli/registry.py`'s own imports, or the rule
+for a row on a part is written where rows are written. Ledger only.
+
+---
+
+## R-2034. No battery check holds the 1,500 line bar on a source file, and two files sit within eight lines of passing it
+
+**Found:** at the build of #977, U328, 2026-11-23.
+
+**The mechanism.** Point 2 of #847, U290, asks that no source file under
+`src/cratekit` outside `_vendor` pass 1,500 lines. The measure,
+`scripts/refactor_measure.py lines --files`, prints the files over it, and
+nothing in the battery runs that reading: `cli/registry.py` stood at 2,459
+lines and then 2,544 under a green suite until an audit measured it. U328
+split the registry and added a test that holds the registry and its parts to
+the bar (`tests/test_cli_contract.py`), and holds no other file, since a check
+over every source file would redden cards building beside it.
+
+**Measured cost.** None to a person using a verb. On the head U328 merged,
+`core/review.py` is 1,495 lines and `cli/setup.py` 1,493, so six more lines
+on the first or eight on the second pass the bar with the suite green, and
+the next audit of #847 finds point 2 short again. The next four are `intake/native.py` 1,438,
+`modules/tools/backup.py` 1,429, `core/cause.py` 1,419 and
+`label/sync_cli.py` 1,409.
+
+**Closes when:** a battery test fails on any file under `src/cratekit`
+outside `_vendor` over `LARGE_FILE`, landed when no card that grows one of
+the two files is building, or the audit card of #847 decides the bar is read
+at audits only. Ledger only: a maintainer facing count.
+
+---
+
+## R-2035. The two text readers of the verb table pool tuple and constant names across its files, and the board's reads every registry file on disk
+
+**Found:** at the review of #977, U328, round one, 2026-11-23.
+
+**The mechanism.** `scripts/refactor_measure.py` `verbs_from` and
+`scripts/board.py` `planned_units` read the verb table as text, the registry
+and its `registry_*.py` parts together since U328. Both keep one mapping of
+names for all the files, the last file read winning, where Python binds a
+name per module. And `planned_units` reads every `registry*.py` under
+`src/cratekit/cli` whether `cli/registry.py` assembles it or not.
+
+**Measured cost.** None on the tree: no part binds a string constant, each
+part holds one tuple under its own name, and a test holds each reading to the
+live registry. Driven by the reviewer on fixtures: a constant bound in two
+parts gave `{2: ['m.a', 'm.b']}` where Python gives units 1 and 2; a second
+`ENTRIES` tuple in a `registry_tools.py` replaced the table with no refusal;
+a tuple that stars itself ends in `RecursionError` where the base raised
+`ValueError` (Python cannot import that source either); a `registry_old.py`
+nobody imports, holding a marker, was read as owing a unit; and a half
+written `registry_wip.py` ended `planned_units` in an uncaught `SyntaxError`,
+as a half written `registry.py` did at the base. The producer of each is a
+file nobody has written.
+
+One file over, and the same at the base: `planned_units` has no refusal for
+a tree with no `cli/registry.py` and returns no unit owed, so `board.py
+closing` would pass a trailer over a register it could not read. The live
+table holds no `planned_in` marker today, so the test that holds that reader
+to the live registry compares empty with empty; U328's fixture test is what
+reads a marker.
+
+**Closes when:** both readers resolve a name in the file that uses it and
+refuse a name two files bind, and `planned_units` reads the parts
+`registry.py` stars and no other file and refuses a tree with no registry.
+`refactor_measure.py` has three lines left under its 1,500 and the seventeen
+scripts of #979's bar thirteen under 7,374 (`board.py` 26 under its own
+1,500), so it waits on room there. Ledger only.
+
+---
+
+## R-2036. The seventeen scripts of U330 passed 7,374 lines on main, by the privacy scan's host forms
+
+**Found:** at the last merge of main into #977, U328, 2026-11-24.
+
+**The mechanism.** Point 6 of #847, U290, holds `scripts/` to the standard
+U330 (#979) set: the seventeen scripts its brief names total at most 7,374
+lines. U330 left them at 7,360. U957 (#1025) landed `scripts/scan_repo.py`'s
+host and path forms for an ordinary word, 164 lines, and nothing in the
+battery holds the total, so it passed the bar under a green suite.
+
+**Measured cost.** `wc -l` over the seventeen files the brief of #979 lists:
+7,327 at `e0573a66` and 7,443 at `c5fb1015`, both on 2026-11-24, 69 over.
+U328 adds 1, in `scripts/board.py`, so its merged head reads 7,444. No file
+in `scripts/` is over 1,500 lines. None to a person using a verb.
+
+**Closes when:** the audit card of #847, #987 (U338), measures point 6 again
+and files a further card for the total, or Phillip moves the bar for the
+scan's new forms. Ledger only: a maintainer facing count.
+
+---
+
+## R-2037. The source total passed 193,000 lines on main while the further cards of U290 built, by feature cards
+
+**Found:** at the build of #977, U328, 2026-11-23.
+
+**The mechanism.** Point 2 of #847, U290, asks that `src/cratekit` outside
+`_vendor` end at or under 193,000 lines. The final audit (#872, U315) read
+188,904 on `d289f61` and held that half of the point. Feature cards kept
+landing while the further cards built, and nothing in the battery holds the
+total, so it grew past the bar under a green suite.
+
+**Measured cost.** `scripts/refactor_measure.py lines`, and `wc` over the
+tracked files for the earlier commits: 188,904 at `d289f61`, 190,196 at
+`392a2d1`, 191,607 at `4d1ff8b9`, 191,899 at `c84dc4ac`, 192,016 at
+`99e0cbc0` and 193,136 at `2e8681d1`, all on 2026-11-23, then 193,253 at
+`e0573a66` and 193,382 at `c5fb1015`, the base U328 merged on. U328's
+split of the verb table adds 107 more, the five parts' heads and the
+assembly, so the head it merged reads 193,489, 489 over. None to a person using a verb.
+
+**Closes when:** the audit card of #847, #987 (U338), measures point 2 again
+and files a further card for the total, or Phillip moves the bar for the
+features added since. Ledger only: a maintainer facing count.

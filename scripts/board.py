@@ -257,13 +257,14 @@ def _unit(text) -> int | None:
 
 
 def planned_units() -> dict[int, list[str]]:
-    """Units the verb registry's `planned_in` markers still say owe a module, by ast."""
-    source = ROOT / "src" / "cratekit" / "cli" / "registry.py"
-    if not source.exists():
-        return {}
+    """Units the verb registry's `planned_in` markers still say owe a module, by ast.
+
+    The table is `cli/registry.py` and the `registry_*.py` parts beside it (U328).
+    """
+    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry*.py"))
+    nodes = [node for part in parts for node in ast.walk(ast.parse(part.read_text()))]
     constants: dict[str, str] = {}
-    tree = ast.parse(source.read_text())
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
             for target in node.targets:
                 if isinstance(target, ast.Name) and isinstance(node.value.value, str):
@@ -276,7 +277,7 @@ def planned_units() -> dict[int, list[str]]:
         return value.value if isinstance(getattr(value, "value", None), str) else None
 
     owed: dict[int, set[str]] = {}
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != "Entry":
             continue
         fields = {kw.arg: kw.value for kw in node.keywords if kw.arg}
@@ -1112,7 +1113,7 @@ def cmd_audit(args) -> int:
         print("the unit is not finished, or clear the register entry because it is.")
         print("TWO REGISTERS CAN OWE, so read the module named above to know which")
         print("file to open: a dotted module in tests/_pending.py PENDING, or a")
-        print("planned_in marker on a src/cratekit/cli/registry.py entry. Naming")
+        print("planned_in marker on a src/cratekit/cli/registry*.py entry. Naming")
         print("only the first sent people to a file the entry was never in.")
         print("Overwriting one from the other would let the wrong one win.")
 

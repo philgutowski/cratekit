@@ -846,7 +846,7 @@ def test_the_script_reads_these_lists_from_this_file():
 
 def test_the_script_reads_the_registry_as_the_package_declares_it():
     """The script cannot import the registry, so its reading of the text is held to it."""
-    read = measure.verbs_from((REPO_ROOT / measure.REGISTRY).read_text(encoding="utf-8"))
+    read = measure._load(REPO_ROOT)[3]
     live = [
         measure.Verb(entry.name, entry.module, entry.builder, entry.module_id)
         for entry in registry.landed_entries()
@@ -874,6 +874,31 @@ def test_a_planned_entry_is_not_a_landed_verb():
     assert measure.verbs_from(source) == [
         measure.Verb("a", "cratekit.a.cli", "build", "labels")
     ]
+
+
+def test_a_starred_name_is_followed_into_the_part_that_holds_its_tuple():
+    """The table is split over parts (U328): a part's rows and a constant of another source."""
+    registry = (
+        'UNIT = "U99"\n'
+        'ENTRIES = (Entry(name="a", module="cratekit.a.cli", builder="build"), *MORE)\n'
+    )
+    part = (
+        "MORE: tuple[Entry, ...] = (\n"
+        '    Entry(name="b", module="cratekit.b.cli", builder="build", module_id="labels"),\n'
+        '    Entry(name="c", module="cratekit.c.cli", builder="build", planned_in=UNIT),\n'
+        ")\n"
+    )
+    assert measure.verbs_from(registry, part) == [
+        measure.Verb("a", "cratekit.a.cli", "build", None),
+        measure.Verb("b", "cratekit.b.cli", "build", "labels"),
+    ]
+    with pytest.raises(ValueError, match="holds no MORE tuple"):
+        measure.verbs_from(registry)
+    for unread in ((), (part,)):  # a tree with no registry is refused, never read as no verbs
+        with pytest.raises(ValueError, match="holds no ENTRIES tuple"):
+            measure.verbs_from(*unread)
+    with pytest.raises(ValueError, match="not an Entry"):
+        measure.verbs_from("ENTRIES = (*more.ROWS,)\n", part)
 
 
 # ── The real package ─────────────────────────────────────────────────────────
@@ -944,6 +969,12 @@ def test_no_package_crosses_a_seam_beyond_its_allowance():
     # A reading that read nothing would pass, so the reading is checked first.
     assert len(sources) > 100 and sum(map(len, tree.uses.values())) > 1_000
     assert all(verb.module in tree.modules for verb in verbs), "a verb names no module"
+
+    # U328: a part of the verb table is imported by the registry alone, so a verb is read
+    # through cli.registry, where the suite patches the table.
+    part = f"{registry.__name__}_"
+    reach = {use.path for uses in tree.uses.values() for use in uses if use.target.startswith(part)}
+    assert reach == {measure.REGISTRY}, f"a part of the verb table is imported past it: {reach}"
 
     allowed = measure.read_allowances(REPO_ROOT, measure.IMPORT_ALLOWANCES)
     excess = measure.over_allowance(measure.import_findings(tree, rules, verbs), allowed)

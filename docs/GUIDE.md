@@ -1356,7 +1356,8 @@ crate inbox rotate
 - `route inbox` and `route unplaced` take `--export` for a tree still on the
   bridge and write `<name>_routed.xml` or `<name>_placed.xml` beside it.
 - `route resort` shows every addition at `route.resort.apply` and files only
-  the routing tree; the old membership stays and is named. `crate adopt move`
+  the routing tree; the old membership stays and is named, and so does every
+  playlist its check could not compare. `crate adopt move`
   moves a track from the sub it holds to the one its file names, adding
   before removing. After `tag set` it also takes each row that run gave a new
   genre out of the genre folder the tree filed it in under its old genre, and
@@ -1371,7 +1372,8 @@ crate inbox rotate
   that folder is asked, and only for rows `tag set` changed, so a track you
   put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
-  tree; naming INBOX asks `rebuild.accept`.
+  tree; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
+  left behind and every playlist it could not compare, as `route resort` does.
 - Audits and reports are read only. `audit duplicates` never deletes and
   remembers intentional alternates. `report genres` names genres with 50 or
   more tracks and no top level folder.
@@ -1471,8 +1473,8 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-entries, at most five `not-compared` ones first), and `route resort` lists it
-as left behind. Under a folder
+entries, at most five `not-compared` ones first), and `route resort` and
+`rebuild` list it as left behind. Under a folder
 renamed in rekordbox it is listed the same way when a write recorded that
 playlist, or recorded the folder and nothing else is filed into that band:
 `adopt apply`, `rebuild` and `route resort` each record the playlists they
@@ -1488,7 +1490,11 @@ tracks reads the same way. Look in it in rekordbox for a track its genre no
 longer files, or give the folder back its genre's name where no other folder
 bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
 of that name again) and it is compared. It is not a difference, so a
-`rebuild` still clears a tree's flag over it. A Candy playlist, which a person
+`rebuild` still clears a tree's flag over it. So no left behind count includes
+a track in one: `route resort`'s gate names every such playlist under `playlists
+not compared` beside its `left behind` count, and a driven `route resort` or
+`rebuild` carries a `playlist-not-compared` warning naming each one, in the
+words `converge` uses. A Candy playlist, which a person
 fills by hand, is never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).

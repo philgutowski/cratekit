@@ -1029,17 +1029,26 @@ def rules_from(test_source: str) -> Rules:
     )
 
 
-def verbs_from(registry_source: str) -> list[Verb]:
+def verbs_from(*sources: str) -> list[Verb]:
     """Every landed verb, read from the registry's ``ENTRIES`` as written.
 
     The registry cannot be imported with the standard library alone, so its
-    table is read as text: each ``Entry(...)`` call's keywords, a bare name
-    resolved through the module's own string constants. An argument this
+    table is read as text, the registry's and each part's (U328): each
+    ``Entry(...)`` call's keywords, a bare name resolved through their string
+    constants, a starred name followed into the tuple of that name. What this
     cannot read raises, and ``tests/test_import_rules.py`` holds the reading
     equal to the live registry.
     """
-    tree = ast.parse(registry_source)
-    constants = _literal_assignments(registry_source)
+    constants: dict[str, object] = {}
+    tuples: dict[str, ast.Tuple] = {}
+    for source in sources:
+        constants.update(_literal_assignments(source))
+        for node in ast.parse(source).body:
+            target = node.target if isinstance(node, ast.AnnAssign) else None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+            if isinstance(target, ast.Name) and isinstance(node.value, ast.Tuple):
+                tuples[target.id] = node.value
 
     def value(given: Mapping[str, ast.expr], field: str, verb: str) -> object:
         node = given.get(field)
@@ -1050,17 +1059,15 @@ def verbs_from(registry_source: str) -> list[Verb]:
         state = "does not give" if node is None else "gives"
         raise ValueError(f"the registry entry {verb!r} {state} {field} in a form this can read")
 
-    entries: ast.expr | None = None
-    for node in tree.body:
-        target = node.target if isinstance(node, ast.AnnAssign) else None
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-        if isinstance(target, ast.Name) and target.id == "ENTRIES":
-            entries = node.value
-    if not isinstance(entries, ast.Tuple):
-        raise ValueError("the registry holds no ENTRIES tuple")
+    def members(name: str) -> Iterable[ast.expr]:
+        if name not in tuples:
+            raise ValueError(f"the registry holds no {name} tuple")
+        for member in tuples[name].elts:
+            starred = isinstance(member, ast.Starred) and isinstance(member.value, ast.Name)
+            yield from members(member.value.id) if starred else (member,)
+
     out: list[Verb] = []
-    for call in entries.elts:
+    for call in members("ENTRIES"):
         if not isinstance(call, ast.Call) or call.args:
             raise ValueError("an ENTRIES member is not an Entry(...) call of keywords")
         given = {keyword_.arg: keyword_.value for keyword_ in call.keywords}
@@ -1241,7 +1248,8 @@ def duplicates_report(
 def _load(root: Path) -> tuple[dict[str, str], Tree, Rules, list[Verb]]:
     sources = read_sources(root, [SOURCE])
     rules = rules_from((root / IMPORT_RULES_TEST).read_text(encoding="utf-8"))
-    verbs = verbs_from((root / REGISTRY).read_text(encoding="utf-8"))
+    table = REGISTRY.removesuffix(".py")  # the registry and its parts, registry_*.py
+    verbs = verbs_from(*(text for path, text in sources.items() if path.startswith(table)))
     return sources, Tree(sources), rules, verbs
 
 

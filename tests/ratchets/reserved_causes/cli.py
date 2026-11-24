@@ -113,36 +113,36 @@ KEBAB_LITERALS = {
         'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
         'rebuild-actor-required',
+        'rebuild-artifacts',  # 2026-11-24, R-2020
+        'rebuild-staging',  # 2026-11-24, R-2020
         'rebuild-tree-not-native',
         'tree-not-derived',  # 2026-11-05, U219
     ],
-    'cli/registry.py': [
+    # 2026-11-23, U328: the verb table split into five parts, and each source script
+    # literal went with its row; 'dj-inbox-rotation' and 'dj-sync' are named by two rows each.
+    'cli/registry_later.py': ['dj-inbox-rotation', 'dj-sync'],
+    'cli/registry_modules.py': ['dj-set-builder'],
+    'cli/registry_pipeline.py': [
         'dj-analyze-validate',
         'dj-audit-genres',
         'dj-energy-calibrate',
-        'dj-favorites',
         'dj-inbox-rotation',
-        'dj-label',
-        'dj-label-batch',
-        'dj-label-library',
         'dj-pad-camelot',
-        'dj-path-repair',
         'dj-pipeline',
         'dj-resort-energy',
         'dj-resort-genre',
         'dj-scan-playlists',
-        'dj-set-builder',
         'dj-setid',
         'dj-sort-inbox',
         'dj-sort-unplaced',
-        'dj-sync',
         'dj-tag-folder',
-        'dj-tidal-login',
         'dj-vocal-calibrate',
         'dj-vocal-mytags',
         'dj-vocal-restamp',
         'dj-vox-backfill',
     ],
+    'cli/registry_state.py': ['dj-path-repair', 'dj-tidal-login'],
+    'cli/registry_sync.py': ['dj-favorites', 'dj-label', 'dj-label-batch', 'dj-label-library', 'dj-sync'],
     'cli/render.py': [
         # 2026-11-06, R-1334: a gate's screen, an open gate's or a stale answer's.
         'decision-required',

@@ -152,9 +152,9 @@ def test_the_converge_verb_never_says_matching_over_an_unrecorded_renamed_folder
     (check,) = _rebuild_suite._converge()["data"]["checks"]
     assert check["status"] == converge_cli.NOT_COMPARED, check
     assert f"not-compared:{_under(RENAMED)}" in check["detail"]
-    assert check["detail"].endswith(converge_cli.UNIDENTIFIED), check
+    assert check["detail"].endswith(rebuild.UNIDENTIFIED), check
     # The caveat a write that made the folder again needs (round one).
-    assert "where no other folder bears that name" in converge_cli.UNIDENTIFIED
+    assert "where no other folder bears that name" in rebuild.UNIDENTIFIED
     # The dimension the run left out is still said, as the matching line says it.
     assert "; not compared: vocal;" in check["detail"], check
 

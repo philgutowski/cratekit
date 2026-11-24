@@ -76,4 +76,8 @@ the resume reads them back on both exits.
 So, before promising a surface a value from a worker: if the value does not
 depend on the library, ask the engine, as R-316 did. If it does, return it as
 the item's report. Do not re-run the comparison, and do not hold it in memory.
-The rebuild worker still returns None, R-635, and R-443 closes the day it stops.
+The rebuild worker returned None until R-2020 (2026-11-24), which gave it the
+resort's report (`rebuild.after_report`: what it left and could not compare)
+and both resumes one drive that reads the reports back on both exits,
+`rebuild.drive_reported`. That closed R-635. R-443's vocal gap still comes
+from `governed_not_compared`, since the report does not carry `not_compared`.
