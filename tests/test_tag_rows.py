@@ -8,6 +8,7 @@ coarse word is the shipped taxonomy's, the lookup rows this file's. D1 applies.
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import os
 import shutil
@@ -41,6 +42,7 @@ from cratekit.tagging import retag, rows, rows_cli
 from cratekit.write import metadata, metadata_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive, drive_human
+from tests.test_adopt_move import _sql
 from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
@@ -119,11 +121,8 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
@@ -143,13 +142,8 @@ def machine(tmp_path, monkeypatch) -> config.Config:
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    cfg = config.from_dict(
-        valid_data(
-            root,
-            profile={"name": "full"},
-            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
-        )
-    )
+    pinned = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    cfg = config.from_dict(valid_data(root, profile={"name": "full"}, rekordbox=pinned))
     config.save(cfg)
     config.reset_cache()
     monkeypatch.setattr(
@@ -163,6 +157,49 @@ def machine(tmp_path, monkeypatch) -> config.Config:
 def acknowledged(machine) -> config.Config:
     session.record_acknowledgment(machine, terminal=lambda: True)
     return machine
+
+
+@contextlib.contextmanager
+def opened(cfg: config.Config, path=None, **kwargs):
+    """The library's database opened as the verbs open it, closed however the block ends."""
+    path = cfg.library.db_path if path is None else path
+    db = rb_writer.open_db(path, unlock=False, cfg=cfg, **kwargs)
+    try:
+        yield db
+    finally:
+        rb_writer.close_db(db)
+
+
+def decided(verb: list[str], gate: str = GATE, answer: str = "apply") -> tuple[str, dict]:
+    """The verb refused at its explicit gate and ``answer`` recorded: the run and the refusal."""
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == gate and detail["explicit"] is True
+    run_id = refused["run_id"]
+    code, envelope = drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"])
+    assert code == int(ExitCode.OK), envelope
+    return run_id, refused
+
+
+def acts(verb: list[str], gate: str = GATE, answer: str = "apply") -> tuple[int, dict, dict]:
+    """R34's two acts against the explicit gate, then the acting drive."""
+    run_id, refused = decided(verb, gate, answer)
+    code, acted = drive(["--run", run_id, *verb])
+    return code, acted, refused
+
+
+def moved_columns(before: dict[str, dict], after: dict[str, dict]) -> dict[str, set[str]]:
+    """Every row's columns that moved across a write, bookkeeping aside; rows with none left out."""
+    moved = {
+        content_id: {
+            column
+            for column, value in after[content_id].items()
+            if value != was[column] and column not in rb_writer.BOOKKEEPING_COLUMNS
+        }
+        for content_id, was in before.items()
+    }
+    return {content_id: columns for content_id, columns in moved.items() if columns}
 
 
 def _music(cfg: config.Config) -> Path:
@@ -204,19 +241,12 @@ def build(cfg: config.Config, silence: Path, *tracks: Track) -> Path:
             recorded = track.recorded
             if recorded is None:
                 recorded = locations.location_url(_file(cfg, track.content_id))
-            db_session.add(
-                _row(
-                    tables.DjmdContent,
-                    ID=track.content_id,
-                    Title=f"track {track.content_id}",
-                    GenreID=ids.get(track.row),
-                    BPM=12400,
-                    Rating=3,
-                    Commnt="a comment a person typed",
-                    rb_local_deleted=1 if track.deleted else 0,
-                    FolderPath=recorded,
-                )
-            )
+            db_session.add(_row(
+                tables.DjmdContent, ID=track.content_id, Title=f"track {track.content_id}",
+                GenreID=ids.get(track.row), BPM=12400, Rating=3,
+                Commnt="a comment a person typed", rb_local_deleted=1 if track.deleted else 0,
+                FolderPath=recorded,
+            ))
         db_session.commit()
     engine.dispose()
     collection.reset_cache()
@@ -263,11 +293,8 @@ def _files(cfg: config.Config) -> dict[str, str]:
 
 
 def _planned(cfg: config.Config, leave: tuple[str, ...] = (), **kwargs) -> rows.RowsPlan:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         return rows.plan_rows(cfg, db, active_taxonomy.load(cfg), leave=leave, **kwargs)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _counts(plan: rows.RowsPlan, **expected: int) -> None:
@@ -277,17 +304,8 @@ def _counts(plan: rows.RowsPlan, **expected: int) -> None:
     assert dict(plan.counts) == wanted
 
 
-def _two_acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
-    """R34's two acts against the explicit gate, then the acting drive."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *verb])
-    return code, acted, refused
+def _genres(cfg: config.Config, *content_ids: str) -> list[str]:
+    return [_genre_of(cfg, content_id) for content_id in content_ids]
 
 
 # 1. The plan: one outcome per row
@@ -303,24 +321,41 @@ def test_a_stale_row_is_planned_with_the_rows_word_and_the_files(machine, silenc
     _counts(plan, write=1, no_path=BASELINE)
 
 
-def test_a_blank_row_with_a_file_genre_is_planned(machine, silence):
-    build(machine, silence, Track("10", "", MELODIC))
+@pytest.mark.parametrize(
+    "file",
+    [
+        pytest.param(MELODIC, id="a-file-genre"),
+        pytest.param(COARSE, id="a-too-coarse-file"),
+    ],
+)
+def test_a_blank_row_with_a_file_genre_is_planned(machine, silence, file):
+    """A too coarse word too: the row loses nothing and now agrees with its file."""
+    build(machine, silence, Track("10", "", file))
     (item,) = _planned(machine).items
-    assert (item.row, item.file, item.action) == ("", MELODIC, rows.WRITE)
+    assert (item.row, item.file, item.action) == ("", file, rows.WRITE)
 
 
-def test_a_row_with_a_genre_and_a_blank_file_is_left_alone_and_counted(machine, silence):
-    build(machine, silence, Track("10", DEEP, ""))
+@pytest.mark.parametrize(
+    ("track", "counted"),
+    [
+        pytest.param(Track("10", DEEP, ""), {"file_blank": 1}, id="a-blank-file"),
+        pytest.param(Track("10", DEEP, DEEP), {"agree": 1}, id="agreeing"),
+        pytest.param(Track("10", DEEP, ABSENT), {"file_missing": 1}, id="a-file-gone"),
+        pytest.param(Track("10", DEEP, UNREADABLE), {"file_unreadable": 1}, id="unreadable"),
+        pytest.param(Track("10", OLD, MELODIC, deleted=True), {}, id="a-removed-row"),
+        pytest.param(
+            Track("10", DEEP, ABSENT, recorded="file://elsewhere/Music/track.flac"),
+            {"no_path": 1 + BASELINE},
+            id="another-host",
+        ),
+    ],
+)
+def test_a_row_and_file_that_agree_are_not_in_the_plan(machine, silence, track, counted):
+    """A row the plan leaves is no item, counted once by its outcome; a removed row not at all."""
+    build(machine, silence, track)
     plan = _planned(machine)
     assert plan.items == ()
-    _counts(plan, file_blank=1, no_path=BASELINE)
-
-
-def test_a_row_and_file_that_agree_are_not_in_the_plan(machine, silence):
-    build(machine, silence, Track("10", DEEP, DEEP))
-    plan = _planned(machine)
-    assert plan.items == ()
-    _counts(plan, agree=1, no_path=BASELINE)
+    _counts(plan, **{"no_path": BASELINE, **counted})
 
 
 def test_a_too_coarse_file_does_not_replace_a_specific_row(machine, silence):
@@ -333,13 +368,6 @@ def test_a_too_coarse_file_does_not_replace_a_specific_row(machine, silence):
     _counts(plan, file_too_coarse=1, no_path=BASELINE)
 
 
-def test_a_too_coarse_file_is_written_onto_a_blank_row(machine, silence):
-    """The row loses nothing and now agrees with its file."""
-    build(machine, silence, Track("10", "", COARSE))
-    (item,) = _planned(machine).items
-    assert (item.action, item.file) == (rows.WRITE, COARSE)
-
-
 def test_a_file_word_with_no_lookup_row_is_left_alone_and_never_minted(machine, silence):
     build(machine, silence, Track("10", DEEP, UNSEEN))
     plan = _planned(machine)
@@ -347,20 +375,6 @@ def test_a_file_word_with_no_lookup_row_is_left_alone_and_never_minted(machine, 
     assert (item.action, item.reason) == (rows.LEAVE, rows.GENRE_UNKNOWN)
     _counts(plan, genre_unknown=1, no_path=BASELINE)
     assert _query(machine, "SELECT COUNT(*) FROM djmdGenre WHERE Name = ?", UNSEEN) == [(0,)]
-
-
-def test_a_file_that_is_gone_is_counted_missing(machine, silence):
-    build(machine, silence, Track("10", DEEP, ABSENT))
-    plan = _planned(machine)
-    assert plan.items == ()
-    _counts(plan, file_missing=1, no_path=BASELINE)
-
-
-def test_a_file_no_tag_library_opens_is_unreadable_and_not_blank(machine, silence):
-    build(machine, silence, Track("10", DEEP, UNREADABLE))
-    plan = _planned(machine)
-    assert plan.items == ()
-    _counts(plan, file_unreadable=1, no_path=BASELINE)
 
 
 def test_a_row_recorded_under_no_prefix_rule_is_counted_unmapped(machine, silence, tmp_path):
@@ -371,48 +385,22 @@ def test_a_row_recorded_under_no_prefix_rule_is_counted_unmapped(machine, silenc
     _counts(plan, path_unmapped=1, no_path=BASELINE)
 
 
-def test_a_row_naming_another_host_is_counted_as_having_no_path(machine, silence):
-    build(machine, silence, Track("10", DEEP, ABSENT, recorded="file://elsewhere/Music/track.flac"))
-    _counts(_planned(machine), no_path=1 + BASELINE)
-
-
-def test_a_removed_row_is_neither_planned_nor_counted(machine, silence):
-    build(machine, silence, Track("10", OLD, MELODIC, deleted=True))
-    plan = _planned(machine)
-    assert plan.items == ()
-    _counts(plan, no_path=BASELINE)
-
-
 def test_every_live_row_is_counted_exactly_once_and_items_are_in_identifier_order(
     machine, silence
 ):
     build(
-        machine,
-        silence,
-        Track("31", OLD, PROGRESSIVE),
-        Track("30", OLD, MELODIC),
-        Track("32", "", MELODIC),
-        Track("33", DEEP, DEEP),
-        Track("34", DEEP, COARSE),
-        Track("35", DEEP, UNSEEN),
-        Track("36", DEEP, ""),
-        Track("37", DEEP, ABSENT),
-        Track("38", DEEP, UNREADABLE),
+        machine, silence,
+        Track("31", OLD, PROGRESSIVE), Track("30", OLD, MELODIC), Track("32", "", MELODIC),
+        Track("33", DEEP, DEEP), Track("34", DEEP, COARSE), Track("35", DEEP, UNSEEN),
+        Track("36", DEEP, ""), Track("37", DEEP, ABSENT), Track("38", DEEP, UNREADABLE),
         Track("39", OLD, MELODIC, deleted=True),
     )
     plan = _planned(machine)
     assert [item.content_id for item in plan.items] == ["30", "31", "32", "34", "35"]
     assert [item.content_id for item in plan.writes] == ["30", "31", "32"]
     _counts(
-        plan,
-        write=3,
-        agree=1,
-        file_too_coarse=1,
-        genre_unknown=1,
-        file_blank=1,
-        file_missing=1,
-        file_unreadable=1,
-        no_path=BASELINE,
+        plan, write=3, agree=1, file_too_coarse=1, genre_unknown=1, file_blank=1, file_missing=1,
+        file_unreadable=1, no_path=BASELINE,
     )
     assert plan.rows == 9 + BASELINE
     assert plan.unread == 2 + BASELINE
@@ -420,13 +408,8 @@ def test_every_live_row_is_counted_exactly_once_and_items_are_in_identifier_orde
 
 def test_the_pairs_are_the_writes_counted_largest_first(machine, silence):
     build(
-        machine,
-        silence,
-        Track("30", OLD, MELODIC),
-        Track("31", OLD, MELODIC),
-        Track("32", OLD, PROGRESSIVE),
-        Track("33", "", MELODIC),
-        Track("34", DEEP, COARSE),
+        machine, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC),
+        Track("32", OLD, PROGRESSIVE), Track("33", "", MELODIC), Track("34", DEEP, COARSE),
     )
     plan = _planned(machine)
     assert plan.pairs() == [
@@ -454,33 +437,35 @@ def test_a_file_whose_bytes_are_not_here_is_counted_and_never_opened(
         return adopt_scan.probe_readability(path)
 
     real_read = tags.read_tags_checked
-    opened: list[Path] = []
+    opened_paths: list[Path] = []
 
     def reading(path, fields):
-        opened.append(path)
+        opened_paths.append(path)
         return real_read(path, fields)
 
     monkeypatch.setattr(tags, "read_tags_checked", reading)
     plan = _planned(machine, probe=probe)
     assert [item.content_id for item in plan.items] == ["30"]
     _counts(plan, write=1, file_online_only=1, no_path=BASELINE)
-    assert opened == [_file(machine, "30")]
+    assert opened_paths == [_file(machine, "30")]
     assert plan.unread == 1 + BASELINE
+
+
+def _locked(cfg: config.Config, silence: Path) -> Path:
+    """Row 30's file under a directory nobody may enter once locked, row 31 a stale row."""
+    locked = _music(cfg) / "locked"
+    locked.mkdir()
+    shutil.copyfile(silence, locked / "track.flac")
+    recorded = locations.location_url(locked / "track.flac")
+    build(cfg, silence, Track("30", OLD, ABSENT, recorded=recorded), Track("31", OLD, MELODIC))
+    return locked
 
 
 def test_a_file_under_a_directory_this_account_cannot_enter_does_not_end_the_walk(
     machine, silence
 ):
     """``Path.is_file`` raises PermissionError there and took the whole plan."""
-    locked = _music(machine) / "locked"
-    locked.mkdir()
-    shutil.copyfile(silence, locked / "track.flac")
-    build(
-        machine,
-        silence,
-        Track("30", OLD, ABSENT, recorded=locations.location_url(locked / "track.flac")),
-        Track("31", OLD, MELODIC),
-    )
+    locked = _locked(machine, silence)
     os.chmod(locked, 0)
     try:
         plan = _planned(machine)
@@ -531,9 +516,7 @@ def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
     agreeing = _id3_track(machine, id3_silence, "30", [DEEP, MELODIC])
     differing = _id3_track(machine, id3_silence, "31", [MELODIC, PROGRESSIVE])
     build(
-        machine,
-        silence,
-        Track("30", DEEP, ABSENT, recorded=agreeing.recorded),
+        machine, silence, Track("30", DEEP, ABSENT, recorded=agreeing.recorded),
         Track("31", OLD, ABSENT, recorded=differing.recorded),
     )
     assert "\x00" in tags.read_tags_checked(_music(machine) / "track-30.aiff", ("genre",))["genre"]
@@ -551,8 +534,7 @@ def test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word(
     build(machine, silence, Track("30", DEEP, DEEP), Track("31", OLD, MELODIC))
     real = tags.read_tags_checked
     monkeypatch.setattr(
-        tags,
-        "read_tags_checked",
+        tags, "read_tags_checked",
         lambda path, fields: {"genre": (real(path, fields)["genre"] or "") + "\x00"},
     )
     plan = _planned(machine)
@@ -604,13 +586,8 @@ def test_an_identifier_held_out_that_names_no_differing_row_is_carried_and_diges
 
 def test_each_distinct_file_word_is_resolved_once(machine, silence, monkeypatch):
     build(
-        machine,
-        silence,
-        Track("30", OLD, MELODIC),
-        Track("31", OLD, MELODIC),
-        Track("32", "", MELODIC),
-        Track("33", OLD, PROGRESSIVE),
-        Track("34", OLD, UNSEEN),
+        machine, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC),
+        Track("32", "", MELODIC), Track("33", OLD, PROGRESSIVE), Track("34", OLD, UNSEEN),
         Track("35", DEEP, UNSEEN),
     )
     real = metadata.resolve_genre_id
@@ -640,11 +617,8 @@ def test_the_digest_is_the_same_for_the_same_library_on_another_copy(
     copy = tmp_path / "rehearsal" / "master.db"
     copy.parent.mkdir()
     shutil.copyfile(machine.library.db_path, copy)
-    db = rb_writer.open_db(copy, unlock=False, cfg=machine)
-    try:
+    with opened(machine, copy) as db:
         rehearsed = rows.plan_rows(machine, db, DECLARED)
-    finally:
-        rb_writer.close_db(db)
     assert rehearsed.digest == live.digest
     assert str(tmp_path) not in str([item.digested() for item in live.items])
 
@@ -671,26 +645,16 @@ def test_the_digest_moves_when_only_a_count_moves(machine, silence):
 
 
 def _apply(cfg: config.Config) -> tuple[rows.RowsPlan, rows.Written]:
-    db = rb_writer.open_db(cfg.library.db_path, require_closed=True, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg, require_closed=True) as db:
         plan = rows.plan_rows(cfg, db, active_taxonomy.load(cfg))
-        return plan, rows.apply_rows(
-            cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-    finally:
-        rb_writer.close_db(db)
+        return plan, rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
 
 
 def test_the_apply_writes_the_genre_and_no_other_column_of_any_row(acknowledged, silence):
     cfg = acknowledged
     build(
-        cfg,
-        silence,
-        Track("30", OLD, MELODIC),
-        Track("31", "", PROGRESSIVE),
-        Track("32", DEEP, DEEP),
-        Track("33", DEEP, COARSE),
-        Track("34", DEEP, ""),
+        cfg, silence, Track("30", OLD, MELODIC), Track("31", "", PROGRESSIVE),
+        Track("32", DEEP, DEEP), Track("33", DEEP, COARSE), Track("34", DEEP, ""),
     )
     before, files = _content(cfg), _files(cfg)
 
@@ -698,20 +662,11 @@ def test_the_apply_writes_the_genre_and_no_other_column_of_any_row(acknowledged,
 
     assert (written.written, written.read_back, written.wrong, written.moved) == (2, 2, (), ())
     rows.assert_read_back(written)
-    assert [_genre_of(cfg, cid) for cid in ("30", "31", "32", "33", "34")] == [
-        MELODIC, PROGRESSIVE, DEEP, DEEP, DEEP
-    ]
+    assert _genres(cfg, "30", "31", "32", "33", "34") == [MELODIC, PROGRESSIVE, DEEP, DEEP, DEEP]
     after = _content(cfg)
     assert set(after) == set(before)
-    for content_id, row in after.items():
-        changed = {
-            column
-            for column in row
-            if row[column] != before[content_id][column]
-            and column not in rb_writer.BOOKKEEPING_COLUMNS
-        }
-        assert changed == ({"GenreID"} if content_id in ("30", "31") else set()), content_id
-    # NEVER A TEMPO: spelled out although the loop above already holds it.
+    assert moved_columns(before, after) == {"30": {"GenreID"}, "31": {"GenreID"}}
+    # NEVER A TEMPO: spelled out although the comparison above already holds it.
     assert {row["BPM"] for row in after.values() if row["FolderPath"]} == {12400}
     # NOTHING IS WRITTEN TO ANY FILE.
     assert _files(cfg) == files
@@ -755,13 +710,10 @@ def test_the_apply_refuses_with_no_acknowledgment_and_writes_nothing(machine, si
 def test_the_apply_refuses_a_watch_over_nothing(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC))
-    db = rb_writer.open_db(cfg.library.db_path, require_closed=True, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg, require_closed=True) as db:
         plan = rows.plan_rows(cfg, db, DECLARED)
         with pytest.raises(ValueError, match="analysis_roots is empty"):
             rows.apply_rows(cfg, db, plan, analysis_roots=())
-    finally:
-        rb_writer.close_db(db)
     assert _genre_of(cfg, "30") == OLD
 
 
@@ -794,53 +746,34 @@ def test_an_unregistered_policy_would_write_nothing_and_the_apply_registers_it(
     assert _genre_of(cfg, "30") == MELODIC
 
 
-def _plan_then(cfg: config.Config, sql: str, *params) -> rows.RowsPlan:
-    """A plan, then one statement run against the database behind its back."""
-    plan = _planned(cfg)
-    connection = sqlite3.connect(cfg.library.db_path)
-    try:
-        connection.execute(sql, params)
-        connection.commit()
-    finally:
-        connection.close()
-    return plan
-
-
-def _apply_plan(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
-    db = rb_writer.open_db(cfg.library.db_path, require_closed=True, unlock=False, cfg=cfg)
-    try:
-        return rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
-    finally:
-        rb_writer.close_db(db)
-
-
+@pytest.mark.parametrize(
+    ("tracks", "sql", "said", "moved", "left"),
+    [
+        pytest.param(
+            ("30", "31"), f"UPDATE djmdContent SET GenreID = '{_genre_ids()[DEEP]}' WHERE ID = '31'",
+            "1 of 2", ["31: its genre changed since the plan"], [OLD, DEEP], id="a-genre-moved",
+        ),
+        pytest.param(
+            ("30",), "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '30'", "1 of 1",
+            ["30: no longer a live row"], [OLD], id="a-row-removed",
+        ),
+    ],
+)
 def test_a_row_whose_genre_moved_since_the_plan_refuses_and_nothing_is_written(
-    acknowledged, silence
+    acknowledged, silence, tracks, sql, said, moved, left
 ):
+    """Refused before the session is entered: no record and no capture."""
     cfg = acknowledged
-    build(cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC))
-    plan = _plan_then(
-        cfg, "UPDATE djmdContent SET GenreID = ? WHERE ID = '31'", _genre_ids()[DEEP]
-    )
-    with pytest.raises(CratekitError) as refused:
-        _apply_plan(cfg, plan)
+    build(cfg, silence, *(Track(content_id, OLD, MELODIC) for content_id in tracks))
+    plan = _planned(cfg)
+    _sql(cfg, sql)
+    with pytest.raises(CratekitError) as refused, opened(cfg, require_closed=True) as db:
+        rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
     cause = refused.value.cause
-    assert cause.reason == "decision-stale" and "1 of 2" in cause.message
-    assert cause.detail["moved"] == ["31: its genre changed since the plan"]
-    assert [_genre_of(cfg, cid) for cid in ("30", "31")] == [OLD, DEEP]
-    # Refused before the session is entered: no record and no capture.
+    assert cause.reason == "decision-stale" and said in cause.message
+    assert cause.detail["moved"] == moved
+    assert _genres(cfg, *tracks) == left
     assert session.records(cfg) == ()
-
-
-def test_a_row_removed_since_the_plan_refuses_and_nothing_is_written(acknowledged, silence):
-    cfg = acknowledged
-    build(cfg, silence, Track("30", OLD, MELODIC))
-    plan = _plan_then(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '30'")
-    with pytest.raises(CratekitError) as refused:
-        _apply_plan(cfg, plan)
-    assert refused.value.cause.reason == "decision-stale"
-    assert refused.value.cause.detail["moved"] == ["30: no longer a live row"]
-    assert _genre_of(cfg, "30") == OLD and session.records(cfg) == ()
 
 
 @pytest.mark.parametrize("held", [None, "", 0, "0"])
@@ -871,23 +804,13 @@ def test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC))
     tree_id = DECLARED.intake.id
-    tree_registry.write(
-        cfg,
-        tree_registry.Registry().with_record(
-            tree_registry.TreeRecord(
-                tree_id=tree_id,
-                mode=tree_registry.Mode.DATABASE,
-                cutover_on=date(2026, 9, 29),
-                root_id="900",
-                source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
+    record = tree_registry.TreeRecord(
+        tree_id=tree_id, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 9, 29),
+        root_id="900", source=tree_registry.DerivationSource.TAXONOMY,
     )
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    tree_registry.write(cfg, tree_registry.Registry().with_record(record))
+    with opened(cfg) as db:
         now = convergence.probe(db)
-    finally:
-        rb_writer.close_db(db)
     ahead = replace(now, local_usn=now.local_usn + 1000)
     convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
 
@@ -978,21 +901,24 @@ def test_a_clean_read_back_raises_nothing():
     rows.assert_read_back(rows.Written(session_id="s", written=1, read_back=1))
 
 
-def test_a_moved_column_refuses_as_the_guards_defect_and_names_the_undo():
-    written = rows.Written("session-1", 1, 1, moved=("30: BPM",))
+@pytest.mark.parametrize(
+    ("written", "reason", "said"),
+    [
+        pytest.param(
+            rows.Written("session-1", 1, 1, moved=("30: BPM",)), "whitelist-violation",
+            "30: BPM", id="a-moved-column",
+        ),
+        pytest.param(
+            rows.Written("session-1", 2, 1, wrong=("30: reads '' ...",)), "internal-error",
+            "1 of 2", id="a-genre-reading-wrong",
+        ),
+    ],
+)
+def test_a_moved_column_refuses_as_the_guards_defect_and_names_the_undo(written, reason, said):
     with pytest.raises(CratekitError) as refused:
         rows.assert_read_back(written)
     cause = refused.value.cause
-    assert cause.reason == "whitelist-violation" and "30: BPM" in cause.message
-    assert "session-1" in " ".join(cause.remediation.steps)
-
-
-def test_a_genre_that_reads_wrong_refuses_and_names_the_undo():
-    written = rows.Written("session-1", 2, 1, wrong=("30: reads '' ...",))
-    with pytest.raises(CratekitError) as refused:
-        rows.assert_read_back(written)
-    cause = refused.value.cause
-    assert cause.reason == "internal-error" and "1 of 2" in cause.message
+    assert cause.reason == reason and said in cause.message
     assert "session-1" in " ".join(cause.remediation.steps)
 
 
@@ -1002,17 +928,12 @@ def test_a_genre_that_reads_wrong_refuses_and_names_the_undo():
 def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silence):
     cfg = acknowledged
     build(
-        cfg,
-        silence,
-        Track("30", OLD, MELODIC),
-        Track("31", OLD, MELODIC),
-        Track("32", "", PROGRESSIVE),
-        Track("33", DEEP, COARSE),
-        Track("34", DEEP, DEEP),
+        cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC),
+        Track("32", "", PROGRESSIVE), Track("33", DEEP, COARSE), Track("34", DEEP, DEEP),
     )
     files = _files(cfg)
 
-    code, acted, refused = _two_acts()
+    code, acted, refused = acts(VERB)
 
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "ok"
@@ -1033,7 +954,7 @@ def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silenc
         **dict.fromkeys(rows.OUTCOMES, 0),
         "write": 3, "agree": 1, "file-too-coarse": 1, "no-path": BASELINE,
     }
-    assert [_genre_of(cfg, cid) for cid in ("30", "31", "32", "33", "34")] == [
+    assert _genres(cfg, "30", "31", "32", "33", "34") == [
         MELODIC, MELODIC, PROGRESSIVE, DEEP, DEEP
     ]
     assert _files(cfg) == files
@@ -1060,8 +981,8 @@ def test_the_plan_refusal_writes_nothing_and_a_declined_gate_writes_nothing(
     assert _content(cfg) == before and session.records(cfg) == ()
 
     run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+    decided_code, envelope = drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    assert decided_code == int(ExitCode.OK), envelope
     code, declined = drive(["--run", run_id, *VERB])
     assert code == int(ExitCode.OK), declined
     assert declined["outcome"] == "no_op" and declined["data"]["totals"]["written"] == 0
@@ -1090,12 +1011,7 @@ def test_a_file_changed_between_plan_and_apply_refuses_the_apply(acknowledged, s
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC))
     before = _content(cfg)
-
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+    run_id, _refused = decided(VERB)
 
     assert tags.write_tags(_file(cfg, "31"), {"genre": PROGRESSIVE})
 
@@ -1108,11 +1024,11 @@ def test_a_file_changed_between_plan_and_apply_refuses_the_apply(acknowledged, s
 def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC), Track("31", DEEP, COARSE))
-    code, acted, _ = _two_acts()
+    code, acted, _ = acts(VERB)
     assert code == int(ExitCode.OK), acted
     settled = _content(cfg)
 
-    code, again, shown = _two_acts()
+    code, again, shown = acts(VERB)
     assert code == int(ExitCode.OK), again
     assert shown["cause"]["detail"]["shown"]["outcomes"]["write"] == 0
     assert again["outcome"] == "no_op"
@@ -1128,10 +1044,8 @@ def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silenc
     assert len(session.records(cfg)) == 1
 
 
-def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
-    """Every gate fires, and an empty plan never opens the write handle."""
-    cfg = acknowledged
-    build(cfg, silence, Track("30", DEEP, DEEP))
+def read_only_opens(monkeypatch) -> None:
+    """``rb_writer.open_db`` failing any open to write, as an empty plan must never make."""
     real_open = rb_writer.open_db
 
     def read_only(path, *args, require_closed=False, **kwargs):
@@ -1139,7 +1053,14 @@ def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silen
         return real_open(path, *args, require_closed=require_closed, **kwargs)
 
     monkeypatch.setattr(rb_writer, "open_db", read_only)
-    code, acted, refused = _two_acts()
+
+
+def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
+    """Every gate fires, and an empty plan never opens the write handle."""
+    cfg = acknowledged
+    build(cfg, silence, Track("30", DEEP, DEEP))
+    read_only_opens(monkeypatch)
+    code, acted, refused = acts(VERB)
     assert refused["cause"]["detail"]["shown"]["count"] == 0
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op" and session.records(cfg) == ()
@@ -1152,13 +1073,7 @@ def test_the_plan_is_read_with_rekordbox_open_and_the_write_refuses(
     build(cfg, silence, Track("30", OLD, MELODIC))
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
 
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-
-    code, running = drive(["--run", run_id, *VERB])
+    code, running, _refused = acts(VERB)
     assert code != int(ExitCode.OK), running
     assert running["cause"]["reason"] == "rekordbox-running", running
     assert _genre_of(cfg, "30") == OLD and session.records(cfg) == ()
@@ -1170,17 +1085,14 @@ def test_a_file_on_a_volume_that_is_not_mounted_is_counted_and_the_run_does_not_
     cfg = acknowledged
     away = tmp_path / "another-volume" / "Music" / "track.flac"
     build(
-        cfg,
-        silence,
-        Track("30", OLD, MELODIC),
-        Track("31", OLD, ABSENT),
+        cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, ABSENT),
         Track("32", OLD, ABSENT, recorded=str(away)),
     )
-    code, acted, _ = _two_acts()
+    code, acted, _ = acts(VERB)
     assert code == int(ExitCode.OK), acted
     outcomes = acted["data"]["totals"]["outcomes"]
     assert (outcomes["write"], outcomes["file-missing"], outcomes["path-unmapped"]) == (1, 1, 1)
-    assert [_genre_of(cfg, cid) for cid in ("30", "31", "32")] == [MELODIC, OLD, OLD]
+    assert _genres(cfg, "30", "31", "32") == [MELODIC, OLD, OLD]
     (warning,) = [w for w in acted["warnings"] if w["code"] == rows_cli.FILES_NOT_READ]
     assert f"{2 + BASELINE} of {3 + BASELINE} row(s)" in warning["message"]
     assert "1 file-missing" in warning["message"] and "1 path-unmapped" in warning["message"]
@@ -1201,7 +1113,7 @@ def test_the_genre_report_stops_naming_the_old_word_after_the_run(acknowledged, 
         }
 
     assert OLD in words()
-    code, acted, _ = _two_acts()
+    code, acted, _ = acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert OLD not in words()
 
@@ -1218,12 +1130,21 @@ def test_a_person_reads_the_counts_and_the_pairs_at_the_gate_and_after_the_write
     assert "takes no inline answer" in screen
 
     run_id = screen.rsplit("crate run decide ", 1)[1].split()[0]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+    decided_code, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided_code == int(ExitCode.OK), envelope
     code, text = drive_human(["--run", run_id, *VERB])
     assert code == int(ExitCode.OK), text
     assert "1 row(s) now carry their file's genre" in text and "restore of session" in text
     assert _genre_of(cfg, "30") == MELODIC
+
+
+def _unmapped(cfg: config.Config, silence: Path, tmp_path: Path, count: int) -> None:
+    """Row 30 a stale row, and ``count`` rows recorded under no prefix rule."""
+    away = tmp_path / "another-volume" / "Music"
+    build(
+        cfg, silence, Track("30", OLD, MELODIC),
+        *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(count)),
+    )
 
 
 def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
@@ -1231,16 +1152,9 @@ def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
 ):
     """R-372's shape: the plan is empty for a reason a prefix rule fixes."""
     cfg = acknowledged
-    away = tmp_path / "another-volume" / "Music"
-    build(
-        cfg,
-        silence,
-        Track("30", OLD, MELODIC),
-        *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(4)),
-    )
+    _unmapped(cfg, silence, tmp_path, 4)
     monkeypatch.setattr(
-        tags,
-        "read_tags_checked",
+        tags, "read_tags_checked",
         lambda *args: pytest.fail("a file was opened for a library about to be refused"),
     )
     code, envelope = drive(VERB)
@@ -1256,24 +1170,14 @@ def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
     assert _genre_of(cfg, "30") == OLD
     # THE COUNTS ARE THE ONES DOCTOR AND THE VOCAL TAG VERB GIVE, because the
     # survey is theirs: one rule and one reading of one library.
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         assert cause["detail"]["unresolved"] == metadata_cli.resolution_totals(cfg, db).unresolved
-    finally:
-        rb_writer.close_db(db)
 
 
 def test_exactly_half_unmapped_is_not_a_majority_and_the_verb_plans(
     acknowledged, silence, tmp_path
 ):
-    cfg = acknowledged
-    away = tmp_path / "another-volume" / "Music"
-    build(
-        cfg,
-        silence,
-        Track("30", OLD, MELODIC),
-        *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(3)),
-    )
+    _unmapped(acknowledged, silence, tmp_path, 3)
     code, refused = drive(VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["shown"]["outcomes"]["path-unmapped"] == 3
@@ -1281,16 +1185,7 @@ def test_exactly_half_unmapped_is_not_a_majority_and_the_verb_plans(
 
 def test_the_verb_survives_a_directory_this_account_cannot_enter(acknowledged, silence):
     """The survey asked ``Path.is_file`` too, and raised with it."""
-    cfg = acknowledged
-    locked = _music(cfg) / "locked"
-    locked.mkdir()
-    shutil.copyfile(silence, locked / "track.flac")
-    build(
-        cfg,
-        silence,
-        Track("30", OLD, ABSENT, recorded=locations.location_url(locked / "track.flac")),
-        Track("31", OLD, MELODIC),
-    )
+    locked = _locked(acknowledged, silence)
     os.chmod(locked, 0)
     try:
         code, refused = drive(VERB)
@@ -1316,23 +1211,19 @@ def test_a_held_row_survives_the_write_and_the_apply_must_name_it_again(
     build(cfg, silence, Track("30", OLD, MELODIC), Track("31", DEEP, PROGRESSIVE))
     held = [*VERB, "--leave", "31"]
 
-    code, refused = drive(held)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id, refused = decided(held)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["outcomes"]["held-out"] == 1 and shown["outcomes"]["write"] == 1
     assert "leave_unmatched" not in shown
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
 
     # WITHOUT THE FLAG THE PLAN IS ANOTHER PLAN, and the answer does not carry.
     code, stale = drive(["--run", run_id, *VERB])
     assert stale["cause"]["reason"] == "decision-stale", stale
-    assert [_genre_of(cfg, cid) for cid in ("30", "31")] == [OLD, DEEP]
+    assert _genres(cfg, "30", "31") == [OLD, DEEP]
 
     code, acted = drive(["--run", run_id, *held])
     assert code == int(ExitCode.OK), acted
-    assert [_genre_of(cfg, cid) for cid in ("30", "31")] == [MELODIC, DEEP]
+    assert _genres(cfg, "30", "31") == [MELODIC, DEEP]
     assert acted["data"]["totals"]["written"] == 1
     (left,) = [w for w in acted["warnings"] if w["code"] == rows_cli.ROWS_LEFT]
     assert "1 held-out" in left["message"]
@@ -1341,8 +1232,7 @@ def test_a_held_row_survives_the_write_and_the_apply_must_name_it_again(
 def test_a_mistyped_identifier_is_shown_at_the_gate_and_warned_about(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC))
-    verb = [*VERB, "--leave", "3O"]
-    code, acted, refused = _two_acts(verb)
+    code, acted, refused = acts([*VERB, "--leave", "3O"])
     assert refused["cause"]["detail"]["shown"]["leave_unmatched"] == ["3O"]
     assert code == int(ExitCode.OK), acted
     (warning,) = [w for w in acted["warnings"] if w["code"] == rows_cli.LEAVE_UNMATCHED]
@@ -1356,9 +1246,9 @@ def test_a_word_the_library_has_no_row_for_names_the_act_on_a_run_that_wrote(
     """The retag verb sends a person here, so the row it leaves names what to do."""
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, UNSEEN))
-    code, acted, _ = _two_acts()
+    code, acted, _ = acts(VERB)
     assert code == int(ExitCode.OK), acted
-    assert [_genre_of(cfg, cid) for cid in ("30", "31")] == [MELODIC, OLD]
+    assert _genres(cfg, "30", "31") == [MELODIC, OLD]
     (left,) = [w for w in acted["warnings"] if w["code"] == rows_cli.ROWS_LEFT]
     assert f"no genre row for {UNSEEN!r} on 1" in left["message"]
     assert "give one track that genre in rekordbox" in left["message"]
@@ -1377,17 +1267,19 @@ def test_the_verb_declares_the_row_and_no_file():
     assert registry.CLOUD_SYNC_UNREADABLE_GATE in entry.gates
 
 
-def _called(module) -> set[str]:
-    """Every attribute called on ``tags`` in a module, by an AST walk."""
+def _called(module, on: str | None = "tags") -> set[str]:
+    """Every attribute called on the name ``on`` in a module, or every dotted call, by AST."""
     tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
-    return {
-        node.func.attr
+    calls = [
+        node.func
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "tags"
-    }
+    ]
+    if on is None:
+        return {f"{call.value.id}.{call.attr}" for call in calls}
+    return {call.attr for call in calls if call.value.id == on}
 
 
 def test_the_engine_calls_the_tag_reader_and_no_tag_writer():
@@ -1401,14 +1293,7 @@ def test_the_engine_calls_the_tag_reader_and_no_tag_writer():
 
 def test_the_apply_goes_through_the_policy_the_retag_module_registers():
     """One home for registering before applying, and this verb is its caller."""
-    tree = ast.parse(Path(rows.__file__).read_text(encoding="utf-8"))
-    dotted = {
-        f"{node.func.value.id}.{node.func.attr}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-    }
+    dotted = _called(rows, on=None)
     assert "retag.apply_library" in dotted
     assert "metadata.plan_genre_retag" in dotted
     assert retag.apply_library is not None
