@@ -574,17 +574,9 @@ def test_a_released_pair_read_off_the_path_on_its_first_sync_keeps_rekordboxs_or
     _both(world, rebuilt, account_id, LED, "the rebuilt playlist took an order nobody chose")
 
 
-@pytest.mark.parametrize(
-    "gig_ready",
-    [
-        # R-1416, CHANGED BY PHILLIP'S DECISION on #608, not weakened: a root pair's
-        # account order is not kept (U231), so rekordbox keeps its order.
-        pytest.param(False, id="root"),
-        # R-1416 leaves a pair whose account order is kept: the account leads its first sync.
-        pytest.param(True, id="gig-ready"),
-    ],
-)
-def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(world, gig_ready):
+def _first_sync_with_no_stop(world, *, gig_ready: bool):
+    """Theirs, ordered 3 1 2 on the account, paired by hand with Mine and synced once:
+    (gate line, envelope, rekordbox id, account id)."""
     gig = world.folder("GIG READY")
     world.playlist("Intro", "1", "2", "3", under=gig)
     exited(sync())
@@ -593,14 +585,26 @@ def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(w
     mine = world.playlist("Mine", "1", "2", "3", under=gig if gig_ready else None)
     paired = [*VERB, theirs, "--rekordbox", mine]
     line = _line(paired, theirs)
-    envelope = exited(sync(paired))
-    if gig_ready:
-        assert "order follows the account's" in line
-        assert world.held(mine) == ["3", "1", "2"]
-    else:
-        assert "finishes run" not in line
-        assert pair_cli.FINISHING not in _codes(envelope)
-        assert world.held(mine) == ["1", "2", "3"]
+    return line, exited(sync(paired)), mine, theirs
+
+
+def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(world):
+    line, envelope, mine, theirs = _first_sync_with_no_stop(world, gig_ready=False)
+    assert "finishes run" not in line
+    assert pair_cli.FINISHING not in _codes(envelope)
+    # R-1416, CHANGED BY PHILLIP'S DECISION on #608, not weakened: a root pair's
+    # account order is not kept (U231), so rekordbox keeps its order.
+    assert world.held(mine) == ["1", "2", "3"]
+    assert world.account.playlists[theirs] == _ids("3", "1", "2")
+
+
+def test_a_first_sync_of_an_account_playlist_with_no_stop_under_gig_ready_follows_the_account(
+    world,
+):
+    """R-1416 leaves a pair whose account order is kept as it was: the account leads its first sync."""
+    line, _envelope, mine, theirs = _first_sync_with_no_stop(world, gig_ready=True)
+    assert "order follows the account's" in line
+    assert world.held(mine) == ["3", "1", "2"]
     assert world.account.playlists[theirs] == _ids("3", "1", "2")
 
 
@@ -862,17 +866,8 @@ def test_two_syncs_reading_the_same_order_off_the_path_are_no_reorder(
     _both(world, closer, account_id, BACK)
 
 
-@pytest.mark.parametrize(
-    ("run", "at"),
-    [
-        # A reading is evidence only for the stop it was read after (identity, not order alone).
-        pytest.param("another-run", "2099-01-01T00:00:00+00:00", id="another-run"),
-        pytest.param(None, "2000-01-01T00:00:00+00:00", id="before-the-stop"),
-    ],
-)
-def test_a_reading_kept_for_another_run_or_before_the_stop_shows_no_reorder(
-    world, strayed, monkeypatch, run, at
-):
+def _kept_shows_no_reorder(world, strayed, monkeypatch, run: str, at: str) -> None:
+    """A settled reading kept for ``run`` (the stop's own if empty) at ``at`` leads nothing."""
     _agreeing_at_once(monkeypatch)
     closer, account_id, run_id = strayed
     reading = pairs.StopReading(
@@ -881,6 +876,15 @@ def test_a_reading_kept_for_another_run_or_before_the_stop_shows_no_reorder(
     pairs.PairStore(world.cfg).see_stop(account_id, reading)
     exited(sync())
     _both(world, closer, account_id, BACK)
+
+
+def test_a_reading_kept_for_another_run_shows_no_reorder(world, strayed, monkeypatch):
+    """A reading is evidence only for the stop it was read after (identity, not order alone)."""
+    _kept_shows_no_reorder(world, strayed, monkeypatch, "another-run", "2099-01-01T00:00:00+00:00")
+
+
+def test_a_reading_kept_before_the_stop_shows_no_reorder(world, strayed, monkeypatch):
+    _kept_shows_no_reorder(world, strayed, monkeypatch, "", "2000-01-01T00:00:00+00:00")
 
 
 def test_a_track_added_on_the_account_between_two_readings_is_no_reorder(

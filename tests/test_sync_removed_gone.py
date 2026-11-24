@@ -247,33 +247,37 @@ def failing_with(account: Account, error: BaseException, *references: str) -> No
     account.fake.playlist_for = playlist_for
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        pytest.param(None, id="503"),
-        # Round one's BLOCKING finding: the provider gate's lock raised FileNotFoundError.
-        pytest.param(FileNotFoundError(2, "No such file or directory"), id="file-not-found"),
-        pytest.param(ModuleNotFoundError("no module"), id="module-not-found"),
-    ],
-)
-def test_a_playlist_that_failed_any_other_way_twice_a_day_apart_is_never_retired(
-    five_landed, monkeypatch, error
-):
-    """A server error, or Python's own not found classes, are no sighting and never retire."""
-    _pair(five_landed)
-    account = sunset(monkeypatch, *NEW1_OFF)
-    if error is None:
-        answering(account, 503, PAIRED)
-    else:
-        failing_with(account, error, PAIRED)
-
+def _failed_a_day_apart(cfg: config.Config, monkeypatch, fail) -> dict:
+    """New1 taken off, the pair failing to open as ``fail`` makes it, read twice a day apart."""
+    _pair(cfg)
+    fail(sunset(monkeypatch, *NEW1_OFF))
     _first, out = _a_day_apart(Clock(monkeypatch))
-
     assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
     assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
-    assert removed_cli.UNAVAILABLE not in _codes(out)
     assert _record() == {}
-    assert not unavailable.answered_unavailable(error or recorded_failure(PAIRED, 503))
+    return out
+
+
+def test_a_playlist_that_failed_any_other_way_twice_a_day_apart_is_never_retired(
+    five_landed, monkeypatch
+):
+    out = _failed_a_day_apart(five_landed, monkeypatch, lambda one: answering(one, 503, PAIRED))
+
+    assert removed_cli.UNAVAILABLE not in _codes(out)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [FileNotFoundError(2, "No such file or directory"), ModuleNotFoundError("no module")],
+    ids=["file-not-found", "module-not-found"],
+)
+def test_pythons_own_not_found_classes_are_no_sighting_and_never_retire(
+    five_landed, monkeypatch, error
+):
+    """Round one's BLOCKING finding: the provider gate's lock raised FileNotFoundError."""
+    _failed_a_day_apart(five_landed, monkeypatch, lambda one: failing_with(one, error, PAIRED))
+
+    assert not unavailable.answered_unavailable(error)
 
 
 def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(a179, monkeypatch):

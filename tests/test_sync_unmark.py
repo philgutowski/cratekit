@@ -235,24 +235,26 @@ def test_the_intake_file_names_the_pass_retired_or_not(slim, monkeypatch, tail):
     assert len(account.renamed) == 3
 
 
-@pytest.mark.parametrize(
-    ("named", "renamed", "stamped"),
-    [
-        pytest.param(("pl-b",), [("pl-b", "Peak")], (False, True, False), id="one"),
-        # U246: every playlist named is kept, not the first alone.
-        pytest.param(
-            ("pl-a", "pl-c"), [("pl-a", "Warmup"), ("pl-c", "Closing")], (True, False, True),
-            id="twice",
-        ),
-    ],
-)
-def test_playlist_narrows_to_the_marks_named(slim, monkeypatch, named, renamed, stamped):
-    _fake, account, name, _xml = _marked(slim, monkeypatch)
+def _narrowed(slim_cfg, monkeypatch, *named: str):
+    """The marked pass unmarked with ``--playlist`` for each of ``named``: (account, done, pass)."""
+    _fake, account, name, _xml = _marked(slim_cfg, monkeypatch)
     flags = [part for one in named for part in ("--playlist", one)]
-    done = exited(_answered(name, *flags))
-    assert sorted(account.renamed) == renamed
-    assert sorted(_by_id(done)) == list(named)
-    assert _stamped(slim, name) == dict(zip(("pl-a", "pl-b", "pl-c"), stamped, strict=True))
+    return account, exited(_answered(name, *flags)), name
+
+
+def test_playlist_narrows_to_the_marks_named(slim, monkeypatch):
+    account, done, name = _narrowed(slim, monkeypatch, "pl-b")
+    assert account.renamed == [("pl-b", "Peak")]
+    assert sorted(_by_id(done)) == ["pl-b"]
+    assert _stamped(slim, name) == {"pl-a": False, "pl-b": True, "pl-c": False}
+
+
+def test_playlist_given_twice_narrows_to_both_marks_named(slim, monkeypatch):
+    """U246: every playlist named is kept, not the first alone."""
+    account, done, name = _narrowed(slim, monkeypatch, "pl-a", "pl-c")
+    assert sorted(account.renamed) == [("pl-a", "Warmup"), ("pl-c", "Closing")]
+    assert sorted(_by_id(done)) == ["pl-a", "pl-c"]
+    assert _stamped(slim, name) == {"pl-a": True, "pl-b": False, "pl-c": True}
 
 
 def test_an_abort_renames_nothing_and_stamps_nothing(slim, monkeypatch):

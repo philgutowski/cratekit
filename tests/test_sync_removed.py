@@ -1464,22 +1464,24 @@ def _append(cfg: config.Config, playlist: str, *titles: str) -> None:
         handle.session.commit()
 
 
-@pytest.mark.parametrize(
-    ("added", "numbers"),
-    [
-        # The binding's count plus one would land on a live row's position.
-        pytest.param(("Held3",), [1, 3, 4], id="one"),
-        pytest.param(("Held3", "New2"), [1, 3, 4, 5], id="two"),
-    ],
-)
-def test_a_track_added_after_a_removal_goes_past_the_highest_position(one_offered, added, numbers):
-    cfg = one_offered
+def _appended_after_a_removal(cfg: config.Config, *added: str) -> list[int]:
+    """Mine's numbers once its second member is deleted by SQL and ``added`` appended after."""
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
     _append(cfg, mine, *added)
     held = _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine)
-    found = sorted(row[0] for row in held)
-    assert found == numbers, found
+    return sorted(row[0] for row in held)
+
+
+def test_a_track_added_after_a_removal_goes_past_the_highest_position(one_offered):
+    """The binding's count plus one would land on a live row's position."""
+    numbers = _appended_after_a_removal(one_offered, "Held3")
+    assert numbers == [1, 3, 4], numbers
+
+
+def test_two_appends_after_a_removal_each_take_the_next_position(one_offered):
+    numbers = _appended_after_a_removal(one_offered, "Held3", "New2")
+    assert numbers == [1, 3, 4, 5], numbers
 
 
 def test_a_refused_removal_gives_the_deletion_pass_no_position(one_offered, monkeypatch):
