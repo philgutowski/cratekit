@@ -199,3 +199,116 @@ unmet for a machine named by one of them.
 **Closes when:** the `.local` form refuses an attribute shape it can tell
 apart (a following operator, method or path join) without missing a host in
 prose, or the variables are renamed. Ledger only: maintainer facing.
+
+---
+
+## R-2028. a resort or rebuild resume refused because another driver holds the job carries the holder's findings so far as its own steps
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** Each resume drives inside `ReportedDrive.owing()`, which
+adds the after check's sentences, read from the committed item reports, to any
+refusal raised there. `job-driver-held` is raised inside it, before this run
+claims anything, so the refusal names what the other driver's finished trees
+left and did not compare, counted so far while it keeps going. That is
+against the rule `test_a_refusal_raised_before_the_drive_carries_no_leftover_step`
+states for the resort's calibration refusal (a run that drove nothing answers
+for no tree). The resort did this on the base; the rebuild does it from
+R-2020. `rebuilt` also turns `DriverHeld` into a plain `CratekitError`, keeping
+its reason and exit code; no reader in the process tells them apart for these
+verbs.
+
+**Measured cost.** Driven with the driver lock held in process: exit 20,
+`job-driver-held`, with the leftover and the not compared sentences of the one
+committed tree as steps. True of that tree, and partial. Not driven with two
+processes.
+
+**Closes when:** `owing()` adds the steps only when this run claimed an item,
+or the driver held refusal is raised before it. Ledger only.
+
+---
+
+## R-2029. a resort job an older build queued is told at its gate that the drive names the playlists not compared, and a drive over an older build's item reports names none
+
+**Found:** at the review of #1036, R-2020, round two, 2026-11-24.
+
+**The mechanism.** `routing_cli.UNRECORDED_UNREAD`, the gate's line over
+facts frozen before R-2020, says "the drive names any it finds". A job the
+older build already finished, or that this build finished, has no drive left,
+and `--job` answers `ok succeeded` with no warning. And `rebuild.after_messages`
+reads an item report with no `unidentified` key, which an older build's resort
+worker wrote, as nothing unread, so a job left open with one tree done by the
+older build names no unread playlist for that tree on either exit.
+
+**Measured cost.** Driven: the base queued a job, this branch drove it (named
+the playlist), and a second `--job` showed the gate's promise over a job no
+drive was left for. A job the base itself finished was not produced (its
+worker refused on volume identity in the harness). The second shape was
+driven only with a stand in report; its producer needs two routed trees or a
+crash window, and the shipped taxonomy derives one tree. The gate's line
+already says the count may leave some out, so neither is a clean report.
+
+**Closes when:** the line says a drive still to run names them, and a report
+without the key is named as one that did not record them. Ledger only; it
+closes by itself once no job queued before R-2020 is open.
+
+---
+
+## R-2030. the favorites step skipped warning reads every item the drive did not find done, and counting a done one too kills no test
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `rebuild.ReportedDrive.of` reads `driven`, the trees this
+run drives, as every item not yet done, and only the favorites step skipped
+warning (U132) reads it. The round one review changed the filter to keep every
+item, done or not, and no test died; the base's two resumes read the same
+filter and had the same gap.
+
+**Measured cost.** None measured: a job continued with a tree already done and
+a taxonomy whose favorites class is missing would name that done tree's skipped
+step again, which is true of the tree and only says it twice. Not driven.
+
+**Closes when:** a resume over a job with one tree done and one pending, under a
+taxonomy with no favorites class, asserts the warning names only the pending
+tree. Ledger only.
+
+---
+
+## R-2031. the rebuild and resort workers build and stage their item report after the write landed, so a failure there fails an item whose write is done
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `cli/rebuild.handle` and `routing_cli.handle_resort` call
+`rebuild.after_report`, which loads the taxonomy again, and stage the report
+under the queue store, after `rebuild_governed_tree` committed the membership
+and cleared the flag. A raise there (an unreadable taxonomy, a queue store
+that cannot be written) fails the item over a write that landed, and a resume
+drives the tree again, which adds nothing the second time. The resort had this
+shape on the base; the rebuild has it from R-2020.
+
+**Measured cost.** Not driven: the producer, a queue store that refuses a write
+between the commit and the staging, was not built.
+
+**Closes when:** the report's inputs are read before the write, or a failure
+staging it is said rather than failing the item. Ledger only.
+
+---
+
+## R-2032. the playlists a resort or rebuild did not compare are named without their tree, so two trees' same named playlists read as one name twice
+
+**Found:** at the review of #1036, R-2020, 2026-11-24.
+
+**The mechanism.** `rebuild.unidentified_message` names each playlist as
+`FOLDER/PLAYLIST`, the way `crate converge` names it inside one tree's line.
+The resort's gate facts and `rebuild.after_messages` gather every tree's
+playlists into one list, so over two routed trees holding a playlist of the
+same folder and name the sentence says that name twice, "under the tree", and
+a person cannot tell which tree each is under.
+
+**Measured cost.** Driven only with a stand in: a second process continuing a
+rebuild over the same tree twice named `Loud! Room/Unsorted` twice. A library
+whose taxonomy derives two routing trees, each with such a playlist, was not
+driven; the shipped taxonomy derives one.
+
+**Closes when:** each entry carries its tree where more than one tree is named,
+or the day a taxonomy derives two trees. Ledger only.

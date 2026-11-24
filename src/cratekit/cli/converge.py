@@ -32,17 +32,6 @@ NOT_COMPARED = "not-compared"
 #: How many playlists not compared a differing line names before its differences.
 UNREAD_SHOWN = 5
 
-#: What a person reads after a playlist the check could not tie to a genre (R-1991).
-UNIDENTIFIED = (
-    ": each bears a name a genre files into, holds a track this tree files, "
-    "and could not be tied to one destination (its folder was renamed, or a "
-    "write made a folder of its genre's name again beside it), so a track left "
-    "in it is not named; look in each in rekordbox for a track its genre no "
-    "longer files, or give a renamed folder back its genre's name, where no "
-    "other folder bears that name, and converge compares it"
-)
-
-
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.add_argument(
         "--tree",
@@ -116,7 +105,7 @@ def _compare(
         detail += f"; not compared: {', '.join(report.not_compared)}"
     if not report.unidentified:
         return MATCHING, detail
-    return NOT_COMPARED, f"{detail}; {'; '.join(unread)}{UNIDENTIFIED}"
+    return NOT_COMPARED, f"{detail}; {'; '.join(unread)}{rebuild.UNIDENTIFIED}"
 
 
 def converge(ctx: "Context") -> Envelope:

@@ -1,0 +1,241 @@
+name = "r2020"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_message_one_unnamed"
+description = "unidentified_message: answer None for a single playlist, so one unread playlist goes unnamed everywhere"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    found = sorted(playlists)
+    if not found:'''
+new = '''    found = sorted(playlists)
+    if len(found) < 2:'''
+
+[[rows]]
+id = "M2_message_unsorted"
+description = "unidentified_message: keep the order the reports gave rather than sorting"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    found = sorted(playlists)'''
+new = '''    found = list(playlists)'''
+
+[[rows]]
+id = "M3_message_capped"
+description = "unidentified_message: name only the first twenty, so a long list reads as the whole set"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        f"{'; '.join(found)}{UNIDENTIFIED}"'''
+new = '''        f"{'; '.join(found[:20])}{UNIDENTIFIED}"'''
+
+[[rows]]
+id = "M4_message_no_advice"
+description = "unidentified_message: drop the shared wording, so the sentence says nothing of what to do"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        f"{'; '.join(found)}{UNIDENTIFIED}"'''
+new = '''        f"{'; '.join(found)}"'''
+
+[[rows]]
+id = "M5_message_count"
+description = "unidentified_message: count the distinct names, so the count disagrees with the list"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        f"{len(found)} playlist(s) under the tree'''
+new = '''        f"{len(set(found))} playlist(s) under the tree'''
+
+[[rows]]
+id = "M6_warning_code"
+description = "unidentified_warnings: carry the left behind code, so a reader filtering by code finds none"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''({"code": UNIDENTIFIED_PLAYLISTS, "message": message},)'''
+new = '''({"code": LEFT_BEHIND, "message": message},)'''
+
+[[rows]]
+id = "M7_report_drops_unread"
+description = "after_report: stage no unidentified playlists, so neither resume can name them"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        "unidentified": list(after.unidentified),'''
+new = '''        "unidentified": [],'''
+
+[[rows]]
+id = "M8_report_unexpected_unfiltered"
+description = "after_report: stage every unexpected membership, a dimension this run did not derive included"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''left_behind_record(entry) for entry in left_behind(after, declared)]'''
+new = '''left_behind_record(entry) for entry in after.unexpected]'''
+
+[[rows]]
+id = "M9_messages_first_report_only"
+description = "after_messages: read the unidentified playlists of the first item report only"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    unread = [str(entry) for report in reports for entry in report.get("unidentified") or ()]'''
+new = '''    unread = [str(entry) for report in reports[:1] for entry in report.get("unidentified") or ()]'''
+
+[[rows]]
+id = "M10_messages_no_unread_warning"
+description = "after_messages: leave the unidentified warning out of what a drive says"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        *unidentified_warnings(unread),
+'''
+new = '''        *(),
+'''
+
+[[rows]]
+id = "M11_owing_no_steps"
+description = "ReportedDrive.owing: re-raise the refusal with no steps, so a partial failure says nothing of what the finished trees found"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''            raise with_steps(failed, self._messages()[1]) from failed'''
+new = '''            raise with_steps(failed, ()) from failed'''
+
+[[rows]]
+id = "M12_found_no_after"
+description = "ReportedDrive.found: leave the after check's sentences off the success envelope"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''            *self._messages()[0],
+'''
+new = '''            *(),
+'''
+
+[[rows]]
+id = "M13_with_steps_replaces"
+description = "with_steps: replace the cause's own steps instead of appending to them"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''steps=(*cause.remediation.steps, *steps)),'''
+new = '''steps=(*steps,)),'''
+
+[[rows]]
+id = "M14_driven_counts_done"
+description = "ReportedDrive.of: count a done item among the trees this run drives"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''                if item.state != jobs.ItemState.DONE'''
+new = '''                if item.state is not None'''
+
+[[rows]]
+id = "M15_old_facts_read_as_empty"
+description = "_resort_facts: read facts with no list as an empty one, round one's blocker"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    if "unidentified" in facts:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "M16_gate_shows_none"
+description = "_resort_facts: show no playlist not compared even when the plan recorded some"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        playlists = [] if unread is None else [unread]'''
+new = '''        playlists = []'''
+
+[[rows]]
+id = "M17_fresh_plan_unrecorded"
+description = "route_resort: freeze no empty list, so a fresh plan over nothing unread reads as an older build's"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    facts: dict[str, Any] = {"trees": list(routed), "unidentified": []}'''
+new = '''    facts: dict[str, Any] = {"trees": list(routed)}'''
+
+[[rows]]
+id = "M18_plan_drops_unread"
+description = "route_resort: record no unidentified playlists from the preview"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''            entry for report in reports for entry in report.unidentified
+'''
+new = '''            entry for report in reports[:0] for entry in report.unidentified
+'''
+
+[[rows]]
+id = "M19_no_warning_after_gate"
+description = "route_resort: carry no playlist-not-compared warning on the envelopes after the gate"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    warnings = [*warnings, *rebuild.unidentified_warnings(facts.get("unidentified") or ())]'''
+new = '''    warnings = [*warnings]'''
+
+[[rows]]
+id = "M20_resort_report_no_after"
+description = "handle_resort: stage only the due again count, so the resort's resume names nothing it found"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''            **rebuild.after_report(tree_id, report.after, active_taxonomy.load(cfg)),
+'''
+new = '''            "tree_id": tree_id,
+'''
+
+[[rows]]
+id = "M21_resort_resume_no_found"
+description = "the resort's resume: leave the drive's findings off its success envelope"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''            *drive.found(threshold, declared),
+'''
+new = '''            *(),
+'''
+
+[[rows]]
+id = "M22_rebuild_returns_none"
+description = "the rebuild worker: stage no report, as before R-2020"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    return REBUILD_ARTIFACTS.produced(
+        cfg, job, item, engine.after_report(tree_id, report.after, active_taxonomy.load(cfg))
+    )'''
+new = '''    return None'''
+
+[[rows]]
+id = "M23_rebuild_resume_no_found"
+description = "the rebuild's resume: leave the drive's findings off its success envelope"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        warnings = (*warnings, *drive.found(threshold, declared))'''
+new = '''        warnings = (*warnings,)'''
+
+[[rows]]
+id = "M24_converge_no_advice"
+description = "converge: end a not compared line without the shared wording"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''{'; '.join(unread)}{rebuild.UNIDENTIFIED}"'''
+new = '''{'; '.join(unread)}"'''
+
+[[rows]]
+id = "M25_left_behind_count_zero"
+description = "route_resort, an existing guard: show a left behind count of zero over the preview's leftovers"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        facts["left_behind"] = sum(len(report.unexpected) for report in reports)'''
+new = '''        facts["left_behind"] = 0'''

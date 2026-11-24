@@ -1,0 +1,31 @@
+name = "r2020-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C5_message_count_after_its_test"
+description = "M5 measured again once a test named two trees' same named playlists: count the distinct names, so the count disagrees with the list"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''        f"{len(found)} playlist(s) under the tree'''
+new = '''        f"{len(set(found))} playlist(s) under the tree'''
+
+[[rows]]
+id = "C9_messages_first_report_only_after_its_test"
+description = "M9 measured again once a test read a job of two item reports: read the unidentified playlists of the first report only"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    unread = [str(entry) for report in reports for entry in report.get("unidentified") or ()]'''
+new = '''    unread = [str(entry) for report in reports[:1] for entry in report.get("unidentified") or ()]'''
+
+[[rows]]
+id = "C14_favorites_step_reads_no_tree_list"
+description = "M14's composite, the thing it guards: the favorites step skipped warning reads no list of driven trees, so a drive over another tree names the routing tree's skipped step"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_unread_playlist_warnings.py", "tests/test_routing_workers.py", "tests/test_unrecorded_genre_folder.py", "tests/test_resort_scope.py"]
+old = '''    if declared.tree.id not in {str(tree_id) for tree_id in tree_ids}:
+        return ()'''
+new = '''    if False:
+        return ()'''

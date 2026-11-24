@@ -113,6 +113,8 @@ KEBAB_LITERALS = {
         'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
         'rebuild-actor-required',
+        'rebuild-artifacts',  # 2026-11-24, R-2020
+        'rebuild-staging',  # 2026-11-24, R-2020
         'rebuild-tree-not-native',
         'tree-not-derived',  # 2026-11-05, U219
     ],
