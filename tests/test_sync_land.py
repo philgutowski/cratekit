@@ -139,6 +139,20 @@ def _broken(_job, item) -> None:
     )
 
 
+def _step_answers(monkeypatch, tail: "Tail", step: str, answer: tuple, *, driven: bool = False):
+    """The tail's ``step`` answers ``answer`` at its queue command, or at its job command when
+    ``driven``; returns the job method it stood in for."""
+    real = tail._job
+
+    def answering(step_: str, verb: str, argv: list[str]) -> tuple[int, dict[str, Any]]:
+        if step_ == step and ("--job" in argv) == driven:
+            return answer
+        return real(step_, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", answering)
+    return real
+
+
 def _backup_missing(_argv) -> tuple[int, dict[str, Any]]:
     """A landing that refuses for want of a backup acknowledgment."""
     return _refused(
@@ -496,15 +510,8 @@ def test_a_failed_tail_step_plans_no_landing_and_names_the_continuation(machine,
 
 def test_a_tail_step_with_nothing_to_queue_plans_no_landing(machine, monkeypatch, tail):
     cfg, script = _ready(machine, monkeypatch, "101")
-    real = tail._job
-
-    def emptied(step, verb, argv):
-        if step == sync_land.TAG and "--job" not in argv:
-            return _ok({"job_id": None, "state": "no-tracks"}, outcome="no_op")
-        return real(step, verb, argv)
-
-    monkeypatch.setattr(tail, "_job", emptied)
-
+    nothing = _ok({"job_id": None, "state": "no-tracks"}, outcome="no_op")
+    _step_answers(monkeypatch, tail, sync_land.TAG, nothing)
     envelope = failed(drive(["sync", "land"]))
     assert envelope["cause"]["reason"] == "source-missing"
     assert ("analyze", "run") not in tail.verbs()
@@ -624,15 +631,8 @@ def test_a_gate_any_earlier_step_stops_at_is_the_steps_own_not_the_passes(
 ):
     """A step's gate is answered on that step's own run, never on this verb's."""
     cfg, script = _ready(machine, monkeypatch, "101")
-    real = tail._job
-
-    def gated(step, verb, argv):
-        if step == sync_land.RESTAMP and "--job" not in argv:
-            return _refused(_gate("restamp-run", "write.cloudsync.unreadable"), outcome="blocked")
-        return real(step, verb, argv)
-
-    monkeypatch.setattr(tail, "_job", gated)
-
+    gate = _refused(_gate("restamp-run", "write.cloudsync.unreadable"), outcome="blocked")
+    _step_answers(monkeypatch, tail, sync_land.RESTAMP, gate)
     envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert envelope["resumable"] is False
     steps = envelope["pending_human_action"]["steps"]
@@ -979,15 +979,8 @@ def test_a_stale_answer_from_a_step_is_the_steps_own_and_never_resumes_this_run(
 
 def test_a_job_command_that_stops_at_a_gate_is_that_commands_gate(machine, monkeypatch, tail):
     cfg, script = _ready(machine, monkeypatch, "101")
-    real = tail._job
-
-    def gated(step, verb, argv):
-        if step == sync_land.TAG and "--job" in argv:
-            return _refused(_gate("tag-run", "write.cloudsync.unreadable"), outcome="blocked")
-        return real(step, verb, argv)
-
-    monkeypatch.setattr(tail, "_job", gated)
-
+    gate = _refused(_gate("tag-run", "write.cloudsync.unreadable"), outcome="blocked")
+    _step_answers(monkeypatch, tail, sync_land.TAG, gate, driven=True)
     envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert envelope["resumable"] is False
     assert "crate run decide tag-run write.cloudsync.unreadable" in (
@@ -1373,29 +1366,25 @@ def test_a_refused_id_names_the_land_run_recorded_beside_each_pass(machine, monk
     assert f"(crate sync land run {first['run_id']})" in envelope["cause"]["remediation"]["steps"][0]
 
 
-def test_a_land_run_that_recorded_no_pass_is_refused_and_says_why(machine, tail):
-    """A land run that recorded no pass, or queued nothing, continues nothing."""
-    older = gates.new_run(ENTRY)
-    gates.save(older)
-    assert "related_runs" not in _record(older.run_id)
+@pytest.mark.parametrize(
+    ("related", "said"),
+    [(None, "recorded no pass"),
+     ("2026-10-30T00:00:00Z-gone", "2026-10-30T00:00:00Z-gone, no intake job")],
+    ids=["recorded-no-pass", "no-intake-job"],
+)
+def test_a_land_run_naming_no_pass_an_intake_job_carries_is_refused(machine, tail, related, said):
+    """A land run that recorded no pass, or one a later step would refuse, is refused up front."""
+    land_run = gates.new_run(ENTRY)
+    if related is not None:
+        land_run.related_runs["pass_run"] = related
+    gates.save(land_run)
+    recorded = None if related is None else {"pass_run": related}
+    assert _record(land_run.run_id).get("related_runs") == recorded
 
-    code, envelope = drive(["sync", "land", "--pass-run", older.run_id])
-
-    assert envelope["cause"]["reason"] == "job-unknown", envelope
-    assert "recorded no pass" in envelope["cause"]["message"]
-    assert tail.calls == []
-
-
-def test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued(machine, tail):
-    """A resolved id that a later step would refuse is refused up front."""
-    stale = gates.new_run(ENTRY)
-    stale.related_runs["pass_run"] = "2026-10-30T00:00:00Z-gone"
-    gates.save(stale)
-
-    code, envelope = drive(["sync", "land", "--pass-run", stale.run_id])
+    code, envelope = drive(["sync", "land", "--pass-run", land_run.run_id])
 
     assert envelope["cause"]["reason"] == "job-unknown", envelope
-    assert "2026-10-30T00:00:00Z-gone, no intake job" in envelope["cause"]["message"]
+    assert said in envelope["cause"]["message"]
     assert tail.calls == []
 
 
@@ -1486,14 +1475,8 @@ def test_the_continue_command_a_failed_step_prints_works_when_pasted(machine, mo
 
 def test_the_continue_command_a_pending_stop_prints_works_when_pasted(machine, monkeypatch, tail):
     cfg, script = _ready(machine, monkeypatch, "101")
-    gated = tail._job
-
-    def name_gate(step, verb, argv):
-        if step == sync_land.ANALYZE and "--job" not in argv:
-            return _refused(_gate("analyze-run", gate="analyze-confirm"), outcome="blocked")
-        return gated(step, verb, argv)
-
-    monkeypatch.setattr(tail, "_job", name_gate)
+    gate = _refused(_gate("analyze-run", gate="analyze-confirm"), outcome="blocked")
+    gated = _step_answers(monkeypatch, tail, sync_land.ANALYZE, gate)
     pending = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     last = pending["pending_human_action"]["steps"][-1]
     assert last.endswith(f"crate sync land --pass-run {_summary(pending)['pass_run']}")
