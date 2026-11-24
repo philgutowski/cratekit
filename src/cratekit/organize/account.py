@@ -3,8 +3,8 @@
 The steps: a folder per followed label (``label playlists``), every landed sync
 pass marked (``sync mark``), every downloaded set archived (``export
 archive``), the root filed (U116, :mod:`cratekit.organize.filing`) and kept
-(U143, :mod:`cratekit.organize.root`), and the routing tree, Favorites and
-INBOX mirrored (U147, U150, :mod:`cratekit.organize.account_mirror`).
+(U143, :mod:`cratekit.organize.root`), and the routing tree, Favorites, INBOX
+and WIP mirrored (U147, U150, U959, :mod:`cratekit.organize.account_mirror`).
 
 A SET IS ARCHIVED ONLY WHEN ITS DOWNLOAD IS PROVEN, by an intake file named for
 it or (U142) an INSPIRATION playlist of its name; any other set is listed as

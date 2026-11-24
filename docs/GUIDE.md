@@ -1257,14 +1257,14 @@ repeatable, plans just those steps; a side with no kind named is not asked.
 | rekordbox | `rotate` | Rotates INBOX, as `inbox rotate`. |
 | rekordbox | `record-labels` | Listed only; a landing files label batches itself. |
 | rekordbox | `inspiration` | Gives each downloaded (taken) set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
-| rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches). |
-| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks; the next new `sync land` pass takes the download. |
+| rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches); an edit to a WIP playlist stays on the account. |
+| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist, other than a WIP one, that the library lacks; the next new `sync land` pass takes the download. |
 | account | `labels` | Builds missing label folders and year playlists, and plans each label's dated `<Label> <year> new <date>` playlist of releases a go took that day. |
 | account | `sets` | Archives every set whose download is proven into `Downloaded Sets <year>`. |
 | account | `marks` | Marks every landed sync pass. |
 | account | `file` | Files each playlist a sync marked at the root into its `<year>` folder. |
 | account | `root` | Removes label debris whose tracks are all downloaded and empty root playlists, and empties legacy `<year> Custom Playlists` folders, each named on the gate. |
-| account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites and INBOX's live batches to a root folder of private playlists. |
+| account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites, INBOX's live batches and every playlist under the top level `WIP` folder to a root folder of private playlists. |
 | both | `yours` | Lists playlists you made, with a suggested home; never moves or renames them. |
 
 - An edit on Tidal to a mirrored genre playlist retags the track: moving it
@@ -1285,6 +1285,15 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   show it: into `Electronica / Other`, which files by no genre beside a
   second, or out of its folder when a second genre naming that same folder
   would then name it too.
+- Every plain playlist under the top level `WIP` folder is mirrored into an
+  account root folder `WIP`: one directly under it as `WIP <playlist>`, one in
+  a subfolder as `<subfolder> <playlist>`, so `WIP / Phil / deep and soulful`
+  becomes `Phil deep and soulful`. A playlist `sync pair` keeps (a custom
+  playlist twin is one), a smart playlist and a folder two levels down are
+  named on the step and not mirrored, and with no `WIP` folder a fact says so.
+  An edit you make on Tidal to a WIP playlist stays as you made it and is not
+  taken into rekordbox; a WIP playlist you delete or move out of `WIP` keeps
+  its account playlist.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a

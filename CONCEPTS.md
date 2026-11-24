@@ -1194,10 +1194,11 @@ playlists older versions left gapped.
 
 ### Account mirror
 The `mirror` step of `crate organize`: an account root folder copying one
-rekordbox routing folder, the Favorites folder or INBOX, one private playlist per
-rekordbox playlist (`<Folder> <Playlist>`), kept equal each run. Unmatched rows
+rekordbox routing folder, the Favorites folder, INBOX or the top level WIP folder,
+one private playlist per rekordbox playlist (`<Folder> <Playlist>`, a WIP
+subfolder's as `<Subfolder> <Playlist>`), kept equal each run. Unmatched rows
 are named, never substituted. A batch leaving INBOX has its mirrored playlist
-removed. An ISRC tie is matched to the lowest provider id after narrowing.
+removed. An edit on the account to a WIP playlist is held, never carried. An ISRC tie is matched to the lowest provider id after narrowing.
 
 *Avoid:* an export (one way, add only) or a pair (both ways).
 
