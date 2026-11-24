@@ -66,10 +66,13 @@ def real_rclone(monkeypatch, tmp_path) -> str:
     return str(found)
 
 
-def _configured(root: Path, remote: str, tmp_path: Path) -> config.Config:
-    """A library at ``root`` whose three destinations are on the remote named."""
-    (root / "Music").mkdir(parents=True, exist_ok=True)
-    (root / "db").mkdir(parents=True, exist_ok=True)
+def _configured(
+    root: Path, remote: str, tmp_path: Path, *, folders: tuple[str, ...] = ("Music", "db")
+) -> config.Config:
+    """A library at ``root`` holding ``folders``, whose three destinations are on the remote named."""
+    root.mkdir(parents=True, exist_ok=True)
+    for folder in folders:
+        (root / folder).mkdir(exist_ok=True)
     return config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
@@ -87,15 +90,20 @@ def _configured(root: Path, remote: str, tmp_path: Path) -> config.Config:
     )
 
 
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
+def _saved(tmp_path: Path, monkeypatch, *, folders: tuple[str, ...] = ("Music", "db")) -> config.Config:
+    """The library at ``tmp_path / "library"`` on the remote ``remote``, saved and read fresh."""
     root = tmp_path / "library"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    built = _configured(root, "remote", tmp_path)
+    built = _configured(root, "remote", tmp_path, folders=folders)
     config.save(built)
     config.reset_cache()
     return built
+
+
+@pytest.fixture
+def cfg(tmp_path, monkeypatch):
+    return _saved(tmp_path, monkeypatch)
 
 
 def _write(path: Path, content: bytes, *, at: datetime) -> None:

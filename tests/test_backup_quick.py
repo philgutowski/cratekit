@@ -11,7 +11,6 @@ sitting on the live remote.
 from __future__ import annotations
 
 import gzip
-import io
 import json
 import os
 import time
@@ -20,12 +19,14 @@ from pathlib import Path
 
 import pytest
 
-from cratekit import cli
 from cratekit.backup import cli as backup_cli
 from cratekit.cli import doctor
 from cratekit.core import backup_facts, binaries, config, processes
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup, backup_record
+from tests.test_backup_comparison import _drive, _held
+from tests.test_backup_comparison import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
+from tests.test_backup_comparison import cfg as cfg  # noqa: PLC0414
 
 MOMENT = datetime(2026, 11, 1, 12, 0, 0, tzinfo=timezone.utc)
 FILES = backup_facts.Portion.FILES
@@ -34,11 +35,6 @@ DATABASE = backup_facts.Portion.DATABASE
 
 def _remote(tmp_path: Path) -> Path:
     return tmp_path / "remotes" / "remote"
-
-
-@pytest.fixture(autouse=True)
-def _nothing_is_running(monkeypatch):
-    monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
 
 
 @pytest.fixture
@@ -54,36 +50,6 @@ def real_rclone(monkeypatch, tmp_path) -> str:
         "It is a declared binary of the backup module"
     )
     return str(found)
-
-
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-            "backup": {
-                "remote": "remote",
-                "dest": "remote:mirror",
-                "archive_root": "remote:archive",
-                "db_dest_root": "remote:database",
-            },
-        }
-    )
-    config.save(built)
-    config.reset_cache()
-    return built
 
 
 OLD = MOMENT - timedelta(days=30)
@@ -102,6 +68,14 @@ def _seed(cfg) -> Path:
     _write(music / "retagged.flac", b"genre: house")
     _write(music / "removed.flac", b"removed, generation one")
     _write(config.state_path("rekordbox_db", cfg), b"database, generation one")
+    return music
+
+
+@pytest.fixture
+def music(cfg, real_rclone) -> Path:
+    """The seeded library's music folder, backed up once at ``MOMENT``."""
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
     return music
 
 
@@ -138,19 +112,14 @@ def _backup(cfg, *, at, runner=None, check=False, full=False, dry_run=False, onl
     return plan, outcome
 
 
+def _planned(cfg, at, only=FILES, **seams):
+    """The plan of one portion, as the run at ``at`` would make it."""
+    return backup.plan_backup(cfg, now=at, only=only, settings_dirs=(), **seams).portion(only)
+
+
 def _portion(outcome, which):
     (found,) = [p for p in outcome.portions if p.portion is which]
     return found
-
-
-def _held(folder: Path) -> dict[str, bytes]:
-    if not folder.is_dir():
-        return {}
-    return {
-        path.relative_to(folder).as_posix(): path.read_bytes()
-        for path in sorted(folder.rglob("*"))
-        if path.is_file()
-    }
 
 
 def _library_as_mirrored(cfg) -> dict[str, bytes]:
@@ -200,10 +169,8 @@ def test_nothing_changed_is_a_skip_that_sends_nothing_and_resets_both_ages(cfg, 
     assert facts[DATABASE].kind == backup_facts.KIND_UNCHANGED
 
 
-def test_the_fact_file_alone_changed_is_still_a_skip(cfg, real_rclone, tmp_path):
+def test_the_fact_file_alone_changed_is_still_a_skip(cfg, music, tmp_path):
     """A skip does not send the fact file, which every run rewrites after its transfer."""
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     fact = backup_facts.path_for(cfg).relative_to(cfg.library.root).as_posix()
     assert backup_facts.path_for(cfg).is_file(), "the first run published no fact"
     assert fact not in backup_record.read_manifest()[0].entries, (
@@ -229,10 +196,8 @@ def test_the_fact_file_alone_changed_is_still_a_skip(cfg, real_rclone, tmp_path)
 
 
 def test_an_added_a_changed_and_a_removed_file_are_a_quick_run_of_only_those(
-    cfg, real_rclone, tmp_path
+    cfg, music, tmp_path
 ):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
 
     _write(music / "added.flac", b"added")
     _write(music / "retagged.flac", b"genre: techno, longer", at=OLD + timedelta(days=1))
@@ -282,10 +247,8 @@ def test_a_rewrite_that_kept_its_size_and_time_is_found_by_its_hash_and_sent(
     assert _mirrored(cfg, tmp_path)["Music/fresh.flac"] == b"other take"
 
 
-def test_no_skip_while_anything_changed(cfg, real_rclone):
+def test_no_skip_while_anything_changed(cfg, music):
     """THE MERGE BLOCKER, over every kind of change the walk can see."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     changes = [
         lambda: _write(music / "new.flac", b"new"),
         lambda: _write(music / "kept.flac", b"kept, generation one", at=OLD + timedelta(seconds=1)),
@@ -305,10 +268,8 @@ def test_no_skip_while_anything_changed(cfg, real_rclone):
 
 
 def test_a_database_change_only_takes_a_snapshot_and_skips_the_files(
-    cfg, real_rclone, tmp_path
+    cfg, music, tmp_path
 ):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _write(config.state_path("rekordbox_db", cfg), b"database, generation two")
 
     later = MOMENT + timedelta(hours=1)
@@ -331,8 +292,7 @@ def test_a_snapshot_whose_marker_failed_is_taken_again_next_time(cfg, real_rclon
     _seed(cfg)
     _backup(cfg, at=MOMENT, runner=Counting(fail=backup.SNAPSHOT_IDENTITY))
     assert not backup_record.fingerprint_path().exists()
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=DATABASE, settings_dirs=())
-    assert plan.portion(DATABASE).kind == backup_facts.KIND_SNAPSHOT
+    assert _planned(cfg, MOMENT + timedelta(hours=1), DATABASE).kind == backup_facts.KIND_SNAPSHOT
 
 
 def test_the_second_reading_of_the_database_waits_on_a_second_scan(cfg, real_rclone):
@@ -365,13 +325,10 @@ def test_the_second_reading_of_the_database_waits_on_a_second_scan(cfg, real_rcl
     assert any(w["code"] == backup.BACKUP_RECORD_NOT_KEPT for w in database.warnings)
 
 
-def test_a_sidecar_that_appeared_is_a_changed_database(cfg, real_rclone):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_sidecar_that_appeared_is_a_changed_database(cfg, music):
     wal = config.state_path("rekordbox_db", cfg).with_name("master.db-wal")
     _write(wal, b"uncheckpointed")
-    plan = backup.plan_backup(cfg, now=MOMENT, only=DATABASE, settings_dirs=())
-    assert plan.portion(DATABASE).kind == backup_facts.KIND_SNAPSHOT
+    assert _planned(cfg, MOMENT, DATABASE).kind == backup_facts.KIND_SNAPSHOT
 
 
 @pytest.mark.parametrize("scan", ["running", "unconfirmed"])
@@ -450,10 +407,8 @@ def _damage(how: str, cfg) -> None:
      "entries not a table", "no token", "a flipped byte"],
 )
 def test_a_record_missing_damaged_or_kept_for_another_backup_makes_a_full_run(
-    cfg, real_rclone, how
+    cfg, music, how
 ):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _damage(how, cfg)
 
     runner = Counting()
@@ -464,11 +419,9 @@ def test_a_record_missing_damaged_or_kept_for_another_backup_makes_a_full_run(
     assert backup_record.read_manifest()[0] is not None, "the full run kept no record"
 
 
-def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone, tmp_path, monkeypatch):
+def test_a_run_by_another_installation_makes_the_next_run_full(cfg, music, tmp_path, monkeypatch):
     """Round one's B1: a second installation archived a file off the mirror and it
     was put back; this record still holds it, so trusting it would skip."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     mine = os.environ["CRATEKIT_STATE_DIR"]
 
     (music / "removed.flac").unlink()
@@ -484,12 +437,10 @@ def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone,
 
 
 def test_a_failed_run_by_another_installation_makes_the_next_run_full(
-    cfg, real_rclone, tmp_path, monkeypatch
+    cfg, music, tmp_path, monkeypatch
 ):
     """The other installation's run sent then failed, so the token is struck from
     the library's fact when a run removes its own record, before it sends."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     mine = os.environ["CRATEKIT_STATE_DIR"]
     good = (music / "kept.flac").read_bytes()
 
@@ -515,9 +466,7 @@ def test_a_failed_run_by_another_installation_makes_the_next_run_full(
     assert _mirrored(cfg, tmp_path)["Music/kept.flac"] == good
 
 
-def test_a_run_that_fails_strikes_the_token_from_the_library_fact(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_run_that_fails_strikes_the_token_from_the_library_fact(cfg, music):
     facts = backup_facts.read_facts(cfg)
     assert facts[FILES].summary[backup.RECORD_TOKEN]
     _write(music / "added.flac", b"added")
@@ -527,29 +476,21 @@ def test_a_run_that_fails_strikes_the_token_from_the_library_fact(cfg, real_rclo
     assert facts[FILES].completed_at == MOMENT, "striking the token moved the age"
 
 
-def test_a_fact_published_by_a_build_before_u317_makes_the_next_run_full(cfg, real_rclone):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_fact_published_by_a_build_before_u317_makes_the_next_run_full(cfg, music):
     backup_facts.record(
         cfg, FILES, completed_at=MOMENT + timedelta(hours=1), destination=str(cfg.backup.dest)
     )
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=2), only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_FULL
+    assert _planned(cfg, MOMENT + timedelta(hours=2)).kind == backup_facts.KIND_FULL
 
 
-def test_a_skip_carries_the_record_on_so_the_run_after_it_trusts_it(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_skip_carries_the_record_on_so_the_run_after_it_trusts_it(cfg, music):
     _, skipped = _backup(cfg, at=MOMENT + timedelta(hours=1))
     assert _portion(skipped, FILES).kind == backup_facts.KIND_SKIPPED
     _write(music / "added.flac", b"added")
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=2), only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_QUICK
+    assert _planned(cfg, MOMENT + timedelta(hours=2)).kind == backup_facts.KIND_QUICK
 
 
-def test_the_last_full_check_eight_days_old_makes_a_full_run(cfg, real_rclone):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_the_last_full_check_eight_days_old_makes_a_full_run(cfg, music):
 
     plan = backup.plan_backup(cfg, now=MOMENT + timedelta(days=6), settings_dirs=())
     assert plan.portion(FILES).kind == backup_facts.KIND_SKIPPED
@@ -564,9 +505,7 @@ def test_the_last_full_check_eight_days_old_makes_a_full_run(cfg, real_rclone):
     assert check.age == timedelta(0)
 
 
-def test_a_quick_run_does_not_move_the_last_full_check(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_quick_run_does_not_move_the_last_full_check(cfg, music):
     _write(music / "added.flac", b"added")
     _, outcome = _backup(cfg, at=MOMENT + timedelta(days=3))
     assert _portion(outcome, FILES).kind == backup_facts.KIND_QUICK
@@ -577,10 +516,8 @@ def test_a_quick_run_does_not_move_the_last_full_check(cfg, real_rclone):
 
 
 def test_the_check_flag_makes_a_full_run_and_a_snapshot_over_an_unchanged_library(
-    cfg, real_rclone
+    cfg, music
 ):
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     for flags in ({"check": True}, {"full": True}):
         _, outcome = _backup(cfg, at=MOMENT + timedelta(hours=1), **flags)
         assert _portion(outcome, FILES).kind == backup_facts.KIND_FULL, flags
@@ -592,10 +529,8 @@ def test_the_check_flag_makes_a_full_run_and_a_snapshot_over_an_unchanged_librar
 
 @pytest.mark.parametrize("fails", [backup.QUICK_ARCHIVE, backup.QUICK_SEND])
 def test_a_quick_run_that_fails_midway_resets_no_age_and_leaves_no_record(
-    cfg, real_rclone, fails
+    cfg, music, fails
 ):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _write(music / "added.flac", b"added")
     (music / "removed.flac").unlink()
 
@@ -613,9 +548,7 @@ def test_a_quick_run_that_fails_midway_resets_no_age_and_leaves_no_record(
     assert backup.MIRROR in runner.labels()
 
 
-def test_a_full_run_that_fails_leaves_no_record_behind(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_full_run_that_fails_leaves_no_record_behind(cfg, music):
     _write(music / "added.flac", b"added")
     _, outcome = _backup(
         cfg, at=MOMENT + timedelta(hours=1), runner=Counting(fail=backup.MIRROR), check=True
@@ -625,10 +558,8 @@ def test_a_full_run_that_fails_leaves_no_record_behind(cfg, real_rclone):
 
 
 def test_a_record_that_cannot_be_removed_stops_the_run_before_it_sends(
-    cfg, real_rclone, monkeypatch
+    cfg, music, monkeypatch
 ):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _write(music / "added.flac", b"added")
 
     def refuse(path):
@@ -643,10 +574,8 @@ def test_a_record_that_cannot_be_removed_stops_the_run_before_it_sends(
     assert _ages(cfg, MOMENT + timedelta(hours=1))["files"] == timedelta(hours=1)
 
 
-def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, real_rclone, tmp_path):
+def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, music, tmp_path):
     """Both walks must agree for an entry to be trusted."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _write(music / "added.flac", b"added")
 
     class Meddling(Counting):
@@ -668,11 +597,9 @@ def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, real_rclone, t
     assert _mirrored(cfg, tmp_path)["Music/kept.flac"] == b"kept, rewritten mid run"
 
 
-def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, real_rclone, tmp_path):
+def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, music, tmp_path):
     """Round one's R1: a rewrite during the transfer that put its time back is sent
     with times ignored, since both walks hashed it."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     fresh = datetime.fromtimestamp(time.time(), tz=timezone.utc)
     _write(music / "added.flac", b"take one", at=fresh)
 
@@ -710,8 +637,7 @@ def test_a_folder_that_cannot_be_listed_makes_a_full_run_and_never_an_archive(
     _backup(cfg, at=MOMENT)
     _unlistable(monkeypatch, "Crate")
 
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
-    files = plan.portion(FILES)
+    files = _planned(cfg, MOMENT + timedelta(hours=1))
     assert files.kind == backup_facts.KIND_FULL and "could not be listed" in files.why
     assert backup.QUICK_ARCHIVE not in [c.label for c in files.commands]
 
@@ -731,8 +657,7 @@ def test_a_folder_gone_between_being_listed_and_being_read_makes_a_full_run(
         return real(path)
 
     monkeypatch.setattr(backup_record.os, "scandir", scandir)
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
-    files = plan.portion(FILES)
+    files = _planned(cfg, MOMENT + timedelta(hours=1))
     assert files.kind == backup_facts.KIND_FULL and "was listed and then was not there" in files.why
 
 
@@ -740,11 +665,9 @@ def test_a_folder_gone_between_being_listed_and_being_read_makes_a_full_run(
     "after_the_plan", ["the path came back", "the root went away", "another volume"]
 )
 def test_a_removal_is_archived_only_while_the_walk_still_holds(
-    cfg, real_rclone, tmp_path, after_the_plan, monkeypatch
+    cfg, music, tmp_path, after_the_plan, monkeypatch
 ):
     """Round one's B2, the plan to run half: the archive is asked again first."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     (music / "removed.flac").unlink()
     later = MOMENT + timedelta(hours=1)
     plan = backup.plan_backup(cfg, now=later, only=FILES, settings_dirs=())
@@ -788,11 +711,9 @@ def _another_volume(monkeypatch, root: Path) -> None:
 
 
 def test_a_send_runs_only_while_the_root_is_the_volume_walked(
-    cfg, real_rclone, tmp_path, monkeypatch
+    cfg, music, tmp_path, monkeypatch
 ):
     """Round two's finding 4: an unmount after the plan with only an addition."""
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
     _write(music / "added.flac", b"added")
     later = MOMENT + timedelta(hours=1)
     plan = backup.plan_backup(cfg, now=later, only=FILES, settings_dirs=())
@@ -817,13 +738,10 @@ def test_an_excluded_system_folder_that_cannot_be_listed_is_never_entered(
     _write(cfg.library.root / ".Spotlight-V100" / "store.db", b"index")
     _backup(cfg, at=MOMENT)
     _unlistable(monkeypatch, ".Spotlight-V100")
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_SKIPPED
+    assert _planned(cfg, MOMENT + timedelta(hours=1)).kind == backup_facts.KIND_SKIPPED
 
 
-def test_a_name_holding_a_line_break_makes_a_full_run(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_name_holding_a_line_break_makes_a_full_run(cfg, music):
     _write(music / "two\nlines.flac", b"odd")
     plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
     assert plan.portion(FILES).kind == backup_facts.KIND_FULL
@@ -846,13 +764,10 @@ def test_the_walk_and_the_mirror_agree_on_what_the_library_holds(cfg, real_rclon
     walked = set(backup_record.read_manifest()[0].entries)
     fact = backup_facts.path_for(cfg).relative_to(root).as_posix()
     assert set(_mirrored(cfg, tmp_path)) == walked - {fact}
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_SKIPPED
+    assert _planned(cfg, MOMENT + timedelta(hours=1)).kind == backup_facts.KIND_SKIPPED
 
 
-def test_a_changed_name_in_decomposed_form_makes_a_full_run(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_changed_name_in_decomposed_form_makes_a_full_run(cfg, music):
     _write(music / "Cafe\u0301.flac", b"decomposed")
     plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
     assert plan.portion(FILES).kind == backup_facts.KIND_FULL
@@ -862,13 +777,10 @@ def test_a_changed_name_in_decomposed_form_makes_a_full_run(cfg, real_rclone):
     (music / "Cafe\u0301.flac").unlink()
     _backup(cfg, at=MOMENT + timedelta(hours=2), check=True)
     _write(music / "Caf\u00e9.flac", b"composed, again")
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=3), only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_QUICK
+    assert _planned(cfg, MOMENT + timedelta(hours=3)).kind == backup_facts.KIND_QUICK
 
 
-def test_more_changes_than_a_quick_run_is_for_make_a_full_run(cfg, real_rclone, monkeypatch):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_more_changes_than_a_quick_run_is_for_make_a_full_run(cfg, music, monkeypatch):
     monkeypatch.setattr(backup_record, "QUICK_LIMIT", 1)
     _write(music / "one.flac", b"1")
     _write(music / "two.flac", b"2")
@@ -880,9 +792,7 @@ def test_more_changes_than_a_quick_run_is_for_make_a_full_run(cfg, real_rclone, 
 # A rehearsal plans the kind and keeps every record as it was
 
 
-def test_a_rehearsal_of_a_quick_run_sends_nothing_and_keeps_the_record(cfg, real_rclone, tmp_path):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_a_rehearsal_of_a_quick_run_sends_nothing_and_keeps_the_record(cfg, music, tmp_path):
     record = backup_record.manifest_path().read_bytes()
     mirrored = _mirrored(cfg, tmp_path)
     _write(music / "added.flac", b"added")
@@ -898,12 +808,6 @@ def test_a_rehearsal_of_a_quick_run_sends_nothing_and_keeps_the_record(cfg, real
 
 
 # The verb's report and doctor
-
-
-def _drive(argv: list[str]) -> tuple[int, dict]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    return code, json.loads(out.getvalue())
 
 
 def _run_verb(*flags: str) -> dict:
@@ -955,9 +859,7 @@ def test_the_check_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
     ]
 
 
-def test_doctor_names_the_last_run_and_the_next_full_check(cfg, real_rclone):
-    music = _seed(cfg)
-    _backup(cfg, at=MOMENT)
+def test_doctor_names_the_last_run_and_the_next_full_check(cfg, music):
     _write(music / "added.flac", b"added")
     _backup(cfg, at=MOMENT + timedelta(days=1))
 
@@ -1018,10 +920,8 @@ def test_the_kind_words_are_spelled_once_on_each_side_and_the_seconds_once():
     assert not hasattr(backup_cli, "_took")
 
 
-def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
+def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, music):
     """A damaged informational key in ``ages`` asks a full check, never a refusal."""
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     path = backup_facts.path_for(cfg)
     data = json.loads(path.read_text())
     data[backup_facts.FULL_CHECK_KEY] = "not an object"
@@ -1029,19 +929,15 @@ def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
     (files, _db) = backup_facts.ages(cfg, now=MOMENT)
     assert files.age == timedelta(0)
     assert files.full_check_due is None and "could not be read" in files.full_check_overdue
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
-    assert plan.portion(FILES).kind == backup_facts.KIND_FULL
+    assert _planned(cfg, MOMENT).kind == backup_facts.KIND_FULL
 
 
 @pytest.mark.parametrize("field", ["db_dest_root", "identity", "database"])
-def test_a_fingerprint_taken_for_another_snapshot_is_not_compared(cfg, real_rclone, field):
+def test_a_fingerprint_taken_for_another_snapshot_is_not_compared(cfg, music, field):
     """Q23: a fingerprint taken for another snapshot root, library identity or
     database path does not make this one unchanged."""
-    _seed(cfg)
-    _backup(cfg, at=MOMENT)
     path = backup_record.fingerprint_path()
     held = json.loads(path.read_text())
     held[field] = "elsewhere"
     path.write_text(json.dumps(held))
-    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=DATABASE, settings_dirs=())
-    assert plan.portion(DATABASE).kind == backup_facts.KIND_SNAPSHOT
+    assert _planned(cfg, MOMENT + timedelta(hours=1), DATABASE).kind == backup_facts.KIND_SNAPSHOT
