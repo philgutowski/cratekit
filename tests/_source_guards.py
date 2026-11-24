@@ -427,9 +427,9 @@ def _import_targets(
 ) -> tuple[bool, bool]:
     """Whether one ``from ... import`` names MODULE, or the package MODULE sits in.
 
-    One implementation for both walks; see the residual "Two copies of one
-    import walk still carry a relative-import defect". Resolved against a known
-    package, so ``from . import exit_codes`` in ``cli`` is the table; without
+    One implementation for both walks; see the residual
+    "Two copies of one import walk still carry a relative-import defect".
+    Resolved against a known package, so ``from . import exit_codes`` in ``cli`` is the table; without
     one the TAIL is matched, and ``from . import X`` names the package.
     """
     owner, _, leaf = module.rpartition(".")
@@ -1707,8 +1707,8 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     A FALSEY fallback, however spelled or laundered a line later, silently
     promotes every tombstone to a live row. LEFT ALONE (P7): a compared
     sentinel, no default, the constant's definition, a module table's ``.get``.
-    Limits: the residual "What the soft-delete guard cannot see, and two gaps
-    in the gate contract".
+    Limits: the residual
+    "What the soft-delete guard cannot see, and two gaps in the gate contract".
     """
     tree = ast.parse(source)
     names = SoftDeleteNames(tree)
@@ -1727,9 +1727,9 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
 def reads_soft_delete_marker(source: str) -> bool:
     """Whether this source reads the soft-delete marker at all, permissively or not.
 
-    Feeds an exact-membership pin, the only shape that catches a widening; see
-    the residual "Guard whitelists assert what is forbidden, never what is
-    permitted". Defining the column is not reading it (U24).
+    Feeds an exact-membership pin, the only shape that catches a widening; see the
+    residual "Guard whitelists assert what is forbidden, never what is permitted".
+    Defining the column is not reading it (U24).
     """
     tree = ast.parse(source)
     return bool(_soft_delete_reads(tree, SoftDeleteNames(tree)))
