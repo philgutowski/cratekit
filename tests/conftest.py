@@ -413,14 +413,28 @@ def _no_message_catalogue() -> bool:
     return not gettext.find(domain, gettext.bindtextdomain(domain), all=True)
 
 
+def _answer_argparse_untranslated() -> bool:
+    """Hand argparse ``NullTranslations``' lookups where no catalogue exists; say if it did."""
+    if _lookups_before or not _no_message_catalogue():
+        return False
+    _lookups_before.append({name: getattr(argparse, name) for name in _ARGPARSE_LOOKUPS})
+    untranslated = gettext.NullTranslations()
+    argparse._ = untranslated.gettext
+    argparse.ngettext = untranslated.ngettext
+    return True
+
+
+def _give_argparse_its_lookups_back() -> None:
+    """Put back what :func:`_answer_argparse_untranslated` replaced, if it replaced anything."""
+    if _lookups_before:
+        for name, lookup in _lookups_before.pop().items():
+            setattr(argparse, name, lookup)
+
+
 def pytest_configure(config):
     _thresholds_before.append(gc.get_threshold())
     gc.set_threshold(*COLLECTOR_THRESHOLDS)
-    if _no_message_catalogue():
-        _lookups_before.append({name: getattr(argparse, name) for name in _ARGPARSE_LOOKUPS})
-        untranslated = gettext.NullTranslations()
-        argparse._ = untranslated.gettext
-        argparse.ngettext = untranslated.ngettext
+    _answer_argparse_untranslated()
     config.addinivalue_line(
         "markers",
         f"{REAL_PROCESS_TABLE}: keep the host's real process table, which every "
@@ -431,9 +445,7 @@ def pytest_configure(config):
 def pytest_unconfigure(config):
     if _thresholds_before:
         gc.set_threshold(*_thresholds_before.pop())
-    if _lookups_before:
-        for name, lookup in _lookups_before.pop().items():
-            setattr(argparse, name, lookup)
+    _give_argparse_its_lookups_back()
 
 
 class _NoProcesses:

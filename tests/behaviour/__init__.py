@@ -166,6 +166,8 @@ def pin(patch):
             continue
         if module_name == __name__:
             continue  # this module's own names for the real classes stay real
+        if pinned.keys().isdisjoint(map(id, list(vars(module).values()))):
+            continue  # holds none of the names, asked of every value at once (U336)
         for name, value in list(vars(module).items()):
             replacement = pinned.get(id(value))
             if replacement is not None:
