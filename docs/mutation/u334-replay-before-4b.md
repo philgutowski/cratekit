@@ -10,7 +10,7 @@ Full baseline: measured by this driver (the battery's verdict was not read: no b
 
 Subset baselines: 1, each measured by this driver.
 
-Known failures: 248 node ids whose failure is this machine's and not the tree's, read from `/home/user/cratekit/.cloud-battery/baseline.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
+Known failures: 248 node ids whose failure is this machine's and not the tree's, read from `.cloud-battery/baseline.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
 
 Temporary files: on disk, the place the known failures were measured in, each run given a fresh directory there as `TMPDIR` (U273).
 

@@ -1,22 +1,22 @@
 # Mutation table: u334-replay-after-4
 
-Measured by `scripts/mutate.py` on 2026-11-24 05:00 UTC, branch `HEAD` at `90c0cc08`. Pass kind: replay.
+Measured by `scripts/mutate.py` on 2026-11-24 11:07 UTC, branch `cloud/983-test-slice-3-of-4` at `3cc01e68`. Pass kind: replay.
 
 A replay pass measures again rows a table under `docs/mutation/` already recorded, so it has no row cap and chooses no rows: every row below names the table and the id it came from. One full baseline and one null control serve the batch, and each row ran on its own subset (U297).
 
-Baseline: green, 23214 collected. pytest invocations for this batch: 325.
+Baseline: green, 23214 collected. pytest invocations for this batch: 107.
 
-Full baseline: READ, not measured by this driver; read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-24 05:00 UTC for commit `90c0cc0829da`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file. The null control below ran the full suite in this driver's own environment and was held to that collected count (U271).
+Full baseline: measured by this driver (the battery's verdict was not read: it was read against another known failures file).
 
 Subset baselines: 59, each measured by this driver.
 
-Known failures: 250 node ids whose failure is this machine's and not the tree's, read from `.cloud-battery/baseline.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
+Known failures: 250 node ids whose failure is this machine's and not the tree's, read from `scratch/known.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
 
 Temporary files: on disk, the place the known failures were measured in, each run given a fresh directory there as `TMPDIR` (U273).
 
 Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file); TMPDIR, with a known failures file only (a fresh directory in the place its baseline was measured in, or on disk for the tests rerun there, U273); the installation state sandbox: CRATEKIT_CONFIG_DIR, CRATEKIT_PROVIDER_GATE_DIR, CRATEKIT_STATE_DIR, HOME, USERPROFILE, XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME (all pointed inside the run's workspace, R-343). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it); PYTEST_XDIST_WORKER (the reporting plugin reads it to tell a worker from the controller, so a driver started from inside a parallel worker would hand its child a controller that believes it is a worker and writes no report; xdist sets it afresh in each worker the child starts); PYTEST_XDIST_WORKER_COUNT (the same inherited worker identity, scrubbed with it); PYTEST_XDIST_TESTRUNUID (the same inherited worker identity, scrubbed with it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
 
-Installation state: the watched roots are unchanged. Fingerprinted before the first child this run started and after every one of them: ~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25). A change would have stopped the batch at the child that was running. Every child ran with its own throwaway installation state, so a test that undoes the suite's isolation lands there rather than on this machine (R-343). Only those roots, and the names directly under the filesystem root (R-1917), are watched; the sandbox also redirects HOME and the data root, and a child reaching one of those is not seen by this guard.
+Installation state: the watched roots are unchanged. Fingerprinted before the first child this run started and after every one of them: ~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25). A change would have stopped the batch at the child that was running. Every child ran with its own throwaway installation state, so a test that undoes the suite's isolation lands there rather than on this machine (R-343). Only those roots, and the names directly under the filesystem root (R-1917), are watched; the sandbox also redirects HOME and the data root, and a child reaching one of those is not seen by this guard. 216 row(s) were reused from a prior sidecar and were measured by an earlier process, whose children this run did not watch.
 
 Null control `NULL_CONTROL`: killed 0, collected 23214 against 23214. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
 
@@ -76,7 +76,7 @@ Null control `NULL_CONTROL`: killed 0, collected 23214 against 23214. The contro
 | `u12-independent-round-6.X4_initargs_not_refused` | `src/cratekit/core/pool.py` | user | 1 file(s) | 268 | 1 | killed |
 | `u12-independent-round-6.X5_in_process_path_removed` | `src/cratekit/core/pool.py` | user | 1 file(s) | 268 | 1 | killed |
 | `u12-independent-round-6.X7_generation_size_drops_the_width` | `src/cratekit/core/pool.py` | user | 1 file(s) | 268 | 9 | killed |
-| `u241.M01_worker_takes_the_interrupt` | `src/cratekit/core/pool.py` | user | 1 file(s) | 23214 | 0 (promoted) | zero |
+| `u241.M01_worker_takes_the_interrupt` | `src/cratekit/core/pool.py` | user | 1 file(s) | 26 | 1 | killed |
 | `u241.M02_worker_outlives_its_parent` | `src/cratekit/core/pool.py` | user | 1 file(s) | 26 | 1 | killed |
 | `u241.M03_close_waits_for_unread_work` | `src/cratekit/core/pool.py` | user | 1 file(s) | 26 | 1 | killed |
 | `u241.M07_used_percent_gate_is_strict` | `src/cratekit/core/pool.py` | user | 2 file(s) | 294 | 3 | killed |
@@ -125,7 +125,7 @@ Null control `NULL_CONTROL`: killed 0, collected 23214 against 23214. The contro
 | `u193.M3_spent_from_process_start` | `src/cratekit/core/provider_gate.py` | user | 5 file(s) | 523 | 14 | killed |
 | `u193.M7_env_parse_accepts_zero` | `src/cratekit/core/provider_gate.py` | user | 5 file(s) | 523 | 1 | killed |
 | `u193.M8_raised_ignored` | `src/cratekit/core/provider_gate.py` | user | 5 file(s) | 523 | 7 | killed |
-| `u205.G8_since_keeps_earlier_app_calls` | `src/cratekit/core/provider_gate.py` | user | 2 file(s) | 23214 | 7 (promoted) | killed |
+| `u205.G8_since_keeps_earlier_app_calls` | `src/cratekit/core/provider_gate.py` | user | 2 file(s) | 23214 | 6 (promoted) | killed |
 | `u217.G1_ceiling_says_kept` | `src/cratekit/core/provider_gate.py` | user | 1 file(s) | 118 | 1 | killed |
 | `u278.M10_window_short` | `src/cratekit/core/provider_gate.py` | user | 2 file(s) | 180 | 5 | killed |
 | `u278.M11_window_dropped_on_read` | `src/cratekit/core/provider_gate.py` | user | 2 file(s) | 180 | 25 | killed |
@@ -287,7 +287,6 @@ Null control `NULL_CONTROL`: killed 0, collected 23214 against 23214. The contro
 
 ## Zero rows and what they owe
 
-- `u241.M01_worker_takes_the_interrupt` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `u27-round-8-independent.W2_composite_wrong_file` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `u27-round-8-independent.W3_canary_no_name_the_database` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `u27-round-8-independent.W5_canary_message_no_path` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
@@ -1920,10 +1919,10 @@ stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a work
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_pool_stream.py`
-- Collected: 23214 against a baseline of 23214
-- Kills: 0 (zero)
-- Promoted: subset killed 0, full suite killed 0
-- Note: confirmed on the full suite
+- Collected: 26 against a baseline of 26
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_pool_stream.py::test_the_terminals_interrupt_does_not_kill_a_stream_worker`
 
 Old text:
 
@@ -3471,10 +3470,9 @@ spend since: the app's share is not differenced, so a run is charged the app cal
 - Subset: explicit subset from the row
 - Ran: `tests/test_catalogue_app.py`, `tests/test_provider_gate.py`
 - Collected: 23214 against a baseline of 23214
-- Kills: 7 (killed)
-- Promoted: subset killed 0, full suite killed 7
+- Kills: 6 (killed)
+- Promoted: subset killed 0, full suite killed 6
 - Killed:
-  - `tests/intake/test_set_progress.py::test_the_watcher_reports_the_bytes_written_while_the_download_runs`
   - `tests/test_catalogue_app.py::test_process_spend_carries_the_apps_share`
   - `tests/test_provider_gate.py::test_a_run_that_reached_the_provider_reports_its_calls[excludes-another-processs-calls]`
   - `tests/test_provider_gate.py::test_a_run_that_reached_the_provider_reports_its_calls[names-rate-limit-answers]`

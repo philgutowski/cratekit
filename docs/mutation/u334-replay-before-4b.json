@@ -12,7 +12,7 @@
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
   "reused_rows": 0,
   "known_failures": 248,
-  "known_source": "/home/user/cratekit/.cloud-battery/baseline.txt",
+  "known_source": ".cloud-battery/baseline.txt",
   "temp_place": "disk",
   "temp_on_disk": 0,
   "baseline_source": "measured",
