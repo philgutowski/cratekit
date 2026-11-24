@@ -211,6 +211,28 @@ def planned_memberships(
     return wanted
 
 
+def planned_destinations(
+    plan: plan_engine.AdoptionPlan, declared: taxonomy.Taxonomy
+) -> dict[tuple[str, str], tuple[str, str]]:
+    """The declared ``(bucket, sub)`` each display pair of :func:`planned_memberships` means.
+
+    Handed to the tree writer so it records the node it files into (R-1991),
+    by the same :func:`~cratekit.write.routing_pass.destination` the pairs come
+    from. A pair two destinations share means neither, so it is left out and
+    nothing is recorded for it.
+    """
+    places = [(entry.bucket, entry.sub) for entry in plan.applicable()]
+    places += [(entry.bucket, entry.vocal_sub) for entry in plan.vocal_additions()]
+    named: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for bucket, sub in places:
+        try:
+            pair = destination(declared, bucket, sub)
+        except KeyError:
+            continue
+        named.setdefault(pair, set()).add((bucket, sub))
+    return {pair: next(iter(found)) for pair, found in named.items() if len(found) == 1}
+
+
 def apply_outstanding(
     cfg: config.Config,
     plan: plan_engine.AdoptionPlan,
@@ -723,6 +745,7 @@ def _write_memberships(
             tree_id=plan.tree,
             registry=tree_registry.read(cfg),
             plan=planned_memberships(plan, declared),
+            record_as=planned_destinations(plan, declared),
             rows=collection.read_collection(cfg),
             root_exists=lambda root_id: root_id in known,
             # The library root and the analysis share, never empty (R17).

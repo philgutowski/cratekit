@@ -340,7 +340,7 @@ PIPELINE_VERBS: tuple[Entry, ...] = (
     ),
     # ── Analysis ────────────────────────────────────────────────────────────
     Entry(
-        name="analyze.run", summary="analyse audio for key, tempo, and energy",
+        name="analyze.run", summary="analyse audio for tempo, drift, energy and vocals",
         module="cratekit.analysis.cli", builder="build", handler_key="analyze.run",
         feature_rows=(9,), module_id="analysis", extras="analysis",
         extras_modules=("librosa", "numpy", "scipy"), argv_builder="analyze_argv",

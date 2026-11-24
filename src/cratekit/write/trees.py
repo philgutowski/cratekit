@@ -34,6 +34,7 @@ from cratekit.core import (
 )
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import rbxml
+from cratekit.write.tree_read import read_tree
 
 logger = logging.getLogger(__name__)
 
@@ -786,10 +787,13 @@ class _Run:
     already_absent: int = 0
     touched: list[str] = field(default_factory=list)
     skipped: list[RowMatch] = field(default_factory=list)
+    #: The display pairs this run filed a row into, whether new or already there.
+    filed: set[tuple[str, str]] = field(default_factory=set)
 
     def add(self, playlist: Any, destination: tuple[str, str], ids: list[str]) -> None:
         """One call per playlist: which ids are new is the writer's question (R-10)."""
         self.touched.append("/".join(destination))
+        self.filed.add(destination)
         inserted = rb_writer.add_memberships(self.db, playlist, ids)
         self.added += len(inserted)
         self.already_present += len(ids) - len(inserted)
@@ -841,6 +845,7 @@ def write_tree_membership(
     workflow: str = MEMBERSHIP_WORKFLOW,
     purpose: convergence.Purpose = convergence.Purpose.ROUTINE,
     intent: session.Intent = session.Intent.WRITE,
+    record_as: Mapping[tuple[str, str], tuple[str, str]] | None = None,
 ) -> MembershipReport:
     """Write membership for a database-native tree, for rows that already exist.
 
@@ -853,6 +858,12 @@ def write_tree_membership(
     ``purpose`` lifts only the convergence latches whose remedy is a rebuild;
     ``intent`` is that declaration for ``assert_gates``. ``RECOVERY`` also lifts
     the unresolved-session latch, which the rebuild asserts itself.
+
+    ``record_as`` maps a plan's display pairs to the declared ``(bucket, sub)``
+    each means, for a caller that records nothing itself (adoption, R-1991):
+    once the commit has landed, the one live node at each pair it filed into
+    is recorded, keeping whatever the record already binds. The rebuild and
+    the routing pass record their own and pass nothing.
     """
     watched = _watched(analysis_roots)
     root_id = _writable_root(cfg, db, tree_id, registry, root_exists, purpose)
@@ -886,10 +897,46 @@ def write_tree_membership(
         # the try, since the commit has landed and nothing is pending.
         convergence.record_fingerprint(cfg, db)
 
+    if record_as:
+        _record_filed_nodes(cfg, db, tree_id, root_id, record_as, run.filed)
     return MembershipReport(
         tree_id=tree_id, root_id=root_id, added=run.added, already_present=run.already_present,
         skipped=tuple(run.skipped), playlists=tuple(run.touched),
     )
+
+
+def _record_filed_nodes(
+    cfg: config.Config,
+    db: Any,
+    tree_id: str,
+    root_id: str,
+    record_as: Mapping[tuple[str, str], tuple[str, str]],
+    filed: Iterable[tuple[str, str]],
+) -> None:
+    """Record the node each filed pair landed in, as a rebuild records its own (R-1991).
+
+    So the check reads a folder renamed in rekordbox afterwards by its bucket,
+    rather than as a person's own. A pair is recorded only when exactly one
+    live node under the root bears it: two are never chosen between, and a
+    removed one is nobody's destination.
+    """
+    standing: dict[tuple[str, str], list[Any]] = {}
+    for node in read_tree(db, root_id):
+        if not node.removed:
+            standing.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    found: list[convergence.DestinationNode] = []
+    for pair in sorted(set(filed)):
+        place, nodes = record_as.get(pair), standing.get(pair, [])
+        if place is None or len(nodes) != 1:
+            continue
+        found.append(
+            convergence.DestinationNode(
+                bucket=place[0], sub=place[1],
+                folder_id=nodes[0].folder_id, playlist_id=nodes[0].playlist_id,
+            )
+        )
+    if found:
+        convergence.record_nodes(cfg, tree_id, found, keep_recorded=True)
 
 
 # ---------------------------------------------------------------------------

@@ -125,3 +125,8 @@ right.
   the same unit's other lesson, that the first worker over an engine owns the
   engine's failure paths.
 - `CONCEPTS.md`, "Rename intent".
+
+**Since U343** `analyze run`, the worker this was learned on, renames nothing:
+its resume marker is a tag written in the same write as its measures, so a kill
+leaves the item's file under its own name. The intent and the twin recovery
+stay for a job a run before U343 left half done.

@@ -560,8 +560,31 @@ def test_unscored_reads_the_head_by_the_rule_analyze_run_skips_by(cfg, folder, s
 
     headed = place(folder, silence, "08A - 124 - a")
     loose = place(folder, silence, "08A - a")
-    assert analysis_cli.carries_head(headed, cfg)
-    assert not analysis_cli.carries_head(loose, cfg)
+    marked = place(folder, silence, "marked", analyzed="1")
+    assert analysis_cli.already_measured(headed, cfg)
+    assert not analysis_cli.already_measured(loose, cfg)
+    assert analysis_cli.already_measured(marked, cfg), "the mark a run since U343 writes"
+
+
+def test_unscored_queues_a_file_the_run_marked_with_no_score_and_leaves_the_rest(
+    cfg, folder, silence, monkeypatch
+):
+    """U343: a run since U343 leaves its mark and no head, so the rescore selects by the mark."""
+    finalized = place(folder, silence, "finalized", analyzed="1")
+    scored = place(folder, silence, "scored", analyzed="1", voxlevel=40)
+    fresh = place(folder, silence, "fresh")
+    bind_scoring(monkeypatch)
+
+    code, queued = drive(["analyze", "vocals", "--unscored", str(folder)])
+
+    assert code == int(ExitCode.OK), queued
+    job = vocals_job()
+    assert set(item_states(job.job_id)) == {finalized.name}
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_vox_from_file(finalized) is not None
+    assert tags.read_vox_from_file(scored) == 40
+    assert tags.read_vox_from_file(fresh) is None, "a file not measured is the run's to analyse"
 
 
 def _chain():

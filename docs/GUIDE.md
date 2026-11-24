@@ -199,7 +199,7 @@ the two commands that answer and apply it and the rekordbox visit after.
   `analyze run` job, so it does not measure energy again on a file that run
   just scored: the run measures energy the way the restamp does, over the
   same two minutes of the same audio. It still restamps a file the run
-  skipped (a name already carrying the head), could not key or score, or
+  skipped (one it had measured already), could not measure or score, or
   scored under a calibration that is no longer the active one, a file whose
   energy tag changed since, and a file whose length moved when the run wrote
   its tags (an MP3 with no Xing header, whose length is read off its size,
@@ -298,7 +298,13 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 `analyze check` reads a copy and writes nothing: every row analysed, every
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key and tempo agree with rekordbox's. A title that differs never makes
-the visit suspect; the check counts it and names `crate analyze adopt`.
+the visit suspect; the check counts it and names `crate analyze adopt`. It
+also counts the analysed titles with no head in the title or the file name to
+which rekordbox gave both a key and a tempo (`headless`), every such row a
+landing since U343 added, and names `crate analyze adopt` for them, which
+plans each a head built from them; a row it cannot stamp is left and named
+there. The key floor it once held the title keys to went with the run's own
+key (U343).
 `--pass` or `--session` names one landing.
 
 `analyze adopt` gives each analysed row whose title head names another key or
@@ -1465,10 +1471,25 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-differences), and `route resort` lists it as left behind. Under a folder
-renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
-recorded that folder. A Candy playlist, which a person fills by hand, is
-never compared this way.
+entries, at most five `not-compared` ones first), and `route resort` lists it
+as left behind. Under a folder
+renamed in rekordbox it is listed the same way when a write recorded that
+playlist, or recorded the folder and nothing else is filed into that band:
+`adopt apply`, `rebuild` and `route resort` each record the playlists they
+file into, `adopt apply` only where nothing is recorded yet. Otherwise it
+cannot be tied to one destination: under a renamed folder no write recorded,
+or beside a folder a `rebuild` or `adopt apply` made again under the genre's
+name, a playlist bearing a name a genre files into (a band, Favorites, a
+genre sub) and holding a track the tree files is named
+`not-compared:FOLDER/PLAYLIST`, first in a `differing` line, or `converge`
+says `not-compared` where nothing else differs, never `matching`. A folder of
+your own under the tree's root whose playlists bear such names and hold filed
+tracks reads the same way. Look in it in rekordbox for a track its genre no
+longer files, or give the folder back its genre's name where no other folder
+bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
+of that name again) and it is compared. It is not a difference, so a
+`rebuild` still clears a tree's flag over it. A Candy playlist, which a person
+fills by hand, is never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 
@@ -1604,24 +1625,30 @@ crate metadata mytags-vocals [--apply]
 - Needs the `analysis` and `vocals` extras. Cratekit never writes a beat
   grid, tempo element or average BPM field, in any container; no flag turns
   that on.
-- `analyze run` writes key, energy, vocal scores and a drift to the file's
-  tags (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
-  spread), then renames the file to the naming template's Camelot head. It
-  skips a file already carrying the head, so `analyze vocals --unscored`
-  scores the ones it finished with no `voxlevel`, and a title that took
-  rekordbox's key and tempo with `analyze adopt` is never stamped again
-  when its file name carries a head; a file `analyze adopt` stamped keeps a
-  name with no head, so `analyze run` pointed at it measures and names it
-  again, until U343 gives the run a resume tag;
-  `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
-  row says when vocals cannot score.
+- `analyze run` writes energy, vocal scores and a drift to the file's tags
+  (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
+  spread), and the mark `analyzed` (`TXXX:CratekitAnalyzed`, its MP4 and
+  Vorbis twins) in the same write, with a file's stem as its title tag only
+  when it has none (the lossy marker set before it when the stem carries
+  one), the title the landing lands and `analyze adopt` stamps.
+  Since U343 it measures no key and writes no head and no `initialkey`, and
+  renames nothing: the key and
+  the head come only from rekordbox, after the visit, through `analyze
+  adopt`. The tempo is still measured, for the drift (and the `dyn` My Tag
+  the landing writes from it), and is reported, never written. It skips a
+  file carrying the mark, or a name carrying a head (what a run before U343
+  left), so a file measured before or since is never measured again, and
+  `analyze vocals --unscored` scores the ones it finished with no
+  `voxlevel`; a file `analyze adopt` stamped keeps a name with no head and
+  is skipped by its mark. `analyze restamp` writes the energy tag alone.
+  Doctor's `install.extras` row says when vocals cannot score.
 - `analyze run` measures a track's energy exactly as `analyze restamp` does,
   over the same central two minutes (decoded alone, or for a file only ffmpeg
   reads cut from one whole decode), so one file under one calibration,
   measured over the same audio, gets one level from either verb.
-  Until U344 the run read the energy from the whole track it decoded for the
-  key, which gave a level one step apart on a track sitting on a level's
-  edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
+  Until U344 the run read the energy from the whole track it decoded for its
+  tempo and key, which gave a level one step apart on a track sitting on a
+  level's edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
   `analyze run` job scored at its present name under the calibration active
   now, whose `energylevel` tag still reads that level and whose length did
   not move with the run's own tag write, and restamps the rest. Its JSON
@@ -1630,7 +1657,7 @@ crate metadata mytags-vocals [--apply]
   run over that folder leaves nothing out, with a `restamp-left-out-nothing`
   warning. The tail passes it; by hand, a restamp without it restamps every
   file as it always has.
-- `analyze run` measures key, tempo, drift and energy in worker processes
+- `analyze run` measures tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's
   `analyze.pool` line says how many ran, in the job's last drive that
@@ -1640,20 +1667,16 @@ crate metadata mytags-vocals [--apply]
   for the batch's costliest track (a long one, or one stored at a high
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
-- `analyze run` reads a track's key from the whole track's chroma without
-  the harmonic separation, since U276: the key's reading takes about half
-  the time of the one it replaced, and over 300 library tracks rekordbox
-  analysed itself it agreed with rekordbox's key 161 times against the old
-  reading's 159. A track analysed before U276 keeps the key it was given;
-  analysed again, its key can differ (on generated tonal audio, every key
-  that moved moved one Camelot step, toward the key the track was written
-  in). A file with little or no tone in it, a drum tool, can take an
-  unrelated key under either reading and often a different one under each,
-  and one of clicks alone, which the old reading settled `skipped-no-key`,
-  can now be given a key and renamed. The answer's
-  `head_agreement` names the method the run reads with (`key_method`), the
-  method its `key` counts were read with (`key_read_with`), and each
-  method's reading over one sample (`key_by_method`).
+- `analyze run` reads no key since U343, which took the chroma stage out of
+  the run: on the fixed synthetic set with no vocal model
+  (`scripts/analyze_stages.py stages --no-vocals`, three passes each on a
+  four core Linux container), 104.8 to 108.3 seconds before and 69.5 to 72.0
+  after, the chroma and key stage 34.0 to 36.5 of them. Over 300 library tracks the key it
+  used to read agreed with rekordbox's own 161 times, and rekordbox's key
+  replaced it on two titles in three after the visit, so the run now leaves
+  the key to rekordbox. The answer's `head_agreement` records how far the
+  run's tempo agreed with rekordbox's (2026-09-30, 299 files) and carries no
+  key counts; `scripts/head_agreement.py --analyse` measures the tempo alone.
 - The analysis reads every file the installed librosa reads exactly as it
   always did. A stereo track is mixed to mono with one add rather than
   librosa's mean, the same samples bit for bit and about a quarter of a
@@ -1941,8 +1964,8 @@ valid is reported, not minted again. The record says which rule minted it,
 - **The live database** is written only through the guarded write (see [How it
   works](#how-it-works)). Verbs that only read take a copy.
 - **Files** are trashed only by `delete review`, to the system Trash.
-  Renames go through `name apply` and `repair paths --apply`, behind gates,
-  and `analyze run`, which renames each file it finishes to its Camelot head.
+  Renames go through `name apply` and `repair paths --apply`, behind gates;
+  `analyze run` renames nothing since U343.
 - **The account** is written behind explicit gates. Exports and label
   playlists add only; removals happen only where a verb names them on its
   gate (`export prune`, `label prune`, `label heard`, `sync pair`, organize's

@@ -38,8 +38,9 @@ DRIVER = "CRATEKIT_AHEAD_DRIVER"
 
 
 def fake_head(path: Path) -> dict | None:
-    """A head read off the file's name, marked with who read it; ``slow``, ``dies``,
-    ``raises``, ``keyless`` and ``broken`` act as they say."""
+    """A head read off the file's name, with no key as the detector's since U343,
+    marked with who read it; ``slow``, ``dies``, ``raises``, ``keyless`` and
+    ``broken`` act as they say."""
     name = path.name
     in_a_worker = str(os.getpid()) != os.environ.get(DRIVER, "")
     marks = os.environ.get(SEEN)
@@ -58,7 +59,6 @@ def fake_head(path: Path) -> dict | None:
     total = sum(name.encode())
     return {
         "path": path,
-        "camelot": f"{total % 12 + 1}{'AB'[total % 2]}",
         "rate": 100 + total % 60,
         "drift": (total % 9) / 10.0,
         "drift_verdict": "steady",
@@ -213,10 +213,12 @@ def test_a_pooled_run_leaves_exactly_what_the_serial_run_leaves(
         == serial["data"]["progress"]["analysis"]["by_status"]
         == {"analyzed": 6, "skipped-no-key": 1, "skipped-undecodable": 1}
     )
-    # And the serial run is the run this unit did not change: one head, read back.
-    done = next(path for path in serial_folder.iterdir() if path.name.endswith(" - b.flac"))
+    # And the serial run is the run this unit did not change: one head, read back,
+    # under the file's own name and with no key (U343).
+    done = serial_folder / "b.flac"
     expected = fake_head(Path("b.flac"))
-    assert tags.read_tag(done, "initialkey") == f"{int(expected['camelot'][:-1]):02d}{expected['camelot'][-1]}"
+    assert tags.read_tag(done, "initialkey") is None
+    assert tags.read_tag(done, "analyzed") == "1"
     assert tags.read_energy_from_file(done) == expected["energy"]
 
 
@@ -266,7 +268,7 @@ def test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it(
     check = pool_check(done)
     assert check["status"] == "ok"
     assert check["detail"].startswith(
-        "4 workers measured key, tempo and energy ahead of this process: the "
+        "4 workers measured tempo, drift and energy ahead of this process: the "
         "ceiling of 4 is what held it"
     )
     assert check["detail"].endswith("8 of 8 waiting file(s) were read from them")
@@ -314,7 +316,7 @@ def test_memory_overrules_a_wide_core_count(cfg, silence, tmp_path, monkeypatch)
     assert code == int(ExitCode.OK), done
     check = pool_check(done)
     assert check["status"] == "info"
-    assert check["detail"].startswith("2 workers measured key, tempo and energy ahead")
+    assert check["detail"].startswith("2 workers measured tempo, drift and energy ahead")
     assert "available affords 2 at" in check["detail"]
     assert "under a ceiling of 62" in check["detail"]
 
@@ -336,7 +338,7 @@ def test_the_person_reads_the_check_line_without_asking_for_json(
     machine(monkeypatch)
     code, text = drive_human(["analyze", "run", str(folder)])
     assert code == int(ExitCode.OK), text
-    assert "  [ok  ] analyze.pool: 2 workers measured key, tempo and energy ahead" in text
+    assert "  [ok  ] analyze.pool: 2 workers measured tempo, drift and energy ahead" in text
 
 
 def test_a_resume_of_a_finished_job_still_says_what_pool_it_ran_with(
@@ -409,8 +411,8 @@ def test_a_resume_with_nothing_left_to_measure_keeps_the_pool_that_measured_the_
     # Finish the two files left by hand, so the resume has nothing to measure.
     monkeypatch.setattr(artifacts, "produced", real)
     for path in sorted(folder.iterdir()):
-        if not analysis_cli.carries_head(path, cfg):
-            path.rename(path.with_name(f"03A - 120 - {path.name}"))
+        if not analysis_cli.already_measured(path, cfg):
+            assert tags.write_tags(path, {"analyzed": "1"})
     code, resumed = drive(list(stopped["cause"]["detail"]["resume"]))
 
     assert artifacts.pool_record(cfg, job_id) == first, "a drive that measured nothing overwrote it"
@@ -542,7 +544,7 @@ def test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_
     assert tuple(cause["origin"])[: len(stored.origin)] == stored.origin
     steps = cause["remediation"]["steps"]
     assert steps[: len(stored.remediation.steps)] == list(stored.remediation.steps)
-    assert steps[-1].startswith("the pool: 3 workers measured key, tempo and energy ahead")
+    assert steps[-1].startswith("the pool: 3 workers measured tempo, drift and energy ahead")
     assert "2 of 3 waiting file(s) were read from them and 1 measured here" in steps[-1]
     assert cause["detail"]["pool"]["workers"] == 3
     assert cause["detail"]["pool"]["remeasured"] == {"raised-in-a-worker": 1}
@@ -632,7 +634,7 @@ def test_a_file_replaced_after_its_head_was_measured_is_measured_again(
 ):
     """Same name, different file: the worker's head is for a file that is no longer there."""
     session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
-    assert ahead.head("job-under-test", first, None)["camelot"]
+    assert ahead.head("job-under-test", first, None)["rate"]
     _wait_for_mark(bound, "b.flac")
     replacement = Path(second).with_suffix(".new")
     replacement.write_bytes(Path(second).read_bytes() + b"\0" * 64)
@@ -640,7 +642,7 @@ def test_a_file_replaced_after_its_head_was_measured_is_measured_again(
 
     found = ahead.head("job-under-test", second, None)
 
-    assert found["camelot"] == fake_head(Path("b.flac"))["camelot"]
+    assert found["rate"] == fake_head(Path("b.flac"))["rate"]
     assert session.remeasured == {"file-changed": 1}
     assert (session.ahead, session.here) == (1, 1)
     assert os.getpid() in measured_by(bound)["b.flac"]
@@ -719,7 +721,7 @@ def test_the_identity_a_worker_returns_is_the_files_before_the_read(silence, tmp
 
     measured, found = ahead.measure(str(target))
 
-    assert found["camelot"]
+    assert found["rate"]
     assert measured == before
     assert measured != ahead.identity_of(str(target)), "the fixture did not change the file"
     assert ahead.identity_of(str(tmp_path / "not there.flac")) is None
@@ -775,9 +777,9 @@ def test_a_path_the_session_never_planned_and_a_job_with_no_session_are_measured
     )
     stranger = tmp_path / "direct" / "late arrival.flac"
     shutil.copy2(silence, stranger)
-    assert ahead.head("job-under-test", str(stranger), None)["camelot"]
+    assert ahead.head("job-under-test", str(stranger), None)["rate"]
     assert session.here == 1
-    assert ahead.head("some-other-job", first, None)["camelot"]
+    assert ahead.head("some-other-job", first, None)["rate"]
     assert os.getpid() in measured_by(bound)["a.flac"]
 
 
