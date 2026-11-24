@@ -22,13 +22,12 @@ THE VERDICT:
 * **done** otherwise. An empty scope says so rather than calling nothing done.
 
 Layer: modules. In ``intake``, the landing the visit follows, because no toggle
-gates the verb (U331): the three helpers it borrows from the analysis module
+gates the verb (U331): the helpers it borrows from the analysis module
 are imported where they are called, so the verb builds with that module off.
 """
 
 from __future__ import annotations
 
-import math
 import struct
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -80,10 +79,6 @@ DYN_VALUE = native.DYN_VALUE
 
 #: How far, in whole beats, a head's tempo may sit from rekordbox's and stand (U327).
 TEMPO_TOLERANCE = 1
-
-#: How many standard errors below the recorded key agreement a sample's rate
-#: must fall to read as suspect: about once in seven hundred checks by chance.
-KEY_AGREEMENT_SIGMAS = 3.0
 
 #: The ANLZ header and every tag header: four ASCII bytes, then two big endian
 #: lengths, the header's and the whole tag's (or the whole file's).
@@ -248,22 +243,6 @@ def tempo_differs(head: int | None, reference: int | None) -> bool:
     if head is None or reference is None:
         return False
     return abs(head - reference) > TEMPO_TOLERANCE
-
-
-def key_floor(compared: int) -> float | None:
-    """The lowest equal rate a sample of ``compared`` keys may show and not read as suspect.
-
-    The recorded agreement less :data:`KEY_AGREEMENT_SIGMAS` standard errors;
-    None for no sample.
-    """
-    if compared <= 0:
-        return None
-    from cratekit.analysis import detect
-
-    measured = detect.head_agreement()["key"]
-    total = measured["equal"] + measured["differs"]
-    rate = measured["equal"] / total
-    return rate - KEY_AGREEMENT_SIGMAS * math.sqrt(rate * (1.0 - rate) / compared)
 
 
 @dataclass(frozen=True, slots=True)
@@ -608,13 +587,21 @@ class Check:
         return tuple(row for row in self.analysed if row.differs)
 
     @property
-    def key_suspect(self) -> bool:
-        """Title keys agreeing with rekordbox's far below the recorded rate: a
-        measure of the detector, reported and never a verdict (U327)."""
-        floor = key_floor(self.key_compared)
-        if floor is None:
-            return False
-        return self.key_counts[KEY_EQUAL] / self.key_compared < floor
+    def headless(self) -> tuple[Row, ...]:
+        """The analysed rows with no head in the title or the file name, and both a
+        key and a tempo from rekordbox: the rows ``analyze adopt`` can give a head
+        built from them (U342). Every row a run since U343 landed is one until the
+        visit's adopt. A bare title beside a headed file name is not, nor a row
+        rekordbox answered half: adopt leaves both (review round one, R4, U343)."""
+        return tuple(
+            row
+            for row in self.analysed
+            if not row.headed
+            and row.head_key is None
+            and row.head_tempo is None
+            and row.key is not None
+            and row.tempo is not None
+        )
 
     @property
     def verdict(self) -> str:
@@ -630,7 +617,6 @@ class Check:
         grids: dict[str, int] = {}
         for row in self.analysed:
             grids[row.grid.state] = grids.get(row.grid.state, 0) + 1
-        floor = key_floor(self.key_compared)
         return {
             "verdict": self.verdict,
             "scope": self.scope.kind,
@@ -649,14 +635,13 @@ class Check:
             ),
             "key_filled": sum(1 for row in self.analysed if row.key is not None),
             "key_agreement": self.key_counts,
-            "key_equal_floor": None if floor is None else round(floor, 4),
-            "key_suspect": self.key_suspect,
             "tempo_differs": sum(
                 1
                 for row in self.analysed
                 if row.headed and tempo_differs(row.head_tempo, row.tempo)
             ),
             "differs": len(self.differing),
+            "headless": len(self.headless),
         }
 
 
@@ -733,7 +718,6 @@ __all__: Sequence[str] = (
     "DONE",
     "DYN_VALUE",
     "GONE",
-    "KEY_AGREEMENT_SIGMAS",
     "KEY_EQUAL",
     "KEY_FAR",
     "KEY_ONE_STEP",
@@ -761,7 +745,6 @@ __all__: Sequence[str] = (
     "grid_ticks",
     "head_key",
     "head_tempo",
-    "key_floor",
     "key_relation",
     "read_grid",
     "read_row",

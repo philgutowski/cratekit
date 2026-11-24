@@ -353,7 +353,11 @@ Otherwise the exit status is the verdict:
 - **0, done.** Every row analysed and every grid one tempo (or moving on a row
   marked `dyn`). Titles whose key or tempo differs from rekordbox's are
   counted in `data.summary.differs` and never hold the visit; the adopt below
-  gives them rekordbox's. The check reports the Key column and does not judge it, so
+  gives them rekordbox's. Titles with no head in the title or the file name,
+  which rekordbox keyed, are counted in `data.summary.headless`, every row a
+  landing since U343 added, since `analyze run` writes no head; the adopt
+  below plans each a head built from rekordbox's key and tempo, and names any
+  it leaves. The check reports the Key column and does not judge it, so
   read it here: `data.summary.key_filled` must equal
   `data.summary.analysed`. A row with the Key column empty was analysed with
   KEY off, by an Auto Analysis on other fields or a run before this visit:

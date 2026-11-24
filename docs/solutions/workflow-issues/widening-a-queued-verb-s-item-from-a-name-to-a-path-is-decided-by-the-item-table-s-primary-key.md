@@ -118,6 +118,8 @@ its resume marker is the Camelot head on the NAME, so its item identity is bound
 to the filename. That constraint is already written up in
 `a-worker-that-renames-its-item-owes-the-resume-an-exact-record`, and it is why
 the third analysis verb was left alone deliberately rather than by oversight.
+Since U343 the run renames nothing and its resume marker is a tag on the file,
+so that constraint is gone; a recursive `analyze run` is open, though not built.
 
 ## The resume is the report, and it never re-walks
 

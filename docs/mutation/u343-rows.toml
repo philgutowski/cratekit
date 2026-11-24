@@ -1,0 +1,254 @@
+name = "u343"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_finalize_no_mark"
+description = "_finalize: drop the mark from the write, so a measured file reads as unmeasured and every resume measures it again"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_analysis.py", "tests/test_vocals_cli.py", "tests/test_restamp_scored_by.py", "tests/test_analysis_ahead.py"]
+old = '''        run.MARK_FIELD: run.MARK_VALUE,
+    }'''
+new = '''    }'''
+
+[[rows]]
+id = "M02_finalize_writes_a_key"
+description = "_finalize: write a detector's camelot as initialkey, the key the run no longer measures"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_restamp_scored_by.py", "tests/test_analysis_ahead.py"]
+old = '''        "drift": scored.get("drift_verdict"),
+        run.MARK_FIELD: run.MARK_VALUE,'''
+new = '''        "drift": scored.get("drift_verdict"),
+        "initialkey": scored.get("camelot"),
+        run.MARK_FIELD: run.MARK_VALUE,'''
+
+[[rows]]
+id = "M03_untitled_overwrites_a_title"
+description = "_untitled: answer the stem for a file that has a title too, so the run overwrites a title tag"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_analyze_adopt.py", "tests/test_restamp_scored_by.py"]
+old = '''    if (tags.read_tag(path, "title") or "").strip():
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "M04_untitled_never_titles"
+description = "_untitled: answer None for every file, so a file with no title tag lands with nothing adopt can stamp (round one's blocking finding)"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_analyze_adopt.py", "tests/test_restamp_scored_by.py"]
+old = '''    return naming.render_all(spec, template=template).title_tag or None'''
+new = '''    return None'''
+
+[[rows]]
+id = "M05_untitled_title_with_a_head"
+description = "_untitled: render the title with a key and tempo head, the head the run no longer writes"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_analyze_adopt.py", "tests/test_restamp_scored_by.py"]
+old = '''        stem=path.stem, suffix=path.suffix, lossy=bool(marker) and marker in path.stem
+    )'''
+new = '''        stem=path.stem, suffix=path.suffix, lossy=bool(marker) and marker in path.stem,
+        key="08A", bpm=124,
+    )'''
+
+[[rows]]
+id = "M06_handle_run_no_resume_skip"
+description = "handle_run: never skip a measured file, so a resume measures and writes every file again"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_analysis_ahead.py", "tests/test_restamp_scored_by.py"]
+old = '''    artifacts.discard_rename_evidence(cfg, job, item)
+    if already_measured(path, cfg):'''
+new = '''    artifacts.discard_rename_evidence(cfg, job, item)
+    if False:'''
+
+[[rows]]
+id = "M07_waiting_takes_measured_files"
+description = "_waiting: hand the pool files already measured, so workers read files the driver skips"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py"]
+old = '''        if path.is_file() and not already_measured(path, cfg):'''
+new = '''        if path.is_file():'''
+
+[[rows]]
+id = "M08_resume_reads_the_name_alone"
+description = "already_analyzed: read only the head on the name, so a file marked since U343 is measured again"
+file = "src/cratekit/analysis/run.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_vocals_cli.py", "tests/test_analysis_ahead.py"]
+old = '''    return has_head(path.name, template=template) or marked(path)'''
+new = '''    return has_head(path.name, template=template)'''
+
+[[rows]]
+id = "M09_resume_reads_the_mark_alone"
+description = "already_analyzed: read only the mark, so a file a run before U343 named is measured again"
+file = "src/cratekit/analysis/run.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_vocals_cli.py", "tests/test_analysis_ahead.py"]
+old = '''    return has_head(path.name, template=template) or marked(path)'''
+new = '''    return marked(path)'''
+
+[[rows]]
+id = "M10_mark_reads_the_wrong_field"
+description = "marked: read the drift tag in place of the mark, an identity not unique to the run's measure"
+file = "src/cratekit/analysis/run.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    return tags.read_tag(path, MARK_FIELD) is not None'''
+new = '''    return tags.read_tag(path, "drift") is not None'''
+
+[[rows]]
+id = "M11_mark_value_empty"
+description = "MARK_VALUE: an empty mark, which the writer skips, so no file is ever marked"
+file = "src/cratekit/analysis/run.py"
+surface = "user"
+tests = ["tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_vocals_cli.py", "tests/test_restamp_scored_by.py"]
+old = '''MARK_VALUE = "1"'''
+new = '''MARK_VALUE = ""'''
+
+[[rows]]
+id = "M12_unscored_reads_the_name_alone"
+description = "vocals _unscored: select by the head on the name, so a file the run marked with no score is never rescored"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        if analysis_cli.already_measured(path, cfg) and tags.read_vox_from_file(path) is None:'''
+new = '''        if analysis_cli.run.has_head(path.name, template=analysis_cli._template(cfg)) and tags.read_vox_from_file(path) is None:'''
+
+[[rows]]
+id = "M13_headless_counts_headed_rows"
+description = "Check.headless: count a row whose title carries a head"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            if not row.headed
+            and row.head_key is None'''
+new = '''            if row.head_key is None'''
+
+[[rows]]
+id = "M14_headless_counts_a_headed_file_name"
+description = "Check.headless: count a bare title beside a headed file name, which adopt leaves (R4)"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            and row.head_key is None
+            and row.head_tempo is None
+            and row.key'''
+new = '''            and row.key'''
+
+[[rows]]
+id = "M15_headless_counts_an_unkeyed_row"
+description = "Check.headless: count a row rekordbox gave no key, which adopt leaves no-head-unanswered"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            and row.key is not None
+            and row.tempo'''
+new = '''            and row.tempo'''
+
+[[rows]]
+id = "M16_headless_counts_a_row_with_no_tempo"
+description = "Check.headless: count a row rekordbox gave no tempo, which adopt leaves no-head-unanswered"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            and row.tempo is not None
+        )'''
+new = '''        )'''
+
+[[rows]]
+id = "M17_summary_headless_count"
+description = "Check.summary: report the analysed rows as headless, every one"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''            "headless": len(self.headless),'''
+new = '''            "headless": len(self.analysed),'''
+
+[[rows]]
+id = "M18_check_line_status_ignores_headless"
+description = "check_cli: an ok line over bare titles, so the visit reads nothing for adopt to do"
+file = "src/cratekit/analysis/check_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''        _check("check.key_agreement", "info" if differing or headless else "ok", agreement)'''
+new = '''        _check("check.key_agreement", "info" if differing else "ok", agreement)'''
+
+[[rows]]
+id = "M19_check_line_names_no_bare_title"
+description = "check_cli: leave the bare titles out of the line, so the check never names adopt for them"
+file = "src/cratekit/analysis/check_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_analyze_adopt.py"]
+old = '''    if headless:
+        # EVERY ROW'''
+new = '''    if False:
+        # EVERY ROW'''
+
+[[rows]]
+id = "M20_detection_head_keeps_a_key"
+description = "head_from_detection: read a detector's camelot again, so a fake's key is compared"
+file = "src/cratekit/analysis/agreement.py"
+surface = "maintainer"
+tests = ["tests/test_head_agreement.py"]
+old = '''    return (None, int(found["rate"]))'''
+new = '''    camelot = found.get("camelot")
+    return (pad_camelot(str(camelot)) if camelot else None, int(found["rate"]))'''
+
+[[rows]]
+id = "M21_stages_keep_the_key_stage"
+description = "detect.STAGES: name the chroma and key stage again, which no run meets"
+file = "src/cratekit/analysis/detect.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_stages.py", "tests/test_analysis_workers.py"]
+old = '''STAGES = ("decode", "tempo_drift", "energy")'''
+new = '''STAGES = ("decode", "tempo_drift", "chroma_key", "energy")'''
+
+[[rows]]
+id = "M22_record_keeps_key_buckets"
+description = "_HEAD_AGREEMENT: carry the detector's key buckets in the run's answer again"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_stages.py", "tests/test_head_agreement.py"]
+old = '''    "within_one": 226,
+}'''
+new = '''    "within_one": 226,
+    "key": {"equal": 158, "differs": 141},
+}'''
+
+[[rows]]
+id = "M23_mark_spelled_otherwise"
+description = "FIELDS analyzed: respell the ID3 frame, so every file marked before reads as unmeasured"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tags.py", "tests/test_analysis.py"]
+old = '''"cratekitanalyzed", "TXXX:CratekitAnalyzed",'''
+new = '''"cratekitanalyzed", "TXXX:Analyzed",'''
+
+[[rows]]
+id = "M24_twin_recovery_off"
+description = "_finalized_twin: never find the renamed twin, so a job an older build left half renamed refuses its finished item as missing"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if target is None or not target.is_file():
+        return None
+    return target'''
+new = '''    return None'''
+
+[[rows]]
+id = "M25_report_renamed_to_back"
+description = "handle_run: report a renamed_to again, a rename the run never makes"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''            "path": str(path),
+            "status": "analyzed",'''
+new = '''            "path": str(path),
+            "renamed_to": path.name,
+            "status": "analyzed",'''

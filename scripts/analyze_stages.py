@@ -9,8 +9,8 @@ empty folder you name.
     .venv/bin/python scripts/analyze_stages.py memory /path/to/folder --limit 5
     .venv/bin/python scripts/analyze_stages.py batch /path/to/folder --limit 20
 
-``stages`` times each stage of the shipped functions, track after track (the plain
-chroma meets no harmonic separation, so its table counts none). ``memory`` measures
+``stages`` times each stage of the shipped functions, track after track (no key
+since U343, so no harmonic separation and no chroma). ``memory`` measures
 each track's light worker peak in a fresh process against what ``light`` declares
 to the pool. ``batch`` runs one worker, then the pool, and compares the results.
 ``--limit N`` takes N of the sorted audio at an even stride. Energy is scored
@@ -37,8 +37,6 @@ if SRC.is_dir() and str(SRC) not in sys.path:
 STAGE_WORDS: tuple[tuple[str, str], ...] = (
     ("decode", "decode"),
     ("tempo_drift", "tempo and drift"),
-    ("harmonic", "harmonic separation"),
-    ("chroma_key", "chroma and key"),
     ("energy", "energy"),
     ("vocal_decode", "vocal decode"),
     ("vocal_model", "vocal model"),
@@ -46,7 +44,7 @@ STAGE_WORDS: tuple[tuple[str, str], ...] = (
 
 #: The fixed synthetic set, so two machines measure one set: seconds, tempo,
 #: tonic as semitones above C, minor, and a shape. ``latekey`` changes key in its
-#: last quarter, ``ramp`` and ``lastthird`` move their tempo, ``beatless`` has no drums.
+#: last quarter (kept, so the set stays the one earlier runs measured), ``ramp`` and ``lastthird`` move their tempo, ``beatless`` has no drums.
 SYNTHETIC_SET: tuple[tuple[int, float, int, bool, str], ...] = (
     (2, 124.0, 0, True, "steady"), (45, 122.0, 9, True, "steady"), (95, 128.0, 4, False, "steady"),
     (150, 126.0, 7, True, "steady"), (185, 120.0, 2, True, "steady"),
@@ -283,7 +281,7 @@ def stages(args: argparse.Namespace) -> int:
     for path in paths:
         timings: dict[str, float] = {}
         started = time.perf_counter()
-        found = detect.analyse_file(path, calibration=calibration, key=args.key, timings=timings)
+        found = detect.analyse_file(path, calibration=calibration, timings=timings)
         if found is not None and found.get("terminal") is None and not args.no_vocals:
             vocals.analyse({"path": str(path), "terminal": None}, timings=timings)
         rows.append({
@@ -293,16 +291,15 @@ def stages(args: argparse.Namespace) -> int:
             "stages": timings,
             "status": "analyzed"
             if found is not None and found.get("terminal") is None
-            else (found or {}).get("terminal", "skipped-no-key"),
+            else (found or {}).get("terminal", "skipped-no-answer"),
         })
         if not args.json:
             print(f"  {path.name}: {rows[-1]['wall']:.1f} s", file=sys.stderr, flush=True)
-    totals = stage_totals(rows, args.key)
+    totals = stage_totals(rows)
     result = {
         "tracks": len(rows),
         "audio_seconds": sum(row["seconds"] for row in rows),
         "wall_seconds": sum(row["wall"] for row in rows),
-        "key": args.key,
         "energy_against": calibration_words,
         "vocals": vocal_words,
         "totals": totals,
@@ -315,36 +312,22 @@ def stages(args: argparse.Namespace) -> int:
     return 0
 
 
-def stage_totals(rows: list[dict[str, Any]], method: str) -> dict[str, float]:
-    """Each stage's seconds over the rows, leaving out a detector stage the method never meets."""
-    from cratekit.analysis import detect
-
-    met = set(detect.stages_of(method))
-    return {
-        key: sum(row["stages"].get(key, 0.0) for row in rows)
-        for key, _ in STAGE_WORDS
-        if key not in detect.STAGES or key in met
-    }
+def stage_totals(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """Each stage's seconds over the rows."""
+    return {key: sum(row["stages"].get(key, 0.0) for row in rows) for key, _ in STAGE_WORDS}
 
 
 def stage_table(result: dict[str, Any]) -> str:
     """The stage totals as a table a record can hold, seconds and share of the run."""
     wall = result["wall_seconds"] or 1.0
     lines = [
-        f"{result['tracks']} tracks, {result['audio_seconds'] / 60:.0f} minutes of audio, "
-        f"key method {result['key']}",
+        f"{result['tracks']} tracks, {result['audio_seconds'] / 60:.0f} minutes of audio",
         f"energy scored against {result['energy_against']}; vocals: {result['vocals']}",
         "",
         "| stage | seconds | share |",
         "|---|---|---|",
     ]
-    from cratekit.analysis import detect
-
-    # A stage the method never meets is no row: naught seconds would read as one that ran.
-    met = set(detect.stages_of(result["key"]))
     for key, words in STAGE_WORDS:
-        if key in detect.STAGES and key not in met:
-            continue
         seconds = result["totals"].get(key, 0.0)
         lines.append(f"| {words} | {seconds:.1f} | {100 * seconds / wall:.0f}% |")
     lines.append(f"| the whole run | {result['wall_seconds']:.1f} | |")
@@ -476,7 +459,7 @@ def batch(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The script's commands and arguments, the key method's default the detector's."""
+    """The script's commands and arguments."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -501,10 +484,7 @@ def build_parser() -> argparse.ArgumentParser:
     alone.add_argument("path", type=Path)
     alone.set_defaults(run=one_head)
 
-    from cratekit.analysis import detect
-
     timed = measuring("stages", "wall time of each stage, one process", stages)
-    timed.add_argument("--key", default=detect.KEY_DEFAULT, choices=detect.KEY_METHODS)
     with_vocals(timed)
     measuring("memory", "peak memory of one light worker per track", memory)
     pooled = measuring("batch", "one worker against the pool this machine affords", batch)

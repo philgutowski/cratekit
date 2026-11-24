@@ -183,7 +183,7 @@ def test_the_two_workers_are_different_functions():
 def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     cfg, folder, silence, monkeypatch
 ):
-    """The whole seam: queue, resume, write, rename, and read back off disk."""
+    """The whole seam: queue, resume, write, and read back off disk, with no head (U343)."""
     place(folder, silence, "a")
     place(folder, silence, "b")
     head = detector()
@@ -201,11 +201,12 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert head.seen == ["a.flac", "b.flac"]
 
-    renamed = sorted(path.name for path in folder.iterdir())
-    assert renamed == ["08A - 124 - a.flac", "08A - 124 - b.flac"]
-    done = folder / "08A - 124 - a.flac"
-    assert tags.read_tag(done, "initialkey") == "08A"
-    assert tags.read_tag(done, "title") == "08A - 124 - a"
+    names = sorted(path.name for path in folder.iterdir())
+    assert names == ["a.flac", "b.flac"], "the run renames nothing since U343"
+    done = folder / "a.flac"
+    assert tags.read_tag(done, "initialkey") is None, "the key is rekordbox's, after the visit"
+    assert tags.read_tag(done, "title") == "a", "a file with no title takes its stem, no head"
+    assert tags.read_tag(done, "analyzed") == "1", "the resume mark"
     assert tags.read_energy_from_file(done) == 6
     assert tags.read_vox_from_file(done) is not None
     assert tags.read_vox_from_file(done) > 0
@@ -214,7 +215,9 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
     assert set(reports) == {"a.flac", "b.flac"}
     assert reports["a.flac"]["status"] == "analyzed"
-    assert reports["a.flac"]["renamed_to"] == "08A - 124 - a.flac"
+    assert reports["a.flac"]["path"] == str(done)
+    assert "renamed_to" not in reports["a.flac"] and "camelot" not in reports["a.flac"]
+    assert reports["a.flac"]["tempo"] == 124
     assert reports["a.flac"]["vocal_active"] is True
     assert reports["a.flac"]["voxlevel"] > 0
     assert resumed["data"]["progress"]["analysis"]["by_status"] == {"analyzed": 2}
@@ -323,23 +326,25 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
     assert code != int(ExitCode.OK)
     assert item_causes(job.job_id) == {"stuck.flac": "analysis-write-failed"}
     assert path.is_file(), "a failed tag write must not rename"
+    assert tags.read_tag(path, "analyzed") is None, "unmarked, so the next pass measures it"
 
 
-def test_a_taken_target_name_fails_the_item_and_keeps_the_written_head_in_the_title(
+def test_a_file_beside_its_headed_twin_is_measured_where_it_is_and_named_nothing(
     cfg, folder, silence, monkeypatch
 ):
-    path = place(folder, silence, "twin")
-    place(folder, silence, "08A - 124 - twin")
+    """Before U343 the head this file would be renamed to was taken, and the item
+    failed. The run renames nothing now, so there is no name to take."""
+    path = place(folder, silence, "twin", title="twin")
+    headed = place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
     job = queued("run", folder)
 
-    code, _ = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"twin.flac": "analysis-write-failed"}
-    assert path.is_file()
-    assert tags.read_tag(path, "title") == "08A - 124 - twin", (
-        "the tags landed before the rename, so the next pass converges"
-    )
+    resumed_ok(job)
+    assert sorted(p.name for p in folder.iterdir()) == [headed.name, path.name]
+    assert tags.read_tag(path, "title") == "twin", "the title keeps no head"
+    assert tags.read_tag(path, "analyzed") == "1"
+    by_item = {r["item"]: r["status"] for r in artifacts.committed(cfg, job.job_id)}
+    assert by_item == {"twin.flac": "analyzed", headed.name: "skipped-prefixed"}
 
 
 def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
@@ -374,7 +379,7 @@ class _Killed(BaseException):
     """A process death, which the item boundary does not convert."""
 
 
-def kill_after_the_rename(monkeypatch):
+def kill_after_the_write(monkeypatch):
     """The first finalized report dies before it is staged, a kill and not an ``Exception``."""
     real = artifacts.produced
     calls: list[str] = []
@@ -389,21 +394,56 @@ def kill_after_the_rename(monkeypatch):
     return calls
 
 
-def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
+def test_an_item_written_before_its_row_moved_resumes_by_its_mark_and_is_measured_once(
     cfg, folder, silence, monkeypatch
 ):
-    """The kill between the rename and the row flipping to done, on a stem the
-    template rewrites, so stripping heads would miss it."""
+    """The kill between the tag write and the row flipping to done (U343): the
+    file carries its mark, so the resume skips it unread and renames nothing."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
-    bind_scoring(monkeypatch)
+    seen = detector()
+    bind_scoring(monkeypatch, detect_=seen)
     job = queued("run", folder)
-    killed = kill_after_the_rename(monkeypatch)
+    killed = kill_after_the_write(monkeypatch)
     with pytest.raises(_Killed):
         drive(resume_argv(job.job_id))
     assert killed == ["Daft Punk - Around the World - Daft Punk.flac"]
-    finished = folder / "08A - 124 - Daft Punk - Around the World.flac"
-    assert finished.is_file(), sorted(p.name for p in folder.iterdir())
+    finished = folder / killed[0]
+    assert tags.read_tag(finished, "analyzed") == "1"
     assert item_states(job.job_id) != {killed[0]: jobs.ItemState.DONE}
+
+    resumed_ok(job)
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    report = artifacts.committed(cfg, job.job_id)[0]
+    assert report["status"] == "skipped-prefixed"
+    assert "resumed_after_rename" not in report
+    assert report["path"] == str(finished)
+    assert seen.seen == [killed[0]], "the track was measured twice"
+    assert sorted(p.name for p in folder.iterdir()) == [killed[0]]
+
+
+def renamed_by_an_older_build(cfg, job, item_id: str, target_name: str) -> Path:
+    """What a run before U343 left at a kill between its rename and the row moving:
+    the file under its head, the intent naming it, the row still pending."""
+    item = _item(job.job_id, item_id)
+    folder = Path(job.payload["folder"])
+    target = folder / target_name
+    artifacts.record_rename_intent(cfg, job, item, target)
+    (folder / item_id).rename(target)
+    return target
+
+
+def test_an_item_an_older_build_renamed_before_its_row_moved_resumes_as_finished(
+    cfg, folder, silence, monkeypatch
+):
+    """The twin recovery is kept for a job a build before U343 left half done."""
+    place(folder, silence, "Daft Punk - Around the World - Daft Punk")
+    seen = detector()
+    bind_scoring(monkeypatch, detect_=seen)
+    job = queued("run", folder)
+    finished = renamed_by_an_older_build(
+        cfg, job, "Daft Punk - Around the World - Daft Punk.flac",
+        "08A - 124 - Daft Punk - Around the World.flac",
+    )
 
     resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
@@ -411,6 +451,7 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     assert report["status"] == "skipped-prefixed"
     assert report["resumed_after_rename"] is True
     assert report["path"] == str(finished)
+    assert seen.seen == [], "the file an older build finished is not measured again"
 
 
 def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed(
@@ -477,10 +518,10 @@ def _interrupted(stopped: dict) -> list[str]:
     return list(argv)
 
 
-def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_printed_command(
+def test_an_interrupt_after_an_items_report_is_staged_resumes_by_the_printed_command(
     cfg, folder, silence, monkeypatch
 ):
-    """U223, through the verb and the command it prints: the resume finds the intent."""
+    """U223, through the verb and the command it prints: the resume finds the mark (U343)."""
     place(folder, silence, "a parade")
     place(folder, silence, "b untouched")
     seen = detector()
@@ -491,8 +532,8 @@ def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_prin
 
     assert code == int(ExitCode.INTERRUPTED), stopped
     assert hits == ["a parade.flac"]
-    finished = folder / "08A - 124 - a parade.flac"
-    assert finished.is_file() and not (folder / "a parade.flac").exists()
+    finished = folder / "a parade.flac"
+    assert finished.is_file() and tags.read_tag(finished, "analyzed") == "1"
     job = analysis_job("analyze.run")
     assert item_states(job.job_id) == {
         "a parade.flac": jobs.ItemState.PENDING,
@@ -505,7 +546,7 @@ def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_prin
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     by_item = {r["item"]: r for r in artifacts.committed(cfg, job.job_id)}
     assert by_item["a parade.flac"]["status"] == "skipped-prefixed"
-    assert by_item["a parade.flac"]["resumed_after_rename"] is True
+    assert "resumed_after_rename" not in by_item["a parade.flac"]
     assert by_item["a parade.flac"]["path"] == str(finished)
     assert by_item["b untouched.flac"]["status"] == "analyzed"
     assert seen.seen == ["a parade.flac", "b untouched.flac"], "a track was analysed twice"
@@ -514,7 +555,7 @@ def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_prin
 def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
     cfg, folder, silence, monkeypatch
 ):
-    """The signal lands again before the resume's own commit; the intent outlives it."""
+    """The signal lands again before the resume's own commit; the mark outlives it."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     interrupt_once_staged(monkeypatch)
@@ -534,25 +575,27 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
     code, resumed = drive(argv)
     assert code == int(ExitCode.OK), resumed
     report = artifacts.committed(cfg, job.job_id)[0]
-    assert report["resumed_after_rename"] is True
-    assert report["path"] == str(folder / "08A - 124 - a.flac")
+    assert report["status"] == "skipped-prefixed"
+    assert report["path"] == str(folder / "a.flac")
 
 
-def test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report(
+def test_a_job_an_older_build_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """No intent: the staged report naming the file is the item's proof of the rename."""
+    """No intent: the staged report naming the file is the item's proof of the rename,
+    for a job a build before U343 renamed and left half done."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    interrupt_once_staged(monkeypatch)
-    _, stopped = drive(["analyze", "run", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     item = _item(job.job_id, "a.flac")
-    intent = artifacts.intent_path(cfg, job.job_id, item.ordinal)
-    assert intent.is_file(), "the attempt that renamed the file lost its intent"
-    intent.unlink()
+    twin = renamed_by_an_older_build(cfg, job, "a.flac", "08A - 124 - a.flac")
+    artifacts.intent_path(cfg, job.job_id, item.ordinal).unlink()
+    artifacts.write(
+        artifacts.staged_path(cfg, job.job_id, item.ordinal),
+        {"item": "a.flac", "path": str(twin), "renamed_to": twin.name, "status": "analyzed"},
+    )
 
-    code, resumed = drive(_interrupted(stopped))
+    code, resumed = drive(resume_argv(job.job_id))
 
     assert code == int(ExitCode.OK), resumed
     report = artifacts.committed(cfg, job.job_id)[0]
@@ -665,8 +708,8 @@ def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
     code, resumed = drive(resume_argv(job.job_id))
 
     assert code == int(ExitCode.OK), resumed
-    assert artifacts.rename_intent(cfg, job, item) == folder / "08A - 124 - a.flac", (
-        "the attempt's own intent replaced the stale one"
+    assert artifacts.rename_intent(cfg, job, item) is None, (
+        "the stale intent was dropped, and an attempt since U343 records none"
     )
 
 
@@ -781,34 +824,19 @@ def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkey
     assert artifacts.rename_intent(cfg, job, item) is None
 
 
-def test_a_taken_target_name_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
-    """The rename never happened, so an intent naming the other file is false."""
-    place(folder, silence, "twin")
-    place(folder, silence, "08A - 124 - twin")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
-
-    drive(resume_argv(job.job_id))
-
-    assert item_causes(job.job_id) == {"twin.flac": "analysis-write-failed"}
-    item = _item(job.job_id, "twin.flac")
-    assert artifacts.rename_intent(cfg, job, item) is None
-
-
-def test_a_refused_rename_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
+def test_a_run_records_no_rename_intent_and_never_renames(cfg, folder, silence, monkeypatch):
+    """U343: no head, so no target, no claim and no intent, even where a rename would fail."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     job = queued("run", folder)
 
     def refuse_rename(self, target):
-        raise PermissionError(13, "Permission denied")
+        raise AssertionError(f"the run renamed {self.name} to {target}")
 
     monkeypatch.setattr(Path, "rename", refuse_rename)
-    drive(resume_argv(job.job_id))
+    resumed_ok(job)
 
-    assert item_causes(job.job_id) == {"a.flac": "analysis-write-failed"}
-    assert (folder / "a.flac").is_file()
-    assert not (folder / "08A - 124 - a.flac").exists(), "the claim was left behind"
+    assert sorted(p.name for p in folder.iterdir()) == ["a.flac"]
     item = _item(job.job_id, "a.flac")
     assert artifacts.rename_intent(cfg, job, item) is None
 
@@ -821,7 +849,8 @@ def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence
     )
     job = queued("run", folder)
     resumed_ok(job)
-    assert (folder / "08A - 128 - a.flac").is_file()
+    assert (folder / "a.flac").is_file(), "a key from a detector is ignored, never a head"
+    assert tags.read_tag(folder / "a.flac", "initialkey") is None
     assert artifacts.committed(cfg, job.job_id)[0]["tempo"] == 128
 
 
@@ -1116,7 +1145,8 @@ def test_an_uncalibrated_library_writes_no_energy_tag_and_routes_to_the_sink(
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
 
-    done = folder / "08A - 124 - a.flac"
+    done = folder / "a.flac"
+    assert tags.read_tag(done, "analyzed") == "1", "the file the run wrote, under its own name"
     read = tags.read_energy_from_file(done)
     assert read is None, "an absent level must not become a tag"
     report = artifacts.committed(cfg, job.job_id)[0]
@@ -1136,7 +1166,7 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
 
-    read = tags.read_energy_from_file(folder / "08A - 124 - a.flac")
+    read = tags.read_energy_from_file(folder / "a.flac")
     assert read == 9
     declared, bucket = _energy_bucket()
     placed = routing.energy_sub(declared, bucket.id, read)
@@ -2650,10 +2680,7 @@ def test_analyze_run_by_hand_queues_and_drives_its_job_to_succeeded_in_one_call(
     assert progress["settled"] == progress["total"] == 2
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert head.seen == ["a.flac", "b.flac"]
-    assert sorted(path.name for path in folder.iterdir()) == [
-        "08A - 124 - a.flac",
-        "08A - 124 - b.flac",
-    ]
+    assert sorted(path.name for path in folder.iterdir()) == ["a.flac", "b.flac"]
     assert progress["analysis"]["by_status"] == {"analyzed": 2}, (
         "the settled envelope is the resume's, carrying what the pass did"
     )
@@ -2822,3 +2849,25 @@ def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_ba
         "initialkey": "09A",
     }
     assert [path.name for path in folder.iterdir()] == ["01A - 124 - Golf.flac"]
+
+
+@pytest.mark.parametrize(
+    ("stem", "fields", "title"),
+    [
+        pytest.param("Ada - Plain", {}, "Ada - Plain", id="untitled-the-stem"),
+        pytest.param(
+            "Ada - Body [MP3]", {}, "[MP3] Ada - Body [MP3]", id="untitled-lossy-marked-first"
+        ),
+        pytest.param("Ada - Kept", {"title": "Kept"}, "Kept", id="a-title-kept"),
+    ],
+)
+def test_the_run_titles_only_a_file_with_no_title_and_never_with_a_head(
+    cfg, folder, silence, monkeypatch, stem, fields, title
+):
+    """U343 review rounds one and two: the naming engine's title with no head, R21's
+    marker set first for a lossy stem, so the landing's title and the tag are one."""
+    path = place(folder, silence, stem, **fields)
+    bind_scoring(monkeypatch)
+    resumed_ok(queued("run", folder))
+    assert tags.read_tag(path, "title") == title
+    assert tags.read_tag(path, "initialkey") is None

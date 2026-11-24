@@ -208,7 +208,7 @@ def _analysed(folder: Path, silence: Path, monkeypatch, detect_) -> tuple[Path, 
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
     (report,) = artifacts.committed(config.load(), job.job_id)
-    return folder / "08A - 124 - a.flac", report
+    return folder / "a.flac", report
 
 
 def test_a_measured_drift_is_written_as_its_level_and_verdict(cfg, folder, silence, monkeypatch):

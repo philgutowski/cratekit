@@ -1,4 +1,4 @@
-"""Pass A: key, tempo, energy. Wide pool, no vocal model.
+"""Pass A: tempo, drift, energy, and no key since U343. Wide pool, no vocal model.
 
 The count comes from plan_pool. A ProcessPoolExecutor of our own would be a
 second answer to R23.
@@ -67,7 +67,11 @@ def init_pass(detect_name: str | None = None) -> None:
 
 
 def analyse(path: str) -> dict[str, Any]:
-    """One file's cheap head. Importable, so spawn can find it by name."""
+    """One file's cheap measure. Importable, so spawn can find it by name.
+
+    A detector answering None, the shipped one only without the extra, settles
+    the file ``skipped-no-key``, the terminal's name from when it meant keyless.
+    """
     target = Path(path)
     detector = _DETECT
     if detector is None:
