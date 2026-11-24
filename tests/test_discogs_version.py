@@ -213,8 +213,7 @@ def test_a_release_is_taken_only_for_the_version_it_writes(title, tracks, taken)
     ],
 )
 def test_the_single_fallback_takes_only_a_release_that_writes_the_version(
-    release_title, tracks, taken
-):
+        release_title, tracks, taken):
     assert matched("X (A Remix)", release_title=release_title, tracks=tracks) is taken
 
 

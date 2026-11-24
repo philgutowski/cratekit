@@ -201,8 +201,7 @@ def _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active):
 
 
 def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
-    review_cli, tmp_path, monkeypatch
-):
+        review_cli, tmp_path, monkeypatch):
     """The card's scenario end to end: the verb that refused now finishes."""
     active = [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")]
     trash, music = _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active)
@@ -226,8 +225,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
 
 
 def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows(
-    review_cli, tmp_path, monkeypatch
-):
+        review_cli, tmp_path, monkeypatch):
     active = [("3", "/A Retired Drive/Music/x.flac")]
     trash, music = _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active)
     code, out, err = _drive(["--output", "json", "delete", "review"])

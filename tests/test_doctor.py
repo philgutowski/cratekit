@@ -493,8 +493,7 @@ def _break_the_presence_index(monkeypatch) -> Path:
 
 
 def test_an_unreadable_credential_index_is_reported_as_unread_not_as_unrecorded(
-    library, monkeypatch
-):
+        library, monkeypatch):
     """An unreadable index is unread, not "not recorded": recording again never fixes it (R-116)."""
     index = _break_the_presence_index(monkeypatch)
     finding = finding_on(library, "credential.provider", credential_recorded=secrets.exists)
@@ -527,8 +526,7 @@ def test_the_wizard_notes_an_unreadable_credential_index_rather_than_dying(confi
 
 
 def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """An index damaged while the secret is typed is noted: ``CredentialError`` is no refusal."""
     index = config.state_path("credential_index")
     answers = ["yes", "yes", "yes"]
@@ -882,8 +880,7 @@ def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
     ],
 )
 def test_a_hook_that_does_not_dispatch_to_this_repository_is_refused(
-    library, tmp_path, body, config_file, because
-):
+        library, tmp_path, body, config_file, because):
     """Each row passes a ``"pre-commit" in body`` test yet scans none of these commits."""
     checkout = hooked_checkout(tmp_path / "checkout", body, config_file=config_file)
     finding = checked(hook_finding(library, checkout), FAIL)
@@ -1149,8 +1146,7 @@ def silent() -> prompt.Prompter:
 
 
 def test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_doctor(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """The first scenario end to end, every answer a flag, so the one interactive verb scripts."""
     root = fresh_root(tmp_path, monkeypatch, "fresh")
     green_probes(monkeypatch)
@@ -1196,8 +1192,7 @@ def test_doctor_writes_nothing_at_all(configured):
 
 
 def test_a_second_setup_run_asks_nothing_and_changes_nothing_it_was_not_asked_to(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """A re-run resolves every answer from the record, prompts nothing and changes nothing."""
     seed_taxonomy(configured)
     green_probes(monkeypatch)
@@ -1230,8 +1225,7 @@ def test_the_wizard_never_puts_a_credential_value_in_its_own_report(configured):
 
 
 def test_the_wizard_refuses_to_overwrite_a_configuration_it_cannot_understand(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """An unreadable config is refused, not overwritten; only a missing file starts empty."""
     directory = tmp_path / "cfg"
     directory.mkdir()
@@ -1246,8 +1240,7 @@ def test_the_wizard_refuses_to_overwrite_a_configuration_it_cannot_understand(
 
 
 def test_the_wizard_completes_an_incomplete_configuration_rather_than_refusing(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """A config missing a required key is what setup is for, so it is completed."""
     directory = tmp_path / "cfg"
     directory.mkdir()
@@ -1272,8 +1265,7 @@ def test_the_wizard_never_re_derives_a_volume_identity_it_already_recorded(confi
 
 
 def test_the_wizard_proposes_the_installed_pin_and_records_it_only_on_a_yes(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """S2: a pin copied from the installed version refuses nothing, so only a yes records it."""
     monkeypatch.setattr(setup_verb.rb_writer, "read_installed_app_version", lambda **_k: "9.9.9")
     document = dict(configured.to_toml_dict())
@@ -1427,8 +1419,7 @@ def test_the_backup_flags_are_recorded_without_a_question(configured, monkeypatc
 
 @pytest.mark.parametrize("how", ["flag", "prompt"])
 def test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives(
-    configured, monkeypatch, how
-):
+        configured, monkeypatch, how):
     """A bare folder name is refused by flag or prompt, never given to rclone (R-345)."""
     seed_taxonomy(configured)
     green_probes(monkeypatch)
@@ -1523,8 +1514,7 @@ def _spell_the_backup_remote(name: str) -> None:
 
 
 def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """The disagreeing remote refusal's fix names the flag, and running it writes the file."""
     seed_taxonomy(configured)
     _spell_the_backup_remote("remote")
@@ -1771,8 +1761,7 @@ def test_login_refuses_a_file_holding_nothing(configured, tmp_path):
 
 
 def test_login_reads_the_environment_fallback_through_the_store_that_owns_it(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "IDENTIFY_KEY", "from-the-environment")
     code, _, err = drive(["login", "identify-key"])
@@ -1819,8 +1808,7 @@ def test_status_reports_open_runs_sessions_and_trees(configured):
 
 
 def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """R-1255: an unlistable session log is its own failure; runs and trees still report."""
     write_session(configured, sources={"labels": str(session.SourceState.REFUSED)})
     log = Path(session.log_dir(configured))
@@ -1852,8 +1840,7 @@ def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(configur
 
 
 def test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """U97 (R-411): the procedure is offered, not bare ``crate login``, a line the verb is in."""
     session_credential = str(secrets.Credential.PROVIDER_SESSION)
     green_probes(monkeypatch, credential_recorded=lambda name: name != session_credential)
@@ -2064,8 +2051,7 @@ def test_an_identity_is_derived_when_the_root_really_is_on_the_volume(tmp_path):
 
 
 def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
-    tmp_path, monkeypatch, volumes_directory
-):
+        tmp_path, monkeypatch, volumes_directory):
     """Through the dispatcher the refusal writes nothing, since an identity is never re-derived."""
     absent = volumes_directory / "not-attached"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
@@ -2080,8 +2066,7 @@ def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
 
 
 def test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """No library state is written until the volume is asserted (``/Volumes/NAME 1``)."""
     root = fresh_root(tmp_path, monkeypatch, "Volumes", "library")
     # The recorded identity is supplied; the write is against another disk.
@@ -2105,8 +2090,7 @@ def test_the_wizard_still_writes_on_a_platform_that_reports_no_volume_identity(c
 
 
 def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_one(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """The correct case still writes."""
     root = fresh_root(tmp_path, monkeypatch, "Volumes", "library")
     green_probes(monkeypatch)
@@ -2118,8 +2102,7 @@ def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_o
 
 
 def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
-    configured, tmp_path
-):
+        configured, tmp_path):
     """An empty scan of a missing log is not "none open"; ``scan_log`` cannot tell them apart."""
     write_session(configured, "s-9", workflow="route.inbox", state=UNVERIFIED)
     checked(finding_on(configured, "session.unresolved"), FAIL, Remedy.RESTORE_FROM_SNAPSHOT)
@@ -2216,8 +2199,7 @@ def test_the_two_tables_differ_in_three_rows_and_every_one_is_a_read_signal_remo
 
 @pytest.mark.parametrize("state", ["IDENTITY_UNAVAILABLE", "IDENTITY_NOT_RECORDED"])
 def test_a_platform_with_no_identity_adapter_may_create_a_library_it_cannot_read_yet(
-    tmp_path, state
-):
+        tmp_path, state):
     """With no identity adapter there is nothing to read, and creating the root is setup's job."""
     present = tmp_path / "library"
     present.mkdir()
@@ -2231,8 +2213,7 @@ def test_a_platform_with_no_identity_adapter_may_create_a_library_it_cannot_read
 
 
 def test_a_first_run_on_a_platform_with_no_identity_adapter_writes_its_template(
-    configured, tmp_path
-):
+        configured, tmp_path):
     """Through the product seam, a first run with no root and no adapter writes its template."""
     configured.library.root.rename(tmp_path / "moved-away")
     wizard = seeded(configured, probes(identity_provider=preflight.null_volume_identity))
@@ -2243,8 +2224,7 @@ def test_a_first_run_on_a_platform_with_no_identity_adapter_writes_its_template(
 
 
 def test_a_renamed_library_folder_on_the_right_volume_is_written_not_refused(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     """A renamed folder on the right volume is written: the identity still matches."""
     configured.library.root.rename(tmp_path / "renamed-by-hand")
     wizard = seeded(configured)
@@ -2418,8 +2398,7 @@ def test_a_record_naming_a_template_other_than_the_configured_one_is_info(config
 
 
 def test_a_packaged_text_that_cannot_be_read_is_a_damaged_install_and_compares_nothing(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     _seed_with_origin(configured)
 
     def unreadable(name: str) -> taxonomy.Fingerprint:
@@ -2512,8 +2491,7 @@ def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_cor
 @pytest.mark.parametrize("drive_type", ["personal", None])
 @pytest.mark.parametrize("hard_delete", ["true", "false"])
 def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
-    configured, drive_type, hard_delete
-):
+        configured, drive_type, hard_delete):
     """OneDrive hard_delete works only on business drives and libraries, else a note."""
     settings = {"type": "onedrive", "hard_delete": hard_delete}
     if drive_type is not None:
@@ -2564,8 +2542,7 @@ def test_an_unknown_remote_is_not_sent_to_a_verb_that_cannot_fix_it(configured):
 
 
 def test_a_set_but_broken_binary_override_gets_the_remedy_that_exists_for_it(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     """A set but broken override gets ``FIX_BINARY_OVERRIDE``: installing would not help."""
     broken = tmp_path / "not-executable"
     broken.write_text("")
@@ -2583,8 +2560,7 @@ def test_a_binary_that_is_simply_absent_still_says_install_it(configured):
 
 
 def test_a_headless_machine_that_opted_into_the_environment_fallback_is_not_red(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     for credential in secrets.Credential:
         monkeypatch.setenv(
@@ -2618,8 +2594,7 @@ def test_a_fallback_supplying_only_some_of_what_is_needed_is_still_red(configure
 
 
 def test_a_database_outside_the_library_root_is_reported_on_every_run(
-    library, tmp_path, monkeypatch
-):
+        library, tmp_path, monkeypatch):
     """A database outside the root is reported every run: its snapshots span two filesystems."""
     document = document_for(library)
     document["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
@@ -2766,8 +2741,7 @@ def unreadable_install(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("install", ["stripped_install", "unreadable_install"])
 def test_the_whole_command_line_survives_an_install_with_no_readable_templates(
-    install, request, configured, monkeypatch
-):
+        install, request, configured, monkeypatch):
     """Every run builds every parser, so doctor and help survive missing or unreadable templates."""
     request.getfixturevalue(install)
     green_probes(monkeypatch)
@@ -2787,8 +2761,7 @@ def test_a_missing_templates_directory_is_an_empty_answer_not_an_exception(strip
 
 
 def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_one(
-    stripped_install, tmp_path, monkeypatch
-):
+        stripped_install, tmp_path, monkeypatch):
     """With nothing shipped the flag has no closed set, since empty ``choices`` rejects all."""
     root = fresh_root(tmp_path, monkeypatch, "library")
     green_probes(monkeypatch)
@@ -2861,8 +2834,7 @@ def test_the_derive_still_refuses_when_the_mount_point_is_empty(volumes_director
     ids=["at-the-mount-point", "one", "two", "four"],
 )
 def test_an_ejected_volume_leaves_a_mount_POINT_behind_and_the_derive_refuses_it(
-    volumes_directory, gap
-):
+        volumes_directory, gap):
     """An ejected volume's leftover mount point is refused, not walked past to the boot disk."""
     leftover = volumes_directory.eject("EP_LIBRARY")
     (leftover / "Music" / "a" / "b").mkdir(parents=True, exist_ok=True)
@@ -2877,8 +2849,7 @@ def test_an_ejected_volume_leaves_a_mount_POINT_behind_and_the_derive_refuses_it
 
 
 def test_the_identity_source_refuses_an_empty_mount_slot_and_nothing_else(
-    tmp_path, volumes_directory
-):
+        tmp_path, volumes_directory):
     existing = tmp_path / "library"
     existing.mkdir()
     # No mount slot on the way down: the identity is its own volume's, asserted as a
@@ -3055,8 +3026,7 @@ def test_the_wizard_refuses_to_write_when_the_volume_is_not_mounted_at_all(confi
 
 
 def test_the_wizard_refuses_to_write_when_the_volume_is_mounted_somewhere_else(
-    configured, tmp_path
-):
+        configured, tmp_path):
     """MOUNTED_ELSEWHERE is refused: writing would send the real volume to ``<name> 1``."""
     elsewhere = tmp_path / "actually-here"
     elsewhere.mkdir()
@@ -3222,8 +3192,7 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
 
 
 def test_an_unlistable_packaged_directory_is_not_a_shipped_set_of_none(
-    configured, unreadable_install
-):
+        configured, unreadable_install):
     names, problem = taxonomy.shipped_templates()
     assert names == ()
     assert problem is not None and "could not be listed" in problem
@@ -3338,8 +3307,7 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
 
 
 def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refuses(
-    volumes_directory, tmp_path
-):
+        volumes_directory, tmp_path):
     elsewhere = tmp_path / "elsewhere"
     (elsewhere / "library").mkdir(parents=True)
     (volumes_directory.path / "SYMVOL").symlink_to(elsewhere, target_is_directory=True)
@@ -3351,8 +3319,7 @@ def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refus
 
 
 def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volume(
-    volumes_directory, tmp_path
-):
+        volumes_directory, tmp_path):
     """A symlinked entry naming a real mount is a mounted volume, unlike ``ismount`` (P7)."""
     attached = volumes_directory.attach("REAL")
     (attached / "Music").mkdir(parents=True)
@@ -3364,8 +3331,7 @@ def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volu
 
 
 def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """An absent declared mount directory still names itself, by the equality shortcut."""
     absent = tmp_path.resolve() / "run" / "media"
     assert not absent.exists()
@@ -3387,8 +3353,7 @@ def test_the_walk_up_to_an_ancestor_never_clamps_at_the_filesystem_root(tmp_path
 
 
 def test_a_library_reached_through_a_symlinked_parent_still_finds_its_slot(
-    volumes_directory, tmp_path
-):
+        volumes_directory, tmp_path):
     """A library through a symlinked parent still finds its slot on the resolved chain."""
     shortcut = tmp_path / "EP_LIBRARY"
     shortcut.symlink_to(volumes_directory.path / "EXT", target_is_directory=True)
@@ -3399,8 +3364,7 @@ def test_a_library_reached_through_a_symlinked_parent_still_finds_its_slot(
 
 
 def test_identity_source_asks_whether_the_slot_holds_a_volume_not_whether_it_is_one(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """``identity_source`` asks ``slot_holds_a_volume``, not ``is_mount_point`` (P7)."""
     volumes = (tmp_path / "Volumes").resolve()
     volumes.mkdir()
@@ -3456,8 +3420,7 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(tmp_pat
 
 
 def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directory(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     root = (tmp_path / "mnt" / "data" / "music").resolve()
     (root / "Music").mkdir(parents=True)
     rebased = tuple(
@@ -3557,8 +3520,7 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(configured,
 
 
 def test_the_wizard_tells_an_unlistable_template_directory_from_an_absent_name(
-    configured, unreadable_install
-):
+        configured, unreadable_install):
     """An unlistable template directory is a damaged install, agreeing with doctor."""
     cfg = configured
     note = seed_note(seeded(cfg))
@@ -3718,8 +3680,7 @@ def test_the_wizard_refuses_an_unreachable_ancestor_rather_than_filing_a_defect(
 
 
 def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
-    sealed_ancestor, tmp_path, monkeypatch
-):
+        sealed_ancestor, tmp_path, monkeypatch):
     """Through the real dispatcher, where the defect was visible."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     green_probes(monkeypatch)
@@ -3738,8 +3699,7 @@ def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
 
 
 def test_the_taxonomy_seed_reports_an_unreachable_root_rather_than_raising(
-    sealed_ancestor, monkeypatch
-):
+        sealed_ancestor, monkeypatch):
     """The taxonomy seed notes an unreachable root rather than raising after the save."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     cfg = config.from_dict(document_for(sealed_ancestor))
@@ -3808,8 +3768,7 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(sealed_ancest
 
 @pytest.mark.parametrize("arrangement", ["configuration-directory", "library-root"])
 def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
-    tmp_path, monkeypatch, arrangement
-):
+        tmp_path, monkeypatch, arrangement):
     """A sealed root or config directory gets, from both verbs, an act the user can do."""
     sealed = tmp_path / "sealed"
     (sealed / "cfg").mkdir(parents=True)
@@ -3853,8 +3812,7 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
 
 
 def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
-    tmp_path, monkeypatch, capsys
-):
+        tmp_path, monkeypatch, capsys):
     """``crate --help`` survives a sealed config directory, read during parser construction."""
     sealed = tmp_path / "sealed"
     (sealed / "cfg").mkdir(parents=True)
@@ -4212,8 +4170,7 @@ def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monk
 
 
 def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """The wizard's raw second read does not call a sealed incomplete config corrupt."""
     _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
@@ -4435,8 +4392,7 @@ def test_a_tree_registry_that_will_not_load_is_never_read_as_no_record(configure
 
 
 def test_setup_refuses_a_config_that_stopped_being_readable_between_the_two_reads(
-    monkeypatch, tmp_path
-):
+        monkeypatch, tmp_path):
     """A config unreadable between the two reads is refused, not written over as empty."""
     missing = tmp_path / "vanished.toml"
 
@@ -4492,8 +4448,7 @@ def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_p
 
 
 def test_a_credential_that_cannot_be_read_and_one_that_cannot_be_stored_differ(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     """An unreadable credential and a refusing store carry different remedies."""
     wizard = setup_verb._Wizard({}, silent())
     wizard.optional = lambda *_a, **_k: True  # the user said yes to every offer
@@ -4895,8 +4850,7 @@ def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission
 
 
 def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     """EROFS and EACCES through the same branch differ in token and sentence."""
     _require_hdiutil()
     sealed_root = tmp_path / "sealed" / "library"
@@ -5023,8 +4977,7 @@ def test_a_shipped_template_that_cannot_be_read_is_named_and_not_the_copy(config
 
 
 def test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     seed_taxonomy(configured)
     shipped = taxonomy.shipped_template_text("default")
     monkeypatch.setattr(
@@ -5306,8 +5259,7 @@ def _push_check(configured, support) -> doctor.Finding:
 
 
 def test_with_no_deadca7_support_folder_doctor_says_not_installed_and_does_not_fail(
-    configured, tmp_path
-):
+        configured, tmp_path):
     finding = _push_check(configured, _deadca7(tmp_path, home=False))
     assert "not installed" in finding.detail
     # A machine with no home for it at all answers the same, and never fails.
@@ -5320,8 +5272,7 @@ def test_installed_with_no_push_says_so(configured, tmp_path):
 
 
 def test_a_push_newer_than_the_last_database_backup_warns_and_names_the_backup(
-    configured, tmp_path
-):
+        configured, tmp_path):
     backed_up(configured, DATABASE, GREEN_NOW - timedelta(days=3))
     finding = _push_check(configured, _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=1)))
     assert finding.detail.startswith("warning: DEADCA7 last pushed")
@@ -5343,8 +5294,7 @@ def test_a_push_with_no_database_backup_recorded_warns(configured, tmp_path):
 
 
 def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail(
-    configured, tmp_path
-):
+        configured, tmp_path):
     support = _deadca7(tmp_path)
     (support / doctor_backup.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
     finding = _push_check(configured, support)
@@ -5376,8 +5326,7 @@ def _installed_check(configured, support, installed) -> doctor.Finding:
 
 
 def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_no_push(
-    configured, tmp_path
-):
+        configured, tmp_path):
     """DEADCA7.app in /Applications with no support folder reads installed."""
     places = _installed_places(tmp_path, "system")
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
@@ -5396,8 +5345,7 @@ def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_n
     ids=["the-accounts-own-applications-folder", "the-state-folder-alone"],
 )
 def test_one_installed_place_alone_reads_installed_with_no_push(
-    configured, tmp_path, present, named
-):
+        configured, tmp_path, present, named):
     places = _installed_places(tmp_path, present)
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
     assert "installed here and has recorded no push" in finding.detail
@@ -5429,8 +5377,7 @@ def test_a_push_is_read_as_today_whatever_the_install_signals_say(configured, tm
 
 
 def test_installed_with_an_empty_backup_folder_says_the_location_is_unconfirmed(
-    configured, tmp_path
-):
+        configured, tmp_path):
     finding = _installed_check(configured, _deadca7(tmp_path), ())
     assert "installed here and has recorded no push" in finding.detail
     assert "holds no entry" in finding.detail
@@ -5446,8 +5393,7 @@ def test_a_support_folder_with_no_backup_folder_reads_installed_with_no_push(con
 
 
 def test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     places = _installed_places(tmp_path)
     _refuse_stat_under(monkeypatch, tmp_path / "home")
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
@@ -5458,8 +5404,7 @@ def test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed(
 
 
 def test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     support = _deadca7(tmp_path)
     _refuse_stat_under(monkeypatch, support)
     finding = _installed_check(configured, support, _installed_places(tmp_path))
@@ -5469,8 +5414,7 @@ def test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed(
 
 
 def test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     support = _deadca7(tmp_path)
     places = _installed_places(tmp_path, "system")
     _refuse_stat_under(monkeypatch, support)
@@ -5481,8 +5425,7 @@ def test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said(
 
 
 def test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push(
-    configured, tmp_path, monkeypatch
-):
+        configured, tmp_path, monkeypatch):
     support = _deadca7(tmp_path)
     _refuse_stat_under(monkeypatch, support / doctor_backup.DEADCA7_BACKUPS)
     finding = _installed_check(configured, support, ())
@@ -5575,8 +5518,7 @@ def test_with_its_support_folder_here_the_install_signals_are_not_asked(configur
 
 
 def test_installed_with_no_home_to_resolve_says_where_its_backups_land_is_unconfirmed(
-    configured, tmp_path
-):
+        configured, tmp_path):
     places = _installed_places(tmp_path, "system")
     finding = _installed_check(configured, None, places)
     assert finding.detail.startswith("DEADCA7 is installed here and has recorded no push")
