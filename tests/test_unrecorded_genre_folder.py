@@ -1,13 +1,11 @@
 """R-1991: a genre folder renamed in rekordbox that no write recorded.
 
-The check reads a playlist nothing derives into by its folder's declared name,
-or by the bucket a write recorded for the folder. Adoption's writer recorded
-nothing, so a renamed folder of a tree only adoption filed declared no bucket
-and had none on record, and a cleared second genre's track left alone under it
-read as a person's own playlist: ``converge`` said matching. Now adoption's
-writer records the node it files into, and a folder still unrecorded (a tree
-adopted before that) is named as not compared. Over a disposable database,
-every expected name asked of the shipped taxonomy. D1 applies.
+The check reads a playlist by its folder's declared name or the bucket a write
+recorded for it. Adoption's writer recorded nothing, so a cleared second genre's
+track left under a renamed folder read as a person's own and ``converge`` said
+matching. Now adoption records the node it files into, and a folder still
+unrecorded is named as not compared. Over a disposable database, every expected
+name asked of the shipped taxonomy. D1 applies.
 """
 
 from __future__ import annotations
@@ -20,25 +18,16 @@ from cratekit.cli import converge as converge_cli
 from cratekit.core import convergence, rb_writer, tree_registry
 from cratekit.write import convergence_check, metadata_cli, rebuild, routing_pass, trees
 from tests import test_rebuild as _rebuild_suite
-from tests.test_second_genre import (
-    DECLARED,
-    HIGH,
-    LOW,
-    ONE,
-    TECH,
-    THIRD,
-    TWO,
-    _by_hand,
-    _derived,
-    _left,
-    _truth,
-)
+from tests import test_second_genre as _second
 
-cfg = _rebuild_suite.cfg
-library = _rebuild_suite.library
-db = _rebuild_suite.db
-adopted_root = _rebuild_suite.adopted_root
-gates_pass = _rebuild_suite.gates_pass
+DECLARED, HIGH, LOW, ONE = _second.DECLARED, _second.HIGH, _second.LOW, _second.ONE
+TECH, THIRD, TWO = _second.TECH, _second.THIRD, _second.TWO
+_by_hand, _derived = _second._by_hand, _second._derived
+_left, _truth = _second._left, _second._truth
+
+# The rebuild suite's fixtures, by name so pytest finds them here.
+cfg, library, db = _rebuild_suite.cfg, _rebuild_suite.library, _rebuild_suite.db
+adopted_root, gates_pass = _rebuild_suite.adopted_root, _rebuild_suite.gates_pass
 _platform_seams = _rebuild_suite._platform_seams
 _release_process_locks = _rebuild_suite._release_process_locks
 
@@ -167,6 +156,16 @@ def test_the_converge_verb_never_says_matching_over_an_unrecorded_renamed_folder
     assert check["detail"].startswith(f"not-compared:{_under(RENAMED)}; "), check
 
 
+def _compared(monkeypatch, report) -> tuple[str, str]:
+    """What the converge verb's comparison says of ``report``, with no vocal threshold."""
+    monkeypatch.setattr(rebuild, "report_convergence", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda _cfg: None)
+    return converge_cli._compare(
+        None, SimpleNamespace(get_playlist=list, get_content=list),
+        tree_id=TREE_ID, entries=None, declared=DECLARED,
+    )
+
+
 def test_the_converge_verb_says_differing_over_a_doubled_row_beside_an_unread_folder(
     monkeypatch,
 ):
@@ -175,12 +174,7 @@ def test_the_converge_verb_says_differing_over_a_doubled_row_beside_an_unread_fo
         tree_id=TREE_ID, root_id="root", derived=1,
         doubled=(f"{ONE}/{HIGH}:1",), unidentified=(_under(RENAMED),),
     )
-    monkeypatch.setattr(rebuild, "report_convergence", lambda *_args, **_kwargs: report)
-    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda _cfg: None)
-    status, detail = converge_cli._compare(
-        None, SimpleNamespace(get_playlist=list, get_content=list),
-        tree_id=TREE_ID, entries=None, declared=DECLARED,
-    )
+    status, detail = _compared(monkeypatch, report)
     assert status == converge_cli.DIFFERING
     assert detail == f"not-compared:{_under(RENAMED)}; doubled:{ONE}/{HIGH}:1"
 
@@ -194,12 +188,7 @@ def test_the_converge_verb_names_a_difference_past_many_unread_playlists(monkeyp
     report = convergence_check.ConvergenceReport(
         tree_id=TREE_ID, root_id="root", derived=1, missing=(missing,), unidentified=unread,
     )
-    monkeypatch.setattr(rebuild, "report_convergence", lambda *_args, **_kwargs: report)
-    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda _cfg: None)
-    status, detail = converge_cli._compare(
-        None, SimpleNamespace(get_playlist=list, get_content=list),
-        tree_id=TREE_ID, entries=None, declared=DECLARED,
-    )
+    status, detail = _compared(monkeypatch, report)
     assert status == converge_cli.DIFFERING
     shown = [f"not-compared:{entry}" for entry in unread[: converge_cli.UNREAD_SHOWN]]
     assert detail == "; ".join(
@@ -236,8 +225,7 @@ def test_a_folder_a_rebuild_recorded_is_compared_after_a_rename_as_before(
 def test_a_renamed_recorded_folder_is_read_by_its_recorded_genre_alone(
     cfg, gates_pass, db, adopted_root
 ):
-    """THE TABLE'S ZERO (K5): a write recorded the folder for Tech House, so a
-    playlist only another genre declares stays a person's own after a rename."""
+    """THE TABLE'S ZERO (K5): recorded for Tech House, another genre's playlist stays foreign."""
     _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[_track(cfg)])
     folder = db.get_playlist(ID=_node(db, adopted_root, TWO, HIGH).folder_id)
     rb_writer.add_membership(db, rb_writer.ensure_playlist(db, _anothers(TWO), folder), "1")
@@ -327,9 +315,8 @@ def test_a_leftover_beside_a_folder_a_write_made_again_is_named_as_not_compared(
 ):
     """ROUND ONE: the record ties the renamed folder to Tech House, but its Low is bound elsewhere.
 
-    A write that finds its playlists by name made Tech House / Low again, so
-    the leftover's playlist reads as a second node of a bound destination,
-    which :func:`namesakes` leaves alone; it is named rather than read clean.
+    A write made Tech House / Low again by name, so the leftover reads as a second node of a
+    bound destination, which :func:`namesakes` leaves alone; it is named, not read clean.
     """
     _by_hand(db, adopted_root, {(ONE, LOW): ("1",), (TWO, LOW): ("1",)})
     _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
@@ -353,8 +340,7 @@ def test_a_leftover_beside_a_folder_a_write_made_again_is_named_as_not_compared(
 def test_a_second_node_a_write_made_under_the_genres_own_name_is_named_as_not_compared(
     cfg, gates_pass, db, adopted_root
 ):
-    """ROUND TWO: the record binds Tech House / High to the renamed folder, and a
-    write that finds its playlists by name made Tech House / High again; the
+    """ROUND TWO: Tech House / High, bound to the renamed folder, made again by name; the
     track left there is named, not read as a person's own."""
     _adopt(cfg, db, adopted_root, [(ONE, HIGH), (TWO, HIGH)])
     _rename(db, adopted_root, TWO)
