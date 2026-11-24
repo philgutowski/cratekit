@@ -1,6 +1,6 @@
 ---
 name: analyze-audio
-description: Analyse audio for key, tempo, and energy, and run the calibration around it. Use when a folder of new tracks carries no key in its filenames, when somebody says analyse, calibrate, validate, restamp, re-rate the energy, or fit the threshold, when an analysis job is sitting in the queue and nothing is moving, or when a recalibration has to be carried across the back catalogue.
+description: Analyse audio for tempo, drift, energy and vocals, and run the calibration around it. Use when a folder of new tracks has not been analysed, when somebody says analyse, calibrate, validate, restamp, re-rate the energy, or fit the threshold, when an analysis job is sitting in the queue and nothing is moving, or when a recalibration has to be carried across the back catalogue.
 ---
 
 # Analysing audio
@@ -14,10 +14,15 @@ a person has to rediscover.
 
 ## What a pass produces, and what it refuses to produce
 
-A pass reads one file and returns a Camelot key, a measured tempo, and an
-energy level. The key and the tempo become the head of the filename, and that
-head is the whole durable record of the pass. Energy is what the routing verbs
-read when they decide where a track belongs.
+A pass reads one file and returns a measured tempo, how far it drifts, an energy
+level and the vocal scores, and writes the drift, the energy and the vocals to
+the file's tags with a mark saying the pass measured it, and its stem as the
+title tag of a file that has none, a lossy marker in the stem set before it. It measures no key and
+writes no head and no name: the key and the tempo a DJ reads in the head come
+from rekordbox's own analysis after the visit, given to the title by `crate
+analyze adopt`. The tempo is measured for the drift, which marks a track whose
+tempo moves so rekordbox analyses it as such, and is never written. Energy is
+what the routing verbs read when they decide where a track belongs.
 
 ```bash
 crate analyze run /path/to/staging
@@ -30,8 +35,7 @@ octave folds, so a confident wrong tempo seeds a grid at half or double time,
 and every cue point and every loop already set against that track moves with it.
 A wrong grid is worse than no grid. Import gridless and rekordbox derives tempo
 and grid from the audio itself, which costs nothing to redo and is right more
-often. A number written into a filename is a name, and nothing downstream reads
-it as a grid.
+often. The pass writes no number into a filename at all.
 
 ## Analysis is a job, and the job is the thing you drive
 
@@ -61,14 +65,14 @@ crate job list --state queued --state blocked
 of matching nothing, because a silently empty result looks exactly like a queue
 that lost your job.
 
-## Resume is the filename, not a sidecar
+## Resume is a mark on the file, not a sidecar
 
-A file whose name already carries a complete head is skipped on the next pass.
-Complete means the key and the tempo both, so a file that got a key while tempo
-detection failed counts as unfinished and is picked up again rather than
-stranded for ever. That is why a killed driver needs no cleanup and why running
-the same folder twice is cheap. The unfinished tail is exactly the set of files
-that still have no head.
+A file the pass measured carries the tag `analyzed`, written in the same write
+as its measures, and is skipped on the next pass. A file whose name carries a
+complete key and tempo head is skipped too, since that is what a pass before
+the mark left. A kill leaves each file either marked and finished or unmarked
+and owed, so a killed driver needs no cleanup and running the same folder twice
+is cheap. The unfinished tail is exactly the set of files with neither.
 
 ## Calibrate fits a threshold to this library's own data
 

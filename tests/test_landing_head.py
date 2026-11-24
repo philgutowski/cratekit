@@ -132,3 +132,34 @@ def test_the_lossy_flag_reported_is_the_one_the_name_was_rendered_from(cfg, sile
     shutil.copyfile(silence, bare)
     assert tags.write_tags(bare, {"title": "08A - 124 - Plain"}) is True
     assert ingest.read_meta(bare, cfg=cfg)["lossy"] is False
+
+
+#: What ``analyze run`` leaves on a file since U343: its measures and its mark,
+#: and no head, title or key.
+MEASURED = {"analyzed": "1", "energylevel": 6, "drift": "steady", "driftlevel": "0.4"}
+
+
+@pytest.mark.parametrize(
+    ("filename", "fields", "named"),
+    [
+        pytest.param("Probe - Body.flac", {"title": "Body", **MEASURED}, "Body", id="titled"),
+        pytest.param("Probe - Body.flac", MEASURED, "Probe - Body", id="no-title-tag"),
+        pytest.param(
+            "Probe - Body.flac", {"title": "Body", "initialkey": "08A", **MEASURED}, "Body",
+            id="a-provider-key-tag",
+        ),
+    ],
+)
+def test_a_title_analyze_run_measured_lands_as_its_title_tag_gives_it_with_no_head(
+    cfg, silence, tmp_path, filename, fields, named
+):
+    """U343: the landing lands the title as the file's title tag gives it, the stem
+    where there is none, with no head, as for any headless title; the key column is
+    the key tag's alone, empty without one, until rekordbox analyses the row."""
+    name, body, target = _land(cfg, silence, tmp_path, filename, **fields)
+    assert name == named
+    _no_tempo(body)
+    assert target.name == filename
+    meta = ingest.file_meta(target, cfg=cfg)
+    assert meta["name"] == named
+    assert meta["tonality"] == (fields.get("initialkey") or "")

@@ -271,8 +271,7 @@ calibration = energy.calibrate(
     [{name: float(seed) for name in energy.FEATURE_ORDER} for seed in range(12)]
 )
 for path in sys.argv[1:]:
-    for key in detect.KEY_METHODS:
-        detect.analyse_file(Path(path), calibration=calibration, key=key)
+    detect.analyse_file(Path(path), calibration=calibration)
     # The restamp's and calibrate's measure, which the head now scores through (U344).
     energy.features_from_path(Path(path))
     vocal.decode(path)
@@ -332,7 +331,7 @@ _COLD_POOL = textwrap.dedent(
             ahead.close_session("cold")
         assert session.stopped is None, session.stopped
         assert (session.ahead, session.here) == (len(paths), 0), (session.ahead, session.here)
-        print(" ".join(str(head.get("camelot")) for head in heads))
+        print(" ".join(str(head.get("rate")) for head in heads))
 
     if __name__ == "__main__":
         main()
@@ -361,3 +360,4 @@ def test_two_workers_starting_together_on_an_empty_cache_finish(tmp_path, attemp
         f"attempt {attempt}: exit {done.returncode}\\n{done.stderr[-3000:]}"
     )
     assert len(done.stdout.split()) == 3
+    assert all(rate.isdigit() for rate in done.stdout.split()), done.stdout

@@ -125,6 +125,11 @@ FIELDS: dict[str, TagSpec] = {
     "secondgenre": TagSpec(
         "secondgenre", "TXXX:SecondGenre", "----:com.apple.iTunes:SecondGenre"
     ),
+    # U343, the mark ``analyze run`` writes on every file it measured, its
+    # resume marker now that the run writes no head. A mark, never a tempo.
+    "analyzed": TagSpec(
+        "cratekitanalyzed", "TXXX:CratekitAnalyzed", "----:com.apple.iTunes:CratekitAnalyzed"
+    ),
 }
 
 FLAC_SUFFIXES = (".flac",)

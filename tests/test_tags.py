@@ -56,6 +56,7 @@ ALL_FIELDS = {
     "driftlevel": "4.4",
     "drift": "variable",
     "secondgenre": "Probe Second Genre",
+    "analyzed": "1",
 }
 
 
@@ -353,3 +354,14 @@ def test_clearing_a_file_with_no_tag_block_writes_nothing(container, suffix):
     before = path.read_bytes()
     assert clear_tags(path, ["genre", "title"]) is True
     assert path.read_bytes() == before
+
+
+def test_the_analysed_mark_is_spelled_as_files_already_carry_it():
+    """U343: ``analyze run``'s resume mark is on files from its first run, so its
+    spelling in each dialect is pinned; a respelling reads every one as unmeasured."""
+    spec = FIELDS["analyzed"]
+    assert (spec.vorbis, spec.id3, spec.mp4) == (
+        "cratekitanalyzed",
+        "TXXX:CratekitAnalyzed",
+        "----:com.apple.iTunes:CratekitAnalyzed",
+    )

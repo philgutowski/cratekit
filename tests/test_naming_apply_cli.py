@@ -1239,3 +1239,33 @@ def test_the_gate_screen_omits_the_not_listed_keys_under_the_bound(configured):
     code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
     shown = json.loads(out)["cause"]["detail"]["shown"]
     assert "planned not listed" not in shown and "held not listed" not in shown
+
+
+def test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept(
+    configured,
+):
+    """U343: a run since then writes no head and no ``initialkey``, so ``name apply``
+    names its file with no head, even where a provider's key tag is there, and never
+    strips a head a file already carries, on its name or in its title."""
+    folder = _folder(configured)
+    measured = _track(folder, "Ada - Bare.flac", title="Bare")
+    tags.write_tags(measured, {"analyzed": "1"})
+    keyed = _track(folder, "Ada - Keyed.flac", title="Keyed", key="08A")
+    named = _track(folder, "08A - 124 - Ada - Named.flac", title="Named")
+    adopted = _track(folder, "Ada - Adopted.flac", title="06A - 126 - Adopted")
+
+    _apply(folder)
+
+    assert sorted(path.name for path in folder.iterdir()) == sorted([
+        measured.name,
+        keyed.name,
+        named.name,
+        "06A - 126 - Ada - Adopted.flac",
+    ])
+    assert tags.read_tag(measured, "title") == "Bare"
+    assert tags.read_tag(keyed, "title") == "Keyed", "a key tag alone is no head"
+    assert named.is_file(), "the name's head is kept"
+    assert tags.read_tag(folder / "06A - 126 - Ada - Adopted.flac", "title") == (
+        "06A - 126 - Adopted"
+    )
+    assert not adopted.exists()

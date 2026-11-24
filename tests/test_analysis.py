@@ -65,7 +65,7 @@ def test_a_missing_analysis_extra_names_the_install_command():
     assert cause.detail["install"] == extras.install_command("analysis")
 
 
-def test_vocal_model_load_failure_leaves_key_and_energy_intact(tmp_path):
+def test_vocal_model_load_failure_leaves_tempo_and_energy_intact(tmp_path):
     from cratekit.analysis.run import run_batch
 
     path = _touch_audio(tmp_path, "track.flac")
@@ -79,7 +79,7 @@ def test_vocal_model_load_failure_leaves_key_and_energy_intact(tmp_path):
     results = run_batch([path], detect=detect, vocal_loader=explode)
     assert len(results) == 1
     result = results[0]
-    assert result.camelot == "8A"
+    assert not hasattr(result, "camelot"), "the run measures no key since U343"
     assert result.bpm == 124
     assert result.energy == 6
     assert result.vocal_active is False
@@ -129,8 +129,36 @@ def test_a_killed_batch_resumes_skipping_completed_tracks(tmp_path):
     assert first.name not in seen
     names = {item.path.name: item for item in results}
     assert names[first.name].status == "skipped-prefixed"
-    assert names[second.name].camelot == "4A"
+    assert names[second.name].bpm == 120
     assert names[second.name].status != "skipped-prefixed"
+
+
+def test_a_batch_resume_skips_a_file_carrying_the_mark_and_reads_the_rest(tmp_path):
+    """U343: the mark the run writes is the resume marker, beside a head on the name."""
+    from cratekit.analysis import run
+    from cratekit.analysis.run import run_batch
+    from cratekit.core import tags
+    from tests._containers import synth_container
+
+    probe = synth_container(tmp_path, ".flac")
+    marked = probe.with_name("marked.flac")
+    blank = probe.with_name("blank.flac")
+    marked.write_bytes(probe.read_bytes())
+    probe.rename(blank)
+    assert tags.write_tags(marked, {run.MARK_FIELD: run.MARK_VALUE})
+    assert tags.write_tags(blank, {run.MARK_FIELD: " "})
+    seen: list[str] = []
+
+    def detect(item: Path):
+        seen.append(item.name)
+        return {"path": item, "bpm": 120, "energy": 3}
+
+    results = run_batch([marked, blank], detect=detect, vocal=False)
+    assert seen == ["blank.flac"], "a blank mark is no mark"
+    assert {item.path.name: item.status for item in results} == {
+        "blank.flac": "analyzed",
+        "marked.flac": "skipped-prefixed",
+    }
 
 
 # R-370: the shipped loader built the clip level wrapper against a checkpoint

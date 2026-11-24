@@ -1,5 +1,9 @@
 """A job's heads, measured ahead of the driver in the pool the machine affords (U241).
 
+A HEAD HERE IS ONE FILE'S MEASURED VALUES, tempo, drift and energy, the word
+kept from when they gave the file name its head; since U343 the run measures
+no key and names nothing.
+
 A job settles one item at a time, which makes a kill resumable and does not
 change. What changes is WHERE THE MEASURING HAPPENS: a head is a pure read of
 one file, so workers measure the tracks behind the one the driver is on.
@@ -283,7 +287,7 @@ def report(session: Session | None) -> dict[str, Any]:
         record["detail"] = _alone(plan.account())
         return record
     detail = (
-        f"{plan.workers} workers measured key, tempo and energy ahead of this "
+        f"{plan.workers} workers measured tempo, drift and energy ahead of this "
         f"process: {plan.account()}; {session.ahead} of {session.items} waiting "
         f"file(s) were read from them"
     )
