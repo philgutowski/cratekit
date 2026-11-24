@@ -20,6 +20,10 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli
 from cratekit.write import rebuild as engine
 
+#: Where each rebuilt tree's report is kept: what the after check found it left
+#: and could not compare (R-635, R-2020), read back by the resume.
+REBUILD_ARTIFACTS = jobs.Artifacts(final="rebuild-artifacts", staging="rebuild-staging")
+
 
 def build(parser, entry: registry.Entry) -> None:
     parser.add_argument(
@@ -104,19 +108,15 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
         # The declaration the worker derives with, read the same way (R-685).
         declared = active_taxonomy.load(jobs.frozen_config(job))
-        # The trees this run drives; an item already done is an earlier run's.
-        driven = [
-            i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE
-        ]
-        _, warnings = ctx.run_job(store, job)
-        job = jobs.get(store, job.job_id)
-        # What the rebuild did not compare, which depends on the declaration and
-        # threshold only, said only when this run drove (R-316).
-        warnings = (
-            *warnings,
-            *engine.not_compared_warnings(engine.governed_not_compared(threshold, declared)),
-            # The genre favorites step skipped, named with its cause (U132).
-            *engine.favorites_skipped_warnings(declared, driven),
+        # Only the branch that drove says what the drive found (R-316, U132,
+        # R-635, R-2020), on both its exits.
+        job, warnings = engine.drive_reported(
+            store,
+            job,
+            ctx.run_job,
+            REBUILD_ARTIFACTS,
+            threshold=threshold,
+            declared=declared,
         )
     jobs.raise_for_state(job)
     return ctx.envelope(
@@ -267,21 +267,25 @@ def _left_alone(
     ]
 
 
-def handle(job, item, cfg) -> None:
+def handle(job, item, cfg) -> jobs.Produced:
     """Rebuild one governed tree, the per-item worker behind ``handler_key`` rebuild.
 
     The item is the tree, so a resume can tell trees apart. ``cfg`` is the
-    frozen configuration (KTD9). It returns no artifact, since the output is
-    database membership the engine commits itself. The actor is deliberately
-    not read, since a rebuild records no assertion against a person (R34).
+    frozen configuration (KTD9). The write is database membership the engine
+    commits itself; the item's report is what the check after it found the
+    tree left and could not compare (R-635, R-2020), the resume's only way to
+    learn it (R-443). The actor is deliberately not read, since a rebuild
+    records no assertion against a person (R34).
     """
-    del job
+    tree_id = str(item.item_id)
     # The workflow is named, not defaulted, as the other worker over this engine does.
-    engine.rebuild_governed_tree(
+    report = engine.rebuild_governed_tree(
         cfg,
-        tree_id=str(item.item_id),
+        tree_id=tree_id,
         workflow=engine.REBUILD_WORKFLOW,
         # The calibrated cut, or None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
-    return None
+    return REBUILD_ARTIFACTS.produced(
+        cfg, job, item, engine.after_report(tree_id, report.after, active_taxonomy.load(cfg))
+    )

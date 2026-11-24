@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from cratekit.cli import converge as converge_cli
 from cratekit.cli import rebuild as rebuild_verb
 from cratekit.core import config, convergence, jobs, rb_writer
@@ -62,15 +64,15 @@ RENAMED = "Loud! Room"
 REBUILD = ("rebuild", "--actor", "a-person")
 
 
-def _unread(cfg: config.Config, root_id: str) -> str:
+def _unread(cfg: config.Config, root_id: str, *, beside: str = "2") -> str:
     """Track 1, which the tree files, in a playlist of a folder no write recorded.
 
-    The playlist bears the name of the one the inbox route filed the leftover
-    into, read back from the database, so the check cannot tell whose it is:
-    the case R-1991 names as not compared.
+    The playlist bears the name of the one a write filed track ``beside`` into,
+    read back from the database, so the check cannot tell whose it is: the
+    case R-1991 names as not compared.
     """
     (playlist_name,) = {
-        node.playlist_display for node in _tree_nodes(cfg, root_id) if "2" in node.content_ids
+        node.playlist_display for node in _tree_nodes(cfg, root_id) if beside in node.content_ids
     }
     handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
     try:
@@ -190,20 +192,41 @@ def test_a_resort_that_failed_part_way_names_the_playlist_as_a_step(
 # 3. The rebuild's drive
 
 
+@pytest.fixture
+def filed(acknowledged, native) -> str:
+    """A tree a rebuild filed, then a playlist beside track 1's own that no write recorded."""
+    _, code, done = _queue_and_resume(REBUILD)
+    assert code == int(ExitCode.OK), done
+    return _unread(acknowledged, native, beside="1")
+
+
 def test_a_rebuild_over_a_restored_tree_clears_its_flag_and_names_the_playlist(
-    acknowledged, native, leftover
+    acknowledged, native, filed
 ):
     """THE BRIEF'S THIRD SCENARIO: not a difference, so the flag clears, and it is said."""
-    unread = _unread(acknowledged, native)
     convergence.mark_unconverged(acknowledged, [TREE_ID], reason="a restore")
+    assert convergence.read(acknowledged).tree(TREE_ID).blocking
     _, code, done = _queue_and_resume(REBUILD)
     assert code == int(ExitCode.OK), done
     assert not convergence.read(acknowledged).tree(TREE_ID).blocking
     (named,) = _named(done)
-    assert named["message"] == rebuild.unidentified_message([unread]), named
-    # R-635: the rebuild says what it left, as the resort does.
+    assert named["message"] == rebuild.unidentified_message([filed]), named
+    assert _left(done) == []
+
+
+def test_a_rebuild_names_what_it_left_beside_what_it_did_not_compare(
+    acknowledged, native, leftover
+):
+    """R-635: the rebuild says what it left, as the resort does, and the flag stays."""
+    unread = _unread(acknowledged, native)
+    convergence.mark_unconverged(acknowledged, [TREE_ID], reason="a restore")
+    _, code, done = _queue_and_resume(REBUILD)
+    assert code == int(ExitCode.OK), done
+    assert convergence.read(acknowledged).tree(TREE_ID).blocking
     (left,) = _left(done)
-    assert ARRIVED in left["message"], left
+    assert ARRIVED in left["message"] and "1 membership" in left["message"], left
+    (named,) = _named(done)
+    assert named["message"] == rebuild.unidentified_message([unread]), named
 
 
 def test_a_rebuild_over_nothing_unread_or_left_says_nothing_of_either(acknowledged, native):
@@ -230,11 +253,12 @@ def test_the_rebuild_worker_reports_its_after_check(acknowledged, native, leftov
 # 4. One wording
 
 
-def test_converge_and_the_writes_share_one_wording(acknowledged, native, leftover, monkeypatch):
+def test_converge_and_the_writes_share_one_wording(filed):
     """The sentence a person reads after a playlist not compared is the same everywhere."""
-    unread = _unread(acknowledged, native)
+    unread = filed
     (check,) = converge_cli.converge(_ConvergeCtx())["data"]["checks"]
     assert f"not-compared:{unread}" in check["detail"], check
+    assert check["status"] == converge_cli.NOT_COMPARED, check
     assert check["detail"].endswith(rebuild.UNIDENTIFIED), check
 
 

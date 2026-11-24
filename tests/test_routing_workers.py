@@ -345,7 +345,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     cuts: list[tuple[object, object]] = []
     frozen = object()
     measured = object()
-    after = SimpleNamespace(missing=())
+    after = SimpleNamespace(missing=(), unidentified=("F/P",))
     staged: list[tuple] = []
     approvals: list[object] = []
 
@@ -382,18 +382,22 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     monkeypatch.setattr(rebuild, "left_behind_record", lambda entry: {"kept": entry})
     monkeypatch.setattr(routing_cli.jobs.Artifacts, "produced", produced)
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
-    assert rebuild_verb.handle(object(), item, frozen) is None
-    # What the engine measured becomes the resort item's staged report (R-312);
-    # the resort hands the engine only its own tree's approved adds, the rebuild none (U219).
+    queued = SimpleNamespace(job_id="j", payload={})
+    # What the engine measured becomes each item's staged report: what it left
+    # (R-312, R-635) and could not compare (R-2020); the resort hands the engine
+    # only its own tree's approved adds, the rebuild none (U219).
+    assert rebuild_verb.handle(queued, item, frozen) == "staged"
     mine = {"tree": TREE_ID, "folder": "f", "playlist": "p", "path": "a.flac"}
     other = {"tree": "another_tree", "folder": "f", "playlist": "p", "path": "b.flac"}
     driven = SimpleNamespace(job_id="j", payload={routing_cli.RESORT_ADDS_KEY: [mine, other]})
     assert routing_cli.handle_resort(driven, item, frozen) == "staged"
     assert approvals == [None, [mine]]
+    found = {"tree_id": TREE_ID, "left_behind": [{"kept": measured}], "unidentified": ["F/P"]}
     assert staged == [
-        (routing_cli.RESORT_ARTIFACTS, frozen, driven, item,
-         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}], "due_again": 0})
+        (rebuild_verb.REBUILD_ARTIFACTS, frozen, queued, item, found),
+        (routing_cli.RESORT_ARTIFACTS, frozen, driven, item, {**found, "due_again": 0}),
     ]
+    assert rebuild_verb.REBUILD_ARTIFACTS.final != routing_cli.RESORT_ARTIFACTS.final
 
     assert cuts == [7.5, 7.5]
     assert [tree for tree, _ in seen] == [TREE_ID, TREE_ID]
@@ -1033,11 +1037,17 @@ def test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface(
     assert _vocal_warnings(done) == [], done["warnings"]
 
 
-def test_the_rebuild_worker_still_returns_none(acknowledged, native):
-    """``handle`` produces no artifact (R-316)."""
+def test_the_rebuild_worker_stages_its_after_check_as_its_report(acknowledged, native):
+    """``handle`` files the tree and stages what its check after found (R-635, R-2020).
+
+    It returned None until R-2020, so the resume could not say what it left.
+    """
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
-    assert rebuild_verb.handle(object(), item, acknowledged) is None
+    produced = rebuild_verb.handle(SimpleNamespace(job_id="j"), item, acknowledged)
     assert _membership(acknowledged, native) == {"1"}
+    assert produced.final == rebuild_verb.REBUILD_ARTIFACTS.final_path(acknowledged, "j", 0)
+    staged = json.loads(produced.staged.read_text(encoding="utf-8"))
+    assert staged == {"tree_id": TREE_ID, "left_behind": [], "unidentified": []}
 
 
 def test_the_gap_rule_is_the_derivations_own():
