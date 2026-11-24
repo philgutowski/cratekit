@@ -459,16 +459,17 @@ def _backups(path) -> list:
     return sorted(p for p in path.parent.iterdir() if p.name.endswith(".bak"))
 
 
-def _asked() -> tuple[str, dict]:
-    code, refused = drive(VERB)
+def _asked(argv: list[str] = VERB, gate: str = APPLY) -> tuple[str, dict]:
+    """``argv`` refused at its explicit ``gate``: the run to answer, and the refusal."""
+    code, refused = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
-    assert detail["gate"] == APPLY and detail["explicit"] is True
+    assert detail["gate"] == gate and detail["explicit"] is True
     return refused["run_id"], refused
 
 
-def _decided(run_id: str, option: str) -> None:
-    code, envelope = drive(["run", "decide", run_id, APPLY, option, "--actor", "a-person"])
+def _decided(run_id: str, option: str, gate: str = APPLY) -> None:
+    code, envelope = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
     assert code == int(ExitCode.OK), envelope
 
 
