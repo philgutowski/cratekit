@@ -656,6 +656,7 @@ def test_an_untagged_track_over_the_cut_is_not_filed_and_reads_untagged_not_left
 
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
     assert report.repaired == 0
+    assert report.before.untagged == report.after.untagged
     assert report.after.unexpected == ()
     assert [(entry.direction, entry.sub, entry.content_id) for entry in report.after.untagged] == [
         (rebuild.Direction.UNTAGGED, trees.VOX_SUB_CLASS, "2")
@@ -664,6 +665,21 @@ def test_an_untagged_track_over_the_cut_is_not_filed_and_reads_untagged_not_left
     assert not report.after.converged
     assert rebuild.left_behind(report.after, declared) == ()
     assert [line.split(":")[0] for line in report.after.summaries()] == ["untagged"]
+
+
+def test_an_untagged_track_in_another_buckets_vocal_sub_is_still_a_leftover(rig):
+    """Untagged names only the bucket the score files in; an old bucket's vocal sub is left behind."""
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    was = [rebuild.Truth(location=_music(cfg, PLAIN), genre="Deep House", energy=9, voxlevel=90)]
+    _rebuild(cfg, db, adopted_root, declared, [], truth=was, vocal_threshold=5.0)
+    _untag_vox(db, "2")
+    now = [rebuild.Truth(location=_music(cfg, PLAIN), genre="Techno", energy=9, voxlevel=90)]
+    report = _rebuild(cfg, db, adopted_root, declared, [], truth=now, vocal_threshold=5.0)
+    assert [(entry.bucket, entry.sub) for entry in report.after.untagged] == []
+    assert ("deep_house", trees.VOX_SUB_CLASS) in {
+        (entry.bucket, entry.sub) for entry in rebuild.left_behind(report.after, declared)
+    }
 
 
 def test_an_untagged_track_under_the_cut_in_the_vocal_sub_is_still_a_leftover(rig):
