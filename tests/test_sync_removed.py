@@ -34,13 +34,7 @@ from cratekit.sync import playlists, removed, removed_cli, twins
 from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
-from tests.test_intake_land_account_playlists_native import (
-    RUN,
-    _land,
-    _landed,
-    _owned,
-    _stage,
-)
+from tests.test_intake_land_account_playlists_native import RUN, _land, _landed, _owned, _stage
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
@@ -891,9 +885,7 @@ def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config,
 
 
 def _only_as_expected(cfg: config.Config, before: dict, offered: str, stamp: tuple) -> None:
-    """Read from SQL: the offered row and every row naming it gone, later members numbered down
-    and stamped with no other column moved (R-1830, U955), and only the update count moved
-    besides."""
+    """From SQL: only the removal, its renumbering and the update count moved (R-1830, U955)."""
     after = _every_table(cfg)
     expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
     registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
@@ -939,10 +931,7 @@ def _not_before(at: str, moment: datetime) -> bool:
 
 
 def _apply(*, ok: bool = True) -> tuple[dict, dict]:
-    """R34's two acts against the confirm gate, answered apply, then the acting drive.
-
-    Answers (acted, refused), the acting drive held to exit OK, or not OK.
-    """
+    """R34's two acts answered apply, then the acting drive held to OK or not: (acted, refused)."""
     code, refused = drive(VERB)
     result = _decided(code, refused, "apply")
     return (exited(result) if ok else failed(result)), refused

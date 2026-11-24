@@ -47,11 +47,7 @@ def _as_before_u231(monkeypatch) -> None:
 
 
 def _stop_once(world, monkeypatch, playlist_id: str, leave, *, sent: bool = True) -> list[int]:
-    """Refuse one playlist's first order once ``leave`` has moved its members (U220).
-
-    ``sent`` is a read back refusal recorded as before U231; otherwise the order
-    is refused before any move, as this version records it.
-    """
+    """Refuse one playlist's first order once ``leave`` moved it; ``sent`` as before U231 (U220)."""
     if sent:
         _as_before_u231(monkeypatch)
         said = (
@@ -575,8 +571,7 @@ def test_a_released_pair_read_off_the_path_on_its_first_sync_keeps_rekordboxs_or
 
 
 def _first_sync_with_no_stop(world, *, gig_ready: bool):
-    """Theirs, ordered 3 1 2 on the account, paired by hand with Mine and synced once:
-    (gate line, envelope, rekordbox id, account id)."""
+    """Theirs, 3 1 2 on the account, paired by hand with Mine: (line, envelope, mine, theirs)."""
     gig = world.folder("GIG READY")
     world.playlist("Intro", "1", "2", "3", under=gig)
     exited(sync())
