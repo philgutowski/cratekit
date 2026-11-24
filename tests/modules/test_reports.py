@@ -3484,6 +3484,13 @@ def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_pa
 #: and ``taxonomy``, so a false positive here is a line somebody could write.
 AGING_SOURCE = (REPORTS_ROOT / "aging.py").read_text()
 
+
+def _drive(*tables):
+    """One parametrize over several (shape, snippet) tables, each row id its shape."""
+    rows = [row for table in tables for row in table]
+    return pytest.mark.parametrize("shape,snippet", rows, ids=[one[0] for one in rows])
+
+
 #: Ten shapes an ordinary author writes, appended to the real ``aging``, each a
 #: finding when the binding table was swept flat and only a parameter rebound.
 ORDINARY_SHAPES_IN_A_REPORT = [
@@ -3667,32 +3674,6 @@ def go(cfg, override):
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    ORDINARY_SHAPES_IN_A_REPORT,
-    ids=[one[0] for one in ORDINARY_SHAPES_IN_A_REPORT],
-)
-def test_an_ordinary_rebinding_in_a_real_report_is_not_a_write(shape, snippet):
-    """The ten false positives, driven against the module they were found in."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet", MISSED_WRITES_IN_A_REPORT, ids=[one[0] for one in MISSED_WRITES_IN_A_REPORT]
-)
-def test_a_write_through_an_unread_binding_shape_is_still_a_write(shape, snippet):
-    """The other direction of the same defect, and the one that costs a file."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet", ORDINARY_MAPPING_LOOKUPS, ids=[one[0] for one in ORDINARY_MAPPING_LOOKUPS]
-)
-def test_a_mapping_keyed_on_a_filesystem_verb_is_not_a_write(shape, snippet):
-    """Rule 5 with its receiver, against the module the rule would have fired in."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
 def test_the_dunder_that_forwards_its_own_name_is_not_a_write():
     """The collateral rule 4's own comment said naming the dunder did not have."""
     assert filesystem_mutations(AGING_SOURCE + ORDINARY_DUNDER_DELEGATION) == []
@@ -3798,14 +3779,10 @@ INDIRECTLY_INVOKED_REFLECTIVE_READS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,source",
-    INDIRECTLY_INVOKED_REFLECTIVE_READS,
-    ids=[one[0] for one in INDIRECTLY_INVOKED_REFLECTIVE_READS],
-)
-def test_the_audit_names_a_writer_whose_reflective_read_is_called_indirectly(shape, source):
+@_drive(INDIRECTLY_INVOKED_REFLECTIVE_READS)
+def test_the_audit_names_a_writer_whose_reflective_read_is_called_indirectly(shape, snippet):
     """The switch, decided on the binding table rather than on local syntax."""
-    assert _unnamed_writers("cratekit.core.naming", source) == ["stash"], shape
+    assert _unnamed_writers("cratekit.core.naming", snippet) == ["stash"], shape
 
 
 def test_the_audit_stays_quiet_on_a_reflective_read_nothing_calls():
@@ -4017,26 +3994,6 @@ CLASS_BODY_STAYS_IN_THE_CLASS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    CLASS_ATTRIBUTE_REACHES_A_WRITER,
-    ids=[one[0] for one in CLASS_ATTRIBUTE_REACHES_A_WRITER],
-)
-def test_a_module_aliased_in_a_class_body_is_still_that_module(shape, snippet):
-    """The evasion the round already caught one line lower, closed at its own line."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    CLASS_BODY_STAYS_IN_THE_CLASS,
-    ids=[one[0] for one in CLASS_BODY_STAYS_IN_THE_CLASS],
-)
-def test_a_class_body_binds_for_its_class_and_for_nothing_else(shape, snippet):
-    """A class body is a scope, and the false positive direction says so."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
 def test_a_method_that_hands_back_a_module_is_keyed_under_its_class():
     """``_mod()`` is a fact about ONE function, and a method is not that function."""
     source = """
@@ -4157,26 +4114,6 @@ INHERITANCE_STAYS_IN_THE_FAMILY = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    INHERITED_ATTRIBUTE_REACHES_A_WRITER,
-    ids=[one[0] for one in INHERITED_ATTRIBUTE_REACHES_A_WRITER],
-)
-def test_a_module_bound_anywhere_in_a_class_family_is_still_that_module(shape, snippet):
-    """The key resolved through the family rather than parked on one member of it."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    INHERITANCE_STAYS_IN_THE_FAMILY,
-    ids=[one[0] for one in INHERITANCE_STAYS_IN_THE_FAMILY],
-)
-def test_a_class_key_names_one_class_and_never_two(shape, snippet):
-    """The false positives a coarser key produces, which are ordinary code."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
 #: Six ordinary shapes of a subclass overriding an attribute its base binds, each
 #: once reported as a write.
 AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
@@ -4255,27 +4192,6 @@ AN_OVERRIDE_BLOCKS_NOTHING_ELSE = [
         "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK,
-    ids=[one[0] for one in AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK],
-)
-def test_an_attribute_a_subclass_takes_for_itself_is_not_its_bases(shape, snippet):
-    """The false positive direction of the table the round before rebuilt."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-    assert _unnamed_writers(REPORTS_PACKAGE + ".aging", AGING_SOURCE + snippet) == [], shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_BLOCKS_NOTHING_ELSE,
-    ids=[one[0] for one in AN_OVERRIDE_BLOCKS_NOTHING_ELSE],
-)
-def test_an_override_blocks_upward_and_never_sideways_or_down(shape, snippet):
-    """The miss direction of the same rule, asserted rather than reasoned about."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
 #: An override one indent in: the same false positive with a branch around it.
@@ -4374,137 +4290,89 @@ A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING,
-    ids=[one[0] for one in AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING],
-)
-def test_a_branched_override_of_an_attribute_no_path_supplies_is_not_a_write(shape, snippet):
-    """The branch rule read on the OBJECT half, driven instead of described."""
+@_drive(AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK, AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING)
+def test_an_attribute_a_subclass_takes_for_itself_is_not_its_bases(shape, snippet):
+    """The false positive direction, through the audit as well as the guard."""
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
     assert _unnamed_writers(REPORTS_PACKAGE + ".aging", AGING_SOURCE + snippet) == [], shape
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES,
-    ids=[one[0] for one in A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES],
-)
-def test_a_branched_override_still_loses_to_a_binding_that_survives_it(shape, snippet):
-    """The half a restriction on the key's SPELLING would have cost."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+#: A class body binding under an instance write, which the faint tier decides. The
+#: instance and class spellings disagree at runtime, so the class one still fires;
+#: a resolved instance key is never taken back by an unresolved one (the half of
+#: ``_record`` that clears the mark); ``del`` puts the class attribute back.
+CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STILL_WRITES = [
+    (
+        "read through the class under an ordinary constructor",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n\n"
+        "def through_the_class(cfg):\n    return Keeper.mod.save(cfg)\n",
+    ),
+    (
+        # ``Keeper.mod`` is the module until ``clear`` runs.
+        "read through the class under a method that rebinds it",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def clear(self):\n        Keeper.mod = None\n\n"
+        "    def go(self, cfg):\n        return Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "resolved first",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "resolved second",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        # A class body binding ``None`` separates the mark from the value under it.
+        "the class body bound nothing",
+        "\n\nclass Keeper:\n    mod = None\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a delete that reaches the class attribute",
+        "\n\nclass Deleter:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n",
+    ),
+]
+
+#: The quiet half: the instance spelling is shadowed, in either order the walk
+#: visits the two scopes, and a ``del`` with nothing underneath restores nothing.
+CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STAYS_QUIET = [
+    (
+        "read through the instance under an ordinary constructor",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "the class body written after the constructor",
+        "\n\nclass Keeper:\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a delete that reaches nothing",
+        "\n\nclass Deleter:\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n",
+    ),
+]
 
 
-#: A CLASS BODY BINDING UNDER AN ORDINARY CONSTRUCTOR, which is the most common
-#: class in the language and which the table read as a write.
-CLASS_BODY_READ_THROUGH_THE_INSTANCE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-CLASS_BODY_READ_THROUGH_THE_CLASS = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n\n"
-    "def through_the_class(cfg):\n    return Keeper.mod.save(cfg)\n"
-)
-
-#: The class spelling under a method that rebinds it: ``Keeper.mod`` is the
-#: module until ``clear`` runs, so this fires.
-CLASS_BODY_REBOUND_THROUGH_THE_CLASS = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def clear(self):\n        Keeper.mod = None\n\n"
-    "    def go(self, cfg):\n        return Keeper.mod.save(cfg)\n"
-)
-
-
-def test_an_instance_override_shadows_a_class_body_binding_but_not_the_class():
-    """Both spellings of one attribute, because the two disagree at runtime."""
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_READ_THROUGH_THE_INSTANCE) == []
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_READ_THROUGH_THE_CLASS)
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_REBOUND_THROUGH_THE_CLASS)
-
-
-#: The order the walk visits two scopes in must not decide: the class body comes
-#: after the constructor here and before it above.
-CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR = (
-    "\n\nclass Keeper:\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    mod = config\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-
-def test_the_faint_tier_does_not_depend_on_which_scope_the_walk_reached_first():
-    """The order independence ``_record`` claims, driven in both orders."""
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR) == []
-
-
-#: Two instance writes to one attribute, one resolved and one not, under a class
-#: body binding the same name: a resolved key is never taken back.
-A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-#: The same pair with the class body binding ``None``, which separates the mark
-#: from the value under it.
-A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES = (
-    "\n\nclass Keeper:\n    mod = None\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    [
-        A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE,
-        A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE,
-        A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES,
-    ],
-    ids=["resolved first", "resolved second", "the class body bound nothing"],
-)
-def test_an_unresolved_instance_write_never_takes_back_a_resolved_one(snippet):
-    """The half of ``_record`` that clears the mark, which nothing drove."""
-    assert filesystem_mutations(AGING_SOURCE + snippet)
-
-
-#: ``del`` puts the class attribute back, a real write that was once quiet.
-A_DELETE_THAT_REACHES_THE_CLASS_ATTRIBUTE = (
-    "\n\nclass Deleter:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n"
-)
-
-#: The same statement with nothing underneath to reach, so the restore takes what
-#: the class spelling holds, which is nothing.
-A_DELETE_THAT_REACHES_NOTHING = (
-    "\n\nclass Deleter:\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n"
-)
-
-
-def test_deleting_an_instance_attribute_reaches_the_class_attribute_under_it():
-    """Both directions of the restore, because only one of them is a write."""
-    assert filesystem_mutations(AGING_SOURCE + A_DELETE_THAT_REACHES_THE_CLASS_ATTRIBUTE)
-    assert filesystem_mutations(AGING_SOURCE + A_DELETE_THAT_REACHES_NOTHING) == []
-
-
-#: Two class definitions of one name. In one statement list the second replaces
-#: the first, so nothing is reported; in two arms of a conditional only one runs,
-#: so a module bound in either arm can write.
+#: Two class definitions of one name: in two arms of a conditional only one runs,
+#: so either arm's module can write. Real writes once filed as undecidable by the
+#: residual "A class rebound after its own definition is no longer reachable by name".
 A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
     (
         "two class definitions in the arms of one conditional",
@@ -4566,8 +4434,8 @@ A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
 ]
 
 
-#: What the two fixes above must not cost: the replaced class stays quiet, and a
-#: parameter or a real assignment of that name still takes it.
+#: What the two fixes above must not cost: a class replaced in ONE statement list
+#: stays quiet, and a parameter or a real assignment of that name still takes it.
 A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
     (
         "two class definitions in ONE statement list",
@@ -4619,27 +4487,6 @@ A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
         "Keeper = dataclass(Keeper)\n\n\ndef go(cfg):\n    Keeper.mod.save(cfg)\n",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_NAME_THAT_STILL_MEANS_ITS_CLASS,
-    ids=[one[0] for one in A_NAME_THAT_STILL_MEANS_ITS_CLASS],
-)
-def test_a_binding_that_replaced_nothing_leaves_the_name_alone(shape, snippet):
-    """Two real writes filed as undecidable by the residual
-    "A class rebound after its own definition is no longer reachable by name"."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS,
-    ids=[one[0] for one in A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS],
-)
-def test_a_binding_that_really_replaced_something_still_takes_the_name(shape, snippet):
-    """The quiet direction of the same two fixes, which is where they could go wrong."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
 def test_a_class_written_inside_a_factory_still_reaches_its_own_attribute():
@@ -4831,23 +4678,32 @@ ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
+@_drive(
+    MISSED_WRITES_IN_A_REPORT,
+    CLASS_ATTRIBUTE_REACHES_A_WRITER,
+    INHERITED_ATTRIBUTE_REACHES_A_WRITER,
+    AN_OVERRIDE_BLOCKS_NOTHING_ELSE,
+    A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES,
+    CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STILL_WRITES,
+    A_NAME_THAT_STILL_MEANS_ITS_CLASS,
     NAMESPACE_REACHES_A_WRITER,
-    ids=[one[0] for one in NAMESPACE_REACHES_A_WRITER],
 )
-def test_an_attribute_mapping_bound_to_a_name_is_still_that_mapping(shape, snippet):
-    """Rule 5 asked of the table rather than of the expression under its own nose."""
+def test_a_write_through_an_unread_binding_shape_is_still_a_write(shape, snippet):
+    """The direction of each defect that costs a file, in the real ``aging``."""
     assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
+@_drive(
+    ORDINARY_SHAPES_IN_A_REPORT,
+    ORDINARY_MAPPING_LOOKUPS,
+    CLASS_BODY_STAYS_IN_THE_CLASS,
+    INHERITANCE_STAYS_IN_THE_FAMILY,
+    CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STAYS_QUIET,
+    A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS,
     ORDINARY_LOOKUPS_THROUGH_A_BINDING,
-    ids=[one[0] for one in ORDINARY_LOOKUPS_THROUGH_A_BINDING],
 )
-def test_an_ordinary_mapping_bound_to_a_name_is_not_a_namespace(shape, snippet):
-    """The receiver, still doing the separating once the receiver can be a binding."""
+def test_an_ordinary_rebinding_in_a_real_report_is_not_a_write(shape, snippet):
+    """Each false positive, driven against the module it was found in."""
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
@@ -4991,12 +4847,10 @@ def _mod():
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,source", SHADOWS_IN_A_SCOPE, ids=[one[0] for one in SHADOWS_IN_A_SCOPE]
-)
-def test_every_shadow_this_table_claims_takes_the_name_back(shape, source):
+@_drive(SHADOWS_IN_A_SCOPE)
+def test_every_shadow_this_table_claims_takes_the_name_back(shape, snippet):
     """Four shadows nothing drove, which is four lines that read as coverage."""
-    assert filesystem_mutations(source) == [], shape
+    assert filesystem_mutations(snippet) == [], shape
 
 
 def test_a_name_bound_twice_in_ONE_scope_settles_to_neither():
@@ -5013,14 +4867,10 @@ def test_a_name_bound_twice_in_ONE_scope_settles_to_neither():
     assert filesystem_mutations(alone)
 
 
-@pytest.mark.parametrize(
-    "shape,source",
-    WRITES_A_WIDER_SHADOW_WOULD_LOSE,
-    ids=[one[0] for one in WRITES_A_WIDER_SHADOW_WOULD_LOSE],
-)
-def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, source):
+@_drive(WRITES_A_WIDER_SHADOW_WOULD_LOSE)
+def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, snippet):
     """The cost of getting the scope boundaries wrong, in the expensive direction."""
-    assert filesystem_mutations(source), shape
+    assert filesystem_mutations(snippet), shape
 
 
 #: A module that hides its writer behind an alias, which is the shape that
