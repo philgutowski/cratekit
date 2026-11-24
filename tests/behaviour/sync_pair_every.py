@@ -1,7 +1,6 @@
 """Sync pair's scenarios over every pair it finds: the suite's own tests, driven through the stage (U304).
 
-As ``sync_pair.py`` does, on the world the discovery suite builds, then the plan
-as a person reads it.
+As ``sync_pair.py`` does, on the world the discovery suite builds.
 """
 
 from __future__ import annotations

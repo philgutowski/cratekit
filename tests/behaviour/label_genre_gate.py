@@ -1,8 +1,4 @@
-"""The label genre gate's scenarios: releases held, listed, returned and judged (U308).
-
-A resumed sweep files releases in their label's kind and holds the rest; `crate
-label held` lists and returns one, and `crate label judge` judges the waiting.
-"""
+"""The label genre gate's scenarios: releases held, listed, returned and judged (U308)."""
 
 from __future__ import annotations
 

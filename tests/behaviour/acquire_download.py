@@ -1,8 +1,7 @@
 """Acquire's download scenarios: the vendored drive through its fake provider (U305).
 
-`crate acquire download` queues a list and a resume drives it: one drive lands
-every track, one is refused at login, one loses its session part way and
-resumes, one has no session. Apart from ``acquire.py`` because the drive suite
+One drive lands every track, one is refused at login, one resumes after losing
+its session, one has none. Apart from ``acquire.py`` because the drive suite
 names its own ``cfg`` and ``library``.
 """
 

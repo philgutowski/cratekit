@@ -1,7 +1,6 @@
 """Label artists' scenarios: an open release reading an object address given its artist (U308).
 
-`crate label artists` names the artist of each open release reading as an
-object address, leaving decided and already named items alone.
+Decided and already named items are left alone.
 """
 
 from __future__ import annotations

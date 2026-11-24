@@ -1,10 +1,7 @@
 """Deletion's scenarios: the review, its confirm gate, the Trash and the tombstones (U310).
 
-`crate delete review` offers every removed row whose file it can prove, stops
-at its confirm gate, then trashes, records a tombstone per file and moves the
-watermark; `crate tombstone list` reads them back and lifts one. Beside it,
-each refusal that removes nothing: a file a playlist holds, an unidentifiable
-row, a moved plan digest, and a tombstone that could not be written.
+Beside it, each refusal that removes nothing: a file a playlist holds, an
+unidentifiable row, a moved plan digest, and a tombstone that could not be written.
 """
 
 from __future__ import annotations

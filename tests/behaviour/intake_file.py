@@ -1,8 +1,7 @@
 """Intake's file scenarios: one file already in the library filed on either medium (U307).
 
-`crate intake file` writes one row and one batch playlist behind its gate, and a
-retag makes the answer stale; on the bridge it splices the intake file or plans
-without a gate. Its own file because the writers suite builds its own fixtures.
+A retag makes the answer stale. Its own file because the writers suite builds
+its own fixtures.
 """
 
 from __future__ import annotations

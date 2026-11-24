@@ -1,8 +1,6 @@
 """Intake's rotation scenarios: stale INBOX batches moved into Old and expired ones removed (U307).
 
-`crate inbox rotate --as-of` moves stale batches into Old and removes the
-expired, moving no track; a batch gained after the answer is stale, and no
-acknowledgment refuses. Its own file for its eight track ``machine``.
+No track moves. Its own file for its eight track ``machine``.
 """
 
 from __future__ import annotations

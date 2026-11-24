@@ -1,8 +1,6 @@
 """Favorites refresh's scenarios: each genre folder's Favorites mirrored behind the gate (U308).
 
-`crate favorites refresh` plans each genre folder's adds, removes and creates,
-then writes and reads them back; a true mirror writes nothing, and a tree on
-the bridge is refused before the gate.
+A true mirror writes nothing, and a tree on the bridge is refused before the gate.
 """
 
 from __future__ import annotations

@@ -1,8 +1,7 @@
 """Label sync's scenarios: the questions asked label by label, answered, and refused (U308).
 
-`crate label sync` asks about each followed label with something new and
-records the answer, through the structured path and a scripted terminal whose
-words are printed, so the questions are held in order. Nothing is downloaded.
+Through the structured path and a scripted terminal whose words are printed,
+so the questions are held in order. Nothing is downloaded.
 """
 
 from __future__ import annotations

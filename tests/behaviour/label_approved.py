@@ -1,7 +1,6 @@
 """Label approved's scenarios: the download list written from the accepted label releases (U308).
 
-`crate label approved` writes the download list of accepted releases' unowned
-tracks; with nothing accepted it opens no catalogue.
+With nothing accepted it opens no catalogue.
 """
 
 from __future__ import annotations

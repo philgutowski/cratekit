@@ -1,7 +1,6 @@
 """Favorites backfill's scenarios: owned hearts placed into All Favorites behind the gate (U308).
 
-`crate favorites backfill` places each owned heart All Favorites lacks, dated
-by its job or the account; a second run has nothing to place.
+Each heart is dated by its job or the account; a second run has nothing to place.
 """
 
 from __future__ import annotations
