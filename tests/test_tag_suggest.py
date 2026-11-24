@@ -493,7 +493,8 @@ def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_reco
     today = date(2026, 11, 12)
     lookup = _Lookup({"t": PASSED})
     for _ in range(2):
-        with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset({"discogs"})) as kept:
+        unasked = frozenset({"discogs"})
+        with suggest.KeptCatalogue(machine, lookup, today=today, unasked=unasked) as kept:
             kept.answer("1", "a", "t", "")
     assert len(lookup.asked) == 1, "still no token: the day's answer is kept"
     lookup.answers["t"] = suggest.Asked(suggest.MATCHED, genre=DEEP)
@@ -511,7 +512,8 @@ def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
         )
 
     plan = suggest.SuggestPlan(
-        items=(item("1", suggest.Asked(suggest.UNREAD, note="unread: beatport")), item("2", PASSED)),
+        items=(item("1", suggest.Asked(suggest.UNREAD, note="unread: beatport")),
+               item("2", PASSED)),
         counts=defaultdict(int), changes=None, band="", catalogue=True,
     )
     (warning,) = [w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD]
@@ -594,7 +596,7 @@ def _refusing_writes(monkeypatch, path: Path) -> None:
     """``tags.write_genre`` answering no for ``path`` and writing every other file."""
     real = tags.write_genre
     monkeypatch.setattr(
-        tags, "write_genre", lambda written, genre: False if written == path else real(written, genre)
+        tags, "write_genre", lambda file, genre: False if file == path else real(file, genre)
     )
 
 

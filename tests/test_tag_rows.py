@@ -750,8 +750,9 @@ def test_an_unregistered_policy_would_write_nothing_and_the_apply_registers_it(
     ("tracks", "sql", "said", "moved", "left"),
     [
         pytest.param(
-            ("30", "31"), f"UPDATE djmdContent SET GenreID = '{_genre_ids()[DEEP]}' WHERE ID = '31'",
-            "1 of 2", ["31: its genre changed since the plan"], [OLD, DEEP], id="a-genre-moved",
+            ("30", "31"),
+            f"UPDATE djmdContent SET GenreID = '{_genre_ids()[DEEP]}' WHERE ID = '31'", "1 of 2",
+            ["31: its genre changed since the plan"], [OLD, DEEP], id="a-genre-moved",
         ),
         pytest.param(
             ("30",), "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '30'", "1 of 1",

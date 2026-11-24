@@ -160,9 +160,8 @@ def _wired(answers, **kwargs):
 
 def _nobodys(cfg, silence, count: int = 1) -> dict:
     """Rows 60 on with no genre by an artist nothing else is by, in folder ``x``."""
-    return build(
-        cfg, silence, *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(count))
-    )
+    tracks = (Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(count))
+    return build(cfg, silence, *tracks)
 
 
 # 1. The rules

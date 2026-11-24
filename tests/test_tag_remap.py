@@ -20,7 +20,7 @@ from cratekit.core import config, jobs, preflight, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import artifacts, remap, remap_cli
-from tests._containers import synth_container
+from tests import test_tag_rows as _rows_suite
 from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
@@ -42,10 +42,7 @@ OLD_ALTERNATIVE = "NonElectronic"
 NEW_ALTERNATIVE = "Rock"
 
 
-@pytest.fixture(scope="module")
-def silence(tmp_path_factory) -> Path:
-    """One synthesized container, copied per track. The encoder runs once."""
-    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+silence = _rows_suite.silence
 
 
 @pytest.fixture
@@ -152,7 +149,9 @@ def two_genres(path: Path) -> Path:
 def refusing_writes(monkeypatch, stuck: Path) -> None:
     """``tags.write_genre`` answering no for ``stuck`` and writing every other file."""
     real = tags.write_genre
-    monkeypatch.setattr(tags, "write_genre", lambda path, genre: path != stuck and real(path, genre))
+    monkeypatch.setattr(
+        tags, "write_genre", lambda path, genre: path != stuck and real(path, genre)
+    )
 
 
 # 1. The plan: one outcome per file
@@ -519,9 +518,7 @@ def test_a_record_is_read_whether_or_not_the_queue_still_lists_its_job(machine, 
 # 2b. The exact reader that keeps a failed read apart
 
 
-@pytest.fixture(scope="module")
-def id3_silence(tmp_path_factory) -> Path:
-    return synth_container(tmp_path_factory.mktemp("id3"), ".aiff")
+id3_silence = _rows_suite.id3_silence
 
 
 def test_the_checked_exact_reader_answers_every_value_as_its_sibling_does(
@@ -721,7 +718,9 @@ def test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again(
     plan = planned(machine, moved)
 
     counts(plan, write=1)
-    assert plan.items == (remap.Item(str(path), "Pop", NEW_POP, NEW_POP, "Folk", "write", generation=1),)
+    assert plan.items == (
+        remap.Item(str(path), "Pop", NEW_POP, NEW_POP, "Folk", "write", generation=1),
+    )
     assert did(remap.apply(machine, plan)) == remap.Written(written=1, read_back=1)
     assert genre_of(path) == "Folk"
     counts(planned(machine, moved), agree=1)
