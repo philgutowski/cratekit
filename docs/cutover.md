@@ -2987,6 +2987,17 @@ About 2,800 calls this sitting, and the account near 4,700 in its hour at
 2,600 calls when the held reads are cold, which no default ceiling lets one
 run finish.
 
+**Continued, the outbound direction, at Phillip's word "sync in the other
+direction", 15:01Z to 15:06Z**, once a second session's battery in the
+checkout had finished, since a live verb during its pytest risks a state leak.
+Phillip chose the mirror and the hearts only, and left the sync of every pair
+put off, as at sitting 104.
+
+| Step | Ran | Observed |
+|---|---|---|
+| The mirror | `crate --calls 2000 --calls-per-hour 6000 organize --only mirror`, run `15:01:47Z-6acc`, answered `apply` as `session` | **Nothing to write**: 26 folders, every mirrored playlist already equal to its rekordbox playlist's account tracks, most likely from the morning session's organize at 13:41Z. 1,809 earlier misses not asked again. 32 edits made on the account noted for the account to rekordbox steps, which this run did not take. 256 requests to plan, 800 calls in the run |
+| The hearts | `crate export collection` to a scratch file, then `sync favorites --export`, `sync.favorites.confirm` answered `sync` as `session` on run `15:05:05Z-1fdd`, and job `15:05:19Z-f40d` driven with `--run` and `--job` | 330 favourites from `Favorites/All Favorites` and the colour: **309 already hearted, 1 hearted, 20 unmatched**: 9 the provider returned no track for (three Steve Reich movements among them), 2 whose ISRC named no agreeing track, 9 where several agreeing tracks left none chosen. 32 calls, 312 ISRC lookups from the cache. Nothing written in the library |
+
 ## Sitting 106, 2026-11-24, the first standing macOS battery and a grooming of the attended cards, no live library and no account
 
 Phillip asked why the attended cards kept growing and to fix it. Every cloud
