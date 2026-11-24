@@ -234,7 +234,8 @@ def test_a_file_whose_line_names_no_registered_label_is_asked_of_the_catalogues(
             id="one-label-with-no-genre",
         ),
         pytest.param(
-            "℗ 2023 Rawax", "Other Label", {"label": "", "label_tag": "Other Label", "label_from": ""},
+            "℗ 2023 Rawax", "Other Label",
+            {"label": "", "label_tag": "Other Label", "label_from": ""},
             id="a-label-tag-naming-a-label-with-no-genre",
         ),
         pytest.param(None, None, {"label": "", "copyright_labels": ()}, id="no-copyright-line"),
@@ -536,7 +537,8 @@ def test_a_sweep_one_file_of_which_fails_still_reports_every_file(
     code, job, resumed = sweep(str(folder))
 
     assert code != int(ExitCode.OK), resumed
-    assert item_causes(job.job_id) == dict.fromkeys(("d.flac", "e.flac"), searchers.UNREACHABLE_REASON)
+    unreachable = searchers.UNREACHABLE_REASON
+    assert item_causes(job.job_id) == dict.fromkeys(("d.flac", "e.flac"), unreachable)
     cause = resumed["cause"]
     tagging = cause["detail"]["tagging"]
     assert tagging["ways"] == {"label": 2, "catalogue": 0, "none": 2}

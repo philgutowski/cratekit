@@ -164,9 +164,12 @@ POP_PLANNED = (OLD_POP, NEW_POP, "write", "")
 @pytest.mark.parametrize(
     ("written", "word", "kept", "also", "counted", "item", "files"),
     [
-        pytest.param(OLD_POP, "Pop", {}, None, {"write": 1}, POP_PLANNED, 1, id="the-catalogues-pop"),
         pytest.param(
-            OLD_POP, "Pop", {"source": SHOP}, None, {}, None, 0, id="a-shops-pop-stays-a-dance-genre"
+            OLD_POP, "Pop", {}, None, {"write": 1}, POP_PLANNED, 1, id="the-catalogues-pop"
+        ),
+        pytest.param(
+            OLD_POP, "Pop", {"source": SHOP}, None, {}, None, 0,
+            id="a-shops-pop-stays-a-dance-genre",
         ),
         pytest.param(
             OLD_ALTERNATIVE, "Alternative", {}, None, {"write": 1},
