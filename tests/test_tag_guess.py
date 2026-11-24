@@ -65,6 +65,16 @@ def _playlist(name: str, *files: guess.Staged, owned: tuple[guess.Member, ...] =
     return guess.Playlist(name=name, files=tuple(one.path for one in files), owned=owned)
 
 
+def _lone(*others: guess.Staged, artist: str = "Ana Vale", in_playlist: bool = False,
+          first: bool = False, **signals) -> guess.Item:
+    """The guess for ``lone`` by ``artist`` staged after ``others``, or ``first``; with
+    ``in_playlist``, all of them in playlist ``p``, ``lone`` last."""
+    lone = _staged("lone", artist=artist)
+    if in_playlist:
+        signals["playlists"] = (_playlist("p", *others, lone),)
+    return _item(_plan((lone, *others) if first else (*others, lone), **signals), "lone")
+
+
 # 1. The rules, pure
 
 
@@ -78,9 +88,7 @@ def test_the_words_are_held_to_the_shipped_taxonomy():
 
 
 def test_the_artists_tracks_in_the_library_give_the_genre():
-    lone = _staged("lone", artist="Ana Vale")
-    plan = _plan((lone,), library={"ana vale": (DEEP, DEEP, DEEP)})
-    item = _item(plan, "lone")
+    item = _lone(library={"ana vale": (DEEP, DEEP, DEEP)})
     assert item.outcome == guess.GUESSED and item.genre == DEEP
     assert item.band == suggest.HIGH, "three tracks at weight two is six votes, all agreeing"
     assert item.artist_library == 3 and item.artist_folder == 0
@@ -88,9 +96,7 @@ def test_the_artists_tracks_in_the_library_give_the_genre():
 
 
 def test_the_artist_key_folds_case_and_spacing_as_tag_suggest_does():
-    lone = _staged("lone", artist="  ANA   vale ")
-    plan = _plan((lone,), library={"ana vale": (DEEP,)})
-    assert _item(plan, "lone").genre == DEEP
+    assert _lone(artist="  ANA   vale ", library={"ana vale": (DEEP,)}).genre == DEEP
 
 
 def test_the_artists_tracks_in_the_folder_vote_too():
@@ -118,13 +124,7 @@ def test_a_playlist_mostly_of_one_genre_gives_it_to_a_track_no_artist_knows():
 def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
     """One voice per playlist: ten members weigh four, the artist's three tracks six."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=MELODIC) for n in range(10)]
-    lone = _staged("lone", artist="Ana Vale")
-    plan = _plan(
-        (*members, lone),
-        library={"ana vale": (DEEP, DEEP, DEEP)},
-        playlists=(_playlist("long", *members, lone),),
-    )
-    item = _item(plan, "lone")
+    item = _lone(*members, library={"ana vale": (DEEP, DEEP, DEEP)}, in_playlist=True)
     assert item.genre == DEEP
     assert dict(item.votes) == {DEEP: Fraction(6), MELODIC: Fraction(4)}
 
@@ -132,11 +132,10 @@ def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
 def test_a_track_by_the_same_artist_votes_once_as_the_artists():
     same = _staged("same", artist="Ana Vale", genre=DEEP)
     other = _staged("other", artist="Other", genre=MELODIC)
-    lone = _staged("lone", artist="Ana Vale")
-    plan = _plan((same, other, lone), library={}, playlists=(_playlist("p", same, other, lone),))
+    item = _lone(same, other, library={}, in_playlist=True)
     # The same artist's track is two as the artist's and nothing in the share,
     # so the playlist's whole voice goes to the other member.
-    assert dict(_item(plan, "lone").votes) == {DEEP: Fraction(2), MELODIC: Fraction(4)}
+    assert dict(item.votes) == {DEEP: Fraction(2), MELODIC: Fraction(4)}
 
 
 def test_an_owned_track_of_the_playlist_votes_from_its_file():
@@ -147,41 +146,28 @@ def test_an_owned_track_of_the_playlist_votes_from_its_file():
 
 
 def test_a_three_way_tie_goes_to_the_artist_then_to_the_name():
-    lone = _staged("lone", artist="Ana Vale")
     melodic = _staged("m", artist="Other", genre=MELODIC)
     # Artist: Progressive House 2. Playlist: Melodic House 2 after sharing with
     # a Deep House member: one voice of four over two members is two each.
     deep = _staged("d", artist="Other Two", genre=DEEP)
-    plan = _plan(
-        (lone, melodic, deep),
-        library={"ana vale": (PROGRESSIVE,)},
-        playlists=(_playlist("p", melodic, deep, lone),),
+    item = _lone(
+        melodic, deep, library={"ana vale": (PROGRESSIVE,)}, in_playlist=True, first=True
     )
-    item = _item(plan, "lone")
     assert item.band == suggest.SPLIT
     assert set(item.tied) == {DEEP, MELODIC, PROGRESSIVE}
     assert item.genre == PROGRESSIVE, "the artist's own word breaks the tie"
 
 
 def test_a_tie_no_artist_breaks_goes_to_the_first_by_name():
-    lone = _staged("lone", artist="Nobody Known")
     melodic = _staged("m", artist="Other", genre=MELODIC)
     deep = _staged("d", artist="Other Two", genre=DEEP)
-    plan = _plan(
-        (lone, melodic, deep),
-        library={},
-        playlists=(_playlist("p", melodic, deep, lone),),
-    )
-    item = _item(plan, "lone")
+    item = _lone(melodic, deep, artist="Nobody Known", library={}, in_playlist=True, first=True)
     assert item.band == suggest.SPLIT and item.genre == min(DEEP, MELODIC)
 
 
 def test_an_exact_eighty_percent_share_is_high_as_tag_suggest_says():
     """Review round 1: a Fraction share compared with a float bound sat one band low."""
-    lone = _staged("lone", artist="Ana Vale")
-    library = {"ana vale": (DEEP, DEEP, DEEP, DEEP, MELODIC)}
-    plan = _plan((lone,), library=library)
-    item = _item(plan, "lone")
+    item = _lone(library={"ana vale": (DEEP, DEEP, DEEP, DEEP, MELODIC)})
     assert dict(item.votes) == {DEEP: Fraction(8), MELODIC: Fraction(2)}
     assert item.band == suggest.band_of(8, 10) == suggest.HIGH
 
@@ -190,30 +176,19 @@ def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
     """Twelve fifths against eight is exactly the sixty percent bound, banded as whole votes."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
     others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
-    lone = _staged("lone", artist="Nobody Known")
-    plan = _plan(
-        (*members, *others, lone),
-        library={},
-        playlists=(_playlist("p", *members, *others, lone),),
-    )
-    item = _item(plan, "lone")
+    item = _lone(*members, *others, artist="Nobody Known", library={}, in_playlist=True)
     assert dict(item.votes) == {DEEP: Fraction(12, 5), MELODIC: Fraction(8, 5)}
     assert item.band == suggest.band_of(12 / 5, 4) == suggest.MEDIUM
 
 
 def test_a_file_nothing_votes_for_keeps_no_genre():
-    lone = _staged("lone", artist="Nobody Known")
-    plan = _plan((lone,), library={})
-    item = _item(plan, "lone")
+    item = _lone(artist="Nobody Known", library={})
     assert item.outcome == guess.NO_VOTES and item.genre == "" and item.band == suggest.NONE
 
 
 def test_an_off_taxonomy_neighbour_is_counted_and_never_guessed():
-    lone = _staged("lone", artist="Ana Vale")
-    only = _plan((lone,), library={"ana vale": (LATIN,)})
-    assert _item(only, "lone").outcome == guess.NO_VOTES
-    mixed = _plan((lone,), library={"ana vale": (LATIN, DEEP)})
-    item = _item(mixed, "lone")
+    assert _lone(library={"ana vale": (LATIN,)}).outcome == guess.NO_VOTES
+    item = _lone(library={"ana vale": (LATIN, DEEP)})
     assert item.genre == DEEP and item.band == suggest.LOW, "half the votes is low"
 
 
@@ -233,27 +208,23 @@ def test_a_file_whose_genre_could_not_be_read_is_not_a_blank():
 
 
 def test_the_share_before_and_after_counts_the_files_carrying_a_genre():
-    files = (
-        _staged("a", artist="Ana Vale", genre=DEEP),
-        _staged("b", artist="Ana Vale"),
-        _staged("c", artist="Nobody Known"),
-    )
+    files = (_staged("a", artist="Ana Vale", genre=DEEP), _staged("b", artist="Ana Vale"),
+             _staged("c", artist="Nobody Known"))
     plan = _plan(files, library={})
     assert (plan.before, plan.after, len(plan.items)) == (1, 2, 3)
 
 
 def test_the_artist_key_is_empty_for_no_artist_and_votes_nothing():
-    a = _staged("a", genre=DEEP)
-    lone = _staged("lone")
-    plan = _plan((a, lone), library={"": (DEEP,)})
-    assert _item(plan, "lone").outcome == guess.NO_VOTES
+    assert _lone(_staged("a", genre=DEEP), artist="", library={"": (DEEP,)}).outcome == (
+        guess.NO_VOTES
+    )
 
 
 # 2. The verb, through the dispatcher
 
 
 def _stage(cfg: config.Config, silence: Path, name: str, **fields: str) -> Path:
-    folder = Path(cfg.library.root).parent / "staging"
+    folder = _folder(cfg)
     folder.mkdir(exist_ok=True)
     path = folder / f"{name}.flac"
     shutil.copyfile(silence, path)
@@ -275,6 +246,31 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _guessed(cfg: config.Config, *argv: str) -> dict:
+    """``crate tag guess`` over the staging folder, which ends OK: its envelope."""
+    code, envelope = drive([*VERB, str(_folder(cfg)), *argv])
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def _chain(again: str = "a") -> tail.Chain:
+    return tail.Chain(
+        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again=again
+    )
+
+
+def _tail_guess(monkeypatch, totals: dict, *warnings: dict, pass_name: str | None = None):
+    """The tail's guess step over a dispatch answering OK with ``totals``: the chain."""
+    chain = _chain("again" if pass_name else "a")
+    envelope = {"outcome": "ok", "warnings": list(warnings), "data": {"totals": totals}}
+    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
+    if pass_name is None:
+        tail.guess(chain, Path("/staging"))
+    else:
+        tail.guess(chain, Path("/staging"), pass_name)
+    return chain
+
+
 def test_the_verb_writes_each_guess_and_never_touches_a_tagged_file(machine, silence):
     build(machine, silence, *(Track(str(n), row=DEEP, artist="Ana Vale") for n in (11, 12, 13)))
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
@@ -282,9 +278,8 @@ def test_the_verb_writes_each_guess_and_never_touches_a_tagged_file(machine, sil
     nobody = _stage(machine, silence, "nobody", artist="Nobody Known", title="Nobody")
     before = _sha(kept)
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
     assert tags.read_genre_from_file(lone) == DEEP
     assert _sha(kept) == before, "a file carrying a genre was written"
@@ -304,9 +299,8 @@ def test_a_report_writes_nothing_and_says_what_a_run_would(machine, silence):
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
     before = _sha(lone)
 
-    code, envelope = drive([*VERB, str(_folder(machine)), "--report"])
+    envelope = _guessed(machine, "--report")
 
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert _sha(lone) == before
     totals = envelope["data"]["totals"]
@@ -321,9 +315,8 @@ def test_an_unreadable_library_is_said_and_the_folder_still_votes(machine, silen
     _stage(machine, silence, "tagged", artist="Ana Vale", title="Tagged", genre=PROGRESSIVE)
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert tags.read_genre_from_file(lone) == PROGRESSIVE
     assert envelope["data"]["totals"]["library_read"] is False
     assert "the library could not be read" in _warned(envelope, guess_cli.LIBRARY_UNREAD)
@@ -335,9 +328,9 @@ def test_a_folder_that_needs_no_guess_opens_no_library(machine, silence, monkeyp
         guess_cli, "_library", lambda _cfg: pytest.fail("the library was read for nothing")
     )
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK) and envelope["outcome"] == "no_op", envelope
+    assert envelope["outcome"] == "no_op", envelope
     assert envelope["warnings"] == []
 
 
@@ -356,10 +349,8 @@ def _claims(*playlists: tuple[str, tuple[Path, ...], tuple[str, ...]]):
 
 def test_the_pass_names_the_playlists_that_vote(machine, silence, monkeypatch):
     build(machine, silence)
-    members = [
-        _stage(machine, silence, f"m{n}", artist=f"Other {n}", title=f"M{n}", genre=MELODIC)
-        for n in range(3)
-    ]
+    members = [_stage(machine, silence, f"m{n}", artist=f"Other {n}", title=f"M{n}", genre=MELODIC)
+               for n in range(3)]
     lone = _stage(machine, silence, "lone", artist="Nobody Known", title="Lone")
     owned = _stage(machine, silence, "owned", artist="Kept", title="Owned", genre=MELODIC)
     owned_path = Path(machine.library.root) / "Music" / "owned.flac"
@@ -373,9 +364,8 @@ def test_the_pass_names_the_playlists_that_vote(machine, silence, monkeypatch):
     monkeypatch.setattr(account_playlists, "split", split)
     monkeypatch.setattr(batch_name, "pass_jobs", lambda _cfg, _name: ["a job"])
 
-    code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "the-pass"])
+    envelope = _guessed(machine, "--pass", "the-pass")
 
-    assert code == int(ExitCode.OK), envelope
     assert tags.read_genre_from_file(lone) == MELODIC
     ((pass_name, files),) = asked
     assert pass_name == "the-pass" and lone in files
@@ -397,9 +387,8 @@ def test_a_pass_that_cannot_be_read_is_said_and_the_artist_still_votes(
     monkeypatch.setattr(account_playlists, "split", split)
     monkeypatch.setattr(batch_name, "pass_jobs", lambda _cfg, _name: ["a job"])
 
-    code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "the-pass"])
+    envelope = _guessed(machine, "--pass", "the-pass")
 
-    assert code == int(ExitCode.OK), envelope
     assert tags.read_genre_from_file(lone) == DEEP
     message = _warned(envelope, guess_cli.PASS_UNREAD)
     assert "the-pass" in message and "could not be read" in message
@@ -410,9 +399,8 @@ def test_a_pass_no_job_carries_is_said_and_never_read_as_no_playlists(machine, s
     build(machine, silence)
     _stage(machine, silence, "lone", artist="Nobody Known", title="Lone")
 
-    code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "no-such-pass"])
+    envelope = _guessed(machine, "--pass", "no-such-pass")
 
-    assert code == int(ExitCode.OK), envelope
     message = _warned(envelope, guess_cli.PASS_UNREAD)
     assert "no-such-pass" in message and "no intake job" in message
     assert envelope["data"]["totals"]["playlists"] == []
@@ -425,9 +413,9 @@ def test_no_pass_reads_no_playlist(machine, silence, monkeypatch):
         account_playlists, "split", lambda *_: pytest.fail("a playlist was read with no pass")
     )
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK) and envelope["outcome"] == "no_op", envelope
+    assert envelope["outcome"] == "no_op", envelope
     assert envelope["data"]["totals"]["pass"] is None
 
 
@@ -435,9 +423,8 @@ def test_an_off_taxonomy_word_is_named_with_both_offers(machine, silence):
     build(machine, silence)
     _stage(machine, silence, "latin", artist="Ana Vale", title="Latin", genre=LATIN)
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     message = _warned(envelope, guess_cli.OFF_TAXONOMY)
     assert repr(LATIN) in message and "latin.flac" in message
     assert "alias of one of your genres" in message and "genre folder of its own" in message
@@ -449,9 +436,8 @@ def test_a_folders_own_name_in_another_case_is_named_with_its_one_answer(machine
     build(machine, silence)
     _stage(machine, silence, "breaks", artist="Ana Vale", title="Breaks", genre="breaks / d&b / dubstep")
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     message = _warned(envelope, guess_cli.OFF_TAXONOMY)
     assert "takes one answer only" in message
     assert "crate taxonomy alias 'breaks / d&b / dubstep' 'Breaks / D&B / Dubstep'" in message
@@ -459,16 +445,13 @@ def test_a_folders_own_name_in_another_case_is_named_with_its_one_answer(machine
 
 def test_a_tie_is_warned_with_the_genre_it_was_written_as(machine, silence):
     build(
-        machine,
-        silence,
-        Track("11", row=DEEP, artist="Ana Vale"),
+        machine, silence, Track("11", row=DEEP, artist="Ana Vale"),
         Track("12", row=PROGRESSIVE, artist="Ana Vale"),
     )
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert tags.read_genre_from_file(lone) == DEEP
     assert f"lone.flac as {DEEP}" in _warned(envelope, guess_cli.SPLIT_WRITTEN)
 
@@ -480,9 +463,8 @@ def test_a_file_that_will_not_take_its_genre_is_never_reported_guessed(
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
     monkeypatch.setattr(tags, "write_genre", lambda _path, _genre: False)
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert not tags.read_genre_from_file(lone)
     totals = envelope["data"]["totals"]
@@ -502,9 +484,8 @@ def test_a_file_that_reads_back_another_genre_is_unwritten(machine, silence, mon
         tags, "write_genre", lambda path, _genre: tags.write_tags(path, {"genre": MELODIC})
     )
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert tags.read_genre_from_file(lone) == MELODIC
     (item,) = envelope["data"]["items"]
     assert item["outcome"] == "unwritten" and MELODIC in item["note"]
@@ -532,25 +513,12 @@ def test_the_guess_is_named_with_a_pass_only_when_one_is_given():
 
 
 def test_the_guess_step_records_the_share_before_and_after(monkeypatch):
-    chain = tail.Chain(
-        progress=None,
-        namespace="t",
-        title="t",
-        steps=tail.STEPS,
-        origin=("test",),
-        again="again",
+    chain = _tail_guess(
+        monkeypatch,
+        {"count": 10, "before": 7, "after": 9, "written": 2, "unread": 0, "bands": {}},
+        {"code": guess_cli.NO_VOTES_LEFT, "message": "one left"},
+        pass_name="p1",
     )
-    envelope = {
-        "outcome": "ok",
-        "warnings": [{"code": guess_cli.NO_VOTES_LEFT, "message": "one left"}],
-        "data": {
-            "totals": {"count": 10, "before": 7, "after": 9, "written": 2, "unread": 0, "bands": {}}
-        },
-    }
-    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
-
-    tail.guess(chain, Path("/staging"), "p1")
-
     assert chain.summary["guess"]["left"] == 1
     (check,) = chain.checks
     assert check["key"] == "t.guess" and check["status"] == "ok"
@@ -559,9 +527,7 @@ def test_the_guess_step_records_the_share_before_and_after(monkeypatch):
 
 
 def test_a_guess_that_refuses_ends_the_chain(monkeypatch):
-    chain = tail.Chain(
-        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
-    )
+    chain = _chain()
     refused = refuse("source-missing", "not a folder").cause.to_json()
     monkeypatch.setattr(
         tail, "dispatch", lambda argv: (int(ExitCode.PRECONDITION), {"cause": refused})
@@ -582,18 +548,8 @@ def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
 
 def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monkeypatch):
     """Review round 2: an unreadable genre is not one the guess left untagged."""
-    chain = tail.Chain(
-        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
-    )
-    envelope = {
-        "outcome": "ok",
-        "warnings": [],
-        "data": {"totals": {"count": 2, "before": 0, "after": 1, "written": 1, "unread": 1}},
-    }
-    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
-
-    tail.guess(chain, Path("/staging"))
-
+    totals = {"count": 2, "before": 0, "after": 1, "written": 1, "unread": 1}
+    chain = _tail_guess(monkeypatch, totals)
     assert chain.summary["guess"]["left"] == 0 and chain.summary["guess"]["unread"] == 1
     assert "0 still carry none and 1 could not be read" in chain.checks[0]["detail"]
 
@@ -602,13 +558,7 @@ def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
     """24/5 against 6/5 is exactly eighty percent, which a float sum reads as just under."""
     members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
     members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
-    lone = _staged("lone", artist="Ana Vale")
-    plan = _plan(
-        (*members, lone),
-        library={"ana vale": (DEEP,)},
-        playlists=(_playlist("p", *members, lone),),
-    )
-    item = _item(plan, "lone")
+    item = _lone(*members, library={"ana vale": (DEEP,)}, in_playlist=True)
     assert dict(item.votes) == {DEEP: Fraction(24, 5), MELODIC: Fraction(6, 5)}
     assert item.band == suggest.band_of(24, 30) == suggest.HIGH
 
@@ -625,9 +575,8 @@ def test_a_soft_deleted_row_is_no_neighbour(machine, silence):
     build(machine, silence, Track("11", row=DEEP, artist="Ana Vale", deleted=True))
     lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
 
-    code, envelope = drive([*VERB, str(_folder(machine))])
+    envelope = _guessed(machine)
 
-    assert code == int(ExitCode.OK), envelope
     assert not tags.read_genre_from_file(lone)
     (item,) = envelope["data"]["items"]
     assert item["outcome"] == "no-votes" and item["signals"]["artist_library"] == 0
@@ -635,16 +584,5 @@ def test_a_soft_deleted_row_is_no_neighbour(machine, silence):
 
 def test_the_files_left_are_the_files_still_without_a_genre(monkeypatch):
     """Mutation row C3: seven carried a genre and two were guessed, so one is left."""
-    chain = tail.Chain(
-        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
-    )
-    envelope = {
-        "outcome": "ok",
-        "warnings": [],
-        "data": {"totals": {"count": 10, "before": 6, "after": 8, "written": 1, "unread": 0}},
-    }
-    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
-
-    tail.guess(chain, Path("/staging"))
-
-    assert chain.summary["guess"]["left"] == 2
+    totals = {"count": 10, "before": 6, "after": 8, "written": 1, "unread": 0}
+    assert _tail_guess(monkeypatch, totals).summary["guess"]["left"] == 2

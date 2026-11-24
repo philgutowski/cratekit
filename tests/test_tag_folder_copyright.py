@@ -20,10 +20,12 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.tagging import artifacts, searchers, summary, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import LabelAnswer, SearchHit
+from tests import test_tag_rows as _rows_suite
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
+from tests.test_tag_guess import _chain
 from tests.test_tag_workers import bound, item_causes, item_states, resume_argv, tag_job
 from tests.test_tagging_engine import SPECIFIC, _jpeg, answering, plant
 
@@ -52,9 +54,7 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
     return built
 
 
-@pytest.fixture(scope="module")
-def silence(tmp_path_factory) -> Path:
-    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+silence = _rows_suite.silence
 
 
 @pytest.fixture
@@ -65,12 +65,7 @@ def folder(tmp_path) -> Path:
 
 
 def downloaded(
-    folder: Path,
-    silence: Path,
-    name: str,
-    copyright: str | None,
-    *,
-    label: str | None = None,
+    folder: Path, silence: Path, name: str, copyright: str | None, *, label: str | None = None,
     genre: str | None = None,
 ) -> Path:
     """One FLAC as the vendored downloader leaves it, its ``COPYRIGHT`` written through mutagen."""
@@ -79,12 +74,9 @@ def downloaded(
     path = folder / f"{name}.flac"
     shutil.copy2(silence, path)
     handle = FLAC(path)
-    if copyright is not None:
-        handle["COPYRIGHT"] = copyright
-    if label is not None:
-        handle["label"] = label
-    if genre is not None:
-        handle["genre"] = genre
+    for key, value in (("COPYRIGHT", copyright), ("label", label), ("genre", genre)):
+        if value is not None:
+            handle[key] = value
     handle.save()
     plant(path, _jpeg(320, 200), dims=(320, 200, 24))
     return path
@@ -139,6 +131,20 @@ def names(matcher, line: str) -> tuple[str, ...]:
     return tuple(found.label for found in matcher(line))
 
 
+def tagged_one(path: Path, searcher=None, **seams):
+    """``tag_one`` over this file's label genres and needles, no catalogue asked by default."""
+    seams.setdefault("copyright_labels", needles(NEEDLES))
+    return tag.tag_one(
+        path, searcher=searcher or never_searched, label_genre=genre_seam(GENRES), **seams
+    )
+
+
+def files_are(folder: Path, *genres) -> None:
+    """The genres of ``a.flac``, ``b.flac`` on, in order."""
+    found = [tags.read_genre_from_file(folder / f"{n}.flac") for n in "abcdefgh"[: len(genres)]]
+    assert found == list(genres)
+
+
 # 1. The copyright line, read off every container the downloader writes
 
 
@@ -181,15 +187,11 @@ def test_a_mixed_folder_with_every_catalogue_blocked_tags_each_file_by_its_line(
     downloaded(folder, silence, "b", "(P) 2024 Atipic")
     downloaded(folder, silence, "c", "2022 Cronos Barac")
     results = tag.tag_folder(
-        folder,
-        searcher=never_searched,
-        label_genre=genre_seam(GENRES),
+        folder, searcher=never_searched, label_genre=genre_seam(GENRES),
         copyright_labels=needles(NEEDLES),
     )
     assert [tags.read_genre_from_file(result.path) for result in results] == [
-        MINIMAL,
-        PROGRESSIVE,
-        SPECIFIC,
+        MINIMAL, PROGRESSIVE, SPECIFIC,
     ]
     assert [(r.source, r.label, r.label_from) for r in results] == [
         (tag.LABEL_GENRE, RAWAX, tag.NAMED_BY_COPYRIGHT),
@@ -202,67 +204,61 @@ def test_a_mixed_folder_with_every_catalogue_blocked_tags_each_file_by_its_line(
 def _techno_from_the_catalogues(path: Path):
     """``tag_one`` with every seam, a catalogue answering Techno: (result, searcher)."""
     searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
-    result = tag.tag_one(
-        path, searcher=searcher, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
-    return result, searcher
+    return tagged_one(path, searcher), searcher
 
 
 def test_a_file_whose_line_names_no_registered_label_is_asked_of_the_catalogues(folder, silence):
     path = downloaded(folder, silence, "a", "℗ 2023 Other Label")
     searcher = blocking()
     with pytest.raises(Exception) as raised:
-        tag.tag_one(
-            path,
-            searcher=searcher,
-            label_genre=genre_seam(GENRES),
-            copyright_labels=needles(NEEDLES),
-        )
+        tagged_one(path, searcher)
     assert raised.value.cause.reason == searchers.UNREACHABLE_REASON
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(path) in (None, "")
 
 
-def test_another_act_sharing_a_labels_first_letters_is_never_that_label(folder, silence):
-    """U237's whole word rule decides it: ``Rawax`` never names ``RAWAXXX``."""
-    path = downloaded(folder, silence, "a", "℗ 2023 RAWAXXX")
+@pytest.mark.parametrize(
+    ("line", "label", "expected"),
+    [
+        pytest.param(
+            "℗ 2023 RAWAXXX", None, {"label": "", "label_from": "", "copyright_labels": ()},
+            id="another-act-sharing-first-letters",
+        ),
+        pytest.param(
+            "2023 Cronos Barac under exclusive licence to Atipic", None,
+            {"label": "", "copyright_labels": frozenset({ATIPIC, CRONOS})},
+            id="two-registered-labels",
+        ),
+        pytest.param(
+            "℗ 2021 Gettraum", None, {"label": "", "copyright_labels": ("Gettraum",)},
+            id="one-label-with-no-genre",
+        ),
+        pytest.param(
+            "℗ 2023 Rawax", "Other Label", {"label": "", "label_tag": "Other Label", "label_from": ""},
+            id="a-label-tag-naming-a-label-with-no-genre",
+        ),
+        pytest.param(None, None, {"label": "", "copyright_labels": ()}, id="no-copyright-line"),
+    ],
+)
+def test_another_act_sharing_a_labels_first_letters_is_never_that_label(
+    folder, silence, line, label, expected
+):
+    """A line that settles no one label with a genre is asked of the catalogues, as before:
+    U237's whole word rule, a line naming two, a label with no genre, a label tag outranking
+    the line, and no line at all. Two named labels are compared as a set."""
+    path = downloaded(folder, silence, "a", line, label=label)
     result, searcher = _techno_from_the_catalogues(path)
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(path) == "Techno"
-    assert (result.label, result.label_from, result.copyright_labels) == ("", "", ())
-
-
-def test_a_line_naming_two_registered_labels_is_refused_for_that_file(folder, silence):
-    path = downloaded(folder, silence, "a", "2023 Cronos Barac under exclusive licence to Atipic")
-    result, searcher = _techno_from_the_catalogues(path)
-    assert searcher.asked == [("", "a")], "the file was asked of the catalogues, as before"
-    assert tags.read_genre_from_file(path) == "Techno"
-    assert result.label == ""
-    assert set(result.copyright_labels) == {ATIPIC, CRONOS}
-
-
-def test_a_line_naming_one_label_with_no_genre_is_asked_of_the_catalogues(folder, silence):
-    path = downloaded(folder, silence, "a", "℗ 2021 Gettraum")
-    result, searcher = _techno_from_the_catalogues(path)
-    assert searcher.asked == [("", "a")]
-    assert tags.read_genre_from_file(path) == "Techno"
-    assert (result.label, result.copyright_labels) == ("", ("Gettraum",))
-
-
-def test_a_file_with_a_label_tag_keeps_it_whatever_its_line_names(folder, silence):
-    """The tag outranks the line: a tag naming a label with no genre is searched."""
-    path = downloaded(folder, silence, "a", "℗ 2023 Rawax", label="Other Label")
-    result, searcher = _techno_from_the_catalogues(path)
-    assert searcher.asked == [("", "a")]
-    assert tags.read_genre_from_file(path) == "Techno"
-    assert (result.label, result.label_tag, result.label_from) == ("", "Other Label", "")
+    found = {name: getattr(result, name) for name in expected}
+    if isinstance(expected.get("copyright_labels"), frozenset):
+        found["copyright_labels"] = frozenset(found["copyright_labels"])
+    assert found == expected
 
 
 def test_a_label_tag_naming_a_label_with_a_genre_is_named_by_the_tag(folder, silence):
     path = downloaded(folder, silence, "a", "℗ 2023 Atipic", label=RAWAX)
-    result = tag.tag_one(
-        path, searcher=never_searched, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-    )
+    result = tagged_one(path)
     assert tags.read_genre_from_file(path) == MINIMAL
     assert (result.label, result.label_from) == (RAWAX, tag.NAMED_BY_TAG)
 
@@ -270,13 +266,7 @@ def test_a_label_tag_naming_a_label_with_a_genre_is_named_by_the_tag(folder, sil
 def test_the_verbs_label_outranks_the_copyright_line(folder, silence):
     """Every sweep given ``--label`` behaves exactly as it did before U240."""
     path = downloaded(folder, silence, "a", "℗ 2023 Atipic")
-    result = tag.tag_one(
-        path,
-        searcher=never_searched,
-        label_genre=genre_seam(GENRES),
-        label=RAWAX,
-        copyright_labels=needles(NEEDLES),
-    )
+    result = tagged_one(path, label=RAWAX)
     assert tags.read_genre_from_file(path) == MINIMAL
     assert (result.label, result.label_from) == (RAWAX, tag.NAMED_BY_FOLDER)
 
@@ -289,19 +279,10 @@ def test_a_file_already_carrying_a_genre_keeps_it_and_its_line_is_never_matched(
         asked.append(line)
         return (tag.CopyrightLabel(RAWAX, MINIMAL),)
 
-    result = tag.tag_one(
-        path, searcher=never_searched, label_genre=genre_seam(GENRES), copyright_labels=matcher
-    )
+    result = tagged_one(path, copyright_labels=matcher)
     assert tags.read_genre_from_file(path) == "Techno"
     assert result.skipped == tag.HAS_GENRE
     assert asked == []
-
-
-def test_a_file_with_no_copyright_line_is_asked_of_the_catalogues(folder, silence):
-    path = downloaded(folder, silence, "a", None)
-    result, searcher = _techno_from_the_catalogues(path)
-    assert searcher.asked == [("", "a")]
-    assert (result.label, result.copyright_labels) == ("", ())
 
 
 def test_no_copyright_seam_reads_no_line_and_tags_exactly_as_before(folder, silence):
@@ -371,22 +352,19 @@ def test_each_named_label_carries_its_own_genre():
 
 @pytest.mark.parametrize(
     ("needle", "line"),
-    [("2020 Vision", "\u2117 2020 Vision Quest"), ("1985 Music", "(P) 1985 Music For Nations")],
-)
-def test_a_lines_year_never_completes_a_needle(needle, line):
-    """Review round two: matched on the raw line, the year completed the needle."""
-    assert names(needles({needle: needle}), line) == ()
-
-
-@pytest.mark.parametrize(
-    ("needle", "line"),
     [
-        ("\u00c2me", "\u2117 2021 Give Me Records"),
-        ("\u6771\u4eac Records", "\u2117 2023 Completely Unrelated Records"),
+        pytest.param("2020 Vision", "\u2117 2020 Vision Quest", id="a-year"),
+        pytest.param("1985 Music", "(P) 1985 Music For Nations", id="another-year"),
+        pytest.param("\u00c2me", "\u2117 2021 Give Me Records", id="a-letter-outside-ascii"),
+        pytest.param(
+            "\u6771\u4eac Records", "\u2117 2023 Completely Unrelated Records",
+            id="letters-outside-ascii",
+        ),
     ],
 )
-def test_a_letter_outside_ascii_never_folds_away_from_a_needle(needle, line):
-    """Review round two: the ASCII fold shrank \u00c2me to me and \u6771\u4eac Records to records."""
+def test_a_lines_year_never_completes_a_needle(needle, line):
+    """Review round two: matched on the raw line, the year completed the needle, and the ASCII
+    fold shrank \u00c2me to me and \u6771\u4eac Records to records."""
     assert names(needles({needle: needle}), line) == ()
 
 
@@ -421,18 +399,21 @@ def test_a_searchers_park_reaches_the_job_as_a_park_on_a_file_its_line_could_not
         )
 
     with pytest.raises(jobs.Parked):
-        tag.tag_one(
-            path, searcher=parking, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
-        )
+        tagged_one(path, parking)
 
 
 # 4. The sweep, through the real dispatcher and a resume
 
 
+def queued(folder: Path) -> jobs.Job:
+    """``tag folder`` queued over ``folder``: its job."""
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
+    assert code == int(ExitCode.OK), envelope
+    return tag_job()
+
+
 def sweep(*argv: str) -> tuple[int, jobs.Job, dict]:
-    code, queued = drive(["tag", "folder", "--queue-only", *argv])
-    assert code == int(ExitCode.OK), queued
-    job = tag_job()
+    job = queued(*argv)
     code, resumed = drive(resume_argv(job.job_id))
     return code, job, resumed
 
@@ -458,11 +439,7 @@ def test_a_label_batch_with_every_catalogue_blocked_lands_tagged_by_label(
 
     assert code == int(ExitCode.OK), resumed
     assert searcher.asked == [], "no catalogue was asked about a file its line named"
-    assert [tags.read_genre_from_file(folder / f"{n}.flac") for n in "abc"] == [
-        MINIMAL,
-        PROGRESSIVE,
-        SPECIFIC,
-    ]
+    files_are(folder, MINIMAL, PROGRESSIVE, SPECIFIC)
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["tagged_by"][tag.LABEL_GENRE] == 3
     assert tagging["label_genres"] == {RAWAX: 1, ATIPIC: 1, CRONOS: 1}
@@ -493,9 +470,7 @@ def test_an_unregistered_file_in_the_batch_is_left_untagged_and_its_item_fails(
     assert code != int(ExitCode.OK)
     assert searcher.asked == [("", "d")]
     assert item_states(job.job_id) == {
-        "a.flac": jobs.ItemState.DONE,
-        "b.flac": jobs.ItemState.DONE,
-        "c.flac": jobs.ItemState.DONE,
+        **dict.fromkeys(("a.flac", "b.flac", "c.flac"), jobs.ItemState.DONE),
         "d.flac": jobs.ItemState.FAILED,
     }
     assert item_causes(job.job_id) == {"d.flac": searchers.UNREACHABLE_REASON}
@@ -561,10 +536,7 @@ def test_a_sweep_one_file_of_which_fails_still_reports_every_file(
     code, job, resumed = sweep(str(folder))
 
     assert code != int(ExitCode.OK), resumed
-    assert item_causes(job.job_id) == {
-        "d.flac": searchers.UNREACHABLE_REASON,
-        "e.flac": searchers.UNREACHABLE_REASON,
-    }
+    assert item_causes(job.job_id) == dict.fromkeys(("d.flac", "e.flac"), searchers.UNREACHABLE_REASON)
     cause = resumed["cause"]
     tagging = cause["detail"]["tagging"]
     assert tagging["ways"] == {"label": 2, "catalogue": 0, "none": 2}
@@ -623,9 +595,7 @@ def test_a_cancelled_sweep_carries_its_report_too(cfg, folder, silence, monkeypa
     downloaded(folder, silence, "a", "\u2117 2023 Rawax")
     downloaded(folder, silence, "b", "\u2117 2023 Atipic")
     bound(monkeypatch, never_searched)
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = tag_job()
+    job = queued(folder)
     code, cancelled = drive(["job", "cancel", job.job_id])
     assert code == int(ExitCode.OK), cancelled
 
@@ -647,10 +617,8 @@ def test_the_needles_are_frozen_with_the_genres_when_the_sweep_is_queued(
     labels.RegistryStore().edit(RAWAX, match="Rawax Records")
     downloaded(folder, silence, "a", "℗ 2023 Rawax Records")
     bound(monkeypatch, never_searched)
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
+    job = queued(folder)
     labels.RegistryStore().edit(RAWAX, match="Nothing Like It")
-    job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
     assert tags.read_genre_from_file(folder / "a.flac") == MINIMAL
@@ -680,9 +648,7 @@ def test_a_job_queued_before_needles_were_frozen_is_tagged_as_it_always_was(
         return frozen, warnings
 
     monkeypatch.setattr(tag_cli, "_label_payload", older_build)
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = tag_job()
+    job = queued(folder)
     assert "label_genres" in job.payload and "label_needles" not in job.payload
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -701,13 +667,10 @@ def test_the_tails_tag_step_lands_a_label_batch_with_every_catalogue_blocked(
     downloaded(folder, silence, "a", "℗ 2023 Rawax")
     downloaded(folder, silence, "b", "℗ 2024 Atipic")
     bound(monkeypatch, blocking())
-    chain = tail.Chain(
-        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="again"
-    )
+    chain = _chain("again")
 
     tail.tail_step(chain, tail.TAG, "tag.folder", ("tag", "folder"), folder, cfg)
 
     assert chain.summary["commands"][0] == ["crate", "tag", "folder", "--queue-only", str(folder)]
     assert tag_job().state is jobs.JobState.SUCCEEDED
-    assert tags.read_genre_from_file(folder / "a.flac") == MINIMAL
-    assert tags.read_genre_from_file(folder / "b.flac") == PROGRESSIVE
+    files_are(folder, MINIMAL, PROGRESSIVE)
