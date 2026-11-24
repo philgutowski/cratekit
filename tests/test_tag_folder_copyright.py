@@ -405,9 +405,9 @@ def test_a_searchers_park_reaches_the_job_as_a_park_on_a_file_its_line_could_not
 # 4. The sweep, through the real dispatcher and a resume
 
 
-def queued(folder: Path) -> jobs.Job:
-    """``tag folder`` queued over ``folder``: its job."""
-    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
+def queued(*argv) -> jobs.Job:
+    """``tag folder --queue-only`` with ``argv``, the folder first: its job."""
+    code, envelope = drive(["tag", "folder", "--queue-only", *map(str, argv)])
     assert code == int(ExitCode.OK), envelope
     return tag_job()
 
