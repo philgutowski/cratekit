@@ -475,6 +475,7 @@ def check(
                         if pair.account_id not in made_here
                     ),
                     released=document.released.rekordbox,
+                    mirrored=pair_discover.mirrored_wip(cfg),
                 ).found
             }
         for one in todo:

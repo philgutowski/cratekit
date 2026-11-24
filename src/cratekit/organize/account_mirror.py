@@ -8,9 +8,14 @@ playlist per plain playlist, ``Deep House Low``; the Favorites folder, where
 directly under it, every other node there named with its reason (U214). A batch
 that leaves INBOX has its mirrored playlist removed, the one mirrored playlist
 the product removes, and only when its title no longer sits directly under INBOX
-at all. A smart playlist and a folder inside a folder hold no membership a
-mirror could copy, and are not mirrored. Two nodes taking one account name
-refuse it: a name does not decide which is the mirror.
+at all. And WIP (U959), the top level folder found by its name stripped, as one
+root folder ``WIP`` holding every plain playlist directly under it, titled
+``WIP <Playlist>``, and in one level of subfolder, titled ``<Subfolder>
+<Playlist>``; a playlist a ``sync pair`` keeps (a custom playlist twin is one),
+a smart playlist and a folder deeper down are named with their reason, and
+with no WIP folder one fact says so. A smart playlist and a folder inside a
+folder hold no membership a mirror could copy, and are not mirrored. Two nodes
+taking one account name refuse it: a name does not decide which is the mirror.
 
 EACH ROW'S OWN PROVIDER TRACK IS A LINK (U150): a label landing records the
 provider track it landed, and the matcher takes it before asking the provider.
@@ -54,7 +59,11 @@ if TYPE_CHECKING:
 #: The step kind ``--only`` names the mirror by.
 MIRROR = "mirror"
 
-TITLE = "mirror the genre tree, the Favorites folder and INBOX onto the account"
+TITLE = "mirror the genre tree, the Favorites folder, INBOX and WIP onto the account"
+
+#: The top level folder of sets in progress the mirror copies (U959), as
+#: ``mirror.WIP`` spells it, its name compared stripped.
+WIP = "WIP"
 
 #: The fact the area shows for the plan's own request count and duration.
 PLAN_FACT = "mirror plan"
@@ -66,6 +75,8 @@ FROZEN_FACT = "mirror plan frozen"
 KNOWN_FACT = "mirror rows answered by their landing"
 #: The fact naming what the edit rule read and decided (U201).
 EDITS_FACT = "mirror edits made on the account"
+#: The fact saying why nothing was mirrored for WIP, when nothing was (U959).
+WIP_FACT = "mirror WIP"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +106,8 @@ class Library:
     favorites: str = ""
     #: Why INBOX is not mirrored, when it is not (U150).
     inbox: str = ""
+    #: Why nothing is mirrored for WIP, when the library holds no WIP folder (U959).
+    wip: str = ""
 
 
 def tree_root(db: Any, declared: Any, registry: Any) -> Any:
@@ -228,6 +241,21 @@ def _twice(name: str, what: str) -> Cause:
     ).cause
 
 
+def _shared(titles: list[str]) -> Cause:
+    """WIP titling a playlist as another mirrored folder does (U959): WIP refused alone."""
+    from cratekit.modules.outbound import mirror
+
+    return refuse(
+        mirror.AMBIGUOUS_REASON,
+        f"{WIP} and another mirrored folder would both hold the account title(s) "
+        f"{', '.join(repr(one) for one in titles)}, and an edit on the account is read by "
+        f"its title, so which folder it was made in is not something a name decides, and "
+        f"nothing was planned for {WIP}",
+        steps=("rename the WIP subfolder or playlist in rekordbox so its account title is its own",),
+        scope=Scope.SOURCE, origin=_ORIGIN, detail={"name": WIP, "titles": titles},
+    ).cause
+
+
 def _inbox(
     cfg: config.Config, db: Any, declared: Any, registry: Any, today: Any = None
 ) -> tuple[str, mirror.Folder | Cause | str]:
@@ -260,6 +288,95 @@ def _inbox(
         present=frozenset(mirror.title(name, one) for one in live.present),
         edits=mirror_edits.INBOX,
         unmirrored=tuple((node.label(), node.reason) for node in live.left),
+    )
+
+
+def _paired(cfg: config.Config) -> dict[str, tuple[str, str]]:
+    """Each rekordbox playlist a sync pair keeps, to how a WIP line names it and why (U959).
+
+    Raises the refusal of a pair record that cannot be read: unread is not none.
+    """
+    from cratekit.modules.outbound import pairs
+
+    said: dict[str, tuple[str, str]] = {}
+    for pair in pairs.PairStore(cfg).all().values():
+        if pair.twin:
+            said[pair.rekordbox_id] = (
+                "a custom playlist twin",
+                f"it is a custom playlist twin of the account playlist {pair.account_id}, which "
+                f"sync pair keeps the same list, so the mirror does not copy it a second time",
+            )
+        else:
+            said[pair.rekordbox_id] = (
+                "paired by sync pair",
+                f"it is one side of a sync pair with the account playlist {pair.account_id}, which "
+                f"sync pair keeps the same list, so the mirror does not copy it a second time",
+            )
+    return said
+
+
+_SMART = (
+    "a smart playlist",
+    "a smart playlist holds no membership the mirror could copy",
+)
+_DEEPER = (
+    "a folder two levels down",
+    "the mirror reads WIP's playlists and one level of subfolder, so nothing inside a "
+    "deeper folder is mirrored",
+)
+
+
+def _wip(cfg: config.Config, db: Any) -> mirror.Folder | Cause | str:
+    """WIP as a mirror folder, the refusal of a name it cannot decide, or why there is none (U959)."""
+    from cratekit.core import rb_writer
+    from cratekit.modules.outbound import mirror, mirror_edits
+
+    tops = [
+        row
+        for row in list(db.get_playlist())
+        if rb_writer.is_folder(row)
+        and not rb_writer.node_removed(row)
+        and str(getattr(row, "ParentID", "") or "") in rb_writer.ROOT_PARENT_SENTINELS
+        and str(row.Name or "").strip() == WIP
+    ]
+    if not tops:
+        return f"the library holds no top level folder named {WIP!r}, so nothing is mirrored for it"
+    if len(tops) > 1:
+        return _twice(WIP, "top level folders")
+    try:
+        paired = _paired(cfg)
+    except CratekitError as exc:
+        return exc.cause
+    titled: list[tuple[str, str]] = []
+    unmirrored: list[tuple[str, str]] = []
+
+    def left(path: str, said: tuple[str, str]) -> None:
+        unmirrored.append((f"{path}, {said[0]}", said[1]))
+
+    def take(row: Any, path: str, where: tuple[str, ...]) -> None:
+        if not _plain(row):
+            left(path, _SMART)
+        elif str(row.ID) in paired:
+            left(path, paired[str(row.ID)])
+        else:
+            titled.append((mirror.wip_title((WIP, *where, str(row.Name))), str(row.ID)))
+
+    for row in sorted(_children(db, str(tops[0].ID)), key=_by_name):
+        if not rb_writer.is_folder(row):
+            take(row, str(row.Name), ())
+            continue
+        sub = str(row.Name).strip()
+        for inner in sorted(_children(db, str(row.ID)), key=_by_name):
+            path = f"{sub} / {inner.Name}"
+            if rb_writer.is_folder(inner):
+                left(path, _DEEPER)
+            else:
+                take(inner, path, (sub,))
+    sources = _sources(WIP, ((title, _rows(db, pid)) for title, pid in titled))
+    if isinstance(sources, Cause):
+        return sources
+    return mirror.Folder(
+        name=WIP, playlists=sources, edits=mirror_edits.WIP, unmirrored=tuple(unmirrored)
     )
 
 
@@ -308,19 +425,40 @@ def read_library(cfg: config.Config, *, one_read: Any = None) -> Library:
         inbox_name, inbox = _inbox(cfg, db, declared, registry)
         if not isinstance(inbox, str):
             found.append((inbox_name, inbox))
+        wip = _wip(cfg, db)
+        if not isinstance(wip, str):
+            found.append((WIP, wip))
     finally:
         rb_writer.done_reading(db, one_read)
     counted = Counter(name for name, _held in found)
+    # A TITLE WIP SHARES WITH ANOTHER MIRRORED FOLDER refuses WIP (U959): the
+    # edit rule reads a playlist by its title, so the two would read as one.
+    elsewhere = {
+        source.name
+        for name, held in found
+        if name != WIP and isinstance(held, mirror.Folder)
+        for source in held.playlists
+    }
     folders: list[mirror.Folder] = []
     refusals: dict[str, Cause] = {}
     for name, held in found:
+        shared = (
+            sorted(one.name for one in held.playlists if one.name in elsewhere)
+            if name == WIP and isinstance(held, mirror.Folder)
+            else []
+        )
         if counted[name] > 1:
             refusals[name] = _twice(name, "folders")
+        elif shared:
+            refusals[name] = _shared(shared)
         elif isinstance(held, Cause):
             refusals[name] = held
         else:
             folders.append(held)
-    return Library(tuple(folders), refusals, favorites, inbox if isinstance(inbox, str) else "")
+    return Library(
+        tuple(folders), refusals, favorites, inbox if isinstance(inbox, str) else "",
+        wip if isinstance(wip, str) else "",
+    )
 
 
 def landed_tracks(cfg: config.Config) -> dict[str, str]:
@@ -764,6 +902,8 @@ def add_steps(
         ))
     if library.inbox:
         area.steps.append(_listed("inbox", "mirror INBOX onto the account", library.inbox))
+    if library.wip:
+        area.facts[WIP_FACT] = library.wip
     held = {folder.name for folder in library.folders} | set(library.refused)
     for name in sorted(set(recorded) - held):
         area.steps.append(_listed(
@@ -858,7 +998,7 @@ def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
 
 
 __all__ = [
-    "EDITS_FACT", "FROZEN_FACT", "KNOWN_FACT", "MIRROR", "MISSES_FACT", "PLAN_FACT",
+    "EDITS_FACT", "FROZEN_FACT", "KNOWN_FACT", "MIRROR", "MISSES_FACT", "PLAN_FACT", "WIP", "WIP_FACT",
     "Library", "Reading", "Run", "Shared", "add_steps", "file_signature", "holds_for",
     "identify", "landed_tracks", "read", "read_library",
 ]

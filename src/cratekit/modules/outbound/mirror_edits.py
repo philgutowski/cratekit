@@ -19,12 +19,15 @@ addition beats a removal, whose time neither side records; two additions follow
 the later added time, and with either unknown or the two equal rekordbox's place
 stands, the conservative call. Every such call is named.
 
-THE FAVORITES FOLDER AND INBOX have their own rules, each a tree of its own.
+THE FAVORITES FOLDER, INBOX AND WIP have their own rules, each a tree of its own.
 Favorites by track: added to a month or All Favorites is a FAVOURITE, placed as
 a heart is; taken off All Favorites is an UNFAVOURITE, leaving every filing
 playlist; a month removal alone, two months at once, or off All Favorites while
 put in a month is HELD. INBOX by batch: added JOINS, taken off LEAVES, and a
-change both sides made is agreed.
+change both sides made is agreed. WIP by playlist (U959): WIP has no edit kind
+of its own, so nothing is carried into the library, and every change is HELD as
+the account has it, each playlist its own hold, so the mirror never undoes it;
+a change both sides made is agreed.
 
 THE LIBRARY'S OWN MONTH IS NEVER REKORDBOX'S CHANGE (U236): a month the library
 placed a FAVOURITE in, still held by that membership, is no rekordbox addition,
@@ -88,7 +91,11 @@ ADDITIONS = frozenset({MOVE, FOLDER, FAVOURITE, JOIN})
 GENRE = "genre"
 FAVORITES = "favorites"
 INBOX = "inbox"
-TREES = (GENRE, FAVORITES, INBOX)
+#: Every playlist under rekordbox's top level WIP folder (U959).
+WIP = "wip"
+TREES = (GENRE, FAVORITES, INBOX, WIP)
+#: The trees whose every playlist holds alone, by its title.
+_ALONE = (INBOX, WIP)
 
 #: The three readings of a playlist, as :class:`Mirrored` names them, and as a
 #: decision shows them.
@@ -381,7 +388,8 @@ def decide(
             held_by={track: frozenset(titles) for track, titles in held_by.items()},
         ),
         *_decide_favorites(mine(FAVORITES), owner, known),
-        *_decide_inbox(mine(INBOX), owner, known),
+        *_decide_each(mine(INBOX), owner, known, tree=INBOX),
+        *_decide_each(mine(WIP), owner, known, tree=WIP),
     ]
     return Decided(decisions=tuple(decisions), holds=_holds(playlists, decisions))
 
@@ -691,13 +699,23 @@ def _decide_favorites(
     return [one for one in map(decided, _tracks(playlists)) if one is not None]
 
 
-def _decide_inbox(
-    playlists: Sequence[Mirrored], owner: Mapping[str, Sequence[str]], known: frozenset[str]
-) -> list[Decision]:
-    """Every track a person added to or took off an INBOX batch on the account (U204).
+#: Why a WIP edit is held (U959): no edit kind of its own, so nothing is carried.
+_WIP_HELD = "a WIP playlist takes no edit into the library, so it stays as the account has it"
 
-    Per playlist, since a track may sit in several batches; one base each, so
-    a change both sides made is agreed and nothing else can conflict.
+
+def _decide_each(
+    playlists: Sequence[Mirrored],
+    owner: Mapping[str, Sequence[str]],
+    known: frozenset[str],
+    *,
+    tree: str,
+) -> list[Decision]:
+    """Every track a person added to or took off one playlist on the account, playlist by playlist.
+
+    Per playlist, since a track may sit in several; one base each, so a change
+    both sides made is agreed and nothing else can conflict. An INBOX batch
+    (U204) carries it, added JOINS and taken off LEAVES; a WIP playlist (U959)
+    holds it as the account has it.
     """
     decisions: list[Decision] = []
     for one in playlists:
@@ -710,7 +728,7 @@ def _decide_inbox(
                 "rekordbox": title if track in one.rekordbox else (),
             }
             if track in unread:
-                decisions.append(Decision(track, HELD, _UNREAD, to=one.place, tree=INBOX, **shown))
+                decisions.append(Decision(track, HELD, _UNREAD, to=one.place, tree=tree, **shown))
                 continue
             added = track in one.account and track not in one.base
             removed = track in one.base and track not in one.account
@@ -719,13 +737,17 @@ def _decide_inbox(
             why = f"{'put in' if added else 'taken off'} {one.place.title} on the account"
             if (track in one.rekordbox) is added:
                 why = f"{why}, and rekordbox made the same change"
-                decisions.append(Decision(track, AGREED, why, to=one.place, tree=INBOX, **shown))
+                decisions.append(Decision(track, AGREED, why, to=one.place, tree=tree, **shown))
+                continue
+            if tree == WIP:
+                why = f"{why}, and {_WIP_HELD}"
+                decisions.append(Decision(track, HELD, why, to=one.place, tree=tree, **shown))
                 continue
             settle = ((one.place.folder, one.place.title, added),)
             kind = JOIN if added else LEAVE
             decisions.append(
                 _carry(
-                    track, kind, why, owner, known, to=one.place, tree=INBOX, settle=settle,
+                    track, kind, why, owner, known, to=one.place, tree=tree, settle=settle,
                     shown=shown,
                 )
             )
@@ -762,16 +784,16 @@ def _later(
 def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict[str, Hold]:
     """Each playlist's hold: every carried or held track of its own tree, as the account has it.
 
-    An INBOX edit holds its own batch alone (U204).
+    An INBOX edit holds its own batch alone (U204), and a WIP edit its own playlist (U959).
     """
     held: dict[str, set[str]] = {}
     for one in decisions:
         if one.outcome in CARRIED or one.outcome == HELD:
-            key = one.to.title if one.tree == INBOX and one.to is not None else one.tree
+            key = one.to.title if one.tree in _ALONE and one.to is not None else one.tree
             held.setdefault(key, set()).add(one.track)
     holds: dict[str, Hold] = {}
     for one in playlists:
-        key = one.place.title if one.place.tree == INBOX else one.place.tree
+        key = one.place.title if one.place.tree in _ALONE else one.place.tree
         mine = held.get(key, set())
         keep = frozenset(track for track in mine if track in one.account and track not in one.rekordbox)
         skip = frozenset(track for track in mine if track in one.rekordbox and track not in one.account)
@@ -815,6 +837,6 @@ def agreed_after(
 
 __all__ = [
     "ADDITIONS", "AGREED", "CARRIED", "FAVORITES", "FAVOURITE", "FOLDER", "GENRE", "HELD",
-    "INBOX", "JOIN", "LEAVE", "MOVE", "REKORDBOX", "TREES", "UNFAVOURITE", "UNFILE", "Decided",
+    "INBOX", "JOIN", "LEAVE", "MOVE", "REKORDBOX", "TREES", "UNFAVOURITE", "UNFILE", "WIP", "Decided",
     "Decision", "Hold", "Mirrored", "Place", "agreed_after", "decide", "moment", "placed_after",
 ]
