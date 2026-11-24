@@ -1,0 +1,83 @@
+{
+  "name": "u334-replay-before-4b",
+  "pass_kind": "replay",
+  "branch": "cloud/983-replay-before",
+  "head": "89c9e120",
+  "when": "2026-11-24 07:21 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 23216,
+  "baseline_exit": 1,
+  "pytest_runs": 4,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 248,
+  "known_source": "/home/user/cratekit/.cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 1,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/pool.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/pool.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2dbf272a2ae863bb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 23216,
+    "baseline_collected": 23216,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u241.M01_worker_takes_the_interrupt",
+      "description": "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "284fdc99bbbda59a",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_the_terminals_interrupt_does_not_kill_a_stream_worker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n    _leave_when_the_parent_does()\n",
+      "new": "    _leave_when_the_parent_does()\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M01_worker_takes_the_interrupt"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

@@ -1,0 +1,18 @@
+name = "u334-replay-before-4b"
+pass_kind = "replay"
+
+[[rows]]
+id = "u241.M01_worker_takes_the_interrupt"
+source = { table = "u241.json", id = "M01_worker_takes_the_interrupt" }
+description = "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+'''
+new = '''
+    _leave_when_the_parent_does()
+'''
+
