@@ -1372,20 +1372,23 @@ crate inbox rotate
   that folder is asked, and only for rows `tag set` changed, so a track you
   put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
-  tree; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
+  tree, except a tree whose differences are `untagged` (below), which no
+  rebuild repairs; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
   left behind and every playlist it could not compare, as `route resort` does.
 - The `vox` My Tag files a track into its genre folder's `with vox` on a
   calibrated library, the same for `adopt apply`, `rebuild`, `route resort`
   and `converge`; the file's vocal score does not. A track in `with vox`
   whose file clears the vocal cut and whose row carries no `vox` tag reads
-  `untagged:BUCKET/with_vox:ROW` in `converge`, a difference but not a
-  leftover: `route resort`'s gate counts it under `vocal untagged`, apart
-  from `left behind`, and a driven `rebuild` or `route resort` names it with
-  the step, `crate metadata mytags-vocals --apply` to tag every row whose
-  file clears the cut, or take it out of the playlist. `route inbox` reads no
-  database before its gate and the mirror edits read none for this, so both
-  still file `with vox` by the vocal score, the rule a landing writes the tag
-  by.
+  `untagged:BUCKET/with_vox:ROW` in `converge`, after a line counting them,
+  a difference but not a leftover: `route resort`'s gate counts it under
+  `vocal untagged`, apart from `left behind`, and a driven `rebuild` or
+  `route resort` warns `vocal-membership-untagged`, naming each. Settle one by
+  tagging it, `crate metadata mytags-vocals --apply` for a row that never
+  carried the tag or in rekordbox for one whose tag was taken off, or by
+  taking it out of the playlist; then `converge` again. `route inbox`, which
+  reads no database before its gate, and the account's mirror edits still
+  file and leave `with vox` by the vocal score, the rule a landing writes the
+  tag by.
 - Audits and reports are read only. `audit duplicates` never deletes and
   remembers intentional alternates. `report genres` names genres with 50 or
   more tracks and no top level folder.
@@ -2027,7 +2030,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `library-root-unproven`, `library-root-foreign` | The backup found no library at the root, usually the volume not mounted. Mount it and run `crate backup run` again; `--library-emptied` only for a library emptied on purpose. |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
 | An unknown verb | `crate profile show`: its module is off. |
-| A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |
+| A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. Lines reading `untagged:` are settled by tagging or taking out, not by the rebuild. |
 | A stale lock from a machine that is gone | `crate session release`. |
 
 Exit codes by band:

@@ -26,4 +26,4 @@ The plan reads the tree it is about to write to. Each membership applied moves f
 
 Digest every membership an apply may write, present or not, and have the gate list both groups, each saying whether the tree already holds it. The digest then stays equal before, during and after a partial run. Test it directly: the digest must change when a membership is added to the plan, and must not change when one already present is applied.
 
-Related: R-841 is open on which signal owns the vocal sub, the tag row (adoption) or the file's score (routing derivation). Settle that before touching vocal filing again. Adoption approvals given before this build are stale once, since the digest gained two keys.
+Related: R-841 settled which signal owns the vocal sub, the `vox` My Tag (U127, 2026-10-10), and R-2056 made the convergence check, `tree rebuild` and `route resort` file it by that tag too; only a path that reads no database files by the score. Adoption approvals given before this build are stale once, since the digest gained two keys.

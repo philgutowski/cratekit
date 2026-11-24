@@ -2394,6 +2394,14 @@ def test_a_vocal_member_the_tag_left_is_named_untagged_by_converge_and_the_resor
     assert (shown["vocal untagged"], shown["left behind"]) == (1, 0), shown
 
 
+def test_a_plan_frozen_before_the_untagged_count_says_so_rather_than_zero():
+    """R-2056, the R-2020 rule: absence of a count is not a count of nothing."""
+    older = routing_cli._resort_facts([], {"trees": [TREE_ID], "unidentified": []})
+    assert older["vocal untagged"] == routing_cli.UNRECORDED_UNTAGGED
+    counted = routing_cli._resort_facts([], {"trees": [TREE_ID], "untagged": 0})
+    assert counted["vocal untagged"] == 0
+
+
 def _destination_bucket() -> str:
     """The bucket the shipped rules file the shelved track's reading under."""
     return routing.resolve_bucket(taxonomy.default_taxonomy(), None).bucket_id

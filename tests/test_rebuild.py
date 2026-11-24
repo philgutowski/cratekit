@@ -754,6 +754,47 @@ def test_the_after_report_names_the_untagged_apart_with_the_write_that_tags_them
     assert "the job folder" in steps[0]
 
 
+def test_converge_counts_the_untagged_ahead_of_a_cut_list_of_leftovers(monkeypatch):
+    """Twenty lines of leftovers would cut every untagged line off; the count leads."""
+
+    def difference(direction, content_id):
+        return rebuild.Difference(direction, "bucket", "with_vox", "F", "P", content_id)
+
+    report = rebuild.ConvergenceReport(
+        tree_id=TREE_ID,
+        root_id=ADOPTED_ROOT,
+        unexpected=tuple(difference(rebuild.Direction.UNEXPECTED, str(n)) for n in range(25)),
+        untagged=tuple(difference(rebuild.Direction.UNTAGGED, f"t{n}") for n in range(3)),
+        derived=1,
+    )
+    monkeypatch.setattr(rebuild, "report_convergence", lambda *args, **kwargs: report)
+    monkeypatch.setattr(converge_cli, "_library_rows", lambda db: [])
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda cfg: None)
+    db = unittest.mock.Mock()
+    db.get_playlist.return_value = []
+    status, detail = converge_cli._compare(
+        object(), db, tree_id=TREE_ID, entries=None, declared=None
+    )
+    assert status == converge_cli.DIFFERING
+    assert detail.startswith(converge_cli.UNTAGGED_COUNT.format(3)), detail
+    assert len(detail.split("; ")) == 20
+
+
+def test_a_declaration_with_no_vocal_sub_never_reads_the_tag(rig, monkeypatch):
+    """The tag table, and its marker refusal, is opened only where it could file something."""
+    cfg, db, adopted_root, declared = rig
+    trimmed = replace(declared, sub_classes=tuple(s for s in declared.sub_classes if not s.additive))
+
+    def unreadable(handle):
+        raise AssertionError("the vox My Tag was read for a declaration with no vocal sub")
+
+    monkeypatch.setattr(vox_tag, "vox_tagged", unreadable)
+    report = _rebuild(cfg, db, adopted_root, trimmed, [PLAIN], vocal_threshold=5.0)
+    assert report.after.converged
+    with pytest.raises(AssertionError):
+        _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=5.0)
+
+
 def test_the_read_only_report_derives_through_the_registrys_recorded_source(rig):
     """The diagnostic and the repair derive the same way, or they disagree."""
     cfg, db, adopted_root, declared = rig

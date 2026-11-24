@@ -386,9 +386,11 @@ def untagged_message(records: Iterable[Mapping[str, Any]], *, listed_in: str) ->
         f"vocal cut and whose row carries no vox My Tag, which is what files the "
         f"vocal sub: {'; '.join(named)}"
         + (f"; and {rest} more" if rest else "")
-        + ". Tag them with crate metadata mytags-vocals, which tags every row "
-        "whose file clears the cut, or take out of the playlist any that does "
-        f"not belong there. Every one is listed in {listed_in}"
+        + ". crate metadata mytags-vocals --apply tags a row whose file clears "
+        "the cut and that never carried the tag; a row whose vox tag was taken "
+        "off is not tagged again, so put the tag back in rekordbox, or take out "
+        "of the playlist any track that does not belong there. Every one is "
+        f"listed in {listed_in}"
     )
 
 

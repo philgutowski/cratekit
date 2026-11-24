@@ -337,7 +337,9 @@ class Direction(StrEnum):
     #: The database holds a track in a vocal sub its file's score clears the cut
     #: for and its row carries no vox My Tag (R-2056). The tag decides the vocal
     #: sub (U127), so the declaration does not place it there, and it is not a
-    #: leftover either: a person tags it, ``metadata mytags-vocals``, or takes it out.
+    #: leftover either: a person tags it (``metadata mytags-vocals`` for a row
+    #: that never carried the tag, rekordbox for one whose tag was taken off)
+    #: or takes it out.
     UNTAGGED = "untagged"
 
 
@@ -413,7 +415,7 @@ class ConvergenceReport:
     def converged(self) -> bool:
         """Whether this tree matches what the library declares. THREE conditions.
 
-        No difference in either direction; a derivation that placed something;
+        No difference in any direction; a derivation that placed something;
         and no playlist holding a track twice, which an additive rebuild cannot
         repair. ``unidentified`` is not one: see it.
         """
