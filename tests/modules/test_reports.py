@@ -118,7 +118,6 @@ def _one_track_tree(root_children: list[str], root_count: int = 1) -> export.Lib
 
 
 def _refused(content: bytes):
-    """The cause ``read_export`` refuses ``content`` with."""
     with pytest.raises(CratekitError) as raised:
         export.read_export(content)
     return raised.value.cause
@@ -479,7 +478,6 @@ def test_entries_with_nothing_to_compare_are_never_grouped(view):
 
 
 def _copies(name: str, artist: str, count: int) -> export.LibraryView:
-    """``count`` entries of one name and artist, each at its own file."""
     return _view(
         [
             (index, name, artist, f"file://localhost/library/{index}.flac")
@@ -650,17 +648,11 @@ def test_a_revoked_ignore_puts_the_pair_back_in_front_of_a_person(view, store):
     assert len(duplicates.audit_and_offer(view, store, template=TEMPLATE).outstanding) == 1
 
 
-def test_the_audit_deletes_nothing_from_the_library(cfg, store):
+def test_the_audit_deletes_nothing_from_the_library(library_on_disk, store):
     """The behavioural half of "never deletes", over real files on disk."""
-    music = cfg.library.root / "Music"
-    for name in ("a.flac", "b.flac", "d.flac", "e.flac"):
-        (music / name).write_bytes(b"not really audio, but really bytes")
-    exported = music / "collection.xml"
-    exported.write_bytes(library_export())
+    duplicates.audit_and_offer(export.read_export_file(library_on_disk), store, template=TEMPLATE)
 
-    duplicates.audit_and_offer(export.read_export_file(exported), store, template=TEMPLATE)
-
-    assert sorted(path.name for path in music.iterdir()) == [
+    assert sorted(path.name for path in library_on_disk.parent.iterdir()) == [
         "a.flac",
         "b.flac",
         "collection.xml",
@@ -1217,7 +1209,6 @@ _COMPUTED_IMPORT = "<computed import>"
 
 
 def _is_package(dotted: str, root: Path = SRC_ROOT) -> bool:
-    """Whether a dotted path names a DIRECTORY in this repository's source tree."""
     return root.joinpath(*dotted.split(".")).is_dir()
 
 
@@ -1229,7 +1220,6 @@ def _package_of(module: str, root: Path = SRC_ROOT) -> str:
 
 
 def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[str]:
-    """Every module ``source`` depends on, as absolute dotted paths."""
     package = _package_of(module, root)
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
@@ -1255,19 +1245,16 @@ def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[s
 
 
 def _permitted(target: str) -> bool:
-    """Whether one resolved import is inside the allowlist or inside this package."""
     if target == REPORTS_PACKAGE or target.startswith(f"{REPORTS_PACKAGE}."):
         return True
     return any(target == allowed or target.startswith(f"{allowed}.") for allowed in ALLOWED_IMPORTS)
 
 
 def forbidden_imports(source: str, module: str) -> list[str]:
-    """Every dependency the reports package is not allowed to have."""
     return [target for target in _resolved_imports(source, module) if not _permitted(target)]
 
 
 def filesystem_mutations(source: str) -> list[str]:
-    """Every call in ``source`` that could change a file, with its line."""
     tree = ast.parse(source)
     modules, direct = _writer_bindings(tree)
     return mutations_in(tree, modules=modules, direct=direct)
@@ -1421,7 +1408,6 @@ def _restored_attributes(scope: ast.AST, instance: _Instance) -> dict[str, str]:
 
 
 def _target_names(targets) -> set[str]:
-    """Every BARE NAME an assignment target list binds, unpacking as it goes."""
     found: set[str] = set()
     for target in targets:
         if isinstance(target, ast.Name):
@@ -2038,7 +2024,6 @@ def _writer_bindings(
 
 
 def _imported_modules(tree: ast.AST) -> frozenset[str]:
-    """Every name an ``import X`` statement binds to a MODULE."""
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -2048,7 +2033,6 @@ def _imported_modules(tree: ast.AST) -> frozenset[str]:
 
 
 def _receiver_module(node: ast.AST, modules: dict[str, _Bound], instance: _Instance) -> str:
-    """Which admitted module a receiver was BOUND to, or the empty string."""
     found = _bound_value(node, modules, instance)
     return found if isinstance(found, str) else ""
 
@@ -2099,7 +2083,6 @@ def _handed_over(node: ast.AST | None):
 
 
 def _stored(node: ast.AST):
-    """Every (receiver key, value) pair one statement stores."""
     if isinstance(node, ast.Assign):
         return [
             (_receiver_key(target), node.value) for target in node.targets if _receiver_key(target)
@@ -2141,40 +2124,37 @@ def _invoked_reads(tree: ast.AST) -> frozenset[int]:
     keys = _called_keys(tree)
     returned = _invoked_results(tree)
     found: set[int] = set()
+
+    def hand(expression: ast.AST | None) -> None:
+        found.update(id(read) for read in _handed_over(expression))
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            for read in _handed_over(node.func):
-                found.add(id(read))
+            hand(node.func)
             if isinstance(node.func, ast.Call):
                 supplied = [
                     *node.func.args,
                     *(keyword.value for keyword in node.func.keywords),
                 ]
                 for argument in supplied:
-                    for read in _handed_over(argument):
-                        found.add(id(read))
+                    hand(argument)
             if isinstance(node.func, ast.Subscript) and isinstance(node.func.slice, ast.Constant):
                 for index, element in _elements(node.func.value):
                     if index == node.func.slice.value:
-                        for read in _handed_over(element):
-                            found.add(id(read))
+                        hand(element)
         for decorator in getattr(node, "decorator_list", []):
-            for read in _handed_over(decorator):
-                found.add(id(read))
+            hand(decorator)
         for key, value in _stored(node):
             if key in keys:
-                for read in _handed_over(value):
-                    found.add(id(read))
+                hand(value)
             for index, element in _elements(value):
                 if f"{key}[{index!r}]" in keys:
-                    for read in _handed_over(element):
-                        found.add(id(read))
+                    hand(element)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.name in returned or f"{node.name}()" in keys:
                 for child in _scope_nodes(node):
                     if isinstance(child, ast.Return):
-                        for read in _handed_over(child.value):
-                            found.add(id(read))
+                        hand(child.value)
     return frozenset(found)
 
 
@@ -2478,7 +2458,6 @@ def _git(*argv: str) -> str:
 
 
 def _unit_log(*argv: str) -> str:
-    """One `git log` restricted to the commits this unit made."""
     return _git("log", "--format=", "-F", f"--grep={UNIT_COMMIT_TAG}", "HEAD", *argv)
 
 
@@ -2875,7 +2854,6 @@ def _first_party_module(target: str, root: Path = SRC_ROOT) -> tuple[str, Path] 
 
 
 def _names_bound_by(source: str) -> frozenset[str]:
-    """Every name a module's top level binds, read off its own statements."""
     names: set[str] = set()
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -3176,7 +3154,6 @@ def test_a_package_on_the_allowlist_audits_every_module_underneath_it():
 
 
 def _plant(root: Path, modules: dict[str, str]) -> Path:
-    """Write a source tree of dotted modules under ``root``, and return it."""
     for dotted, source in modules.items():
         path = root.joinpath(*dotted.split(".")).with_suffix(".py")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -5135,12 +5112,10 @@ _MODES_THAT_READ = ("r", "rb")
 
 
 def test_the_mutation_set_is_the_list_this_suite_drives():
-    """The two spellings of the same set, held together."""
     assert set(_EVERY_MUTATING_NAME) == FILESYSTEM_MUTATIONS
 
 
 def test_the_writing_modes_are_the_list_this_suite_drives():
-    """The same holding, for the mode characters."""
     assert set(_EVERY_WRITING_MODE) == _WRITING_MODES
 
 
