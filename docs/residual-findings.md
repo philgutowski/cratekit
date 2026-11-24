@@ -849,3 +849,74 @@ Ledger only.
 **Measured cost.** Driven by the review on a disposable database: a row tagged, its association marked removed, then `apply_mytags` over it wrote 0, already 1, and the next rebuild still read `untagged`. R-2056's remedy text was reworded to send such a row to rekordbox. Whether rekordbox itself leaves a removed association as a soft delete is unmeasured (as R-843 says for the category), so whether a live row reaches this is not known.
 
 **Closes when:** an attended read says whether rekordbox soft deletes a My Tag association it takes off; if it does, the writer reads the marker as the reader does. Ledger only: it closes at an attended sitting, and the product's text no longer claims the write settles it.
+
+---
+
+## R-2064. A frozen mirror plan answered after a bare sync pair paired the same WIP set copies it a second time
+
+**Found:** at the review of #1062, U959, 2026-11-24.
+
+**The mechanism.** `account_mirror._wip` reads the pair record at the plan
+(`_paired`), and the run that answers the mirror's gate rebuilds from the
+frozen library (R-1031, U222), reading no pair again. A bare `sync pair`
+applied between the mirror's gate and its answer pairs a WIP set into `WIP `,
+and the answer still creates the mirror's copy in `WIP`; the two titles
+differ, so the plan's check for a person's playlist of the title does not
+stop it.
+
+**Measured cost.** Not driven end to end: the reviewer read the frozen
+rebuild ignoring later rekordbox changes, which
+`test_the_answering_run_applies_the_wip_plan_its_gate_showed` shows, and did
+not run the interleave in one world. It needs a person to run a bare
+`sync pair` between the two halves of a mirror run, which the sync pass never
+does. Its reachability is unmeasured.
+
+**Closes when:** the mirror's apply reads the pair record again and leaves a
+WIP set a pair took since the gate, or the reverse rule makes the mirror's
+copy the only one. Ledger only.
+
+---
+
+## R-2065. A sync pair answer stopped because the mirror copied a WIP set since the plan says the playlist was moved
+
+**Found:** at the review of #1062, U959, 2026-11-24.
+
+**The mechanism.** `sync/pair_check.py` discovers again before it writes,
+now leaving out a WIP playlist the account mirror copies (U959). A set the
+mirror copied between a bare `sync pair`'s plan and its answer is then no
+longer found, and the check refuses `decision-stale` with "the rekordbox
+playlist ... was moved since the plan, and is no longer one a sync of every
+pair would make". Nothing moved: the mirror took it.
+
+**Measured cost.** The stop and the replan are right and nothing is written,
+driven by `test_a_wip_set_the_mirror_copies_after_the_plan_is_never_paired_at_the_answer`
+with the ledger patched to the mirror's record; only the reason's words are
+false. A real mirror apply between the two runs was not driven.
+
+**Closes when:** the check names the mirror when the account mirror's ledger
+holds the playlist's WIP title. Ledger only, a wording fix.
+
+---
+
+## R-2066. WIP playlists have two writers on the account, the mirror and a bare sync pair, and the choice between them is Phillip's
+
+**Found:** at the review of #1062, U959, 2026-11-24.
+
+**The mechanism.** A bare `crate sync pair` (U198) pairs every plain playlist
+outside Cratekit's trees, WIP included, into an account root folder named as
+the rekordbox top folder, `WIP ` with its trailing space; the 2026-11-05
+sitting paired 9 WIP playlists that way, kept two ways. U959 adds the account
+mirror's `WIP` folder, one way, its account edits held. Left alone the two
+would copy one set twice. U959 takes the recommended option of the question
+on the card: the mirror leaves a playlist a pair keeps, and a bare `sync pair`
+leaves a WIP playlist the mirror already copies (`pair_discover.mirrored_wip`),
+so each set has one copy, the 9 paired ones in `WIP ` and new ones in `WIP`.
+The two other options were `sync pair` alone owning WIP, run by the sync pass,
+or the mirror adopting the `WIP ` folder.
+
+**Measured cost.** Two WIP folders on the phone, and a new set's edits on
+Tidal are held, never taken back into rekordbox, where a paired set's are.
+No copy is made twice, driven by `tests/test_sync_pair_discover_wip.py`.
+
+**Closes when:** Phillip answers the card's question; option 1 needs nothing
+more, options 2 and 3 are a card each. Ledger only.
