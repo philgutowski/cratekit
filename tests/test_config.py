@@ -144,11 +144,8 @@ def test_the_membership_is_the_profiles_preset_then_the_explicit_toggles(library
 
 def test_a_profile_change_toggles_membership_without_touching_unrelated_keys(library):
     data = valid_data(
-        library,
-        naming={"lossy_marker": "[LOSSY]"},
-        backup={"remote": "somewhere"},
-        taxonomy={"template": "custom"},
-    )
+        library, naming={"lossy_marker": "[LOSSY]"}, backup={"remote": "somewhere"},
+        taxonomy={"template": "custom"})
     before = {k: v for k, v in data.items() if k != "profile"}
     after = profiles.apply(data, "full")
     assert after["profile"]["name"] == "full"
@@ -289,8 +286,7 @@ def test_every_entry_with_a_named_accessor_resolves_to_the_same_path(split_insta
 
 
 def test_every_installation_entry_resolves_under_a_directory_the_module_names(
-    split_installation_dirs,
-):
+        split_installation_dirs):
     """Stated positively, so an invented directory fails here."""
     # The provider gate's own directory (U278) is the third the module names.
     known = (config.config_dir(), config.installation_state_dir(), config.provider_gate_dir())
@@ -344,8 +340,7 @@ INVENTORY_MODULES = frozenset({"cratekit/core/config.py", "cratekit/core/state_f
 
 
 @pytest.mark.parametrize(
-    "key", ["write_lock", "session_lock", "session_log", "snapshots", "favorites_state"]
-)
+    "key", ["write_lock", "session_lock", "session_log", "snapshots", "favorites_state"])
 def test_the_locks_the_log_and_the_snapshots_live_with_the_library(key, cfg, library):
     """KTD17, R31, KTD21b and KTD21: two installs must not mean two locks on one database."""
     assert config.state_file(key).root is config.StateRoot.LIBRARY
@@ -406,8 +401,7 @@ _COUPLED = config.SnapshotRole.COUPLED
         ("tombstones", _COUPLED), ("declines", _COUPLED),
         ("taxonomy_active", _COUPLED), ("favorites_state", _COUPLED), ("rekordbox_db", _COUPLED),
     ],
-    ids=lambda value: value if isinstance(value, str) else value.name.lower(),
-)
+    ids=lambda value: value if isinstance(value, str) else value.name.lower())
 def test_each_named_entry_carries_its_declared_snapshot_role(key, role):
     assert config.state_file(key).snapshot is role, key
 
@@ -489,8 +483,7 @@ def _restore_source() -> str:
         (_snapshot_source, ("snapshot_sources",)),
         (_restore_source, ("sidecar_paths", "snapshot_sources")),
     ],
-    ids=["capture", "restore"],
-)
+    ids=["capture", "restore"])
 def test_the_snapshot_consumers_derive_their_sets_rather_than_listing_them(read, derivations):
     """U8 reaches for ``snapshot_sources``, and no consumer types a sidecar suffix of its own; a
     text search only, as ``tests/test_restore.py`` drives whether the derivation is used."""
@@ -555,14 +548,12 @@ def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_ano
 
 
 def test_doctor_reports_a_database_that_sits_outside_the_library_root(
-    library, tmp_path, monkeypatch
-):
+        library, tmp_path, monkeypatch):
     """ARMED by U27. Asserted on what the OK branch cannot produce, not on "atomic"."""
     from cratekit.cli import doctor
     outside = tmp_path / "elsewhere" / "master.db"
     acknowledged = config.from_dict(
-        _outside(library, tmp_path, db_outside_root_acknowledged_on="2026-08-01")
-    )
+        _outside(library, tmp_path, db_outside_root_acknowledged_on="2026-08-01"))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: acknowledged)
     finding = next(f for f in doctor.run().findings if f.key == "library.db_containment")
     assert finding.status is doctor.Status.INFO, finding.detail
@@ -599,8 +590,7 @@ def test_an_undeclared_state_key_raises_with_the_declared_list():
 
 @pytest.mark.parametrize(
     "install_key, library_key",
-    [("label_crawl_cache", "label_outcomes"), ("label_intent", "label_watermarks")],
-)
+    [("label_crawl_cache", "label_outcomes"), ("label_intent", "label_watermarks")])
 def test_a_previously_straddling_entry_is_two_files_with_distinct_names(install_key, library_key):
     """D4: one file with two owners is the problem, so each half has its own root."""
     install = config.state_file(install_key)
@@ -664,8 +654,7 @@ def test_the_prefix_map_survives_a_remount_because_it_interpolates(library, tmp_
         ({"from": "/mnt/volume", "to": "{home}"}, "unsupported interpolation"),
         ({"from": "/mnt/volume"}, "location_prefix_map[0].to"),
     ],
-    ids=["unsupported-interpolation", "malformed-entry-named-by-index"],
-)
+    ids=["unsupported-interpolation", "malformed-entry-named-by-index"])
 def test_a_bad_prefix_rule_is_named(library, rule, expected):
     assert any(expected in p for p in config.validate(_prefix_map(library, rule)))
 
@@ -692,10 +681,8 @@ def test_a_rule_with_no_identity_serializes_to_the_bytes_it_always_did(library):
 
 
 @pytest.mark.parametrize(
-    "identity",
-    ["/Volumes/MUSIC", "\\\\server\\share", "E:\\", "", "   ", 7, None],
-    ids=["posix-path", "unc-path", "drive-path", "empty", "blank", "number", "null"],
-)
+    "identity", ["/Volumes/MUSIC", "\\\\server\\share", "E:\\", "", "   ", 7, None],
+    ids=["posix-path", "unc-path", "drive-path", "empty", "blank", "number", "null"])
 def test_a_rule_identity_that_is_a_path_or_is_unusable_is_named_by_index(library, identity):
     """R38 per rule. A present but unusable key is a problem, never "none recorded"."""
     music = {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": identity}
@@ -814,8 +801,7 @@ def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
         # Names rclone cannot hold: a leading hyphen, a trailing space.
         "-gdrive:bucket",
         "gdrive :bucket",
-    ],
-)
+    ])
 def test_a_backup_destination_naming_no_remote_is_refused(library, key, typed):
     """R-345: a bare folder copied the library beside the worker. The refusal names key and value."""
     data = _backup(library, **{key: typed})
@@ -839,7 +825,6 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
         effective = real(mapping)
         effective["backup"]["dest"] = "gdrive:" + effective["backup"]["dest"]
         return effective
-
     # The seam is named in both modules that pass through it (U299).
     monkeypatch.setattr(config, "_apply_env_overrides", relocating)
     from cratekit.core import config_validate
@@ -855,8 +840,7 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
         # Otherwise doctor checks a remote nothing writes to.
         ({"remote": "elsewhere"}, ["backup.remote", "'elsewhere'", "'gdrive'"]),
     ],
-    ids=["destinations-on-two-remotes", "spelled-remote-names-another"],
-)
+    ids=["destinations-on-two-remotes", "spelled-remote-names-another"])
 def test_a_backup_naming_a_second_remote_is_refused(library, changed, named):
     """The destinations, and a remote spelled beside them, must all name one remote."""
     problems = config.validate(_backup(library, **changed))
@@ -887,8 +871,7 @@ def test_an_unset_backup_destination_stays_allowed(library, profile):
 
 
 @pytest.mark.parametrize(
-    "name", ["me@gdrive", "work+home", "my drive", "gdrive-2.old", "Sicherung_ü", "b2"]
-)
+    "name", ["me@gdrive", "work+home", "my drive", "gdrive-2.old", "Sicherung_ü", "b2"])
 def test_every_name_rclone_can_store_is_accepted_as_a_remote(library, name):
     """rclone 1.61's rule; anything stricter fires on a correct setup (P7)."""
     backup = {key.split(".")[1]: f"{name}:library/{key}" for key in config.BACKUP_DESTINATION_KEYS}
@@ -941,8 +924,7 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
         ("reports", "intake_stale_days", 45), ("outbound", "export_stale_days", 14),
         ("recognition", "host", "identify-eu-west-1.acrcloud.com"),
         ("recognition", "monthly_calls", 250),
-    ],
-)
+    ])
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):
     """One case per section, merged in, so a section left out of serialization is caught."""
     changed_data = valid_data(library)
@@ -1033,13 +1015,11 @@ def module_level_config_snapshots(source: str, module: str) -> list[str]:
             ):
                 problems.append(
                     f"{module}: module-level binding of {ast.unparse(sub)!r}; "
-                    f"read config where it is used, never at import time"
-                )
+                    f"read config where it is used, never at import time")
             if isinstance(sub, ast.Call) and _called_name(sub.func) in _CONFIG_RESOLVERS:
                 problems.append(
                     f"{module}: module-level call to {_called_name(sub.func)}(); a "
-                    f"resolved location bound at import time stops tracking config"
-                )
+                    f"resolved location bound at import time stops tracking config")
     return problems
 
 
@@ -1050,8 +1030,7 @@ def module_level_config_snapshots(source: str, module: str) -> list[str]:
         "from cratekit.core.config import installation_state_dir\nSTATE = installation_state_dir()\n",
         "from cratekit.core import config\n\nclass Sweep:\n    root = config.load().library.root\n",
     ],
-    ids=["attribute-binding", "resolver-call", "class-attribute"],
-)
+    ids=["attribute-binding", "resolver-call", "class-attribute"])
 def test_the_snapshot_lint_catches_a_binding_evaluated_at_import(source):
     assert module_level_config_snapshots(source, "cratekit.label.sweep")
 
@@ -1124,8 +1103,7 @@ def test_a_relocated_root_carries_the_database_that_sat_under_it(library, reloca
 
 
 def test_a_relocation_leaves_a_database_that_was_never_under_the_root_alone(
-    library, tmp_path, relocated
-):
+        library, tmp_path, relocated):
     """Dragging it along would move a path the user chose and retire its acknowledgment."""
     data = _outside(library, tmp_path, db_outside_root_acknowledged_on="2026-08-01")
     cfg = config.from_dict(data)
@@ -1210,7 +1188,6 @@ def _raises(error: BaseException):
 
     def raising(*args, **kwargs):
         raise error
-
     return raising
 
 
@@ -1258,8 +1235,7 @@ def test_the_three_credential_failures_carry_three_different_remedies():
 
 
 @pytest.mark.parametrize(
-    "vocabulary", [secrets.Remedy, config.Remedy], ids=["secrets-remedy", "config-remedy"]
-)
+    "vocabulary", [secrets.Remedy, config.Remedy], ids=["secrets-remedy", "config-remedy"])
 def test_a_remedy_is_a_token_and_not_the_command_a_user_types(vocabulary):
     """D2: the CLI renders a token into a command; this layer knows no interface."""
     for remedy in vocabulary:
@@ -1318,13 +1294,11 @@ def _unreadable_index(monkeypatch, path: Path):
         if armed and self == path:
             raise PermissionError(13, "Permission denied", str(path))
         return real(self, *args, **kwargs)
-
     monkeypatch.setattr(Path, "read_text", refuse)
 
     def disarm() -> None:
         nonlocal armed
         armed = False
-
     return disarm
 
 
@@ -1371,8 +1345,7 @@ def test_an_absent_presence_index_still_answers_nothing_recorded():
         (lambda index: index.mkdir(), _KEY, "unreadable"),
         (lambda index: index.write_text("{not json at all"), _SESSION, "damaged"),
     ],
-    ids=["refused-for-something-other-than-a-permission", "damaged-says-it-was-read"],
-)
+    ids=["refused-for-something-other-than-a-permission", "damaged-says-it-was-read"])
 def test_an_index_refused_or_damaged_keeps_its_own_act(damage, credential, detail):
     """EISDIR, which no classification claims, keeps the site's act; bad bytes another repair."""
     index = _index()
@@ -1401,11 +1374,9 @@ def test_a_presence_index_without_a_list_of_names_refuses_rather_than_answering(
         ),
         ((_KEY, _SIGNING), lambda: secrets.delete(_KEY), lambda: secrets.get(_KEY) == _VALUE),
     ],
-    ids=["recording", "removing"],
-)
+    ids=["recording", "removing"])
 def test_a_credential_change_does_not_truncate_an_index_it_could_not_read(
-    monkeypatch, held, act, kept
-):
+        monkeypatch, held, act, kept):
     """An empty answer from a failed read made ``_record_name`` rewrite the index to one name,
     and ``delete`` clears the index before the keychain, so the refusal must come first."""
     secrets.set(_KEY, _VALUE)
@@ -1433,11 +1404,9 @@ def test_a_credential_change_does_not_truncate_an_index_it_could_not_read(
         ),
         (lambda: secrets.delete(_KEY), _KEY, _VALUE, "Nothing was removed", _IN_THE_KEYCHAIN),
     ],
-    ids=["record-half-says-the-value-reached-the-keychain", "remove-half-touched-neither-store"],
-)
+    ids=["record-half-says-the-value-reached-the-keychain", "remove-half-touched-neither-store"])
 def test_a_refusal_from_either_half_says_what_reached_the_keychain(
-    monkeypatch, act, stored, value, said, unsaid
-):
+        monkeypatch, act, stored, value, said, unsaid):
     """``_record_name`` runs after the keychain write landed, so its refusal must say so;
     ``delete`` reads the index first, so a refusal there touched neither store."""
     secrets.set(_KEY, _VALUE)
@@ -1488,7 +1457,6 @@ def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
             except BlockingIOError:
                 contended.append(True)
         return real_write(names)
-
     secrets._index_write = _contend
     try:
         secrets.set(_KEY, _VALUE)
@@ -1519,7 +1487,6 @@ def test_a_credential_index_that_cannot_be_locked_refuses_rather_than_writing(mo
         if str(path).endswith("credential_index.lock"):
             raise PermissionError("no")
         return real_open(path, *args, **kwargs)
-
     monkeypatch.setattr(os, "open", refuse)
     with pytest.raises(secrets.CredentialIndexUnusable) as excinfo:
         secrets.set(_KEY, _VALUE)
@@ -1532,7 +1499,6 @@ def test_a_backend_message_never_reaches_the_refusal_a_user_reads(monkeypatch):
 
     def leaky(_service, _name, password):
         raise RuntimeError(f"could not store {password}")
-
     monkeypatch.setattr(keyring, "set_password", leaky)
     with pytest.raises(secrets.CredentialBackendUnavailable) as excinfo:
         secrets.set(_KEY, "NOT-A-REAL-SECRET")
@@ -1573,8 +1539,7 @@ def _drive_every_write_path(cfg) -> list[Path]:
 
 
 def test_every_file_and_directory_this_unit_creates_is_private_under_any_umask(
-    permissive_umask, cfg
-):
+        permissive_umask, cfg):
     """Walked, not enumerated, directories included; the migration lock is named as well."""
     offenders: list[str] = []
     seen_files = 0
@@ -1637,8 +1602,7 @@ def test_every_directory_the_config_module_creates_goes_through_the_private_help
 
 
 def test_a_migration_backup_gets_the_same_mode_as_the_file_it_copies(
-    permissive_umask, library, tmp_path
-):
+        permissive_umask, library, tmp_path):
     """A migration must not leave a laxer duplicate of the config."""
     path = tmp_path / "config.toml"
     path.write_text(tomli_w.dumps(valid_data(library, schema_version=1)))
@@ -1664,7 +1628,6 @@ def test_the_doctor_probe_reports_false_rather_than_raising(monkeypatch):
         @property
         def priority(self):
             raise RuntimeError("this backend is not viable here")
-
     monkeypatch.setattr(keyring, "get_keyring", lambda: _NotViableHere())
     assert secrets.backend_available() is False
 
@@ -1748,8 +1711,7 @@ def test_the_recognition_defaults_bound_the_month_and_name_one_region(library):
     chosen = {"host": "identify-ap-southeast-1.acrcloud.com", "monthly_calls": 5}
     moved = config.from_dict(valid_data(library, recognition=chosen)).recognition
     assert moved == config.RecognitionConfig(
-        host="identify-ap-southeast-1.acrcloud.com", monthly_calls=5
-    )
+        host="identify-ap-southeast-1.acrcloud.com", monthly_calls=5)
 
 
 def test_the_recognition_section_round_trips_through_the_file(library):
@@ -1796,7 +1758,6 @@ def test_a_recognition_value_out_of_its_bounds_is_refused_by_its_key(library, ke
         {"recognition": {}},
         {"recognition": {"host": "identify-eu-west-1.acrcloud.com"}},
     ],
-    ids=["no-sections", "empty-outbound", "empty-recognition", "recognition-host-only"],
-)
+    ids=["no-sections", "empty-outbound", "empty-recognition", "recognition-host-only"])
 def test_an_absent_optional_section_or_key_is_not_a_problem(library, overrides):
     assert config.validate(valid_data(library, **overrides)) == []

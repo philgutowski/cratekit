@@ -74,14 +74,12 @@ def configured(library, monkeypatch):
                 shutil.copy2(sidecar, db_path.with_name(db_path.name + suffix))
     else:
         _build_disposable_database(db_path)
-
     cfg = config.from_dict(valid_data(library, profile={"name": "full"}))
     assert cfg.library.db_path == db_path
     config.save(cfg)
     config.reset_cache()
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
-    )
+        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
@@ -99,7 +97,6 @@ def _trap_standard_input(monkeypatch):
     class Trapped:
         def __getattr__(self, name):
             raise AssertionError(f"a verb read standard input (sys.stdin.{name})")
-
     monkeypatch.setattr(sys, "stdin", Trapped())
     refusal = AssertionError("a verb called input()")
     monkeypatch.setattr("builtins.input", lambda *a, **k: (_ for _ in ()).throw(refusal))
@@ -150,7 +147,6 @@ def test_status_two_belongs_to_the_argument_parser_and_to_nothing_else():
     producible = {int(c) for c in ExitCode if meaning_of(c).verb_producible}
     assert 2 not in producible
     assert 2 not in {int(code) for code in REASONS.values()}
-
     code, _, _ = drive(["--not-a-flag"])
     assert code == int(ExitCode.USAGE)
 
@@ -201,8 +197,7 @@ def test_every_module_local_remedy_renders_to_something_a_user_can_act_on():
             remediation = Remediation(remedy=Remedy(str(member)))
             cause = Cause(
                 reason="internal-error", message="m", remediation=remediation, scope=Scope.RUN,
-                retryable=False,
-            )
+                retryable=False)
             body = render.remediation_line(cause).removeprefix("  fix: ")
             assert body not in generic, f"{module_name}.{member.name} renders as a generic summary"
 
@@ -223,16 +218,13 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
             Remedy.REAUTHENTICATE_PROVIDER,
             "  fix: the provider rejected the stored credential; log in again",
         ),
-    ],
-)
+    ])
 def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs(
-    remedy, forbidden
-):
+        remedy, forbidden):
     """U97, R-411: both name three acts, not a dead end login, pinned as literal text."""
     cause = Cause(
         reason="credential-missing", message="no streaming provider session is usable",
-        remediation=Remediation(remedy=remedy), scope=Scope.RUN,
-    )
+        remediation=Remediation(remedy=remedy), scope=Scope.RUN)
     line = render.remediation_line(cause)
     assert line != forbidden
     body = line.removeprefix("  fix: ")
@@ -298,7 +290,6 @@ def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
     assert meaning_of(unreadable).remedy is not meaning_of(active).remedy
     assert meaning_of(unreadable).remedy is Remedy.ANSWER_DECISION
     assert meaning_of(active).remedy is Remedy.DISABLE_CLOUD_SYNC
-
     # Answering needs the run still there, which the command line decides by code.
     assert unreadable in gates.GATE_CODES
     assert active not in gates.GATE_CODES
@@ -325,7 +316,6 @@ def test_the_reason_registry_has_no_duplicate_key():
         if target == "REASONS":
             literal = node.value
     assert literal is not None, "REASONS is no longer a module-level assignment"
-
     # ``MappingProxyType({...})``: the mapping is the call's first argument.
     mapping = literal.args[0] if isinstance(literal, ast.Call) else literal
     keys = [key.value for key in mapping.keys]
@@ -348,13 +338,11 @@ def test_a_cause_round_trips_through_json_with_its_chain_intact():
     inner = Cause(
         reason="unavailable-transient", message="the provider timed out",
         remediation=Remediation(remedy=Remedy.RETRY_LATER), scope=Scope.ITEM, retryable=True,
-        origin=("adapter.vendored",),
-    )
+        origin=("adapter.vendored",))
     outer = Cause(
         reason="adapter-broken", message="the adapter gave up after three attempts",
         remediation=Remediation(remedy=Remedy.RETRY_LATER, steps=("wait, then retry",)),
-        scope=Scope.SOURCE, origin=("download", "job", "sync"), inner=inner,
-    )
+        scope=Scope.SOURCE, origin=("download", "job", "sync"), inner=inner)
     assert Cause.from_json(json.loads(outer.to_text())) == outer
 
 
@@ -424,8 +412,7 @@ def _diagnostic(**fields) -> output.Envelope:
     return output.build(
         **{"verb": "profile.show", **fields}, run_id="r",
         schema=output.current_schema("diagnostic"), started="2026-01-01T00:00:00+00:00",
-        data={"checks": [], "summary": {}},
-    )
+        data={"checks": [], "summary": {}})
 
 
 def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
@@ -450,13 +437,11 @@ def test_the_envelope_never_carries_its_own_human_rendering():
 
 def test_pending_human_action_and_its_exit_code_imply_each_other():
     pending = output.PendingHumanAction(
-        kind="rekordbox_import", id="pha_x", summary="import one file", verify_verb="run.show"
-    )
+        kind="rekordbox_import", id="pha_x", summary="import one file", verify_verb="run.show")
     remediation = Remediation(remedy=Remedy.COMPLETE_PENDING_ACTION)
     good = _diagnostic(
         verb="run.show", outcome=Outcome.PENDING, code=ExitCode.PENDING_HUMAN, pending=pending,
-        cause=Cause(reason="awaiting-import", message="waiting", remediation=remediation),
-    )
+        cause=Cause(reason="awaiting-import", message="waiting", remediation=remediation))
     assert output.envelope_problems(good.to_json()) == []
     # One direction: pending action, wrong code.
     document = good.to_json()
@@ -624,8 +609,7 @@ def test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments(conf
     run_id = _stopped_at_the_profile_gate()
     assert gates.load(run_id).argv == ("profile", "set", "slim")
     code, out, _ = drive(
-        ["--output", "json", "run", "decide", run_id, "profile.set.apply", "apply", "--continue"]
-    )
+        ["--output", "json", "run", "decide", run_id, "profile.set.apply", "apply", "--continue"])
     assert code == int(ExitCode.OK), out
     envelope = json.loads(out)
     assert envelope["verb"] == "profile.set" and envelope["run_id"] == run_id
@@ -658,8 +642,7 @@ def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
     """R34: an explicit gate refuses an answer given in the same command, in the resolver."""
     spec = registry.GateSpec(
         name="session.ack.backup", options=("acknowledged", "abort"), prompt="Backed up?",
-        explicit=True,
-    )
+        explicit=True)
     state = gates.RunState(run_id="r", verb="session.ack", created="now")
     resolver = gates.Gates(state=state, supplied={"session.ack.backup": "acknowledged"})
     with pytest.raises(gates.DecisionRequired):
@@ -722,8 +705,7 @@ def _pending_profile_run(**fields) -> gates.RunState:
     state = gates.new_run(registry.entry("profile.set"))
     state.pending = output.PendingHumanAction(
         kind="rekordbox_import", id=output.new_pending_id(state.run_id), verify_verb="run.show",
-        **fields,
-    )
+        **fields)
     gates.save(state)
     return state
 
@@ -745,8 +727,7 @@ def test_a_run_that_reached_a_gate_reports_it(configured):
 def test_a_run_carrying_a_pending_action_reports_it_as_pending(configured):
     state = _pending_profile_run(
         summary="import one file into rekordbox",
-        steps=("open the library application", "import the file"),
-    )
+        steps=("open the library application", "import the file"))
     code, out, _ = drive(["--output", "json", "run", "show", state.run_id])
     assert code == int(ExitCode.PENDING_HUMAN)
     envelope = json.loads(out)
@@ -777,7 +758,6 @@ def test_help_succeeds_with_every_heavy_extra_absent(configured, monkeypatch):
             if name.split(".")[0] in blocked:
                 raise ImportError(f"blocked: {name}", name=name)
             return None
-
     monkeypatch.setattr(sys, "meta_path", [Blocker(), *sys.meta_path])
     # argparse's --help writes to the real stdout, so the redirect captures what a user would see.
     printed = io.StringIO()
@@ -794,8 +774,7 @@ def _analysis_entry(verb: str, summary: str, module: str, **fields) -> registry.
     """A fake ``analyze`` verb in the analysis module, built from ``tests/cli_fixtures``."""
     return registry.Entry(
         name=f"analyze.{verb}", summary=summary, module=f"tests.cli_fixtures.{module}",
-        builder="build", handler_key=f"analyze.{verb}", module_id="analysis", **fields,
-    )
+        builder="build", handler_key=f"analyze.{verb}", module_id="analysis", **fields)
 
 
 _BEHIND_AN_EXTRA = {"extras": "analysis", "extras_modules": ("a_third_party_analysis_library",)}
@@ -822,8 +801,7 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
 def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
     """It raises as itself, or a user installs a package that cannot help."""
     entry = _analysis_entry(
-        "broken", "a verb with a defect of our own", "broken_module", **_BEHIND_AN_EXTRA
-    )
+        "broken", "a verb with a defect of our own", "broken_module", **_BEHIND_AN_EXTRA)
     # Since U248 it raises when its verb is chosen; the eager parser raises at construction.
     parser = cli.build_parser([entry], membership=profiles.resolve("full"))
     with pytest.raises(ImportError) as raised:
@@ -859,14 +837,12 @@ def test_a_profile_that_switches_a_module_off_removes_its_verbs(configured):
             {"module_id": "setbuilder", "extras": "setbuilder", "extras_modules": ("x",)},
             "has no extras group",
         ),
-    ],
-)
+    ])
 def test_an_entry_missing_its_metadata_fails_to_register(kwargs, expected):
     """A new verb fails by omission. This is the omission half."""
     base = dict(
         name="demo.verb", summary="x", module="tests.cli_fixtures.plain", builder="build",
-        handler_key="demo.verb",
-    )
+        handler_key="demo.verb")
     with pytest.raises(ValueError) as excinfo:
         registry.Entry(**{**base, **kwargs})
     assert expected in str(excinfo.value)
@@ -905,8 +881,7 @@ def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
         if present:
             leftover.append(
                 f"{entry.module} now exists, so {entry.planned_in} has landed. Clear planned_in on "
-                f"{entry.name!r} so the conformance assertions start driving it."
-            )
+                f"{entry.name!r} so the conformance assertions start driving it.")
     assert not leftover, leftover
 
 
@@ -1079,8 +1054,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "sync.mark": lambda: [
             "--xml",
             str(outbound_fakes.write_export(library / "landed").rename(
-                library / "landed" / "no-such-pass_synced_inboxed.xml"
-            )),
+                library / "landed" / "no-such-pass_synced_inboxed.xml")),
         ],
         # R-838. No mark record, so an empty plan and NO_OP; tests/test_sync_unmark.py.
         "sync.unmark": ["--pass", "no-such-pass_synced"],
@@ -1123,8 +1097,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             "no-such-label",
             "--xml",
             str(outbound_fakes.write_export(library / "label-landed").rename(
-                library / "label-landed" / "no-such-batch_inboxed.xml"
-            )),
+                library / "label-landed" / "no-such-batch_inboxed.xml")),
         ],
         # R-837. An empty list reaches the gate, NO_OP; lazy, as it writes. test_export_set.
         "export.set": lambda: [
@@ -1260,15 +1233,12 @@ def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
             self.requests.append(request)
             body = hit("Aurora Bloom", "Sun Path")
             return Response(status=200, body=json.dumps(body).encode())
-
     monkeypatch.setattr(acrcloud, "http_transport", _Repeating())
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(25.0))
     fake = FakeCatalogue(
-        searches={("Aurora Bloom", "Sun Path"): [Hit("tid-1", "Aurora Bloom", "Sun Path")]}
-    )
+        searches={("Aurora Bloom", "Sun Path"): [Hit("tid-1", "Aurora Bloom", "Sun Path")]})
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     bind_account(monkeypatch, outbound_fakes.StrictAccount())
-
     path = Path(config.load().library.root) / "Music" / "conformance-set.mp3"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"ID3")
@@ -1332,7 +1302,6 @@ def _a_pass_with_no_vocal_model_and_nothing_new(monkeypatch) -> list[str]:
                 "warnings": [],
             }
         return real(argv)
-
     monkeypatch.setattr(tail, "dispatch", nothing_new)
     return []
 
@@ -1363,7 +1332,6 @@ def _a_source_playlist_in_a_folder() -> list[str]:
 
     def in_a_folder(handle, source):
         handle.create_playlist(source, parent=handle.create_playlist_folder("Favorites"))
-
     return _with_the_source_playlist(in_a_folder)
 
 
@@ -1391,8 +1359,7 @@ def _finished_account_playlist_pass_on_a_native_tree() -> list[str]:
         job = intake_cli.queue_playlist(
             store, config.load(), handler_key="intake.playlist", reference="pl-a",
             tracks={"tid-one": track}, run_id=run_id, source_id=playlists.SOURCE_ID,
-            name="Sunset Warmup",
-        )
+            name="Sunset Warmup")
     _run_to_the_end(job)
     return ["--pass", missing_cli.synced_name(run_id)]
 
@@ -1414,8 +1381,7 @@ def _finished_set_job_on_a_native_tree() -> list[str]:
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store, handler_key="intake.set", payload=payload, cfg=config.load(),
-            item_ids=tuple(tracks),
-        )
+            item_ids=tuple(tracks))
     _run_to_the_end(job)
     return ["--job", job.job_id]
 
@@ -1427,8 +1393,7 @@ def _record_native(cfg, tree, on) -> None:
     record = tree_registry.TreeRecord(
         tree_id=tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=on,
         root_id=cutover_fixtures.one_root(cfg, tree.display),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+        source=tree_registry.DerivationSource.TAXONOMY)
     tree_registry.write(cfg, tree_registry.read(cfg).with_record(record))
 
 
@@ -1547,8 +1512,7 @@ def _already_cut_over() -> list[str]:
     if not tree_registry.read(cfg).is_database_native(tree_id):
         tree_registry.record_cutover(
             cfg, tree_id, root_id="a-root", on=date(2026, 9, 27),
-            source=tree_registry.DerivationSource.TAXONOMY,
-        )
+            source=tree_registry.DerivationSource.TAXONOMY)
     return [tree_id]
 
 
@@ -1559,8 +1523,7 @@ def _sample_decisions(entry: registry.Entry) -> list[str]:
 
 @pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
 def test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two(
-    entry, configured, monkeypatch
-):
+        entry, configured, monkeypatch):
     code, _, _ = drive([*_sample_decisions(entry), *entry.path, *_sample_arguments(entry, monkeypatch)])
     assert code in {int(c) for c in ExitCode}
     assert code != int(ExitCode.USAGE)
@@ -1658,8 +1621,7 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "the machine no test environment has. Closes with the disposable database fixture R-13 "
             "names, the first environment able to produce the state."
         ),
-    }
-)
+    })
 
 
 def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
@@ -1727,7 +1689,6 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
     answered: list[str] = []
     reached: list[str] = []
     run_id: str | None = None
-
     # One drive per gate and one that succeeds; falling out of the loop shows an extra refusal.
     for _ in range(len(declared) + 1):
         resume = ["--run", run_id] if run_id is not None else []
@@ -1760,7 +1721,6 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
         code, _, err = drive(answer)
         assert code == int(ExitCode.OK), err
         assert gates.load(run_id).decisions[spec.name].actor == "a-person", "no actor recorded"
-
     raise AssertionError(f"{entry.name} still refuses after every gate it declares was answered")
 
 
@@ -1793,8 +1753,7 @@ def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
 #: A second, explicit gate for a one gate verb, as entries with the cloud sync decision carry.
 _SECOND_GATE = registry.GateSpec(
     name="profile.set.second", options=("go", "abort"),
-    prompt="A second decision on the same verb?", explicit=True,
-)
+    prompt="A second decision on the same verb?", explicit=True)
 
 
 def _require_every_gate(ctx):
@@ -1805,8 +1764,7 @@ def _require_every_gate(ctx):
 
 
 @pytest.mark.parametrize(
-    "explicit_first", [False, True], ids=["plain-then-explicit", "explicit-then-explicit"]
-)
+    "explicit_first", [False, True], ids=["plain-then-explicit", "explicit-then-explicit"])
 def test_conformance_3_admits_a_verb_carrying_two_gates(explicit_first, configured, monkeypatch):
     """In both orderings; only the handler is synthetic."""
     base = registry.entry("profile.set")
@@ -1845,12 +1803,10 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
         item = review.offer(
             store, queue=queue, kind="conformance", identity=keyed, payload=keyed,
             options=(review.Option(option_id="opt-one", summary="the one candidate"),),
-            handler_key=entry.handler_key,
-        )
+            handler_key=entry.handler_key)
         assert item.verdict is None
         addressed = review.list_items(store, handler_key=entry.handler_key).items
         assert [held.item_id for held in addressed] == [item.item_id], entry.name
-
     verdict = ["--verdict", "accepted", "--option", "opt-one"]
     code, out, err = drive(["--output", "json", "review", "resolve", item.item_id, *verdict])
     assert code == int(ExitCode.OK), err or out
@@ -1897,8 +1853,7 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 
 @pytest.mark.parametrize("entry", [e for e in ALL_ENTRIES if e.destructive], ids=lambda e: e.name)
 def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
-    entry, configured, tmp_path
-):
+        entry, configured, tmp_path):
     """Assertion 6 (U8): three refusals, three codes, no writes; ``destructive`` is the trigger,
     not ``writes`` (KTD24). This drives the shared gate, a gap a residual records."""
     import importlib
@@ -1915,11 +1870,9 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
                 raise AssertionError("the gates admitted a session they should have refused")
         assert _state_fingerprint(*roots) == before, f"{entry.name} wrote on a refused path"
         return excinfo.value.cause.code
-
     # 1. A mismatched volume, first, since it must refuse before any path resolves.
     wrong_volume = refuse_with(
-        identity_provider=lambda _path: "0000-0000", mount_enumerator=lambda: ()
-    )
+        identity_provider=lambda _path: "0000-0000", mount_enumerator=lambda: ())
     # 2. No backup acknowledgment: the volume matches and nothing is recorded.
     no_acknowledgment = refuse_with(identity_provider=matching)
     # 3. The lock held elsewhere: the acknowledgment is minted first, and the lock
@@ -1942,12 +1895,10 @@ _SHIPPED = taxonomy.default_taxonomy()
 _TREES = (_SHIPPED.tree, _SHIPPED.intake, _SHIPPED.intake_old, _SHIPPED.inspiration)
 TAXONOMY_IDS = frozenset(
     {tree.id for tree in _TREES} | set(_SHIPPED.bucket_ids())
-    | {band.id for band in _SHIPPED.energy.bands} | {sub.id for sub in _SHIPPED.sub_classes}
-)
+    | {band.id for band in _SHIPPED.energy.bands} | {sub.id for sub in _SHIPPED.sub_classes})
 TAXONOMY_DISPLAY_NAMES = frozenset(
     {tree.display for tree in _TREES} | {bucket.display for bucket in _SHIPPED.buckets}
-    | {band.display for band in _SHIPPED.energy.bands}
-)
+    | {band.display for band in _SHIPPED.energy.bands})
 
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
@@ -2016,20 +1967,17 @@ def _precondition_problems(declared, healthy, broken) -> list[str]:
                 problems.append(f"{key} answered with no title")
             if len(finding.detail.strip()) <= 20:
                 problems.append(
-                    f"{key} answered with nothing that says what was observed: {finding.detail!r}"
-                )
+                    f"{key} answered with nothing that says what was observed: {finding.detail!r}")
         if healthy[key].status is Status.FAIL:
             problems.append(
                 f"{key} refuses on a machine where nothing is broken, so it fires "
-                f"on a correct install: {healthy[key].detail}"
-            )
+                f"on a correct install: {healthy[key].detail}")
         if broken[key].status is not Status.FAIL:
             problems.append(
                 f"{key} is declared as a precondition by "
                 f"{sorted(e.name for e in registry.entries() if key in e.doctor_checks)} "
                 f"and does not refuse on a machine where it is broken, so no verb "
-                f"declaring it is gated on anything: {broken[key].detail}"
-            )
+                f"declaring it is gated on anything: {broken[key].detail}")
         elif broken[key].remedy is None:
             problems.append(f"{key} refuses with no remedy")
     return problems
@@ -2042,7 +1990,6 @@ def test_conformance_8_rejects_a_doctor_that_answers_without_working():
 
     def stub(status: Status, detail: str = "", title: str = "") -> dict:
         return {k: Finding(key=k, title=title, status=status, detail=detail) for k in declared}
-
     empty = stub(Status.OK)
     assert _precondition_problems(declared, empty, empty), "an empty answer passed"
     always_green = stub(Status.OK, detail="everything is fine on this machine", title="t")
@@ -2070,25 +2017,21 @@ def test_every_feature_row_maps_to_a_verb_at_its_stated_disposition():
             if owners:
                 wrongly_claimed.append(
                     f"row {feature.row} ({feature.title}) is {feature.disposition} "
-                    f"but claimed by {[o.name for o in owners]}"
-                )
+                    f"but claimed by {[o.name for o in owners]}")
             continue
         if not owners:
             missing.append(f"row {feature.row} ({feature.title}) has no verb")
             continue
         if feature.disposition == "core" and all(o.module_id for o in owners):
             misgated.append(
-                f"row {feature.row} is Core but every verb for it is behind a module toggle"
-            )
+                f"row {feature.row} is Core but every verb for it is behind a module toggle")
         if feature.disposition == "module" and feature.row not in registry.POLICY_ROWS:
             if not any(o.module_id for o in owners):
                 misgated.append(
                     f"row {feature.row} is a Module row but no verb for it is gated "
-                    f"by a module toggle, so a slim install gets it anyway (R5)"
-                )
+                    f"by a module toggle, so a slim install gets it anyway (R5)")
     assert not missing and not wrongly_claimed and not misgated, "\n".join(
-        missing + wrongly_claimed + misgated
-    )
+        missing + wrongly_claimed + misgated)
 
 
 def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
@@ -2114,8 +2057,7 @@ def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
 
 
 def _verb_paths(
-    parser: argparse.ArgumentParser, prefix: tuple[str, ...] = ()
-) -> set[tuple[str, ...]]:
+        parser: argparse.ArgumentParser, prefix: tuple[str, ...] = ()) -> set[tuple[str, ...]]:
     """Every command path a built parser answers to, walked through its subparsers."""
     found: set[tuple[str, ...]] = set()
     for action in parser._actions:
@@ -2128,8 +2070,7 @@ def _verb_paths(
 
 #: Every toggle gating a LANDED verb, derived so one whose first verb lands joins on its own.
 _TOGGLES_WITH_LANDED_VERBS = sorted(
-    {entry.module_id for entry in registry.landed_entries()} - {None} - profiles.ALWAYS_AVAILABLE
-)
+    {entry.module_id for entry in registry.landed_entries()} - {None} - profiles.ALWAYS_AVAILABLE)
 
 
 @pytest.fixture(scope="module")
@@ -2171,8 +2112,7 @@ QUEUES_BY_ROLE_NOT_BY_ENQUEUE: Mapping[str, str] = MappingProxyType(
             "the resume verb spawns the child that drives an existing job and never files one of "
             "its own"
         ),
-    }
-)
+    })
 
 
 def _enqueue_calls(tree: ast.AST) -> int:
@@ -2219,13 +2159,11 @@ def test_library_adoption_is_available_in_every_profile():
 
 # The unit's verification step: a scripted non-interactive run hits a gate
 def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
-    configured, tmp_path
-):
+        configured, tmp_path):
     """With no standard input it leaves a resumable run, rather than aborting at end of file."""
     result = subprocess.run(
         [sys.executable, "-m", "cratekit.cli", *_TO_SLIM], capture_output=True, text=True,
-        stdin=subprocess.DEVNULL, env=dict(os.environ, PYTHONPATH=str(SRC_ROOT)), cwd=tmp_path,
-    )
+        stdin=subprocess.DEVNULL, env=dict(os.environ, PYTHONPATH=str(SRC_ROOT)), cwd=tmp_path)
     assert result.returncode == int(ExitCode.DECISION_REQUIRED), result.stderr
     envelope = json.loads(result.stdout)
     assert envelope["cause"]["detail"]["gate"] == "profile.set.apply"
@@ -2243,16 +2181,13 @@ def test_an_unconfigured_machine_refuses_with_a_precondition_and_a_remedy():
 
 
 @pytest.mark.parametrize(
-    "raised",
-    [ZeroDivisionError("something nobody predicted"), SystemExit(2)],
-    ids=["something-unexpected", "exits-the-process-directly"],
-)
+    "raised", [ZeroDivisionError("something nobody predicted"), SystemExit(2)],
+    ids=["something-unexpected", "exits-the-process-directly"])
 def test_a_verb_that_raises_or_exits_becomes_an_internal_cause(configured, monkeypatch, raised):
     """No traceback escapes the boundary, and a direct ``SystemExit`` is converted, not obeyed."""
 
     def explode(ctx):
         raise raised
-
     monkeypatch.setattr("cratekit.cli.verbs.profile.show", explode)
     code, out, _ = drive(["--output", "json", "profile", "show"])
     assert code == int(ExitCode.INTERNAL)
@@ -2270,8 +2205,7 @@ def test_human_mode_renders_the_gate_with_its_options_and_how_to_answer(configur
 def _context_spec(*, explicit: bool) -> registry.GateSpec:
     """One gate to ask, built here because the property is the resolver's."""
     return registry.GateSpec(
-        name="context.probe", options=("proceed", "abort"), prompt="Proceed?", explicit=explicit
-    )
+        name="context.probe", options=("proceed", "abort"), prompt="Proceed?", explicit=explicit)
 
 
 def _probe_state() -> gates.RunState:
@@ -2341,11 +2275,9 @@ _APPLY_PROFILE = "cratekit.cli.verbs.profile.apply_profile"
 
 
 @pytest.mark.parametrize(
-    "handler", [_reaches_no_gate, _reaches_only_the_first_gate], ids=["no-gate", "only-the-first"]
-)
+    "handler", [_reaches_no_gate, _reaches_only_the_first_gate], ids=["no-gate", "only-the-first"])
 def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
-    configured, monkeypatch, handler
-):
+        configured, monkeypatch, handler):
     """Nothing else holds a handler to its declared gates."""
     base = registry.entry("profile.set")
     promoted = replace(base, gates=(base.gates[0], _SECOND_GATE))
@@ -2356,8 +2288,7 @@ def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
 
 
 def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
-    configured, monkeypatch
-):
+        configured, monkeypatch):
     base = registry.entry("profile.set")
     with_exempt = replace(base, gates=(base.gates[0], registry.CLOUD_SYNC_UNREADABLE_GATE))
     _swap_in(monkeypatch, with_exempt)

@@ -84,14 +84,12 @@ def cfg(library, monkeypatch):
 def _platform_seams(monkeypatch):
     """Everything about THIS machine a temporary library cannot speak for."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         rb_writer, "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0})
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +125,12 @@ def _refused_by(act, *positional, **keyword):
     return caught.value.cause
 
 
+@pytest.fixture
+def intended(cfg):
+    """PLAIN's routing decided for this run, before the library holds its row."""
+    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
+
+
 def _music(cfg, name: str) -> str:
     return f"{cfg.library.root}/Music/{name}"
 
@@ -144,8 +148,7 @@ def _intent(cfg, declared_taxonomy, name: str, *, session_id: str = SESSION_ID):
     location = _music(cfg, name)
     return routing_pass.RoutingIntent(
         track=routing_pass.track_id(location), session_id=session_id, location=location,
-        tree=TREE_ID, bucket=bucket_id, sub=sub_id, decided="2026-08-02T00:00:00+00:00",
-    )
+        tree=TREE_ID, bucket=bucket_id, sub=sub_id, decided="2026-08-02T00:00:00+00:00")
 
 
 def _not_yet_there(cfg, declared_taxonomy):
@@ -162,9 +165,8 @@ def _filed_under(db, content_id: str):
     return playlist, db.session.query(tables.DjmdPlaylist).filter_by(ID=playlist.ParentID).one()
 
 
-def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(cfg):
+def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(cfg, intended):
     """A restarted process must be able to read what it believed."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     reloaded = routing_pass.read(cfg)
     assert [entry.location for entry in reloaded.for_session(SESSION_ID)] == [_music(cfg, PLAIN)]
     assert reloaded.for_session(SESSION_ID)[0].state is routing_pass.TrackState.INTENDED
@@ -180,8 +182,7 @@ def test_two_spellings_of_one_filename_are_one_record(cfg):
     assert len(routing_pass.read(cfg).for_session(SESSION_ID)) == 1
 
 
-def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(cfg):
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
+def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(cfg, intended):
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     assert [entry.track for entry in routing_pass.read(cfg).outstanding(SESSION_ID)] == [track]
     routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID)
@@ -201,9 +202,8 @@ def test_every_status_is_either_settled_or_outstanding():
     assert routing_pass.TrackState.INTENDED in routing_pass.OUTSTANDING
 
 
-def test_no_taxonomy_display_name_reaches_the_persisted_record(cfg):
+def test_no_taxonomy_display_name_reaches_the_persisted_record(cfg, intended):
     """D5 and R19, asserted over the BYTES rather than over the shape."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     text = routing_pass.path_for(cfg).read_text()
     displays = {DECLARED.tree.display, DECLARED.intake.display}
     displays |= {bucket.display for bucket in DECLARED.buckets}
@@ -239,9 +239,8 @@ def test_an_absent_ledger_is_the_empty_one(cfg):
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-def test_acknowledging_without_a_named_actor_is_refused(cfg):
+def test_acknowledging_without_a_named_actor_is_refused(cfg, intended):
     """R34's shape, one layer up: somebody says a track is gone, not something."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     with pytest.raises(ValueError):
         routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="   ")
@@ -258,8 +257,7 @@ def _index(cfg, rows, *, prefix_map=()):
 def _placements(cfg, declared_taxonomy, intents, rows, *, prefix_map=()):
     index = _index(cfg, rows, prefix_map=prefix_map)
     return routing_pass.resolve_placements(
-        intents, index, declared_taxonomy, root=cfg.library.root, prefix_map=prefix_map
-    )
+        intents, index, declared_taxonomy, root=cfg.library.root, prefix_map=prefix_map)
 
 
 def test_every_sub_the_taxonomy_can_route_to_resolves_to_a_display_name():
@@ -358,8 +356,7 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
     if mode is tree_registry.Mode.DATABASE:
         record = tree_registry.TreeRecord(
             tree_id=TREE_ID, mode=mode, cutover_on=date(2026, 8, 1), root_id=root_id,
-            source=tree_registry.DerivationSource.TAXONOMY,
-        )
+            source=tree_registry.DerivationSource.TAXONOMY)
         return tree_registry.Registry((record,))
     return tree_registry.Registry((tree_registry.TreeRecord(tree_id=TREE_ID, mode=mode),))
 
@@ -371,8 +368,7 @@ def _record_locations(db_path: Path, recorded: dict[str, str], *, removed=frozen
         for content_id, path in recorded.items():
             conn.execute(
                 "UPDATE djmdContent SET FolderPath = ?, rb_local_deleted = ? WHERE ID = ?",
-                (path, 1 if content_id in removed else 0, content_id),
-            )
+                (path, 1 if content_id in removed else 0, content_id))
         conn.commit()
     finally:
         conn.close()
@@ -430,17 +426,15 @@ def _route(cfg, db, adopted, declared_taxonomy, *, rows=None, registry=None, ses
     return routing_pass.route(
         cfg, db, session_id=session_id, registry=registry, declared=declared_taxonomy,
         rows=routing_pass.content_rows(db) if rows is None else rows,
-        root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root) / "Music"], **kwargs,
-    )
+        root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root) / "Music"], **kwargs)
 
 
 def _memberships(db, content_id: str) -> int:
     return db.get_playlist_songs(ContentID=str(content_id)).count()
 
 
-def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(cfg, db, gated_root):
+def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(cfg, db, gated_root, intended):
     """The happy path, end to end: decide, import, route, and the mark follows."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     report = _route(cfg, db, gated_root, DECLARED)
     assert report.readiness is routing_pass.Readiness.READY
     assert len(report.routed) == 1
@@ -450,9 +444,8 @@ def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(cfg, db, gat
     assert _memberships(db, "2") == 1
 
 
-def test_the_track_lands_inside_the_tree_the_cutover_adopted(cfg, db, gated_root):
+def test_the_track_lands_inside_the_tree_the_cutover_adopted(cfg, db, gated_root, intended):
     """Proved by walking UP from the membership row, never down by name."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     _route(cfg, db, gated_root, DECLARED)
     folder_display, sub_display = routing_pass.destination(DECLARED, *_destination(DECLARED))
     playlist, folder = _filed_under(db, "2")
@@ -482,7 +475,6 @@ def test_a_crash_between_the_commit_and_the_mark_converges(cfg, db, gated_root, 
 
     def die(*args, **kwargs):
         raise RuntimeError("the process was killed between the commit and the mark")
-
     monkeypatch.setattr(routing_pass, "mark", die)
     with pytest.raises(RuntimeError, match="between the commit and the mark"):
         _route(cfg, db, gated_root, DECLARED)
@@ -498,9 +490,8 @@ def test_a_crash_between_the_commit_and_the_mark_converges(cfg, db, gated_root, 
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-def test_a_second_pass_over_a_settled_run_writes_nothing(cfg, db, gated_root):
+def test_a_second_pass_over_a_settled_run_writes_nothing(cfg, db, gated_root, intended):
     """Re-running is the recovery procedure, so re-running must be free."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     _route(cfg, db, gated_root, DECLARED)
     second = _route(cfg, db, gated_root, DECLARED)
     assert second.placed == ()
@@ -517,9 +508,8 @@ def test_a_track_whose_membership_cannot_be_proved_is_not_marked(cfg, db, gated_
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
 
-def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(cfg, db, gated_root):
+def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(cfg, db, gated_root, intended):
     """U18's inverse guard reaches the caller with its remedy, and the ledger is untouched."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
         _route(cfg, db, gated_root, DECLARED, registry=_registry(tree_registry.Mode.XML))
     assert isinstance(excinfo.value, CratekitError)
@@ -529,8 +519,7 @@ def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(cfg, db, gated_roo
 
 
 def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
-    cfg, monkeypatch, db, adopted_root
-):
+    cfg, monkeypatch, db, adopted_root):
     """The session gates are the writer's, and the pass does not route around them."""
     _volume_agrees(cfg, monkeypatch)
     routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
@@ -592,9 +581,8 @@ def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(cfg, db,
     _refused_by(routing_pass.close_run, record, cfg)
 
 
-def test_a_track_deleted_after_import_is_surfaced(cfg, db, gated_root):
+def test_a_track_deleted_after_import_is_surfaced(cfg, db, gated_root, intended):
     """Surfaced, never auto-skipped."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     report = _route(cfg, db, gated_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
     assert report.readiness is routing_pass.Readiness.READY
     assert [item.placement for item in report.withdrawn] == [routing_pass.Placement.WITHDRAWN]
@@ -602,9 +590,8 @@ def test_a_track_deleted_after_import_is_surfaced(cfg, db, gated_root):
     assert report.memberships == ()
 
 
-def test_the_routing_pass_never_acknowledges_a_track_by_itself(cfg, db, gated_root):
+def test_the_routing_pass_never_acknowledges_a_track_by_itself(cfg, db, gated_root, intended):
     """The separation that makes surfacing mean anything."""
-    routing_pass.record_intents(cfg, [_intent(cfg, DECLARED, PLAIN)])
     _route(cfg, db, gated_root, DECLARED, rows=[_row(cfg, PLAIN, "2", deleted=True)])
     states = {entry.state for entry in routing_pass.read(cfg).for_session(SESSION_ID)}
     assert states == {routing_pass.TrackState.INTENDED}
@@ -655,7 +642,6 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, monkeypatch):
         adopted = rb_writer.ensure_folder(handle, TREE_DISPLAY)
         handle.session.commit()
         return _route(cfg, handle, adopted, DECLARED), adopted
-
     # Before the import nothing resolves or is marked, and the run refuses to close.
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
     try:
@@ -774,8 +760,7 @@ def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
     called = any(
         name == "record_intents"
         for path in sorted(package.rglob("*.py"))
-        for name, _node in _calls(path.read_text())
-    )
+        for name, _node in _calls(path.read_text()))
     assert called, "the intake pipeline never records a routing intent"
 
 
@@ -846,14 +831,12 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg, marker):
     class Row:
         ID = "9"
         FolderPath = "/somewhere/nothing.flac"
-
     if marker is None:
         Row.rb_local_deleted = None
 
     class Blind:
         def get_content(self):
             return [Row()]
-
     assert _refused_by(list, routing_pass.content_rows(Blind())).code is ExitCode.LIBRARY_UNREADABLE
 
 
@@ -911,8 +894,7 @@ def _rename_bucket_folder(db, declared_taxonomy) -> None:
 
 
 def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating(
-    cfg, db, gated_root, monkeypatch
-):
+    cfg, db, gated_root, monkeypatch):
     """With no recorded node map a rename refuses, rather than duplicating (R19, D5)."""
     _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     # The node map the pass wrote is what makes a rename converge; wiped, the refusal stands.
@@ -933,8 +915,7 @@ def _taxonomy_with_the_first_bucket_renamed(new_display: str):
 
 
 def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicating(
-    cfg, db, gated_root, monkeypatch
-):
+    cfg, db, gated_root, monkeypatch):
     """The template moved, not the library. The node map still names the folder."""
     _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     renamed = _taxonomy_with_the_first_bucket_renamed("A Bucket Renamed")
@@ -946,8 +927,7 @@ def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicatin
 
 
 def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
-    cfg, db, gated_root, monkeypatch
-):
+    cfg, db, gated_root, monkeypatch):
     """P5's countdown for the refusal above, so it cannot become permanent."""
     _crash_between_the_commit_and_the_mark(cfg, db, gated_root, DECLARED, monkeypatch)
     _rename_bucket_folder(db, DECLARED)
@@ -1014,8 +994,7 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
     processes = [
         subprocess.Popen(
             [sys.executable, str(script), str(library), run, str(each)], env=environment,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         for run in ("run-one", "run-two")
     ]
     for process in processes:
@@ -1059,8 +1038,7 @@ def _awaiting_import(cfg) -> None:
     record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
     pending = session.pending_import(
         record, artifact=cfg.library.root / "an-export.xml",
-        summary="import this export into rekordbox", verify_verb="a-verify-verb",
-    )
+        summary="import this export into rekordbox", verify_verb="a-verify-verb")
     session.mark_awaiting_import(record, pending, cfg)
 
 
@@ -1214,24 +1192,21 @@ def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
 
 
 @pytest.mark.parametrize(
-    "source",
-    [
+    "source", [
         'routing_pass.acknowledge(cfg, t, actor="cli")', "acknowledge(cfg, t, actor='cli')",
         'routing_pass.acknowledge(cfg, t, actor=f"cli")',
         'ACTOR = "cli"\nrouting_pass.acknowledge(cfg, t, actor=ACTOR)',
         'routing_pass.acknowledge(cfg, t, actor="cli" if x else "cli")',
         'routing_pass.acknowledge(cfg, t, **{"actor": "cli"})',
         'routing_pass.acknowledge(cfg, t, actor="cl" + "i")',
-    ],
-)
+    ])
 def test_the_made_up_actor_guard_bites_each_evasion(source):
     """P7's first half. Four documented bypasses, and each one has to fail."""
     assert _made_up_actors(source), f"the guard did not bite: {source}"
 
 
 @pytest.mark.parametrize(
-    "source",
-    [
+    "source", [
         "routing_pass.acknowledge(cfg, t, actor=decision.actor)",
         "def f(actor):\n    routing_pass.acknowledge(cfg, t, actor=actor)",
         'routing_pass.acknowledge(cfg, t, actor=f"{decision.actor}")',
@@ -1239,8 +1214,7 @@ def test_the_made_up_actor_guard_bites_each_evasion(source):
         "routing_pass.acknowledge(cfg, t, actor=record.actor or holder.name)",
         '"acknowledge with actor=... somewhere in prose"',
         "acknowledge_receipt(cfg, t, actor='cli')",
-    ],
-)
+    ])
 def test_the_made_up_actor_guard_does_not_fire_on_correct_code(source):
     """P7's second half, and the half that decides whether the guard survives."""
     assert _made_up_actors(source) == [], f"the guard fired on correct code: {source}"

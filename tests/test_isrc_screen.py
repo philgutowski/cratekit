@@ -106,8 +106,7 @@ def gate(tmp_path: Path) -> Gate:
     return Gate(
         GateSettings(min_interval_s=0.0, cooldown_s=900.0),
         path=tmp_path / "gate" / "provider_gate.json",
-        lock_path=tmp_path / "gate" / "provider_gate.lock", sleep=lambda seconds: None,
-    )
+        lock_path=tmp_path / "gate" / "provider_gate.lock", sleep=lambda seconds: None)
 
 
 @pytest.fixture(autouse=True)
@@ -137,8 +136,7 @@ def app_on(gate: Gate, api: Api) -> catalogue_api.AppCatalogue:
 def adapter(gate: Gate, api: Api) -> tidal_account.TidalAccount:
     """The account over the app client, with the ISRC cache off (U206) so the saving is counted."""
     return tidal_account.TidalAccount(
-        Account(), sleep=no_sleep, catalogue=app_on(gate, api), cache=isrc_cache.Cache(days=0)
-    )
+        Account(), sleep=no_sleep, catalogue=app_on(gate, api), cache=isrc_cache.Cache(days=0))
 
 
 def app_reads(gate: Gate) -> int:
@@ -331,8 +329,7 @@ def test_the_gates_own_park_passes_through_the_screen(gate):
         {"data": [], "links": {"next": "/tracks?page[cursor]=abc"}}, {"data": ["not a resource"]},
         {"data": "not a list"},
     ],
-    ids=["no-isrc", "unreadable-isrc", "a-code-not-asked", "paged", "not-a-resource", "no-list"],
-)
+    ids=["no-isrc", "unreadable-isrc", "a-code-not-asked", "paged", "not-a-resource", "no-list"])
 def test_an_answer_that_cannot_be_attributed_whole_marks_nothing_absent(gate, said):
     codes, api, account = batch_answered(gate, 0, 3, said)
     assert account.screen_isrcs(codes) == 1
@@ -415,8 +412,7 @@ def test_the_mirror_screens_only_the_rows_it_would_ask_the_provider_about():
     matcher = mirror.Matcher(
         account, {"c1": ("r1", code(1))}, identify,
         misses={"c3": ("no match", (code(3), "Title 3", "Artist 3", "", ""))}, known={"c2": "r2"},
-        seen={"c6": ("r6", code(6), "")},
-    )
+        seen={"c6": ("r6", code(6), "")})
     rows = [
         row(1, isrc=code(1)),  # linked
         row(2, isrc=code(2)),  # its landing recorded its track
@@ -453,8 +449,7 @@ def test_a_provider_track_under_another_emoji_title_does_not_agree():
     def provider(title: str) -> SimpleNamespace:
         artist = SimpleNamespace(name="Aurora Bloom")
         return SimpleNamespace(
-            id="1", name=title, version=None, artist=artist, artists=[artist], isrc="X"
-        )
+            id="1", name=title, version=None, artist=artist, artists=[artist], isrc="X")
     drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
     assert tidal_account._agrees(drop, provider("\U0001f525")) is False
     assert tidal_account._agrees(drop, provider("\U0001f4a7")) is True

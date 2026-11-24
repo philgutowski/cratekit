@@ -55,7 +55,6 @@ def test_an_allowance_that_cannot_be_read_falls_through_to_the_machines_count(mo
         if refusal is not None:
             raise refusal
         return set()
-
     monkeypatch.setattr(os, "sched_getaffinity", affinity, raising=False)
     monkeypatch.setattr(os, "process_cpu_count", lambda: 11, raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: 12)
@@ -63,11 +62,9 @@ def test_an_allowance_that_cannot_be_read_falls_through_to_the_machines_count(mo
 
 
 @pytest.mark.parametrize(
-    "answer,expected", [(8, 8), (None, None), (0, None), (-4, None), (True, None), ("8", None)]
-)
+    "answer,expected", [(8, 8), (None, None), (0, None), (-4, None), (True, None), ("8", None)])
 def test_with_no_allowance_the_machines_count_is_read_and_a_non_count_is_unknown(
-    monkeypatch, answer, expected
-):
+    monkeypatch, answer, expected):
     monkeypatch.delattr(os, "sched_getaffinity", raising=False)
     monkeypatch.delattr(os, "process_cpu_count", raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: answer)
@@ -79,11 +76,9 @@ def test_with_no_allowance_the_machines_count_is_read_and_a_non_count_is_unknown
 
 @pytest.mark.parametrize(
     "count,reserved,expected",
-    [(11, 2, 9), (4, 2, 2), (3, 2, 1), (2, 2, 1), (1, 2, 1), (8, 0, 8), (8, 1, 7)],
-)
+    [(11, 2, 9), (4, 2, 2), (3, 2, 1), (2, 2, 1), (1, 2, 1), (8, 0, 8), (8, 1, 7)])
 def test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one(
-    count, reserved, expected
-):
+    count, reserved, expected):
     assert cores.worker_ceiling(reserved=reserved, read=lambda: count) == expected
 
 
@@ -95,7 +90,6 @@ def test_not_knowing_the_cores_is_a_ceiling_of_one(answer):
 def test_a_reading_that_raises_is_a_ceiling_of_one():
     def refuses():
         raise RuntimeError("this platform will not say")
-
     assert cores.worker_ceiling(reserved=0, read=refuses) == 1
 
 
@@ -130,15 +124,12 @@ def core_count_reads(source: str) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "source",
-    [
+    "source", [
         "import os\nwidth = os.cpu_count() - 2\n",
         "import os\nwidth = len(os.sched_getaffinity(0))\n", "from os import process_cpu_count\n",
         "import os\nwidth = getattr(os, 'cpu_count')()\n",
         "import psutil\nwidth = len(psutil.Process().cpu_affinity())\n",
-    ],
-    ids=["cpu-count", "affinity", "imported", "through-getattr", "psutil"],
-)
+    ], ids=["cpu-count", "affinity", "imported", "through-getattr", "psutil"])
 def test_the_walk_sees_a_core_count_read_in_every_spelling(source):
     assert core_count_reads(source) != []
 
@@ -212,8 +203,7 @@ def ceilings_used_as_anything_else(source: str) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "source",
-    [
+    "source", [
         "from cratekit.core import cores, pool\n"
         "def run(items):\n"
         "    width = cores.worker_ceiling(reserved=2)\n"
@@ -228,9 +218,7 @@ def ceilings_used_as_anything_else(source: str) -> list[str]:
         "from concurrent.futures import ThreadPoolExecutor\n"
         "def run():\n"
         "    return ThreadPoolExecutor(max_workers=worker_ceiling(reserved=1))\n",
-    ],
-    ids=["bound-to-a-name", "the-raw-count", "as-the-item-count", "as-a-pools-width"],
-)
+    ], ids=["bound-to-a-name", "the-raw-count", "as-the-item-count", "as-a-pools-width"])
 def test_a_ceiling_used_as_anything_but_the_planners_ceiling_is_seen(source):
     assert ceilings_used_as_anything_else(source) != []
 
@@ -259,14 +247,12 @@ def test_a_ceiling_from_many_cores_never_widens_what_memory_affords():
     assert ceiling == 62
     afforded = pool.plan_pool(
         worker_bytes=GIB, items=500, ceiling=ceiling, headroom_percent=50,
-        read_available=lambda: 8 * GIB, read_pressure=_calm,
-    )
+        read_available=lambda: 8 * GIB, read_pressure=_calm)
     # (8 less the 2 reserved) at half is three workers, not sixty two.
     assert afforded.workers == 3 and afforded.bound is pool.Bound.AVAILABLE_MEMORY
     refused = pool.plan_pool(
         worker_bytes=GIB, items=500, ceiling=ceiling, read_available=lambda: 512 * GIB,
-        read_pressure=lambda: pool.Pressure(swap_used_bytes=2 * GIB, used_percent=10.0),
-    )
+        read_pressure=lambda: pool.Pressure(swap_used_bytes=2 * GIB, used_percent=10.0))
     assert refused.workers == 1 and refused.bound is pool.Bound.MEMORY_PRESSURE
     unread = pool.plan_pool(worker_bytes=GIB, items=500, ceiling=ceiling, read_available=lambda: -1)
     assert unread.workers == 1 and unread.bound is pool.Bound.MEMORY_UNREADABLE

@@ -84,12 +84,9 @@ EMPTY_BEATPORT = searchers.Fetched(text=_beatport_page([]), status=200)
 
 
 def routed(
-    *,
-    search: searchers.Fetched | str,
-    releases: dict[int, searchers.Fetched | str] | None = None,
-    beatport: searchers.Fetched | str = EMPTY_BEATPORT,
-    seen: list[str] | None = None,
-):
+        *, search: searchers.Fetched | str,
+        releases: dict[int, searchers.Fetched | str] | None = None,
+        beatport: searchers.Fetched | str = EMPTY_BEATPORT, seen: list[str] | None = None):
     """A fetch answering Beatport and Discogs by URL, a release by its exact URL."""
     by_release = {f"{searchers.DISCOGS_RELEASE}{n}": page for n, page in (releases or {}).items()}
 
@@ -107,7 +104,6 @@ def routed(
         if isinstance(answer, searchers.Fetched):
             return answer
         return searchers.Fetched(text=answer, status=200)
-
     return fetch
 
 
@@ -340,12 +336,10 @@ def test_no_token_is_not_asked_with_how_to_record_one_and_never_no_hit():
 def test_a_searcher_built_with_no_asker_has_no_token_and_reads_no_keychain(monkeypatch):
     def detonate(*_a, **_k):
         raise AssertionError("a direct caller reached the keychain")
-
     monkeypatch.setattr(secrets, "exists", detonate)
     monkeypatch.setattr(secrets, "get", detonate)
     hit = searchers.catalogue_searcher(
-        TAXONOMY, fetch=routed(search=results()), sleep=lambda _s: None
-    )(ARTIST, TITLE)
+        TAXONOMY, fetch=routed(search=results()), sleep=lambda _s: None)(ARTIST, TITLE)
     assert discogs_answer(hit).note == searchers.DISCOGS_NO_TOKEN
 
 
@@ -369,7 +363,6 @@ def test_the_general_catalogue_is_still_asked_beside_an_unasked_discogs(tmp_path
     def lookup(isrc):
         asked.append(isrc)
         return published.Published(published.SOURCE, "miss")
-
     result = tag.tag_one(
         path, searcher=searcher(routed(search=results()), token=None),
         published=published.second_opinion(TAXONOMY, lookup=lookup))
@@ -455,8 +448,7 @@ def test_beatport_unreachable_and_a_discogs_parse_break_refuse_as_a_defect():
 
 def test_a_walk_that_asked_nothing_is_a_decline_naming_what_it_passed_over():
     hit = searchers.catalogue_searcher(
-        TAXONOMY, walk=(searchers.DISCOGS,), sleep=lambda _s: None
-    )(ARTIST, TITLE)
+        TAXONOMY, walk=(searchers.DISCOGS,), sleep=lambda _s: None)(ARTIST, TITLE)
     assert hit.genre is None and hit.unread == (searchers.DISCOGS,)
 
 
@@ -491,7 +483,6 @@ def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] 
                 answer = queues[prefix]
                 return answer.pop(0) if isinstance(answer, list) else answer
         raise OSError(f"no route for {url}")
-
     fetch = searchers.default_fetch(get=get, sleep=naps.append, headers=searchers.discogs_headers(SENT))
     return searchers.discogs_asker(token=SENT, fetch=fetch, sleep=naps.append)
 
@@ -589,7 +580,6 @@ def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, s
     def leaky(url, headers, timeout):
         sent.append((url, dict(headers)))
         raise ValueError(f"Invalid header value {headers['Authorization']!r}")
-
     leaking = searchers.discogs_asker(
         token=SENT,
         fetch=searchers.default_fetch(get=leaky, sleep=lambda _s: None, headers=searchers.discogs_headers(SENT)),
@@ -638,7 +628,6 @@ def test_no_recorded_token_reads_no_keychain_and_is_not_asked(monkeypatch, fresh
 
     def detonate(_name):
         raise AssertionError("the keychain was read for a token nobody recorded")
-
     monkeypatch.setattr(secrets, "get", detonate)
     discogs = searchers.for_discogs()
     assert discogs.token is None
@@ -650,7 +639,6 @@ def test_a_recorded_token_the_keychain_lost_is_not_asked_and_says_so(monkeypatch
 
     def missing(name):
         raise secrets.CredentialMissing("gone", name=name)
-
     monkeypatch.setattr(secrets, "get", missing)
     said_ = searchers.for_discogs().ask(ARTIST, TITLE)
     assert said_ == searchers.NotAsked(searchers.DISCOGS, searchers.DISCOGS_TOKEN_LOST)
@@ -662,7 +650,6 @@ def test_a_keychain_that_cannot_be_read_is_refused_not_read_as_no_token(monkeypa
 
     def broken(name):
         raise secrets.CredentialBackendUnavailable("no backend", name=name)
-
     monkeypatch.setattr(secrets, "get", broken)
     with pytest.raises(CratekitError) as raised:
         searchers.for_discogs()
@@ -677,7 +664,6 @@ def test_the_worker_asker_is_one_per_process_and_reads_the_recorded_token(monkey
     def get(name):
         reads.append(name)
         return SENT
-
     monkeypatch.setattr(secrets, "get", get)
     first, second = searchers.for_discogs(), searchers.for_discogs()
     assert first is second and first.token == SENT
@@ -692,7 +678,6 @@ def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
         def ask(self, artist, title, *, track=None):
             calls.append((artist, title, track))
             return searchers.SourceOutcome(searchers.DISCOGS, searchers.Answer.MISS)
-
     monkeypatch.setattr(searchers, "for_discogs", lambda: Recording())
     monkeypatch.setattr(searchers, "default_fetch", lambda **_k: routed(search=results()))
     monkeypatch.setattr(searchers.Pacer, "wait", lambda self: 0.0)
@@ -748,7 +733,6 @@ def test_the_genre_is_resolved_by_suggest_tag_and_not_by_a_map(monkeypatch):
         if raw == "Nu-Disco":
             return real(declared, "Deep House", source=source)
         return real(declared, raw, bpm=bpm, source=source)
-
     monkeypatch.setattr(routing, "suggest_tag", moved)
     fetch = routed(search=results(7), releases={7: release(7, styles=("Nu-Disco",))})
     hit = searcher(fetch)(ARTIST, TITLE)
@@ -801,7 +785,6 @@ def test_files_discogs_was_not_asked_about_for_want_of_a_token_are_counted_and_w
                 {"source": "discogs", "answer": searchers.NOT_ASKED, "note": note},
             ],
         }
-
     matched_first = {
         "item": "c.flac",
         "genre_written": "Deep House",
@@ -882,7 +865,6 @@ def test_the_general_catalogue_waits_for_a_discogs_that_was_asked_and_unread():
     def lookup(isrc):
         asked.append(isrc)
         return published.Published(published.SOURCE, "matched", genres=("Rock",))
-
     hit = searcher(routed(search=searchers.Fetched(note="HTTP 503", status=503)))(ARTIST, TITLE)
     decided = published.second_opinion(TAXONOMY, lookup=lookup)(hit, "GBAYE0000001")
     assert asked == []
@@ -949,7 +931,6 @@ def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
         if url.startswith(searchers.DISCOGS_SEARCH):
             return Reply(200, results())
         raise OSError(url)
-
     monkeypatch.setattr(searchers, "_requests_get", get)
     discogs = searchers.discogs_asker(token=SENT, sleep=lambda _s: None)
     searchers.catalogue_searcher(TAXONOMY, sleep=lambda _s: None, discogs=discogs)(ARTIST, TITLE)

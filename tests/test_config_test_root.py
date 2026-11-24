@@ -78,15 +78,13 @@ def test_with_the_isolation_removed_an_update_is_refused_and_writes_nothing(libr
 
 
 def test_with_the_isolation_removed_a_migration_write_back_is_refused(
-    library, tmp_path, unisolated
-):
+        library, tmp_path, unisolated):
     path = tmp_path / "config.toml"
     before = tomli_w.dumps(document_for(library)).encode("utf-8")
     path.write_bytes(before)
 
     def to_two(data: dict) -> dict:
         return {**data, "schema_version": 2}
-
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
         config.load_from_path(path, current=2, migrations={1: to_two})
     assert str(path) in str(refused.value)
@@ -139,8 +137,7 @@ STATE_WRITERS = pytest.mark.parametrize(
     "write",
     [lambda target: config.atomic_write_bytes(b"{}", target),
      lambda target: config.append_durable_bytes(b"{}\n", target)],
-    ids=["atomic-write", "durable-append"],
-)
+    ids=["atomic-write", "durable-append"])
 
 
 @STATE_WRITERS

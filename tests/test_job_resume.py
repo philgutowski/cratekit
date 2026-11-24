@@ -29,8 +29,7 @@ class Scenario:
         self.store = jobs.open_store(self.root / jobs.QUEUE_FILENAME)
         self.job = jobs.enqueue(
             self.store, handler_key="job.resume", payload={"items": self.item_ids}, cfg=cfg,
-            item_ids=self.item_ids, job_id="the-long-job",
-        )
+            item_ids=self.item_ids, job_id="the-long-job")
 
     def close(self) -> None:
         self.store.close()

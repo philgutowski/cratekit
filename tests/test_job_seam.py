@@ -76,8 +76,7 @@ def _states(db: Path, job_id: str) -> dict[str, jobs.ItemState]:
 
 
 def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_item(
-    queued, monkeypatch
-):
+        queued, monkeypatch):
     job, db, root, sources = queued
     first = root / "first.log"
     first.write_text("")

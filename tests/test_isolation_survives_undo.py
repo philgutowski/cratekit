@@ -38,8 +38,7 @@ def _inside(path: Path, root: Path) -> bool:
 
 
 def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
-    _isolate_state_roots, _isolate_keychain, _block_real_library_paths, monkeypatch
-):
+        _isolate_state_roots, _isolate_keychain, _block_real_library_paths, monkeypatch):
     """The 2026-09-20 shape: undo, resolve the config location, write."""
     monkeypatch.setenv("CRATEKIT_R658_PROBE", "the body's own patch")
     monkeypatch.undo()
@@ -71,8 +70,7 @@ def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
 
 
 def test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect(
-    _isolate_state_roots, monkeypatch
-):
+        _isolate_state_roots, monkeypatch):
     """The body's instance is set up after the isolation's, so an undo restores the redirect."""
     redirected = {name: os.environ[name] for name in ("HOME", config.ENV_CONFIG_DIR)}
     for value in redirected.values():

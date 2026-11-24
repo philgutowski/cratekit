@@ -113,7 +113,6 @@ def _trap_standard_input(monkeypatch):
     class Trapped:
         def __getattr__(self, name):
             raise AssertionError(f"a test in this file read standard input (sys.stdin.{name})")
-
     monkeypatch.setattr(sys, "stdin", Trapped())
     monkeypatch.setattr(
         "builtins.input",
@@ -428,7 +427,6 @@ def test_the_acquisition_contract_is_read_off_the_protocol():
         capabilities: tuple[str, ...]
 
         def reset(self) -> None: ...
-
     assert set(doctor.contract_members(Grown)) >= {"capabilities", "reset"}
 
 
@@ -485,7 +483,6 @@ def _break_the_presence_index(monkeypatch) -> Path:
         if self == index:
             raise PermissionError(13, "Permission denied", str(index))
         return real(self, *args, **kwargs)
-
     monkeypatch.setattr(Path, "read_text", refuse)
     return index
 
@@ -534,7 +531,6 @@ def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
         index.parent.mkdir(parents=True, exist_ok=True)
         index.write_text("{not json at all")
         return held.pop(0) if held else _eof()
-
     scripted = prompt.Prompter(
         read_line=lambda: (answers.pop(0) + "\n") if answers else _eof(), read_secret=read_secret,
         write=lambda _text: None)
@@ -600,7 +596,6 @@ def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(libra
 
         def acquire(self, requests):  # pragma: no cover - never called
             raise NotImplementedError
-
     monkeypatch.setattr("cratekit.acquire.load", lambda _name: Impostor)
     checked(finding_on(library, "adapter.contract"), FAIL, Remedy.SWITCH_ADAPTER)
 
@@ -608,7 +603,6 @@ def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(libra
 def test_an_adapter_missing_a_contract_member_is_refused(library, monkeypatch):
     class Partial:
         name = "vendored"
-
     monkeypatch.setattr("cratekit.acquire.load", lambda _name: Partial)
     finding = checked(finding_on(library, "adapter.contract"), FAIL)
     assert "acquire" in finding.detail
@@ -1857,7 +1851,6 @@ def test_a_prompt_that_cannot_be_answered_is_a_typed_refusal(monkeypatch):
 
         def reader(exc=boom):
             raise exc
-
         asking = prompt.Prompter(read_line=reader, write=lambda _t: None)
         with pytest.raises(prompt.PromptUnavailable):
             asking.ask("anything")
@@ -2367,7 +2360,6 @@ def test_a_packaged_text_that_cannot_be_read_is_a_damaged_install_and_compares_n
 
     def unreadable(name: str) -> taxonomy.Fingerprint:
         raise OSError(errno.EIO, "packaged text", name)
-
     monkeypatch.setattr(taxonomy, "shipped_template_fingerprint", unreadable)
     finding = checked(_taxonomy_finding(configured), INFO)
     assert "could not be read" in finding.detail
@@ -2383,7 +2375,6 @@ def test_a_record_that_cannot_be_written_does_not_uncopy_the_template(configured
         if path != active:
             raise OSError(errno.EROFS, "read only", str(path))
         return real(data, path, *args, **kwargs)
-
     monkeypatch.setattr(config, "atomic_write_bytes", refuse_second)
     wizard = seeded(configured)
     assert active.is_file()
@@ -2621,7 +2612,6 @@ def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
     def recording(path, **kwargs):
         seen.append(dict(kwargs, path=path))
         return trash.TrashStatus(None, False, "not probed for real")
-
     monkeypatch.setattr(trash, "probe", recording)
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
@@ -2638,7 +2628,6 @@ def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_
     def refuses(path):
         # With a filename, since ``access_refusal`` names a path.
         raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
-
     finding = checked(finding_on(configured, "library.trash", trash_probe=refuses), FAIL)
     assert "could not be established" in finding.detail
     assert finding.remedy is not None
@@ -2650,7 +2639,6 @@ def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(libr
 
     def refuses(path):
         raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
-
     document = document_for(library)
     document["profile"] = {"name": "slim"}
     finding = checked(finding_on(document, "library.trash", trash_probe=refuses), INFO, None)
@@ -2877,7 +2865,6 @@ def _refuse_the_index_lock(monkeypatch):
         if str(path).endswith("credential_index.lock"):
             raise PermissionError("no")
         return real_open(path, *args, **kwargs)
-
     monkeypatch.setattr(os, "open", refuse)
 
 
@@ -2907,7 +2894,6 @@ def test_a_delete_that_fails_between_the_two_stores_never_reports_green(monkeypa
 
     def refuse(_service, _name):
         raise RuntimeError("the keychain went away mid-delete")
-
     monkeypatch.setattr(keyring, "delete_password", refuse)
     with pytest.raises(secrets.CredentialBackendUnavailable):
         secrets.delete(secrets.Credential.IDENTIFY_KEY)
@@ -2934,8 +2920,7 @@ def test_a_hook_whose_configuration_name_needed_quoting_still_passes(library, tm
     (checkout / filename).write_text("repos: []\n")
     args = shlex.join(["hook-impl", f"--config={filename}", "--hook-type=pre-commit"])
     (checkout / ".git" / "hooks" / "pre-commit").write_text(
-        f"#!/usr/bin/env bash\nARGS=({args})\nexec pre-commit \"${{ARGS[@]}}\"\n"
-    )
+        f"#!/usr/bin/env bash\nARGS=({args})\nexec pre-commit \"${{ARGS[@]}}\"\n")
     finding = checked(hook_finding(library, checkout), OK)
     assert filename in finding.detail, "the detail names a file it did not check"
 
@@ -3006,7 +2991,6 @@ def test_the_zip_backed_shape_of_a_missing_packaged_directory_is_also_caught(mon
     class _Zip:
         def files(self, _package):
             return ZipBacked()
-
     monkeypatch.setattr(taxonomy, "resources", _Zip())
     assert taxonomy.shipped_template_names() == ()
     assert drive(["--help"])[0] == int(ExitCode.OK)
@@ -3031,7 +3015,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
 
     def blind():
         inside.read_text()
-
     with _sealed(sealed):
         report = report_on(configured, process_lister=blind)
     # Every check still answered, in order.
@@ -3049,7 +3032,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     # A probe that simply fell over is still report-defect.
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
-
     ordinary = finding_on(configured, "rekordbox.closed", process_lister=fell_over)
     checked(ordinary, FAIL, Remedy.REPORT_DEFECT)
 
@@ -3059,7 +3041,6 @@ def test_the_rescue_reports_a_broken_check_as_FAIL_rather_than_as_a_note(configu
 
     def explode(_inputs):
         raise RuntimeError("the probe fell over")
-
     finding = checked(doctor.answer(doctor.Check("made.up", explode), object()), FAIL)
     assert doctor.Report((finding,)).ok is False
 
@@ -3498,7 +3479,6 @@ def test_the_wizard_still_names_a_template_that_simply_does_not_ship(configured)
 def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(configured, monkeypatch):
     def refuse(_name):
         raise PermissionError(13, "Permission denied")
-
     monkeypatch.setattr(setup_verb, "template_text", refuse)
     note = seed_note(seeded(configured))
     checked(note, FAIL, Remedy.REPORT_DEFECT)
@@ -3507,7 +3487,6 @@ def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(config
     # Packaged bytes that are not text arrive as a ``ValueError``.
     def mojibake(_name):
         raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
-
     monkeypatch.setattr(setup_verb, "template_text", mojibake)
     note = seed_note(seeded(configured))
     checked(note, FAIL, Remedy.REPORT_DEFECT)
@@ -3520,7 +3499,6 @@ def test_the_status_verb_survives_a_state_directory_that_cannot_be_walked(monkey
     class Refuses:
         def glob(self, _pattern):
             raise PermissionError(13, "Permission denied")
-
     monkeypatch.setattr(doctor.gates, "run_dir", lambda: Refuses())
     assert doctor._run_findings() == []
 
@@ -3541,7 +3519,6 @@ def _refusing_check(key: str = "library.mounted") -> doctor.Check:
                 scope=Scope.RUN,
                 origin=("tests",),
             ))
-
     return doctor.Check(key, run)
 
 
@@ -3564,7 +3541,6 @@ def test_an_unstructured_break_is_still_rescued_as_a_check_that_did_not_complete
     """An unstructured break is still rescued, so the report survives."""
     def explode(_inputs):
         raise RuntimeError("psutil said no")
-
     inputs = doctor._Inputs(None, None, probes())
     finding = doctor.answer(doctor.Check("library.mounted", explode), inputs)
     checked(finding, FAIL, Remedy.REPORT_DEFECT)
@@ -3595,13 +3571,11 @@ def test_the_rescue_still_lets_the_three_control_exceptions_through():
     for kind in (KeyboardInterrupt, SystemExit, GeneratorExit):
         def raiser(_inputs, _kind=kind):
             raise _kind()
-
         with pytest.raises(kind):
             doctor.answer(doctor.Check("library.mounted", raiser), inputs)
     # A MemoryError is caught, since the report is worth more than the check.
     def hungry(_inputs):
         raise MemoryError()
-
     assert doctor.answer(doctor.Check("k", hungry), inputs).status is FAIL
 
 
@@ -3635,8 +3609,7 @@ def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
     green_probes(monkeypatch)
     code, out, err = drive(
         setup_argv(
-            str(sealed_ancestor), tmp_path, "--db-path", str(sealed_ancestor / "db" / "master.db")
-        ))
+            str(sealed_ancestor), tmp_path, "--db-path", str(sealed_ancestor / "db" / "master.db")))
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err
     envelope = json.loads(out)
     assert envelope["cause"]["reason"] == "library-root-unreachable"
@@ -3922,7 +3895,6 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
 
     def remedy(error):
         return cause_module.access_remedy(error, otherwise=Remedy.REPORT_DEFECT)
-
     assert remedy(named) is Remedy.GRANT_PATH_ACCESS
     assert remedy(RuntimeError("x")) is Remedy.REPORT_DEFECT
     no_path = "a refusal naming no path has no path to grant access to"
@@ -3962,7 +3934,6 @@ def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
         # A real pathless refusal: signal 0 to pid 1. Root would fail loudly here.
         os.kill(1, 0)
         raise AssertionError("this account signalled pid 1, so the arrangement is void")
-
     monkeypatch.setattr(jobs_cli, "list_jobs", refused)
     code, out, err = drive(["--output", "json", "job", "list"])
     envelope = json.loads(out)
@@ -4001,8 +3972,7 @@ def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
         except OSError as inner:
             raise refuse(
                 "library-root-unreachable", "the library root could not be created",
-                remedy=Remedy.GRANT_PATH_ACCESS,
-            ) from inner
+                remedy=Remedy.GRANT_PATH_ACCESS) from inner
     except CratekitError as err:
         assert err.cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
         assert err.declared_cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
@@ -4129,7 +4099,6 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
             return real_load()
         finally:
             document.chmod(0o000)
-
     monkeypatch.setattr(setup_verb.config, "load", load_then_seal)
     try:
         with pytest.raises(CratekitError) as excinfo:
@@ -4233,15 +4202,12 @@ def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monk
             Cause(
                 reason="pyrekordbox-pin-drift", message="pyrekordbox 0.4.0 is not the pinned 0.3.0",
                 remediation=Remediation(remedy=Remedy.REVALIDATE_PINS), scope=Scope.RUN,
-                origin=("tests",),
-            ))
-
+                origin=("tests",)))
     monkeypatch.setattr(rb_writer, "assert_binding_version", refuse)
     assert doctor_model._binding_pin_problem(None) == "pyrekordbox 0.4.0 is not the pinned 0.3.0"
 
     def uninstalled(_cfg):
         raise ImportError("No module named 'pyrekordbox'")
-
     monkeypatch.setattr(rb_writer, "assert_binding_version", uninstalled)
     answer = doctor_model._binding_pin_problem(None)
     assert answer is not None and "could not be imported" in answer
@@ -4258,7 +4224,6 @@ def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp
 
     def ran(returncode, stdout):
         return lambda *_a, **_k: SimpleNamespace(returncode=returncode, stdout=stdout)
-
     for broken in (timed_out, ran(1, ""), ran(0, "not json at all"), ran(0, "[1, 2]")):
         monkeypatch.setattr(subprocess, "run", broken)
         assert doctor_model._rclone_remotes("rclone") is None
@@ -4281,7 +4246,6 @@ def test_a_registered_adapter_whose_tool_is_not_installed_says_so(configured, mo
     """An adapter whose module will not import says install the tool (R9)."""
     def uninstalled(_name):
         raise ImportError("No module named 'yt_dlp'")
-
     monkeypatch.setattr(acquire, "load", uninstalled)
     finding = finding_on(configured, "adapter.contract")
     checked(finding, FAIL, Remedy.INSTALL_ADAPTER)
@@ -4294,7 +4258,6 @@ def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatc
         raise backup_facts.BackupFactsUnreadable(
             "the backup facts file is not readable JSON", path=Path("/nowhere/backup.json"),
             remedy=Remedy.REPAIR_BACKUP_FACTS)
-
     monkeypatch.setattr(doctor.backup_facts, "ages", refuse)
     report = report_on(configured)
     for portion in backup_facts.PORTIONS:
@@ -4338,7 +4301,6 @@ def test_setup_refuses_a_config_that_stopped_being_readable_between_the_two_read
 
     def incomplete():
         raise config.ConfigInvalid("library.root is missing")
-
     monkeypatch.setattr(config, "load", incomplete)
     monkeypatch.setattr(config, "config_path", lambda: missing)
     with pytest.raises(CratekitError) as excinfo:
@@ -4356,7 +4318,6 @@ def test_setup_refuses_when_the_migration_ladder_refuses(monkeypatch, tmp_path):
 
     def refuse(_raw):
         raise config.ConfigTooNew("written by a newer Cratekit")
-
     monkeypatch.setattr(config, "load", incomplete)
     monkeypatch.setattr(config, "config_path", lambda: path)
     monkeypatch.setattr(config, "migrate", refuse)
@@ -4370,7 +4331,6 @@ def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_p
     """The database probe reads another application's format, so a failure is no proposal."""
     def unexpected():
         raise RuntimeError("the settings file is in a shape this reader has never seen")
-
     monkeypatch.setattr(setup_verb.rb_writer, "read_rekordbox_settings", unexpected)
     assert setup_verb._probe_db_path() is None
     # A recorded path not on this machine is not proposed either.
@@ -4401,7 +4361,6 @@ def test_a_credential_that_cannot_be_read_and_one_that_cannot_be_stored_differ(
 
     def rejected(_name, _value):
         raise secrets.CredentialBackendUnavailable("no keychain backend resolves here")
-
     stored = setup_verb._Wizard({}, Scripted([], secrets_=["a-value"] * 8))
     stored.optional = lambda *_a, **_k: True
     monkeypatch.setattr(secrets, "set", rejected)
@@ -4723,7 +4682,6 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
         def resolve(root, **seams):
             seams["identity_provider"] = identity_of
             return preflight.resolve_mount_state(root, recorded, **seams)
-
         local = {"mount_enumerator": preflight.local_mount_points}
         on_it = resolve(volume / "library")
         moved_within = resolve(volume / "not-that-folder")
@@ -4789,7 +4747,6 @@ def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
         cfg = config.from_dict(document_for(root))
         wizard = seeded(cfg)
         return next(note for note in wizard.notes if note.status is FAIL)
-
     with _sealed(sealed_root, mode=0o500):
         permission = note_for(sealed_root)
     with read_only_volume(_library_on) as volume:
@@ -4810,7 +4767,6 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
         connection.execute("CREATE TABLE t (a)")
         connection.commit()
         connection.close()
-
     with read_only_volume(a_database_on) as volume:
         database = volume / "library.db"
         refused: sqlite3.Error | None = None
@@ -4892,7 +4848,6 @@ def test_a_shipped_template_that_cannot_be_read_is_named_and_not_the_copy(config
 
     def unreadable(_name):
         raise OSError("the package data is missing")
-
     monkeypatch.setattr(taxonomy, "shipped_template_text", unreadable)
     finding = checked(_schema_finding(configured), INFO)
     assert "shipped template 'default' could not be read" in finding.detail
@@ -4966,7 +4921,6 @@ def _release_finding(origin, tags=None, *, read=None):
     def release_tags(url):
         seen.append(url)
         return tags if read is None else read(url)
-
     inputs = doctor._Inputs(
         None, None, probes(install_origin=lambda: origin, release_tags=release_tags))
     return doctor._check_release(inputs), seen
@@ -5103,7 +5057,6 @@ def test_the_installed_extras_are_the_ones_whose_requirements_are_present(tmp_pa
         if name in present:
             return dist
         raise importlib_metadata.PackageNotFoundError(name)
-
     monkeypatch.setattr(importlib_metadata, "distribution", distribution)
     assert doctor_model._install_origin().extras == ("analysis",), (
         "vocals is missing torch and all is an alias, so only analysis is kept")
@@ -5116,7 +5069,6 @@ def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
         calls.append((argv, kwargs))
         out = "abc\trefs/tags/v0.1.0\ndef\trefs/tags/v0.2.0\n"
         return subprocess.CompletedProcess(argv, 0, out, "")
-
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert doctor_model._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
     argv, kwargs = calls[0]
@@ -5126,13 +5078,11 @@ def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
 
     def refused(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 128, "", "fatal: could not read Username")
-
     monkeypatch.setattr(subprocess, "run", refused)
     assert doctor_model._release_tags(_REPO_URL) is None
 
     def timed_out(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-
     monkeypatch.setattr(subprocess, "run", timed_out)
     assert doctor_model._release_tags(_REPO_URL) is None
 
@@ -5253,8 +5203,7 @@ def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_n
 
 
 @pytest.mark.parametrize(
-    ("present", "named"),
-    [("user", 1), ("state", 2)],
+    ("present", "named"), [("user", 1), ("state", 2)],
     ids=["the-accounts-own-applications-folder", "the-state-folder-alone"])
 def test_one_installed_place_alone_reads_installed_with_no_push(
         configured, tmp_path, present, named):
@@ -5347,7 +5296,6 @@ def test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push(
 def test_a_probe_that_raises_reads_unread_rather_than_not_installed(configured, tmp_path, probe):
     def broken():
         raise OSError(5, "Input/output error")
-
     seams = {
         "deadca7_home": lambda: _deadca7(tmp_path, home=False),
         "deadca7_installed": lambda: _installed_places(tmp_path),
@@ -5364,7 +5312,6 @@ def test_a_probe_that_raises_reads_unread_rather_than_not_installed(configured, 
 def test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed(configured, tmp_path):
     def broken():
         raise OSError(5, "Input/output error")
-
     places = _installed_places(tmp_path, "system")
     report = report_on(configured, deadca7_home=broken, deadca7_installed=lambda: places)
     finding = find(report, "deadca7.push")
@@ -5384,7 +5331,6 @@ def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(mon
 
     def homeless(cls):
         raise RuntimeError("no home")
-
     monkeypatch.setattr(pathlib.Path, "home", classmethod(homeless))
     assert doctor_model._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
 
@@ -5416,7 +5362,6 @@ def test_with_its_support_folder_here_the_install_signals_are_not_asked(configur
     def installed():
         asked.append(True)
         raise OSError(5, "Input/output error")
-
     report = report_on(
         configured, deadca7_home=lambda: _deadca7(tmp_path), deadca7_installed=installed)
     finding = find(report, "deadca7.push")
@@ -5441,7 +5386,6 @@ def _refuse_stat_under(monkeypatch, under: Path) -> None:
         if Path(path) == under or under in Path(path).parents:
             raise PermissionError(13, "Permission denied", str(path))
         return real(path, *args, **kwargs)
-
     monkeypatch.setattr(os, "stat", refused)
 
 
@@ -5524,8 +5468,7 @@ def test_an_upgrade_keeps_the_extras_and_adds_vocals_only_for_a_scored_library(s
         None,
         probes(
             install_origin=lambda: _vcs("0.2.0", ("analysis",)),
-            release_tags=lambda _url: ("v0.3.0",), vocals_scored=lambda _cfg: scored,
-        ))
+            release_tags=lambda _url: ("v0.3.0",), vocals_scored=lambda _cfg: scored))
     finding = doctor._check_release(inputs)
     assert f'{command} @ git+{_REPO_URL}@v0.3.0"' in finding.detail
 

@@ -23,13 +23,11 @@ TAXONOMY = default_taxonomy()
 #: Every display name the template declares, which no catalogue module may hold (R19).
 DISPLAYS = frozenset(
     {bucket.display for bucket in TAXONOMY.buckets}
-    | {sub.display for bucket in TAXONOMY.buckets for sub in bucket.subs}
-)
+    | {sub.display for bucket in TAXONOMY.buckets for sub in bucket.subs})
 
 #: A source string the template declares an outright refusal for.
 REFUSED = sorted(
-    {needle for rule in TAXONOMY.suggest if rule.equals and rule.decline for needle in rule.equals}
-)
+    {needle for rule in TAXONOMY.suggest if rule.equals and rule.decline for needle in rule.equals})
 
 
 def _source_genre_for(*, sub: bool) -> str:
@@ -98,8 +96,7 @@ def _traxsource_page(rows: list[tuple[str, str, str]]) -> str:
             f'<div data-trid="{index}" class="trk-row"><div class="trk-cell title"><a '
             f'href="#">{title}</a></div><div class="trk-cell artists"><a class="com-artists" '
             f'href="#">{artist}</a></div><div class="trk-cell genre"><a href="#">{genre}</a></div>'
-            "</div>"
-        )
+            "</div>")
     parts.append("</html>")
     return "".join(parts)
 
@@ -113,8 +110,7 @@ BANDCAMP_ORIGINAL = "https://f4.bcbits.com/img/a0123456789_10.jpg"
 
 
 def _bandcamp_search_page(
-    entries: list[tuple[str, str, str, str]], *, art: str | None = BANDCAMP_LISTING_ART
-) -> str:
+        entries: list[tuple[str, str, str, str]], *, art: str | None = BANDCAMP_LISTING_ART) -> str:
     parts = ["<html><ul>"]
     for url, heading, artist, genre in entries:
         cell = f'<div class="genre"> genre: {genre} </div>' if genre else ""
@@ -124,8 +120,7 @@ def _bandcamp_search_page(
             f"{picture}"
             f'<div class="heading"><a href="{url}">{heading}</a></div>'
             f'<div class="subhead"> by {artist} </div>'
-            f"{cell}</li>"
-        )
+            f"{cell}</li>")
     parts.append("</ul></html>")
     return "".join(parts)
 
@@ -155,18 +150,14 @@ def _routed(routes: dict[str, str | searchers.Fetched], seen: list[str] | None =
                 fetched = isinstance(answer, searchers.Fetched)
                 return answer if fetched else searchers.Fetched(text=answer)
         return searchers.Fetched(note=f"no route for {url}")
-
     return fetch
 
 
 def _all_three(
-    *,
-    beatport: str | searchers.Fetched = EMPTY_BEATPORT,
-    traxsource: str | searchers.Fetched = EMPTY_TRAXSOURCE,
-    bandcamp: str | searchers.Fetched = EMPTY_BANDCAMP,
-    track_page: str | searchers.Fetched | None = None,
-    seen: list[str] | None = None,
-):
+        *, beatport: str | searchers.Fetched = EMPTY_BEATPORT,
+        traxsource: str | searchers.Fetched = EMPTY_TRAXSOURCE,
+        bandcamp: str | searchers.Fetched = EMPTY_BANDCAMP,
+        track_page: str | searchers.Fetched | None = None, seen: list[str] | None = None):
     """The three shops' search pages, each an empty result unless named."""
     routes: dict[str, str | searchers.Fetched] = {}
     if track_page is not None:
@@ -189,8 +180,7 @@ def _searcher(fetch, *, naps: list[float] | None = None, pacing=None):
     """The searcher over the scraped walk, which keeps the two shop parsers driven."""
     sleep = naps.append if naps is not None else lambda _seconds: None
     return searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=sleep, pacing=pacing, walk=searchers.SCRAPED_WALK
-    )
+        TAXONOMY, fetch=fetch, sleep=sleep, pacing=pacing, walk=searchers.SCRAPED_WALK)
 
 
 def _hit(*, naps: list[float] | None = None, pacing=None, **pages):
@@ -286,8 +276,7 @@ _MOVED_ROW = '<html><div data-trid="1" class="trk-row"><span>moved</span></div><
         ({"beatport": "<html>a page this parser has never seen</html>"}, searchers.BEATPORT),
         ({"beatport": UNREACHABLE, "traxsource": _MOVED_ROW}, searchers.TRAXSOURCE),
     ],
-    ids=["beatport payload missing", "traxsource rows unread"],
-)
+    ids=["beatport payload missing", "traxsource rows unread"])
 def test_a_page_that_parsed_to_nothing_recognizable_raises_its_own_refusal(pages, source):
     """AE6. A markup change is a permanent defect; a row parser claims it only for rows unread."""
     with pytest.raises(CratekitError) as raised:
@@ -341,8 +330,7 @@ def test_the_resolver_fixtures_still_reach_the_tiers_they_name():
         ("melodic techno", routing.suggest_tag(TAXONOMY, "melodic techno").tag, False),
         (f"  {BUCKET_GENRE}\n", BUCKET_GENRE, None),
     ],
-    ids=["unknown word", "declared tag with no bucket", "padded genre"],
-)
+    ids=["unknown word", "declared tag with no bucket", "padded genre"])
 def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, written, flagged):
     """R-650: the last tier's word reaches the file and says so; padding is trimmed."""
     hit = _hit(beatport=_row(word))
@@ -364,8 +352,7 @@ def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline(
     assert other.is_too_coarse_as_source("Bootleg")
     hit = searchers.catalogue_searcher(
         other, fetch=_all_three(beatport=_row("Bootleg")), sleep=lambda _seconds: None,
-        walk=searchers.SCRAPED_WALK,
-    )(ARTIST, TITLE)
+        walk=searchers.SCRAPED_WALK)(ARTIST, TITLE)
     assert hit is not None
     assert hit.genre is None
     assert hit.off_taxonomy is False
@@ -388,7 +375,6 @@ def test_jitter_is_drawn_from_the_injected_random_source():
         naps: list[float] = []
         _hit(pacing=searchers.Pacer(entropy=random.Random(seed), sleep=naps.append))
         return naps
-
     assert schedule(1) == schedule(1)
     assert schedule(1) != schedule(2)
     assert len(set(schedule(1))) > 1
@@ -399,8 +385,7 @@ def test_a_source_answering_429_twice_then_200_succeeds_and_the_backoff_grew():
     waits: list[float] = []
     replies = iter([_Response(429), _Response(429), _Response(200, "ok")])
     fetch = searchers.default_fetch(
-        get=lambda url, headers, timeout: next(replies), sleep=waits.append
-    )
+        get=lambda url, headers, timeout: next(replies), sleep=waits.append)
     assert fetch(SEARCH).text == "ok"
     assert waits == [searchers.RATE_LIMIT_BASE_WAIT_S, searchers.RATE_LIMIT_BASE_WAIT_S * 2]
 
@@ -413,7 +398,6 @@ def test_a_source_that_spends_its_attempts_on_429_is_unreachable():
     def get(url, headers, timeout):
         calls.append(url)
         return _Response(429)
-
     assert searchers.default_fetch(get=get, sleep=waits.append)(SEARCH).text is None
     assert len(calls) == searchers.RATE_LIMIT_ATTEMPTS
     assert len(waits) == searchers.RATE_LIMIT_ATTEMPTS - 1
@@ -430,8 +414,7 @@ def _no_route(url, headers, timeout):
 @pytest.mark.parametrize(
     ("get", "named"),
     [(lambda url, headers, timeout: _Response(503), "503"), (_no_route, "no route to host")],
-    ids=["503", "transport failure"],
-)
+    ids=["503", "transport failure"])
 def test_a_non_200_or_a_transport_failure_is_unreachable_rather_than_a_miss(get, named):
     """R22: a 503 or a raise read as "not carried" completes an outage clean."""
     page = searchers.default_fetch(get=get, sleep=lambda _s: None)(SEARCH)
@@ -447,7 +430,6 @@ def test_the_default_fetch_passes_its_timeout_to_the_http_getter():
         seen["timeout"] = timeout
         seen["headers"] = headers
         return _Response(200, "ok")
-
     searchers.default_fetch(get=get, sleep=lambda _s: None)(SEARCH)
     assert seen["timeout"] == searchers.REQUEST_TIMEOUT_S
     assert seen["headers"] is searchers.HEADERS
@@ -469,7 +451,6 @@ def test_the_injected_seam_and_the_binders_never_reach_the_http_getter(monkeypat
 
     def detonate(*args, **kwargs):
         raise AssertionError("the suite reached the network")
-
     monkeypatch.setattr(searchers, "_requests_get", detonate)
     assert _hit(beatport=_row(BUCKET_GENRE)) is not None
     assert callable(searchers.for_taxonomy(TAXONOMY))
@@ -557,7 +538,6 @@ def test_the_image_fetch_is_paced_and_answers_the_bytes():
         calls.append(url)
         assert len(naps) == 1, "the pace wait must come before the request"
         return _Response(200, content=b"\xff\xd8picture")
-
     fetch_image = searchers.default_image_fetch(get=get, sleep=naps.append)
     assert fetch_image(COVER) == b"\xff\xd8picture"
     assert calls == [COVER]
@@ -571,8 +551,7 @@ def test_the_image_fetch_is_paced_and_answers_the_bytes():
         lambda url, headers, timeout: _Response(500, content=b"page"),
         _no_route,
     ],
-    ids=["404", "500", "transport failure"],
-)
+    ids=["404", "500", "transport failure"])
 def test_an_image_that_cannot_be_had_is_none_rather_than_a_refusal(get):
     assert searchers.default_image_fetch(get=get, sleep=lambda _s: None)(COVER) is None
 
@@ -582,8 +561,7 @@ def test_an_image_fetch_that_meets_a_rate_limit_backs_off_like_a_search():
     replies = iter([_Response(429), _Response(200, content=b"bytes")])
     pacer = searchers.Pacer(sleep=lambda _s: None)
     fetch_image = searchers.default_image_fetch(
-        get=lambda url, headers, timeout: next(replies), sleep=waits.append, pacing=pacer
-    )
+        get=lambda url, headers, timeout: next(replies), sleep=waits.append, pacing=pacer)
     assert fetch_image(COVER) == b"bytes"
     assert waits == [searchers.RATE_LIMIT_BASE_WAIT_S]
 
@@ -614,7 +592,6 @@ def _over_the_wire(routes: dict[str, _Response], seen: list[str] | None = None):
             if url.startswith(marker) or marker in url:
                 return reply
         raise OSError(f"no route for {url}")
-
     fetch = searchers.default_fetch(get=get, sleep=lambda _s: None)
     return _searcher(fetch)
 
@@ -659,8 +636,7 @@ def test_a_bandcamp_client_challenge_page_is_blocked_rather_than_a_miss():
         (_Response(200, _RETITLED), "blocked"),
         (_Response(503), "unreachable"),
     ],
-    ids=["403 interstitial", "title on a 200", "spent 429", "challenge script", "503 outage"],
-)
+    ids=["403 interstitial", "title on a 200", "spent 429", "challenge script", "503 outage"])
 def test_a_fallbacks_refusal_is_blocked_and_its_outage_unreachable(reply, word):
     """Refused by status, challenge title or Cloudflare's script is BLOCKED; a fall, an outage."""
     hit = _wire(traxsource=reply)
@@ -723,10 +699,8 @@ def test_three_refusals_raise_unreachable_and_say_the_fallbacks_were_blocked():
 
 
 @pytest.mark.parametrize(
-    ("reply", "word"),
-    [(_CHALLENGED, "blocked"), (_Response(503), "unreachable")],
-    ids=["challenge", "outage"],
-)
+    ("reply", "word"), [(_CHALLENGED, "blocked"), (_Response(503), "unreachable")],
+    ids=["challenge", "outage"])
 def test_a_bandcamp_track_page_unread_is_not_a_miss(reply, word):
     """The listing named the track and its page went unread: no absence."""
     hit = _wire(track=reply, bandcamp=_Response(200, GENRELESS_LISTING))

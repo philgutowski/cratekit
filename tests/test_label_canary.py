@@ -214,8 +214,7 @@ def unanswered_shape(cfg: config.Config, monkeypatch, session: Session) -> LineC
 
 
 def test_a_degraded_provider_still_refuses_though_a_held_line_names_the_label(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     session = Session({"n0": "2025 Rawax"}, degraded=True)
     unanswered_shape(installed, monkeypatch, session)
     assert "release n0, answered unconfirmed (no label credit)" in reverified(unlisted())
@@ -234,8 +233,7 @@ def test_a_provider_that_answers_turns_the_same_shape_into_nothing_new(installed
 
 
 def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     """Sitting 94's shape with three new releases the provider answers with no line."""
     every_line_shape(installed, monkeypatch, Session(degraded=True), also=rawaxxx())
     said = reverified(unlisted())
@@ -256,8 +254,7 @@ def test_the_worker_answers_the_live_shape_as_nothing_new(installed, monkeypatch
 
 
 def test_the_worker_refuses_held_lines_naming_another_act_and_names_the_canary(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     live_shape(installed, monkeypatch, line="2025 Moon Harbour")
     cause = worker_incomplete()
     assert cause.detail["read"] == 119
@@ -270,8 +267,7 @@ def test_the_worker_refuses_held_lines_naming_another_act_and_names_the_canary(
 
 
 def test_the_worker_refuses_a_degraded_provider_over_held_lines_that_name_the_label(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     session = Session({"n0": "2025 Rawax"}, degraded=True)
     unanswered_shape(installed, monkeypatch, session)
     cause = worker_incomplete()
@@ -309,8 +305,7 @@ def test_the_canary_is_a_held_release_whose_line_the_needle_confirms(installed, 
 
 
 def test_with_no_held_line_naming_the_label_a_held_release_with_no_line_comes_next(
-    installed, entry
-):
+        installed, entry):
     lineless = release("n1", "2025", "")
     releases = [*rawaxxx(), lineless, *others(3)]
     def confirm_lineless(claimed, one):
@@ -323,8 +318,7 @@ def test_with_no_held_line_naming_the_label_a_held_release_with_no_line_comes_ne
 
 
 def test_with_every_held_line_naming_another_act_the_newest_is_asked_and_all_count(
-    installed, entry
-):
+        installed, entry):
     releases = [*rawaxxx(), *others(3)]
     found, verified = listing_of(installed, entry, releases, {"x1", "x2", "x0"})
     assert found.canary.identity == "x0"
@@ -343,8 +337,7 @@ def test_no_canary_is_asked_when_the_sweep_confirmed_something(installed, entry)
 
 
 def test_with_every_drop_a_mismatch_a_held_labels_line_is_asked_before_one_with_none(
-    installed, entry
-):
+        installed, entry):
     """Every drop carried another label's name, so the verifier is answering."""
     releases = [lineless("n1"), *rawax(), *others(3)]
     fake = LineCatalogue()
@@ -355,8 +348,7 @@ def test_with_every_drop_a_mismatch_a_held_labels_line_is_asked_before_one_with_
 
 
 def test_with_a_drop_the_verifier_gave_no_answer_for_a_held_release_with_no_line_is_asked(
-    installed, entry
-):
+        installed, entry):
     """A held Rawax line is judged from the line alone and says nothing of the provider."""
     releases = [lineless("m1"), lineless("n1"), *rawax(), *others(3)]
     fake = LineCatalogue(session=Session(degraded=True))
@@ -368,8 +360,7 @@ def test_with_a_drop_the_verifier_gave_no_answer_for_a_held_release_with_no_line
 
 
 def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_label(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     """The newest held line names the label and an older held release has none."""
     held = [*rawax(), lineless("n0", "2024")]
     session = Session({"n0": "2024 Rawax"}, degraded=True)
@@ -400,8 +391,7 @@ def test_a_degraded_provider_refuses_though_every_held_line_names_the_label(inst
 
 
 def test_the_worker_refuses_a_degraded_provider_though_every_held_line_names_the_label(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     session = Session({"a1": "2025 Rawax"}, degraded=True)
     every_line_shape(installed, monkeypatch, session)
     cause = worker_incomplete()
@@ -425,8 +415,7 @@ def test_a_provider_crediting_another_label_still_answers_nothing_new(installed,
 
 
 def test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     """The real nothing new kept: the provider reads the held release and credits the label."""
     session = Session({one.id: "2025 Rawax" for one in rawax()})
     every_line_shape(installed, monkeypatch, session, also=rawaxxx())
@@ -437,8 +426,7 @@ def test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing
 
 
 def test_the_worker_answers_nothing_new_when_the_provider_reads_the_held_release(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     session = Session({one.id: "2025 Rawax" for one in rawax()})
     every_line_shape(installed, monkeypatch, session, also=rawaxxx())
     worker_files_nothing(installed)
@@ -475,8 +463,7 @@ def test_the_forced_read_is_asked_only_when_a_drop_is_not_a_mismatch(installed, 
 
 
 def test_with_a_drop_given_no_credit_the_held_label_line_comes_before_another_acts(
-    installed, entry
-):
+        installed, entry):
     """No held release lacks a line: a held ``Rawax`` is read, not the newer RAWAXXX."""
     releases = [lineless("m1"), *rawaxxx(), *rawax(), *others(3)]
     fake = LineCatalogue(session=Session({"a1": "2025 Rawax"}))
@@ -568,8 +555,7 @@ def withdrawn_shape(cfg, monkeypatch, *, gone: set[str]) -> PartlyGone:
 
 
 def test_a_withdrawn_held_release_is_passed_over_for_the_next_and_the_label_has_nothing_new(
-    installed, monkeypatch
-):
+        installed, monkeypatch):
     """A kept listing still lists ``a1`` after the provider withdrew it: ``a2`` is read in its place."""
     session = withdrawn_shape(installed, monkeypatch, gone={"a1"})
     said = reverified(nothing_new())
@@ -605,8 +591,7 @@ def test_a_lone_withdrawn_held_release_refuses(installed, entry):
 
 # 7. What the answer rested on, and where the forced read comes from
 def test_every_drop_a_mismatch_over_a_held_release_with_no_line_says_the_provider_was_read(
-    installed, entry
-):
+        installed, entry):
     """No held line names the label, so the lineless one is asked, and the catalogue reads it."""
     releases = [*rawaxxx(), lineless("n1"), *others(3)]
     fake = LineCatalogue(session=Session({"n1": "2025 Rawax"}))

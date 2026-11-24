@@ -43,8 +43,7 @@ AIMED_OUTSIDE = (
 
 
 def _run_the_file(
-    tmp_path: Path, name: str, *, broken: bool
-) -> tuple[subprocess.CompletedProcess, Path]:
+        tmp_path: Path, name: str, *, broken: bool) -> tuple[subprocess.CompletedProcess, Path]:
     system_temporary = tmp_path / f"{name}-system-temporary"
     system_temporary.mkdir()
     env = dict(os.environ, TMPDIR=str(system_temporary), PYTHONDONTWRITEBYTECODE="1")
@@ -58,8 +57,7 @@ def _run_the_file(
     command += ["--tb=line", f"--junitxml={report}", f"--basetemp={tmp_path / f'{name}-base'}"]
     command.append(str(TARGET))
     done = subprocess.run(
-        command, cwd=TARGET.parent.parent, env=env, capture_output=True, text=True, timeout=600
-    )
+        command, cwd=TARGET.parent.parent, env=env, capture_output=True, text=True, timeout=600)
     left = sorted(each.name for each in system_temporary.iterdir())
     assert left == [], f"the {name} run left {left} in its system temporary folder"
     return done, report

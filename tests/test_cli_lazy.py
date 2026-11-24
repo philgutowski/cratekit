@@ -154,8 +154,7 @@ def test_every_help_screen_reads_the_same_as_the_eager_parsers(preset, monkeypat
         ["--outp=json", "--calls=3", "job", "list"], ["-d", "a=b", "--run", "R", "status"],
         ["status", "--he"], ["--", "doctor"], ["-d"], ["job", "list", "extra"], ["intake", "land"],
         ["analyze", "run", "--bogus"],
-    ],
-)
+    ])
 def test_the_parsers_answers_are_the_eager_parsers(argv):
     """Same status, same words, same verb selected, for what argparse decides."""
     membership = profiles.resolve("full")
@@ -182,8 +181,7 @@ def test_a_group_named_with_no_verb_prints_the_same_screen(monkeypatch):
 def _fake(name: str, module: str, **kwargs) -> registry.Entry:
     return registry.Entry(
         name=name, summary=f"the {name} verb", module=f"tests.cli_fixtures.{module}",
-        builder="build", handler_key=name, **kwargs,
-    )
+        builder="build", handler_key=name, **kwargs)
 
 
 def _with_extra(name: str, module: str) -> registry.Entry:
@@ -205,7 +203,6 @@ def _recording(asked: list[str]):
     def importer(name):
         asked.append(name)
         return importlib.import_module(name)
-
     return importer
 
 

@@ -44,9 +44,8 @@ class Track:
     """A provider track in the client's own shape."""
 
     def __init__(
-        self, track_id: str, name: str = "", version: str | None = None,
-        artists: tuple[str, ...] = (), album: str = "",
-    ) -> None:
+            self, track_id: str, name: str = "", version: str | None = None,
+            artists: tuple[str, ...] = (), album: str = "") -> None:
         self.id = int(track_id)
         self.name = name
         self.title = name
@@ -228,8 +227,7 @@ def test_a_spelling_that_is_not_its_own_fold_is_asked_and_never_kept(clock):
     ids=[
         "not-found-seven-days", "found-the-configured-days", "found-thirty-days-unless-set",
         "not-found-no-longer-than-a-shorter-setting",
-    ],
-)
+    ])
 def test_an_answer_is_kept_for_its_lifetime_and_asked_again_after_it(clock, answers, days, lives):
     """A not found lives seven days, a found answer the configured days, thirty unset."""
     client = Client(answers)
@@ -302,8 +300,7 @@ SEAMS = {"account": (6, CratekitError, "9001"), "catalogue": (10, Exception, Non
 @pytest.mark.parametrize("seam", list(SEAMS))
 @pytest.mark.parametrize(
     "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
-    ids=["outage", "rejected-session", "rate-limit"],
-)
+    ids=["outage", "rejected-session", "rate-limit"])
 def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, monkeypatch, seam, failure):
     exhausted, raised, answered = SEAMS[seam]
     client = Client({ONE: single()})
@@ -428,8 +425,7 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     children = [
         subprocess.Popen(
             [sys.executable, str(script), str(path), str(lock), str(first), "40"],
-            env={**os.environ, **env}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
+            env={**os.environ, **env}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         for first in (1, 101)
     ]
     for child in children:
@@ -541,8 +537,7 @@ def test_doctor_says_when_the_cache_is_off(tmp_path):
 @pytest.mark.parametrize(
     "gap",
     [Track("9002", "", artists=("Aurora Bloom",)), Track("9002", "Sun Path"), Track("0", "Sun Path", artists=("Aurora Bloom",))],
-    ids=["no-title", "no-artist", "no-identifier"],
-)
+    ids=["no-title", "no-artist", "no-identifier"])
 def test_an_answer_holding_a_track_that_cannot_be_read_is_asked_again(clock, monkeypatch, gap):
     client = Client({ONE: [*single(), gap]})
     made = cache(clock)
@@ -553,8 +548,7 @@ def test_an_answer_holding_a_track_that_cannot_be_read_is_asked_again(clock, mon
 
 
 def test_a_copy_run_redirecting_installation_state_shares_answers_through_the_override(
-    clock, tmp_path, monkeypatch
-):
+        clock, tmp_path, monkeypatch):
     live_dir = config.state_path(isrc_cache.STATE_KEY).parent
     account(Client({ONE: single()}), cache(clock)).match_track(identity="1", isrc=ONE)
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "copy-run-state"))
@@ -573,8 +567,7 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
     live = config.state_path(isrc_cache.STATE_KEY)
     area = rehearsal.Area(
         run_id="r1", volume=tmp_path / "volume", local=tmp_path / "local",
-        database=tmp_path / "volume" / "db" / "master.db", cfg=None,
-    )
+        database=tmp_path / "volume" / "db" / "master.db", cfg=None)
     assert config.ENV_ISRC_CACHE_DIR not in os.environ
     with rehearsal.redirected(area):
         # U278: the provider gate stays live, so a rehearsal spends the account's allowance.
@@ -586,11 +579,9 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
 
 
 @pytest.mark.parametrize(
-    "failure", [FileNotFoundError, ModuleNotFoundError], ids=["file", "module"]
-)
+    "failure", [FileNotFoundError, ModuleNotFoundError], ids=["file", "module"])
 def test_the_catalogue_answers_a_class_named_not_found_as_before_and_keeps_nothing(
-    clock, monkeypatch, failure
-):
+        clock, monkeypatch, failure):
     """``_gone`` answers a class named for a not found as empty; the cache keeps only its own."""
     client = Client({ONE: failure("not the provider's answer")})
     made = cache(clock)
@@ -614,8 +605,7 @@ def test_a_404_status_is_kept_as_a_not_found_at_either_seam(clock, monkeypatch, 
 @pytest.mark.parametrize(
     "failure",
     [ObjectNotFound("gone"), HTTPFailure(404), InvalidISRC("hid"), HTTPFailure(500), FileNotFoundError()],
-    ids=["client-not-found", "404", "invalid-isrc", "500", "file-not-found"],
-)
+    ids=["client-not-found", "404", "invalid-isrc", "500", "file-not-found"])
 def test_said_not_found_is_the_clients_own_class_or_a_404_and_nothing_else(failure):
     response = getattr(failure, "response", None)
     kept = isinstance(failure, ObjectNotFound) or getattr(response, "status_code", None) == 404
@@ -637,8 +627,7 @@ def test_the_batch_screen_is_handed_only_codes_the_cache_cannot_answer(clock, mo
     from cratekit.acquire import isrc_screen
     handed: list[list[str]] = []
     monkeypatch.setattr(
-        isrc_screen.Screen, "screen", lambda self, client, codes: handed.append(list(codes)) or 0
-    )
+        isrc_screen.Screen, "screen", lambda self, client, codes: handed.append(list(codes)) or 0)
     made = cache(clock)
     account(Client({ONE: single()}), made).match_track(identity="1", isrc=ONE)
     client = Client({})

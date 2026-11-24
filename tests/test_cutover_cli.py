@@ -48,18 +48,15 @@ def _release_process_locks():
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as ``test_adopt_workers`` patches it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
-        rb_writer, "read_rekordbox_settings", lambda *a, **k: {rb_writer.LIBRARY_SYNC_SETTING: 0}
-    )
+        rb_writer, "read_rekordbox_settings", lambda *a, **k: {rb_writer.LIBRARY_SYNC_SETTING: 0})
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
+        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
     monkeypatch.setattr(cutover, "_today", lambda: TODAY)
 
 
@@ -87,8 +84,7 @@ def machine(library, monkeypatch):
     adopt_fixtures.build(resolved, _tracks())
     collection.reset_cache()
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     session.record_acknowledgment(resolved, terminal=lambda: True)
     return resolved
@@ -272,14 +268,11 @@ def test_a_playlist_of_the_trees_name_is_not_a_root(machine):
 
 def _open_a_run(cfg: config.Config, export: Path) -> None:
     from cratekit.cli import output
-
     session.write_record(
         session.SessionRecord(
             session_id="s-open", workflow="deferred-routing", started=output.timestamp(),
-            state=session.SessionState.OPEN,
-        ),
-        cfg,
-    )
+            state=session.SessionState.OPEN),
+        cfg)
 
 
 def _leave_intake_xml(cfg: config.Config, export: Path) -> None:
@@ -294,19 +287,16 @@ def _remove_the_export(cfg: config.Config, export: Path) -> None:
 
 def _remove_the_snapshot(cfg: config.Config, export: Path) -> None:
     import shutil
-
     shutil.rmtree(snapshot.store_root(cfg))
 
 
 @pytest.mark.parametrize(
-    ("spoil", "reason", "check"),
-    [
+    ("spoil", "reason", "check"), [
         (_open_a_run, "cutover-open-run", "no-open-run"),
         (_leave_intake_xml, "cutover-xml-pending", "no-pending-intake-xml"),
         (_remove_the_export, "cutover-export-missing", "fresh-export"),
         (_remove_the_snapshot, "cutover-snapshot-missing", "verified-snapshot"),
-    ],
-)
+    ])
 def test_each_precheck_failure_refuses_before_anything_is_recorded(ready, spoil, reason, check):
     cfg, export, _root_id = ready
     spoil(cfg, export)
@@ -351,9 +341,8 @@ def test_a_root_that_changed_after_the_offer_makes_the_approval_stale(ready):
     assert replacement != root_id
     code, acted = drive(["--run", run_id, *_cutover(export)])
     assert code != int(ExitCode.OK), acted
-    assert tree_registry.read(cfg).is_on_the_bridge(TREE), (
-        "an approval given for one root recorded a cutover anchored to another"
-    )
+    on_the_bridge = tree_registry.read(cfg).is_on_the_bridge(TREE)
+    assert on_the_bridge, "an approval given for one root recorded a cutover anchored to another"
 
 
 def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
@@ -407,7 +396,6 @@ def test_the_source_comes_off_the_taxonomy():
 def _resume(job_id: str) -> list[str]:
     from cratekit.cli import jobs as cli_jobs
     from cratekit.core import jobs
-
     with jobs.open_store() as store:
         return cli_jobs.argv_for(jobs.get(store, job_id))
 
@@ -524,7 +512,6 @@ def test_a_write_to_another_tree_does_not_close_this_trees_door(ready):
     cfg, export, _root_id = ready
     _cut_over(export)
     from cratekit.cli import output
-
     session.write_record(
         session.SessionRecord(
             session_id="s-other", workflow="tree-membership", started=output.timestamp(),
@@ -533,11 +520,8 @@ def test_a_write_to_another_tree_does_not_close_this_trees_door(ready):
                 (
                     session.TreeChange(tree="some_other_tree", created=4),
                     session.TreeChange(tree=TREE, created=0, updated=0),
-                )
-            ),
-        ),
-        cfg,
-    )
+                ))),
+        cfg)
     assert tree_registry.native_writes(cfg, TREE) == ()
     acted, _ = _acted(_revert(), REVERT_GATE, "revert")
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
@@ -623,8 +607,7 @@ def _native(cfg: config.Config, tree_id: str, root_id: str, source) -> None:
     """Write one database native record, the way a hand edit or the verb would."""
     record = tree_registry.TreeRecord(
         tree_id=tree_id, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY, root_id=root_id,
-        source=source,
-    )
+        source=source)
     tree_registry.write(cfg, tree_registry.EMPTY.with_record(record))
 
 

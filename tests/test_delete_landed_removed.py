@@ -50,8 +50,7 @@ def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed b
 def _row(cfg: config.Config, title: str) -> tuple[str, Path]:
     ((content_id, folder),) = _query(
         cfg, "SELECT ID, FolderPath FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0",
-        f"% - {title}",
-    )
+        f"% - {title}")
     return str(content_id), Path(folder)
 
 
@@ -85,8 +84,7 @@ def _remove_outright(cfg: config.Config, content_id: str) -> None:
     """rekordbox's Remove from Collection: the row and its memberships, gone, the count past them."""
     _sql(
         cfg, ("DELETE FROM djmdSongPlaylist WHERE ContentID = ?", (content_id,)),
-        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)), _moved_on(12),
-    )
+        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)), _moved_on(12))
 
 
 def _mark_removed(cfg: config.Config, content_id: str) -> None:
@@ -128,8 +126,7 @@ def _shown(refused: dict) -> dict:
 
 def _trash(refused: dict) -> dict:
     decided, envelope = drive(
-        ["run", "decide", refused["run_id"], GATE, "trash", "--actor", "a-person"]
-    )
+        ["run", "decide", refused["run_id"], GATE, "trash", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, out = drive(["--run", refused["run_id"], "delete", "review"])
     assert code == int(ExitCode.OK), out
@@ -158,7 +155,6 @@ def ready(native_library, silence, monkeypatch):
 
     def land(*titles, name="landed batch"):
         return _ready(native_library, silence, monkeypatch, *titles, name=name)
-
     return land
 
 
@@ -206,8 +202,7 @@ def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecor
 
 
 def test_the_landing_record_names_every_row_it_made_as_the_database_holds_it(
-    native_library, silence
-):
+    native_library, silence):
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
     landed = _landing_record(cfg, _row(cfg, "One")[0]).detail[native.LANDED_ROWS_KEY]
@@ -345,8 +340,7 @@ def test_rows_no_record_names_removed_outright_offer_nothing(native_library, sil
 
 
 def test_a_first_run_takes_absent_landed_rows_as_history_and_offers_the_next_removal(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """R35: a library's first review baselines, the outright removals before it included."""
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two", "Three")
@@ -477,8 +471,7 @@ def test_the_watermark_reads_version_one_as_no_sightings_and_refuses_a_bad_one(n
 
 
 def test_an_advance_and_a_rebaseline_keep_and_drop_the_sightings_as_their_database_says(
-    native_library,
-):
+    native_library):
     cfg, _root = native_library
     store = watermark.WatermarkStore(cfg)
     store.baseline(database_identity="db", sequence=5, actor="a-person")
@@ -576,8 +569,7 @@ def _restore(session_id: str) -> None:
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
     decided, envelope = drive(
-        ["run", "decide", run_id, "restore.run.confirm", "restore", "--actor", "a-person"]
-    )
+        ["run", "decide", run_id, "restore.run.confirm", "restore", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, envelope = drive(["--run", run_id, "restore", "run", session_id])
     assert code == int(ExitCode.OK), envelope
@@ -626,11 +618,9 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
                 "rows": [{"content_id": "7", "columns": columns}],
             }
         }
-
     for order in ((landed(5), landed(9)), (landed(9), landed(5))):
         found = deletion_library.landed_absences(
-            order, database_identity="db", present=(), uuids={}, playlist_held=lambda _one: True
-        )
+            order, database_identity="db", present=(), uuids={}, playlist_held=lambda _one: True)
         assert {key: one.landed for key, one in found.absent.items()} == {"7": 9}
 
 
@@ -673,8 +663,7 @@ def _delete_playlist_outright(cfg: config.Config, playlist_id: str) -> None:
     """rekordbox's sidebar delete (A200): the playlist row and its members, gone, no marker."""
     _sql(
         cfg, ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
-        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)), _moved_on(3),
-    )
+        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)), _moved_on(3))
 
 
 def test_a_landed_row_removed_after_its_playlist_was_deleted_by_hand_is_offered_once(ready):
@@ -794,8 +783,7 @@ def test_a_record_written_before_rows_named_their_uuid_keeps_the_playlist_proof_
 
 
 def test_a_landing_into_a_playlist_already_there_is_offered_while_another_row_remains(
-    ready, silence
-):
+    ready, silence):
     """R-1843's case with a second row: the row left under its UUID proves the landing."""
     cfg = ready("Zero", name="same batch")
     _land(cfg, silence, "One", "Two", name="same batch")
@@ -820,7 +808,6 @@ def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted()
                 ],
             }
         }
-
     found = deletion_library.landed_absences(
         [
             landed(("1", "u1")),  # every row held: no question to ask
@@ -834,8 +821,7 @@ def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted()
         database_identity="db",
         present={"1", "3", "5", "10", "11"},
         uuids={"1": "u1", "3": "u3", "5": "another", "10": "", "11": ""},
-        playlist_held=lambda one: one == "here",
-    )
+        playlist_held=lambda one: one == "here")
     assert sorted(found.absent) == ["2", "8"]
     assert found.rolled_back == (frozenset({"4"}), frozenset({"6"}), frozenset({"9"}))
     assert found.unasked(()) == 3
@@ -849,7 +835,6 @@ def test_read_collection_keeps_each_rows_uuid_read_only():
             self.ID, self.UUID, self.rb_local_deleted = content_id, uuid, deleted
             self.FolderPath, self.rb_local_usn, self.FileSize = f"/x/{content_id}.flac", 1, 1
             self.ArtistName = self.Title = "A"
-
     read = deletion_library.read_collection([Row("1", "u1"), Row("2", "u2", 1), Row("3", None)])
     assert dict(read.uuids) == {"1": "u1", "2": "u2", "3": ""}
     with pytest.raises(TypeError):
@@ -896,8 +881,7 @@ def test_a_landing_whose_rows_are_all_held_is_not_counted_whatever_its_playlist(
 
 
 def test_the_first_review_counts_a_landing_already_rolled_back(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """The run that baselines says it too: a landing rolled back before any review is counted."""
     cfg, _root = native_library
     before = Path(cfg.library.db_path).read_bytes()

@@ -61,10 +61,7 @@ class Recorded:
         self.upload_status, self.never_start = upload_status, never_start
         self.graphql_status, self.upload_host = graphql_status, upload_host
         self.interrupt_on_poll, self.echo = interrupt_on_poll, echo
-        self.bodies: list[str] = []
-        self.uploads: dict[str, str] = {}
-        self.tracks: dict[str, str] = {}
-        self.polls: dict[str, int] = {}
+        self.bodies, self.uploads, self.tracks, self.polls = [], {}, {}, {}
 
     def __call__(self, request: cyanite.Request) -> cyanite.Reply:
         self.requests.append(request)
@@ -112,8 +109,7 @@ class Recorded:
         elif self.polls[track] <= self.processing:
             state = {"__typename": "AudioAnalysisV6Processing"}
         else:
-            result = dict(NEVER_READ)
-            result.update(self.said[self.tracks[track]])
+            result = {**NEVER_READ, **self.said[self.tracks[track]]}
             state = {"__typename": "AudioAnalysisV6Finished", "result": result}
         return self._data({"libraryTrack": {
             "__typename": "LibraryTrack", "id": track, "audioAnalysisV6": state}})
@@ -195,8 +191,7 @@ def _run(settings, declared, fake, events=None, **kw):
     said = events if events is not None else fake.events
     return cyanite.run(
         settings, declared, send=fake, sleep=lambda _s: None,
-        say=lambda line: said.append(("say", line)), **kw,
-    )
+        say=lambda line: said.append(("say", line)), **kw)
 
 
 def _rows(path: Path) -> dict[str, dict[str, str]]:
@@ -239,14 +234,12 @@ def test_a_count_at_the_cap_is_sent(chosen, tmp_path, declared, keyed):
 
 
 @pytest.mark.parametrize(
-    ("given", "words"),
-    [
+    ("given", "words"), [
         ({"send": True, "price": 0.1}, "needs --cap"),
         ({"send": True, "cap": 10}, "needs --price-per-track"),
         ({"send": True, "cap": -1, "price": 0.1}, "below zero"),
         ({"send": True, "cap": 10, "price": -0.1}, "below zero"),
-    ],
-)
+    ])
 def test_sending_needs_a_cap_and_a_price(chosen, tmp_path, declared, keyed, given, words):
     with pytest.raises(cyanite.TrialRefused, match=words):
         _unsent(_settings(chosen, tmp_path / "t.tsv", **given), declared)
@@ -265,7 +258,6 @@ def test_a_key_recorded_and_lost_from_the_keychain_is_no_key(monkeypatch):
 
     def gone(name):
         raise secrets.CredentialMissing("gone", name=name)
-
     monkeypatch.setattr(secrets, "get", gone)
     with pytest.raises(secrets.CredentialMissing, match="crate login cyanite-key"):
         cyanite.recorded_key()
@@ -276,7 +268,6 @@ def test_a_keychain_that_cannot_be_read_is_not_read_as_no_key(monkeypatch):
 
     def broken(name):
         raise secrets.CredentialBackendUnavailable("no backend", name=name)
-
     monkeypatch.setattr(secrets, "get", broken)
     with pytest.raises(secrets.CredentialBackendUnavailable):
         cyanite.recorded_key()
@@ -288,14 +279,12 @@ def test_the_key_is_recorded_with_crate_login_and_reported_by_doctor():
 
 
 @pytest.mark.parametrize(
-    "answer",
-    [
+    "answer", [
         cyanite.Reply(401, ""),
         cyanite.Reply(200, json.dumps({"errors": [{"message": "Unauthorized"}]})),
         cyanite.Reply(200, json.dumps({"errors": [
             {"message": "no", "extensions": {"code": "UNAUTHENTICATED"}}]})),
-    ],
-)
+    ])
 def test_a_rejected_key_refuses_at_the_preflight_with_nothing_uploaded(chosen, tmp_path, declared, keyed, answer):
     fake = Recorded(preflight=answer)
     with pytest.raises(secrets.CredentialRejected) as caught:
@@ -381,7 +370,6 @@ def test_a_failed_create_and_a_failed_analysis_are_scrubbed_of_the_key():
                                                 "error": {"message": f"bad {KEY}"}}
                     return cyanite.Reply(200, json.dumps(body))
             return reply
-
     failed = cyanite.CyaniteAsker(key=KEY, send=Failing(), sleep=lambda _s: None)
     analysis = failed.analyse(Path("deep.mp3"), b"audio", "deep")
     assert analysis.words is None and "analysis failed: bad [key]" in analysis.note
@@ -402,7 +390,6 @@ def test_a_transport_failure_is_said_by_its_type_never_its_text(monkeypatch):
 
     def broken(*_a, **_kw):
         raise requests.ConnectionError(f"{UPLOAD_HOST}up-1?X-Amz-Signature=secret {KEY}")
-
     monkeypatch.setattr(requests, "request", broken)
     reply = SHIPPED_SEND(cyanite.Request("PUT", f"{UPLOAD_HOST}up-1", {}, b""))
     assert reply.status is None
@@ -431,9 +418,7 @@ def test_no_column_of_either_table_is_tempo_shaped():
 
 
 def test_a_reply_carrying_a_tempo_and_a_key_has_them_left_unread():
-    result = dict(NEVER_READ)
-    result.update(SAID["deep"])
-    words = cyanite.read_words(result)
+    words = cyanite.read_words({**NEVER_READ, **SAID["deep"]})
     assert words == cyanite.Words(("electronicDance",), ("deepHouse",), ("chilled", "sexy"), "medium")
 
 
@@ -450,7 +435,6 @@ def _tree(root: Path) -> dict[str, bytes]:
 def test_the_trial_writes_its_table_and_summary_and_nothing_else(chosen, tmp_path, declared, keyed, monkeypatch):
     def refused(*_a, **_kw):
         raise AssertionError("the trial wrote a tag")
-
     for name in ("write_tags", "write_genre", "clear_tags", "strip_tags"):
         monkeypatch.setattr(tags, name, refused)
     before = _tree(tmp_path)
@@ -495,7 +479,6 @@ def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen
 
 def _summary(out: Path) -> list[dict[str, str]]:
     import csv
-
     with cyanite.summary_path(out).open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle, delimiter="\t"))
 
@@ -553,7 +536,6 @@ def test_a_file_with_no_folder_today_is_not_filed(tmp_path, probe_mp3, declared,
 def test_a_tag_that_could_not_be_read_is_said_never_read_as_no_genre(tmp_path, declared, monkeypatch):
     def unreadable(_path, _fields):
         raise tags.TagReadFailed("damaged")
-
     monkeypatch.setattr(tags, "read_tags_checked", unreadable)
     genre, place, note = cyanite.filed_place(declared, tmp_path / "x.mp3")
     assert (genre, place) == ("", None)
@@ -563,8 +545,7 @@ def test_a_tag_that_could_not_be_read_is_said_never_read_as_no_genre(tmp_path, d
 @pytest.mark.parametrize(
     ("identifier", "words"),
     [("deepHouse", "deep house"), ("house", "house"), ("rapHipHop", "rap hip hop"),
-     ("abstractIDMLeftfield", "abstract idm leftfield"), ("rnb", "rnb")],
-)
+     ("abstractIDMLeftfield", "abstract idm leftfield"), ("rnb", "rnb")])
 def test_an_identifier_is_read_as_the_words_it_spells(identifier, words):
     assert cyanite.spelled(identifier) == words
 
@@ -742,8 +723,7 @@ def test_two_files_holding_the_same_audio_are_sent_once(tmp_path, probe_mp3, dec
 
 
 def test_an_interrupt_while_waiting_keeps_the_track_and_the_resume_does_not_upload_it(
-    chosen, tmp_path, declared, keyed
-):
+    chosen, tmp_path, declared, keyed):
     out = tmp_path / "t.tsv"
     first = Recorded(processing=5, interrupt_on_poll=("lt-2", 2))
     with pytest.raises(KeyboardInterrupt):
@@ -798,7 +778,6 @@ def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, out, 
         if path.name == "tech.mp3":
             raise tags.TagReadFailed("damaged")
         return real(path, fields)
-
     monkeypatch.setattr(tags, "read_tags_checked", damaged)
     _run(_settings(chosen, out, **SEND), declared, Recorded())
     tech = _rows(out)["tech.mp3"]
@@ -847,7 +826,6 @@ def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(ch
                 if json.loads(request.body)["variables"]["id"] == "lt-1":
                     seen.append(_rows(out))
             return super().__call__(request)
-
     _run(_settings(chosen, out, **SEND), declared, Watching())
     assert seen, "the wait asked about lt-1"
     first = seen[0]["deep.mp3"]
@@ -884,7 +862,6 @@ def test_an_echoed_key_in_a_track_id_alone_never_reaches_the_table(chosen, out, 
                 body["data"]["libraryTrackCreate"]["createdLibraryTrack"]["id"] = f"lt{KEY}"
                 return cyanite.Reply(200, json.dumps(body))
             return reply
-
     _run(_settings(chosen, out, **SEND), declared, Echoing())
     text = out.read_text()
     assert KEY not in text and "lt[key]" in text
@@ -914,7 +891,6 @@ def test_an_mp3_that_cannot_be_read_is_listed_and_not_sent(chosen, tmp_path, dec
         if path.name == "tech.mp3":
             raise PermissionError("no")
         return real(path)
-
     monkeypatch.setattr(cyanite, "audio_digest", unreadable)
     fake = Recorded()
     events: list = []

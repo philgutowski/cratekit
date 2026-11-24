@@ -163,8 +163,7 @@ def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element()
         "kept = [x not in set(ys) for x in xs]",
         "kept = {x in set(ys) for x in xs}",
         "kept = [e for e in xs if e in builtins.frozenset(ys)]",
-    ],
-)
+    ])
 def test_the_guard_finds_the_shape_in_every_comprehension(source):
     assert len(rebuilt_per_element(source)) == 1, source
 
@@ -189,7 +188,6 @@ def test_the_guard_finds_the_shape_in_every_comprehension(source):
         "kept = [one for one in rows if 1 in {one for one in one.kids}]",
         "kept = [x for x in xs if x in set(x for x in x.kids)]",
         "kept = [e for e in xs if any(filter(lambda *g, **h: 'a' in set(g), e.groups))]",
-    ],
-)
+    ])
 def test_the_guard_passes_a_set_built_once_or_built_from_the_element(source):
     assert rebuilt_per_element(source) == [], source

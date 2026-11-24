@@ -101,7 +101,6 @@ def test_a_streaming_spelling_with_anything_at_it_still_refuses(cfg, answer):
         if answer is None:
             return Path(cfg.library.root).stat()
         raise answer
-
     references = _references(cfg, _active(STREAMED[0]), stat=stat)
     assert references.streaming == ()
     assert references.unmapped == ("a0",)
@@ -116,7 +115,6 @@ def test_a_streaming_spelling_is_asked_about_on_the_disk(cfg):
     def stat(path):
         asked.append(str(path))
         raise FileNotFoundError(path)
-
     _references(cfg, _active(STREAMED[0]), stat=stat)
     assert asked == [STREAMED[0]]
 

@@ -157,8 +157,7 @@ def test_a_batch_that_fails_every_item_records_the_job_failed_then_raises(queue,
 @pytest.mark.parametrize(
     ("answer", "message"),
     [({"a": None}, "no outcome"), ({"a": None, "b": "written"}, "neither what it produced")],
-    ids=["no-answer", "neither-produced-nor-an-exception"],
-)
+    ids=["no-answer", "neither-produced-nor-an-exception"])
 def test_an_item_without_a_usable_outcome_is_failed_not_done(queue, store, cfg, answer, message):
     """A missing answer is not evidence of work, nor is an answer of the wrong type."""
     job = _job(store, cfg, "a", "b")
@@ -172,8 +171,7 @@ def test_an_item_without_a_usable_outcome_is_failed_not_done(queue, store, cfg, 
 
 
 @pytest.mark.parametrize(
-    "answer", [[None, None], ("a", "b"), "done"], ids=["list", "tuple", "text"]
-)
+    "answer", [[None, None], ("a", "b"), "done"], ids=["list", "tuple", "text"])
 def test_an_answer_that_is_not_one_outcome_per_item_fails_every_item(queue, store, cfg, answer):
     job = _job(store, cfg, "a", "b")
     with pytest.raises(CratekitError):

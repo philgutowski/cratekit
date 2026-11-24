@@ -219,8 +219,7 @@ def test_questions_wait_for_the_report(flat):
 
 
 def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
-    native_library, silence
-):
+    native_library, silence):
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
@@ -249,7 +248,6 @@ def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
 def test_the_night_fields_and_outcomes_it_reads_are_the_night_passs_own(flat):
     """U293: the record ``crate sync night --last`` prints, read by name."""
     from cratekit.cli import sync_night
-
     firing = sync_night._Firing(night="n", started=sync_night._clock(), run_id="r")
     record = firing.record(sync_night.NOTHING, "line")
     named = set(re.findall(r"`data\.summary\.night\.([a-z_]+)`", flat))

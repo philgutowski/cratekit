@@ -66,7 +66,6 @@ def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
         if url in pages:
             return searchers.Fetched(text=pages[url], status=200)
         return searchers.Fetched(note=f"no route for {url}")
-
     return fetch
 
 
@@ -296,7 +295,6 @@ def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(se
         if url == f"{searchers.DISCOGS_RELEASE}41":
             return searchers.Fetched(text=release(41, tracks=tracks), status=200)
         return searchers.Fetched(text=_beatport_page([]), status=200)
-
     hit = build(fetch)("Bernard Badie", searched)
     (discogs,) = [said for said in hit.answers if said.source == searchers.DISCOGS]
     assert (discogs.answer == "matched") is expected

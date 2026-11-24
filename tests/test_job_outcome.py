@@ -202,8 +202,7 @@ ENDINGS = {
 @pytest.mark.parametrize("key", QUEUED_KEYS)
 @pytest.mark.parametrize("ending", list(ENDINGS))
 def test_a_parked_or_half_failed_job_leaves_every_queued_verb_non_zero(
-    machine, monkeypatch, ending, key
-):
+        machine, monkeypatch, ending, key):
     """R-290 and R-225 over the population; ``drive`` raises only when every item failed."""
     worker, items, state, outcome, reason = ENDINGS[ending]
     monkeypatch.setattr(handlers, "resolve", lambda _key: worker)
@@ -219,8 +218,7 @@ def test_a_parked_or_half_failed_job_leaves_every_queued_verb_non_zero(
 @pytest.mark.parametrize("key", QUEUED_KEYS)
 @pytest.mark.parametrize("ending", list(ENDINGS))
 def test_a_parked_or_half_failed_job_answers_the_same_way_the_second_time_it_is_asked(
-    machine, monkeypatch, ending, key
-):
+        machine, monkeypatch, ending, key):
     """A blocked job is driven again; a job failed on entry skips the drive and its checks."""
     worker, items, _state, outcome, _reason = ENDINGS[ending]
     monkeypatch.setattr(handlers, "resolve", lambda _key: worker)
@@ -343,8 +341,7 @@ def _is_the_mapping(statement: ast.stmt, never_returns: frozenset[str] = frozens
 
 
 def unmapped_reason(
-    function: ast.FunctionDef, never_returns: frozenset[str] = frozenset()
-) -> str | None:
+        function: ast.FunctionDef, never_returns: frozenset[str] = frozenset()) -> str | None:
     """Why this drive can reach a report unmapped, judged by control flow, or None."""
     for call in _calls(function, "run_job"):
         path = _path_to(function.body, call)
@@ -414,8 +411,7 @@ _WORDED = _OPENS + (
         (_WORDED.format(handler="_raise_refusal(exc, job)"), None),
         (_WORDED.format(handler="_log_and_carry_on(exc, job)"), "returns at line 8"),
         (_WORDED.format(handler="pass"), "returns at line 8"),
-    ],
-)
+    ])
 def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
     """A mapping after a return or in a skipped branch is refused, a raising wrap accepted."""
     reason = unmapped_reason(_shell(source), frozenset({"_raise_refusal"}))

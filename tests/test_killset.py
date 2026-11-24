@@ -221,8 +221,7 @@ def test_rows_with_no_path_and_no_table_is_refused(tree, capsys):
         ({"subset": ["tests/test_alpha.py::test_once"]}, ("tests/test_alpha.py::test_once",)),
         # Nothing left: the driver derives the subset.
         ({"subset": ["tests/test_gone.py"], "killed": ["tests/test_gone.py::test_x"]}, ()),
-    ],
-)
+    ])
 def test_a_replay_row_runs_its_own_subset_else_the_files_its_kills_name(tree, row, tests):
     assert killset.tests_of(_recorded("R", "    return 1", **row), tree) == tests
 
@@ -302,11 +301,9 @@ ZERO = {"deaths": 0, "status": "zero"}
         "every-kill-kept", "one-lost-kill-named", "a-collection-error-is-lost-though-a-death",
         "no-row-and-no-mapping", "mapped-to-a-surviving-killed-row", "mapped-to-a-row-not-killed",
         "mapped-to-no-row", "mapped-for-no-reason", "mapped-onto-a-row-that-only-broke-collection",
-    ],
-)
+    ])
 def test_check_holds_each_kill_to_its_row_or_mapping_after(
-    tmp_path, capsys, before, after, extra, code, said
-):
+        tmp_path, capsys, before, after, extra, code, said):
     assert _check(tmp_path, before, after, **extra) == code
     out = capsys.readouterr().out
     for line in said:
@@ -359,8 +356,7 @@ def test_a_row_the_tool_moved_must_still_die_by_a_test_that_killed_it_before(tmp
 
 
 def test_a_row_the_tool_moved_passes_when_the_same_test_kills_it_wherever_that_test_lives(
-    tmp_path, capsys
-):
+        tmp_path, capsys):
     """The test moved with the code it tests: another file, the same name, the same guard."""
     before = [_measured("A", killed=["tests/test_alpha.py::test_once[a]", "tests/test_alpha.py::test_two"])]
     killed = ["tests/test_beta.py::TestCaps::test_once[b - c]"]
@@ -415,8 +411,7 @@ def test_check_matches_tables_that_are_not_replays_by_row_id(tmp_path):
         ({"valid": False, "invalid_reason": "the null control killed 1"}, "the null control killed 1"),
         ({"invalid_reason": "in progress"}, "in progress"),
         ({"valid": None}, "it does not say it is valid"),
-    ],
-)
+    ])
 def test_check_refuses_a_table_that_is_not_a_finished_valid_batch(tmp_path, capsys, extra, why):
     """A batch cut short has measured only some rows, and its absent rows are not lost kills."""
     good = _table(tmp_path, "before.json", [_measured("A")])
@@ -438,8 +433,7 @@ def test_check_refuses_a_file_that_is_not_a_table(tmp_path, capsys):
 def _git(root: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-c", "user.email=killset@test", "-c", "user.name=killset", *args],
-        cwd=root, capture_output=True, check=False,
-    )
+        cwd=root, capture_output=True, check=False)
     assert done.returncode == 0, done.stderr.decode()
     return done.stdout.decode().strip()
 
@@ -516,8 +510,7 @@ def _twin_is_split(tree: Path) -> None:
 
 @pytest.mark.parametrize("refactor", [_twin_stays, _twin_is_renamed, _twin_is_split])
 def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
-    tree, capsys, refactor
-):
+        tree, capsys, refactor):
     """Two then and one now: the line left may be the twin's, however like a move it looks."""
     (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
     head = _commit(tree)
@@ -535,8 +528,7 @@ def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
 
 
 def test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_it(
-    committed, capsys
-):
+        committed, capsys):
     """One place then and one now, yet another guard: ``check`` asks a test in common."""
     tree, head = committed
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
@@ -604,8 +596,7 @@ def test_rows_after_leaves_text_it_cannot_place_for_the_author(tree, capsys):
     before = _before(
         tree, _replayed("GONE", "    return 1"), _replayed("SPLIT", "    return 5"),
         _replayed("KEPT", "    return 2"),
-        _replayed("ZERO", "def twice():", deaths=0, status="zero"),
-    )
+        _replayed("ZERO", "def twice():", deaths=0, status="zero"))
     out = _rows_after(tree, before)
     assert "1 rows in place and 0 moved" in capsys.readouterr().out
     _, _, rows, dropped = mutate.load_spec(out)
@@ -638,8 +629,7 @@ def test_a_replay_table_says_where_a_moved_guard_lives_now(tree):
     assert _states(tree) == {"A": "stale"}
     replayed = _replayed(
         "A", "    return 1", file="src/pkg/moved.py", subset=["tests/test_beta.py"],
-        moved="the same text, now in src/pkg/moved.py",
-    )
+        moved="the same text, now in src/pkg/moved.py")
     _table(tree, "u2-replay.json", [replayed], pass_kind="replay", when="2026-11-22 10:00 UTC")
     found = killset.read_kill_set(tree)
     assert (found.tables, found.replay_tables, found.all_rows) == (1, 1, 1)
@@ -698,21 +688,18 @@ def test_recorded_kills_replay_through_the_driver_and_check_clean(repo, capsys):
         _recorded(
             "CLAMP", "if value > limit:", "if value > 10000:", file=GUARDS_FILE,
             subset=["tests/test_guards.py"],
-            killed=["tests/test_guards.py::test_clamp_caps_at_the_limit"],
-        ),
+            killed=["tests/test_guards.py::test_clamp_caps_at_the_limit"]),
         _recorded(
             "FLOOR", "if value < lowest:", "if value < -10000:", file=GUARDS_FILE,
             subset=["tests/test_renamed_since.py"],
-            killed=["tests/test_guards.py::test_floor_raises_a_low_value"],
-        ),
+            killed=["tests/test_guards.py::test_floor_raises_a_low_value"]),
     ])
     spec = repo / "replay-rows.toml"
     assert _run(repo, "rows", GUARDS_FILE, "--out", str(spec), "--name", "u1-replay") == 0
     name, pass_kind, rows, dropped = mutate.load_spec(spec)
     batch = mutate.measure_batch(
         repo, name, rows, dropped, pass_kind=pass_kind,
-        mapped=mutate.load_mapped(spec, pass_kind, rows),
-    )
+        mapped=mutate.load_mapped(spec, pass_kind, rows))
     assert [(one.id, one.status, one.subset) for one in batch.results] == [
         ("u1.CLAMP", "killed", ["tests/test_guards.py"]),
         ("u1.FLOOR", "killed", ["tests/test_guards.py"]),

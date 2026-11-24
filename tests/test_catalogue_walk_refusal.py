@@ -57,8 +57,7 @@ def _walk(beatport=REFUSED, *, discogs=None, token=SENT, general=None, rows=8, s
     fetch = _over_the_wire(beatport, discogs=discogs, seen=seen)
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     search = searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker)
     if general is None:
         return search, None, seen
     shops = {"lookup": general, "past_a_refusing_shop": suggestions}
@@ -141,12 +140,10 @@ REFUSED_ROW = _fake({"discogs": "blocked", "beatport": "blocked"}, note="unread:
 PARTLY = _fake({"discogs": "miss", "beatport": "blocked"}, note="unread: beatport")
 PASSED = _fake(
     {"discogs": searchers.NOT_ASKED, "beatport": "miss"}, note="unread: discogs, no token",
-    passed_over=("discogs",),
-)
+    passed_over=("discogs",))
 #: A row passed over because the recorded Discogs token could not be used.
 UNUSABLE = suggest.Asked(
-    suggest.UNREAD, note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}", passed_over=("discogs",)
-)
+    suggest.UNREAD, note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}", passed_over=("discogs",))
 
 
 class _Table:
@@ -183,7 +180,6 @@ def test_a_catalogue_nobody_asked_neither_counts_nor_resets(machine):
     kept, table, said = _run(machine, REFUSED_ROW, REFUSED_ROW, PASSED, REFUSED_ROW, PARTLY)
     assert kept.stopped and table.asked == 4
     assert said[4].note == STOPPED
-
     kept, table, _said = _run(machine, *[PASSED] * 4, walk="passed")
     assert not kept.stopped and table.asked == 4
 
@@ -195,7 +191,6 @@ def _refusal(message: str = "refused", **detail):
 
     def search(artist, title):
         raise cause
-
     return suggest.catalogue_lookup(search)("a", "t", "")
 
 
@@ -203,8 +198,7 @@ def test_the_words_of_a_refusal_by_every_catalogue_are_read_off_its_detail():
     answer = _refusal(
         "every catalogue asked refused", sources=["discogs", "beatport"],
         answers=["blocked", "blocked"], notes=["", f"{searchers.NOT_SENT}refused"],
-        **{searchers.DISCOGS_DETAIL: ""},
-    )
+        **{searchers.DISCOGS_DETAIL: ""})
     assert answer.said == suggest.UNREAD and not answer.partly_read
     assert dict(answer.answers) == {"discogs": "blocked", "beatport": suggest.NOT_SENT}
 
@@ -212,7 +206,6 @@ def test_the_words_of_a_refusal_by_every_catalogue_are_read_off_its_detail():
 def test_a_refusal_with_no_detail_carries_no_words():
     def search(artist, title):
         raise refuse("catalogue-unreachable", "no network", origin=("test",))
-
     answer = suggest.catalogue_lookup(search)("a", "t", "")
     assert answer.said == suggest.UNREAD and answer.answers == () and not answer.partly_read
 
@@ -310,14 +303,12 @@ def test_the_suggest_binder_is_built_over_the_one_lookup(monkeypatch):
 def _item(content_id: str, asked: suggest.Asked) -> suggest.Item:
     return suggest.Item(
         content_id=content_id, path="", artist="a", title="t", genre="", band="", options=(),
-        votes=(), catalogue=asked, action="leave",
-    )
+        votes=(), catalogue=asked, action="leave")
 
 
 def _plan(*items: suggest.Item) -> suggest.SuggestPlan:
     return suggest.SuggestPlan(
-        items=items, counts=defaultdict(int), changes=None, band="", catalogue=True
-    )
+        items=items, counts=defaultdict(int), changes=None, band="", catalogue=True)
 
 
 def _unread_warning(*items: suggest.Item) -> str:
@@ -360,8 +351,7 @@ def test_the_backlogs_catalogue_line_counts_each_catalogues_answers():
 # F. Round one of the review
 DEEZER_MATCH = _fake(
     {"discogs": "miss", "beatport": "blocked", "deezer": "matched"}, said=suggest.MATCHED,
-    genre="Soul", source="deezer",
-)
+    genre="Soul", source="deezer")
 
 
 def test_a_row_written_from_deezer_while_beatport_refused_is_named_in_the_warning():
@@ -378,8 +368,7 @@ def test_rows_are_sorted_by_why_they_were_not_read_whole():
     unread = suggest.sort_unread([(str(n), row) for n, row in enumerate(rows, start=1)])
     assert unread == suggest.Unread(
         refused=("1",), partly=("2", "3", "4"), partly_by="beatport", no_token=("6",),
-        token_unusable=("7",),
-    )
+        token_unusable=("7",))
 
 
 def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_the_walk(machine):
@@ -415,7 +404,6 @@ def test_the_words_are_left_out_of_a_plans_digest():
     """Which refusing rows were sent is not in the digest, or a plan goes stale overnight."""
     def digest(asked):
         return _plan(_item("1", asked)).digest
-
     assert digest(SENT_ROW) == digest(NOT_SENT_ROW)
     assert digest(SENT_ROW) != digest(REFUSED_ROW)
     assert _item("1", NOT_SENT_ROW).to_json()["catalogue"]["answers"] == _NOT_SENT_WORDS
@@ -460,7 +448,6 @@ def test_a_row_passed_over_for_a_refused_token_is_kept_for_the_day(machine):
             for n in range(4):
                 kept.answer(str(n), ARTIST, f"{TITLE} {n}", "")
         return kept, seen
-
     first, seen = run()
     assert first.asked == 4 and _beatport_requests(seen) == 4
     again, seen = run()
@@ -471,8 +458,7 @@ def test_the_suggest_verb_says_a_token_that_could_not_be_used():
     message = _unread_warning(_item("1", UNUSABLE))
     assert message.startswith(
         "Discogs was not read for 1 row(s), 1, because the recorded Discogs token could "
-        "not be used, so those were suggested without it; to record a new one: "
-    )
+        "not be used, so those were suggested without it; to record a new one: ")
     assert "no Discogs token is recorded" not in message
 
 
@@ -481,9 +467,7 @@ def test_a_backlog_rows_digest_leaves_the_words_out_and_its_envelope_keeps_them(
     def row(asked):
         return backlog.Row(
             content_id="1", path="p", artist="a", title="t", row_word="", file_word="",
-            cause=backlog.NO_GENRE, word="", status=backlog.LEFT, asked=asked,
-        )  # fmt: skip
-
+            cause=backlog.NO_GENRE, word="", status=backlog.LEFT, asked=asked)  # fmt: skip
     assert row(SENT_ROW).digested() == row(NOT_SENT_ROW).digested()
     assert "answers" not in row(SENT_ROW).digested()["catalogue"]
     assert row(NOT_SENT_ROW).to_json()["catalogue"]["answers"] == _NOT_SENT_WORDS

@@ -27,9 +27,7 @@ def _ladder(record: list[str], *, fails_at: int | None = None):
             if fails_at == from_version:
                 raise RuntimeError(f"migration {from_version} failed")
             return out
-
         return run
-
     return {1: step(1), 2: step(2)}
 
 
@@ -67,8 +65,7 @@ def _state(path) -> tuple[bytes, list[str]]:
         (1, ["v1->v2", "v2->v3"], [2, 3]),
         (3, [], []),
     ],
-    ids=["one-version-old", "two-versions-old-in-order", "already-current-runs-none"],
-)
+    ids=["one-version-old", "two-versions-old-in-order", "already-current-runs-none"])
 def test_a_config_migrates_forward_through_each_step_it_lacks(library, version, steps, added):
     record: list[str] = []
     migrated = config.migrate(_versioned(library, version), current=3, migrations=_ladder(record))
@@ -107,7 +104,6 @@ def test_a_migration_whose_result_fails_validation_writes_nothing(library, tmp_p
         out = dict(data)
         out["library"] = {k: v for k, v in out["library"].items() if k != "volume_id"}
         return out
-
     with pytest.raises(config.ConfigInvalid, match="library.volume_id"):
         config.load_from_path(path, current=2, migrations={1: destroys_a_required_key})
     assert _state(path) == before
@@ -142,8 +138,7 @@ def test_a_newer_config_refuses_rather_than_downgrading(library):
     "version,match",
     # Written since the first release, so its absence means a hand edit, not age.
     [(None, "schema_version"), ("one", None)],
-    ids=["absent-is-corruption-not-age", "non-integer-is-corruption"],
-)
+    ids=["absent-is-corruption-not-age", "non-integer-is-corruption"])
 def test_an_unreadable_schema_version_is_corruption(library, version, match):
     data = valid_data(library)
     if version is None:
@@ -181,7 +176,6 @@ def test_a_migration_that_cannot_take_the_lock_refuses(library, tmp_path, monkey
 
     def cannot_lock(*args, **kwargs):
         raise OSError("locking is not supported on this filesystem")
-
     monkeypatch.setattr(fcntl, "flock", cannot_lock)
     with pytest.raises(config.ConfigLockUnavailable):
         config.load_from_path(path, current=3, migrations=_ladder([]))
@@ -190,8 +184,7 @@ def test_a_migration_that_cannot_take_the_lock_refuses(library, tmp_path, monkey
 
 
 def test_a_second_process_that_migrated_first_does_not_get_its_backup_clobbered(
-    library, tmp_path, monkeypatch
-):
+        library, tmp_path, monkeypatch):
     """B never re-reads, so A's ``.v1.bak`` would be clobbered; A migrates as B takes the lock."""
     path = _v1_file(library, tmp_path)
     v1_bytes = path.read_bytes()
@@ -203,7 +196,6 @@ def test_a_second_process_that_migrated_first_does_not_get_its_backup_clobbered(
         backup.write_bytes(v1_bytes)
         _write(path, _versioned(library, 3))
         return acquired
-
     finished = another_process_finished_while_we_waited
     monkeypatch.setattr(config.exclusive_lock, "__enter__", finished)
     cfg = config.load_from_path(path, current=3, migrations=_ladder([]))

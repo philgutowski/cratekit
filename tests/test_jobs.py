@@ -114,8 +114,7 @@ def _child_env() -> dict[str, str]:
 def _spawn_worker(*args: str) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, str(WORKER), *args], env=_child_env(), text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def _wait_for(path: Path, *, seconds: float = 20.0) -> None:
@@ -181,8 +180,7 @@ def test_a_config_that_changed_while_queued_names_what_drifted(store, cfg, tmp_p
     job = _job(store, cfg)
     assert jobs.drift(job, cfg) == ()
     moved = config.from_dict(
-        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}}
-    )
+        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}})
     assert jobs.drift(job, moved) == ("paths.download_staging",)
     assert jobs.frozen_config(job).paths.download_staging == cfg.paths.download_staging
 
@@ -194,12 +192,10 @@ def test_a_job_frozen_under_the_retired_adapter_key_reports_no_drift(store, cfg)
     frozen = tomllib.loads(job.config_toml)
     frozen["acquisition"]["adapter"] = "tidal_dl_ng"
     before_rename = dataclasses.replace(
-        job, config_toml=tomli_w.dumps(frozen), config_fingerprint="queued before U197"
-    )
+        job, config_toml=tomli_w.dumps(frozen), config_fingerprint="queued before U197")
     assert jobs.drift(before_rename, cfg) == ()
     switched = config.from_dict(
-        {**cfg.to_toml_dict(), "acquisition": {**frozen["acquisition"], "adapter": "streamrip"}}
-    )
+        {**cfg.to_toml_dict(), "acquisition": {**frozen["acquisition"], "adapter": "streamrip"}})
     assert jobs.drift(before_rename, switched) == ("acquisition.adapter",)
 
 
@@ -265,8 +261,7 @@ def test_states_of_answers_past_the_parameter_limit_of_one_statement(store, cfg)
     with store.immediate() as conn:
         conn.executemany(
             f"INSERT INTO jobs ({columns}) VALUES ({', '.join('?' for _ in row)})",
-            [tuple({**row, "job_id": job_id}.values()) for job_id in made[1:]],
-        )
+            [tuple({**row, "job_id": job_id}.values()) for job_id in made[1:]])
     answered = jobs.states_of(store, [*made, "no-such-job"])
     assert len(answered) == len(made)
     assert set(answered) == set(made)
@@ -307,16 +302,14 @@ def test_everything_the_queue_writes_is_owner_only_under_any_umask(tmp_path, cfg
 def _throttled() -> Cause:
     return Cause(
         reason="unavailable-transient", message="the provider asked us to slow down",
-        remediation=Remediation(remedy=Remedy.RETRY_LATER), scope=Scope.SOURCE, retryable=True,
-    )
+        remediation=Remediation(remedy=Remedy.RETRY_LATER), scope=Scope.SOURCE, retryable=True)
 
 
 def _needs_acknowledgment() -> Cause:
     return Cause(
         reason="backup-acknowledgment-missing",
         message="this session has no recorded backup acknowledgment",
-        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP), scope=Scope.SESSION,
-    )
+        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP), scope=Scope.SESSION)
 
 
 def test_two_jobs_parked_under_one_state_still_carry_two_different_remediations(store, cfg):
@@ -341,8 +334,7 @@ def test_parking_a_job_without_a_reason_is_refused(store, cfg):
 
 # Part 3: durability (KTD8)
 def test_the_artifact_is_flushed_and_renamed_before_the_row_flips_to_done(
-    store, root, cfg, tmp_path, monkeypatch
-):
+        store, root, cfg, tmp_path, monkeypatch):
     """The ordering is the guarantee: "done" is what a resume trusts."""
     job = _job(store, cfg, "one")
     events: list[str] = []
@@ -403,15 +395,13 @@ def test_a_partial_failure_fails_the_job_and_keeps_the_successes(store, root, cf
 def _permanent_lookup() -> CratekitError:
     return refuse(
         "sync-source-lookups-failed", "the provider has no artist named for this label",
-        steps=("retry this source when the provider is reachable",), origin=("test",),
-    )
+        steps=("retry this source when the provider is reachable",), origin=("test",))
 
 
 def _transient_outage() -> CratekitError:
     return refuse(
         "unavailable-transient", "the provider asked us to slow down",
-        remedy=Remedy.RETRY_LATER, retryable=True, origin=("test",),
-    )
+        remedy=Remedy.RETRY_LATER, retryable=True, origin=("test",))
 
 
 def _failing(permanent=(), transient=(), broken=()):
@@ -429,8 +419,7 @@ def _failing(permanent=(), transient=(), broken=()):
 
 @pytest.mark.parametrize("ids", [("a", "b"), ("a", "b", "c")], ids=["two-items", "three-items"])
 def test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable(
-    store, root, cfg, ids
-):
+        store, root, cfg, ids):
     """R-380 and R-266: permanent items are not retryable; R-391 keeps one shared reason."""
     job = _job(store, cfg, *ids)
     envelope = _refused(lambda: jobs.drive(store, job.job_id, _failing(permanent=ids), root=root))
@@ -486,8 +475,7 @@ def test_a_failed_job_with_no_recorded_cause_still_re_arms(store, cfg):
     job = _job(store, cfg, "a", "b")
     broke = Cause(
         reason="internal-error", message="this one broke",
-        remediation=Remediation(remedy=Remedy.REPORT_DEFECT), origin=("test",),
-    )
+        remediation=Remediation(remedy=Remedy.REPORT_DEFECT), origin=("test",))
     jobs.fail_item(store, job.job_id, "a", cause=broke)
     jobs.transition(store, job.job_id, jobs.JobState.FAILED)
     recorded = jobs.get(store, job.job_id)
@@ -585,8 +573,7 @@ def test_cancelling_reports_cancelled_rather_than_failed(store, cfg):
 
 
 def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(
-    store, root, cfg, tmp_path
-):
+        store, root, cfg, tmp_path):
     """The abort point is before the commit; the handler signals its own process."""
     job = _job(store, cfg, "a", "b")
     staged = tmp_path / "staged-a.txt"
@@ -662,8 +649,7 @@ def test_a_running_row_with_no_live_driver_is_reconciled_back_to_queued(store, r
     jobs.transition(store, job.job_id, jobs.JobState.RUNNING, stage="downloading")
     store.conn.execute(
         "UPDATE job_items SET state = ?, claimed_by = ? WHERE job_id = ?",
-        (str(jobs.ItemState.CLAIMED), "a-dead-driver", job.job_id),
-    )
+        (str(jobs.ItemState.CLAIMED), "a-dead-driver", job.job_id))
     reconciled = jobs.reconcile(store, job.job_id, root=root)
     assert reconciled.state is jobs.JobState.QUEUED
     assert reconciled.stage == "downloading"
@@ -755,8 +741,7 @@ def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(store, 
 
 
 def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing(
-    store, cfg, monkeypatch
-):
+        store, cfg, monkeypatch):
     """On a synthetic planned entry, since U25 left the registry with none."""
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.cli import registry  # noqa: PLC0415
@@ -765,8 +750,7 @@ def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importi
     missing = "cratekit.vocals.missing_shell"
     fake = dataclasses.replace(registry.entry("analyze.vocals"), planned_in="U99", module=missing)
     monkeypatch.setattr(
-        registry, "ENTRIES", tuple(fake if e.name == fake.name else e for e in registry.ENTRIES)
-    )
+        registry, "ENTRIES", tuple(fake if e.name == fake.name else e for e in registry.ENTRIES))
     monkeypatch.setattr(registry, "_BY_NAME", {**dict(registry._BY_NAME), fake.name: fake})
     by_handler = {**dict(getattr(registry, "_BY_HANDLER", {})), fake.handler_key: fake}
     monkeypatch.setattr(registry, "_BY_HANDLER", by_handler)
@@ -806,8 +790,7 @@ def test_a_state_filter_that_names_nothing_is_refused_rather_than_ignored(cfg, d
 
 
 def test_showing_a_broken_job_succeeds_and_carries_the_jobs_cause_in_the_payload(
-    cfg, default_queue
-):
+        cfg, default_queue):
     """Reporting on a failure is not itself a failure (KTD25 one level up)."""
     _job(default_queue, cfg, job_id="job-two")
     jobs.block(default_queue, "job-two", _throttled())
@@ -820,8 +803,7 @@ def test_showing_a_broken_job_succeeds_and_carries_the_jobs_cause_in_the_payload
 def test_showing_a_job_whose_config_moved_warns_and_names_the_keys(cfg, default_queue, tmp_path):
     _job(default_queue, cfg, job_id="job-three")
     moved = config.from_dict(
-        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}}
-    )
+        {**cfg.to_toml_dict(), "paths": {"download_staging": str(tmp_path / "elsewhere")}})
     config.save(moved)
     config.reset_cache()
     envelope = _ok(["job", "show", "job-three"])
@@ -857,8 +839,7 @@ def test_every_job_verb_refuses_an_unknown_identifier_with_the_same_code(cfg, de
 def _blocked() -> Cause:
     return Cause(
         reason="provider-blocked", message="the provider refused this client",
-        remediation=Remediation(steps=("check the account",)), scope=Scope.RUN, retryable=False,
-    )
+        remediation=Remediation(steps=("check the account",)), scope=Scope.RUN, retryable=False)
 
 
 def _parking(park: set[str], seen: list[str] | None = None):
@@ -928,8 +909,7 @@ def _lossy() -> Cause:
     return Cause(
         reason="lossy-refused", message="the provider offers this track lossy only",
         remediation=Remediation(remedy=Remedy.RELAX_LOSSLESS_POLICY), scope=Scope.ITEM,
-        retryable=False,
-    )
+        retryable=False)
 
 
 def _declining(*declined: str, failing: tuple[str, ...] = ()):
@@ -999,8 +979,7 @@ def test_a_retryable_cause_cannot_decline_an_item():
 
 
 def test_a_handler_that_declines_a_retryable_cause_fails_the_item_rather_than_skipping_it(
-    store, root, cfg
-):
+        store, root, cfg):
     """The guard bites inside a drive: the item boundary turns it into a failure."""
     job = _job(store, cfg, "a")
     def handle(_job, item):
@@ -1024,8 +1003,7 @@ def _intake_job(
     if swept:
         payload["source_id"] = "playlists"
     jobs.enqueue(
-        store, handler_key=handler_key, payload=payload, cfg=cfg, item_ids=tracks, job_id=job_id
-    )
+        store, handler_key=handler_key, payload=payload, cfg=cfg, item_ids=tracks, job_id=job_id)
     stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with store.immediate() as conn:
         conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (stamp, job_id))
@@ -1057,12 +1035,10 @@ def test_job_show_and_list_name_the_playlist_an_intake_job_was_made_for(cfg, def
 
 
 def test_a_dry_run_lists_three_stale_jobs_and_names_the_keeper_of_the_identical_two(
-    cfg, default_queue
-):
+        cfg, default_queue):
     _intake_job(default_queue, cfg, "copy-old", tracks=("1", "2"), days=50)
     _intake_job(
-        default_queue, cfg, "copy-new", tracks=("2", "1"), days=45, source="pl-b", name="Peak"
-    )
+        default_queue, cfg, "copy-new", tracks=("2", "1"), days=45, source="pl-b", name="Peak")
     _intake_job(default_queue, cfg, "lone", tracks=("3",), days=60, source="pl-c", name="Close")
     envelope = _ok(["job", "cancel", "--stale-days", "30", "--dry-run"])
     assert envelope["outcome"] == "no_op"
@@ -1080,8 +1056,7 @@ def test_a_dry_run_lists_three_stale_jobs_and_names_the_keeper_of_the_identical_
 
 
 def test_the_stale_cancel_cancels_the_stale_keeps_the_newest_copy_and_leaves_the_younger(
-    cfg, default_queue
-):
+        cfg, default_queue):
     _intake_job(default_queue, cfg, "copy-old", tracks=("1", "2"), days=50)
     _intake_job(default_queue, cfg, "copy-new", tracks=("1", "2"), days=45, source="pl-b")
     _intake_job(default_queue, cfg, "young", tracks=("4",), days=3, source="pl-d")
@@ -1147,8 +1122,7 @@ UUID = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
             "frees playlist 'https://[::1', so the next pass queues it again",
         ),
     ],
-    ids=["another-open-job-holds-it", "url-typed-by-hand-holds-the-swept-id", "unparseable-url"],
-)
+    ids=["another-open-job-holds-it", "url-typed-by-hand-holds-the-swept-id", "unparseable-url"])
 def test_a_stale_cancel_says_what_it_frees(cfg, default_queue, queued, frees):
     """A typed URL holds the id it names; ``https://[::1``, which the parser raises on, is kept."""
     for number, spec in enumerate(queued):
@@ -1166,11 +1140,9 @@ def test_a_stale_cancel_says_what_it_frees(cfg, default_queue, queued, frees):
         ["job", "cancel", "--stale-days", "0"],
         ["job", "cancel", "old", "--stale-days", "1"],
     ],
-    ids=["negative-days", "zero-days", "job-id-beside-stale-days"],
-)
+    ids=["negative-days", "zero-days", "job-id-beside-stale-days"])
 def test_a_bad_stale_cancel_is_the_parsers_usage_error_and_cancels_nothing(
-    cfg, default_queue, argv
-):
+        cfg, default_queue, argv):
     _intake_job(default_queue, cfg, "old", tracks=("1",), days=60)
     from cratekit import cli  # noqa: PLC0415
     code = cli.run(["--output", "json", *argv], stdout=io.StringIO(), stderr=io.StringIO())
@@ -1228,11 +1200,9 @@ def test_two_jobs_with_no_item_are_nobodys_copies(cfg, default_queue):
             "frees the account's hearts, so the next pass queues it again",
         ),
     ],
-    ids=["set-job", "hearts-job"],
-)
+    ids=["set-job", "hearts-job"])
 def test_a_stale_set_or_hearts_job_names_no_playlist_and_says_what_it_frees(
-    cfg, default_queue, spec, frees
-):
+        cfg, default_queue, spec, frees):
     """A set job frees no playlist and names no file as one; a hearts job frees the hearts."""
     _intake_job(default_queue, cfg, tracks=("1",), days=60, name=None, **spec)
     envelope = _ok(["job", "cancel", "--stale-days", "30", "--dry-run"])
@@ -1267,8 +1237,7 @@ def test_the_job_verbs_read_a_playlist_as_the_sweep_records_it(cfg, default_queu
     for number, (source, swept) in enumerate(references):
         job = _intake_job(
             default_queue, cfg, f"j{number}", tracks=(str(number),), days=1, source=source,
-            swept=swept,
-        )
+            swept=swept)
         assert jobs_cli.playlist_identity(job, source) == playlists.recorded_as(job), source
 
 

@@ -174,8 +174,7 @@ def _assert_refused_before_the_gate(envelope: dict, code: int, reason: str) -> N
 
 # 1. intake file on a native intake tree
 def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
-    native_library, silence, tmp_path
-):
+        native_library, silence, tmp_path):
     cfg, root_id = native_library
     path = _single(cfg, silence)
     before = path.read_bytes()
@@ -235,8 +234,7 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
 
 
 def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database(
-    native_library, silence, tmp_path
-):
+        native_library, silence, tmp_path):
     """And the gate takes no inline answer, and an abort writes nothing."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
@@ -297,8 +295,7 @@ def _reartisted(cfg: config.Config, path: Path) -> None:
 
 @pytest.mark.parametrize("change", [_retitled, _grown, _reartisted])
 def test_an_answer_is_stale_once_the_file_changed_after_it(
-    native_library, silence, tmp_path, change
-):
+        native_library, silence, tmp_path, change):
     cfg, _root = native_library
     path = _single(cfg, silence)
     _code, refused = drive(_file(path))
@@ -333,16 +330,14 @@ def test_intake_file_tags_its_row_vox_from_the_files_score(native_library, silen
 
 
 def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
-    native_library, silence
-):
+        native_library, silence):
     cfg, _root = native_library
     path = _single(cfg, silence)
     conn = sqlite3.connect(cfg.library.db_path)
     conn.execute(
         "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
         "updated_at) VALUES ('held-1', 'held', ?, 0, '2026-01-01', '2026-01-01')",
-        (str(path.resolve()),),
-    )
+        (str(path.resolve()),))
     conn.commit()
     conn.close()
     code, acted, refused = _two_acts(_file(path))
@@ -360,8 +355,7 @@ def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
 
 
 def test_an_export_on_a_native_tree_is_refused_by_name_and_not_as_a_defect(
-    native_library, silence, export, tmp_path
-):
+        native_library, silence, export, tmp_path):
     """The residual's sentence: this once reached the emitter guard as ``report-defect``."""
     cfg, _root = native_library
     path = _single(cfg, silence)
@@ -409,11 +403,9 @@ def _rekordbox_running(cfg, silence, tmp_path, monkeypatch):
         (_from_staging, "intake-staging-refused"), (_untyped, "intake-list-unusable"),
         (_unplaceable, "intake-list-unusable"), (_outside_the_library, "intake-list-unusable"),
         (_rekordbox_running, "rekordbox-running"),
-    ],
-)
+    ])
 def test_a_file_the_native_medium_cannot_take_is_refused_before_the_gate(
-    native_library, silence, tmp_path, monkeypatch, made, reason
-):
+        native_library, silence, tmp_path, monkeypatch, made, reason):
     cfg, _root = native_library
     path, said = made(cfg, silence, tmp_path, monkeypatch)
     code, envelope = drive(_file(path))
@@ -433,8 +425,7 @@ def test_no_acknowledgment_refuses_before_the_gate(machine, silence, tmp_path):
 
 
 def test_a_file_outside_the_library_is_still_spliced_on_the_bridge(
-    bridge_library, silence, export, tmp_path
-):
+        bridge_library, silence, export, tmp_path):
     """The bridge never asked, and still does not: a Location is text."""
     outside = _outside(tmp_path, silence)
     code, envelope = drive(_file(outside, "--export", str(export)))
@@ -443,8 +434,7 @@ def test_a_file_outside_the_library_is_still_spliced_on_the_bridge(
 
 
 def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
-    native_library, silence, tmp_path
-):
+        native_library, silence, tmp_path):
     """Spelled under the configured root, as landing spells it, however the file was reached."""
     from dataclasses import replace
     cfg, _root = native_library
@@ -464,8 +454,7 @@ def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
     shown = refused["cause"]["detail"]["shown"]
     assert shown["adds"] == 0 and shown["already present"] == 1
 def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add(
-    native_library, silence, tmp_path
-):
+        native_library, silence, tmp_path):
     """Unasked is not absent: a path off the root once read as having no row."""
     cfg, _root = native_library
     outside = tmp_path / "elsewhere.flac"
@@ -483,8 +472,7 @@ def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_ad
 
 
 def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_remedy(
-    native_library, silence, tmp_path, monkeypatch
-):
+        native_library, silence, tmp_path, monkeypatch):
     """A binding failure says what it leaves, and the skew refusal keeps its own remedy."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
@@ -556,8 +544,7 @@ def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, sile
 
 
 def test_a_file_that_is_not_there_or_not_audio_refuses_from_the_vocabulary_on_either_medium(
-    both, tmp_path
-):
+        both, tmp_path):
     """Held here on both media since the conformance sample needed a file that exists."""
     cfg = both
     notes = _music(cfg) / "notes.txt"
@@ -583,8 +570,7 @@ def _assert_names_the_landing_and_no_defect(cause) -> None:
 
 
 def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
-    native_library, silence, export, tmp_path
-):
+        native_library, silence, export, tmp_path):
     """The refusal sits in ``place_files`` before the export is looked for: no re-export helps."""
     cfg, _root = native_library
     path = _single(cfg, silence)
@@ -600,8 +586,7 @@ def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
 
 
 def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_nothing(
-    native_library, silence, export, tmp_path
-):
+        native_library, silence, export, tmp_path):
     """The pre-move check and the apply's registry read (R-677) say what the splice says."""
     cfg, _root = native_library
     staged = _staged_one(cfg, silence)
@@ -675,8 +660,7 @@ def test_the_favourites_sweep_queues_and_hearts_on_either_medium(either, monkeyp
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
     bind_account(monkeypatch, account)
     _run, job_id = approve_and_queue(
-        ["sync", "favorites", "--export", str(exported)], "sync.favorites.confirm"
-    )
+        ["sync", "favorites", "--export", str(exported)], "sync.favorites.confirm")
     code, resumed = resume_outbound(job_id)
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
@@ -735,8 +719,7 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     # ANOTHER TREE'S CUTOVER IS NOT THE INTAKE TREE'S.
     genre = tree_registry.TreeRecord(
         tree_id=DECLARED.tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY,
-        root_id="root-genre", source=tree_registry.DerivationSource.TAXONOMY,
-    )
+        root_id="root-genre", source=tree_registry.DerivationSource.TAXONOMY)
     tree_registry.write(cfg, tree_registry.Registry().with_record(genre))
     assert ingest.intake_medium(cfg).native is False
     # The registry lives under the root: with none there is no record, so the bridge is taken.

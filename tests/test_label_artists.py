@@ -62,8 +62,7 @@ def withheld(cfg: config.Config, item_id: str) -> review.Hold | None:
     with review.open_store(cfg) as items:
         return review.withhold(
             items, item_id, group="tide-works", name="Tide Works", reason="another kind",
-            detail={}, run_id="judge-1",
-        )
+            detail={}, run_id="judge-1")
 
 
 def artists() -> tuple[int, dict]:
@@ -183,8 +182,7 @@ def test_a_release_the_provider_does_not_serve_is_counted_and_never_blanked(cfg,
 
 
 def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_others(
-    cfg, monkeypatch
-):
+        cfg, monkeypatch):
     first = offered(cfg, "r-1")
     named = offered(cfg, "r-2", artist="Label Act")
     settled = offered(cfg, "r-3")
@@ -239,8 +237,7 @@ def test_a_second_run_asks_about_nothing_the_first_repaired(cfg, monkeypatch):
 # ── 4. An address is never replaced by nothing ───────────────────────────────
 @pytest.mark.parametrize("nothing", ["", "   "])
 def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read(
-    cfg, monkeypatch, nothing
-):
+        cfg, monkeypatch, nothing):
     item_id = offered(cfg, "r-1")
     before = stored(cfg, item_id)
     envelope = repaired_ok(monkeypatch, StrictCatalogue(release_artists={"r-1": nothing}))
@@ -360,8 +357,7 @@ class ExpiresAfter(StrictCatalogue):
             self.artists_asked_for.append(release_id)
             raise refuse(
                 "credential-missing", "the stored provider session expired",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER, origin=("suite",),
-            )
+                remedy=Remedy.REAUTHENTICATE_PROVIDER, origin=("suite",))
         return super().release_artist(release_id)
 
 
@@ -390,8 +386,7 @@ def test_a_catalogue_that_cannot_be_opened_refuses_and_repairs_nothing(cfg, monk
     def missing(cfg: object):
         raise refuse(
             "credential-missing", "no streaming provider session is stored",
-            remedy=Remedy.AUTHENTICATE_PROVIDER, origin=("suite",),
-        )
+            remedy=Remedy.AUTHENTICATE_PROVIDER, origin=("suite",))
     monkeypatch.setattr(catalogue, "resolve", missing)
     code, envelope = artists()
     assert code != int(ExitCode.OK)
@@ -450,8 +445,7 @@ def test_an_artist_put_right_meanwhile_is_not_overwritten(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
     during = Meanwhile(
         release_artists={"r-1": "Harbour Act"},
-        during=lambda rid: rewritten(cfg, item_id, artist="Typed By Hand"),
-    )
+        during=lambda rid: rewritten(cfg, item_id, artist="Typed By Hand"))
     envelope = repaired_ok(monkeypatch, during)
     assert stored(cfg, item_id).payload["artist"] == "Typed By Hand"
     summary = envelope["data"]["summary"]
@@ -524,8 +518,7 @@ def test_a_rewrite_is_not_handed_the_payload_of_an_item_with_an_unreadable_verdi
     with review.open_store(cfg) as items:
         with items.immediate() as conn:
             conn.execute(
-                "UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,)
-            )
+                "UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,))
         before = review.get(items, item_id)
         assert review.redescribe(items, item_id, never_called) is None
         assert review.get(items, item_id).payload == before.payload
@@ -563,8 +556,7 @@ def test_a_rewrite_given_a_payload_still_replaces_it_whole(cfg):
 
 # ── 7. Items the verb cannot read a release for ──────────────────────────────
 def test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked_about(
-    cfg, monkeypatch
-):
+        cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
     with review.open_store(cfg) as items, items.immediate() as conn:
         conn.execute("UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,))
@@ -634,8 +626,7 @@ def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, mon
 
 
 def test_an_item_with_no_artist_at_all_is_not_an_address_and_is_not_said_to_have_one(
-    cfg, monkeypatch
-):
+        cfg, monkeypatch):
     offered(cfg, "r-1", artist="")
     envelope = unasked(monkeypatch)
     assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1)
@@ -660,8 +651,7 @@ def test_another_queues_item_reading_an_address_is_not_this_verbs(cfg, monkeypat
     with review.open_store(cfg) as items:
         other = review.offer(
             items, queue=QUEUE, kind="harvested-label", identity={"label": "tide-works"},
-            payload={"artist": ADDRESS, "identity": "r-1"},
-        )
+            payload={"artist": ADDRESS, "identity": "r-1"})
     envelope = unasked(monkeypatch)
     assert stored(cfg, other.item_id).payload["artist"] == ADDRESS
     assert counts(envelope["data"]["summary"]) == zeroes()

@@ -45,8 +45,7 @@ def _snapshot(cfg: config.Config) -> Path:
     capture = snapshot.store_root(cfg) / "2026-08-01T000000Z-deadbeefcafebabe"
     capture.mkdir(parents=True)
     record = snapshot.Capture(
-        stamp=capture.name, root=capture, database=capture / "master.db", integrity_verified=True
-    )
+        stamp=capture.name, root=capture, database=capture / "master.db", integrity_verified=True)
     manifest = json.dumps(record.to_json()) + "\n"
     (capture / snapshot.MANIFEST_NAME).write_text(manifest, encoding="utf-8")
     return capture
@@ -75,8 +74,7 @@ def _record(cfg: config.Config, session_id: str, *, workflow="tree-membership", 
     """One session record, as a run of ``workflow`` started at ``started`` (or now) left it."""
     started = output.timestamp() if started is None else started
     record = session.SessionRecord(
-        session_id=session_id, workflow=workflow, started=started, **fields
-    )
+        session_id=session_id, workflow=workflow, started=started, **fields)
     session.write_record(record, cfg)
 
 
@@ -271,15 +269,13 @@ def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
 
 
 @pytest.mark.parametrize(
-    "started",
-    [
+    "started", [
         # The cutover day and the day before: a start is UTC, the day is the local date.
         "2026-08-01T00:05:00Z",
         "2026-07-31T23:50:00Z",
         # A start nothing can place counts, because it cannot be shown to predate.
         "not a timestamp",
-    ],
-)
+    ])
 def test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts(cfg, started):
     _write_started(cfg, "s-near", started)
     _flipped(cfg)
@@ -321,7 +317,6 @@ def test_the_revert_holds_the_session_lock_while_it_asks_and_writes(cfg, monkeyp
     def watching(config_in_hand, tree_id):
         held_during.append(bool(session._HELD))
         return real(config_in_hand, tree_id)
-
     monkeypatch.setattr(tree_registry, "assert_revertible", watching)
     tree_registry.revert_cutover(cfg, TREE_ID)
     assert held_during == [True]

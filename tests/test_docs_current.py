@@ -59,7 +59,6 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
             return
         own = frozenset(s for action in node._actions for s in action.option_strings)
         verbs[" ".join(path)] = own
-
     walk(parser, ())
     return verbs
 
@@ -88,7 +87,6 @@ def _schema_defaults() -> dict[str, str]:
                 out[key] = "required"
                 continue
             out[key] = format_default(value)
-
     walk(config.Config, "")
     return out
 
@@ -153,8 +151,7 @@ def verb_mentions(
         found: list[tuple[int, str, str | None, bool]] = []
         for match in re.finditer(
             rf"\bcrate\s+((?:(?:{valued})(?:=\S+|\s+\S+)\s+|-\S+\s+)*)({_WORD})(?:\s+({_WORD}))?",
-            text,
-        ):
+            text):
             for option in re.findall(r"(?<![\w-])(--?[a-z][a-z0-9-]*)", match.group(1)):
                 if option not in TOP_OPTIONS:
                     bad_flags.append(f"line {line}: crate {option}")

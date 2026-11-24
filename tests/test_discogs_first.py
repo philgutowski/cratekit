@@ -131,8 +131,7 @@ def test_a_discogs_miss_asks_beatport_and_beatport_decides():
 
 
 @pytest.mark.parametrize(
-    "styles",
-    [(UNMAPPED,), (FALLBACK_GENRE,), (UNMAPPED, FALLBACK_GENRE), ()],
+    "styles", [(UNMAPPED,), (FALLBACK_GENRE,), (UNMAPPED, FALLBACK_GENRE), ()],
     ids=["unmapped", "fallback-only", "both", "styleless"])
 def test_a_discogs_decline_goes_on_to_beatport_which_decides(styles):
     seen: list[str] = []
@@ -410,13 +409,11 @@ def test_a_picture_ask_that_raises_never_fails_the_file(tmp_path, silence):
 
     def exploding(hit: SearchHit) -> SearchHit:
         raise RuntimeError("the picture seam fell over")
-
     real = build(fetch)
 
     def searcher(artist: str, title: str) -> SearchHit | None:
         from dataclasses import replace
         return replace(real(artist, title), ask_picture=exploding)
-
     result = tag.tag_one(path, searcher=searcher, fetch_image=Images())
     assert result.genre_written == discogs_tag("Deep House")
     assert result.art_fetch == tag.ART_UNAVAILABLE
@@ -495,7 +492,6 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
     class Broken:
         def ask(self, artist, title, *, track=None):
             raise refuse("internal-error", "the asker broke", remedy=Remedy.REPORT_DEFECT)
-
     fetch = routed(search=results(), beatport=beatport_row())
     searcher = searchers.catalogue_searcher(
         TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken())
@@ -519,7 +515,6 @@ def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_
             ],
             **fields,
         }
-
     reports = [
         record(item="owed.flac", genre_written="House", source=searchers.BEATPORT),
         record(item="own.flac", skipped=tag.HAS_GENRE),
