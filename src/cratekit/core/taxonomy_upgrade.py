@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from cratekit.core import active_taxonomy, config, taxonomy
+from cratekit.core import config, taxonomy
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -605,7 +605,11 @@ def read(cfg: config.Config) -> tuple[Path, str, str]:
     """The active copy's path and text, and the shipped text the configuration names.
 
     Through the loader's read, but an absent copy refuses rather than falls back.
+    The loader is imported here, where it is read, since it answers for the
+    foreign tree too (U331) and the doctor's help would otherwise load it.
     """
+    from cratekit.core import active_taxonomy
+
     path, active_text = active_taxonomy.read_text(cfg)
     if active_text is None:
         raise NoCopy(
