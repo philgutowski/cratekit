@@ -39,7 +39,7 @@ none of those. Nobody went back to R-188, because nothing connects a comment in
 Before treating a "somebody decides" residual as blocked, grep the shared table
 it names for a later entry that already lives under the answer:
 
-    git grep -n 'state file\|Not in ``writes``' -- src/cratekit/cli/registry.py
+    git grep -n 'state file\|Not in ``writes``' -- 'src/cratekit/cli/registry*.py'
     git log -S'<the phrase>' --format='%h %ad %s' --date=short -- <the table>
 
 A shipped precedent with a recorded reason IS the decision. Follow it, cite it

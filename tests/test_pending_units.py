@@ -335,6 +335,22 @@ def test_the_registry_s_planned_markers_are_a_register_the_board_now_reads():
         assert set(modules) <= set(merged[uid]), "the merge dropped a planned marker"
 
 
+def test_a_planned_marker_in_a_part_of_the_registry_is_read(tmp_path, monkeypatch):
+    """The table is split over parts (U328), and the live one may hold no marker at all."""
+    board = _board()
+    cli = tmp_path / "src" / "cratekit" / "cli"
+    cli.mkdir(parents=True)
+    (cli / "registry.py").write_text(
+        'UNIT = "U98"\nENTRIES = (*MORE, Entry(name="a", module="cratekit.a.cli", planned_in=UNIT))\n'
+    )
+    (cli / "registry_more.py").write_text(
+        'MORE = (\n    Entry(name="b", module="cratekit.b.cli", planned_in="U99"),\n'
+        '    Entry(name="c", module="cratekit.c.cli", planned_in=UNIT),\n)\n'
+    )
+    monkeypatch.setattr(board, "ROOT", tmp_path)
+    assert board.planned_units() == {98: ["cratekit.a.cli", "cratekit.c.cli"], 99: ["cratekit.b.cli"]}
+
+
 def test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit():
     """RULE B. ``audit``'s comparison moved before the event, to the closing trailer.
 

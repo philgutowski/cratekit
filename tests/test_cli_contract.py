@@ -1102,6 +1102,20 @@ def test_the_registry_is_the_source_of_the_verb_names_the_layering_guard_reads()
     assert len(registry.VERB_NAMES) == len(registry.entries())
 
 
+def test_the_table_is_every_part_in_order_and_each_file_is_under_the_bar():
+    """U328: the table is split so no file passes U290's 1,500 lines. A ``registry_*`` module
+    nobody stars into ``ENTRIES`` would drop its verbs silently, and help follows the order."""
+    files = sorted(Path(registry.__file__).parent.glob("registry*.py"))
+    assert files[0].name == "registry.py"
+    parts = [vars(sys.modules[f"cratekit.cli.{path.stem}"]) for path in files[1:]]
+    held = {name: rows for part in parts for name, rows in part.items() if name.endswith("_VERBS")}
+    order = ("STATE_VERBS", "PIPELINE_VERBS", "SYNC_VERBS", "MODULE_VERBS", "LATER_VERBS")
+    assert sorted(held) == sorted(order) and len(parts) == len(order) and all(held.values())
+    assert registry.ENTRIES == tuple(entry for name in order for entry in held[name])
+    over = {path.name: n for path in files if (n := len(path.read_text().splitlines())) > 1500}
+    assert not over, f"over 1,500 lines, so the next verb's block opens a new part: {over}"
+
+
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
     """A planned verb whose module has landed loses its ``planned_in`` marker, walked
     so an empty set is a valid population (P3)."""

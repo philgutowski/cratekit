@@ -9,7 +9,7 @@ severity: medium
 root_cause: incorrect_assumption
 resolution_type: design_decision
 applies_when:
-  - "A new entry in cli/registry.py declares at least one GateSpec"
+  - "A new entry in the verb table (cli/registry_later.py) declares at least one GateSpec"
   - "The verb's engine would normally end a real run on PENDING_HUMAN, a pending human action, or any other non-OK terminal outcome"
   - "_sample_arguments in tests/test_cli_contract.py is given arguments for the new verb"
   - "The fixture the conformance suite drives against is a fresh, unconfigured, or otherwise empty library"
@@ -84,7 +84,8 @@ every other gated verb's does.
 
 ## The general rule
 
-When adding a new gated entry to `cli/registry.py`, before writing the
+When adding a new gated entry to the verb table (`cli/registry_later.py`,
+which `cli/registry.py` assembles), before writing the
 handler, ask what `_sample_arguments` will hand it and confirm that input
 resolves to nothing to do. If the verb's natural empty-input behavior is to
 raise, refuse, or route to a pending human action, add the same kind of early
