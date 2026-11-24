@@ -35,7 +35,9 @@ deleted temp tree.
 
 from __future__ import annotations
 
+import argparse
 import gc
+import gettext
 import importlib
 import importlib.util
 import traceback
@@ -390,9 +392,35 @@ COLLECTOR_THRESHOLDS = (50_000, 20, 20)
 _thresholds_before: list[tuple[int, int, int]] = []
 
 
+#: argparse looks up every message of a parser through ``gettext``, about four
+#: hundred lookups a parser, and the suite builds the whole command tree once
+#: per verb it drives, about 12,600 times (U336). Where no catalogue exists
+#: for the domain, ``gettext`` answers each lookup with the message itself, as
+#: ``NullTranslations`` does, but only after reading four environment variables
+#: and expanding the language list every time: about a third of a parser's
+#: build. So where ``gettext.find`` finds no catalogue, as on every machine the
+#: suite runs on, argparse is handed the answer it would get, directly, and
+#: ``pytest_unconfigure`` hands its own back.
+_ARGPARSE_LOOKUPS = ("_", "ngettext")
+
+#: argparse's own lookups, kept while the suite's stand in for them.
+_lookups_before: list[dict[str, object]] = []
+
+
+def _no_message_catalogue() -> bool:
+    """Whether ``gettext`` would answer argparse's lookups with the messages themselves."""
+    domain = gettext.textdomain()
+    return not gettext.find(domain, gettext.bindtextdomain(domain), all=True)
+
+
 def pytest_configure(config):
     _thresholds_before.append(gc.get_threshold())
     gc.set_threshold(*COLLECTOR_THRESHOLDS)
+    if _no_message_catalogue():
+        _lookups_before.append({name: getattr(argparse, name) for name in _ARGPARSE_LOOKUPS})
+        untranslated = gettext.NullTranslations()
+        argparse._ = untranslated.gettext
+        argparse.ngettext = untranslated.ngettext
     config.addinivalue_line(
         "markers",
         f"{REAL_PROCESS_TABLE}: keep the host's real process table, which every "
@@ -403,6 +431,9 @@ def pytest_configure(config):
 def pytest_unconfigure(config):
     if _thresholds_before:
         gc.set_threshold(*_thresholds_before.pop())
+    if _lookups_before:
+        for name, lookup in _lookups_before.pop().items():
+            setattr(argparse, name, lookup)
 
 
 class _NoProcesses:
