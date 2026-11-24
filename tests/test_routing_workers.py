@@ -2303,6 +2303,19 @@ def test_an_untagged_intake_file_over_the_cut_is_named_on_the_gate_and_the_answe
     assert _inbox_untagged(declined) == [ARRIVED], declined["warnings"]
 
 
+def test_every_untagged_intake_file_over_the_cut_is_named(acknowledged, native, vox_levels):
+    """Each by name, never the first alone; one with no row yet is named too, since it is
+    filed without its vocal sub all the same."""
+    _calibrated(acknowledged)
+    (_intake_dir(acknowledged) / UNIMPORTED).write_bytes(b"")
+    vox_levels[ARRIVED] = 6
+    vox_levels[UNIMPORTED] = 6
+    shown = _blocked_inbox()
+    (warned,) = [w for w in shown["warnings"] if ARRIVED in w]
+    assert UNIMPORTED in warned, warned
+    assert warned.startswith("2 intake file(s)"), warned
+
+
 def test_a_tagged_intake_file_is_not_added_again_by_the_resort(acknowledged, native, vox_levels):
     """The inbox and the resort file the vocal sub by one rule, so the resort adds nothing."""
     _calibrated(acknowledged)
