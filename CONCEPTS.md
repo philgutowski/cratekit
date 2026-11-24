@@ -1184,9 +1184,10 @@ a reason (`no-reading`, `genre-names-no-style`, `held-under-another-name`,
 ### Closing up
 What the guarded commit does to every playlist a membership removal marked a
 row in (U958): its live rows numbered 1 to N in the order rekordbox shows them
-(stored number, ties by row id), its removed rows put at 0, each moved row
-stamped with the commit's update count and time, proven from SQL before the
-commit. rekordbox's Remove from Playlist takes the row whose number equals the
+(stored number, ties by row id), its removed rows put at 0 with their own
+removal time kept, each moved live row stamped with the commit's update count
+and time (a row the same commit also added or marked keeps the count the
+binding gives it), proven from SQL before the commit. rekordbox's Remove from Playlist takes the row whose number equals the
 shown position, so a gap makes a removal by hand take the wrong track. `crate
 repair numbers` closes up the playlists older removals left gapped.
 

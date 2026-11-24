@@ -9,7 +9,7 @@ severity: high
 resolution_type: workflow_change
 applies_when:
   - "A track is removed from a playlist by hand in rekordbox, by an attended session or by Phillip"
-  - "The playlist's live rows are not numbered 1 to N, a gap left by a product removal (the soft delete keeps TrackNo) or by anything else"
+  - "The playlist's live rows are not numbered 1 to N, a gap left by a product removal before U958 (the soft delete kept TrackNo) or by anything else"
 tags: [rekordbox, TrackNo, djmdSongPlaylist, remove-from-playlist, renumber, r-1853, u958, a218, sitting-107]
 ---
 

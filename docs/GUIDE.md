@@ -1393,9 +1393,12 @@ crate inbox rotate
   at `repair.numbers.confirm`; no track joins or leaves. A playlist holding a
   row whose removal mark cannot be read is shown and left alone. `crate
   doctor`'s `library.playlist_numbers` line counts the playlists it would
-  number. Every removal Cratekit makes now leaves the playlist 1 to N itself,
-  its removed rows at 0, so the repair is needed once for the gaps older
-  versions left.
+  number. Every removal from a playlist Cratekit makes (`adopt move`,
+  `inbox analyzed`, `sync pair`, `favorites refresh`, `organize`)
+  now leaves the playlist 1 to N itself, its removed rows at 0. `sync removed`
+  keeps rekordbox's own Remove from Collection rule, which lowers the rows
+  after a removed track but leaves an older gap, so run the repair once for
+  the gaps older versions left.
 - `inbox rotate` moves a batch older than `reports.intake_stale_days` (30)
   into `INBOX / Old` and removes one in Old older than
   `reports.intake_expired_days` (90). Never a track. `inbox refill --pass

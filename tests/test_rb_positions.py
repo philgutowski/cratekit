@@ -124,7 +124,6 @@ def _after(**changes):
     rows["c"][3:4] = [2]
     rows["c"][5:7] = [STAMP.counter, STAMP.at]
     rows["x"][3:4] = [0]
-    rows["x"][5:7] = [STAMP.counter, STAMP.at]
     for key, values in changes.items():
         for at, value in values.items():
             rows[key][at] = value
@@ -148,8 +147,14 @@ def test_the_planned_closing_up_reads_clean():
         ({"c": {2: "8"}}, "in a column other than TrackNo"),
         ({"a": {6: STAMP.at}}, "'a' changed, and the closing up planned no move of it"),
         ({"x": {3: 2}}, "was to move from 2 to 0 and holds 2"),
+        # Review round one, B1: a marked row's removal time is what sync pair reads.
+        ({"x": {6: STAMP.at}}, "marked djmdSongPlaylist row 'x' changed in a column other than TrackNo"),
+        ({"x": {5: STAMP.counter}}, "marked djmdSongPlaylist row 'x' changed in a column other than TrackNo"),
     ],
-    ids=["unmoved", "count-unstamped", "time-unstamped", "fourth-column", "unplanned-row", "marked-left"],
+    ids=[
+        "unmoved", "count-unstamped", "time-unstamped", "fourth-column", "unplanned-row",
+        "marked-left", "marked-time-restamped", "marked-count-restamped",
+    ],
 )
 def test_every_move_the_plan_does_not_explain_is_named(changes, found):
     violations = _violations(_after(**changes))
@@ -281,7 +286,10 @@ def test_a_playlist_with_an_old_gap_and_an_old_marked_row_comes_out_one_to_n(db)
     from sqlalchemy import text
 
     db.session.execute(
-        text("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = :p AND ContentID = '3'"),
+        text(
+            "UPDATE djmdSongPlaylist SET rb_local_deleted = 1, updated_at = '2026-11-01 09:00:00', "
+            "rb_local_usn = 7 WHERE PlaylistID = :p AND ContentID = '3'"
+        ),
         {"p": str(playlist.ID)},
     )
     db.session.commit()
@@ -290,6 +298,32 @@ def test_a_playlist_with_an_old_gap_and_an_old_marked_row_comes_out_one_to_n(db)
     assert _live_order(db, playlist) == ["1", "2", "4", "6"]
     assert [held[key][0] for key in ("1", "2", "4", "6")] == [1, 2, 3, 4]
     assert held["3"][:2] == (0, 1) and held["5"][:2] == (0, 1)
+    # Review round one, B1: the older removal keeps its own moment and count,
+    # which sync pair reads against the account's changes.
+    assert held["3"][2:] == (7, "2026-11-01 09:00:00")
+
+
+def test_a_closing_up_that_moved_a_row_other_than_planned_refuses_and_writes_nothing(db, monkeypatch):
+    """The proof from SQL is what refuses, not the write's own row count."""
+    playlist = _playlist(db, "1", "2", "3", "4")
+    before = _members(db, playlist)
+    real = rb_writer.renumber_memberships
+
+    def and_one_more(handle, moved, **kwargs):
+        real(handle, moved, **kwargs)
+        from sqlalchemy import text
+
+        handle.session.execute(
+            text("UPDATE djmdSongPlaylist SET TrackNo = 9 WHERE PlaylistID = :p AND ContentID = '1'"),
+            {"p": str(playlist.ID)},
+        )
+
+    monkeypatch.setattr(rb_writer, "renumber_memberships", and_one_more)
+    W.remove_memberships(db, playlist, ["2"])
+    with pytest.raises(W.RekordboxUnavailable, match="closing up the numbers"):
+        W.commit_guarded(db, removals=(W.MEMBERSHIP_TABLE,))
+    assert _members(db, playlist) == before
+    assert W.touched(db) == frozenset()
 
 
 def test_two_live_rows_tied_on_one_place_come_out_apart_in_row_id_order(db):

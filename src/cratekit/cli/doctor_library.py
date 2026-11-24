@@ -738,9 +738,10 @@ def _check_playlist_numbers(inputs: _Inputs) -> Finding:
                 f"read and nothing was asserted about their numbers"
             ),
         )
+    readable = planned.scanned - len(planned.held)
     held = (
         f"; {len(planned.held)} more hold a row whose removal marker or place cannot "
-        f"be read, so their order cannot be said"
+        f"be read, so their order cannot be said and the repair leaves them"
         if planned.held
         else ""
     )
@@ -752,7 +753,7 @@ def _check_playlist_numbers(inputs: _Inputs) -> Finding:
             title=title,
             status=Status.INFO,
             detail=(
-                f"{len(planned.items)} of {planned.scanned} playlists under this product's "
+                f"{len(planned.items)} of {readable} playlists under this product's "
                 f"nodes hold live rows not numbered 1 to N ({shown}{more}), so a removal "
                 f"by hand in rekordbox there may take out the wrong track; crate repair "
                 f"numbers numbers them 1 to N{held}"
@@ -763,8 +764,8 @@ def _check_playlist_numbers(inputs: _Inputs) -> Finding:
         title=title,
         status=Status.INFO if planned.held else Status.OK,
         detail=(
-            f"all {planned.scanned} playlists under this product's nodes that could be "
-            f"read number their live rows 1 to N, read off a disposable copy of the "
+            f"all {readable} playlists under this product's nodes that could be read "
+            f"number their live rows 1 to N, read off a disposable copy of the "
             f"database{held}"
         ),
     )

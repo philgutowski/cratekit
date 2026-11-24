@@ -138,6 +138,16 @@ def test_a_playlist_named_joins_the_plan_and_an_unknown_name_refuses(cfg):
         _plan(cfg, named=["Pushed"])
 
 
+def test_a_namesake_of_the_favourites_source_pulls_no_folder_in(cfg):
+    """Two live playlists of the source's name: neither folder is the favourites' (U119)."""
+    source = active_taxonomy.load(cfg).sub_class("favorites").signal_playlist
+    month = _tree(cfg, "Favorites", "2026-10")
+    _tree(cfg, "Favorites", source, tracks=1)
+    _tree(cfg, "My Own", source, tracks=1)
+    _gap(cfg, month, 3, 4, 5, 6)
+    assert _plan(cfg).items == ()
+
+
 def test_the_favourites_folder_and_a_twin_folder_are_in_scope(cfg):
     source = active_taxonomy.load(cfg).sub_class("favorites").signal_playlist
     month = _tree(cfg, "Favorites", "2026-10")
@@ -171,13 +181,17 @@ def test_a_playlist_whose_marker_cannot_be_read_is_held_and_never_written(cfg):
 def test_an_approved_plan_numbers_each_playlist_one_to_n_in_its_order_and_reads_it_back(cfg):
     top = _tree_name(cfg)
     gapped = _tree(cfg, top, "Tech House", "High")
+    other = _tree(cfg, top, "Deep House", "Mid")
     whole = _tree(cfg, top, "Tech House", "Low")
     _gap(cfg, gapped, 2, 5, 9, marked=5)
+    _gap(cfg, other, 1, 4, 6, 8)
     before_order = [content for content, _n in _live(cfg, gapped)]
+    other_order = [content for content, _n in _live(cfg, other)]
     untouched = [row for row in _memberships(cfg) if str(row[2]) == whole]
     written = _apply(cfg, _plan(cfg))
-    assert written.disagreements == () and written.playlists == 1
+    assert written.disagreements == () and written.playlists == 2
     assert _live(cfg, gapped) == [(content, n) for n, content in enumerate(before_order, start=1)]
+    assert _live(cfg, other) == [(content, n) for n, content in enumerate(other_order, start=1)]
     assert _query(
         cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 1", gapped
     ) == [(0,)]
@@ -187,7 +201,23 @@ def test_an_approved_plan_numbers_each_playlist_one_to_n_in_its_order_and_reads_
         cfg, "SELECT rb_local_usn FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0", gapped
     )
     assert {row[0] for row in stamped} == {count}
-    assert written.moved == 4
+    assert written.moved == 4 + 3
+
+
+def test_the_read_back_names_a_playlist_still_gapped_or_with_a_marked_row_on_a_place(cfg):
+    gapped = _tree(cfg, _tree_name(cfg), "Deep House", "Mid")
+    _gap(cfg, gapped, 1, 3, 5, 7)
+    approved = _plan(cfg)
+    with _db(cfg) as handle:
+        (said,) = numbers.read_back(handle, approved)
+    assert "live row(s) from 1 to 7" in said
+    _gap(cfg, gapped, 1, 2, 3, marked=4)
+    with _db(cfg) as handle:
+        (said,) = numbers.read_back(handle, approved)
+    assert "1 marked row(s) on a place" in said
+    _gap(cfg, gapped, 1, 2, 3, marked=0)
+    with _db(cfg) as handle:
+        assert numbers.read_back(handle, approved) == ()
 
 
 def test_a_plan_that_moved_after_approval_refuses_and_writes_nothing(cfg):
@@ -284,3 +314,14 @@ def test_the_doctor_s_two_machines_answer_the_row_opposite_ways(cfg):
     # The hostile machine's survey alone, rekordbox closed: sitting 107's playlist.
     gapped = row(doctor_machines.green(numbers_survey=doctor_machines.hostile().numbers_survey))
     assert gapped.status.value == "info" and gapped.detail.startswith("1 of 12 playlists")
+
+
+def test_the_doctor_row_counts_only_what_it_could_read_and_says_what_it_left(cfg):
+    top = _tree_name(cfg)
+    held = _tree(cfg, top, "Tech House", "High")
+    _tree(cfg, top, "Tech House", "Low")
+    _sql(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL WHERE PlaylistID = ? AND TrackNo = 2", (held,))
+    found = _doctor_row(cfg)
+    assert found.status.value == "info"
+    assert found.detail.startswith("all 1 playlists under this product's nodes that could be read")
+    assert "1 more hold a row whose removal marker or place cannot be read" in found.detail

@@ -10,8 +10,8 @@ earlier removals left gapped, with nothing removed.
 **THE SCOPE**: every live ordinary playlist at or under a node this product
 writes at the top of the tree (the taxonomy's tree, intake, inspiration,
 catalog and long tracks nodes, each ``Custom Playlists <year>`` twin folder),
-the folder holding the favourites class's source playlist, and any playlist
-named by the caller;
+the folder holding the favourites class's source playlist when exactly one
+live playlist carries its name, and any playlist named by the caller;
 never another app's folder (U185). **THE PLAN** lists each playlist in scope
 whose live rows are not 1 to N, with its count and how far its numbers run;
 **THE DIGEST** covers every row the write moves and where to. A playlist whose
@@ -203,14 +203,22 @@ def scope(
     source = favourites_source(declared)
     reached: set[str] = set()
     for key, name, parent, _attribute, live in rows:
-        if not live or key in foreign:
-            continue
-        at_top = parent in rb_writer.ROOT_PARENT_SENTINELS
-        if at_top and (name in tops or TWIN_FOLDER.fullmatch(name)):
-            reached |= under(key)
-        if source is not None and name == source and int(by_id[key][3]) == 0:
-            # The folder that holds the favourites, or the playlist alone at the top.
-            reached |= under(key if at_top else parent)
+        if live and key not in foreign and parent in rb_writer.ROOT_PARENT_SENTINELS:
+            if name in tops or TWIN_FOLDER.fullmatch(name):
+                reached |= under(key)
+    # The folder that holds the favourites, or the playlist alone at the top, only
+    # when ONE live ordinary playlist outside another app's folder carries the
+    # name, as the favourites verbs require (U119), so a namesake in a folder of
+    # the person's own never pulls that folder in.
+    homes = [
+        row
+        for row in rows
+        if source is not None and row[1] == source and row[3] == 0 and row[4]
+        and row[0] not in foreign
+    ]
+    if len(homes) == 1:
+        key, _name, parent, _attribute, _live = homes[0]
+        reached |= under(key if parent in rb_writer.ROOT_PARENT_SENTINELS else parent)
     asked = tuple(dict.fromkeys(str(one) for one in named))
     unknown: list[str] = []
     for wanted in asked:

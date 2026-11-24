@@ -18,8 +18,9 @@ number changes is written.
 **WHERE IT RUNS**: :func:`remove_memberships` records each playlist it marked a
 row in on the write handle's session (:func:`record_touched`), and
 :func:`commit_guarded` closes their gaps just before the binding's commit
-(:func:`close_gaps`), from SQL, stamped as U955 stamps a renumbered row, proven
-from SQL before the commit. So every verb that removes a membership inherits it,
+(:func:`close_gaps`), from SQL, each moved live row stamped as U955 stamps a
+renumbered row and each marked row moving its number alone, proven from SQL
+before the commit. So every verb that removes a membership inherits it,
 and the repair verb (``write.numbers``) is the same rule over playlists it
 records itself, with nothing removed.
 """
@@ -277,14 +278,16 @@ def gap_violations(
     after: GapReading,
     *,
     planned: Mapping[str, tuple[str, int, int]],
-    stamp: RenumberingStamp,
+    stamp: RenumberingStamp | None,
 ) -> list[str]:
     """Every difference between two readings the planned closing up does not explain. PURE.
 
-    No row is added or disappears; a planned row moved ``TrackNo`` to its planned
-    number and ``rb_local_usn`` and ``updated_at`` to ``stamp``'s and nothing
-    else; every other row is unchanged; and the live rows of every playlist read
-    1 to N with no marked row on a live place.
+    No row is added or disappears; a planned live row moved ``TrackNo`` to its
+    planned number and ``rb_local_usn`` and ``updated_at`` to ``stamp``'s and
+    nothing else; a planned marked row moved ``TrackNo`` ALONE, since its
+    ``updated_at`` is the moment it was removed, which ``sync pair`` reads; every
+    other row is unchanged; and the live rows of every playlist read 1 to N with
+    no marked row on a live place. ``stamp`` is None when no live row moves.
     """
     marker = _writer().SOFT_DELETE_COLUMN
     violations: list[str] = []
@@ -299,8 +302,8 @@ def gap_violations(
     stamps = {
         cols.index(name): value
         for name, value in (
-            (USN_STAMP_COLUMN, stamp.counter),
-            (TIME_STAMP_COLUMN, stamp.at),
+            (USN_STAMP_COLUMN, None if stamp is None else stamp.counter),
+            (TIME_STAMP_COLUMN, None if stamp is None else stamp.at),
         )
         if name in cols
     }
@@ -319,6 +322,14 @@ def gap_violations(
                 f"the {MEMBERSHIP_TABLE} row {key!r} was to move from {was} to "
                 f"{wanted} and holds {new[number_at]}"
             )
+        if _live(old[marker_at]) is False:
+            # A marked row: its number alone, its removal's own stamps kept.
+            if any(o != n for at, (o, n) in enumerate(zip(old, new)) if at != number_at):
+                violations.append(
+                    f"the marked {MEMBERSHIP_TABLE} row {key!r} changed in a column "
+                    f"other than {TRACK_NUMBER_COLUMN}, and a marked row moves that alone"
+                )
+            continue
         for at, value in stamps.items():
             if new[at] != value:
                 violations.append(
@@ -371,15 +382,48 @@ def _stamp(db: Any) -> RenumberingStamp:
     return RenumberingStamp(reaching, stamp_time(rb_removal._now()))
 
 
+def _park_marked(db: Any, moves: Mapping[str, tuple[str, int, int]]) -> None:
+    """Put each marked row at its planned place, ``TrackNo`` alone (U958 review B1).
+
+    Its ``updated_at`` is the moment it was removed, which ``sync pair`` reads
+    against the account's own changes, so neither stamp moves. A row that is
+    no longer marked, or no longer at its planned number, refuses and rolls back.
+    """
+    from sqlalchemy import text
+
+    statement = text(
+        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after '
+        f'WHERE "ID" = :key AND "{TRACK_NUMBER_COLUMN}" = :before '
+        f'AND "{_writer().SOFT_DELETE_COLUMN}" = 1'
+    )
+    session = db.session
+    for key, (_playlist, before, after) in sorted(moves.items()):
+        if session.execute(statement, {"after": after, "key": key, "before": before}).rowcount != 1:
+            db.rollback()
+            raise _writer()._unavailable(
+                "whitelist-violation",
+                f"the marked playlist membership {key!r} no longer holds the place {before} "
+                f"the closing up planned to move it from, so nothing was committed",
+                detail={"membership_id": key, "planned": before},
+            )
+    for held in list(session.identity_map.values()):
+        if _writer()._table_of(held) == MEMBERSHIP_TABLE and str(getattr(held, "ID", "")) in moves:
+            session.expire(held)
+
+
 def close_gaps(db: Any) -> dict[str, tuple[str, int, int]]:
     """Number every recorded playlist's live rows 1 to N, inside the open transaction (U958).
 
     Called by :func:`commit_guarded` after the whitelist and before the
     binding's commit. Flushes, reads the recorded playlists from SQL, plans by
-    :func:`contiguous_positions`, writes through :func:`renumber_memberships`
-    with the stamp, and proves it from SQL by :func:`gap_violations`. REFUSED,
-    ROLLED BACK: a recorded playlist :func:`unplaceable` names, or a write the
-    plan does not explain. Returns what moved.
+    :func:`contiguous_positions`, writes the live rows through
+    :func:`renumber_memberships` with the stamp and the marked rows' ``TrackNo``
+    alone (:func:`_park_marked`), and proves it from SQL by
+    :func:`gap_violations`. A row this same commit also wrote through the binding
+    (a row added or marked here) is stamped again by the binding's commit with
+    its own count, as every row the binding writes is. REFUSED, ROLLED BACK: a
+    recorded playlist :func:`unplaceable` names, or a write the plan does not
+    explain. Returns what moved.
     """
     rb_writer = _writer()
     info = getattr(getattr(db, "session", None), "info", None)
@@ -404,9 +448,13 @@ def close_gaps(db: Any) -> dict[str, tuple[str, int, int]]:
     planned = contiguous_positions(rows)
     if not planned:
         return {}
+    marked = {key for key, _playlist, _number, live in rows if live is False}
+    live_moves = {key: move for key, move in planned.items() if key not in marked}
     before = gap_reading(db, recorded)
-    stamp = _stamp(db)
-    rb_writer.renumber_memberships(db, planned, stamp=stamp)
+    stamp = _stamp(db) if live_moves else None
+    if stamp is not None:
+        rb_writer.renumber_memberships(db, live_moves, stamp=stamp)
+    _park_marked(db, {key: move for key, move in planned.items() if key in marked})
     violations = gap_violations(before, gap_reading(db, recorded), planned=planned, stamp=stamp)
     if violations:
         db.rollback()
