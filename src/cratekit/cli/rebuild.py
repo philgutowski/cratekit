@@ -110,14 +110,12 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         declared = active_taxonomy.load(jobs.frozen_config(job))
         # Only the branch that drove says what the drive found (R-316, U132,
         # R-635, R-2020), on both its exits.
-        job, warnings = engine.drive_reported(
-            store,
-            job,
-            ctx.run_job,
-            REBUILD_ARTIFACTS,
-            threshold=threshold,
-            declared=declared,
-        )
+        drive = engine.ReportedDrive.of(store, job, REBUILD_ARTIFACTS)
+        with drive.owing():
+            _, warnings = ctx.run_job(store, job)
+            job = jobs.get(store, job.job_id)
+            jobs.raise_for_state(job)
+        warnings = (*warnings, *drive.found(threshold, declared))
     jobs.raise_for_state(job)
     return ctx.envelope(
         data=jobs.reported(store, job),

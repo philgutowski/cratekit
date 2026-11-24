@@ -87,8 +87,8 @@ LEFT_BEHIND_NAMED = 20
 UNIDENTIFIED_PLAYLISTS = "playlist-not-compared"
 
 #: What a person reads after the playlists a check could not tie to a genre
-#: (R-1991), one wording for ``crate converge``, ``route resort`` and ``crate
-#: rebuild`` (R-2020). It follows the playlists' names.
+#: (R-1991), one wording for the convergence verb, the resort and the rebuild
+#: (R-2020). It follows the playlists' names.
 UNIDENTIFIED = (
     ": each bears a name a genre files into, holds a track this tree files, "
     "and could not be tied to one destination (its folder was renamed, or a "
@@ -406,45 +406,69 @@ def after_messages(
     return warnings, tuple(warning["message"] for warning in warnings)
 
 
-def drive_reported(
-    store: jobs.JobStore,
-    job: jobs.Job,
-    run_job: Callable[..., tuple[Any, tuple[dict[str, str], ...]]],
-    artifacts: jobs.Artifacts,
-    *,
-    threshold: float | None,
-    declared: taxonomy.Taxonomy,
-) -> tuple[jobs.Job, tuple[dict[str, str], ...]]:
-    """Drive an open job of this engine's workers; say what it found on both exits.
+@dataclass(frozen=True, slots=True)
+class ReportedDrive:
+    """What one drive of this engine's workers owes on both its exits (R-2020).
 
-    The one drive behind ``crate rebuild --job`` and ``route resort --job``.
-    ``threshold`` and ``declared`` are what the workers derive with, read by
-    the caller before any item is claimed (U89, R-685). On success the job as
-    it now stands and the warnings: the driver's own, the dimension not
-    derived (R-316), the favorites step skipped (U132), and what each tree's
-    check after its write left and could not compare, read back from the
-    committed item reports in ``artifacts`` (R-312, R-635, R-2020). A job that
-    did not end well raises its refusal with those sentences as steps, since a
-    refusal carries no warnings.
+    The rebuild's resume and the resort's each drive their open job inside
+    :meth:`owing`, so a job that did not end well raises its refusal with what
+    the finished trees left and could not compare as steps, since a refusal
+    carries no warnings; on success :meth:`found` gives the same as warnings.
+    Both read the committed item reports in ``artifacts`` back rather than
+    anything held in memory, so a job a second process continued names what
+    the first one's trees found (R-312, R-635).
     """
-    frozen = jobs.frozen_config(job)
-    # THE TREES THIS RUN DRIVES; an item already done is an earlier run's.
-    driven = [i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE]
-    listed_in = str(artifacts.final_dir(frozen, job.job_id))
-    try:
-        _, warnings = run_job(store, job)
-        job = jobs.get(store, job.job_id)
-        jobs.raise_for_state(job)
-    except CratekitError as failed:
-        found = after_messages(artifacts.committed(frozen, job.job_id), listed_in=listed_in)
-        raise with_steps(failed, found[1]) from failed
-    found = after_messages(artifacts.committed(frozen, job.job_id), listed_in=listed_in)
-    return job, (
-        *warnings,
-        *not_compared_warnings(governed_not_compared(threshold, declared)),
-        *favorites_skipped_warnings(declared, driven),
-        *found[0],
-    )
+
+    store: Any
+    job_id: str
+    frozen: config.Config
+    artifacts: jobs.Artifacts
+    #: The trees this run drives; an item already done is an earlier run's.
+    driven: tuple[str, ...]
+
+    @classmethod
+    def of(cls, store: Any, job: jobs.Job, artifacts: jobs.Artifacts) -> "ReportedDrive":
+        """Read before the drive, so ``driven`` is this run's trees and no other's."""
+        return cls(
+            store=store,
+            job_id=job.job_id,
+            frozen=jobs.frozen_config(job),
+            artifacts=artifacts,
+            driven=tuple(
+                item.item_id
+                for item in jobs.items(store, job.job_id)
+                if item.state != jobs.ItemState.DONE
+            ),
+        )
+
+    def _messages(self) -> tuple[tuple[dict[str, str], ...], tuple[str, ...]]:
+        return after_messages(
+            self.artifacts.committed(self.frozen, self.job_id),
+            listed_in=str(self.artifacts.final_dir(self.frozen, self.job_id)),
+        )
+
+    @contextmanager
+    def owing(self) -> Iterator[None]:
+        """Re-raise a refusal from the drive with what the finished trees found as steps."""
+        try:
+            yield
+        except CratekitError as failed:
+            raise with_steps(failed, self._messages()[1]) from failed
+
+    def found(
+        self, threshold: float | None, declared: taxonomy.Taxonomy
+    ) -> tuple[dict[str, str], ...]:
+        """The warnings this drive owes on success, after the driver's own.
+
+        The dimension not derived (R-316) and the favorites step skipped (U132),
+        from the cut and the declaration the workers derived with, then what each
+        tree's check after its write left and could not compare.
+        """
+        return (
+            *not_compared_warnings(governed_not_compared(threshold, declared)),
+            *favorites_skipped_warnings(declared, list(self.driven)),
+            *self._messages()[0],
+        )
 
 
 def with_steps(error: CratekitError, steps: Sequence[str]) -> CratekitError:
@@ -1276,7 +1300,6 @@ __all__ = [
     "after_messages",
     "after_report",
     "detect_restore",
-    "drive_reported",
     "assert_as_approved",
     "assert_derivable",
     "preview_governed_trees",
@@ -1297,6 +1320,7 @@ __all__ = [
     "Difference",
     "Direction",
     "RebuildReport",
+    "ReportedDrive",
     "TreeNode",
     "Truth",
     "assert_addressable",

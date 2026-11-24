@@ -635,15 +635,16 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         # THE SAME ENGINE AS THE REBUILD, SO THE SAME DRIVE: the gap (R-316),
         # the skipped step (U132), the leftovers (R-312) and the playlists not
         # compared (R-2020), only on the branch that drove, on BOTH its exits.
-        job, warnings = rebuild.drive_reported(
-            store,
-            job,
-            ctx.run_job,
-            RESORT_ARTIFACTS,
-            threshold=threshold,
-            declared=declared,
+        drive = rebuild.ReportedDrive.of(store, job, RESORT_ARTIFACTS)
+        with drive.owing():
+            _, warnings = ctx.run_job(store, job)
+            job = jobs.get(store, job.job_id)
+            jobs.raise_for_state(job)
+        warnings = (
+            *warnings,
+            *drive.found(threshold, declared),
+            *_due_again_warnings(drive.frozen, job.job_id),
         )
-        warnings = (*warnings, *_due_again_warnings(jobs.frozen_config(job), job.job_id))
     jobs.raise_for_state(job)
     return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
 
