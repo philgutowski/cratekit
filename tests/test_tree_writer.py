@@ -10,7 +10,6 @@ from __future__ import annotations
 import shutil
 import unicodedata
 from dataclasses import replace
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -37,21 +36,22 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _xml_doc
+from tests.test_tree_registry import (
+    ADOPTED_ROOT,
+    FOLDER_DISPLAY,
+    SUB_DISPLAY,
+    TREE_DISPLAY,
+    TREE_ID,
+    _esc,
+    _registry,
+)
+from tests.test_tree_registry import _playlists as _document
+from tests.xml_fixtures import _fresh_xml, _no_bare_lf
 
-TREE_ID = "shelf_stack"
-TREE_DISPLAY = "Shelf & Stack"
-FOLDER_DISPLAY = "Loud! Room"
-SUB_DISPLAY = "Café Nights"
 OTHER_FOLDER = "Quiet? Corner"
 CATALOG_DISPLAY = "Catalogued Sources"
-ADOPTED_ROOT = "root-row-7788"
 
 DECLARED = taxonomy.default_taxonomy()
-
-
-def _esc(value: str) -> str:
-    return rbxml.xml_escape_attr(value)
 
 
 def _tree_doc(*, folders: tuple[str, ...] = (FOLDER_DISPLAY,)) -> bytes:
@@ -64,29 +64,11 @@ def _tree_doc(*, folders: tuple[str, ...] = (FOLDER_DISPLAY,)) -> bytes:
             "        </NODE>",
         ]
     children.append("      </NODE>")
-    return _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"], root_children=children
-    )
+    return _document(*children)
 
 
 def _ungoverned() -> rbxml.Tree:
     return rbxml.Tree(display=TREE_DISPLAY)
-
-
-def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
-    if mode is tree_registry.Mode.DATABASE:
-        return tree_registry.Registry(
-            (
-                tree_registry.TreeRecord(
-                    tree_id=TREE_ID,
-                    mode=mode,
-                    cutover_on=date(2026, 8, 1),
-                    root_id=root_id,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                ),
-            )
-        )
-    return tree_registry.Registry((tree_registry.TreeRecord(tree_id=TREE_ID, mode=mode),))
 
 
 def test_a_routing_sweep_reports_what_it_could_not_place_rather_than_raising():
@@ -151,15 +133,12 @@ def test_a_bridge_sweep_at_a_database_native_tree_is_refused_by_name():
 def test_the_default_tree_is_governed_so_a_cutover_refuses_the_sweep():
     """The hole a reviewer walked through, pinned from the entry point that had it."""
     declared = taxonomy.default_taxonomy()
-    document = _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Name="{_esc(declared.tree.display)}" Type="0" Count="1">',
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
-            "        </NODE>",
-            "      </NODE>",
-        ],
+    document = _document(
+        f'      <NODE Name="{_esc(declared.tree.display)}" Type="0" Count="1">',
+        f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+        f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
+        "        </NODE>",
+        "      </NODE>",
     )
     native = tree_registry.Registry(
         (replace(_registry(tree_registry.Mode.DATABASE).record(TREE_ID), tree_id=declared.tree.id),)
@@ -209,19 +188,16 @@ def test_a_catalog_tree_is_not_written_outside_a_self_closed_playlist_root(tmp_p
 
 def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
     """The enumeration and the write have to mean the same folder."""
-    document = _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="2">',
-            f'        <NODE Name="{_esc(OTHER_FOLDER)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="0">',
-            "          </NODE>",
-            "        </NODE>",
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
-            "        </NODE>",
-            "      </NODE>",
-        ],
+    document = _document(
+        f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="2">',
+        f'        <NODE Name="{_esc(OTHER_FOLDER)}" Type="0" Count="1">',
+        f'          <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="0">',
+        "          </NODE>",
+        "        </NODE>",
+        f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+        f'          <NODE Name="{_esc(SUB_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
+        "        </NODE>",
+        "      </NODE>",
     )
     out, report = trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     vox = taxonomy.default_taxonomy().sub_class(trees.VOX_SUB_CLASS).display
@@ -241,17 +217,14 @@ def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
 
 def test_the_vocal_sweep_carries_out_a_warning_instead_of_dropping_it():
     """A folder it could not serve and a folder that needed nothing are not one fact."""
-    document = _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            # A FOLDER where the vocal PLAYLIST goes; replacing one type with the other loses its contents.
-            '          <NODE Name="with vox" Type="0" Count="0">',
-            "          </NODE>",
-            "        </NODE>",
-            "      </NODE>",
-        ],
+    document = _document(
+        f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
+        f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
+        # A FOLDER where the vocal PLAYLIST goes; replacing one type with the other loses its contents.
+        '          <NODE Name="with vox" Type="0" Count="0">',
+        "          </NODE>",
+        "        </NODE>",
+        "      </NODE>",
     )
     before = bytes(document)
     out, report = trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
@@ -271,12 +244,7 @@ def test_two_folders_of_one_name_are_refused_rather_than_half_served():
 
 def test_a_playlist_wearing_the_trees_name_refuses_rather_than_walking_nothing():
     """The wrong-type collision, which "not found" would have hidden."""
-    document = _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>',
-        ],
-    )
+    document = _document(f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="1" KeyType="0" Entries="0"/>')
     with pytest.raises(trees.TreeUnreachable) as excinfo:
         trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     assert "playlist" in str(excinfo.value)
@@ -598,16 +566,18 @@ def adopted_root(db):
     return folder
 
 
-def _write(cfg, db, *, plan, root_id, registry=None, root_exists=lambda _root: True):
+def _write(cfg, db, *, plan, root_id, registry=None, root_exists=lambda _root: True, **kwargs):
+    """``write_tree_membership`` on the fixture tree, its rows and analysis root by default."""
+    kwargs.setdefault("rows", _rows(Path(cfg.library.root)))
+    kwargs.setdefault("analysis_roots", [Path(cfg.library.root) / "Music"])
     return trees.write_tree_membership(
         cfg,
         db,
         tree_id=TREE_ID,
         registry=_registry(tree_registry.Mode.DATABASE, root_id=root_id) if registry is None else registry,
         plan=plan,
-        rows=_rows(Path(cfg.library.root)),
         root_exists=root_exists,
-        analysis_roots=[Path(cfg.library.root) / "Music"],
+        **kwargs,
     )
 
 
@@ -679,16 +649,7 @@ def test_a_registry_naming_a_root_this_library_lacks_is_refused(cfg, gates_pass)
 def test_naming_no_analysis_root_is_refused_rather_than_watching_nothing(cfg, gates_pass):
     """P5, on this unit's own softening path."""
     with pytest.raises(ValueError, match="watch nothing"):
-        trees.write_tree_membership(
-            cfg,
-            None,
-            tree_id=TREE_ID,
-            registry=_registry(tree_registry.Mode.DATABASE),
-            plan={},
-            rows=[],
-            root_exists=lambda _root: True,
-            analysis_roots=[],
-        )
+        _write(cfg, None, plan={}, root_id=ADOPTED_ROOT, rows=[], analysis_roots=[])
 
 
 def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
@@ -710,16 +671,7 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
 
     monkeypatch.setattr(trees.rb_writer, "add_memberships", rewriting_batch)
     with pytest.raises(CratekitError) as excinfo:
-        trees.write_tree_membership(
-            cfg,
-            db,
-            tree_id=TREE_ID,
-            registry=_registry(tree_registry.Mode.DATABASE, root_id=str(adopted_root.ID)),
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{root}/Music/one.flac"]},
-            rows=_rows(root),
-            root_exists=lambda _root: True,
-            analysis_roots=[root],
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID), analysis_roots=[root])
 
     cause = excinfo.value.cause
     assert cause.reason == "anlz-modified"
@@ -769,15 +721,12 @@ def test_entries_sharing_a_folder_resolve_it_once_and_insert_once_per_playlist(
 
     monkeypatch.setattr(trees.rb_writer, "ensure_folder", counting_folder)
     monkeypatch.setattr(trees.rb_writer, "add_memberships", counting_batch)
-    report = _write(
-        cfg,
-        db,
-        plan={
-            (FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"],
-            (FOLDER_DISPLAY, "A Second Sub"): [f"{cfg.library.root}/Music/two.flac"],
-        },
-        root_id=str(adopted_root.ID),
-    )
+    music = f"{cfg.library.root}/Music"
+    plan = {
+        (FOLDER_DISPLAY, SUB_DISPLAY): [f"{music}/one.flac"],
+        (FOLDER_DISPLAY, "A Second Sub"): [f"{music}/two.flac"],
+    }
+    report = _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
 
     assert folder_lookups == [FOLDER_DISPLAY]
     assert sorted(batches) == [["1"], ["2"]]
@@ -812,19 +761,9 @@ def test_an_ambiguous_location_is_skipped_and_carried_into_the_report(
     cfg, gates_pass, db, adopted_root
 ):
     """Surfaced, which means it reaches the caller rather than a log line."""
-    report = trees.write_tree_membership(
-        cfg,
-        db,
-        tree_id=TREE_ID,
-        registry=_registry(tree_registry.Mode.DATABASE, root_id=str(adopted_root.ID)),
-        plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-        rows=[
-            trees.ContentRow("1", f"{cfg.library.root}/Music/one.flac", deleted=False),
-            trees.ContentRow("2", f"{cfg.library.root}/Music/one.flac", deleted=False),
-        ],
-        root_exists=lambda _root: True,
-        analysis_roots=[Path(cfg.library.root) / "Music"],
-    )
+    one = f"{cfg.library.root}/Music/one.flac"
+    rows = [trees.ContentRow(cid, one, deleted=False) for cid in ("1", "2")]
+    report = _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID), rows=rows)
     assert report.added == 0
     assert len(report.skipped) == 1
     assert report.skipped[0].outcome is trees.MatchOutcome.AMBIGUOUS
@@ -873,6 +812,15 @@ def _the_one_record(cfg) -> session.SessionRecord:
     recorded = session.records(cfg)
     assert len(recorded) == 1, [entry.session_id for entry in recorded]
     return recorded[0]
+
+
+def _abandoned(cfg, committed: tuple, trees: tuple) -> session.SessionRecord:
+    """The one record, abandoned, claiming ``committed`` sources and ``trees`` changed."""
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == committed
+    assert record.change.trees == trees
+    return record
 
 
 def test_a_membership_write_is_listed_as_restorable_with_its_per_tree_counts(
@@ -928,11 +876,7 @@ def test_a_membership_write_that_fails_is_abandoned_and_claims_no_commit(
     with pytest.raises(RuntimeError, match="mid-sweep"):
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.snapshot_path
-    assert record.committed_sources() == ()
-    assert record.change.trees == ()
+    assert _abandoned(cfg, (), ()).snapshot_path
 
 
 def test_a_failure_after_the_commit_still_reads_as_committed_work(
@@ -946,10 +890,7 @@ def test_a_failure_after_the_commit_still_reads_as_committed_work(
     with pytest.raises(RuntimeError, match="state write failed"):
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == (TREE_ID,)
-    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+    _abandoned(cfg, (TREE_ID,), (session.TreeChange(tree=TREE_ID, created=1, updated=0),))
 
 
 def test_the_write_commits_behind_a_verified_capture(cfg, gates_pass, db, adopted_root, monkeypatch):
@@ -996,10 +937,7 @@ def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
         _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     assert _playlists(db, SUB_DISPLAY), "the fixture did not land the commit it claims to"
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == (TREE_ID,)
-    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+    _abandoned(cfg, (TREE_ID,), (session.TreeChange(tree=TREE_ID, created=1, updated=0),))
 
 
 def test_a_moves_removal_commit_that_lands_and_then_raises_is_still_recorded(
@@ -1071,7 +1009,4 @@ def test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit(
         _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
 
     assert calls["n"] == 2, "the fixture never reached the second playlist"
-    record = _the_one_record(cfg)
-    assert record.state is session.SessionState.ABANDONED
-    assert record.committed_sources() == ()
-    assert record.change.trees == ()
+    _abandoned(cfg, (), ())

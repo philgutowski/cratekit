@@ -36,18 +36,20 @@ def _option(tokens: list[str], flag: str) -> str | None:
     return None
 
 
-def test_the_suite_runs_on_every_core_and_steals_queued_work():
-    tokens = stealing.repository_addopts()
+def _steals(tokens: list[str]) -> None:
+    """``tokens`` run on every core and let an idle worker steal queued work."""
     assert _option(tokens, "-n") == "auto", tokens
     assert _option(tokens, "--dist") == "worksteal", tokens
+
+
+def test_the_suite_runs_on_every_core_and_steals_queued_work():
+    _steals(stealing.repository_addopts())
 
 
 def test_the_mutation_driver_passes_the_distribution_on():
     """The driver rebuilds ``addopts`` for its children stripped of ``-q``, not cleared."""
     mutate = _load("cratekit_mutate_driver_u251", REPO_ROOT / "scripts" / "mutate.py")
-    tokens = mutate.pytest_addopts(REPO_ROOT).split()
-    assert _option(tokens, "-n") == "auto", tokens
-    assert _option(tokens, "--dist") == "worksteal", tokens
+    _steals(mutate.pytest_addopts(REPO_ROOT).split())
 
 
 def test_a_run_whose_tests_moved_reports_every_test_once(tmp_path, monkeypatch):
@@ -57,11 +59,7 @@ def test_a_run_whose_tests_moved_reports_every_test_once(tmp_path, monkeypatch):
     stealing.prepare_environment(monkeypatch, log)
     done = subprocess.run(
         [sys.executable, "-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"],
-        cwd=suite,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=600,
+        cwd=suite, capture_output=True, text=True, check=False, timeout=600,
     )
     failures = [line for line in done.stdout.splitlines() if line.startswith(("FAILED", "ERROR"))]
     assert [line.split()[1] for line in failures] == [stealing.STOLEN_FAILURE], done.stdout

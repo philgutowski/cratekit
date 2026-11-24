@@ -20,7 +20,7 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.test_sync_pair import ACCOUNT, VERB, _codes, sync
+from tests.test_sync_pair import ACCOUNT, VERB, _codes, paired, sync
 from tests.test_sync_pair import db as db  # noqa: PLC0414
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 
@@ -40,8 +40,7 @@ def _at_the_root(world, monkeypatch, *tracks: str):
 
 
 def _again(w):
-    envelope = exited(sync([*VERB, ACCOUNT]))
-    return envelope
+    return exited(sync([*VERB, ACCOUNT]))
 
 
 def test_a_rekordbox_reorder_outside_gig_ready_stays_sync_after_sync(world, monkeypatch, cfg):
@@ -58,8 +57,7 @@ def test_a_rekordbox_reorder_outside_gig_ready_stays_sync_after_sync(world, monk
         assert w.on_account() == ["t1", "t2", "t3"]
         assert pair_cli.NOTHING in _codes(envelope), envelope
     held = pairs.PairStore(cfg).get(ACCOUNT)
-    assert held is not None
-    assert [member.content_id for member in held.rekordbox] == ["3", "1", "2"]
+    assert held is not None and [member.content_id for member in held.rekordbox] == ["3", "1", "2"]
 
 
 def test_an_account_reorder_still_leads_rekordbox_outside_gig_ready(world, monkeypatch):
@@ -117,8 +115,7 @@ def test_a_pair_whose_order_is_kept_later_takes_rekordbox_s_order_onto_the_accou
 
 def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, monkeypatch):
     """Inside the scope the account follows, and the next sync plans nothing."""
-    w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world, ("1", "2", "3"), ("1", "2", "3"))
     w.rekordbox_order("3", "1", "2")
     _again(w)
     assert w.on_account() == ["t3", "t1", "t2"]
@@ -188,9 +185,7 @@ def test_a_track_only_rekordbox_holds_is_appended_to_the_account_and_nothing_els
 
 def test_a_hand_pairs_first_sync_with_every_pairs_order_kept_follows_tidal(world, monkeypatch):
     """With ``outbound.pair_order_every_pair`` on the first sync follows Tidal."""
-    w = _paired(
-        world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"), every=True
-    )
+    w = _paired(world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"), every=True)
     line = _line(w)
     assert "order follows the account's" in line, line
     exited(sync(w.args()))

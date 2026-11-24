@@ -69,8 +69,35 @@ def problems_from(raw: dict, mutate) -> tuple[str, ...]:
     return caught.value.problems
 
 
+def named(raw: dict, mutate, *words: str) -> bool:
+    """Whether one problem the mutated template loads with names every one of ``words``."""
+    return any(all(word in p for word in words) for p in problems_from(raw, mutate))
+
+
 def rows_of(data: dict) -> list:
     return data["vocabulary"][CATALOGUE]["words"]
+
+
+def appended(*rows):
+    """A mutation adding ``rows`` to the catalogue's table."""
+    return lambda data: rows_of(data).extend(rows)
+
+
+def vocabulary(value, source: str | None = None):
+    """A mutation setting the vocabulary section, or one source's table in it, to ``value``."""
+
+    def mutate(data):
+        if source is None:
+            data["vocabulary"] = value
+        else:
+            data["vocabulary"][source] = value
+
+    return mutate
+
+
+def emptied(data) -> None:
+    """The catalogue's table declared with no rows."""
+    data["vocabulary"][CATALOGUE]["words"] = []
 
 
 def filed(taxonomy, genre: str) -> tuple[str, str | None, Match]:
@@ -142,30 +169,23 @@ def test_a_top_level_word_with_no_row_is_declined_and_never_written(word):
 
 @pytest.mark.parametrize(
     ("word", "written"),
-    [
-        ("Disco", "House / Funky House / Disco"),
-        ("Trance", "Trance"),
-        ("Deep House", "Deep House"),
-    ],
+    [("Disco", "House / Funky House / Disco"), ("Trance", "Trance"), ("Deep House", "Deep House")],
 )
 def test_a_word_with_no_row_goes_on_to_the_aliases_and_is_written_when_it_names_a_folder(
     word, written
 ):
     """The table is asked first, and a word the aliases file correctly is still written."""
     assert TAXONOMY.vocabulary(CATALOGUE).get(word.lower()) is None
-    assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE) == routing.suggest_tag(
-        TAXONOMY, word
-    )
+    answer = routing.suggest_tag(TAXONOMY, word, source=CATALOGUE)
+    assert answer == routing.suggest_tag(TAXONOMY, word)
     assert published.choose(TAXONOMY, [word]) == (word, written)
     assert TAXONOMY.named_folder(written) is not None
 
 
 def test_a_dance_word_the_aliases_file_is_not_passed_over_for_a_broad_word_with_a_row():
     """Declining every rowless word made an Electro, Disco and Pop album a pop record."""
-    assert published.choose(TAXONOMY, ["Electro", "Disco", "Pop"]) == (
-        "Disco",
-        "House / Funky House / Disco",
-    )
+    chosen = published.choose(TAXONOMY, ["Electro", "Disco", "Pop"])
+    assert chosen == ("Disco", "House / Funky House / Disco")
 
 
 @pytest.mark.parametrize("word", ["Indie Rock", "Punk", "Latin", "World Music", "Bollywood"])
@@ -179,11 +199,7 @@ def test_a_word_the_aliases_answer_with_a_bare_bucket_name_is_declined(word, no_
 
 def test_the_guard_is_taken_with_the_table_and_not_with_its_rows(default_raw):
     """A table with no rows still says a written genre names a folder."""
-
-    def mutate(data):
-        data["vocabulary"][CATALOGUE]["words"] = []
-
-    empty = built(default_raw, mutate)
+    empty = built(default_raw, emptied)
     assert published.choose(empty, ["Indie Rock"]) is None
     assert published.choose(empty, ["Alternative"]) is None
     assert published.choose(empty, ["Rock"]) == ("Rock", "Rock")
@@ -192,10 +208,9 @@ def test_the_guard_is_taken_with_the_table_and_not_with_its_rows(default_raw):
 
 def test_part_of_a_word_is_not_the_word():
     """A row is matched whole. Neither of these reaches the row for Pop or Rock."""
-    assert routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE) == routing.suggest_tag(
-        TAXONOMY, "Pop Rock"
-    )
-    assert routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE).tag == "Pop Rock"
+    pop_rock = routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE)
+    assert pop_rock == routing.suggest_tag(TAXONOMY, "Pop Rock")
+    assert pop_rock.tag == "Pop Rock"
     assert routing.suggest_tag(TAXONOMY, "Ro", source=CATALOGUE).tag == "Ro"
 
 
@@ -215,11 +230,8 @@ def test_the_record_shops_searcher_names_no_source_to_the_resolver():
     """Driven: Beatport's Pop through the shipped searcher is the dance bucket's name."""
     page = _beatport_page([_beatport_track("an artist", "a title", "Pop")])
     refused = Fetched(note="HTTP 403", status=403)
-    search = searchers.catalogue_searcher(
-        TAXONOMY,
-        fetch=_all_three(beatport=page, traxsource=refused, bandcamp=refused),
-        sleep=lambda _seconds: None,
-    )
+    fetch = _all_three(beatport=page, traxsource=refused, bandcamp=refused)
+    search = searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _seconds: None)
     hit = search("an artist", "a title")
     assert (hit.genre, hit.source, hit.source_genre) == ("Dance / Pop", searchers.BEATPORT, "Pop")
 
@@ -240,10 +252,8 @@ def test_the_catalogues_alternative_files_under_rock_and_the_genre_written_names
 
 
 def test_the_first_word_with_a_row_is_chosen_in_the_catalogues_order():
-    assert published.choose(TAXONOMY, ["Electro", "Christian", "Country", "Pop"]) == (
-        "Country",
-        "Folk",
-    )
+    chosen = published.choose(TAXONOMY, ["Electro", "Christian", "Country", "Pop"])
+    assert chosen == ("Country", "Folk")
 
 
 MISSED = (
@@ -325,63 +335,40 @@ def test_a_table_is_read_only_for_the_source_it_names():
 
 
 def test_a_table_with_no_rows_is_a_declaration_and_answers_for_no_word(default_raw):
-    def mutate(data):
-        data["vocabulary"][CATALOGUE]["words"] = []
-
-    empty = built(default_raw, mutate)
+    empty = built(default_raw, emptied)
     assert empty.vocabulary(CATALOGUE) == {}
     assert empty.vocabularies[0].words == ()
 
 
 def test_an_empty_vocabulary_section_declares_no_table(default_raw):
-    def mutate(data):
-        data["vocabulary"] = {}
-
-    assert built(default_raw, mutate).vocabulary(CATALOGUE) is None
+    assert built(default_raw, vocabulary({})).vocabulary(CATALOGUE) is None
 
 
 # ── the loader ─────────────────────────────────────────────────────────────
 
 
 def test_a_vocabulary_that_is_not_a_table_of_sources_is_a_named_problem(default_raw):
-    def mutate(data):
-        data["vocabulary"] = [{"word": "Pop", "tag": "Rock"}]
-
-    assert any(
-        "[vocabulary] must be a table of sources" in p for p in problems_from(default_raw, mutate)
-    )
+    mutate = vocabulary([{"word": "Pop", "tag": "Rock"}])
+    assert named(default_raw, mutate, "[vocabulary] must be a table of sources")
 
 
 @pytest.mark.parametrize("table", [{}, {"words": {"word": "Pop", "tag": "Rock"}}, "Rock", []])
 def test_a_source_whose_words_are_not_a_list_is_a_named_problem(default_raw, table):
-    def mutate(data):
-        data["vocabulary"][CATALOGUE] = table
-
-    assert any(
-        f"[vocabulary.{CATALOGUE}]" in p and "needs words, a list of rows" in p
-        for p in problems_from(default_raw, mutate)
-    )
+    mutate = vocabulary(table, CATALOGUE)
+    assert named(default_raw, mutate, f"[vocabulary.{CATALOGUE}]", "needs words, a list of rows")
 
 
 @pytest.mark.parametrize("name", ["Deezer", "general catalogue", "9lives", ""])
 def test_a_source_name_that_no_record_could_carry_is_refused(default_raw, name):
-    def mutate(data):
-        data["vocabulary"][name] = {"words": []}
-
-    assert any("the source name must match" in p for p in problems_from(default_raw, mutate))
+    assert named(default_raw, vocabulary({"words": []}, name), "the source name must match")
 
 
 @pytest.mark.parametrize("name", ["dezer", "beatport", "traxsource", "bandcamp"])
 def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name):
     """A misspelled source and a shop's would each load clean and change nothing."""
-
-    def mutate(data):
-        data["vocabulary"][name] = {"words": [{"word": "Pop", "tag": "Rock"}]}
-
-    assert any(
-        f"[vocabulary.{name}]" in p and "it would change nothing" in p and "deezer" in p
-        for p in problems_from(default_raw, mutate)
-    )
+    mutate = vocabulary({"words": [{"word": "Pop", "tag": "Rock"}]}, name)
+    words = (f"[vocabulary.{name}]", "it would change nothing", "deezer")
+    assert named(default_raw, mutate, *words)
 
 
 def test_the_sources_the_loader_knows_are_the_ones_the_tagger_reads_a_table_for():
@@ -440,34 +427,22 @@ def test_the_named_folder_population_is_not_empty_on_either_side():
 
 
 def test_a_row_that_is_not_a_table_is_refused(default_raw):
-    def mutate(data):
-        rows_of(data).append("Pop")
-
-    assert any("is not a table" in p for p in problems_from(default_raw, mutate))
+    assert named(default_raw, appended("Pop"), "is not a table")
 
 
 @pytest.mark.parametrize("row", [{"tag": "Rock"}, {"word": "  ", "tag": "Rock"}, {"word": 7}])
 def test_a_row_with_no_word_is_refused(default_raw, row):
-    def mutate(data):
-        rows_of(data).append(row)
-
-    assert any("needs a word" in p for p in problems_from(default_raw, mutate))
+    assert named(default_raw, appended(row), "needs a word")
 
 
 @pytest.mark.parametrize("row", [{"word": "Metal"}, {"word": "Metal", "tag": ""}])
 def test_a_row_with_no_tag_is_refused_and_names_its_word(default_raw, row):
-    def mutate(data):
-        rows_of(data).append(row)
-
-    assert any("'Metal'" in p and "needs a tag" in p for p in problems_from(default_raw, mutate))
+    assert named(default_raw, appended(row), "'Metal'", "needs a tag")
 
 
 @pytest.mark.parametrize("again", ["Pop", "pop", " POP "])
 def test_a_word_declared_twice_is_refused_whatever_its_case(default_raw, again):
-    def mutate(data):
-        rows_of(data).append({"word": again, "tag": "Rock"})
-
-    assert any("declared twice" in p for p in problems_from(default_raw, mutate))
+    assert named(default_raw, appended({"word": again, "tag": "Rock"}), "declared twice")
 
 
 @pytest.mark.parametrize(
@@ -480,39 +455,26 @@ def test_a_word_declared_twice_is_refused_whatever_its_case(default_raw, again):
     ],
 )
 def test_a_tag_nothing_files_by_an_exact_declaration_is_refused(default_raw, tag):
-    def mutate(data):
-        rows_of(data).append({"word": "Metal", "tag": tag})
-
+    mutate = appended({"word": "Metal", "tag": tag})
     if tag == "Hip-Hop ":
         assert built(default_raw, mutate).vocabulary(CATALOGUE)["metal"].tag == "Hip-Hop"
         return
     assert routing.resolve_bucket(TAXONOMY, tag).match in (Match.FUZZY, Match.FALLBACK)
-    assert any(
-        "'Metal'" in p and "is filed by no exact declaration" in p
-        for p in problems_from(default_raw, mutate)
-    )
+    assert named(default_raw, mutate, "'Metal'", "is filed by no exact declaration")
 
 
 @pytest.mark.parametrize("tag", ["Electronica", "Electronic", "Electronica / Other"])
 def test_a_tag_the_taxonomy_calls_too_coarse_is_refused(default_raw, tag):
-    def mutate(data):
-        rows_of(data).append({"word": "Electro", "tag": tag})
-
     assert TAXONOMY.is_too_coarse_as_source(tag)
-    assert any("too coarse to be a final genre" in p for p in problems_from(default_raw, mutate))
+    mutate = appended({"word": "Electro", "tag": tag})
+    assert named(default_raw, mutate, "too coarse to be a final genre")
 
 
 def test_the_bare_name_of_a_bucket_that_files_by_source_is_refused(default_raw):
     """R-799: Alternative as the bucket's name filed in the default sub, the word lost."""
-
-    def mutate(data):
-        rows_of(data).append({"word": "Metal", "tag": "NonElectronic"})
-
     assert filed(TAXONOMY, "NonElectronic")[:2] == ("non_electronic", "rock")
-    assert any(
-        "with no row of its own" in p and "default sub 'rock'" in p
-        for p in problems_from(default_raw, mutate)
-    )
+    mutate = appended({"word": "Metal", "tag": "NonElectronic"})
+    assert named(default_raw, mutate, "with no row of its own", "default sub 'rock'")
 
 
 def test_an_alias_of_such_a_bucket_with_no_row_in_its_map_is_refused(default_raw):
@@ -521,10 +483,7 @@ def test_an_alias_of_such_a_bucket_with_no_row_in_its_map_is_refused(default_raw
         bucket["aliases"].append("Shoegaze")
         rows_of(data).append({"word": "Metal", "tag": "Shoegaze"})
 
-    assert any(
-        "'Shoegaze'" in p and "with no row of its own" in p
-        for p in problems_from(default_raw, mutate)
-    )
+    assert named(default_raw, mutate, "'Shoegaze'", "with no row of its own")
 
 
 def test_the_same_alias_with_a_row_in_the_map_is_accepted(default_raw):
@@ -539,15 +498,9 @@ def test_the_same_alias_with_a_row_in_the_map_is_accepted(default_raw):
 
 
 def test_every_problem_in_a_table_is_reported_at_once(default_raw):
-    def mutate(data):
-        rows_of(data).extend(
-            [
-                {"word": "Metal", "tag": "NonElectronic"},
-                {"word": "Blues"},
-                {"word": "pop", "tag": "Rock"},
-            ]
-        )
-
+    mutate = appended(
+        {"word": "Metal", "tag": "NonElectronic"}, {"word": "Blues"}, {"word": "pop", "tag": "Rock"}
+    )
     problems = problems_from(default_raw, mutate)
     assert sum("[vocabulary.deezer]" in p for p in problems) == 3
 

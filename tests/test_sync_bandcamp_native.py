@@ -101,7 +101,6 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     cfg, _root = native_library
 
     code, envelope = drive(["sync", "bandcamp", "--seller", "PULS", "--batch", BATCH])
-
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     summary = envelope["data"]["summary"]
     assert summary["landing_name"] == NAME
@@ -114,8 +113,7 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     folder = Path(summary["staging"])
     assert folder == (Path(cfg.paths.download_staging) / BATCH).absolute()
 
-    # The session's two acts, pasted as a shell reads them, since the batch
-    # folder and the name both hold spaces.
+    # The session's two acts, pasted as a shell reads them: the folder and the name hold spaces.
     decide, apply = envelope["pending_human_action"]["steps"][:2]
     decide_argv = shlex.split(decide.split(": ", 1)[1])
     apply_argv = shlex.split(apply.split(": ", 1)[1])
@@ -126,9 +124,8 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     exited(drive(decide_argv[1:]))
     exited(drive(apply_argv[1:]))
     assert _filed(cfg) == {"PULS": {"PULS 2026": ["Sun Path", "Tide"]}}
-    (batch,) = _query(
-        cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0", NAME
-    )
+    query = "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0"
+    (batch,) = _query(cfg, query, NAME)
     assert batch
     assert not folder.is_dir() or not any(folder.iterdir()), "every staged file landed"
     # The owned release was never fetched.

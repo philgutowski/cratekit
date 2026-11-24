@@ -34,44 +34,39 @@ def _to_the_write() -> str:
     return run_id
 
 
+def _stale(run_id: str) -> dict:
+    """The continue of ``run_id``, refused stale: its cause."""
+    return exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)["cause"]
+
+
 def test_a_playlist_of_the_title_made_in_the_folder_before_the_write_refuses_stale(world):
     folder_id = world.account.create_folder("GIG READY")
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     run_id = _to_the_write()
     theirs = world.account.create_playlist("GIG READY Opener")
     world.account.move_to_folder(theirs, folder_id)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
-    assert moved == [
-        {
-            "side": "account-folder",
-            "playlist_id": folder_id,
-            "name": "GIG READY",
-            "why": "now holds a playlist titled 'GIG READY Opener'",
-        }
-    ]
+    moved = _stale(run_id)["detail"]["moved"]
+    assert moved == [{
+        "side": "account-folder", "playlist_id": folder_id, "name": "GIG READY",
+        "why": "now holds a playlist titled 'GIG READY Opener'",
+    }]
     assert world.account.playlists[theirs] == []
     assert len([t for t in world.account.titles.values() if t == "GIG READY Opener"]) == 1
 
 
 def test_a_root_folder_the_plan_makes_made_before_the_write_refuses_stale(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.create_folder("GIG READY")
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert refused["cause"]["detail"]["moved"][0]["side"] == "account-folder"
+    assert _stale(run_id)["detail"]["moved"][0]["side"] == "account-folder"
     assert world.account.folders_created == ["GIG READY"], "a second folder was made"
 
 
 def test_a_made_pair_whose_rekordbox_side_moved_before_the_write_refuses_stale(world):
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", under=gig)
+    opener = world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.rekordbox_add(opener, "2")
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert [one["playlist_id"] for one in refused["cause"]["detail"]["moved"]] == [opener]
+    assert [one["playlist_id"] for one in _stale(run_id)["detail"]["moved"]] == [opener]
     assert world.account.created == []
 
 
@@ -91,8 +86,7 @@ def test_a_no_change_sync_of_every_made_pair_asks_nothing_about_a_track(world, c
 
 
 def test_every_pair_plans_once_across_its_gates(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     code, first = drive(VERB)
     asked = len(world.account.matches)
     assert asked == 2
@@ -103,18 +97,13 @@ def test_every_pair_plans_once_across_its_gates(world):
     assert world.account.playlists[world.titled("GIG READY Opener")] == ["t1", "t2"]
 
 
-def _archive(world) -> str:
-    return world.folder("ARCHIVE")
-
-
 def test_a_discovered_playlist_dragged_into_archive_before_the_write_refuses_stale(world):
     gig = world.folder("GIG READY")
-    archive = _archive(world)
+    archive = world.folder("ARCHIVE")
     opener = world.playlist("Opener", "1", "2", under=gig)
     run_id = _to_the_write()
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
+    moved = _stale(run_id)["detail"]["moved"]
     assert [(one["side"], one["playlist_id"]) for one in moved] == [("rekordbox", opener)]
     assert "moved since the plan" in moved[0]["why"]
     assert world.account.created == []
@@ -122,31 +111,28 @@ def test_a_discovered_playlist_dragged_into_archive_before_the_write_refuses_sta
 
 def test_a_made_pair_dragged_into_archive_before_the_write_refuses_stale(world):
     gig = world.folder("GIG READY")
-    archive = _archive(world)
+    archive = world.folder("ARCHIVE")
     opener = world.playlist("Opener", "1", under=gig)
     assert sync()[0] == int(ExitCode.OK)
     world.rekordbox_add(opener, "2")
     run_id = _to_the_write()
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
-    exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
+    _stale(run_id)
     assert world.account.playlists[world.titled("GIG READY Opener")] == ["t1"]
 
 
-def test_a_made_pair_let_go_in_archive_and_dragged_back_before_the_write_refuses_stale(
-    world, cfg
-):
+def test_a_made_pair_let_go_in_archive_and_dragged_back_before_the_write_refuses_stale(world, cfg):
     from cratekit.modules.outbound import pairs
 
     gig = world.folder("GIG READY")
-    archive = _archive(world)
+    archive = world.folder("ARCHIVE")
     opener = world.playlist("Opener", "1", under=gig)
     assert sync()[0] == int(ExitCode.OK)
     made = world.titled("GIG READY Opener")
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
     run_id = _to_the_write()
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", gig, opener)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert "is back where its pair is kept" in refused["cause"]["message"]
+    assert "is back where its pair is kept" in _stale(run_id)["message"]
     assert pairs.PairStore(cfg).get(made) is not None, "the pair was let go"
 
 
@@ -162,8 +148,7 @@ def test_a_rekordbox_name_taken_before_the_write_stops_every_pair_before_any_is_
     world.account.add_tracks(closer, ("t3",))
     run_id = _to_the_write()
     world.playlist("Closer", under=gig)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert "is taken by a node made since the plan" in refused["cause"]["message"]
+    assert "is taken by a node made since the plan" in _stale(run_id)["message"]
     assert world.account.playlists[made] == ["t1"], "a pair was written before the refusal"
 
 
@@ -176,8 +161,7 @@ def test_a_row_the_plan_adds_gone_before_the_write_stops_every_pair(world):
     world.account.playlists[world.titled("GIG READY Closer")].append("t5")
     run_id = _to_the_write()
     world.sql("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '5'")
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
+    moved = _stale(run_id)["detail"]["moved"]
     assert [one["playlist_id"] for one in moved] == [closer]
     assert "no longer live rows" in moved[0]["why"]
     assert world.held(world.sql("SELECT ID FROM djmdPlaylist WHERE Name = 'Opener'")[0][0]) == ["1"]
@@ -185,25 +169,22 @@ def test_a_row_the_plan_adds_gone_before_the_write_stops_every_pair(world):
 
 def test_the_folder_a_made_side_goes_in_gone_before_the_write_refuses_stale(world):
     folder_id = world.account.create_folder("GIG READY")
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.folder_names.pop(folder_id)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert refused["cause"]["detail"]["moved"][0]["why"] == (
+    assert _stale(run_id)["detail"]["moved"][0]["why"] == (
         "is no longer a root folder on the account"
     )
     assert world.account.created == []
 
 
 def test_a_root_folder_to_make_is_named_without_an_empty_identifier(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.create_folder("GIG READY")
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert "the account folder 'GIG READY' is now a root folder" in refused["cause"]["message"]
-    assert "()" not in refused["cause"]["message"]
+    said = _stale(run_id)["message"]
+    assert "the account folder 'GIG READY' is now a root folder" in said
+    assert "()" not in said
 
 
 # A self paired playlist's whole place, read as the plan read it.
@@ -224,8 +205,7 @@ def _moved_to(world, parent: str):
 def test_a_discovered_playlist_moved_to_another_folder_before_the_write_refuses_stale(world):
     warmup = world.folder("WARMUP")
     run_id, opener = _moved_to(world, warmup)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
+    moved = _stale(run_id)["detail"]["moved"]
     assert [one["playlist_id"] for one in moved] == [opener]
     assert "would now be made as 'WARMUP Opener' in 'WARMUP'" in moved[0]["why"]
     assert world.account.created == []
@@ -233,22 +213,20 @@ def test_a_discovered_playlist_moved_to_another_folder_before_the_write_refuses_
 
 def test_a_discovered_playlist_moved_to_the_root_before_the_write_refuses_stale(world):
     run_id, _opener = _moved_to(world, "root")
-    exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
+    _stale(run_id)
     assert world.account.created == []
 
 
 def test_a_discovered_playlist_moved_into_a_subfolder_before_the_write_refuses_stale(world):
     run_id, _opener = _moved_to(world, "subfolder")
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert "GIG READY Halloween Opener" in refused["cause"]["message"]
+    assert "GIG READY Halloween Opener" in _stale(run_id)["message"]
     assert world.account.created == []
 
 
 def test_a_discovered_playlist_moved_where_discovery_never_pairs_refuses_stale(world):
     favourites_like = world.folder("ARCHIVE")
     run_id, _opener = _moved_to(world, favourites_like)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert "no longer one a sync of every pair would make" in refused["cause"]["message"]
+    assert "no longer one a sync of every pair would make" in _stale(run_id)["message"]
     assert world.account.created == []
 
 
@@ -258,8 +236,7 @@ def test_a_brought_playlist_taken_out_of_its_account_folder_before_the_write_ref
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     run_id = _to_the_write()
     world.account.placed.pop(closer)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
+    moved = _stale(run_id)["detail"]["moved"]
     assert [(one["side"], one["playlist_id"]) for one in moved] == [("account", closer)]
     assert "Closer" not in in_rekordbox(world, gig)
 
@@ -269,8 +246,7 @@ def test_a_brought_playlists_rekordbox_folder_archived_before_the_write_refuses_
     run_id = _to_the_write()
     archive = world.folder("ARCHIVE")
     world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, gig)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    homes = [one for one in refused["cause"]["detail"]["moved"] if one["side"] == "rekordbox-home"]
+    homes = [one for one in _stale(run_id)["detail"]["moved"] if one["side"] == "rekordbox-home"]
     assert [one["name"] for one in homes] == ["GIG READY / Closer"]
     assert "Closer" not in in_rekordbox(world, gig)
 
@@ -279,8 +255,7 @@ def test_a_brought_playlists_folder_gone_reads_as_one_sentence(world, gig):
     on_account(world, "GIG READY Closer", "GIG READY", "t4")
     run_id = _to_the_write()
     world.sql("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", gig)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
     assert (
         "the rekordbox playlist to be made at 'GIG READY / Closer': the rekordbox folder "
         "'GIG READY' the plan named is no longer a live folder"
-    ) in refused["cause"]["message"]
+    ) in _stale(run_id)["message"]

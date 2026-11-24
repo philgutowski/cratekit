@@ -31,7 +31,9 @@ from cratekit.acquire import download, provider_session, vendored
 from cratekit.cli import handlers
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import binaries, config, jobs, provider_gate, secrets
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
+from tests._sync_builders import exited, failed
 from tests.acquire_fakes import tidal_list, wav_bytes
 from tests.cli_drive import drive
 from tests.test_config import valid_data
@@ -44,7 +46,6 @@ STORED = {
 }
 
 BASE = "https://api.invalid/v1/"
-
 
 
 class HTTPError(Exception):
@@ -243,7 +244,6 @@ class Keychain:
         monkeypatch.setattr(keyring, "get_password", get_password)
 
 
-
 @pytest.fixture
 def library(tmp_path, monkeypatch) -> Path:
     root = tmp_path / "library"
@@ -321,9 +321,7 @@ def keys(count: int) -> list[str]:
 def queued(library: Path, tracks: list[str]) -> str:
     path = library / "list.json"
     path.write_text(tidal_list([(key, f"Artist {key}", f"Title {key}") for key in tracks]))
-    code, envelope = drive(["acquire", "download", str(path)])
-    assert code == int(ExitCode.OK), envelope
-    return envelope["data"]["job_id"]
+    return exited(drive(["acquire", "download", str(path)]))["data"]["job_id"]
 
 
 def resume_argv(job_id: str) -> list[str]:
@@ -349,16 +347,22 @@ def stored_now() -> dict:
     return secrets.get_json(secrets.Credential.PROVIDER_SESSION)
 
 
+def resumed(job_id: str, expected: ExitCode = ExitCode.OK) -> dict:
+    """The resume of ``job_id``, which must exit ``expected``."""
+    return exited(drive(resume_argv(job_id)), expected)
+
+
+def parked(job_id: str) -> dict:
+    """The resume of ``job_id``, which must not exit OK."""
+    return failed(drive(resume_argv(job_id)))
+
 
 def test_a_ten_track_job_logs_in_once_and_spends_four_calls_a_track(
     cfg, library, tool, provider, keychain, temporary, slept
 ):
     tracks = keys(10)
     job_id = queued(library, tracks)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
+    resumed(job_id)
     assert set(states(job_id).values()) == {jobs.ItemState.DONE}
     assert provider.count("sessions") == 1
     assert provider.count("users/") == 1
@@ -373,19 +377,14 @@ def test_every_call_of_the_drive_goes_through_the_gate(cfg, library, tool, provi
     """The gate's count is the stand in's, so nothing reached the provider around it."""
     job_id = queued(library, keys(3))
     before = provider_gate.spend().calls
-
     drive(resume_argv(job_id))
-
     assert provider_gate.spend().calls - before == len(provider.asked) == 2 + 4 * 3
 
 
 def test_the_pacing_delay_is_still_taken_before_every_acquisition(
     cfg, library, tool, provider, stored, slept
 ):
-    job_id = queued(library, keys(4))
-
-    drive(resume_argv(job_id))
-
+    drive(resume_argv(queued(library, keys(4))))
     assert len(slept) == 4
     assert all(delay > 0 for delay in slept)
 
@@ -412,10 +411,7 @@ def test_a_drive_reads_the_keychain_as_a_one_track_drive_does_and_writes_nothing
 def test_the_tool_is_built_and_pointed_at_one_token_file_for_the_whole_drive(
     cfg, library, tool, provider, stored, temporary
 ):
-    job_id = queued(library, keys(5))
-
-    drive(resume_argv(job_id))
-
+    drive(resume_argv(queued(library, keys(5))))
     assert tool.built == 1
     assert len(tool.token_files) == 1
     path, mode, parent_mode = tool.token_files[0]
@@ -439,7 +435,6 @@ def test_each_item_still_lands_in_its_own_staging_directory(
     monkeypatch.setattr(vendored, "apply_settings", spy)
     job_id = queued(library, keys(3))
     drive(resume_argv(job_id))
-
     assert len(seen) == 3
     assert len(set(seen)) == 3
     assert set(states(job_id).values()) == {jobs.ItemState.DONE}
@@ -449,18 +444,13 @@ def test_two_drives_log_in_twice(cfg, library, tool, provider, stored):
     """Once per DRIVE: a second job, or a resume, materialises and logs in again."""
     drive(resume_argv(queued(library, keys(2))))
     drive(resume_argv(queued(library, keys(2))))
-
     assert provider.count("sessions") == 2
-
 
 
 def test_a_rejected_login_parks_the_job_after_one_login(cfg, library, tool, provider, keychain):
     provider.reject_login = True
     job_id = queued(library, keys(5))
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = parked(job_id)
     assert envelope["cause"]["reason"] == "auth-failed", envelope
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert set(states(job_id).values()) == {jobs.ItemState.PENDING}
@@ -476,8 +466,7 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
     job_id = queued(library, tracks)
     provider.withdraw_at = 2 + 4 * 2
 
-    code, envelope = drive(resume_argv(job_id))
-
+    _code, envelope = drive(resume_argv(job_id))
     assert envelope["cause"]["reason"] == "auth-failed", envelope
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert [states(job_id)[key] for key in tracks] == [
@@ -490,9 +479,7 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
 
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {**STORED, "access_token": "FAKE-value-4"})
     provider.withdraw_at = None
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
+    resumed(job_id)
     assert set(states(job_id).values()) == {jobs.ItemState.DONE}
     assert provider.count("sessions") == 2
     assert token_directories(temporary) == []
@@ -501,10 +488,7 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
 def test_a_missing_session_parks_and_leaves_no_file(cfg, library, tool, provider, temporary):
     """Nothing recorded: the job parks on the credential, with no call or file made."""
     job_id = queued(library, keys(3))
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code != int(ExitCode.OK), envelope
+    parked(job_id)
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert set(states(job_id).values()) == {jobs.ItemState.PENDING}
     assert provider.asked == []
@@ -514,8 +498,7 @@ def test_a_missing_session_parks_and_leaves_no_file(cfg, library, tool, provider
 def test_a_refused_source_raises_again_with_no_call(cfg, tmp_path, tool, provider, stored):
     """A source that met a refusal never logs in or asks again."""
     provider.reject_login = True
-    staging = tmp_path / "staging"
-    staging.mkdir()
+    (tmp_path / "staging").mkdir()
     settings = vendored.AdapterSettings.from_config(cfg)
     with vendored.drive() as held:
         source = held.source(settings)
@@ -527,15 +510,10 @@ def test_a_refused_source_raises_again_with_no_call(cfg, tmp_path, tool, provide
     assert len(provider.asked) == asked == 1
 
 
-
 def test_a_token_refreshed_during_the_drive_is_stored_once(cfg, library, tool, provider, keychain):
     tracks = keys(6)
     tool.session.refresh_at = tracks[2]
-    job_id = queued(library, tracks)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
+    resumed(queued(library, tracks))
     assert len(keychain.session_writes) == 1
     written = stored_now()
     assert written["access_token"] == "FAKE-value-3"
@@ -552,11 +530,19 @@ def test_a_refresh_before_a_withdrawal_still_reaches_the_keychain(
     tool.session.refresh_at = tracks[0]
     provider.withdraw_at = 2 + 4 * 2
     job_id = queued(library, tracks)
-
     drive(resume_argv(job_id))
-
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert [w["access_token"] for w in keychain.session_writes] == ["FAKE-value-3"]
+
+
+def _every_item_breaks(tool, tracks) -> None:
+    """Each of ``tracks`` raises in the middle of its download, as a broken manifest would."""
+
+    def broken() -> None:
+        raise RuntimeError("the stream manifest could not be parsed")
+
+    for key in tracks:
+        tool.during[key] = broken
 
 
 def test_a_refresh_in_a_drive_where_every_item_failed_still_reaches_the_keychain(
@@ -565,21 +551,12 @@ def test_a_refresh_in_a_drive_where_every_item_failed_still_reaches_the_keychain
     """A drive whose every item failed ends in the engine's no evidence raise."""
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
-
-    def broken() -> None:
-        raise RuntimeError("the stream manifest could not be parsed")
-
-    for key in tracks:
-        tool.during[key] = broken
+    _every_item_breaks(tool, tracks)
     job_id = queued(library, tracks)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code != int(ExitCode.OK), envelope
+    parked(job_id)
     assert set(states(job_id).values()) == {jobs.ItemState.FAILED}
     assert [w["access_token"] for w in keychain.session_writes] == ["FAKE-value-3"]
     assert token_directories(temporary) == []
-
 
 
 def test_a_drive_signalled_mid_track_leaves_no_token_file(
@@ -588,9 +565,7 @@ def test_a_drive_signalled_mid_track_leaves_no_token_file(
     tracks = keys(4)
     tool.during[tracks[1]] = lambda: os.kill(os.getpid(), signal.SIGTERM)
     job_id = queued(library, tracks)
-
     drive(resume_argv(job_id))
-
     assert job_of(job_id).state is jobs.JobState.CANCELLED
     assert states(job_id)[tracks[2]] is jobs.ItemState.PENDING
     assert len(tool.token_files) == 1
@@ -612,38 +587,39 @@ def test_a_drive_torn_down_mid_track_leaves_no_token_file(
 
     tool.during[tracks[1]] = killed
     job_id = queued(library, tracks)
-
     with jobs.open_store() as store, pytest.raises(Killed):
         handlers.run_job(store, jobs.get(store, job_id))
-
     assert len(tool.token_files) == 1
     assert not tool.token_files[0][0].exists()
     assert token_directories(temporary) == []
+
+
+def _dead_pid() -> int:
+    """The process id of a child that has exited."""
+    dead = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        capture_output=True, text=True, check=True,
+    )
+    return int(dead.stdout)
 
 
 def test_a_drive_killed_outright_leaves_a_directory_the_next_one_sweeps(
     cfg, library, tool, provider, stored, temporary
 ):
     """A hard kill runs no code, so the next materialise removes what a gone process left."""
-    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
-                          capture_output=True, text=True, check=True)
-    orphan = temporary / f"cratekit-session-{int(dead.stdout)}-abc123"
+    orphan = temporary / f"cratekit-session-{_dead_pid()}-abc123"
     orphan.mkdir(mode=0o700)
     (orphan / "token.json").write_text(json.dumps(STORED))
     live = temporary / f"cratekit-session-{os.getppid()}-def456"
     live.mkdir(mode=0o700)
-
     drive(resume_argv(queued(library, keys(1))))
-
     assert not orphan.exists()
     assert live.exists()
 
 
 @pytest.mark.parametrize("shape", ["file", "symlink", "older-name", "own-process"])
 def test_the_sweep_leaves_alone_what_it_cannot_prove_is_an_orphan(temporary, stored, shape):
-    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
-                          capture_output=True, text=True, check=True)
-    pid = int(dead.stdout)
+    pid = _dead_pid()
     if shape == "file":
         left = temporary / f"cratekit-session-{pid}-abc123"
         left.write_text("not a directory")
@@ -661,20 +637,15 @@ def test_the_sweep_leaves_alone_what_it_cannot_prove_is_an_orphan(temporary, sto
 
     with provider_session.materialised_session():
         pass
-
     assert left.exists() or left.is_symlink()
 
 
 def test_the_sweep_leaves_another_accounts_directory_alone(temporary, stored, monkeypatch):
-    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
-                          capture_output=True, text=True, check=True)
-    left = temporary / f"cratekit-session-{int(dead.stdout)}-abc123"
+    left = temporary / f"cratekit-session-{_dead_pid()}-abc123"
     left.mkdir()
     monkeypatch.setattr(os, "getuid", lambda: os.stat(left).st_uid + 1)
-
     with provider_session.materialised_session():
         pass
-
     assert left.exists()
 
 
@@ -698,9 +669,7 @@ def test_a_broken_item_fails_alone_and_the_job_stays_resumable(
 
     tool.during[tracks[1]] = broken
     job_id = queued(library, tracks)
-
     drive(resume_argv(job_id))
-
     assert job_of(job_id).state is jobs.JobState.FAILED
     assert job_of(job_id).cause.reason == "adapter-broken"
     assert states(job_id) == {
@@ -715,15 +684,11 @@ def test_outside_a_drive_the_adapter_still_materialises_per_invocation(
     cfg, tmp_path, tool, provider, stored, temporary
 ):
     """No drive, no hold: the adapter's own scope is the one it always had."""
-    settings = vendored.AdapterSettings.from_config(cfg)
-    adapter = vendored.VendoredAdapter(settings)
-
+    adapter = vendored.VendoredAdapter(vendored.AdapterSettings.from_config(cfg))
     for key in ("1", "2"):
         download.acquire_paced(adapter, (vendored.TrackRequest(key=key),), sleep=lambda _s: None)
-
     assert provider.count("sessions") == 2
     assert token_directories(temporary) == []
-
 
 
 def test_the_download_worker_names_the_vendored_drive():
@@ -775,7 +740,6 @@ def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(cfg, libr
                            item_ids=("1", "2", "3"))
         handlers.run_job(store, job)
         state = jobs.get(store, job.job_id).state
-
     assert claimed == ["1", "2"]
     assert opened == ["open", "close"]
     assert state is jobs.JobState.BLOCKED
@@ -797,8 +761,6 @@ def test_a_refusal_outlives_the_source_it_was_met_on(cfg, tool, provider, stored
     assert provider.count("sessions") == 1
 
 
-
-
 def no_keychain(monkeypatch) -> None:
     """The opt in for a machine with no keychain: the session comes from the environment."""
     from keyring.backends import fail
@@ -810,6 +772,11 @@ def no_keychain(monkeypatch) -> None:
     monkeypatch.setattr(keyring, "get_password", backend.get_password)
 
 
+def _not_stored(envelope: dict) -> list[dict]:
+    """The drive's warnings that the refreshed session was not stored."""
+    return [w for w in envelope["warnings"] if w["code"] == vendored.SESSION_NOT_STORED]
+
+
 def test_a_refresh_the_keychain_cannot_take_is_a_warning_on_a_finished_download(
     cfg, library, tool, provider, temporary, monkeypatch
 ):
@@ -817,13 +784,9 @@ def test_a_refresh_the_keychain_cannot_take_is_a_warning_on_a_finished_download(
     tool.session.refresh_at = tracks[0]
     job_id = queued(library, tracks)
     no_keychain(monkeypatch)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert set(states(job_id).values()) == {jobs.ItemState.DONE}
-    noted = [w for w in envelope["warnings"] if w["code"] == vendored.SESSION_NOT_STORED]
-    assert len(noted) == 1, envelope["warnings"]
+    assert len(_not_stored(envelope)) == 1, envelope["warnings"]
     assert "FAKE-value" not in json.dumps(envelope)
     assert token_directories(temporary) == []
 
@@ -836,12 +799,9 @@ def test_a_refresh_the_keychain_cannot_take_leaves_a_park_its_own_cause(
     provider.withdraw_at = 2 + 4 * 2
     job_id = queued(library, tracks)
     no_keychain(monkeypatch)
-
-    code, envelope = drive(resume_argv(job_id))
-
+    envelope = resumed(job_id, ExitCode.UPSTREAM_AUTH)
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert envelope["cause"]["reason"] == "auth-failed", envelope
-    assert code == int(ExitCode.UPSTREAM_AUTH), envelope
     assert token_directories(temporary) == []
 
 
@@ -851,11 +811,7 @@ def test_an_unchanged_session_needs_no_keychain_write_at_all(
     """The tool reads the expiry back as a float; equal by value, so nothing is written."""
     job_id = queued(library, keys(2))
     no_keychain(monkeypatch)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
-    assert vendored.SESSION_NOT_STORED not in {w["code"] for w in envelope["warnings"]}
+    assert _not_stored(resumed(job_id)) == []
 
 
 def test_a_defect_at_the_close_of_a_finished_drive_is_raised(
@@ -866,7 +822,6 @@ def test_a_defect_at_the_close_of_a_finished_drive_is_raised(
 
     monkeypatch.setattr(vendored._VendoredSource, "capture", broken)
     job_id = queued(library, keys(1))
-
     with jobs.open_store() as store, pytest.raises(TypeError):
         handlers.run_job(store, jobs.get(store, job_id))
     assert token_directories(temporary) == []
@@ -876,9 +831,7 @@ def test_a_session_left_in_the_atmos_client_is_not_stored(cfg, library, tool, pr
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
     tool.during[tracks[1]] = lambda: setattr(tool.tidal, "is_atmos_session", True)
-
     drive(resume_argv(queued(library, tracks)))
-
     assert keychain.session_writes == []
     assert stored_now() == STORED
 
@@ -919,15 +872,12 @@ def test_a_fetch_that_meets_a_dead_session_is_remembered(cfg, tmp_path, tool, pr
 
 @pytest.mark.parametrize("shape", ["file", "symlink"])
 def test_the_sweep_reports_only_what_it_removed(temporary, shape):
-    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
-                          capture_output=True, text=True, check=True)
-    left = temporary / f"cratekit-session-{int(dead.stdout)}-abc123"
+    left = temporary / f"cratekit-session-{_dead_pid()}-abc123"
     if shape == "file":
         left.write_text("not a directory")
     else:
         (temporary / "elsewhere").mkdir()
         left.symlink_to(temporary / "elsewhere")
-
     assert provider_session.sweep_orphans() == ()
 
 
@@ -947,12 +897,9 @@ def test_the_sweep_leaves_a_directory_whose_process_it_cannot_see(temporary, mon
 def test_a_process_id_no_process_can_have_is_left_and_does_not_raise(temporary, stored):
     left = temporary / "cratekit-session-99999999999999999999-abc123"
     left.mkdir()
-
     with provider_session.materialised_session():
         pass
-
     assert left.exists()
-
 
 
 def test_a_token_file_that_cannot_be_written_at_the_close_is_a_warning(
@@ -964,15 +911,13 @@ def test_a_token_file_that_cannot_be_written_at_the_close_is_a_warning(
     real = config.atomic_write_bytes
 
     def full(data, path, **kwargs):
-        if Path(path).name == vendored.TOKEN_FILENAME and json.loads(data)["access_token"] == "FAKE-value-3":
+        token = Path(path).name == vendored.TOKEN_FILENAME
+        if token and json.loads(data)["access_token"] == "FAKE-value-3":
             raise OSError(28, "No space left on device")
         return real(data, path, **kwargs)
 
     monkeypatch.setattr(config, "atomic_write_bytes", full)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert vendored.SESSION_NOT_STORED in {w["code"] for w in envelope["warnings"]}
     assert stored_now() == STORED
     assert token_directories(temporary) == []
@@ -982,8 +927,6 @@ def test_an_index_that_refuses_after_the_keychain_took_the_session_is_a_warning(
     cfg, library, tool, provider, stored, temporary, monkeypatch
 ):
     """Round two: the write's index step refuses with the product's own cause."""
-    from cratekit.core.cause import refuse
-
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
     job_id = queued(library, tracks)
@@ -992,11 +935,7 @@ def test_an_index_that_refuses_after_the_keychain_took_the_session_is_a_warning(
         raise refuse("credential-index-unreadable", "the credential index could not be read")
 
     monkeypatch.setattr(secrets, "_record_name", unreadable)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
-    noted = [w for w in envelope["warnings"] if w["code"] == vendored.SESSION_NOT_STORED]
+    noted = _not_stored(resumed(job_id))
     assert len(noted) == 1
     assert "CRATE_ALLOW_ENV_CREDENTIALS" not in noted[0]["message"]
 
@@ -1005,21 +944,15 @@ def test_a_defect_at_the_close_of_a_drive_that_raised_leaves_the_drives_own_erro
     cfg, library, tool, provider, stored, temporary, monkeypatch
 ):
     """Every item failed: the no evidence refusal is the drive's answer, not a close defect."""
+
     def broken_capture(self, scope):
         raise TypeError("a defect in the capture")
 
-    def broken() -> None:
-        raise RuntimeError("the stream manifest could not be parsed")
-
     monkeypatch.setattr(vendored._VendoredSource, "capture", broken_capture)
     tracks = keys(2)
-    for key in tracks:
-        tool.during[key] = broken
+    _every_item_breaks(tool, tracks)
     job_id = queued(library, tracks)
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = parked(job_id)
     assert envelope["cause"]["reason"] != "internal-error", envelope
     assert set(states(job_id).values()) == {jobs.ItemState.FAILED}
     assert token_directories(temporary) == []

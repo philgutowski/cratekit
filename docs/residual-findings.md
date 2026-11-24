@@ -542,3 +542,51 @@ features added since. Ledger only: a maintainer facing count.
 **Measured cost.** Maintainer facing. A regression in any of the three would let the measure read a reach off the list, or a dangling verb, as clean, while the battery's own rules, which share the reading, stay green over the same fixtures. Not driven against the tree: the measure reads 0 reaches off the list and 0 dangling verbs on the branch either way.
 
 **Closes when:** a fixture test in `tests/test_refactor_measure.py` holds each reading, a lazy plain import, a chain through two handed modules, and a drive whose builder succeeds and whose help fails. Ledger only.
+
+---
+
+## R-2046. A replay row names a test a later unit renamed away, and its batch then measures nothing
+
+**Found:** at the kill set replay of #984, U335, 2026-11-24.
+
+**The mechanism.** `killset.py`'s `tests_of` keeps a subset entry whose file exists, without asking whether its test does. Rows u135 A8 and A12 name `test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set` and `test_inspiration_join_stays_pinned_beside_the_inbox_join` in `tests/test_u135_set_inbox_join.py`, which no longer define them, so the subset collects nothing and `mutate.py` refuses the whole batch with NOTHING MEASURED. The load calls (`load_spec`, `load_mapped`, `refuse_unrecorded_sources`) and a collect of the union of a batch's subsets both pass over it.
+
+**Measured cost.** One helper container's run of before batch five, about twenty minutes, before the two rows were pointed at their file and the batch restarted.
+
+**Closes when:** `killset.py rows` drops or widens to its file a subset entry whose node id does not collect, or the driver's load check collects each row's subset. Ledger only: maintainer facing.
+
+---
+
+## R-2047. One case of the sync pair merge fold runs the same merge as another
+
+**Found:** at the review of #984, U335, 2026-11-24.
+
+**The mechanism.** `test_the_side_that_leads_the_order` in `tests/test_sync_pair_merge.py` holds the cases `with_no_change..._leads_again-rekordbox` and `the_stopped_writes_order_is_not_read_against_the_base-stopped` with identical parameters. The base ran the same merge in the two tests they were folded from, so the fold kept every assertion and one case is redundant.
+
+**Measured cost.** One merge run twice, under a millisecond; no guard lost.
+
+**Closes when:** one of the two cases is given the input its base test's name describes, or the two are named as one. Ledger only.
+
+---
+
+## R-2048. Test slice four is 7.95 percent smaller, short of its 59,053 line bar and of the 13.97 percent share
+
+**Found:** at the build of #984, U335, 2026-11-24.
+
+**The mechanism.** The brief fixed the slice at 95 files and 68,640 lines on `d289f61` and its bar at 59,053. By the card's start eleven new test files had landed inside the same path range (U339, U340, R-1716, R-1950, R-1991, R-2020) and the old files had grown, so the range held 106 files and 74,245 lines. Eight builders trimmed it to U312's rules, folds through parametrize, shared helpers and builders, prose cut to the rule and its reason, with no blank line removed inside a test body and no statement packed, and reached 68,342: 5,903 fewer, 7.95 percent (per run of files 3.2, 4.9, 11.0, 9.0, 9.0, 9.3, 7.0 and 10.2 percent). Each stopped for the reason R-1941 gave: docstrings were already one line (3,276 docstring and 1,611 comment lines of 74,245), and the tests are distinct scenarios whose setup differs, so a fold needs a branch per row, and every helper pays its own def, docstring and two blank lines.
+
+**Measured cost.** The slice is 9,289 lines over the brief's bar and 4,469 over the share floor of 63,873. No person using a verb pays for it; the epic's point 5 line bar stays missed by this slice's share.
+
+**Closes when:** the audit card of U290 (#987, U338) settles point 5's line bar against the suite as it now stands, by a measure that does not count the separating blank lines PEP 8 requires, or by a card that removes whole tests a stronger test covers. Ledger only: maintainer facing.
+
+---
+
+## R-2049. The title differential's corpus is the tagging tests' string constants, so a test trim moves it
+
+**Found:** at the review of #984, U335, 2026-11-24.
+
+**The mechanism.** `scripts/title_differential.py` builds its corpus from every short string constant of fifteen tagging test files. A trim that folds tests or renames a fixture's file names changes that corpus: on this branch `corpus()` read 2,248 strings on the base and 2,318 on the head, 8 lost (among them the file names "a dance record" and "a disco record" of the remap fold) and 78 gained, mostly parametrize ids.
+
+**Measured cost.** None measured: the script is a differential research tool run by hand, exits 0 always, and is not a verb. A later run compares a slightly different corpus than an earlier one.
+
+**Closes when:** the corpus is a fixed data file the script owns, or the record of any run names the commit its corpus was read at. Ledger only: maintainer facing.

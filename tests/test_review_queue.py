@@ -122,6 +122,16 @@ def _drive(*argv: str) -> tuple[int, dict, str]:
     return code, json.loads(out.getvalue()), err.getvalue()
 
 
+REJECTED = ("--verdict", "rejected")
+
+
+def _ok(*argv: str) -> dict:
+    """Drive the dispatcher, assert it exits OK, and answer the envelope."""
+    code, envelope, _ = _drive(*argv)
+    assert code == int(ExitCode.OK)
+    return envelope
+
+
 def _refused(*argv: str, reason: str) -> dict:
     """Drive the dispatcher and assert a precondition refusal for ``reason``."""
     code, envelope, _ = _drive(*argv)
@@ -166,6 +176,11 @@ def _written(path: Path, *items) -> Path:
     return path
 
 
+def _version_id(identity: dict) -> str:
+    """The item identifier of a version-match difference with ``identity``."""
+    return review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", identity)
+
+
 def _stored_verdict(store, item_id: str):
     """The raw verdict column, past the reader's coercion."""
     row = store.conn.execute(
@@ -179,22 +194,16 @@ def _stored_verdict(store, item_id: str):
 
 def test_an_item_identifier_is_derived_from_stable_facts_rather_than_a_display_name():
     """D5. The identifier is a function of queue, kind and identity, and key order is not identity."""
-    first = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "7"})
-    again = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "7"})
-    other = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "8"})
+    first, again, other = (_version_id({"row": row}) for row in ("7", "7", "8"))
     assert first == again
     assert first != other
-    assert review.item_id_for(
-        review.Queue.VERSION_MATCH, "version-difference", {"a": "1", "b": "2"}
-    ) == review.item_id_for(
-        review.Queue.VERSION_MATCH, "version-difference", {"b": "2", "a": "1"}
-    )
+    assert _version_id({"a": "1", "b": "2"}) == _version_id({"b": "2", "a": "1"})
 
 
 def test_an_identity_with_nothing_in_it_is_refused():
     """An empty identity hashes to one value, so every item would collide."""
     with pytest.raises(CratekitError) as excinfo:
-        review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {})
+        _version_id({})
     assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
@@ -213,9 +222,7 @@ def test_an_identity_with_nothing_in_it_is_refused():
 )
 def test_the_same_candidate_spelled_two_ways_is_one_identifier(left, right):
     """A type difference is not a different candidate, for items and suppressions alike."""
-    assert review.item_id_for(
-        review.Queue.VERSION_MATCH, "version-difference", left
-    ) == review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", right)
+    assert _version_id(left) == _version_id(right)
     assert review.suppression_id_for("declines", "removed-file", left) == (
         review.suppression_id_for("declines", "removed-file", right)
     )
@@ -232,9 +239,7 @@ def test_the_same_candidate_spelled_two_ways_is_one_identifier(left, right):
 )
 def test_normalizing_the_identity_does_not_collapse_facts_that_differ(left, right):
     """Absent and the text "None" are different facts; merging them settles an unmade decision."""
-    assert review.item_id_for(
-        review.Queue.VERSION_MATCH, "version-difference", left
-    ) != review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", right)
+    assert _version_id(left) != _version_id(right)
 
 
 def test_the_same_candidate_under_two_spellings_of_one_kind_is_one_item(store):
@@ -466,16 +471,16 @@ def test_clearing_an_item_that_was_never_resolved_changes_nothing(store):
 # and every consumer reads an unknown verdict as unresolved.
 
 
-def _a_verdict_from_a_newer_build(store, item_id: str, raw: str = "deferred") -> None:
+def _offered_with_a_newer_builds_verdict(store, raw: str = "deferred"):
+    """One offered item, then a verdict this build cannot read written over it."""
+    item = _offer_one(store)
     with store.immediate() as conn:
-        conn.execute(
-            "UPDATE review_items SET verdict = ? WHERE item_id = ?", (raw, item_id)
-        )
+        conn.execute("UPDATE review_items SET verdict = ? WHERE item_id = ?", (raw, item.item_id))
+    return item
 
 
 def test_an_item_carrying_a_verdict_this_build_cannot_read_is_still_offered(store):
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id)
+    item = _offered_with_a_newer_builds_verdict(store)
     assert [held.item_id for held in review.list_items(store).items] == [item.item_id]
     assert review.count_unresolved(store) == 1
     assert review.get(store, item.item_id).verdict is None
@@ -483,8 +488,7 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_still_offered(stor
 
 def test_an_item_carrying_a_verdict_this_build_cannot_read_can_be_resolved(store):
     """It is presented as a question again, so answering it has to land."""
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id)
+    item = _offered_with_a_newer_builds_verdict(store)
     settled = review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="tester")
     assert settled.verdict is review.Verdict.REJECTED
     assert review.count_unresolved(store) == 0
@@ -492,24 +496,21 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_can_be_resolved(store
 
 def test_clearing_an_item_whose_verdict_this_build_cannot_read_clears_the_row(store):
     """``clear`` must not read the COERCED verdict and return before touching the column."""
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id)
+    item = _offered_with_a_newer_builds_verdict(store)
     review.clear(store, item.item_id, actor="tester")
     assert _stored_verdict(store, item.item_id) is None
 
 
 def test_an_export_carries_a_verdict_this_build_cannot_read_rather_than_dropping_it(store):
     """Rendered as "no verdict", the next installation would insert the item as open."""
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id)
+    _offered_with_a_newer_builds_verdict(store)
     document = review.export_document(store)
     assert [entry["verdict"] for entry in document["items"]] == ["deferred"]
 
 
 def test_an_import_does_not_overwrite_a_local_verdict_it_cannot_read(store):
     """The local decision is unreadable, not absent, so it is a conflict."""
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id)
+    item = _offered_with_a_newer_builds_verdict(store)
     incoming = _document({**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)})
     result = review.import_document(store, incoming, actor="importer")
     assert result.conflicts == (item.item_id,)
@@ -544,25 +545,21 @@ def _mixed_queue(store) -> dict[str, list[str]]:
         item = _offer_one(store, key=f"c{index}", kind="clean-cut")
         made.setdefault("clean-cut", []).append(item.item_id)
     for index in range(2):
-        item = _offer_one(
-            store,
-            key=f"g{index}",
-            queue=review.Queue.GENRE,
-            kind="proposed-genre",
-            payload={"confidence": "low"},
-        )
+        genre = {"queue": review.Queue.GENRE, "payload": {"confidence": "low"}}
+        item = _offer_one(store, key=f"g{index}", kind="proposed-genre", **genre)
         made.setdefault("proposed-genre", []).append(item.item_id)
     return made
 
 
+def _reject_where(store, *, actor: str = "tester", **predicate):
+    """Reject, as ``actor``, every item ``review.Predicate(**predicate)`` selects."""
+    selected = review.Predicate(**predicate)
+    return review.resolve_where(store, selected, review.Verdict.REJECTED, actor=actor)
+
+
 def test_batch_resolution_by_predicate_resolves_the_subset_and_leaves_the_rest(store):
     made = _mixed_queue(store)
-    settled = review.resolve_where(
-        store,
-        review.Predicate(kind="version-difference"),
-        review.Verdict.REJECTED,
-        actor="tester",
-    )
+    settled = _reject_where(store, kind="version-difference")
     assert sorted(item.item_id for item in settled) == sorted(made["version-difference"])
     still_open = {item.item_id for item in review.list_items(store, limit=None).items}
     assert still_open == set(made["clean-cut"]) | set(made["proposed-genre"])
@@ -570,37 +567,20 @@ def test_batch_resolution_by_predicate_resolves_the_subset_and_leaves_the_rest(s
 
 def test_a_predicate_may_select_on_a_payload_field(store):
     _mixed_queue(store)
-    settled = review.resolve_where(
-        store,
-        review.Predicate(queue=review.Queue.GENRE, payload_equals={"confidence": "low"}),
-        review.Verdict.REJECTED,
-        actor="tester",
-    )
+    settled = _reject_where(store, queue=review.Queue.GENRE, payload_equals={"confidence": "low"})
     assert len(settled) == 2
 
 
 def test_a_predicate_typed_at_a_command_line_matches_a_payload_number(store):
     """Command line text matches a payload number, or the sweep settles nothing and says success."""
     _offer_one(store, key="numeric", payload={"attempts": 3})
-    settled = review.resolve_where(
-        store,
-        review.Predicate(payload_equals={"attempts": "3"}),
-        review.Verdict.REJECTED,
-        actor="tester",
-    )
-    assert len(settled) == 1
+    assert len(_reject_where(store, payload_equals={"attempts": "3"})) == 1
 
 
 def test_an_absent_payload_field_is_not_matched_by_the_text_none(store):
     """The one coercion that must NOT happen, or a mistyped field selects every item."""
     _offer_one(store, key="plain", payload={"wanted": "something"})
-    settled = review.resolve_where(
-        store,
-        review.Predicate(payload_equals={"missing_field": "None"}),
-        review.Verdict.REJECTED,
-        actor="tester",
-    )
-    assert settled == ()
+    assert _reject_where(store, payload_equals={"missing_field": "None"}) == ()
     assert review.count_unresolved(store) == 1
 
 
@@ -615,12 +595,7 @@ def test_a_batch_predicate_that_selects_everything_is_refused(store):
 def test_batch_resolution_skips_what_is_already_settled_rather_than_refusing(store):
     made = _mixed_queue(store)
     review.resolve(store, made["version-difference"][0], review.Verdict.ACCEPTED, actor="first")
-    settled = review.resolve_where(
-        store,
-        review.Predicate(kind="version-difference"),
-        review.Verdict.REJECTED,
-        actor="second",
-    )
+    settled = _reject_where(store, kind="version-difference", actor="second")
     assert sorted(i.item_id for i in settled) == sorted(made["version-difference"][1:])
     assert review.get(store, made["version-difference"][0]).actor == "first"
 
@@ -890,8 +865,7 @@ def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
 
 def test_supersede_never_overwrites_a_verdict_this_build_cannot_read(store):
     """Narrower than resolve on purpose: a newer build's value is somebody's decision."""
-    item = _offer_one(store)
-    _a_verdict_from_a_newer_build(store, item.item_id, "from-a-newer-build")
+    item = _offered_with_a_newer_builds_verdict(store, "from-a-newer-build")
     assert review.get(store, item.item_id).verdict is None, "the reader sees a question"
     assert review.supersede(store, [item.item_id], rule="isrc-exact") == ()
     assert review.get(store, item.item_id).stored_verdict == "from-a-newer-build"
@@ -952,12 +926,9 @@ def test_a_batch_resolution_does_not_touch_items_a_resolution_superseded(store):
     first = _offer_one(store, key="a", payload={"why": "title-approximate"})
     second = _offer_one(store, key="b", payload={"why": "title-approximate"})
     review.supersede(store, [first.item_id], rule="isrc-exact")
-    swept = review.resolve_where(
-        store,
-        review.Predicate(queue=review.Queue.VERSION_MATCH, payload_equals={"why": "title-approximate"}),
-        review.Verdict.REJECTED,
-        actor="phillip",
-    )
+    why = {"why": "title-approximate"}
+    queue = review.Queue.VERSION_MATCH
+    swept = _reject_where(store, queue=queue, payload_equals=why, actor="phillip")
     assert [one.item_id for one in swept] == [second.item_id]
     untouched = review.get(store, first.item_id)
     assert untouched.verdict is review.Verdict.SUPERSEDED
@@ -1186,31 +1157,18 @@ PER_WORKER = 25
 
 def test_every_decision_and_revocation_by_eight_processes_at_once_survives(cfg):
     """Eight processes record, then revoke, into each store at once, and nothing is lost."""
-    _all_succeed(
-        [
-            *_start_separate_processes(
-                _RECORD_IN_A_CHILD,
-                workers=WORKERS,
-                arguments=lambda worker: ("tombstones", worker, PER_WORKER),
-            ),
-            *_start_separate_processes(
-                _RECORD_IN_A_CHILD,
-                workers=WORKERS,
-                arguments=lambda worker: ("declines", worker, PER_WORKER),
-            ),
-        ]
-    )
+
+    def every_worker(script: str, key: str) -> list[subprocess.Popen]:
+        arguments = lambda worker: (key, worker, PER_WORKER)  # noqa: E731
+        return _start_separate_processes(script, workers=WORKERS, arguments=arguments)
+
+    recording = [every_worker(_RECORD_IN_A_CHILD, key) for key in ("tombstones", "declines")]
+    _all_succeed([process for group in recording for process in group])
     held = review.DecisionStore("tombstones", cfg).suppressions()
     assert len(held) == WORKERS * PER_WORKER, (
         f"{len(held)} of {WORKERS * PER_WORKER} reported decisions reached the disk"
     )
-    _all_succeed(
-        _start_separate_processes(
-            _REVOKE_IN_A_CHILD,
-            workers=WORKERS,
-            arguments=lambda worker: ("declines", worker, PER_WORKER),
-        )
-    )
+    _all_succeed(every_worker(_REVOKE_IN_A_CHILD, "declines"))
     declines = review.DecisionStore("declines", cfg)
     assert declines.suppressions() == ()
     assert len(declines.suppressions(include_revoked=True)) == WORKERS * PER_WORKER
@@ -1288,29 +1246,19 @@ def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg
     matched = [{"row": "1", "state": "matched"}]
     needs_review = [{"row": "2", "state": "needs_review"}, {"row": "3", "state": "needs_review"}]
     missing = [{"row": "4", "state": "missing"}]
+    same = (review.Option(option_id="opt-same", summary="the same recording"),)
     offered = [
-        review.offer(
-            store,
-            queue=review.Queue.VERSION_MATCH,
-            kind="version-difference",
-            identity={"source": "list-9", "row": row["row"]},
-            payload=dict(row),
-            options=(review.Option(option_id="opt-same", summary="the same recording"),),
-            handler_key="match.run",
-        )
+        _offer_one(store, identity={"source": "list-9", "row": row["row"]}, payload=dict(row),
+                   options=same)
         for row in needs_review
     ]
     assert review.count_unresolved(store) == len(needs_review)
     # By identity rather than by count, so an item under another kind is caught.
     for row in matched + missing:
-        absent = review.item_id_for(
-            review.Queue.VERSION_MATCH, "version-difference", {"source": "list-9", "row": row["row"]}
-        )
         with pytest.raises(CratekitError):
-            review.get(store, absent)
-    review.resolve(
-        store, offered[0].item_id, review.Verdict.ACCEPTED, option="opt-same", actor="person"
-    )
+            review.get(store, _version_id({"source": "list-9", "row": row["row"]}))
+    accepted = review.Verdict.ACCEPTED
+    review.resolve(store, offered[0].item_id, accepted, option="opt-same", actor="person")
     store.close()
     done = _in_another_process(
         "--output", "json", "review", "resolve", offered[1].item_id, "--verdict", "rejected"
@@ -1330,8 +1278,7 @@ def test_the_review_set_output_validates_against_its_committed_schema(cfg, store
     """The plan's sixth scenario, against the product's own check and the SHIPPED schema."""
     _offer_one(store)
     store.close()
-    code, envelope, _ = _drive("review", "list")
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "list")
     assert output.envelope_problems(envelope) == [], envelope
     assert envelope["schema"] == "review_set/1"
     declared = json.loads((SCHEMA_DIR / "review_set.v1.json").read_text())
@@ -1351,26 +1298,22 @@ def test_listing_shows_what_is_outstanding_and_not_what_is_settled(cfg, store):
     assert [row["id"] for row in outstanding["data"]["items"]] == [open_item.item_id]
     assert outstanding["data"]["unresolved"] == 1
     _, everything, _ = _drive("review", "list", "--all")
-    assert {row["id"] for row in everything["data"]["items"]} == {
-        open_item.item_id,
-        settled.item_id,
-    }
+    both = {open_item.item_id, settled.item_id}
+    assert {row["id"] for row in everything["data"]["items"]} == both
     # The backlog is a query over the queue, never the length of the page.
     assert everything["data"]["unresolved"] == 1
 
 
 def test_an_empty_queue_is_a_no_op_rather_than_a_failure(cfg, store):
     store.close()
-    code, envelope, _ = _drive("review", "list")
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "list")
     assert envelope["outcome"] == "no_op"
 
 
 def test_showing_one_item_carries_its_whole_record(cfg, store):
     item = _offer_one(store)
     store.close()
-    code, envelope, _ = _drive("review", "show", item.item_id)
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "show", item.item_id)
     shown = envelope["data"]["items"][0]
     assert shown["payload"] == dict(item.payload)
     assert [option["option_id"] for option in shown["options"]] == ["opt-accept", "opt-other"]
@@ -1385,10 +1328,7 @@ def test_an_unknown_identifier_refuses_with_a_code_from_the_vocabulary(cfg, stor
 def test_a_batch_resolution_from_the_command_line_settles_only_the_subset(cfg, store):
     made = _mixed_queue(store)
     store.close()
-    code, envelope, _ = _drive(
-        "review", "resolve", "--where", "kind=version-difference", "--verdict", "rejected"
-    )
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "resolve", "--where", "kind=version-difference", *REJECTED)
     assert {row["id"] for row in envelope["data"]["items"]} == set(made["version-difference"])
     assert envelope["data"]["unresolved"] == 4
 
@@ -1396,13 +1336,8 @@ def test_a_batch_resolution_from_the_command_line_settles_only_the_subset(cfg, s
 def test_a_predicate_on_a_payload_field_is_reachable_from_the_command_line(cfg, store):
     _mixed_queue(store)
     store.close()
-    code, envelope, _ = _drive(
-        "review", "resolve",
-        "--where", "queue=genre",
-        "--where", "payload.confidence=low",
-        "--verdict", "rejected",
-    )
-    assert code == int(ExitCode.OK)
+    where = ("--where", "queue=genre", "--where", "payload.confidence=low")
+    envelope = _ok("review", "resolve", *where, "--verdict", "rejected")
     assert len(envelope["data"]["items"]) == 2
 
 
@@ -1438,21 +1373,18 @@ def test_a_resolution_naming_neither_refuses_rather_than_answering_everything(cf
 
 def test_a_malformed_predicate_is_refused_rather_than_matching_nothing(cfg, store):
     """A filter that silently matches nothing looks exactly like an empty queue."""
+    invalid = "review-selection-invalid"
     _offer_one(store)
     store.close()
     for bad in ("kind", "nonsense=1"):
-        _refused(
-            "review", "resolve", "--where", bad, "--verdict", "accepted",
-            reason="review-selection-invalid",
-        )
+        _refused("review", "resolve", "--where", bad, "--verdict", "accepted", reason=invalid)
 
 
 def test_clearing_from_the_command_line_puts_a_rejected_item_back(cfg, store):
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="tester")
     store.close()
-    code, envelope, _ = _drive("review", "clear", item.item_id, "--actor", "somebody")
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "clear", item.item_id, "--actor", "somebody")
     assert envelope["data"]["items"][0]["verdict"] is None
     with review.open_store(cfg) as reopened:
         assert review.count_unresolved(reopened) == 1
@@ -1466,8 +1398,7 @@ def test_an_export_and_an_import_round_trip_through_the_command_line(
     review.resolve(store, first.item_id, review.Verdict.REJECTED, actor="tester")
     store.close()
     target = tmp_path / "exports" / "queue.json"
-    code, envelope, _ = _drive("review", "export", str(target))
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "export", str(target))
     assert target.exists()
     assert {row["id"] for row in envelope["data"]["items"]} == {first.item_id, second.item_id}
     # A transport, not an editing surface: versioned JSON.
@@ -1481,8 +1412,7 @@ def test_an_export_and_an_import_round_trip_through_the_command_line(
     config.reset_cache()
     moved = config.load()
     assert moved.library.root == elsewhere
-    code, imported, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.OK)
+    imported = _ok("review", "import", str(target))
     assert {row["id"] for row in imported["data"]["items"]} == {first.item_id, second.item_id}
     with review.open_store(moved) as receiving:
         assert review.get(receiving, first.item_id).verdict is review.Verdict.REJECTED
@@ -1509,8 +1439,7 @@ def test_an_import_reports_a_conflict_as_a_warning_and_keeps_the_local_verdict(
         tmp_path / "incoming.json",
         {**item.to_json(), "verdict": str(review.Verdict.REJECTED), "option": None, "actor": "remote"},
     )
-    code, envelope, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "import", str(target))
     assert [warning["code"] for warning in envelope["warnings"]] == ["review-verdict-conflict"]
     with review.open_store(cfg) as reopened:
         assert review.get(reopened, item.item_id).actor == "local"
@@ -1527,19 +1456,15 @@ def test_an_import_that_applies_one_verdict_and_cannot_apply_another_reports_bot
         {**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)},
         {**item.to_json(), "id": "rv_from_a_newer_build", "verdict": "whatever-that-means"},
     )
-    code, envelope, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "import", str(target))
     assert [row["id"] for row in envelope["data"]["items"]] == [item.item_id], (
         "an identifier it never took in is not something it applied"
     )
-    assert [warning["code"] for warning in envelope["warnings"]] == [
-        "review-verdict-conflict"
-    ]
+    assert [warning["code"] for warning in envelope["warnings"]] == ["review-verdict-conflict"]
     assert "rv_from_a_newer_build" in envelope["warnings"][0]["message"]
     with review.open_store(cfg) as reopened:
         assert review.get(reopened, item.item_id).verdict is review.Verdict.ACCEPTED
-    again, second, _ = _drive("review", "import", str(target))
-    assert again == int(ExitCode.OK)
+    _ok("review", "import", str(target))
 
 
 def test_an_import_lists_an_item_it_inserted_and_could_not_settle_exactly_once(
@@ -1550,16 +1475,10 @@ def test_an_import_lists_an_item_it_inserted_and_could_not_settle_exactly_once(
     store.close()
     target = _written(
         tmp_path / "incoming.json",
-        {
-            **good,
-            "id": "rv_no_such_option",
-            "options": [],
-            "verdict": str(review.Verdict.ACCEPTED),
-            "option": "opt-nowhere",
-        },
+        {**good, "id": "rv_no_such_option", "options": [], "verdict": str(review.Verdict.ACCEPTED),
+         "option": "opt-nowhere"},
     )
-    code, envelope, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.OK)
+    envelope = _ok("review", "import", str(target))
     assert [row["id"] for row in envelope["data"]["items"]] == ["rv_no_such_option"]
 
 
@@ -1574,11 +1493,8 @@ def test_an_import_carrying_a_malformed_item_does_not_fail_as_an_internal_error(
         {**good, "id": "rv_broken", "payload": [1, 2, 3]},
         {**good, "verdict": str(review.Verdict.REJECTED)},
     )
-    code, envelope, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.OK)
-    assert [warning["code"] for warning in envelope["warnings"]] == [
-        "review-verdict-conflict"
-    ]
+    envelope = _ok("review", "import", str(target))
+    assert [warning["code"] for warning in envelope["warnings"]] == ["review-verdict-conflict"]
     with review.open_store(cfg) as reopened:
         assert review.get(reopened, good["id"]).verdict is review.Verdict.REJECTED
 
@@ -1814,12 +1730,10 @@ def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in(sour
         "a sibling called review in another package answers for cratekit.core.review"
     )
     assert not offers_into(source, "Queue.VERSION_MATCH", "cratekit.intake")
-    assert not calls_review(
-        EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.intake"
+    assert not calls_review(EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.intake")
+    assert calls_review(EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.core"), (
+        "the same text one package over IS the review module, so the text is not the question"
     )
-    assert calls_review(
-        EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW, "offer", "cratekit.core"
-    ), "the same text one package over IS the review module, so the text is not the question"
 
 
 def test_the_review_module_is_named_once(monkeypatch):
@@ -1855,14 +1769,8 @@ def run(cfg, identity):
     store.record(kind="version", identity=identity, actor="cli")
     store.revoke(identity, actor="cli")
 '''
-    assert methods_on_review_construction(source, "DecisionStore") >= {
-        "record",
-        "revoke",
-    }
-    assert (
-        methods_on_review_construction(source, "DecisionStore", "cratekit.intake")
-        == set()
-    )
+    assert methods_on_review_construction(source, "DecisionStore") >= {"record", "revoke"}
+    assert methods_on_review_construction(source, "DecisionStore", "cratekit.intake") == set()
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,7 @@ from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger
 from cratekit.sync import mark_record
 from tests import outbound_fakes
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.intake import test_workers as workers
 from tests.intake.test_set_fetch import URL, PageWritingFetcher, nothing_left
@@ -65,12 +66,10 @@ def account(installed, monkeypatch):
 
 
 def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict]:
-    code, refused = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(argv), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == gate
     run_id = refused["run_id"]
-    code, decided = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), decided
+    exited(drive(["run", "decide", run_id, gate, option, "--actor", "a-person"]))
     return drive(["--run", run_id, *argv])
 
 
@@ -140,8 +139,7 @@ def test_intake_set_with_all_three_words_freezes_the_page_upload_date(
     cfg, _fake, held = account
     _paged(monkeypatch, recognised, date(2026, 10, 12))
     words = ["--dj", "Probe", "--set-name", "Friday Night Mix", "--set-date", "2026-05"]
-    code, done = _two_acts(["intake", "set", URL, *words], ACCOUNT_GATE)
-    assert code == int(ExitCode.OK), done
+    done = exited(_two_acts(["intake", "set", URL, *words], ACCOUNT_GATE))
     job = job_of(done["data"]["job_id"])
     assert job.payload[intake_cli.PLAYLIST_NAME] == NAME
     assert "10_12_26" not in job.payload[intake_cli.PLAYLIST_NAME]
@@ -153,13 +151,11 @@ def test_a_set_intake_plans_and_makes_the_account_playlist(account, recognised, 
     """And a second identification of the same set plans nothing on it."""
     cfg, _fake, held = account
     _paged(monkeypatch, recognised)
-    code, refused = drive(["intake", "set", URL])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["intake", "set", URL]), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == ACCOUNT_GATE
     assert held.created == []
     assert _jobs() == (), "the gate must fire before any set is queued"
-    code, done = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
-    assert code == int(ExitCode.OK), done
+    done = exited(_two_acts(["intake", "set", URL], ACCOUNT_GATE))
     assert nothing_left()
     queued = _jobs()
     assert len(queued) == 1, "plan, approve and resume must queue exactly one set"
@@ -170,8 +166,7 @@ def test_a_set_intake_plans_and_makes_the_account_playlist(account, recognised, 
     assert held.created == [NAME]
     assert len(held.added) == 3
     # The account playlist already holds every matched track, so the plan writes nothing.
-    code, again = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
-    assert code == int(ExitCode.OK), again
+    again = exited(_two_acts(["intake", "set", URL], ACCOUNT_GATE))
     assert held.created == [NAME]
     assert _account_plan(again).get("totals", {}).get("writes") is False
     assert len(_jobs()) == 2
@@ -181,8 +176,7 @@ def test_a_set_with_no_matches_makes_nothing_and_says_so(account, recognised, mo
     cfg, fake, held = account
     fake.searches.clear()
     _paged(monkeypatch, recognised)
-    code, done = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
-    assert code == int(ExitCode.OK), done
+    done = exited(_two_acts(["intake", "set", URL], ACCOUNT_GATE))
     assert held.created == []
     assert ledger.set_playlist(cfg, NAME) is None
     plan = _account_plan(done)
@@ -195,8 +189,7 @@ def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(ac
     """No page and no name flags: the account step was never expected, so the skip is silent."""
     cfg, _fake, held = account
     three_tracks(recognised)
-    code, done = drive(["intake", "set", str(recording(cfg.library.root))])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["intake", "set", str(recording(cfg.library.root))]))
     assert held.created == []
     assert intake_cli.ACCOUNT_UNNAMED not in [w["code"] for w in done["warnings"]], (
         "a local set that never asked for a name must not warn set-account-unnamed; "
@@ -208,11 +201,9 @@ def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(ac
 def test_a_rerun_of_export_set_plans_nothing_when_every_matched_track_is_on_it(account):
     cfg, _fake, held = account
     path = _tracklist(cfg)
-    code, first = _two_acts(["export", "set", str(path), "--name", NAME], BUILD)
-    assert code == int(ExitCode.OK), first
+    exited(_two_acts(["export", "set", str(path), "--name", NAME], BUILD))
     assert held.created == [NAME]
-    code, again = _two_acts(["export", "set", str(path), "--name", NAME], BUILD)
-    assert code == int(ExitCode.OK), again
+    again = exited(_two_acts(["export", "set", str(path), "--name", NAME], BUILD))
     assert again["outcome"] == "no_op"
     assert held.created == [NAME]
     assert again["data"]["totals"]["writes"] is False
@@ -221,8 +212,7 @@ def test_a_rerun_of_export_set_plans_nothing_when_every_matched_track_is_on_it(a
 def test_export_archive_takes_the_set_in_its_year_folder(account):
     cfg, _fake, held = account
     _built(cfg)
-    code, done = _two_acts(["export", "archive", NAME, "--xml", str(_proof(cfg))], ARCHIVE)
-    assert code == int(ExitCode.OK), done
+    exited(_two_acts(["export", "archive", NAME, "--xml", str(_proof(cfg))], ARCHIVE))
     remote_id = ledger.set_playlist(cfg, NAME).remote_id
     # U242: held as taken, no title written.
     assert held.renamed == [] and remote_id in mark_record.MarkRecord(cfg).taken_ids()
@@ -243,11 +233,8 @@ def test_plan_archive_named_skips_the_intake_file_check(account):
     assert archived.writes
     assert archived.planned is not None
     assert archived.planned.mark and not archived.planned.taken
-    base = {
-        "digest": "land-only",
-        "items": [{"id": "row", "kind": "track", "action": "add"}],
-        "totals": {"count": 1},
-    }
+    rows = [{"id": "row", "kind": "track", "action": "add"}]
+    base = {"digest": "land-only", "items": rows, "totals": {"count": 1}}
     folded = land_cli._with_archive(base, archived)
     assert folded["digest"] != base["digest"]
     assert folded["totals"]["archive_writes"] is True
@@ -260,13 +247,8 @@ def _succeeded_set_job(
 ):
     """One succeeded set job with the INSPIRATION name frozen on its payload when given."""
     tracks = tracks or {
-        f"rc-{index}": {
-            "artist": artist,
-            "title": title,
-            "origin": "text",
-            "spelled": f"{artist} - {title}",
-        }
-        for index, (artist, title) in enumerate(ROWS, start=1)
+        f"rc-{index}": {"artist": a, "title": t, "origin": "text", "spelled": f"{a} - {t}"}
+        for index, (a, t) in enumerate(ROWS, start=1)
     }
     payload = {
         intake_cli.SOURCE: "https://example.invalid/a-set",
@@ -280,10 +262,7 @@ def _succeeded_set_job(
         payload[intake_cli.PLAYLIST_NAME] = name
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=set_playlist.SET_KEY,
-            payload=payload,
-            cfg=cfg,
+            store, handler_key=set_playlist.SET_KEY, payload=payload, cfg=cfg,
             item_ids=tuple(tracks),
         )
         # Stamp the queue day so a pre-freeze fallback would still match across days.
@@ -326,14 +305,11 @@ def test_an_abort_on_the_account_gate_queues_the_set_and_writes_no_playlist(
 ):
     cfg, _fake, held = account
     _paged(monkeypatch, recognised)
-    code, refused = drive(["intake", "set", URL])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["intake", "set", URL]), ExitCode.DECISION_REQUIRED)
     run_id = refused["run_id"]
     assert _jobs() == ()
-    code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])
-    assert code == int(ExitCode.OK), decided
-    code, done = drive(["--run", run_id, "intake", "set", URL])
-    assert code == int(ExitCode.OK), done
+    exited(drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"]))
+    done = exited(drive(["--run", run_id, "intake", "set", URL]))
     assert len(_jobs()) == 1
     assert held.created == []
     assert ledger.set_playlist(cfg, NAME) is None
@@ -371,14 +347,10 @@ def _failing_once(monkeypatch, name: str, raised) -> None:
 
 def _backfill_refused(verb: str, gate: str) -> tuple[dict, str]:
     """The backfill's two acts, its acting drive refused: the envelope and its text."""
-    code, refused = drive(["export", verb])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["export", verb]), ExitCode.DECISION_REQUIRED)
     run_id = refused["run_id"]
-    assert drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])[0] == int(
-        ExitCode.OK
-    )
-    code, done = drive(["--run", run_id, "export", verb])
-    assert code != int(ExitCode.OK), done
+    exited(drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"]))
+    done = failed(drive(["--run", run_id, "export", verb]))
     return done, json.dumps(done)
 
 
@@ -427,15 +399,12 @@ def test_export_archive_backfill_soft_skips_cratekit_errors(account, monkeypatch
 
     def boom(_cfg, _name, _xml):
         raise refuse(
-            "intake-list-unusable",
-            "the intake file is not usable",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=("test",),
+            "intake-list-unusable", "the intake file is not usable",
+            remedy=Remedy.FIX_COMMAND_LINE, origin=("test",),
         )
     monkeypatch.setattr(set_cli, "plan_archive", boom)
     monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
-    code, done = _two_acts(["export", "archive"], ARCHIVE)
-    assert code == int(ExitCode.OK), done
+    done = exited(_two_acts(["export", "archive"], ARCHIVE))
     assert done["outcome"] == "no_op"
     assert any(w["code"] == "export-archive-backfill-refused" for w in done["warnings"])
     assert NAME in done["warnings"][0]["message"]
@@ -453,8 +422,7 @@ def test_export_archive_backfill_refuses_a_credential_error(account, monkeypatch
     monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
     # CredentialError is raised while planning, before the gate: the first drive
     # refuses the verb rather than asking for a decision.
-    code, done = drive(["export", "archive"])
-    assert code != int(ExitCode.OK), done
+    done = failed(drive(["export", "archive"]))
     message = json.dumps(done)
     assert "CredentialError" in message or "no provider session" in message
     assert "export-archive-backfill-refused" not in message

@@ -7,6 +7,7 @@ is driven over both. D1 applies.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import functools
 import hashlib
@@ -30,15 +31,10 @@ from cratekit.intake import missing_cli, native, set_playlist
 from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import playlists, removed, removed_cli, twins
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
-from tests.test_intake_land_account_playlists_native import (
-    RUN,
-    _land,
-    _landed,
-    _owned,
-    _stage,
-)
+from tests.test_intake_land_account_playlists_native import RUN, _land, _landed, _owned, _stage
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
@@ -88,41 +84,24 @@ def isrc_of(title: str) -> str:
     return f"USPRB26{sum(map(ord, title)):05d}"
 
 
-def swept(
-    cfg: config.Config,
-    listed: dict[str, tuple[str, tuple[str, ...]]],
-    *,
-    run_id: str = RUN,
-    codes: bool = False,
-) -> None:
+def swept(cfg: config.Config, listed: dict[str, tuple[str, tuple[str, ...]]], *,
+          run_id: str = RUN, codes: bool = False) -> None:
     """One job per playlist, ``id -> (name, titles)``, queued and run; ``codes`` adds ISRCs."""
+
+    def wanted(title: str) -> dict:
+        found = {"artist": "Probe", "title": title, "origin": match.TIDAL, "ref": f"tid-{title}"}
+        return {**found, **({"isrc": isrc_of(title)} if codes else {})}
+
     queued = []
     with jobs.open_store() as store:
         for playlist_id, (name, titles) in listed.items():
-            queued.append(
-                intake_cli.queue_playlist(
-                    store,
-                    cfg,
-                    handler_key="intake.playlist",
-                    reference=playlist_id,
-                    tracks={
-                        f"tid-{title}": {
-                            "artist": "Probe",
-                            "title": title,
-                            "origin": match.TIDAL,
-                            "ref": f"tid-{title}",
-                            **({"isrc": isrc_of(title)} if codes else {}),
-                        }
-                        for title in titles
-                    },
-                    run_id=run_id,
-                    source_id=playlists.SOURCE_ID,
-                    name=name,
-                )
-            )
+            queued.append(intake_cli.queue_playlist(
+                store, cfg, handler_key="intake.playlist", reference=playlist_id,
+                tracks={f"tid-{title}": wanted(title) for title in titles},
+                run_id=run_id, source_id=playlists.SOURCE_ID, name=name,
+            ))
     for job in queued:
-        code, resumed = drive(cli_jobs.argv_for(job))
-        assert code == int(ExitCode.OK), resumed
+        resumed = exited(drive(cli_jobs.argv_for(job)))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
 
 
@@ -149,15 +128,8 @@ class Account:
         self.fake = FakeCatalogue(hearts=[track("Elsewhere", track_id="tid-heart")])
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.fake))
 
-    def lists(
-        self,
-        playlist_id: str,
-        name: str,
-        tracks: list[Listed],
-        *,
-        declared: int | None = -1,
-        counted: int | None = -1,
-    ) -> None:
+    def lists(self, playlist_id: str, name: str, tracks: list[Listed], *,
+              declared: int | None = -1, counted: int | None = -1) -> None:
         """The playlist listed with ``tracks``; ``declared`` and ``counted`` default to their length."""
         whole = len(tracks)
         self.fake.playlists[playlist_id] = FakePagedPlaylist(
@@ -174,17 +146,28 @@ class Account:
         self.fake.account.append(AccountPlaylist(playlist_id=playlist_id, name=name, tracks=3))
 
 
+def sunset(monkeypatch, *titles: str) -> Account:
+    """The account listing Sunset Warmup with ``titles``, each under its own id."""
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track(title) for title in titles])
+    return account
+
+
+def _decided(code: int, out: dict, answer: str) -> tuple[int, dict]:
+    """R34's two acts on the confirm gate, answered ``answer``, then the acting drive."""
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    detail = out["cause"]["detail"]
+    assert detail["gate"] == removed_cli.CONFIRM_GATE and detail["explicit"] is True
+    decide = ["run", "decide", out["run_id"], removed_cli.CONFIRM_GATE, answer]
+    exited(drive([*decide, "--actor", "a-person"]))
+    return drive(["--run", out["run_id"], *VERB])
+
+
 def _run() -> dict:
     """The plan as the verb shows it, a gate answered abort, which writes nothing (U288)."""
     code, out = drive(VERB)
     if code == int(ExitCode.DECISION_REQUIRED):
-        detail = out["cause"]["detail"]
-        assert detail["gate"] == removed_cli.CONFIRM_GATE and detail["explicit"] is True
-        decided, envelope = drive(
-            ["run", "decide", out["run_id"], removed_cli.CONFIRM_GATE, "abort", "--actor", "a-person"]
-        )
-        assert decided == int(ExitCode.OK), envelope
-        code, out = drive(["--run", out["run_id"], *VERB])
+        code, out = _decided(code, out, "abort")
     assert code == int(ExitCode.OK), out
     return out
 
@@ -195,6 +178,12 @@ def _by_title(out: dict) -> dict[str, dict]:
         for item in out["data"]["items"]
         if item["action"] in (removed.OFFERED, removed.KEPT, removed.LEFT)
     }
+
+
+def _stopped(out: dict) -> dict:
+    """The one playlist the run names as not read whole, or gone."""
+    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    return stopped
 
 
 def _sql(cfg: config.Config, statement: str, *params) -> None:
@@ -211,17 +200,29 @@ def _row(cfg: config.Config, title: str) -> str:
     return str(row[0])
 
 
-def _hand_made(cfg: config.Config, name: str, *titles: str) -> str:
-    """A playlist a person made at the playlist root, holding ``titles``' rows."""
+def _folder_of(cfg: config.Config, content_id: str) -> str:
+    ((folder,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", content_id)
+    return folder
+
+
+@contextlib.contextmanager
+def _opened(cfg: config.Config):
+    """The writer's handle on the disposable database, closed however the block ends."""
     handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
     try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _hand_made(cfg: config.Config, name: str, *titles: str) -> str:
+    """A playlist a person made at the playlist root, holding ``titles``' rows."""
+    with _opened(cfg) as handle:
         made = handle.create_playlist(name)
         for title in titles:
             handle.add_to_playlist(made, _row(cfg, title))
         handle.session.commit()
         return str(made.ID)
-    finally:
-        rb_writer.close_db(handle)
 
 
 def _five(cfg: config.Config, silence: Path, *, also: dict | None = None, codes: bool = False) -> None:
@@ -240,6 +241,18 @@ def _five(cfg: config.Config, silence: Path, *, also: dict | None = None, codes:
     _landed(cfg)
 
 
+@pytest.fixture
+def land(native_library, silence, offline):
+    """Lands :func:`_five` with what a test asks, with no network; answers the configuration."""
+    cfg, _root = native_library
+
+    def landed(**kwargs) -> config.Config:
+        _five(cfg, silence, **kwargs)
+        return cfg
+
+    return landed
+
+
 # The scenarios the brief names
 
 
@@ -247,8 +260,7 @@ def test_a_new_track_taken_off_is_offered_and_an_owned_one_is_kept_as_held_befor
     five_landed, monkeypatch
 ):
     cfg = five_landed
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("New2"), track("Held2"), track("Held3")])
+    sunset(monkeypatch, "New2", "Held2", "Held3")
 
     out = _run()
 
@@ -266,15 +278,9 @@ def test_a_new_track_taken_off_is_offered_and_an_owned_one_is_kept_as_held_befor
 
 
 def test_a_track_still_on_another_synced_playlist_is_kept_by_id_isrc_and_recording(
-    native_library, silence, monkeypatch, offline
+    land, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(
-        cfg,
-        silence,
-        also={"pl-b": (DEEP, ("New3", "New4", "New5"))},
-        codes=True,
-    )
+    land(also={"pl-b": (DEEP, ("New3", "New4", "New5"))}, codes=True)
     account = Account(monkeypatch)
     # Both new tracks are off Sunset Warmup, which lists New5 under another id.
     # Deep Cuts holds New1 by id, New2 by ISRC under another id and title, and
@@ -314,8 +320,7 @@ def test_a_track_in_a_playlist_of_yours_is_kept_and_its_own_filing_keeps_nothing
     cfg = five_landed
     _hand_made(cfg, "Warmup Picks", "New1")
     _hand_made(cfg, "All Favorites", "New2")
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    sunset(monkeypatch, "Held1")
 
     answers = _by_title(_run())
 
@@ -325,9 +330,8 @@ def test_a_track_in_a_playlist_of_yours_is_kept_and_its_own_filing_keeps_nothing
     assert answers["New2"]["kept_by"] == ["All Favorites"]
 
 
-def test_the_landings_own_playlists_keep_nothing(native_library, silence, monkeypatch, offline):
-    cfg, root_id = native_library
-    _five(cfg, silence)
+def test_the_landings_own_playlists_keep_nothing(land, monkeypatch):
+    cfg = land()
     held = {
         str(name)
         for (name,) in _query(
@@ -346,8 +350,7 @@ def test_the_landings_own_playlists_keep_nothing(native_library, silence, monkey
         SUNSET,
     )
     assert str(folder).startswith(twins.FOLDER_PREFIX)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    sunset(monkeypatch, "Held1", "New2")
 
     answers = _by_title(_run())
 
@@ -356,12 +359,10 @@ def test_the_landings_own_playlists_keep_nothing(native_library, silence, monkey
 
 @pytest.mark.parametrize("shape", ["unreadable", "short", "empty"])
 def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
-    native_library, silence, monkeypatch, offline, shape
+    land, monkeypatch, shape
 ):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    land(also={"pl-b": (DEEP, ("New3",))})
+    account = sunset(monkeypatch, "Held1", "New2")
     if shape == "unreadable":
         account.names_only("pl-b", DEEP)
     elif shape == "short":
@@ -381,13 +382,11 @@ def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
     assert out["data"]["totals"]["partial"] is True
     (warned,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
     assert DEEP in warned["message"]
-    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
-    assert stopped["state"] == shape
+    assert _stopped(out)["state"] == shape
 
 
 def test_a_track_hearted_on_the_account_is_kept_by_the_hearts(five_landed, monkeypatch):
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    account = sunset(monkeypatch, "Held1")
     account.fake.hearts.append(track("New1"))
 
     answers = _by_title(_run())
@@ -398,13 +397,8 @@ def test_a_track_hearted_on_the_account_is_kept_by_the_hearts(five_landed, monke
 
 
 @pytest.mark.parametrize("shape", ["unreadable", "short", "empty"])
-def test_hearts_not_read_whole_offer_nothing(
-    native_library, silence, monkeypatch, offline, shape
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+def test_hearts_not_read_whole_offer_nothing(five_landed, monkeypatch, shape):
+    account = sunset(monkeypatch, "Held1")
     if shape == "unreadable":
 
         def refused():
@@ -428,15 +422,14 @@ def test_hearts_not_read_whole_offer_nothing(
 
     assert out["data"]["totals"][removed.OFFERED] == 0
     assert out["data"]["totals"]["partial"] is True
-    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    stopped = _stopped(out)
     assert stopped["account"] == removed.HEARTS and stopped["state"] == shape
 
 
 def test_a_playlist_the_account_says_holds_none_is_read_empty_and_every_new_track_offered(
     five_landed, monkeypatch
 ):
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [], declared=0, counted=0)
+    Account(monkeypatch).lists("pl-a", SUNSET, [], declared=0, counted=0)
 
     answers = _by_title(_run())
 
@@ -453,19 +446,17 @@ def test_a_downloaded_playlist_gone_from_the_account_is_named_and_offers_nothing
     out = _run()
 
     assert _by_title(out) == {}
-    (gone,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    gone = _stopped(out)
     assert gone["state"] == removed.GONE and gone["account"] == "pl-a"
     assert [one["code"] for one in out["warnings"]] == [removed_cli.GONE]
     assert out["data"]["totals"]["playlists gone"] == 1
 
 
 def test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_its_tracks(
-    native_library, silence, monkeypatch, offline
+    land, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    land(also={"pl-b": (DEEP, ("New3",))})
+    account = sunset(monkeypatch, "Held1")
     # Deep Cuts still opens by id and holds New1, though the account's list
     # of playlists stopped before it.
     account.fake.playlists["pl-b"] = FakePagedPlaylist([track("New3"), track("New1")], declared=2)
@@ -478,20 +469,23 @@ def test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_it
     assert out["data"]["totals"]["playlists gone"] == 0
 
 
-def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(five_landed, monkeypatch):
-    cfg = five_landed
-    gone = _row(cfg, "New1")
-    _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", gone)
-    twice = _row(cfg, "New2")
-    ((folder,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", twice)
+def _second_row(cfg: config.Config, content_id: str, title: str, folder) -> None:
+    """Another live content row, ``content_id``, titled ``title`` at ``folder``."""
     _sql(
         cfg,
         "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
-        "updated_at) VALUES ('90002', 'New2 twin', ?, 0, '2026-10-09', '2026-10-09')",
-        folder,
+        "updated_at) VALUES (?, ?, ?, 0, '2026-10-09', '2026-10-09')",
+        content_id,
+        title,
+        str(folder),
     )
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("Held2"), track("Held3")])
+
+
+def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(five_landed, monkeypatch):
+    cfg = five_landed
+    _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", _row(cfg, "New1"))
+    _second_row(cfg, "90002", "New2 twin", _folder_of(cfg, _row(cfg, "New2")))
+    sunset(monkeypatch, "Held1", "Held2", "Held3")
 
     answers = _by_title(_run())
 
@@ -503,21 +497,14 @@ def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(five_landed,
 def test_a_match_on_a_file_the_pass_did_not_file_is_kept(five_landed, monkeypatch):
     cfg = five_landed
     landed = _row(cfg, "New1")
-    ((folder,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", landed)
     # The landed row and file are gone, and a hand copy of the track sits
     # elsewhere under its own row.
     elsewhere = Path(cfg.library.root) / cfg.library.music_dir / "By Hand" / "New1.flac"
     elsewhere.parent.mkdir(parents=True)
-    shutil.move(str(folder), elsewhere)
+    shutil.move(_folder_of(cfg, landed), elsewhere)
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", landed)
-    _sql(
-        cfg,
-        "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
-        "updated_at) VALUES ('90001', 'New1', ?, 0, '2026-10-09', '2026-10-09')",
-        str(elsewhere),
-    )
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    _second_row(cfg, "90001", "New1", elsewhere)
+    sunset(monkeypatch, "Held1", "New2")
 
     answers = _by_title(_run())
 
@@ -527,13 +514,9 @@ def test_a_match_on_a_file_the_pass_did_not_file_is_kept(five_landed, monkeypatc
 
 
 def test_a_job_no_landing_names_is_not_read_as_downloaded(five_landed, monkeypatch):
-    cfg = five_landed
     # A later pass swept Deep Cuts and never landed.
-    swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
-    account = Account(monkeypatch)
-    account.lists(
-        "pl-a", SUNSET, [track(one) for one in ("Held1", "New1", "Held2", "New2", "Held3")]
-    )
+    swept(five_landed, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
+    account = sunset(monkeypatch, "Held1", "New1", "Held2", "New2", "Held3")
     account.lists("pl-c", DEEP, [])
 
     out = _run()
@@ -546,10 +529,8 @@ def test_a_playlist_a_later_pass_swept_and_never_landed_still_keeps_its_tracks(
     five_landed, monkeypatch
 ):
     """The cursor's file holds a finished job only after the next sweep."""
-    cfg = five_landed
-    swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    swept(five_landed, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
+    account = sunset(monkeypatch, "Held1", "New2")
     account.lists("pl-c", DEEP, [track("New1")])
 
     answers = _by_title(_run())
@@ -559,15 +540,11 @@ def test_a_playlist_a_later_pass_swept_and_never_landed_still_keeps_its_tracks(
     assert "pl-c" in account.fake.playlists_asked_for
 
 
-def test_a_gone_downloaded_playlist_holds_what_its_pass_recorded(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
-    account = Account(monkeypatch)
+def test_a_gone_downloaded_playlist_holds_what_its_pass_recorded(land, monkeypatch):
+    land(also={"pl-b": (DEEP, ("New1", "New3"))})
     # Deep Cuts is neither listed nor openable, so gone, still holding the
     # New1 and New3 its pass recorded.
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    sunset(monkeypatch, "Held1")
 
     out = _run()
 
@@ -580,39 +557,32 @@ def test_a_gone_downloaded_playlist_holds_what_its_pass_recorded(
 
 
 def test_a_synced_playlist_nothing_records_that_neither_read_finds_offers_nothing(
-    native_library, silence, monkeypatch, offline
+    land, monkeypatch
 ):
-    cfg, _root = native_library
     from cratekit.modules.outbound import pairs
 
-    _five(cfg, silence)
+    land()
     pairs.PairStore(config.load()).mark("acc-paired", "901", name="A Pair")
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    sunset(monkeypatch, "Held1")
 
     out = _run()
 
     assert out["data"]["totals"][removed.OFFERED] == 0
     assert out["data"]["totals"]["partial"] is True
-    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    stopped = _stopped(out)
     assert stopped["account"] == "acc-paired" and stopped["state"] == removed.UNREADABLE
 
 
-def test_a_row_the_reader_set_aside_keeps_a_track_by_its_isrc(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))}, codes=True)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+def test_a_row_the_reader_set_aside_keeps_a_track_by_its_isrc(land, monkeypatch):
+    land(also={"pl-b": (DEEP, ("New3",))}, codes=True)
+    account = sunset(monkeypatch, "Held1", "New2")
     # A row with no title is set aside by the reader (U213), and its ISRC is New1's.
     account.lists(
         "pl-b", DEEP, [track("New3"), Listed("tid-relinked", "", code=isrc_of("New1"))]
     )
 
-    out = _run()
+    answers = _by_title(_run())
 
-    answers = _by_title(out)
     assert answers["New1"]["why"] == removed.ON_ANOTHER
     assert answers["New1"]["kept_by"] == [DEEP]
 
@@ -631,9 +601,8 @@ def test_a_file_another_pass_filed_is_not_this_pass_s_file(
     _stage(cfg, silence, "New6")
     code, acted, _ = _two_acts(_land(other))
     assert code == int(ExitCode.OK), acted
-    account = Account(monkeypatch)
     # New1 is off Deep Cuts, whose pass found its file in the first pass's folder.
-    account.lists("pl-a", SUNSET, [track("New1"), track("New2")])
+    account = sunset(monkeypatch, "New1", "New2")
     account.lists("pl-b", DEEP, [track("New6")])
 
     answers = _by_title(_run())
@@ -641,25 +610,19 @@ def test_a_file_another_pass_filed_is_not_this_pass_s_file(
     assert answers["New1"]["why"] == removed.NOT_THIS_PASS
 
 
-def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
+def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(land, monkeypatch):
     from datetime import date
 
     from cratekit.core import active_taxonomy
 
-    _five(cfg, silence)
+    cfg = land()
     declared = active_taxonomy.load(cfg)
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         folder = handle.create_playlist_folder("Genres")
         genre = handle.create_playlist("Deep House", parent=folder)
         handle.add_to_playlist(genre, _row(cfg, "New1"))
         handle.session.commit()
         root_id = str(folder.ID)
-    finally:
-        rb_writer.close_db(handle)
     native = tree_registry.read(cfg).with_record(
         tree_registry.TreeRecord(
             tree_id=declared.tree.id,
@@ -669,8 +632,7 @@ def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(
             source=next(iter(tree_registry.DerivationSource)),
         )
     )
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    sunset(monkeypatch, "Held1", "New2")
 
     bridged = _by_title(_run())
     monkeypatch.setattr(tree_registry, "read", lambda _cfg: native)
@@ -703,16 +665,12 @@ def _job_of(account: str) -> str:
 
 
 @pytest.mark.parametrize("listed", [True, False])
-def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(
-    native_library, silence, monkeypatch, offline, listed
-):
+def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(land, monkeypatch, listed):
     """The recorded contents are read only of a playlist that reads gone."""
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = land()
     swept(cfg, {"pl-z": ("Other", ("Zed1", "Zed2"))}, run_id=OTHER_RUN)
     _damage_reports(_job_of("pl-z"))
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    account = sunset(monkeypatch, "Held1", "New2")
     if listed:
         account.lists("pl-z", "Other", [track("Zed1"), track("Zed2")])
 
@@ -724,17 +682,15 @@ def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(
     else:
         # Gone, and its record cannot be read: not read whole, so nothing offered.
         assert answers["New1"]["why"] == removed.PARTIAL_READ
-        (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+        stopped = _stopped(out)
         assert stopped["account"] == "pl-z" and stopped["state"] == removed.UNREADABLE
 
 
 def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
     five_landed, monkeypatch
 ):
-    cfg = five_landed
-    swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    swept(five_landed, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
+    sunset(monkeypatch, "Held1")
 
     answers = _by_title(_run())
 
@@ -744,8 +700,7 @@ def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
 
 def test_a_playlist_still_titled_with_the_old_prefix_is_synced(five_landed, monkeypatch):
     """The prefix holds a playlist as taken until the strip records it (U242)."""
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    account = sunset(monkeypatch, "Held1", "New2")
     account.lists("pl-old", playlists.SWEPT_PREFIX + "Old Mix", [track("New1")])
 
     answers = _by_title(_run())
@@ -754,13 +709,9 @@ def test_a_playlist_still_titled_with_the_old_prefix_is_synced(five_landed, monk
     assert answers["New1"]["kept_by"] == [playlists.SWEPT_PREFIX + "Old Mix"]
 
 
-def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New2", "New3"))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New1")])
+def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(land, monkeypatch):
+    land(also={"pl-b": (DEEP, ("New2", "New3"))})
+    account = sunset(monkeypatch, "Held1", "New1")
     account.lists("pl-b", DEEP, [track("New3")])
 
     out = _run()
@@ -770,12 +721,14 @@ def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(
     assert offer["removed_from"] == [SUNSET, DEEP]
 
 
+def _digest(cfg: config.Config) -> str:
+    return hashlib.sha256(Path(cfg.library.db_path).read_bytes()).hexdigest()
+
+
 def test_nothing_is_written_and_the_digest_holds_until_an_answer_moves(five_landed, monkeypatch):
     cfg = five_landed
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
-    database = Path(cfg.library.db_path)
-    before = hashlib.sha256(database.read_bytes()).hexdigest()
+    account = sunset(monkeypatch, "Held1", "New2")
+    before = _digest(cfg)
     records = len(session.records(cfg))
     with jobs.open_store() as store:
         queued = len(jobs.list_jobs(store))
@@ -783,7 +736,7 @@ def test_nothing_is_written_and_the_digest_holds_until_an_answer_moves(five_land
     first = _run()
     second = _run()
 
-    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
+    assert _digest(cfg) == before
     assert len(session.records(cfg)) == records
     with jobs.open_store() as store:
         assert len(jobs.list_jobs(store)) == queued
@@ -796,9 +749,8 @@ def test_nothing_is_written_and_the_digest_holds_until_an_answer_moves(five_land
 def test_nothing_downloaded_asks_the_account_nothing(native_library, monkeypatch, offline):
     account = Account(monkeypatch)
 
-    code, out = drive(VERB)
+    out = exited(drive(VERB))
 
-    assert code == int(ExitCode.OK), out
     assert out["outcome"] == "no_op", out
     assert out["data"]["items"] == []
     assert account.fake.account_listings == 0
@@ -818,8 +770,8 @@ def test_the_verb_declares_the_collection_its_explicit_gate_and_the_cloud_decisi
 # The rules, held one at a time
 
 
-def _listing(**kwargs) -> removed.Listing:
-    return removed.Listing(account="pl", name="P", state=removed.READ, **kwargs)
+def _listing(state: str = removed.READ, **kwargs) -> removed.Listing:
+    return removed.Listing(account="pl", name="P", state=state, **kwargs)
 
 
 def test_a_listing_holds_a_track_by_any_of_three_tests_and_only_a_read_or_gone_one_holds():
@@ -828,13 +780,9 @@ def test_a_listing_holds_a_track_by_any_of_three_tests_and_only_a_read_or_gone_o
     assert _listing(isrcs=frozenset({"USPRB2600001"})).holds(wanted)
     assert _listing(recordings=frozenset({removed.recording(wanted)})).holds(wanted)
     assert not _listing(refs=frozenset({"tid-2"})).holds(wanted)
-    gone = removed.Listing(account="pl", name="P", state=removed.GONE, refs=frozenset({"tid-1"}))
-    assert gone.holds(wanted)
+    assert _listing(removed.GONE, refs=frozenset({"tid-1"})).holds(wanted)
     for state in (removed.UNREADABLE, removed.SHORT, removed.EMPTY):
-        unread = removed.Listing(
-            account="pl", name="P", state=state, refs=frozenset({"tid-1"})
-        )
-        assert not unread.holds(wanted)
+        assert not _listing(state, refs=frozenset({"tid-1"})).holds(wanted)
 
 
 def test_a_path_is_under_a_folder_only_past_a_separator_and_in_one_unicode_form():
@@ -842,7 +790,7 @@ def test_a_path_is_under_a_folder_only_past_a_separator_and_in_one_unicode_form(
     assert removed._under("/music/2026/Batch/a.flac", ["/music/2026/Batch/"])
     assert not removed._under("/music/2026/Batch 2/a.flac", ["/music/2026/Batch"])
     assert not removed._under("/music/2026/Batch/a.flac", [""])
-    assert removed._under("/music/Café/a.flac", ["/music/Café"])
+    assert removed._under("/music/Cafe\u0301/a.flac", ["/music/Café"])
 
 
 def test_a_routing_tree_on_the_bridge_names_no_playlist_of_the_pass(native_library):
@@ -852,11 +800,8 @@ def test_a_routing_tree_on_the_bridge_names_no_playlist_of_the_pass(native_libra
     declared = active_taxonomy.load(cfg)
     registry_now = tree_registry.read(cfg)
     assert not registry_now.is_database_native(declared.tree.id)
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         assert removed._routing_nodes(handle, declared, registry_now) == frozenset()
-    finally:
-        rb_writer.close_db(handle)
 
 
 # U288: the gate, and the offered rows taken out of the collection
@@ -911,13 +856,8 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
     return kept
 
 
-def _closed_up(
-    tables: dict[str, list[tuple]],
-    cfg: config.Config,
-    before: dict[str, list[tuple]],
-    gone: set[str],
-    stamp: tuple[int, str],
-) -> dict:
+def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config,
+               before: dict[str, list[tuple]], gone: set[str], stamp: tuple[int, str]) -> dict:
     """``tables`` with each removed membership's playlist renumbered 1 to N (R-1830, A197).
 
     Each row that moves is stamped with ``stamp``, the update count and the time,
@@ -942,6 +882,19 @@ def _closed_up(
                 row = tuple(moved)
             kept.append(row)
     return {**tables, "djmdSongPlaylist": sorted(kept, key=repr)}
+
+
+def _only_as_expected(cfg: config.Config, before: dict, offered: str, stamp: tuple) -> None:
+    """From SQL: only the removal, its renumbering and the update count moved (R-1830, U955)."""
+    after = _every_table(cfg)
+    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
+    registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
+    for name in sorted(set(expected) | set(after)):
+        if name == "agentRegistry":
+            moved = [row for row in after[name] if row[registry_at] == "localUpdateCount"]
+            assert [row for row in after[name] if row not in expected[name]] == moved, name
+            continue
+        assert after[name] == expected[name], name
 
 
 def _counter(cfg: config.Config) -> int:
@@ -977,26 +930,17 @@ def _not_before(at: str, moment: datetime) -> bool:
     return stamped >= moment.replace(microsecond=moment.microsecond // 1000 * 1000)
 
 
-def _apply() -> tuple[int, dict, dict]:
-    """R34's two acts against the confirm gate, answered apply, then the acting drive."""
+def _apply(*, ok: bool = True) -> tuple[dict, dict]:
+    """R34's two acts answered apply, then the acting drive held to OK or not: (acted, refused)."""
     code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == removed_cli.CONFIRM_GATE and detail["explicit"] is True
-    decided, envelope = drive(
-        ["run", "decide", refused["run_id"], removed_cli.CONFIRM_GATE, "apply", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", refused["run_id"], *VERB])
-    return code, acted, refused
+    result = _decided(code, refused, "apply")
+    return (exited(result) if ok else failed(result)), refused
 
 
 def _one_offered(cfg: config.Config, silence: Path, monkeypatch) -> Account:
     """New1 offered, Held1 kept as held before the pass, on Sunset Warmup."""
     _five(cfg, silence)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("New2"), track("Held2"), track("Held3")])
-    return account
+    return sunset(monkeypatch, "New2", "Held2", "Held3")
 
 
 @pytest.fixture
@@ -1024,13 +968,12 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     before = _every_table(cfg)
     counted = _counter(cfg)
     planned = datetime.now(timezone.utc)
-    music = Path(_query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", offered)[0][0])
+    music = Path(_folder_of(cfg, offered))
     size = music.stat().st_size
 
-    code, acted, refused = _apply()
+    acted, refused = _apply()
     finished = datetime.now(timezone.utc)
 
-    assert code == int(ExitCode.OK), acted
     # The screen the person approved names the offered row and its file.
     shown = refused["cause"]["detail"]["shown"]
     assert any("New1" in line and str(music) in line for line in shown["offered"]), shown
@@ -1041,23 +984,12 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     assert acted["data"]["totals"]["memberships renumbered"] == 7
     (applied,) = [one for one in acted["warnings"] if one["code"] == removed_cli.APPLIED]
     assert "7 playlist membership(s) after them renumbered" in applied["message"], applied
-    after = _every_table(cfg)
     # One count and one time on every renumbered row: the count the commit
     # left, and the removal's time in rekordbox's form (U955).
     stamp = _stamp_read(cfg, before)
     assert _not_before(stamp[1], planned), stamp
     assert rb_writer.stamp_moment(stamp[1]) <= finished, stamp
-    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
-    # Read from SQL: the offered row and every row naming it are gone, later
-    # members are numbered down and stamped with no other column moved
-    # (R-1830, U955), and only the update count moved besides.
-    registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
-    for name in sorted(set(expected) | set(after)):
-        if name == "agentRegistry":
-            moved = [row for row in after[name] if row[registry_at] == "localUpdateCount"]
-            assert [row for row in after[name] if row not in expected[name]] == moved, name
-            continue
-        assert after[name] == expected[name], name
+    _only_as_expected(cfg, before, offered, stamp)
     assert _counter(cfg) > counted
     for table in _BESIDE:
         assert _query(cfg, f'SELECT COUNT(*) FROM "{table}" WHERE ContentID = ?', offered) == [(0,)]
@@ -1069,14 +1001,18 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(one_
     assert music.exists() and music.stat().st_size == size
 
 
+def _removal_record(cfg: config.Config):
+    (record,) = [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    return record
+
+
 def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(one_offered):
     cfg = one_offered
     offered = _row(cfg, "New1")
 
-    code, acted, _ = _apply()
+    _apply()
 
-    assert code == int(ExitCode.OK), acted
-    (record,) = [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    record = _removal_record(cfg)
     recorded = record.detail[rb_writer.RECORDED_REMOVALS_KEY]
     assert [row["content_id"] for row in recorded["rows"]] == [offered]
     assert recorded["rows"][0]["columns"]["ID"] == offered
@@ -1084,8 +1020,7 @@ def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(on
     assert recorded["sequence"] == _counter(cfg)
     assert recorded["database_identity"]
     assert record.snapshot_path
-    code, listed = drive(["restore", "list"])
-    assert code == int(ExitCode.OK), listed
+    listed = exited(drive(["restore", "list"]))
     (item,) = [one for one in listed["data"]["items"] if one["session_id"] == record.session_id]
     assert item["change"] == [
         {"tree": removed.COLLECTION, "created": 0, "updated": 0, "removed": 1}
@@ -1094,37 +1029,48 @@ def test_the_session_record_names_every_row_removed_and_restore_list_reads_it(on
     assert item["removed"][0]["title"].endswith("New1")
 
 
+def _no_removal_recorded(cfg: config.Config) -> None:
+    assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+
+
 def test_abort_writes_nothing(one_offered):
     cfg = one_offered
-    database = Path(cfg.library.db_path)
-    before = hashlib.sha256(database.read_bytes()).hexdigest()
+    before = _digest(cfg)
 
     out = _run()
 
     assert out["outcome"] == "no_op"
     assert out["data"]["totals"][removed.OFFERED] == 1
-    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
-    assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    assert _digest(cfg) == before
+    _no_removal_recorded(cfg)
+
+
+def _before_the_write(monkeypatch, then) -> None:
+    """``then(cfg, plan)`` runs between the gate and the write, as a person or rekordbox might."""
+    real = removed_cli.written
+
+    def first(cfg_, plan, **kwargs):
+        then(cfg_, plan)
+        return real(cfg_, plan, **kwargs)
+
+    monkeypatch.setattr(removed_cli, "written", first)
 
 
 def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(one_offered, monkeypatch):
     """The engine takes the plan again on the write handle, and a moved digest refuses."""
     cfg = one_offered
-    real = removed_cli.written
     seen: dict = {}
 
-    def moved_first(cfg_, plan, **kwargs):
+    def moved_first(cfg_, _plan):
         # A person puts the offered track in their own playlist between the
         # gate and the write, so it is kept and the plan moved.
         _hand_made(cfg_, "Mine", "New1")
         seen["tables"] = _every_table(cfg_)
-        return real(cfg_, plan, **kwargs)
 
-    monkeypatch.setattr(removed_cli, "written", moved_first)
+    _before_the_write(monkeypatch, moved_first)
 
-    code, acted, _ = _apply()
+    acted, _ = _apply(ok=False)
 
-    assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert _every_table(cfg) == seen["tables"]
 
@@ -1134,14 +1080,12 @@ def test_a_row_a_my_tag_names_is_kept_and_never_offered_and_the_rest_is_removed(
 ):
     """The landing's own vox My Tag would make the removal refuse, so the track keeps."""
     cfg = five_landed
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("Held2"), track("Held3")])
+    sunset(monkeypatch, "Held1", "Held2", "Held3")
     tagged, clean = _row(cfg, "New1"), _row(cfg, "New2")
     _sql(cfg, 'INSERT INTO "djmdSongMyTag" (ID, ContentID) VALUES (?, ?)', "mt-1", tagged)
 
-    code, acted, refused = _apply()
+    acted, refused = _apply()
 
-    assert code == int(ExitCode.OK), acted
     answers = _by_title(acted)
     assert answers["New1"]["action"] == removed.KEPT
     assert answers["New1"]["why"] == removed.UNMEASURED
@@ -1168,24 +1112,20 @@ def test_a_row_a_my_tag_names_is_kept_and_never_offered_and_the_rest_is_removed(
     ],
 )
 def test_the_writer_refuses_a_row_an_unmeasured_table_names_with_nothing_written(
-    native_library, silence, monkeypatch, offline, made, inserted
+    one_offered, made, inserted
 ):
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     offered = _row(cfg, "New1")
     if made:
         _sql(cfg, made)
     _sql(cfg, inserted, offered)
     before = _every_table(cfg)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         assert rb_writer.CollectionRemoval.held(handle, [offered])[offered]
         with pytest.raises(rb_writer.RekordboxUnavailable, match="never measured"):
             rb_writer.CollectionRemoval.prepare(handle, [offered])
         with pytest.raises(rb_writer.RekordboxUnavailable, match="never measured"):
             rb_writer.remove_from_collection(handle, offered)
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
@@ -1193,52 +1133,46 @@ def test_a_uuid_map_row_is_left_as_rekordbox_leaves_it(one_offered):
     cfg = one_offered
     offered = _row(cfg, "New1")
     _sql(cfg, 'INSERT INTO "uuidIDMap" (ID, TableName, TargetUUID, CurrentID) VALUES (?, ?, ?, ?)', "u-1", "djmdContent", "uu", offered)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         assert rb_writer.CollectionRemoval.held(handle, [offered]) == {}
-    finally:
-        rb_writer.close_db(handle)
 
 
-def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
-    native_library, silence, monkeypatch, offline, tmp_path
-):
-    """The removed row is gone outright, and delete review still offers its file (R-1037)."""
-    from cratekit.deletion import watermark
-
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
-    offered = _row(cfg, "New1")
-    music = Path(_query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", offered)[0][0])
-    # NO DELETE REVIEW HAS EVER RUN ON THIS LIBRARY: the removal gives the pass
-    # its first position, below its own commit.
-    assert watermark.WatermarkStore(cfg).read() is None
-    code, acted, _ = _apply()
-    mark = watermark.WatermarkStore(cfg).read()
-    assert mark is not None and mark.sequence < _counter(cfg)
-    assert code == int(ExitCode.OK), acted
-    # Deletion is a feature module and the slim profile hides it.
+def _full_profile(cfg: config.Config, monkeypatch) -> None:
+    """Deletion is a feature module the slim profile hides; rekordbox is not running."""
     config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
     config.reset_cache()
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+
+
+def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
+    one_offered, monkeypatch, tmp_path
+):
+    """The removed row is gone outright, and delete review still offers its file (R-1037)."""
+    from cratekit.deletion import watermark
+
+    cfg = one_offered
+    music = Path(_folder_of(cfg, _row(cfg, "New1")))
+    # NO DELETE REVIEW HAS EVER RUN ON THIS LIBRARY: the removal gives the pass
+    # its first position, below its own commit.
+    assert watermark.WatermarkStore(cfg).read() is None
+    _apply()
+    mark = watermark.WatermarkStore(cfg).read()
+    assert mark is not None and mark.sequence < _counter(cfg)
+    _full_profile(cfg, monkeypatch)
     home = tmp_path / "home"
     (home / ".Trash").mkdir(parents=True)
     monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
     monkeypatch.setenv("XDG_DATA_HOME", str(home / "share"))
 
-    code, refused = drive(["delete", "review"])
+    refused = exited(drive(["delete", "review"]), ExitCode.DECISION_REQUIRED)
 
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["baselined"] is False, shown
     assert shown["offered"] == 1, shown
-    decided, envelope = drive(
-        ["run", "decide", refused["run_id"], "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, out = drive(["--run", refused["run_id"], "delete", "review"])
-    assert code == int(ExitCode.OK), out
+    decide = ["run", "decide", refused["run_id"], "delete.review.confirm", "trash"]
+    exited(drive([*decide, "--actor", "a-person"]))
+    exited(drive(["--run", refused["run_id"], "delete", "review"]))
     assert not music.exists()
     trashed = [one for one in tmp_path.rglob(music.name) if one != music]
     assert len(trashed) == 1 and "Trash" in str(trashed[0]), trashed
@@ -1272,8 +1206,6 @@ def _package_calls() -> tuple[tuple[str, str, tuple[str | None, ...]], ...]:
 
 def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
     """A source guard, read as syntax: who may pass ``deletions``, or a ``**`` mapping to a judge."""
-    import re
-
     judges = {"commit_guarded", "assert_session_whitelisted", "guard_violations"}
     root = Path(rb_writer.__file__).resolve().parents[1]
     askers = [
@@ -1305,10 +1237,6 @@ def test_the_record_key_and_its_columns_are_spelled_the_same_everywhere_they_are
     assert deletion_library.RECORDED_COLUMNS == rb_writer.RECORDED_COLUMNS
 
 
-def _handle(cfg: config.Config):
-    return rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-
-
 def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at_its_commit(
     one_offered
 ):
@@ -1316,8 +1244,7 @@ def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at
     cfg = one_offered
     offered = _row(cfg, "New1")
     before = _every_table(cfg)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         handle.delete(handle.get_content(ID=offered))
         with pytest.raises(rb_writer.RekordboxUnavailable, match="additive-only"):
             rb_writer.commit_guarded(handle)
@@ -1325,8 +1252,6 @@ def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at
         handle.delete(handle.get_content(ID=offered))
         with pytest.raises(rb_writer.RekordboxUnavailable, match="additive-only"):
             rb_writer.commit_guarded(handle, deletions=(rb_writer.MEMBERSHIP_TABLE,))
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
@@ -1335,8 +1260,7 @@ def test_a_removal_that_changes_anything_it_did_not_plan_is_refused_before_its_c
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     _give_state(cfg, offered, "gone")
     before = _every_table(cfg)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         reading = rb_writer.database_reading(handle)
         rb_writer.remove_from_collection(handle, offered)
         handle.get_content(ID=held).Title = "Moved"
@@ -1346,8 +1270,6 @@ def test_a_removal_that_changes_anything_it_did_not_plan_is_refused_before_its_c
         reading = rb_writer.database_reading(handle)
         with pytest.raises(rb_writer.RekordboxUnavailable, match="did not plan"):
             rb_writer.assert_collection_removal_confined(handle, reading, removed=[offered])
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
@@ -1355,14 +1277,11 @@ def test_the_removal_refuses_a_row_that_is_not_live(one_offered):
     cfg = one_offered
     offered = _row(cfg, "New1")
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", offered)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         for content_id in (offered, "no-such-row"):
             with pytest.raises(rb_writer.RekordboxUnavailable, match="no live row"):
                 rb_writer.remove_from_collection(handle, content_id)
         assert not handle.session.deleted
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_the_removal_writes_no_beat_grid_and_no_tempo(one_offered):
@@ -1372,9 +1291,8 @@ def test_the_removal_writes_no_beat_grid_and_no_tempo(one_offered):
     before = _query(cfg, f"SELECT {', '.join(columns)} FROM djmdContent ORDER BY ID")
     offered = _row(cfg, "New1")
 
-    code, acted, _ = _apply()
+    _apply()
 
-    assert code == int(ExitCode.OK), acted
     after = _query(cfg, f"SELECT {', '.join(columns)} FROM djmdContent ORDER BY ID")
     assert after == [row for row in before if str(row[0]) != offered]
 
@@ -1433,64 +1351,48 @@ def test_the_acknowledgment_is_read_before_the_gate_is_asked(one_offered, monkey
 def test_rekordbox_running_at_the_write_refuses_before_any_session_opens(one_offered, monkeypatch):
     cfg = one_offered
     before = _every_table(cfg)
-    real = removed_cli.written
+    running = (rb_writer, "rekordbox_running", lambda: True)
+    _before_the_write(monkeypatch, lambda _cfg, _plan: monkeypatch.setattr(*running))
 
-    def running(cfg_, plan, **kwargs):
-        monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-        return real(cfg_, plan, **kwargs)
+    acted, _ = _apply(ok=False)
 
-    monkeypatch.setattr(removed_cli, "written", running)
-
-    code, acted, _ = _apply()
-
-    assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "rekordbox-running", acted
     assert _every_table(cfg) == before
     # Refused at the open, before the gates: no session was begun for it.
-    assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    _no_removal_recorded(cfg)
 
 
 def test_prepare_refuses_a_row_not_live_and_a_database_with_no_identity(one_offered):
     cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", held)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         for content_id in (held, "no-such-row"):
             with pytest.raises(rb_writer.RekordboxUnavailable, match="no live row"):
                 rb_writer.CollectionRemoval.prepare(handle, [offered, content_id])
-    finally:
-        rb_writer.close_db(handle)
     _sql(cfg, "UPDATE djmdProperty SET DBID = ''")
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         with pytest.raises(rb_writer.RekordboxUnavailable, match="no identity"):
             rb_writer.CollectionRemoval.prepare(handle, [offered])
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_commit_proves_the_removal_confined_before_it_commits(one_offered):
     cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     before = _every_table(cfg)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         removal = rb_writer.CollectionRemoval.prepare(handle, [offered])
         handle.get_content(ID=held).Title = "Moved"
         with pytest.raises(rb_writer.RekordboxUnavailable, match="did not plan"):
             removal.commit()
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
 def test_a_read_back_that_disagrees_refuses_as_unverified(one_offered, monkeypatch):
     monkeypatch.setattr(rb_writer.CollectionRemoval, "read_back", lambda self: ["a row moved"])
 
-    code, acted, _ = _apply()
+    acted, _ = _apply(ok=False)
 
-    assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "session-committed-unverified", acted
     assert "a row moved" in acted["cause"]["message"]
 
@@ -1506,91 +1408,74 @@ def test_a_commit_that_lands_and_then_raises_still_records_every_row(one_offered
 
     monkeypatch.setattr(rb_writer, "commit_guarded", landed_then_raised)
 
-    code, acted, _ = _apply()
+    _apply(ok=False)
 
-    assert code != int(ExitCode.OK)
-    (record,) = [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    record = _removal_record(cfg)
     rows = record.detail[rb_writer.RECORDED_REMOVALS_KEY]["rows"]
     assert [row["content_id"] for row in rows] == [offered]
     assert record.detail[rb_writer.RECORDED_REMOVALS_KEY]["sequence"] == _counter(cfg)
 
 
 def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
-    native_library, silence, monkeypatch, offline, tmp_path
+    one_offered, monkeypatch
 ):
     """A restore puts the row back live, and the live row answers for its file."""
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
+    cfg = one_offered
     offered = _row(cfg, "New1")
-    (content,) = [row for row in _every_table(cfg)["djmdContent"] if str(row[_columns_of(cfg, "djmdContent").index("ID")]) == offered]
-    code, acted, _ = _apply()
-    assert code == int(ExitCode.OK), acted
     columns = _columns_of(cfg, "djmdContent")
+    at = columns.index("ID")
+    (content,) = [row for row in _every_table(cfg)["djmdContent"] if str(row[at]) == offered]
+    _apply()
     _sql(
         cfg,
         f'INSERT INTO djmdContent ({", ".join(columns)}) VALUES ({", ".join("?" for _ in columns)})',
         *content,
     )
-    config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
-    config.reset_cache()
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    _full_profile(cfg, monkeypatch)
 
-    code, refused = drive(["delete", "review"])
+    refused = exited(drive(["delete", "review"]), ExitCode.DECISION_REQUIRED)
 
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["shown"]["offered"] == 0, refused
     # The live row means the recorded removal is none, so the pass never
     # judges it, not merely refused by the reference proof.
     from cratekit.deletion import run as deletion_run
 
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         found = deletion_run.plan(cfg, handle, actor="cli")
-    finally:
-        rb_writer.close_db(handle)
     assert offered not in {one.row.content_id for one in found.candidates}
+
+
+def _append(cfg: config.Config, playlist: str, *titles: str) -> None:
+    """``titles``' rows added to the end of ``playlist`` by the writer, and committed."""
+    with _opened(cfg) as handle:
+        rows = [_row(cfg, title) for title in titles]
+        assert rb_writer.add_memberships(handle, handle.get_playlist(ID=playlist), rows)
+        handle.session.commit()
+
+
+def _appended_after_a_removal(cfg: config.Config, *added: str) -> list[int]:
+    """Mine's numbers once its second member is deleted by SQL and ``added`` appended after."""
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
+    _append(cfg, mine, *added)
+    held = _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine)
+    return sorted(row[0] for row in held)
 
 
 def test_a_track_added_after_a_removal_goes_past_the_highest_position(one_offered):
     """The binding's count plus one would land on a live row's position."""
-    cfg = one_offered
-    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
-    _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
-    handle = _handle(cfg)
-    try:
-        playlist = handle.get_playlist(ID=mine)
-        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3")])
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    numbers = sorted(row[0] for row in _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine))
+    numbers = _appended_after_a_removal(one_offered, "Held3")
     assert numbers == [1, 3, 4], numbers
 
 
 def test_two_appends_after_a_removal_each_take_the_next_position(one_offered):
-    cfg = one_offered
-    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
-    _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
-    handle = _handle(cfg)
-    try:
-        playlist = handle.get_playlist(ID=mine)
-        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3"), _row(cfg, "New2")])
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    numbers = sorted(row[0] for row in _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine))
+    numbers = _appended_after_a_removal(one_offered, "Held3", "New2")
     assert numbers == [1, 3, 4, 5], numbers
 
 
-def test_a_refused_removal_gives_the_deletion_pass_no_position(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_refused_removal_gives_the_deletion_pass_no_position(one_offered, monkeypatch):
     """The first position is written only once the removal's commit lands."""
     from cratekit.deletion import watermark
-
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
 
     def refused(self, **_kwargs):
         raise rb_writer.RekordboxUnavailable(
@@ -1599,34 +1484,26 @@ def test_a_refused_removal_gives_the_deletion_pass_no_position(
 
     monkeypatch.setattr(rb_writer.CollectionRemoval, "commit", refused)
 
-    code, acted, _ = _apply()
+    _apply(ok=False)
 
-    assert code != int(ExitCode.OK)
-    assert watermark.WatermarkStore(cfg).read() is None
+    assert watermark.WatermarkStore(one_offered).read() is None
 
 
-def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(one_offered, monkeypatch):
     """With a position held, a marked row the pass could not read stops nothing."""
     from cratekit.deletion import library as deletion_library
     from cratekit.deletion import watermark
 
-    cfg, _root = native_library
-    _one_offered(cfg, silence, monkeypatch)
-    handle = _handle(cfg)
-    try:
+    cfg = one_offered
+    with _opened(cfg) as handle:
         identity = deletion_library.database_identity(handle)
-    finally:
-        rb_writer.close_db(handle)
     watermark.WatermarkStore(cfg).baseline(database_identity=identity, sequence=3, actor="cli")
     walked: list = []
     real = deletion_library.read_collection
     monkeypatch.setattr(deletion_library, "read_collection", lambda rows: walked.append(1) or real(rows))
 
-    code, acted, _ = _apply()
+    _apply()
 
-    assert code == int(ExitCode.OK), acted
     assert watermark.WatermarkStore(cfg).read().sequence == 3
     assert not walked
 
@@ -1652,16 +1529,19 @@ def _titles(pairs: list[tuple[str, int]]) -> list[tuple[str, int]]:
     return [(title.split()[-1].split("-")[-1], number) for title, number in pairs]
 
 
+def _members(cfg: config.Config, playlist: str, where: str = "") -> list[tuple]:
+    """Every membership row of ``playlist``, by ID, ``where`` narrowing them."""
+    statement = f"SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? {where} ORDER BY ID"
+    return _query(cfg, statement, playlist)
+
+
 def _remove(cfg: config.Config, *titles: str) -> rb_writer.CollectionRemoval:
     """The writer's own removal of ``titles``' rows, prepared, committed and read back clean."""
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, title) for title in titles])
         removal.commit()
         assert removal.read_back() == []
         return removal
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_else_moved(
@@ -1672,10 +1552,7 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     offered = _row(cfg, "New1")
     before = _every_table(cfg)
-    first, third = (
-        _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = ?", mine, place)[0]
-        for place in (1, 3)
-    )
+    first, third = (_members(cfg, mine, f"AND TrackNo = {place}")[0] for place in (1, 3))
     planned = datetime.now(timezone.utc)
 
     removal = _remove(cfg, "New1")
@@ -1697,17 +1574,9 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     assert rb_writer.stamp_moment(removal.stamp.at) <= finished
     assert [v for i, v in enumerate(now) if i not in moving] == [v for i, v in enumerate(third) if i not in moving]
     assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", first[0]) == [first]
-    after = _every_table(cfg)
     stamp = (removal.stamp.counter, removal.stamp.at)
     assert _stamp_read(cfg, before) == stamp
-    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered}, stamp)
-    registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
-    for name in sorted(set(expected) | set(after)):
-        if name == "agentRegistry":
-            moved = [row for row in after[name] if row[registry_at] == "localUpdateCount"]
-            assert [row for row in after[name] if row not in expected[name]] == moved, name
-            continue
-        assert after[name] == expected[name], name
+    _only_as_expected(cfg, before, offered, stamp)
     assert removal.renumbered[str(third[0])] == (mine, 3, 2)
     detail: dict = {}
     removal.write_into(detail, sequence=1, about={})
@@ -1721,25 +1590,23 @@ def test_two_removed_members_of_one_playlist_and_a_member_on_two_playlists(one_o
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "New2", "Held3")
     other = _hand_made(cfg, "Other", "New1", "Held3", "Held1")
     untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
-    kept = _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", untouched)
+    kept = _members(cfg, untouched)
 
     _remove(cfg, "New1", "New2")
 
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3)]
     assert _titles(_numbers(cfg, other)) == [("Held3", 1), ("Held1", 2)]
-    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", untouched) == kept
+    assert _members(cfg, untouched) == kept
 
 
 def test_the_last_member_removed_renumbers_nothing_in_its_playlist(one_offered):
     cfg = one_offered
     last = _hand_made(cfg, "Last", "Held1", "Held2", "New1")
-    kept = _query(
-        cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo < 3 ORDER BY ID", last
-    )
+    kept = _members(cfg, last, "AND TrackNo < 3")
 
     removal = _remove(cfg, "New1")
 
-    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", last) == kept
+    assert _members(cfg, last) == kept
     assert all(playlist != last for playlist, _was, _now in removal.renumbered.values())
 
 
@@ -1747,13 +1614,7 @@ def test_an_append_after_a_renumbering_takes_the_next_position(one_offered):
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     _remove(cfg, "New1")
-    handle = _handle(cfg)
-    try:
-        playlist = handle.get_playlist(ID=mine)
-        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3"), _row(cfg, "New2")])
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
+    _append(cfg, mine, "Held3", "New2")
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3), ("New2", 4)]
 
 
@@ -1762,20 +1623,13 @@ def test_a_history_list_holding_others_keeps_its_numbers(one_offered):
     cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     for key, content_id, number in (("h-1", held, 1), ("h-2", offered, 2), ("h-3", held, 3)):
-        _sql(
-            cfg,
-            "INSERT INTO djmdSongHistory (ID, HistoryID, ContentID, TrackNo) VALUES (?, 'h', ?, ?)",
-            key,
-            content_id,
-            number,
-        )
+        history = "INSERT INTO djmdSongHistory (ID, HistoryID, ContentID, TrackNo)"
+        _sql(cfg, f"{history} VALUES (?, 'h', ?, ?)", key, content_id, number)
 
     _remove(cfg, "New1")
 
-    assert _query(cfg, "SELECT ID, TrackNo FROM djmdSongHistory WHERE HistoryID = 'h' ORDER BY ID") == [
-        ("h-1", 1),
-        ("h-3", 3),
-    ]
+    numbered = "SELECT ID, TrackNo FROM djmdSongHistory WHERE HistoryID = 'h' ORDER BY ID"
+    assert _query(cfg, numbered) == [("h-1", 1), ("h-3", 3)]
 
 
 def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_written(
@@ -1784,39 +1638,24 @@ def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_w
     cfg = one_offered
     _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
     untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
-    before = _every_table(cfg)
-    real = rb_writer.renumber_memberships
-
-    def and_another(db, moved, **kwargs):
-        real(db, moved, **kwargs)
-        from sqlalchemy import text
-
-        db.session.execute(
-            text("UPDATE djmdSongPlaylist SET TrackNo = 7 WHERE PlaylistID = :p AND TrackNo = 2"),
-            {"p": untouched},
-        )
-
-    monkeypatch.setattr(rb_writer, "renumber_memberships", and_another)
-    handle = _handle(cfg)
-    try:
-        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
-        with pytest.raises(rb_writer.RekordboxUnavailable, match="did not plan"):
-            removal.commit()
-    finally:
-        rb_writer.close_db(handle)
-    assert _every_table(cfg) == before
+    before = _left_unstamped(
+        cfg,
+        monkeypatch,
+        "UPDATE djmdSongPlaylist SET TrackNo = 7 WHERE PlaylistID = :p0 AND TrackNo = 2",
+        untouched,
+    )
+    _refused_with_nothing_written(cfg, before, "New1", "did not plan")
 
 
 def test_a_member_that_moved_after_the_prepare_refuses_its_renumbering_with_nothing_written(
     one_offered
 ):
+    from sqlalchemy import text
+
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
-        from sqlalchemy import text
-
         handle.session.execute(
             text("UPDATE djmdSongPlaylist SET TrackNo = 9 WHERE PlaylistID = :p AND TrackNo = 3"),
             {"p": mine},
@@ -1825,8 +1664,6 @@ def test_a_member_that_moved_after_the_prepare_refuses_its_renumbering_with_noth
         before = _every_table(cfg)
         with pytest.raises(rb_writer.RekordboxUnavailable, match="no longer holds the place 3"):
             removal.commit()
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
@@ -1835,10 +1672,9 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
 ):
     """The count is in the digest: one more member after the offered row moves the plan."""
     cfg = one_offered
-    real = removed_cli.written
     seen: dict = {}
 
-    def one_more_after(cfg_, plan, **kwargs):
+    def one_more_after(cfg_, plan):
         seen["approved"] = plan.renumbered
         (analyze,) = _query(cfg_, "SELECT ID FROM djmdPlaylist WHERE Name = 'Analyze'")
         _sql(
@@ -1849,15 +1685,13 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
             _row(cfg_, "Held1"),
         )
         seen["tables"] = _every_table(cfg_)
-        return real(cfg_, plan, **kwargs)
 
-    monkeypatch.setattr(removed_cli, "written", one_more_after)
+    _before_the_write(monkeypatch, one_more_after)
 
-    code, acted, refused = _apply()
+    acted, refused = _apply(ok=False)
 
     assert seen["approved"] == 7
     assert refused["cause"]["detail"]["shown"]["memberships renumbered"] == 7
-    assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert _every_table(cfg) == seen["tables"]
 
@@ -1866,37 +1700,26 @@ def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_member
     """Marked New1 and live Held2 share 2, so counting the marked row doubles a number."""
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
-    _sql(
-        cfg,
-        "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? AND ContentID = ?",
-        mine,
-        _row(cfg, "New1"),
-    )
+    where = "WHERE PlaylistID = ? AND ContentID = ?"
+    _sql(cfg, f"UPDATE djmdSongPlaylist SET rb_local_deleted = 1 {where}", mine, _row(cfg, "New1"))
     for title, number in (("Held2", 2), ("Held3", 3)):
-        _sql(
-            cfg,
-            "UPDATE djmdSongPlaylist SET TrackNo = ? WHERE PlaylistID = ? AND ContentID = ?",
-            number,
-            mine,
-            _row(cfg, title),
-        )
-    kept = _query(
-        cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0 ORDER BY ID", mine
-    )
+        moved = f"UPDATE djmdSongPlaylist SET TrackNo = ? {where}"
+        _sql(cfg, moved, number, mine, _row(cfg, title))
+    kept = _members(cfg, mine, "AND rb_local_deleted = 0")
 
-    code, acted, refused = _apply()
+    _acted, refused = _apply()
 
-    assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["memberships renumbered"] == 7
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3)]
-    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", mine) == kept
+    assert _members(cfg, mine) == kept
 
 
 def test_renumbering_writes_the_three_columns_and_a_held_row_reads_them(one_offered):
+    from sqlalchemy import text
+
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "Held2")
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         held = [song for song in handle.get_playlist_songs(PlaylistID=mine) if int(song.TrackNo) == 2]
         (song,) = held
         stamp = rb_writer.RenumberingStamp(4242, "2031-01-02 03:04:05.006 +00:00")
@@ -1904,14 +1727,10 @@ def test_renumbering_writes_the_three_columns_and_a_held_row_reads_them(one_offe
         # The mapped object the session held reads what SQL now holds.
         assert int(song.TrackNo) == 1
         assert int(song.rb_local_usn) == 4242
-        from sqlalchemy import text
-
         assert handle.session.execute(
             text("SELECT updated_at FROM djmdSongPlaylist WHERE ID = :key"), {"key": str(song.ID)}
         ).scalar() == stamp.at
         handle.rollback()
-    finally:
-        rb_writer.close_db(handle)
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
 
 
@@ -1925,52 +1744,44 @@ def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_wri
     """Other readers take a NULL marker as live, so the renumbering refuses it."""
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
-    _sql(
-        cfg,
-        "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL WHERE PlaylistID = ? AND ContentID = ?",
-        mine,
-        _row(cfg, "Held2"),
-    )
+    unreadable = "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL"
+    _sql(cfg, f"{unreadable} WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "Held2"))
     before = _every_table(cfg)
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         with pytest.raises(CratekitError) as refused:
             rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
         assert refused.value.cause.reason == "soft-delete-marker-unreadable"
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
 # The stamp on each renumbered row, as rekordbox's own removal writes it (U955, A202)
 
 
-def _left_unstamped(cfg: config.Config, monkeypatch, statement: str, *params) -> dict:
-    """The renumbering made, then ``statement`` run on the same handle; returns the tables before."""
+def _after_the_renumbering(monkeypatch, then) -> None:
+    """``then(db)`` runs on the write handle right after the writer's own renumbering."""
     real = rb_writer.renumber_memberships
 
     def and_then(db, moved, **kwargs):
         real(db, moved, **kwargs)
-        from sqlalchemy import text
-
-        db.session.execute(text(statement), _named(params))
+        then(db)
 
     monkeypatch.setattr(rb_writer, "renumber_memberships", and_then)
+
+
+def _left_unstamped(cfg: config.Config, monkeypatch, statement: str, *params) -> dict:
+    """The renumbering made, then ``statement`` run on the same handle; returns the tables before."""
+    from sqlalchemy import text
+
+    named = {f"p{at}": value for at, value in enumerate(params)}
+    _after_the_renumbering(monkeypatch, lambda db: db.session.execute(text(statement), named))
     return _every_table(cfg)
 
 
-def _named(params: tuple) -> dict:
-    return {f"p{at}": value for at, value in enumerate(params)}
-
-
 def _refused_with_nothing_written(cfg: config.Config, before: dict, title: str, match: str) -> None:
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, title)])
         with pytest.raises(rb_writer.RekordboxUnavailable, match=match):
             removal.commit()
-    finally:
-        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
 
 
@@ -2048,13 +1859,7 @@ def test_a_buffer_grown_after_the_stamp_is_refused_before_the_commit(one_offered
     """The confinement reads the count the commit would leave again, and refuses a different one."""
     cfg = one_offered
     _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
-    real = rb_writer.renumber_memberships
-
-    def and_one_more(db, moved, **kwargs):
-        real(db, moved, **kwargs)
-        db.registry.on_move([])
-
-    monkeypatch.setattr(rb_writer, "renumber_memberships", and_one_more)
+    _after_the_renumbering(monkeypatch, lambda db: db.registry.on_move([]))
     before = _every_table(cfg)
     _refused_with_nothing_written(cfg, before, "New1", "the commit would leave localUpdateCount")
 
@@ -2062,15 +1867,12 @@ def test_a_buffer_grown_after_the_stamp_is_refused_before_the_commit(one_offered
 def test_a_read_back_refuses_a_count_the_stamp_does_not_name(one_offered, monkeypatch):
     cfg = one_offered
     _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
-    handle = _handle(cfg)
-    try:
+    with _opened(cfg) as handle:
         removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
         removal.commit()
         assert removal.read_back() == []
         removal.stamp = dataclasses.replace(removal.stamp, counter=removal.stamp.counter - 1)
         assert any("after the commit" in line for line in removal.read_back())
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_the_confinement_reads_the_count_again_through_the_writer(one_offered, monkeypatch):

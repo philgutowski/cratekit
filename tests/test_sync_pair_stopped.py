@@ -10,12 +10,14 @@ import itertools
 import json
 import os
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
-from cratekit.modules.outbound import tidal_account
-from cratekit.sync import held_plan, pair_cli, pair_stopped
+from cratekit.core.cause import CratekitError
+from cratekit.modules.outbound import pairs, tidal_account
+from cratekit.sync import held_plan, pair_cli, pair_plan, pair_read, pair_stopped
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
 
@@ -110,7 +112,15 @@ def _steps(run_id: str, done: dict) -> held_plan.Steps:
     return held_plan.Steps(run_id, "digest", done)
 
 
-def _read(*records):
+def _begun(run_id: str = "run-1", at: str = "", **step) -> held_plan.Steps:
+    """``run_id``'s steps for pl-1, begun ``at`` (the write's own moment by default) and ordered."""
+    began = {"account": at or _WHEN.isoformat(), "ordering": _ordering()}
+    return _steps(run_id, {"pl-1": {**began, **step}})
+
+
+def _read(*records, moving: bool = False):
+    """The stopped writes ``records`` hold; ``moving`` looks for the moving steps too (U234)."""
+    keys = {"moving": pair_cli.STEP_MOVING, "moved": pair_cli.STEP_MOVED} if moving else {}
     return pair_stopped.stopped_writes(
         records,
         new=pair_cli.NEW,
@@ -118,13 +128,12 @@ def _read(*records):
         ordering=pair_cli.STEP_ORDERING,
         made=pair_cli.STEP_MADE,
         done=pair_cli.STEP_DONE,
+        **keys,
     )
 
 
 def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
-    began = (_WHEN.replace(second=40)).isoformat()
-    record = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering()}})
-    at, write = _read(record)["pl-1"]
+    at, write = _read(_begun(at=_WHEN.replace(second=40).isoformat()))["pl-1"]
     assert at == _WHEN.replace(second=40)
     assert write == pair_stopped.StoppedWrite(
         run_id="run-1",
@@ -142,46 +151,36 @@ def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
 
 
 def test_an_ordering_step_of_this_version_with_no_moving_step_sent_nothing():
-    began = _WHEN.isoformat()
-    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": _ordering()}}))[
-        "pl-1"
-    ]
+    _at, write = _read(_begun(), moving=True)["pl-1"]
     assert write.moves_recorded and write.sent_nothing
 
 
 def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
     """A record from before U234 has no moving step, so none is read as sending nothing."""
-    began = _WHEN.isoformat()
     old = _ordering()
     old.pop(pair_stopped.MOVES_RECORDED)
-    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": old}}))["pl-1"]
+    _at, write = _read(_begun(ordering=old), moving=True)["pl-1"]
     assert not write.moves_recorded and not write.sent_nothing
     flagged = {**_ordering(), pair_stopped.MOVES_RECORDED: "yes"}
-    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": flagged}}))[
-        "pl-1"
-    ]
+    _at, write = _read(_begun(ordering=flagged), moving=True)["pl-1"]
     assert not write.moves_recorded, "a marker that is not true is no marker"
 
 
 @pytest.mark.parametrize("moving", [{"at": "not a moment"}, "moved", {"at": _WHEN.isoformat()}])
 def test_a_moving_step_that_cannot_be_read_never_says_no_move_was_sent(moving):
     """U234: a write whose moving step is there and unreadable may have sent every move."""
-    began = _WHEN.isoformat()
-    record = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering(), "moving": moving}})
-    _at, write = _read_moving(record)["pl-1"]
+    _at, write = _read(_begun(moving=moving), moving=True)["pl-1"]
     assert not write.sent_nothing
 
 
 def test_a_finished_or_unordered_write_is_no_stopped_one():
-    began = _WHEN.isoformat()
-    finished = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering(), "done": "pl-1"}})
-    assert _read(finished) == {}
-    unordered = _steps("run-1", {"pl-1": {"account": began}})
+    assert _read(_begun(done="pl-1")) == {}
+    unordered = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat()}})
     assert _read(unordered) == {}
 
 
 def test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_order():
-    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    early = _begun()
     later = _WHEN.replace(hour=18).isoformat()
     finished = _steps("run-2", {"pl-1": {"account": later, "done": "pl-1"}})
     assert _read(early, finished) == {}
@@ -194,7 +193,7 @@ def test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_or
 
 def test_a_later_run_that_stopped_before_its_order_began_hides_nothing():
     """Its steps are kept, and it is no finish."""
-    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    early = _begun()
     later = _WHEN.replace(hour=18).isoformat()
     failed = _steps("run-2", {"pl-1": {"account": later, "rekordbox": {}, "queued": ""}})
     assert _read(early, failed)["pl-1"][1].run_id == "run-1"
@@ -202,26 +201,16 @@ def test_a_later_run_that_stopped_before_its_order_began_hides_nothing():
 
 
 def test_the_latest_stopped_write_on_a_pair_is_the_one_read():
-    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    early = _begun()
     later = _WHEN.replace(hour=18).isoformat()
-    stopped_later = _steps(
-        "run-2", {"pl-1": {"account": later, "ordering": _ordering(at=later)}}
-    )
+    stopped_later = _begun("run-2", later, ordering=_ordering(at=later))
     assert _read(early, stopped_later)["pl-1"][1].run_id == "run-2"
     assert _read(stopped_later, early)["pl-1"][1].run_id == "run-2"
 
 
 def test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as():
-    record = _steps(
-        "run-1",
-        {
-            f"{pair_cli.NEW}55": {
-                "made": "pl-7",
-                "account": _WHEN.isoformat(),
-                "ordering": _ordering(),
-            }
-        },
-    )
+    made = {"made": "pl-7", "account": _WHEN.isoformat(), "ordering": _ordering()}
+    record = _steps("run-1", {f"{pair_cli.NEW}55": made})
     assert _read(record)["pl-7"][1].account_id == "pl-7"
     unmade = _steps("run-1", {f"{pair_cli.NEW}55": {"account": _WHEN.isoformat()}})
     assert _read(unmade) == {}
@@ -240,17 +229,15 @@ def test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as():
     ],
 )
 def test_a_record_not_of_this_form_is_no_stopped_write(spoiled):
-    record = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering(**spoiled)}})
-    assert _read(record) == {}
+    assert _read(_begun(ordering=_ordering(**spoiled))) == {}
 
 
 def test_a_record_from_before_u225_reads_as_no_write_at_all():
     record = _steps("run-1", {"pl-1": {"account": True, "ordering": True}})
     assert _read(record) == {}
     # And a finish recorded with no time hides nothing.
-    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
     untimed = _steps("run-2", {"pl-1": {"account": True, "done": "pl-1"}})
-    assert _read(early, untimed)["pl-1"][1].run_id == "run-1"
+    assert _read(_begun(), untimed)["pl-1"][1].run_id == "run-1"
 
 
 # Every run's steps, read by a later plan
@@ -261,11 +248,12 @@ def test_every_kept_runs_steps_are_read_and_an_unreadable_one_is_named(cfg):
     held_plan.Steps("run-b", "d2", {}).begin()
     held_plan.steps_path("run-c").write_text("{not json")
     held_plan.steps_path("run-d").write_text(json.dumps({"version": 99, "run_id": "run-d"}))
+    version = held_plan.STEPS_VERSION
     held_plan.steps_path("run-e").write_text(
-        json.dumps({"version": held_plan.STEPS_VERSION, "run_id": "run-x", "steps": {}})
+        json.dumps({"version": version, "run_id": "run-x", "steps": {}})
     )
     held_plan.steps_path("run-f").write_text(
-        json.dumps({"version": held_plan.STEPS_VERSION, "run_id": "run-f", "steps": {"k": 1}})
+        json.dumps({"version": version, "run_id": "run-f", "steps": {"k": 1}})
     )
     records, problems = held_plan.recorded_steps()
     assert sorted(one.run_id for one in records) == ["run-a", "run-b"]
@@ -337,35 +325,19 @@ def test_two_items_of_one_run_are_carried_apart(cfg):
     assert [one.done for one in records] == [{"new:9": {"made": "pl-9"}}]
 
 
+def _carried(run_id: str, key: str, steps) -> str:
+    """A carried record of this version as text: ``run_id``'s ``steps`` under ``key``."""
+    record = {"version": held_plan.CARRIED_VERSION, "run_id": run_id, "digest": "d"}
+    return json.dumps({**record, "key": key, "steps": steps})
+
+
 def test_a_carried_record_that_cannot_be_read_is_named_never_read_as_no_write(cfg):
     held_plan.carry(held_plan.Steps("run-a", "d1", {"pl-1": {"account": "x"}}), "pl-1")
     directory = held_plan.carried_dir()
     (directory / "run-b.0123.json").write_text("{not json")
     (directory / "run-c.0123.json").write_text(json.dumps({"version": 99}))
-    moved = held_plan.carried_path("run-d", "pl-4")
-    moved.write_text(
-        json.dumps(
-            {
-                "version": held_plan.CARRIED_VERSION,
-                "run_id": "run-d",
-                "digest": "d",
-                "key": "pl-5",
-                "steps": {},
-            }
-        )
-    )
-    unkeyed = held_plan.carried_path("run-e", "pl-5")
-    unkeyed.write_text(
-        json.dumps(
-            {
-                "version": held_plan.CARRIED_VERSION,
-                "run_id": "run-e",
-                "digest": "d",
-                "key": "pl-5",
-                "steps": [],
-            }
-        )
-    )
+    held_plan.carried_path("run-d", "pl-4").write_text(_carried("run-d", "pl-5", {}))
+    held_plan.carried_path("run-e", "pl-5").write_text(_carried("run-e", "pl-5", []))
     records, problems = held_plan.carried()
     assert [one.run_id for one in records] == ["run-a"]
     assert len(problems) == 4, problems
@@ -396,13 +368,11 @@ def _passed(records, account_id: str, moment: datetime):
 
 
 def test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it():
-    from datetime import timedelta
-
     before = _WHEN.isoformat()
     after = (_WHEN + timedelta(seconds=5)).isoformat()
     records = [
-        _steps("run-1", {"pl-1": {"account": before, "ordering": _ordering()}}),
-        _steps("run-2", {"pl-1": {"account": after, "ordering": _ordering()}}),
+        _begun("run-1", before),
+        _begun("run-2", after),
         _steps("run-3", {"pl-2": {"account": before}}),
         _steps("run-4", {f"{pair_cli.NEW}x": {"made": "pl-1", "account": before}}),
         _steps("run-5", {f"{pair_cli.NEW}y": {"account": before}}),
@@ -417,13 +387,7 @@ def test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it(
 
 def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     """A carried record outlives a pair forgotten and marked again, and is not the new pair's."""
-    from datetime import timedelta
-    from types import SimpleNamespace
-
-    from cratekit.sync import pair_read
-
-    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
-    reader = SimpleNamespace(stopped=(write, ()))
+    reader = SimpleNamespace(stopped=(_read(_begun()), ()))
 
     def read(marked: str, synced: str = ""):
         held = SimpleNamespace(marked=marked, synced=synced)
@@ -441,13 +405,7 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
 
 def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark():
     """R-1376: a pair released after a stop and paired again has no snapshot, and the stop predates the mark."""
-    from datetime import timedelta
-    from types import SimpleNamespace
-
-    from cratekit.sync import pair_read
-
-    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
-    reader = SimpleNamespace(stopped=(write, ()))
+    reader = SimpleNamespace(stopped=(_read(_begun()), ()))
     assert pair_read._Reader.first_stop(reader, "pl-1").run_id == "run-1"
     assert pair_read._Reader.first_stop(reader, "pl-9") is None
     # An account side still to be made has no playlist to have stopped on.
@@ -460,17 +418,7 @@ def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark()
 def test_a_carried_record_naming_another_run_is_named(cfg):
     where = held_plan.carried_path("run-f", "pl-6")
     where.parent.mkdir(parents=True, exist_ok=True)
-    where.write_text(
-        json.dumps(
-            {
-                "version": held_plan.CARRIED_VERSION,
-                "run_id": "run-x",
-                "digest": "d",
-                "key": "pl-6",
-                "steps": {},
-            }
-        )
-    )
+    where.write_text(_carried("run-x", "pl-6", {}))
     records, problems = held_plan.carried()
     assert records == []
     assert len(problems) == 1 and "run-f" in problems[0], problems
@@ -489,7 +437,6 @@ def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(c
 
 def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan(cfg):
     """The run's steps say whether the pair finished, which the copy, taken before, cannot."""
-    from cratekit.sync import pair_read
     began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
     held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
     held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
@@ -524,21 +471,8 @@ def test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count():
 
 def _pending(moving: dict, *, moved: bool = False):
     began = _WHEN.replace(second=40).isoformat()
-    steps = {"account": began, "ordering": _ordering(), "moving": moving}
-    if moved:
-        steps["moved"] = began
-    record = _steps("run-1", {"pl-1": steps})
-    found = pair_stopped.stopped_writes(
-        [record],
-        new=pair_cli.NEW,
-        account=pair_cli.STEP_ACCOUNT,
-        ordering=pair_cli.STEP_ORDERING,
-        made=pair_cli.STEP_MADE,
-        done=pair_cli.STEP_DONE,
-        moving=pair_cli.STEP_MOVING,
-        moved=pair_cli.STEP_MOVED,
-    )
-    return found["pl-1"][1]
+    record = _begun(at=began, moving=moving, **({"moved": began} if moved else {}))
+    return _read(record, moving=True)["pl-1"][1]
 
 
 def _moving(**counts):
@@ -577,43 +511,18 @@ def test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known(count
     assert (write.landed, write.sent) == (0, len(pair_stopped.front_moves(START, TARGET)))
 
 
-def _read_moving(*records):
-    return pair_stopped.stopped_writes(
-        records,
-        new=pair_cli.NEW,
-        account=pair_cli.STEP_ACCOUNT,
-        ordering=pair_cli.STEP_ORDERING,
-        made=pair_cli.STEP_MADE,
-        done=pair_cli.STEP_DONE,
-        moving=pair_cli.STEP_MOVING,
-        moved=pair_cli.STEP_MOVED,
-    )
-
-
 def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
     """R-1394: a refused finish left the account where the pending moves left it."""
     early = _WHEN.replace(second=40).isoformat()
-    pending = _steps(
-        "run-1",
-        {"pl-1": {"account": early, "ordering": _ordering(), "moving": _moving(sent=1, landed=1)}},
-    )
+    pending = _begun(at=early, moving=_moving(sent=1, landed=1))
     later = _WHEN.replace(hour=18).isoformat()
-    refused = _steps("run-2", {"pl-1": {"account": later, "ordering": _ordering(at=later)}})
+    refused = _begun("run-2", later, ordering=_ordering(at=later))
     for records in ((pending, refused), (refused, pending)):
-        write = _read_moving(*records)["pl-1"][1]
+        write = _read(*records, moving=True)["pl-1"][1]
         assert write.run_id == "run-1" and write.pending, records
     # A later write that did send moves is the one read, as before.
-    sending = _steps(
-        "run-3",
-        {
-            "pl-1": {
-                "account": later,
-                "ordering": _ordering(at=later),
-                "moving": _moving(sent=1, landed=0),
-            }
-        },
-    )
-    assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"
+    sending = _begun("run-3", later, ordering=_ordering(at=later), moving=_moving(sent=1, landed=0))
+    assert _read(pending, sending, moving=True)["pl-1"][1].run_id == "run-3"
 
 
 # U234. A reading kept after a stop, and what shows a reorder against it
@@ -640,21 +549,19 @@ def test_a_track_held_twice_is_read_at_its_first_place():
     assert pair_stopped.reordered(["t2", "t1", "t2"], ["t1", "t2"])
 
 
-def test_a_reading_after_a_stop_round_trips_and_goes_when_the_snapshot_moves(cfg):
-    from cratekit.modules.outbound import pairs
+#: The moment the readings below were kept at.
+_AT = "2026-11-07T00:00:00+00:00"
 
+
+def test_a_reading_after_a_stop_round_trips_and_goes_when_the_snapshot_moves(cfg):
     store = pairs.PairStore(cfg)
     store.mark("acc", "rb", name="Mine")
     assert store.get("acc").stop_seen is None
-    kept = pairs.StopReading("run-a", ("t2", "t1"), "2026-11-07T00:00:00+00:00")
+    kept = pairs.StopReading("run-a", ("t2", "t1"), _AT)
     store.see_stop("acc", kept)
     assert store.get("acc").stop_seen == kept
     later = pairs.StopReading(
-        "run-a",
-        ("t2", "t1"),
-        "2026-11-07T00:00:00+00:00",
-        settled=True,
-        after=("t1", "t2"),
+        "run-a", ("t2", "t1"), _AT, settled=True, after=("t1", "t2"),
         after_at="2026-11-07T00:10:00+00:00",
     )
     store.see_stop("acc", later)
@@ -670,34 +577,20 @@ def test_a_reading_after_a_stop_round_trips_and_goes_when_the_snapshot_moves(cfg
 @pytest.mark.parametrize(
     "kept",
     [
-        {"order": "t1", "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
-        {"order": ["t1", ""], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
+        {"order": "t1", "at": _AT, "run": "r", "settled": False},
+        {"order": ["t1", ""], "at": _AT, "run": "r", "settled": False},
         {"order": ["t1"], "run": "r", "settled": False},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "settled": False},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "", "settled": False},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r"},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": "yes"},
-        {
-            "order": ["t1"],
-            "at": "2026-11-07T00:00:00+00:00",
-            "run": "r",
-            "settled": True,
-            "after": {"order": ["t1"]},
-        },
-        {
-            "order": ["t1"],
-            "at": "2026-11-07T00:00:00+00:00",
-            "run": "r",
-            "settled": True,
-            "after": {"order": [""], "at": "2026-11-07T00:00:00+00:00"},
-        },
+        {"order": ["t1"], "at": _AT, "settled": False},
+        {"order": ["t1"], "at": _AT, "run": "", "settled": False},
+        {"order": ["t1"], "at": _AT, "run": "r"},
+        {"order": ["t1"], "at": _AT, "run": "r", "settled": "yes"},
+        {"order": ["t1"], "at": _AT, "run": "r", "settled": True, "after": {"order": ["t1"]}},
+        {"order": ["t1"], "at": _AT, "run": "r", "settled": True,
+         "after": {"order": [""], "at": _AT}},
         ["t1"],
     ],
 )
 def test_a_reading_after_a_stop_that_is_not_an_order_refuses_the_store(cfg, kept):
-    from cratekit.core.cause import CratekitError
-    from cratekit.modules.outbound import pairs
-
     store = pairs.PairStore(cfg)
     store.mark("acc", "rb", name="Mine")
     raw = json.loads(store.path.read_text())
@@ -709,25 +602,13 @@ def test_a_reading_after_a_stop_that_is_not_an_order_refuses_the_store(cfg, kept
 
 def _write(**moments) -> pair_stopped.StoppedWrite:
     return pair_stopped.StoppedWrite(
-        run_id="run-a",
-        account_id="acc",
-        at=datetime(2026, 11, 7, 10, tzinfo=UTC),
-        start=("t1", "t2"),
-        target=("t2", "t1"),
-        leader="rekordbox",
-        rekordbox=(),
-        written=True,
-        links={},
-        **moments,
+        run_id="run-a", account_id="acc", at=datetime(2026, 11, 7, 10, tzinfo=UTC),
+        start=("t1", "t2"), target=("t2", "t1"), leader="rekordbox", rekordbox=(), written=True,
+        links={}, **moments,
     )
 
 
 def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
-    from types import SimpleNamespace
-
-    from cratekit.modules.outbound import pairs
-    from cratekit.sync import pair_plan
-
     def held(at: str, run: str = "run-a"):
         return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))
 

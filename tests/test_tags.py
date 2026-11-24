@@ -1,10 +1,8 @@
 """The container-correct tag writer, proved per container against real audio.
 
-A tag write changes the tags and nothing else, in four layers, since a corrupted
-AIFF keeps its size: the decoded samples hash the same (ffmpeg); the container
-parses with a sane duration; the magic bytes are untouched; and without ffmpeg,
-FLAC's STREAMINFO MD5 and the chunk containers' payload hashed from the file.
-Fixtures are synthesized silence. A missing ffmpeg fails rather than skips.
+A write changes the tags alone, as a corrupted AIFF keeps its size: the decoded samples
+hash the same, the container parses, the magic bytes stand, and FLAC's MD5 and a chunk
+payload hash match. Fixtures are synthesized silence; a missing ffmpeg fails, never skips.
 """
 
 from __future__ import annotations
@@ -61,8 +59,7 @@ ALL_FIELDS = {
 
 
 # Moved to tests/_containers.py; re-bound here for the suites that import them.
-_require_ffmpeg = require_ffmpeg
-_synth = synth_container
+_require_ffmpeg, _synth = require_ffmpeg, synth_container
 
 
 @pytest.fixture(scope="module")
@@ -82,9 +79,7 @@ def _pristine(tmp_path_factory):
 def container(tmp_path, _pristine):
     """A fresh real container in this test's own directory."""
     def make(suffix: str) -> Path:
-        path = tmp_path / f"probe{suffix}"
-        shutil.copyfile(_pristine(suffix), path)
-        return path
+        return Path(shutil.copyfile(_pristine(suffix), tmp_path / f"probe{suffix}"))
 
     return make
 
@@ -227,25 +222,15 @@ def test_the_writable_field_set_is_a_module_constant_not_configuration():
 
     tree = ast.parse(Path(tags.__file__).read_text())
     assignments = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "FIELDS"
+        node for node in tree.body
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "FIELDS"
     ]
     assert len(assignments) == 1, "FIELDS must be assigned exactly once, in the module body"
     assert isinstance(assignments[0].value, ast.Dict), "FIELDS must be a literal table"
 
-    imported = {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    } | {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module
-    }
+    nodes = list(ast.walk(tree))
+    imported = {each.name for node in nodes if isinstance(node, ast.Import) for each in node.names}
+    imported |= {node.module for node in nodes if isinstance(node, ast.ImportFrom) and node.module}
     assert not any("config" in name for name in imported), (
         f"the tag field set must not be derived from configuration; imports: {imported}"
     )
@@ -309,16 +294,11 @@ def test_reading_a_file_that_is_not_there_returns_none(tmp_path):
 def test_one_open_reads_every_field_the_way_the_one_field_reader_does(container, suffix):
     """The index's one open reader answers what ``read_tag`` does, absent fields included."""
     path = container(suffix)
-    assert write_tags(path, {"artist": "Probe Artist", "title": "01A - 124 - Probe Title",
-                             "isrc": "ZZ0000000001"})
-    fields = ("artist", "title", "initialkey", "isrc")
+    written = {"artist": "Probe Artist", "title": "01A - 124 - Probe Title", "isrc": "ZZ0000000001"}
+    assert write_tags(path, written)
     # Against the values written: read_tag is now one field of the reader under test.
-    assert read_tags(path, fields) == {
-        "artist": "Probe Artist",
-        "title": "01A - 124 - Probe Title",
-        "initialkey": None,
-        "isrc": "ZZ0000000001",
-    }
+    fields = ("artist", "title", "initialkey", "isrc")
+    assert read_tags(path, fields) == {**written, "initialkey": None}
     assert read_tag(path, "isrc") == "ZZ0000000001"
 
 
@@ -357,8 +337,7 @@ def test_clearing_a_file_with_no_tag_block_writes_nothing(container, suffix):
 
 
 def test_the_analysed_mark_is_spelled_as_files_already_carry_it():
-    """U343: ``analyze run``'s resume mark is on files from its first run, so its
-    spelling in each dialect is pinned; a respelling reads every one as unmeasured."""
+    """U343: the resume mark is on files since its first run; a respelling reads all unmeasured."""
     spec = FIELDS["analyzed"]
     assert (spec.vorbis, spec.id3, spec.mp4) == (
         "cratekitanalyzed",

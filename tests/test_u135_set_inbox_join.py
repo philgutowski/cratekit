@@ -15,22 +15,16 @@ from cratekit.intake import batch_name, native
 from tests import cutover_fixtures
 from tests import test_intake_land_native as land_native
 from tests import test_set_inspiration_playlist as inspiration
+from tests.test_inbox_rotate import _handle
 from tests.test_intake_land_native import _query, _two_acts
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
-from tests.test_set_inspiration_playlist import (
-    BATCH,
-    FOLDER,
-    NAME,
-    WORDS,
-    _land,
-    _make_playlist,
-    _members,
-    _playlists_named,
-    _row_ids_by_name,
-    _soft_delete_playlist,
-    _stage,
-    set_job,
-)
+
+BATCH, FOLDER, NAME = inspiration.BATCH, inspiration.FOLDER, inspiration.NAME
+WORDS, _land, _members = inspiration.WORDS, inspiration._land, inspiration._members
+_make_playlist = inspiration._make_playlist
+_playlists_named, _row_ids_by_name = inspiration._playlists_named, inspiration._row_ids_by_name
+_soft_delete_playlist, _stage = inspiration._soft_delete_playlist, inspiration._stage
+set_job = inspiration.set_job
 
 # The native landing suite's fixtures, on the set suite's machine and seams.
 _platform_seams = land_native._platform_seams
@@ -48,8 +42,7 @@ def _inbox_under(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
         cfg,
         "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND Attribute = 0 "
         "AND rb_local_deleted = 0 AND Name != ? ORDER BY Name",
-        root_id,
-        native.ANALYZE,
+        root_id, native.ANALYZE,
     )
     out: dict[str, list[str]] = {}
     for playlist_id, name in rows:
@@ -170,13 +163,10 @@ def test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joine
     cfg, root_id = native_library
     twin = f"{NAME} 2"
     _make_playlist(cfg, twin, under=root_id)
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
+    with _handle(cfg) as handle:
         folder = rb_writer.ensure_folder(handle, NAME, parent=handle.get_playlist(ID=root_id))
         handle.session.commit()
         folder_id = str(folder.ID)
-    finally:
-        rb_writer.close_db(handle)
     job_id = _set(cfg, silence, ("One",), "One")
     shown = _shown(_land("--set", job_id, *WORDS))
     assert twin in shown["inbox leftovers"]
@@ -199,24 +189,18 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
     assert closed
     kept = closed[-1]
     playlist_id = str(kept.detail[native.BATCH_PLAYLIST_KEY]["id"])
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
+    with _handle(cfg) as handle:
         handle.get_playlist(ID=playlist_id).Name = BATCH
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
     path = session.log_path(kept.session_id, cfg)
     raw = json.loads(path.read_text())
     batch = raw["detail"][native.BATCH_PLAYLIST_KEY]
     batch.pop(native.INBOX_JOB_KEY, None)
     batch["name"] = BATCH
     path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
+    with _handle(cfg) as handle:
         assert native.recorded_inbox_playlist(cfg, handle, job_id, root_id) is None
         leftovers = native.leftover_set_inbox(cfg, handle, job_id, root_id, NAME, keep_id="")
-    finally:
-        rb_writer.close_db(handle)
     assert BATCH in leftovers
     _stage(cfg, silence, "Two")
     shown = _shown([*SECOND, "--set", job_id, *WORDS])
@@ -284,12 +268,8 @@ def test_a_recorded_inbox_playlist_removed_after_the_plan_is_refused_at_the_writ
     removed_id = _make_playlist(cfg, NAME, under=root_id)
     _soft_delete_playlist(cfg, removed_id)
     planned = SimpleNamespace(batch_playlist_id=removed_id, playlist=NAME)
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
-        with pytest.raises(CratekitError) as refused:
-            native._batch_playlist_row(handle, planned, handle.get_playlist(ID=root_id))
-    finally:
-        rb_writer.close_db(handle)
+    with _handle(cfg) as handle, pytest.raises(CratekitError) as refused:
+        native._batch_playlist_row(handle, planned, handle.get_playlist(ID=root_id))
     assert refused.value.cause.reason == "decision-stale"
     assert removed_id in refused.value.cause.message
     assert _members(cfg, removed_id) == []

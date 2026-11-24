@@ -160,14 +160,7 @@ def test_a_made_playlist_filled_costs_its_make_and_its_fill(client, count):
 
 
 @pytest.mark.parametrize(
-    ("held", "removes", "adds"),
-    [
-        (250, 60, 120),
-        (40, 0, 3),
-        (40, 5, 0),
-        (120, 51, 0),
-        (0, 0, 2),
-    ],
+    ("held", "removes", "adds"), [(250, 60, 120), (40, 0, 3), (40, 5, 0), (120, 51, 0), (0, 0, 2)]
 )
 def test_an_existing_playlists_removals_and_additions_cost_what_is_expected(
     client, held, removes, adds
@@ -175,8 +168,7 @@ def test_an_existing_playlists_removals_and_additions_cost_what_is_expected(
     before = ids(1, held)
     client.members["acc"] = list(before)
     account = adapter(client)
-    taking = tuple(before[:removes])
-    adding = tuple(ids(1000, adds))
+    taking, adding = tuple(before[:removes]), tuple(ids(1000, adds))
     if taking:
         account.remove_tracks("acc", taking)
     if adding:
@@ -210,12 +202,10 @@ def test_a_300_track_order_with_adds_and_removals_stays_inside_its_forecast(clie
     before = ids(1, 300)
     client.members["acc"] = list(before)
     account = adapter(client)
-    taking = tuple(before[:20])
-    adding = tuple(ids(1000, 30))
+    taking, adding = tuple(before[:20]), tuple(ids(1000, 30))
     account.remove_tracks("acc", taking)
     account.add_tracks("acc", adding)
-    held = [one for one in before if one not in set(taking)] + list(adding)
-    order = tuple(reversed(held))
+    order = tuple(reversed([one for one in before if one not in set(taking)] + list(adding)))
     account.order_tracks("acc", order)
     account.settled_order("acc")
     expected = pair_calls.account_write(before, adds=adding, removes=taking, order=order)

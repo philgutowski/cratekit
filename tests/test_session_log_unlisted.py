@@ -26,6 +26,8 @@ from tests.test_restore import cfg as cfg  # noqa: PLC0414 - fixture
 
 BATCH = "2026-10-20 Tidal playlists"
 UNLISTED = "the session log exists and cannot be listed by this account"
+NONE_READ = f"{UNLISTED}, so no session recorded in it can be read"
+ONE_UNREAD = "the session log holds 1 entry this build cannot read"
 
 
 def _refuse_listing(monkeypatch, directory: Path) -> None:
@@ -43,18 +45,12 @@ def _refuse_listing(monkeypatch, directory: Path) -> None:
 
 def _record(cfg, state: session.SessionState, *, detail=None, session_id="s-1") -> Path:
     """Write one record and answer the log it is in."""
-    session.write_record(
-        session.SessionRecord(
-            session_id=session_id,
-            workflow=native.WORKFLOW,
-            started="2026-10-20T12:00:00+00:00",
-            state=state,
-            sources={"intake": str(session.SourceState.COMMITTED)},
-            ended="2026-10-20T12:05:00+00:00",
-            detail=detail or {},
-        ),
-        cfg,
+    record = session.SessionRecord(
+        session_id=session_id, workflow=native.WORKFLOW, started="2026-10-20T12:00:00+00:00",
+        state=state, sources={"intake": str(session.SourceState.COMMITTED)},
+        ended="2026-10-20T12:05:00+00:00", detail=detail or {},
     )
+    session.write_record(record, cfg)
     return Path(session.log_dir(cfg))
 
 
@@ -81,17 +77,14 @@ def test_a_log_that_cannot_be_listed_is_the_one_unread_entry_and_its_clause_says
 
 
 def test_the_reporting_reader_refuses_a_log_it_cannot_list(cfg, monkeypatch):
-    """Restore list, restore run and session release read this. A damaged record
-    is skipped, which the twin pins; a log nobody could list leaves none."""
+    """Restore and session release read this: a damaged record is skipped, the unlisted log not."""
     log = _unverified(cfg)
     (log / "2026-10-21-dead.json").write_text("{not json")
     assert [record.session_id for record in session.records(cfg)] == ["s-1"]
     _refuse_listing(monkeypatch, log)
     with pytest.raises(CratekitError) as refused:
         session.records(cfg)
-    assert str(refused.value.cause.message).startswith(
-        f"{UNLISTED}, so no session recorded in it can be read"
-    )
+    assert str(refused.value.cause.message).startswith(NONE_READ)
     assert refused.value.cause.detail == {"log": str(log), "unlisted": True}
 
 
@@ -107,9 +100,7 @@ def test_a_listed_log_is_read_a_missing_one_is_no_record_and_a_file_in_its_place
     assert [record.session_id for record in parsed] == ["s-1"]
     assert unreadable == (log / "2026-10-21-dead.json",)
     assert session.log_unlisted(unreadable, cfg) is False
-    assert session.unread_clause(unreadable, cfg) == (
-        "the session log holds 1 entry this build cannot read"
-    )
+    assert session.unread_clause(unreadable, cfg) == ONE_UNREAD
     held = tmp_path / "log-is-a-file"
     held.write_text("not a directory")
     monkeypatch.setattr(session, "log_dir", lambda _cfg: held)
@@ -197,9 +188,7 @@ def test_an_unreadable_record_keeps_its_own_refusal(cfg):
     ):
         with pytest.raises(CratekitError) as caught:
             asked()
-        assert "the session log holds 1 entry this build cannot read" in (
-            caught.value.cause.message
-        )
+        assert ONE_UNREAD in caught.value.cause.message
         assert caught.value.cause.detail["unlisted"] is False
 
 
@@ -238,10 +227,8 @@ def test_the_rotation_warns_on_a_log_it_could_not_list_or_records_it_could_not_r
     (warning,) = rotate_cli.records_warnings(_rotation_plan(**given))
     assert warning["code"] == rotate_cli.RECORDS_UNREADABLE
     names = "a record in it names" if "log_unlisted" in given else "one of them names"
-    assert (
-        warning["message"]
-        == f"{said}, so a batch {names} was aged from its playlist's creation date"
-    )
+    aged = f"{said}, so a batch {names} was aged from its playlist's creation date"
+    assert warning["message"] == aged
     assert rotate_cli.records_warnings(_rotation_plan()) == []
 
 
@@ -249,9 +236,8 @@ def _refill_warning(**given) -> str:
     plan = refill.RefillPlan(
         pass_name="p", tree_id="t", root_id="1", root_name="INBOX", targets=(), **given
     )
-    (warning,) = [
-        one for one in refill_cli.warnings_of(plan) if one["code"] == refill_cli.RECORDS_UNREADABLE
-    ]
+    warned = refill_cli.warnings_of(plan)
+    (warning,) = [one for one in warned if one["code"] == refill_cli.RECORDS_UNREADABLE]
     return warning["message"]
 
 
@@ -268,9 +254,8 @@ def test_the_check_refuses_an_unknown_landing_naming_the_listing(cfg, monkeypatc
     with pytest.raises(CratekitError) as caught:
         rc.resolve_scope(cfg, None, declared=None, registry=None, pass_name="2026-10-20 sync")
     assert caught.value.cause.reason == "analysis-check-landing-unknown"
-    assert caught.value.cause.message.endswith(
-        "; the session log could not be listed and it may be in it"
-    )
+    said = "; the session log could not be listed and it may be in it"
+    assert caught.value.cause.message.endswith(said)
     assert caught.value.cause.detail["log_unlisted"] is True
 
 
@@ -278,16 +263,13 @@ def test_the_check_refuses_an_unknown_landing_naming_the_listing(cfg, monkeypatc
 
 
 def test_restore_list_and_run_refuse_a_log_they_cannot_list(cfg, monkeypatch):
-    """List exited 0 with no item and no warning over a recorded session, and
-    run said no session was recorded under an id that was."""
+    """List answered nothing over a recorded session, and run said no session had its id."""
     record, _captured = completed_session(cfg)
     listing = exited(drive(["restore", "list"]))
     assert [row["session_id"] for row in listing["data"]["items"]] == [record.session_id]
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
     refused = failed(drive(["restore", "list"]))
-    assert refused["cause"]["message"].startswith(
-        f"{UNLISTED}, so no session recorded in it can be read"
-    )
+    assert refused["cause"]["message"].startswith(NONE_READ)
     refused = failed(drive(["restore", "run", record.session_id]))
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "is recorded under" not in refused["cause"]["message"]
@@ -295,14 +277,12 @@ def test_restore_list_and_run_refuse_a_log_they_cannot_list(cfg, monkeypatch):
 
 def test_the_native_landing_lookups_refuse_a_log_they_cannot_list(cfg, monkeypatch):
     """Both answered no landing, and sync mark sent a person to land again."""
-    log = _record(cfg, session.SessionState.CLOSED, detail={native.PASS_KEY: "2026-10-20 sync"})
+    sync = "2026-10-20 sync"
+    log = _record(cfg, session.SessionState.CLOSED, detail={native.PASS_KEY: sync})
     assert native.landed_passes(cfg) == ("2026-10-20 sync",)
     assert native.landings_of_pass(cfg, "2026-10-20 sync") == ("s-1",)
     _refuse_listing(monkeypatch, log)
-    for lookup in (
-        lambda: native.landed_passes(cfg),
-        lambda: native.landings_of_pass(cfg, "2026-10-20 sync"),
-    ):
+    for lookup in (lambda: native.landed_passes(cfg), lambda: native.landings_of_pass(cfg, sync)):
         with pytest.raises(CratekitError) as refused:
             lookup()
         assert "cannot be listed by this account" in refused.value.cause.message

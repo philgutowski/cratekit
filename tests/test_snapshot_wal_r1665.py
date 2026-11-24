@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ import pytest
 from cratekit.core import config, restore, session, snapshot
 from cratekit.core import rb_writer as W
 from tests import test_rb_writer_db as fixture
+from tests.test_config import valid_data
 from tests.test_restore import _refusal, _refused, acknowledge, gate_seams
 
 
@@ -25,24 +27,17 @@ def cfg(tmp_path, monkeypatch):
     (root / "Music").mkdir(parents=True)
     (root / "db").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-            "backup": {
-                "remote": "remote",
-                "dest": "remote:mirror",
-                "archive_root": "remote:mirror-archive",
-                "db_dest_root": "remote:database-snapshots",
-            },
-        }
-    )
+    database = str(root / "db" / "master.db")
+    library = {"root": str(root), "volume_id": "F1E2-D3C4", "db_path": database}
+    backup = {
+        "remote": "remote", "dest": "remote:mirror", "archive_root": "remote:mirror-archive",
+        "db_dest_root": "remote:database-snapshots",
+    }
+    built = config.from_dict({
+        "schema_version": config.CURRENT_SCHEMA_VERSION, "library": library,
+        "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "full"},
+        "backup": backup,
+    })
     config.save(built)
     config.reset_cache()
     fixture._build_disposable_database(config.state_path("rekordbox_db", built))
@@ -77,21 +72,14 @@ def _database(cfg) -> Path:
 
 
 def _first_id(path: Path) -> str:
-    conn = sqlite3.connect(path)
-    try:
+    with closing(sqlite3.connect(path)) as conn:
         return str(conn.execute("SELECT ID FROM djmdContent ORDER BY ID LIMIT 1").fetchone()[0])
-    finally:
-        conn.close()
 
 
 def _title(path: Path, content_id: str) -> str:
-    conn = sqlite3.connect(path)
-    try:
-        return str(
-            conn.execute("SELECT Title FROM djmdContent WHERE ID = ?", (content_id,)).fetchone()[0]
-        )
-    finally:
-        conn.close()
+    with closing(sqlite3.connect(path)) as conn:
+        query = "SELECT Title FROM djmdContent WHERE ID = ?"
+        return str(conn.execute(query, (content_id,)).fetchone()[0])
 
 
 def _retitle(conn: sqlite3.Connection, content_id: str, title: str) -> None:
@@ -100,23 +88,17 @@ def _retitle(conn: sqlite3.Connection, content_id: str, title: str) -> None:
 
 
 def _retitled(database: Path, content_id: str, title: str) -> None:
-    conn = sqlite3.connect(database)
-    try:
+    with closing(sqlite3.connect(database)) as conn:
         _retitle(conn, content_id, title)
-    finally:
-        conn.close()
 
 
 def _captured_with_the_log_held(cfg) -> tuple[Path, snapshot.Capture]:
     """A capture taken while a live handle holds a row in the log, uncheckpointed."""
     database = _database(cfg)
-    live = sqlite3.connect(database)
-    try:
+    with closing(sqlite3.connect(database)) as live:
         live.execute("PRAGMA wal_autocheckpoint=0")
         _retitle(live, _first_id(database), "only in the log")
         return database, snapshot.capture(cfg)
-    finally:
-        live.close()
 
 
 def _sidecar(path: Path, suffix: str) -> Path:
@@ -156,15 +138,11 @@ def test_a_capture_taken_while_a_handle_holds_the_log_restores_what_it_recorded(
     """The row only the log holds at the capture comes back, through plan and run."""
     database = _database(cfg)
     content = _first_id(database)
-    live = sqlite3.connect(database)
-    try:
+    with closing(sqlite3.connect(database)) as live:
         live.execute("PRAGMA wal_autocheckpoint=0")
         _retitle(live, content, "only in the log")
         assert _sidecar(database, "-wal").stat().st_size > 0, "nothing was left in the log"
-
         captured = snapshot.capture(cfg)
-    finally:
-        live.close()
 
     assert captured.verified, "the real check did not pass a sound capture"
     on_disk = {entry.captured for entry in captured.sources if entry.present}
@@ -232,11 +210,8 @@ def test_the_captured_database_still_verifies_after_the_capture(cfg):
 def test_a_database_in_rollback_journal_mode_captures_and_restores_as_before(cfg):
     """The control: no log, nothing beside the database, nothing changes."""
     database = _database(cfg)
-    conn = sqlite3.connect(database)
-    try:
+    with closing(sqlite3.connect(database)) as conn:
         assert conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0] == "delete"
-    finally:
-        conn.close()
     content = _first_id(database)
 
     captured = snapshot.capture(cfg)
@@ -278,14 +253,10 @@ def test_the_check_changes_nothing_in_the_file_set_it_is_given(cfg, tmp_path, en
 
 def _damage_page(copied: Path, name: str) -> None:
     """Give the b-tree named ``name`` an empty leaf page whose header SQLite rejects."""
-    conn = sqlite3.connect(copied)
-    try:
+    with closing(sqlite3.connect(copied)) as conn:
         (size,) = conn.execute("PRAGMA page_size").fetchone()
-        (root,) = conn.execute(
-            "SELECT rootpage FROM sqlite_master WHERE name = ?", (name,)
-        ).fetchone()
-    finally:
-        conn.close()
+        query = "SELECT rootpage FROM sqlite_master WHERE name = ?"
+        (root,) = conn.execute(query, (name,)).fetchone()
     raw = bytearray(copied.read_bytes())
     raw[(root - 1) * size : root * size] = b"\x0a" + bytes(size - 1)
     copied.write_bytes(bytes(raw))
@@ -351,8 +322,6 @@ def test_the_check_removes_its_throwaway_copy(cfg, tmp_path, monkeypatch):
 
 def _hermetic(tmp_path, monkeypatch):
     """A capture with an ordinary file standing in for the database and both companions."""
-    from tests.test_config import valid_data
-
     library = tmp_path / "hermetic"
     (library / "Music").mkdir(parents=True)
     (library / "db").mkdir(parents=True)
@@ -383,17 +352,40 @@ def test_a_check_that_removes_a_captured_companion_is_not_recorded_verified(
     assert cause.reason == "snapshot-integrity-failed"
 
 
-def test_a_check_that_rewrites_the_captured_database_is_not_recorded_verified(
-    tmp_path, monkeypatch
+def _rewrites(database) -> bool:
+    Path(database).write_bytes(b"a database the check changed")
+    return True
+
+
+def _rewrites_at_its_own_size(database) -> bool:
+    """The modification time is half of the identity, not the size alone."""
+    path = Path(database)
+    status = path.stat()
+    path.write_bytes(bytes(reversed(path.read_bytes())))
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns + 1_000_000_000))
+    return True
+
+
+def _resizes_at_its_own_time(database) -> bool:
+    """The size is the other half of the identity, not the modification time alone."""
+    path = Path(database)
+    status = path.stat()
+    path.write_bytes(path.read_bytes() + b" and more")
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
+    assert path.stat().st_mtime_ns == status.st_mtime_ns
+    return True
+
+
+@pytest.mark.parametrize(
+    "verifier",
+    [_rewrites, _rewrites_at_its_own_size, _resizes_at_its_own_time],
+    ids=["rewrites", "rewrites-at-its-own-size", "resizes-at-its-own-time"],
+)
+def test_a_check_that_changes_the_captured_database_is_not_recorded_verified(
+    tmp_path, monkeypatch, verifier
 ):
     resolved = _hermetic(tmp_path, monkeypatch)
-
-    def rewrites(database):
-        Path(database).write_bytes(b"a database the check changed")
-        return True
-
-    captured = snapshot.capture(resolved, verifier=rewrites)
-
+    captured = snapshot.capture(resolved, verifier=verifier)
     assert not captured.verified
 
 
@@ -428,23 +420,6 @@ def test_a_check_that_leaves_the_capture_alone_is_recorded_verified(tmp_path, mo
     assert captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is True
 
-
-def test_a_check_that_rewrites_the_database_at_its_own_size_is_not_recorded_verified(
-    tmp_path, monkeypatch
-):
-    """The modification time is half of the identity, not the size alone."""
-    resolved = _hermetic(tmp_path, monkeypatch)
-
-    def rewrites(database):
-        path = Path(database)
-        status = path.stat()
-        path.write_bytes(bytes(reversed(path.read_bytes())))
-        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns + 1_000_000_000))
-        return True
-
-    captured = snapshot.capture(resolved, verifier=rewrites)
-
-    assert not captured.verified
 
 
 def test_a_check_that_removes_an_empty_captured_directory_is_not_recorded_verified(
@@ -497,24 +472,6 @@ def test_a_capture_that_cannot_be_walked_around_its_check_is_not_recorded_verifi
     assert not captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is False
 
-
-def test_a_check_that_resizes_the_database_at_its_own_time_is_not_recorded_verified(
-    tmp_path, monkeypatch
-):
-    """The size is the other half of the identity, not the modification time alone."""
-    resolved = _hermetic(tmp_path, monkeypatch)
-
-    def resizes(database):
-        path = Path(database)
-        status = path.stat()
-        path.write_bytes(path.read_bytes() + b" and more")
-        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
-        assert path.stat().st_mtime_ns == status.st_mtime_ns
-        return True
-
-    captured = snapshot.capture(resolved, verifier=resizes)
-
-    assert not captured.verified
 
 
 def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):

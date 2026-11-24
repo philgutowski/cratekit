@@ -6,27 +6,19 @@ can get them. Nothing below names a real volume, person or machine (D1).
 
 from __future__ import annotations
 
-import io
-import json
-
 import pytest
 
-from cratekit import __version__, cli
+from cratekit import __version__
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.skills import cli as skills_cli
 from tests._sync_builders import exited
-
-
-def _drive(argv: list[str]) -> tuple[int, dict]:
-    """Run the REAL dispatcher and return the status with the parsed envelope."""
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    return code, json.loads(out.getvalue())
+from tests.cli_drive import drive
 
 
 def _install(into) -> tuple[int, dict]:
-    return _drive(["skills", "install", "--into", str(into)])
+    """The REAL dispatcher installing into ``into``: the status and the validated envelope."""
+    return drive(["skills", "install", "--into", str(into)])
 
 
 @pytest.fixture
@@ -118,9 +110,8 @@ def test_a_file_a_previous_install_wrote_and_this_build_withdrew_disappears(rein
     into, name = reinstalled
     withdrawn = into / name / "WITHDRAWN.md"
     withdrawn.write_text("shipped by an older build\n")
-    (into / name / skills_cli.STAMP_NAME).write_text(
-        'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md", "WITHDRAWN.md"]\n'
-    )
+    stamp = 'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md", "WITHDRAWN.md"]\n'
+    (into / name / skills_cli.STAMP_NAME).write_text(stamp)
 
     _install(into)
 
@@ -133,9 +124,8 @@ def test_a_file_the_product_never_wrote_survives_a_refresh(reinstalled):
     into, name = reinstalled
     mine = into / name / "MY-NOTES.md"
     mine.write_text("notes I keep beside the skill\n")
-    (into / name / skills_cli.STAMP_NAME).write_text(
-        'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md"]\n'
-    )
+    stamp = 'version = "0.0.0"\nskill = "x"\nfiles = ["SKILL.md"]\n'
+    (into / name / skills_cli.STAMP_NAME).write_text(stamp)
 
     code, envelope = _install(into)
 
