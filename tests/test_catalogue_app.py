@@ -225,6 +225,13 @@ def opened(monkeypatch, gate: Gate, transport: AppTransport | None = None,
     return account, provider_session.catalogue_client(account, gate=gate), transport
 
 
+def recorded(monkeypatch, gate: Gate, transport: AppTransport | None = None,
+             account: AccountClient | None = None) -> tuple[AccountClient, Any, AppTransport]:
+    """``opened`` with both app values recorded first."""
+    record_app()
+    return opened(monkeypatch, gate, transport, account)
+
+
 def on_disk(gate: Gate) -> dict[str, Any]:
     return json.loads(gate.path.read_text(encoding="utf-8"))
 
@@ -237,8 +244,7 @@ def no_sleep(seconds: float) -> None:
 
 
 def test_an_isrc_match_with_the_app_recorded_makes_no_account_call(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate, AppTransport([answer_with(resource("101", "Sun Path"))])
     )
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
@@ -257,8 +263,7 @@ def test_an_isrc_match_with_the_app_recorded_makes_no_account_call(monkeypatch, 
 def test_the_lookup_asks_the_isrc_in_the_accounts_own_country_with_the_names_included(
     monkeypatch, gate
 ):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, account=AccountClient(country_code="nl"))
+    account, app, transport = recorded(monkeypatch, gate, account=AccountClient(country_code="nl"))
 
     app.get_tracks_by_isrc(ISRC)
 
@@ -272,8 +277,7 @@ def test_the_lookup_asks_the_isrc_in_the_accounts_own_country_with_the_names_inc
 
 
 def test_an_isrc_catalogue_lookup_goes_to_the_app_and_intake_missing_with_it(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate, AppTransport([answer_with(resource("101", "Sun Path"))])
     )
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
@@ -285,43 +289,40 @@ def test_an_isrc_catalogue_lookup_goes_to_the_app_and_intake_missing_with_it(mon
     assert gate.spend().app_calls == 2
 
 
-def test_the_token_is_fetched_once_and_reused_until_it_nears_expiry(monkeypatch, gate, clock):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(600)]))
-    app._clock = clock
-
-    app.get_tracks_by_isrc(ISRC)
-    app.get_tracks_by_isrc(ISRC)
-    clock.now += 600 - catalogue_api.TOKEN_MARGIN_S - 1
-    app.get_tracks_by_isrc(ISRC)
-    clock.now += 2
-    app.get_tracks_by_isrc(ISRC)
-
-    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
-    assert len(tokens) == 2
-    assert len(transport.reads_sent()) == 4
+def tokens_sent(transport: AppTransport) -> int:
+    return sum(1 for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL)
 
 
-def test_a_token_with_no_readable_lifetime_serves_one_margin_and_is_asked_again(
-    monkeypatch, gate, clock
+@pytest.mark.parametrize(
+    "lifetime, steps",
+    [
+        (600, [(0, None), (0, None), (600 - catalogue_api.TOKEN_MARGIN_S - 1, None), (2, 2)]),
+        ("soon", [(0, None), (catalogue_api.TOKEN_MARGIN_S - 1, None), (2, 2)]),
+        (True, [(0, None), (2, 1)]),
+        (60, [(0, None), (0, None), (0, 1), (60 / 2 - 1, 1), (2, 2)]),
+        (30, [(0, None), (0, None), (0, 1), (30 / 2 - 1, 1), (2, 2)]),
+    ],
+    ids=["reused-until-it-nears-expiry", "no-readable-lifetime-serves-one-margin",
+         "a-flag-is-no-lifetime-of-one-second", "short-lived-60", "short-lived-30"],
+)
+def test_the_token_is_fetched_once_and_asked_again_only_as_its_life_runs_out(
+    monkeypatch, gate, clock, lifetime, steps
 ):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token("soon")]))
+    """Each step moves the clock, reads once and counts the token requests. A short lived
+    token keeps half its life rather than none."""
+    account, app, transport = recorded(monkeypatch, gate, AppTransport(tokens=[token(lifetime)]))
     app._clock = clock
 
-    app.get_tracks_by_isrc(ISRC)
-    clock.now += catalogue_api.TOKEN_MARGIN_S - 1
-    app.get_tracks_by_isrc(ISRC)
-    clock.now += 2
-    app.get_tracks_by_isrc(ISRC)
-
-    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
-    assert len(tokens) == 2
+    for advance, tokens in steps:
+        clock.now += advance
+        app.get_tracks_by_isrc(ISRC)
+        if tokens is not None:
+            assert tokens_sent(transport) == tokens
+    assert len(transport.reads_sent()) == len(steps)
 
 
 def test_the_answer_is_read_into_the_shape_the_choosing_logic_reads(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate,
         AppTransport([answer_with(
             resource("101", "Sun Path", artists=("a1", "a2"), version="Extended Mix"),
@@ -346,8 +347,7 @@ def test_the_answer_is_read_into_the_shape_the_choosing_logic_reads(monkeypatch,
 
 def test_several_releases_from_the_app_are_chosen_among_by_the_unchanged_rules(monkeypatch, gate):
     """The file's album names the compilation, so the third rule chooses it."""
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch,
         gate,
         AppTransport([answer_with(resource("101", "Sun Path"), resource("102", "Sun Path", album="r2"))]),
@@ -366,8 +366,7 @@ def test_several_releases_from_the_app_are_chosen_among_by_the_unchanged_rules(m
 def test_a_release_whose_artists_did_not_come_back_is_unreadable_and_chooses_nothing(
     monkeypatch, gate
 ):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate,
         AppTransport([answer_with(
             resource("101", "Sun Path"), resource("102", "Sun Path", artists=("missing",)),
@@ -382,8 +381,7 @@ def test_a_release_whose_artists_did_not_come_back_is_unreadable_and_chooses_not
 
 
 def test_an_exact_track_reference_is_read_from_the_app(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate, AppTransport([Answer(200, {"data": resource("555", "Sun Path"), "included": INCLUDED})])
     )
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
@@ -394,8 +392,7 @@ def test_an_exact_track_reference_is_read_from_the_app(monkeypatch, gate):
 
 
 def test_a_track_identifier_that_is_not_a_number_is_never_put_in_a_path(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
 
     with pytest.raises(ValueError):
         app.track("../users/1")
@@ -541,8 +538,7 @@ def test_a_lost_app_value_is_named_in_the_runs_spend_line(monkeypatch):
 
 
 def test_a_404_on_a_track_read_is_no_track_and_is_asked_once(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(404, {})]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([Answer(404, {})]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
 
     assert adapter_.match_track(identity="https://tidal.com/browse/track/555") is None
@@ -551,8 +547,7 @@ def test_a_404_on_a_track_read_is_no_track_and_is_asked_once(monkeypatch, gate):
 
 def test_a_404_on_the_isrc_collection_is_an_outage_and_never_no_track(monkeypatch, gate):
     """An unmatched code answers an empty list, so a 404 means the address moved (U205)."""
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(404, {})]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([Answer(404, {})]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
 
@@ -565,8 +560,7 @@ def test_a_404_on_the_isrc_collection_is_an_outage_and_never_no_track(monkeypatc
 
 
 def test_an_isrc_the_catalogue_files_nothing_under_is_the_empty_answer(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([answer_with()]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([answer_with()]))
 
     assert tidal_catalogue.TidalCatalogue(account, catalogue=app).tracks_for_isrc(ISRC) == ()
 
@@ -580,8 +574,7 @@ def test_an_isrc_the_catalogue_files_nothing_under_is_the_empty_answer(monkeypat
 def test_a_failed_lookup_climbs_the_ladder_and_refuses_rather_than_reading_as_no_match(
     monkeypatch, gate, answer
 ):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([answer]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([answer]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
 
@@ -600,8 +593,7 @@ def test_a_failed_lookup_climbs_the_ladder_and_refuses_rather_than_reading_as_no
 def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
     monkeypatch, gate, status
 ):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(status, {})]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([Answer(status, {})]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
 
     with pytest.raises(CratekitError) as caught:
@@ -614,8 +606,7 @@ def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
     assert cause.detail["credential"] == "catalogue-app-id"
     assert "app credentials" in cause.message
     # Each attempt asked for a fresh token; an expired one is the ordinary reason to refuse.
-    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
-    assert len(tokens) == len(transport.reads_sent()) == 1 + tidal_account.WRITE_RETRIES
+    assert tokens_sent(transport) == len(transport.reads_sent()) == 1 + tidal_account.WRITE_RETRIES
 
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
     with pytest.raises(CratekitError) as again:
@@ -625,8 +616,7 @@ def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
 
 
 def test_a_rejected_app_token_that_was_only_expired_is_answered_on_the_next_rung(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(
+    account, app, transport = recorded(
         monkeypatch, gate, AppTransport([Answer(401, {}), answer_with(resource("101", "Sun Path"))])
     )
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
@@ -636,8 +626,7 @@ def test_a_rejected_app_token_that_was_only_expired_is_answered_on_the_next_rung
 
 @pytest.mark.parametrize("status", [400, 401, 403])
 def test_a_token_service_refusing_the_app_is_a_rejected_app_credential(monkeypatch, gate, status):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[Answer(status, {})]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport(tokens=[Answer(status, {})]))
 
     with pytest.raises(CratekitError) as caught:
         tidal_catalogue.TidalCatalogue(account, catalogue=app).tracks_for_isrc(ISRC)
@@ -650,8 +639,7 @@ def test_a_token_service_refusing_the_app_is_a_rejected_app_credential(monkeypat
     ids=["500", "no-such-address", "not-json", "no-token"],
 )
 def test_a_token_service_that_did_not_answer_is_an_outage_never_an_absence(monkeypatch, gate, answer):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[answer]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport(tokens=[answer]))
 
     with pytest.raises(catalogue_api.CatalogueUnavailable) as caught:
         app.get_tracks_by_isrc(ISRC)
@@ -698,8 +686,7 @@ def test_no_failure_message_carries_the_isrc_or_a_not_found(monkeypatch, gate):
 def test_a_rate_limit_on_the_app_trips_the_shared_gate_and_refuses_the_account_too(
     monkeypatch, gate
 ):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(429, {})]))
+    account, app, transport = recorded(monkeypatch, gate, AppTransport([Answer(429, {})]))
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
 
     with pytest.raises(CratekitError) as caught:
@@ -716,8 +703,7 @@ def test_a_rate_limit_on_the_app_trips_the_shared_gate_and_refuses_the_account_t
 
 
 def test_the_gates_park_raised_inside_the_app_transport_passes_through_as_itself(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
     gate._write(provider_gate._State(tripped_at=gate._clock(), lifts_at=gate._clock() + 900))
 
     with pytest.raises(CratekitError) as caught:
@@ -730,8 +716,7 @@ def test_the_gates_park_raised_inside_the_app_transport_passes_through_as_itself
 
 
 def test_a_label_read_stays_on_the_account_and_is_counted_there(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
 
     assert catalogue.release_artist("777") == "Aurora Bloom"
@@ -743,8 +728,7 @@ def test_a_label_read_stays_on_the_account_and_is_counted_there(monkeypatch, gat
 
 
 def test_a_write_goes_to_the_account_and_never_to_the_app(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
 
     adapter_.add_heart("101")
@@ -786,8 +770,7 @@ def test_a_state_file_written_before_the_identities_loads_with_every_call_the_ac
     assert (spent.account_calls, spent.account_rate_limited, spent.app_calls) == (389_000, 12, 0)
     assert provider_gate.read_spend(gate.path) == spent
 
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
     app.get_tracks_by_isrc(ISRC)
 
     written = on_disk(gate)
@@ -840,8 +823,7 @@ def test_the_spend_line_names_the_account_and_the_app_apart(monkeypatch):
 
 def test_process_spend_carries_the_apps_share(monkeypatch, gate):
     before = provider_gate.process_spend()
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
     app.get_tracks_by_isrc(ISRC)
     account.track("1")
 
@@ -919,8 +901,7 @@ def test_the_app_client_is_built_beside_the_account_opener_and_nowhere_else():
 
 
 def test_the_opener_attaches_the_app_client_under_the_app_identity(monkeypatch, gate):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate)
+    account, app, transport = recorded(monkeypatch, gate)
 
     assert app.request_session._cratekit_gate is gate
     app.get_tracks_by_isrc(ISRC)
@@ -935,39 +916,6 @@ def test_the_live_catalogue_transport_is_refused_in_every_test(monkeypatch, gate
 
 
 # Guards
-
-
-@pytest.mark.parametrize("lifetime", [60, 30])
-def test_a_short_lived_token_keeps_half_its_life_rather_than_none(monkeypatch, gate, clock, lifetime):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(lifetime)]))
-    app._clock = clock
-
-    def tokens() -> int:
-        return sum(1 for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL)
-
-    for _ in range(3):
-        app.get_tracks_by_isrc(ISRC)
-    assert tokens() == 1
-    clock.now += lifetime / 2 - 1
-    app.get_tracks_by_isrc(ISRC)
-    assert tokens() == 1
-    clock.now += 2
-    app.get_tracks_by_isrc(ISRC)
-    assert tokens() == 2
-
-
-def test_a_lifetime_that_is_a_flag_is_not_read_as_one_second(monkeypatch, gate, clock):
-    record_app()
-    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(True)]))
-    app._clock = clock
-
-    app.get_tracks_by_isrc(ISRC)
-    clock.now += 2
-    app.get_tracks_by_isrc(ISRC)
-
-    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
-    assert len(tokens) == 1
 
 
 def test_a_resource_in_the_answer_that_is_not_a_track_is_not_a_candidate(monkeypatch, gate):
