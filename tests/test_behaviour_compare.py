@@ -102,14 +102,19 @@ def _capture(
     return out
 
 
-def _pair(tmp_path: Path, **second) -> tuple[Path, Path]:
-    """Two captures of the same world by two processes; ``second`` changes the second one."""
-    first = _capture(tmp_path / "first")
+def _pair(tmp_path: Path, before=None, **second) -> tuple[Path, Path]:
+    """Two captures by two processes; ``before`` changes the first world, ``second`` the second."""
+    first = _capture(tmp_path / "first", change=before)
     return first, _capture(tmp_path / "second", process=SECOND_PROCESS, **second)
 
 
 def _compare(first: Path, second: Path, *extra: str) -> int:
     return compare.main(["behaviour_compare.py", "compare", str(first), str(second), *extra])
+
+
+def _compared(capsys, first: Path, second: Path, *extra: str, code: int) -> str:
+    assert _compare(first, second, *extra) == code
+    return capsys.readouterr().out
 
 
 def _differences(first: Path, second: Path) -> list[str]:
@@ -124,8 +129,7 @@ def test_two_captures_of_one_world_are_equal_though_two_processes_took_them(tmp_
     """The process id is in a file and in a line of output, and it is each capture's own."""
     first, second = _pair(tmp_path)
     assert json.loads((first / "write/route/process.json").read_text()) == FIRST_PROCESS
-    assert _compare(first, second) == 0
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=0)
     assert "1 scenarios, 2 commands, 8 files and 1 databases compared" in out
     assert out.rstrip().endswith("no difference")
 
@@ -138,8 +142,7 @@ def test_one_changed_byte_in_a_written_file_is_reported_with_its_offset(tmp_path
         path.write_bytes(bytes(data))
 
     first, second = _pair(tmp_path, change=flip)
-    assert _compare(first, second) == 1
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=1)
     assert (
         "write/route: file library/audio.flac: bytes differ, first at offset 7 "
         "(22 bytes and 22)" in out
@@ -152,8 +155,7 @@ def test_a_changed_text_file_shows_the_line_that_changed(tmp_path, capsys):
         (world / "library" / "routed.xml").write_text("<NODE Name='Med'/>\n", encoding="utf-8")
 
     first, second = _pair(tmp_path, change=reword)
-    assert _compare(first, second) == 1
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=1)
     assert "file library/routed.xml: bytes differ, first at offset 12" in out
     assert "    -<NODE Name='Low'/>" in out and "    +<NODE Name='Med'/>" in out
 
@@ -162,8 +164,7 @@ def test_one_changed_character_of_help_is_reported(tmp_path, capsys):
     commands = _commands(SECOND_PROCESS[0])
     commands[0]["stdout"] = commands[0]["stdout"].replace("route commands", "route command")
     first, second = _pair(tmp_path, commands=commands)
-    assert _compare(first, second) == 1
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=1)
     assert "write/route: command 1, `crate route --help`: stdout differs" in out
     assert "    -route commands" in out and "    +route command" in out
     assert out.rstrip().endswith("1 difference(s)")
@@ -173,8 +174,7 @@ def test_a_missing_final_newline_is_a_difference_and_says_how_the_texts_end(tmp_
     commands = _commands(SECOND_PROCESS[0])
     commands[0]["stdout"] = commands[0]["stdout"].rstrip("\n")
     first, second = _pair(tmp_path, commands=commands)
-    assert _compare(first, second) == 1
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=1)
     assert "stdout differs" in out and "second ends" in out
 
 
@@ -182,11 +182,8 @@ def test_one_changed_exit_code_is_reported(tmp_path, capsys):
     commands = _commands(SECOND_PROCESS[0])
     commands[1]["exit"] = 21
     first, second = _pair(tmp_path, commands=commands)
-    assert _compare(first, second) == 1
-    assert (
-        "write/route: command 2, `crate route inbox`: exit code 0 became 21"
-        in capsys.readouterr().out
-    )
+    out = _compared(capsys, first, second, code=1)
+    assert "write/route: command 2, `crate route inbox`: exit code 0 became 21" in out
 
 
 def test_a_changed_line_of_standard_error_is_reported(tmp_path):
@@ -220,14 +217,12 @@ def test_a_private_file_written_world_readable_is_reported(tmp_path, capsys):
 
         return change
 
-    first = _capture(tmp_path / "first", change=private(0o600))
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=private(0o644))
+    first, second = _pair(tmp_path, private(0o600), change=private(0o644))
     assert _differences(first, second) == [
         "write/route: file state/empty: mode 0700 became 0755",
         "write/route: file state/lock.json: mode 0600 became 0644",
     ]
-    assert _compare(first, second) == 1
-    assert capsys.readouterr().out.rstrip().endswith("2 difference(s)")
+    assert _compared(capsys, first, second, code=1).rstrip().endswith("2 difference(s)")
     again = _capture(tmp_path / "third", process=SECOND_PROCESS, change=private(0o600))
     assert _differences(first, again) == []
 
@@ -246,13 +241,11 @@ def test_a_file_that_became_a_directory_and_a_link_that_moved_are_reported(tmp_p
         (world / "library" / "current").unlink()
         (world / "library" / "current").symlink_to("audio.flac")
 
-    first = _capture(
-        tmp_path / "first",
-        change=lambda world: (world / "library" / "current").symlink_to("routed.xml"),
+    first, second = _pair(
+        tmp_path,
+        lambda world: (world / "library" / "current").symlink_to("routed.xml"),
+        change=lambda world: ((world / "library" / "current").symlink_to("routed.xml"), reshape(world)),
     )
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=lambda world: (
-        (world / "library" / "current").symlink_to("routed.xml"), reshape(world)
-    ))
     assert _differences(first, second) == [
         "write/route: file library/current: the link to routed.xml now points to audio.flac",
         "write/route: file state/lock.json: a file became a directory",
@@ -266,8 +259,7 @@ def test_one_missing_row_in_the_dump_is_reported_with_the_row(tmp_path, capsys):
         _database(path, [(1, "a track")])
 
     first, second = _pair(tmp_path, change=drop)
-    assert _compare(first, second) == 1
-    out = capsys.readouterr().out
+    out = _compared(capsys, first, second, code=1)
     assert (
         "write/route: database library/db/master.db: table tracks: 1 row(s) only in the "
         "first capture" in out
@@ -368,8 +360,7 @@ def test_a_database_that_holds_the_same_rows_another_way_is_reported(
     tmp_path, base, changed, said
 ):
     """The review's finding: a dropped key, constraint and index compared as no difference."""
-    first = _capture(tmp_path / "first", change=_rebuilt(base))
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_rebuilt(changed))
+    first, second = _pair(tmp_path, _rebuilt(base), change=_rebuilt(changed))
     assert _differences(first, second) == [
         f"write/route: database library/db/master.db: {line}" for line in said
     ]
@@ -489,8 +480,7 @@ def _broken(junk: bytes):
 
 def test_a_database_neither_capture_can_dump_is_compared_by_its_bytes(tmp_path, capsys):
     """The review's finding: two unreadable databases with one error text compared clean."""
-    first = _capture(tmp_path / "first", change=_broken(b"not pages at all"))
-    same = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_broken(b"not pages at all"))
+    first, same = _pair(tmp_path, _broken(b"not pages at all"), change=_broken(b"not pages at all"))
     other = _capture(tmp_path / "third", process=SECOND_PROCESS, change=_broken(b"other bytes here"))
     dump = json.loads((first / "write/route/databases.json").read_text())
     assert "unreadable" in dump["library/db/master.db"]
@@ -504,8 +494,7 @@ def test_a_database_neither_capture_can_dump_is_compared_by_its_bytes(tmp_path, 
     readable = _capture(tmp_path / "fourth", process=SECOND_PROCESS)
     [found] = _differences(first, readable)
     assert "could not be dumped" in found and "its bytes differ" in found
-    assert _compare(first, other) == 1
-    assert capsys.readouterr().out.rstrip().endswith("1 difference(s)")
+    assert _compared(capsys, first, other, code=1).rstrip().endswith("1 difference(s)")
 
 
 def test_a_database_is_compared_by_its_rows_and_not_by_its_bytes(tmp_path):
@@ -534,8 +523,7 @@ def test_the_dump_reads_rows_still_in_the_wal_and_a_sidecars_bytes_are_not_compa
         connection.commit()
         kept.append(connection)
 
-    first = _capture(tmp_path / "first", change=leave_open)
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=leave_open)
+    first, second = _pair(tmp_path, leave_open, change=leave_open)
     listing = json.loads((first / "write/route/files.json").read_text())
     assert listing["library/db/master.db-wal"]["kind"] == "database sidecar"
     assert listing["library/db/master.db-shm"]["kind"] == "database sidecar"
@@ -560,8 +548,7 @@ def test_a_file_that_only_ends_like_a_sidecar_is_compared_as_a_file(tmp_path):
 
         return change
 
-    first = _capture(tmp_path / "first", change=stray("one"))
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=stray("two"))
+    first, second = _pair(tmp_path, stray("one"), change=stray("two"))
     listing = json.loads((first / "write/route/files.json").read_text())
     assert listing["state/notes-wal"]["kind"] == "file"
     assert listing["state/plain-wal"]["kind"] == "file"
@@ -570,8 +557,7 @@ def test_a_file_that_only_ends_like_a_sidecar_is_compared_as_a_file(tmp_path):
 
 
 def test_a_scenario_in_one_capture_only_is_reported(tmp_path):
-    first = _capture(tmp_path / "first")
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, name="write/other")
+    first, second = _pair(tmp_path, name="write/other")
     assert _differences(first, second) == [
         "write/other: the scenario is only in the second capture",
         "write/route: the scenario is only in the first capture",
@@ -596,11 +582,9 @@ def test_a_long_difference_is_cut_unless_asked_for_whole(tmp_path, capsys):
     commands = _commands(SECOND_PROCESS[0])
     commands[0]["stdout"] = "".join(f"line {n}\n" for n in range(200))
     first, second = _pair(tmp_path, commands=commands)
-    assert _compare(first, second) == 1
-    cut = capsys.readouterr().out
+    cut = _compared(capsys, first, second, code=1)
     assert "more lines" in cut and "+line 199" not in cut
-    assert _compare(first, second, "--full") == 1
-    assert "+line 199" in capsys.readouterr().out
+    assert "+line 199" in _compared(capsys, first, second, "--full", code=1)
 
 
 # The one declared equivalence: a capture's own words
@@ -668,8 +652,7 @@ def test_a_files_inode_written_into_a_row_is_read_past_by_path(tmp_path):
         connection.close()
         (world / "state" / "inode.txt").write_text(f"{inode} and not {other}", encoding="utf-8")
 
-    first = _capture(tmp_path / "first", change=record_inode)
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=record_inode)
+    first, second = _pair(tmp_path, record_inode, change=record_inode)
     one = (tmp_path / "first/world/library/audio.flac").stat().st_ino
     two = (tmp_path / "second/world/library/audio.flac").stat().st_ino
     assert one != two, "the two worlds were handed one inode, so this proves nothing"
@@ -684,8 +667,7 @@ def test_another_files_inode_in_that_row_is_a_difference(tmp_path):
 
         return change
 
-    first = _capture(tmp_path / "first", change=record("audio.flac"))
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=record("routed.xml"))
+    first, second = _pair(tmp_path, record("audio.flac"), change=record("routed.xml"))
     [found] = _differences(first, second)
     assert found.startswith("write/route: file state/inode.txt: bytes differ, first at offset ")
 
@@ -694,8 +676,7 @@ def test_another_files_inode_in_that_row_is_a_difference(tmp_path):
 
 
 def test_captures_taken_under_two_roots_are_refused(tmp_path, capsys):
-    first = _capture(tmp_path / "first")
-    second = _capture(tmp_path / "second", process=SECOND_PROCESS, root=Path("/tmp/another-root"))
+    first, second = _pair(tmp_path, root=Path("/tmp/another-root"))
     assert _compare(first, second) == 2
     assert "taken under different roots" in capsys.readouterr().err
 
@@ -732,23 +713,23 @@ def test_two_scenarios_of_one_name_are_refused_rather_than_merged(tmp_path):
         compare.record_scenario(out, "write/route", [], tmp_path / "first" / "world", [])
 
 
-def test_a_partial_capture_says_so_in_what_was_compared(tmp_path):
+@pytest.mark.parametrize(
+    "key, value, said, unsaid",
+    [
+        ("only", "help", ["the second capture is partial, taken with --only help"],
+         ["first capture is partial"]),
+        ("python", "3.99.0", ["taken with Python", "3.99.0"], []),
+    ],
+    ids=["partial", "another-python"],
+)
+def test_a_capture_partial_or_taken_with_another_python_says_so(tmp_path, key, value, said, unsaid):
     first, second = _pair(tmp_path)
     manifest = json.loads((second / compare.MANIFEST).read_text())
-    manifest["only"] = "help"
+    manifest[key] = value
     (second / compare.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
     _, summary = compare.compare_captures(first, second)
-    assert "the second capture is partial, taken with --only help" in summary
-    assert "first capture is partial" not in summary
-
-
-def test_a_capture_taken_with_another_python_says_so(tmp_path):
-    first, second = _pair(tmp_path)
-    manifest = json.loads((second / compare.MANIFEST).read_text())
-    manifest["python"] = "3.99.0"
-    (second / compare.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
-    _, summary = compare.compare_captures(first, second)
-    assert "taken with Python" in summary and "3.99.0" in summary
+    assert all(line in summary for line in said)
+    assert not any(line in summary for line in unsaid)
 
 
 # capture: what it refuses before anything runs
@@ -756,8 +737,6 @@ def test_a_capture_taken_with_another_python_says_so(tmp_path):
 
 @pytest.fixture
 def no_run(monkeypatch):
-    """Fail the test if a capture gets as far as starting its scenario run."""
-
     def refused(*args, **kwargs):
         raise AssertionError(f"the capture started a process: {args}")
 
@@ -902,35 +881,29 @@ def test_the_source_a_capture_places_is_marked_as_its_own(checkout, tmp_path):
     assert (target / compare.LEFT_BY_A_CAPTURE).is_file()
 
 
-def test_a_failed_run_marks_the_root_it_leaves_behind(tmp_path, monkeypatch, capsys):
-    root = tmp_path / "root"
-
-    def failed(command, **_):
-        (root / "test_a_scenario0").mkdir(parents=True)
-        return subprocess.CompletedProcess(command, 1, "1 failed", "")
-
-    monkeypatch.setattr(compare.subprocess, "run", failed)
-    assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 1
-    assert (root / compare.LEFT_BY_A_CAPTURE).is_file()
-    assert f"is left under {root} for reading" in capsys.readouterr().out
-    # So the next capture may empty it.
-    assert compare.take_root(root).name == "root-holder"
+def _failed(command, **_):
+    return subprocess.CompletedProcess(command, 1, "1 failed", "")
 
 
-def test_a_run_stopped_at_its_timeout_leaves_a_root_the_next_capture_may_take(
-    tmp_path, monkeypatch, capsys
+def _hung(command, *, timeout, **_):
+    raise subprocess.TimeoutExpired(command, timeout)
+
+
+@pytest.mark.parametrize("ending", [_failed, _hung], ids=["failed", "stopped-at-its-timeout"])
+def test_a_run_that_failed_or_hung_marks_the_root_it_leaves_for_the_next_capture(
+    tmp_path, monkeypatch, capsys, ending
 ):
     """The review's finding on the refusal: it fired on a root a capture itself left."""
     root = tmp_path / "root"
 
-    def hung(command, *, timeout, **_):
+    def run(command, **kwargs):
         (root / "test_a_scenario0").mkdir(parents=True)
-        raise subprocess.TimeoutExpired(command, timeout)
+        return ending(command, **kwargs)
 
-    monkeypatch.setattr(compare.subprocess, "run", hung)
+    monkeypatch.setattr(compare.subprocess, "run", run)
     assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 1
-    assert f"is left under {root} for reading" in capsys.readouterr().out
     assert (root / compare.LEFT_BY_A_CAPTURE).is_file()
+    assert f"is left under {root} for reading" in capsys.readouterr().out
     assert compare.take_root(root).name == "root-holder"
 
 
@@ -960,18 +933,23 @@ def test_a_holder_that_names_no_process_is_taken_over(tmp_path):
     assert compare.take_root(root).read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
 
-def test_a_capture_releases_its_root_when_its_run_fails(tmp_path, monkeypatch, capsys):
-    """The run exits nonzero and records nothing: no manifest, and the next capture may start."""
+@pytest.mark.parametrize(
+    "exit_code, stdout", [(1, "a scenario failed"), (0, "")], ids=["run-failed", "run-passed"]
+)
+def test_a_run_that_records_nothing_is_no_capture_and_releases_its_root(
+    tmp_path, monkeypatch, capsys, exit_code, stdout
+):
+    """No manifest, and the next capture may start."""
     monkeypatch.setattr(
         compare.subprocess,
         "run",
-        lambda command, **_: subprocess.CompletedProcess(command, 1, "a scenario failed", ""),
+        lambda command, **_: subprocess.CompletedProcess(command, exit_code, stdout, ""),
     )
     root = tmp_path / "root"
     out = tmp_path / "out"
     assert _capture_main("--out", str(out), "--root", str(root)) == 1
     said = capsys.readouterr().out
-    assert "exited 1 with 0 scenarios recorded" in said and "a scenario failed" in said
+    assert f"exited {exit_code} with 0 scenarios recorded" in said and stdout in said
     assert not (out / compare.MANIFEST).exists()
     assert not root.with_name("root-holder").exists()
     assert not compare.source_directory(root).exists()
@@ -1008,68 +986,49 @@ def _passing_run(out: Path, tmp_path: Path, expected):
     return run
 
 
-def test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open(
-    tmp_path, monkeypatch, capsys
-):
-    """The review's finding: a skipped scenario passed the run and the capture closed short."""
+def _capture_passing(monkeypatch, tmp_path: Path, expected, *files: str, extra=()) -> int:
     out = tmp_path / "out"
-    monkeypatch.setattr(
-        compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route", "write/skipped"])
-    )
-    checkout = _checkout(tmp_path, "write.py")
-    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
-    said = capsys.readouterr().out
-    assert "exited 0 with 1 scenarios recorded; write/skipped left no record" in said
-    assert not (out / compare.MANIFEST).exists()
+    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, expected))
+    argv = ("--out", str(out), "--root", str(tmp_path / "root"), *extra)
+    return _capture_in(_checkout(tmp_path, *files), *argv)
 
 
-def test_a_scenario_file_that_collected_nothing_keeps_the_capture_open(
-    tmp_path, monkeypatch, capsys
+@pytest.mark.parametrize(
+    "expected, files, said",
+    [
+        (["write/route", "write/skipped"], ["write.py"],
+         "exited 0 with 1 scenarios recorded; write/skipped left no record"),
+        (["write/route"], ["write.py", "analysis.py"],
+         "every scenario of tests/behaviour/analysis.py (none of it was collected or "
+         "recorded) left no record"),
+        (None, ["write.py"], "every scenario (the run"),
+        ({"write/route": True}, ["write.py"], "every scenario (the run"),
+    ],
+    ids=["a-scenario-left-no-record", "a-file-collected-nothing", "no-list", "not-a-list"],
+)
+def test_a_run_that_cannot_show_every_scenario_recorded_keeps_the_capture_open(
+    tmp_path, monkeypatch, capsys, expected, files, said
 ):
-    """A scenario file skipped as it was imported collects nothing, and is caught."""
-    out = tmp_path / "out"
-    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
-    checkout = _checkout(tmp_path, "write.py", "analysis.py")
-    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
-    said = capsys.readouterr().out
-    assert (
-        "every scenario of tests/behaviour/analysis.py (none of it was collected or "
-        "recorded) left no record" in said
-    )
-    assert not (out / compare.MANIFEST).exists()
+    """The review's finding: a skipped scenario passed the run and the capture closed short.
+    A file skipped as it was imported collects nothing; with no list of what was collected,
+    or one that is not a list, the scenarios cannot be counted, which is not all."""
+    assert _capture_passing(monkeypatch, tmp_path, expected, *files) == 1
+    assert said in capsys.readouterr().out
+    assert not (tmp_path / "out" / compare.MANIFEST).exists()
 
 
 def test_a_capture_asked_for_part_of_the_scenarios_owes_no_record_for_the_other_files(
     tmp_path, monkeypatch
 ):
-    out = tmp_path / "out"
-    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
-    checkout = _checkout(tmp_path, "write.py", "analysis.py")
-    argv = ("--out", str(out), "--root", str(tmp_path / "root"), "--only", "route")
-    assert _capture_in(checkout, *argv) == 0
-    assert json.loads((out / compare.MANIFEST).read_text())["only"] == "route"
-
-
-@pytest.mark.parametrize("expected", [None, {"write/route": True}])
-def test_a_run_that_did_not_list_what_it_collected_is_not_a_capture(
-    tmp_path, monkeypatch, capsys, expected
-):
-    """No list, or one that is not a list: the scenarios cannot be counted, which is not all."""
-    out = tmp_path / "out"
-    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, expected))
-    checkout = _checkout(tmp_path, "write.py")
-    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
-    assert "every scenario (the run" in capsys.readouterr().out
-    assert not (out / compare.MANIFEST).exists()
+    only = ("--only", "route")
+    assert _capture_passing(monkeypatch, tmp_path, ["write/route"], "write.py", "analysis.py", extra=only) == 0
+    assert json.loads((tmp_path / "out" / compare.MANIFEST).read_text())["only"] == "route"
 
 
 def test_a_run_that_recorded_everything_it_collected_is_closed(tmp_path, monkeypatch, capsys):
-    out = tmp_path / "out"
-    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
-    checkout = _checkout(tmp_path, "write.py")
-    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 0
+    assert _capture_passing(monkeypatch, tmp_path, ["write/route"], "write.py") == 0
     assert "captured 1 scenarios and 2 commands from the working tree" in capsys.readouterr().out
-    assert json.loads((out / compare.MANIFEST).read_text())["scenarios"] == ["write/route"]
+    assert json.loads((tmp_path / "out" / compare.MANIFEST).read_text())["scenarios"] == ["write/route"]
 
 
 def test_the_scenario_run_is_handed_a_clean_environment_and_one_hash_seed(
@@ -1143,18 +1102,6 @@ def test_a_run_that_failed_with_every_record_written_is_not_a_capture(
     assert "exited 1 with 1 scenarios recorded, so" in said and "left no record" not in said
     assert not (out / compare.MANIFEST).exists()
     assert compare.unrecorded(out, compare.recorded_scenarios(out), ["tests/behaviour/write.py"]) == []
-
-
-def test_a_run_that_passes_and_records_nothing_is_not_a_capture(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(
-        compare.subprocess,
-        "run",
-        lambda command, **_: subprocess.CompletedProcess(command, 0, "", ""),
-    )
-    out = tmp_path / "out"
-    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
-    assert "exited 0 with 0 scenarios recorded" in capsys.readouterr().out
-    assert not (out / compare.MANIFEST).exists()
 
 
 def test_the_scenario_run_is_serial_in_the_root_and_imports_the_placed_source(tmp_path):
@@ -1237,8 +1184,20 @@ def test_a_revision_git_does_not_know_is_refused(checkout, tmp_path):
 # The stage: roots, pins and the refusal inside the run
 
 
-def test_a_config_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp_path):
-    """Asked of the product's own resolver, so it is where a write would land."""
+@pytest.mark.parametrize(
+    "variable, outside, leaf, refused",
+    [
+        ("ENV_CONFIG_DIR", True, "a-real-config", "the configuration directory is .*a-real-config"),
+        ("ENV_STATE_DIR", True, "a-real-state", "the state directory is .*a-real-state"),
+        ("ENV_CONFIG_DIR", False, "config", "not inside the scenario's own directory"),
+    ],
+    ids=["config-outside-temporary", "state-outside-temporary", "in-another-tests-directory"],
+)
+def test_a_root_outside_the_scenarios_own_directory_is_refused(
+    monkeypatch, tmp_path, variable, outside, leaf, refused
+):
+    """Asked of the product's own resolver, so it is where a write would land. Temporary is
+    not enough: a scenario writes only under its own directory."""
     from cratekit.core import config
 
     scenario = tmp_path / "scenario"
@@ -1246,29 +1205,9 @@ def test_a_config_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp
     monkeypatch.setenv(config.ENV_STATE_DIR, str(scenario / "state"))
     stage_fixtures.refuse_a_root_outside(scenario)
 
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(OUTSIDE / "a-real-config"))
-    with pytest.raises(compare.Refusal, match="the configuration directory is .*a-real-config"):
-        stage_fixtures.refuse_a_root_outside(scenario)
-
-
-def test_a_state_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp_path):
-    from cratekit.core import config
-
-    scenario = tmp_path / "scenario"
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(scenario / "config"))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(OUTSIDE / "a-real-state"))
-    with pytest.raises(compare.Refusal, match="the state directory is .*a-real-state"):
-        stage_fixtures.refuse_a_root_outside(scenario)
-
-
-def test_a_root_in_another_tests_temporary_directory_is_refused(monkeypatch, tmp_path):
-    """Temporary is not enough: a scenario writes only under its own directory."""
-    from cratekit.core import config
-
-    scenario = tmp_path / "scenario"
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "elsewhere" / "config"))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(scenario / "state"))
-    with pytest.raises(compare.Refusal, match="not inside the scenario's own directory"):
+    elsewhere = OUTSIDE if outside else tmp_path / "elsewhere"
+    monkeypatch.setenv(getattr(config, variable), str(elsewhere / leaf))
+    with pytest.raises(compare.Refusal, match=refused):
         stage_fixtures.refuse_a_root_outside(scenario)
 
 
