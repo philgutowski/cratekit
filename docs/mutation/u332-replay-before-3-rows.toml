@@ -433,6 +433,7 @@ source = { table = "r664.json", id = "E4_title_not_split" }
 description = "Skip split_title on the chosen title, so a version stays inside the recording token"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '''
     title, version = split_title(spelled)
@@ -548,6 +549,7 @@ source = { table = "u254.json", id = "M20_mark_unlocked" }
 description = "mark_applied: take no lock around the read, the choice and the write"
 file = "src/cratekit/adopt/apply.py"
 surface = "user"
+moved = "Same with statement in mark_applied; U298 renamed config._exclusive_lock to exclusive_lock"
 tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
 old = '''
     with config.exclusive_lock(lock_path(cfg)):
@@ -562,6 +564,7 @@ source = { table = "r731-b.json", id = "M14_gate_without_the_count" }
 description = "the gate's facts no longer carry the withheld count split by kind"
 file = "src/cratekit/adopt/apply_cli.py"
 surface = "user"
+moved = "the gate's facts are now read through the _FACTS key list; dropping withheld_by_placement from it is the same omission"
 tests = ["tests/test_adopt_workers.py", "tests/test_adopt_apply_cli.py"]
 old = '''
     "placements",
@@ -757,6 +760,7 @@ source = { table = "r759.json", id = "A1_deadline_asked_only_at_the_end" }
 description = "the read deadline is asked only after the stream has ended, so a trickling file is read to its end before the timeout is raised"
 file = "src/cratekit/adopt/revert_changed.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/adopt/revert_changed.py, was in src/cratekit/adopt/revert.py"
 tests = ["tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"]
 old = '''
                 if not block:
@@ -859,6 +863,7 @@ source = { table = "u90-a.json", id = "A4_max_coefficient" }
 description = "The score range's top moved from 100 to 1000"
 file = "src/cratekit/analysis/calibrate.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/analysis/calibrate.py, was in src/cratekit/analysis/cli.py"
 tests = ["tests/test_analysis_workers.py"]
 old = 'VOCAL_SCORE_MAX = 100.0'
 new = 'VOCAL_SCORE_MAX = 1000.0'
@@ -869,6 +874,7 @@ source = { table = "u90-b.json", id = "B6_hand_detail_drops_old_cut" }
 description = "The hand path's check detail stops naming the cut it replaced"
 file = "src/cratekit/analysis/calibrate.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/analysis/calibrate.py, was in src/cratekit/analysis/cli.py"
 tests = ["tests/test_analysis_workers.py"]
 old = 'f"cut set by hand at {cut:g}, written to {target}; {before}; "'
 new = 'f"cut set by hand at {cut:g}, written to {target}; "'
@@ -879,6 +885,7 @@ source = { table = "u94-a.json", id = "S4_accept_flag_dead" }
 description = "analyze_calibrate: read --accept-partial as always false, so the flag the refusal names does nothing"
 file = "src/cratekit/analysis/calibrate.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/analysis/calibrate.py, was in src/cratekit/analysis/cli.py"
 tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
 old = '    accepted = bool(ctx.args.accept_partial)'
 new = '    accepted = False'
@@ -889,6 +896,7 @@ source = { table = "u94-b.json", id = "W5_warning_without_a_write" }
 description = "analyze_calibrate: warn about what was written when neither half wrote anything"
 file = "src/cratekit/analysis/calibrate.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/analysis/calibrate.py, was in src/cratekit/analysis/cli.py"
 tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
 old = 'if partial is not None and wrote else ())'
 new = 'if partial is not None else ())'
@@ -899,6 +907,7 @@ source = { table = "u94-c.json", id = "N5_note_m_is_the_sample" }
 description = "analyze_calibrate: record the sample size as M, so the note reads N of N and hides how much of the library was fitted"
 file = "src/cratekit/analysis/calibrate.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/analysis/calibrate.py, was in src/cratekit/analysis/cli.py"
 tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
 old = '        _calibrate_energy(cfg, folder, sampled, len(paths), left_out),'
 new = '        _calibrate_energy(cfg, folder, sampled, len(sampled), left_out),'
@@ -1279,6 +1288,7 @@ source = { table = "u42-author.json", id = "R1_planned_marker_returns" }
 description = "Restore planned_in on acquire.download, which is the state that hid rows 6 and 7"
 file = "src/cratekit/cli/registry_pipeline.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
 tests = ["tests/test_acquire_cli.py", "tests/test_cutover_parity.py", "tests/test_cli_contract.py"]
 old = '''
         destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
@@ -1400,6 +1410,7 @@ source = { table = "u197-m6.json", id = "M6_composite" }
 description = "What the default does hold: default to the alternative, a name the fold leaves alone, so a fresh configuration selects streamrip"
 file = "src/cratekit/core/config_schema.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/config_schema.py, was in src/cratekit/core/config.py"
 tests = ["tests/test_config.py", "tests/test_adapter_contract.py", "tests/test_doctor.py"]
 old = '    adapter: str = "vendored"'
 new = '    adapter: str = "streamrip"'
@@ -1420,6 +1431,7 @@ source = { table = "u57-recognition-and-items.json", id = "C12_stray_file_sorted
 description = "The report reader sorts every json file by its stem as a number again"
 file = "src/cratekit/core/jobs.py"
 surface = "user"
+moved = "U298 deleted core/artifacts.py and folded its committed reader into core.jobs.Artifacts.committed, whose default order is by_ordinal; the filter to ordinal named files before the numeric sort is that function's, and dropping it lets a stray json file reach int() as before"
 tests = ["tests/intake/test_workers.py"]
 old = '    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))'
 new = '    return sorted(paths, key=lambda item: int(item.stem))'
@@ -1632,6 +1644,7 @@ source = { table = "r925.json", id = "S5_unwritten_note_names_no_job_show" }
 description = "The unwritten note no longer names the verb that lists the tracks"
 file = "src/cratekit/intake/cli_identify.py"
 surface = "user"
+moved = "the same unwritten tracklist note of _set_tracklist, which U307 moved from cli.py to cli_identify.py, one level less indented"
 tests = ["tests/intake/test_workers.py"]
 old = '''
 f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
@@ -1644,6 +1657,7 @@ source = { table = "u104-d.json", id = "C3_detail_renamed" }
 description = "Rename the message only and leave the scratch path in the refusal's detail"
 file = "src/cratekit/intake/cli_identify.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/intake/cli_identify.py, was in src/cratekit/intake/cli.py"
 tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
 old = '        key: held.ref if value == str(held.path) else value'
 new = '        key: value'
@@ -1812,6 +1826,7 @@ source = { table = "r356-b.json", id = "B6_export_plan_drops_the_reason" }
 description = "An unmatched export row never carries what the account said about it"
 file = "src/cratekit/modules/outbound/export.py"
 surface = "user"
+moved = "the reason export.plan gives an unmatched row moved out of the Unmatched constructor's keyword arguments into a local reason the row is built from on the next line; the same account reason is dropped for the bare word"
 tests = ["tests/modules/test_outbound.py"]
 old = '''
             reason = account.unmatched_reason(track.identity) or "unmatched"
@@ -1826,6 +1841,7 @@ source = { table = "r229.json", id = "L13_a_mismatch_is_never_said" }
 description = "A record under the crate's own path written from other music is reported as an ordinary update"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '        mismatched = bool(written) and not _still_carries(written, wanted)'
 new = '        mismatched = False'
@@ -1836,6 +1852,7 @@ source = { table = "r229.json", id = "L4_an_eighth_of_the_crate" }
 description = "The crate side bound loosens from a quarter to an eighth, so a crate one past quadrupled is recognised"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = 'GROWN_DENOMINATOR = 4'
 new = 'GROWN_DENOMINATOR = 8'
@@ -1995,6 +2012,7 @@ source = { table = "r1761.json", id = "P5_empty_root_passes" }
 description = "_unproven: a root holding nothing at all is not refused, so with no history it runs as a new library"
 file = "src/cratekit/modules/tools/backup_proof.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
 old = '''
     if not anything:
@@ -2046,6 +2064,7 @@ source = { table = "r154-b.json", id = "B5_veto_not_select" }
 description = "Read only the newest folder, which is the first cut: a shared root refuses whenever the other library backed up last"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py"]
 old = '    newest = names[::-1][:NEWEST_WALK]'
 new = '    newest = names[::-1][:1]'
@@ -2056,6 +2075,7 @@ source = { table = "r338-a.json", id = "B8_contained_share_copied_twice" }
 description = "_outside_share: read every layout as the outside one, so a share the mirror already carries is synced a second time"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
@@ -2072,6 +2092,7 @@ source = { table = "r338-c.json", id = "C1_absent_share_never_said" }
 description = "absent_analysis_share: never warn, so an outside share that is not a directory reads as a share that was carried"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     share = _outside_share(cfg)
@@ -2088,6 +2109,7 @@ source = { table = "r367.json", id = "G5_absent_sidecars_are_not_recorded" }
 description = "the plan copies nothing extra and also does not name what it skipped"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '''
             absent.append(sidecar.suffix)
@@ -2100,6 +2122,7 @@ source = { table = "r388-a.json", id = "M6_root_listing_message_reworded" }
 description = "Reword could not be listed to could not be read in the root listing refusal"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = 'snapshots under {root} could not be listed, so '
 new = 'snapshots under {root} could not be read, so '
@@ -2154,6 +2177,7 @@ source = { table = "u281.json", id = "S5_title_not_named_cloudflare" }
 description = "unread_outcome: never name a Cloudflare title page a Cloudflare challenge"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
 old = '        named = f", a {CLOUDFLARE_CHALLENGE}" if _CLOUDFLARE_TITLE.match(title) else ""'
 new = '        named = ""'
@@ -2245,6 +2269,7 @@ source = { table = "r758-a.json", id = "T4_target_can_be_removed_from" }
 description = "a move that names its own target among its removals takes the track out of the target"
 file = "src/cratekit/write/trees.py"
 surface = "user"
+moved = "the leavers are now gathered in the step _proven_leavers, one level less indented, the same test"
 tests = ["tests/test_adopt_move.py"]
 old = '''
             if destination != move.target:
