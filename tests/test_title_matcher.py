@@ -1011,7 +1011,8 @@ def test_discogs_takes_the_track_that_writes_the_same_split(tmp_path, silence, t
 @pytest.mark.parametrize(
     ("name", "other"),
     UNTAGGED_NOT_THE_TITLE + [
-        (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal"), (f"{ARTIST} - Sunrise Mood Extended Mix", ARTIST)
+        (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", ARTIST),
     ],
 )
 def test_an_untagged_file_in_the_shape_writes_no_genre_off_a_row_that_reads_it_one_way(
