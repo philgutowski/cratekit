@@ -2,9 +2,7 @@
 
 Jazz was a style sub of the non electronic folder and is promoted the way
 Hip-Hop was (U118), through a former place, its keyword rule moving with it by
-the author's naming. Held here: where the words route and tag, the declaration,
-what competes, adoption, the move plan, and the verb against a disposable
-library with real tags. Identifiers are derived from the shipped declarations,
+the author's naming. Identifiers are derived from the shipped declarations,
 except the genre words and folder names, which are the author's.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
@@ -219,12 +217,9 @@ def test_a_jazz_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(leve
 
 
 def test_a_partial_jazz_match_already_in_rock_is_filed_in_jazz_and_stays_in_rock():
-    """The cost of the moved keyword rule, pinned so a fix shows up here.
-
-    "Acid Jazz" once filed in Rock now routes to Jazz, where Rock does not
-    compete, so it sits in both folders and the move plans nothing. R-804 named
-    this cost for R&B; the residual U133 filed carries it for Jazz.
-    """
+    """The cost of the moved keyword rule, pinned so a fix shows up here: Rock does not
+    compete in Jazz, so the track sits in both folders. R-804 named this cost for R&B;
+    the residual U133 filed carries it for Jazz."""
     rock = NONELEC.sub_by_source.default
     held = {NONELEC.id: {"t": (rock,)}}
     tracks = [_scanned("t", energy=5, genre="Acid Jazz")]
@@ -262,13 +257,7 @@ A_SET = ("SETS", "Late Lounge")
 
 
 def _seeded_place(place: str) -> tuple[str, str]:
-    if place == "old":
-        return OLD_JAZZ
-    if place == "vox":
-        return NONELEC_VOX
-    if place == "set":
-        return A_SET
-    return (NONELEC.display, place)
+    return {"old": OLD_JAZZ, "vox": NONELEC_VOX, "set": A_SET}.get(place, (NONELEC.display, place))
 
 
 @pytest.fixture
