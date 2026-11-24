@@ -1659,6 +1659,20 @@ def retag_queued(folder: Path) -> str:
     return approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)[1]
 
 
+def retag_ready(folder: Path, silence: Path, monkeypatch, names: str, searcher) -> str:
+    """Catch-all files under ``names``, ``searcher`` bound, and the retag confirmed and queued."""
+    coarses(folder, silence, names)
+    bound(monkeypatch, searcher)
+    return retag_queued(folder)
+
+
+def retagged(folder: Path, silence: Path, monkeypatch, names: str, searcher):
+    """``retag_ready``, and the job driven as its driver would."""
+    job_id = retag_ready(folder, silence, monkeypatch, names, searcher)
+    code, envelope = drive(resume_argv(job_id))
+    return job_id, code, envelope
+
+
 def selected(folder: Path) -> list[Path]:
     """What a fresh walk of the folder would take, as it stands right now."""
     return [candidate.path for candidate in retag.select(folder, declared=TAXONOMY).candidates]
@@ -1855,9 +1869,7 @@ def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
     repair_on, folder, silence, monkeypatch
 ):
     """R15: refused under the shared ``source-missing`` (R-251), not an internal error."""
-    coarses(folder, silence, "ab")
-    bound(monkeypatch, deep("a"))
-    job_id = retag_queued(folder)
+    job_id = retag_ready(folder, silence, monkeypatch, "ab", deep("a"))
 
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job_id))
@@ -1877,12 +1889,10 @@ def test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue(
     repair_on, folder, silence, monkeypatch
 ):
     """A catch-all answer goes to the review queue, opened per item on the frozen configuration."""
-    path = coarse(folder, silence, "a")
+    path = folder / "a.flac"
     other = TAXONOMY.fallback.too_coarse_as_source[2]
-    bound(monkeypatch, answering({"a": hit("some vendor genre", other)}))
-    job_id = retag_queued(folder)
-
-    code, resumed = drive(resume_argv(job_id))
+    vendor = answering({"a": hit("some vendor genre", other)})
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "a", vendor)
 
     assert code == int(ExitCode.OK), resumed
     assert tags.read_genre_from_file(path) == CATCH_ALL
@@ -1903,23 +1913,16 @@ def test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked(
     """The verdict is read before the catalogue is asked, seen only as no search."""
     path = coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
-    _first_run, first_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    drive(resume_argv(first_job))
+    drive(resume_argv(retag_queued(folder)))
 
     with review.open_store(repair_on) as store:
         item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
         chosen = next(option for option in item.options if option.summary == SPECIFIC)
-        review.resolve(
-            store,
-            item.item_id,
-            review.Verdict.ACCEPTED,
-            option=chosen.option_id,
-            actor="a-person",
-        )
+        accepted = review.Verdict.ACCEPTED
+        review.resolve(store, item.item_id, accepted, option=chosen.option_id, actor="a-person")
 
     second = bound(monkeypatch, answering({"a": hit("deep house", "Techno")}))
-    _second_run, second_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    code, resumed = drive(resume_argv(second_job))
+    code, resumed = drive(resume_argv(retag_queued(folder)))
 
     assert code == int(ExitCode.OK), resumed
     assert second.asked == []
@@ -1933,11 +1936,8 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
     repair_on, folder, silence, monkeypatch
 ):
     """R19x: the unanswered item fails, its neighbours stay done, the job carries a cause."""
-    coarses(folder, silence, "abc")
-    bound(monkeypatch, raising_on(deep("abc"), "b"))
-    job_id = retag_queued(folder)
-
-    code, resumed = drive(resume_argv(job_id))
+    failing = raising_on(deep("abc"), "b")
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "abc", failing)
 
     assert code != int(ExitCode.OK), resumed
     assert item_states(job_id) == {
@@ -1953,10 +1953,8 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
 
 def test_a_retried_retag_drives_only_the_item_that_failed(repair_on, folder, silence, monkeypatch):
     """R19x: counted by searcher calls, since re-asking leaves the same states."""
-    coarses(folder, silence, "abc")
-    bound(monkeypatch, raising_on(deep("abc"), "b"))
-    job_id = retag_queued(folder)
-    drive(resume_argv(job_id))
+    failing = raising_on(deep("abc"), "b")
+    job_id, _code, _ = retagged(folder, silence, monkeypatch, "abc", failing)
 
     second = bound(monkeypatch, deep("abc"))
     with jobs.open_store() as store:
@@ -1976,11 +1974,7 @@ def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recove
     repair_on, folder, silence, monkeypatch
 ):
     """R-185 measured: the row keeps the catch-all, and only the artifact can recover it."""
-    coarses(folder, silence, "ab")
-    bound(monkeypatch, raising_on(answering({"a": hit("deep house", SPECIFIC)}), "b"))
-    job_id = retag_queued(folder)
-
-    drive(resume_argv(job_id))
+    job_id, _code, _ = retagged(folder, silence, monkeypatch, "ab", raising_on(deep("a"), "b"))
 
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     sources = {
@@ -2017,23 +2011,15 @@ def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
     repair_on, folder, silence, monkeypatch
 ):
     """R-185: the warning names the row's reload and the folder."""
-    coarses(folder, silence, "ab")
-    bound(monkeypatch, deep("ab"))
-    job_id = retag_queued(folder)
-
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "ab", deep("ab"))
 
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["retag"]["corrected"] == 2, resumed
     assert retag_cli.LIBRARY_ROW_STALE in warning_codes(resumed), resumed
-    told = next(
-        warning
-        for warning in resumed["warnings"]
-        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
-    )
-    assert str(folder) in told["message"], told
-    assert "`crate tag rows`" in told["message"], (
-        f"the run named a disagreement and no act to settle it: {told['message']!r}"
+    told = warned_all(resumed, retag_cli.LIBRARY_ROW_STALE)[0]
+    assert str(folder) in told, told
+    assert "`crate tag rows`" in told, (
+        f"the run named a disagreement and no act to settle it: {told!r}"
     )
 
 
@@ -2041,11 +2027,7 @@ def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
     repair_on, folder, silence, monkeypatch
 ):
     """The zero half, driven through a decline so the resume path is reached."""
-    coarses(folder, silence, "ab")
-    bound(monkeypatch, answering({}))
-    job_id = retag_queued(folder)
-
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "ab", answering({}))
 
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["retag"]["corrected"] == 0, resumed
@@ -2057,11 +2039,8 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
     repair_on, folder, silence, monkeypatch
 ):
     """R-185 and R-225: the reload rides the refusal's steps, the retry remedy first."""
-    coarses(folder, silence, "abc")
-    bound(monkeypatch, raising_on(deep("abc"), "b"))
-    job_id = retag_queued(folder)
-
-    code, refused = drive(resume_argv(job_id))
+    failing = raising_on(deep("abc"), "b")
+    job_id, code, refused = retagged(folder, silence, monkeypatch, "abc", failing)
 
     assert code != int(ExitCode.OK), refused
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
@@ -2100,9 +2079,7 @@ def test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_a
     repair_on, folder, silence, monkeypatch
 ):
     """R-1103: the refusing file fails ``tag-retag-unwritten`` and the other two land."""
-    coarses(folder, silence, "abc")
-    bound(monkeypatch, deep("abc"))
-    job_id = retag_queued(folder)
+    job_id = retag_ready(folder, silence, monkeypatch, "abc", deep("abc"))
     refusing_writes_on(monkeypatch, "b")
 
     code, refused = drive(resume_argv(job_id))
@@ -2138,9 +2115,7 @@ def test_a_retag_whose_only_file_will_not_take_its_genre_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
     """Nothing was corrected, so the job leaves through ``no-evidence`` and names no reload."""
-    coarse(folder, silence, "a")
-    bound(monkeypatch, deep("a"))
-    job_id = retag_queued(folder)
+    job_id = retag_ready(folder, silence, monkeypatch, "a", deep("a"))
     refusing_writes_on(monkeypatch, "a")
 
     code, refused = drive(resume_argv(job_id))
@@ -2159,9 +2134,7 @@ def test_a_retag_file_that_will_not_take_its_genre_is_named_in_the_human_answer(
     repair_on, folder, silence, monkeypatch
 ):
     """What a person reads at the terminal names the file, not only the counts."""
-    coarses(folder, silence, "ab")
-    bound(monkeypatch, deep("ab"))
-    job_id = retag_queued(folder)
+    job_id = retag_ready(folder, silence, monkeypatch, "ab", deep("ab"))
     refusing_writes_on(monkeypatch, "b")
 
     code, text = drive_human(resume_argv(job_id))
@@ -2204,11 +2177,7 @@ def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
     """The zero half: a run that changed nothing names no reload."""
-    coarse(folder, silence, "a")
-    bound(monkeypatch, raising_on(answering({}), "a"))
-    job_id = retag_queued(folder)
-
-    code, refused = drive(resume_argv(job_id))
+    _job_id, code, refused = retagged(folder, silence, monkeypatch, "a", raising_on(deep(""), "a"))
 
     assert code != int(ExitCode.OK), refused
     assert tags.read_genre_from_file(folder / "a.flac") == CATCH_ALL
@@ -2223,23 +2192,12 @@ def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
     coarse(folder, silence, "a")
     bound(monkeypatch, deep("a"))
 
-    verb = ["tag", "retag", str(folder)]
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, decision = drive(["run", "decide", run_id, RETAG_GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), decision
-
-    code, queued = drive(["--run", run_id, *verb])
+    code, queued = answered(["tag", "retag", str(folder)], "apply")
 
     assert code == int(ExitCode.OK), queued
     assert retag_cli.LIBRARY_ROW_STALE in warning_codes(queued), queued
-    told = next(
-        warning
-        for warning in queued["warnings"]
-        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
-    )
-    assert str(folder) in told["message"], told
+    told = warned_all(queued, retag_cli.LIBRARY_ROW_STALE)[0]
+    assert str(folder) in told, told
 
 
 def test_the_retag_entry_declares_the_file_surface_alone_and_no_database_decision():
@@ -2437,15 +2395,8 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
     from tests.test_active_taxonomy import write_active
 
     places(folder, silence, "ab")
-    bound(
-        monkeypatch,
-        answering(
-            {
-                "a": hit("breaks / d&b / dubstep", "breaks / d&b / dubstep", off_taxonomy=True),
-                "b": hit("gqom", "gqom", off_taxonomy=True),
-            }
-        ),
-    )
+    breaks = hit("breaks / d&b / dubstep", "breaks / d&b / dubstep", off_taxonomy=True)
+    bound(monkeypatch, answering({"a": breaks, "b": hit("gqom", "gqom", off_taxonomy=True)}))
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
     message = warned(resumed)[tag_cli.OFF_TAXONOMY]
@@ -2456,7 +2407,7 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
     write_active(cfg, "this is not a taxonomy [[[")
     code, again = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), again
-    plain = {w["code"]: w["message"] for w in again["warnings"]}[tag_cli.OFF_TAXONOMY]
+    plain = warned(again)[tag_cli.OFF_TAXONOMY]
     assert "takes one answer only" not in plain and "breaks / d&b / dubstep" in plain
 
 
@@ -2467,9 +2418,8 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
     places(folder, silence, "ab")
 
     def fetch(url: str) -> searchers.Fetched:
-        return EMPTY_BEATPORT if url.startswith(searchers.BEATPORT_SEARCH) else searchers.Fetched(
-            note=f"no route for {url}"
-        )
+        unrouted = searchers.Fetched(note=f"no route for {url}")
+        return EMPTY_BEATPORT if url.startswith(searchers.BEATPORT_SEARCH) else unrouted
 
     bound(monkeypatch, searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _s: None))
     job, code, resumed = swept(folder)
@@ -2490,24 +2440,26 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
 # The active taxonomy, parsed once a sweep (U247)
 
 
+def unique_active(cfg: config.Config) -> str:
+    """A text no other test parsed, written as the library's active copy."""
+    from cratekit.core import taxonomy
+    from tests.test_active_taxonomy import write_active
+
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    write_active(cfg, text)
+    return text
+
+
 def test_a_sweep_parses_the_active_taxonomy_once_however_many_files_it_tags(
     cfg, folder, silence, monkeypatch
 ):
     """The worker reads the library's copy for every file and parses it for the first."""
-    from cratekit.core import taxonomy
     from tests.test_tagging_engine import _jpeg, plant
 
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    active = config.state_path("taxonomy_active", cfg)
-    active.parent.mkdir(parents=True, exist_ok=True)
-    active.write_text(text, encoding="utf-8")
-    place(folder, silence, "a")
-    place(folder, silence, "b")
+    text = unique_active(cfg)
+    places(folder, silence, "ab")
     plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
-    bound(
-        monkeypatch,
-        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
-    )
+    bound(monkeypatch, deep("ab"))
     parses = counted(monkeypatch)
 
     code, queued = queue(folder)
@@ -2526,18 +2478,10 @@ def test_a_retag_parses_the_active_taxonomy_once_however_many_files_it_corrects(
     repair_on, folder, silence, monkeypatch
 ):
     """The third per item handler the speed survey named, counted the same way."""
-    from cratekit.core import taxonomy
-
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    active = config.state_path("taxonomy_active", repair_on)
-    active.parent.mkdir(parents=True, exist_ok=True)
-    active.write_text(text, encoding="utf-8")
-    coarses(folder, silence, "abc")
-    bound(monkeypatch, deep("abc"))
+    text = unique_active(repair_on)
     parses = counted(monkeypatch)
 
-    job_id = retag_queued(folder)
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "abc", deep("abc"))
 
     assert code == int(ExitCode.OK), resumed
     assert item_states(job_id) == {
