@@ -1,7 +1,4 @@
-"""U230: a download an account edit queued is filed there though that playlist lists it.
-
-Sitting 86, the edited playlist's base written by hand in the ledger. D1 applies.
-"""
+"""U230: a queued download is filed where the edit put it though that playlist lists it. D1."""
 
 from __future__ import annotations
 

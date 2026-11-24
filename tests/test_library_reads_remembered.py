@@ -72,6 +72,22 @@ class Opens:
         return self.paths.count(str(path))
 
 
+def _one_file(tmp_path: Path, template: Path, *, old: bool = True) -> tuple[Path, Path]:
+    """The library folder and its one tagged file, ``A - B``."""
+    music = tmp_path / "Music"
+    return music, _tagged(template, music / "A - B.flac", "A", "B", old=old)
+
+
+def _pin_stamp(monkeypatch, path: Path, pinned) -> None:
+    """``_stamp_of`` answers ``pinned(stamp)`` for ``path`` and the real stamp elsewhere."""
+    real = match_library._stamp_of
+
+    def still(where: Path):
+        stamp = real(where)
+        return stamp if stamp is None or where != path else pinned(stamp)
+
+    monkeypatch.setattr(match_library, "_stamp_of", still)
+
 
 def _pass(tmp_path, monkeypatch, template: Path) -> tuple[Path, Script]:
     """FILES tagged library files, PLAYLISTS account playlists of PER rows no library file holds."""
@@ -189,7 +205,6 @@ def test_a_file_rewritten_between_two_jobs_is_read_again_and_the_second_job_matc
     assert len(resolved) == PLAYLISTS * PER
 
 
-
 def _titles(index: match.LibraryIndex) -> set[str]:
     return {one.title for held in index.by_recording.values() for one in held}
 
@@ -197,13 +212,10 @@ def _titles(index: match.LibraryIndex) -> set[str]:
 def test_an_unchanged_old_file_is_answered_from_memory_on_the_second_index(
     tmp_path, monkeypatch, template_flac
 ):
-    music = tmp_path / "Music"
-    one = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, one = _one_file(tmp_path, template_flac)
     opens = Opens(monkeypatch)
-
     first = match.index_library(music)
     second = match.index_library(music)
-
     assert opens.of(one) == 1
     assert _titles(first) == _titles(second) == {"B"}
     (held,) = second.versions(match.recording_token("A", "B"))
@@ -214,25 +226,14 @@ def test_a_file_rewritten_to_the_same_size_inside_the_window_is_read_again(
     tmp_path, monkeypatch, template_flac
 ):
     """FAT stamps in two second steps, so with ctime and inode still the window decides."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
+    music, path = _one_file(tmp_path, template_flac, old=False)
     held = path.stat()
-    real = match_library._stamp_of
-
-    def still(where: Path):
-        stamp = real(where)
-        if stamp is None or where != path:
-            return stamp
-        return stamp[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev)
-
-    monkeypatch.setattr(match_library, "_stamp_of", still)
+    _pin_stamp(monkeypatch, path, lambda s: s[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev))
     opens = Opens(monkeypatch)
-
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C"})
     os.utime(path, ns=(held.st_atime_ns, held.st_mtime_ns))
     assert path.stat().st_size == held.st_size, "the rewrite must keep the size"
-
     assert _titles(match.index_library(music)) == {"C"}
     assert opens.of(path) == 2
 
@@ -241,18 +242,15 @@ def test_a_restore_that_puts_the_old_size_and_time_back_is_read_again_on_its_cha
     tmp_path, monkeypatch, template_flac
 ):
     """``rsync -a``, ``cp -p`` and ``os.utime`` restore mtime; none of them sets ctime."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     held = path.stat()
     opens = Opens(monkeypatch)
-
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C"})
     os.utime(path, ns=(held.st_atime_ns, held.st_mtime_ns))
     now = path.stat()
     assert (now.st_size, now.st_mtime_ns) == (held.st_size, held.st_mtime_ns)
     assert now.st_ctime_ns != held.st_ctime_ns
-
     assert _titles(match.index_library(music)) == {"C"}
     assert opens.of(path) == 2
 
@@ -261,26 +259,15 @@ def test_a_file_swapped_in_under_the_same_name_size_and_times_is_read_again_on_i
     tmp_path, monkeypatch, template_flac
 ):
     """Two same size files with equal times, one renamed over the other: the inode tells."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     other = _tagged(template_flac, tmp_path / "elsewhere" / "A - B.flac", "A", "C")
-    when = path.stat().st_mtime_ns
-    _backdate(other, ns=when)
+    _backdate(other, ns=path.stat().st_mtime_ns)
     held = path.stat()
     assert other.stat().st_size == held.st_size
-    real = match_library._stamp_of
-
-    def still(where: Path):
-        stamp = real(where)
-        if stamp is None or where != path:
-            return stamp
-        return stamp[:2] + (held.st_ctime_ns,) + stamp[3:]
-
-    monkeypatch.setattr(match_library, "_stamp_of", still)
+    _pin_stamp(monkeypatch, path, lambda stamp: stamp[:2] + (held.st_ctime_ns,) + stamp[3:])
     assert _titles(match.index_library(music)) == {"B"}
     os.replace(other, path)
     assert path.stat().st_ino != held.st_ino
-
     assert _titles(match.index_library(music)) == {"C"}
 
 
@@ -288,68 +275,42 @@ def test_a_file_on_another_device_under_the_same_name_and_stamp_is_read_again(
     tmp_path, monkeypatch, template_flac
 ):
     """A remount can reuse an inode number; the device tells the files apart."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     held = path.stat()
     device = [held.st_dev]
-    real = match_library._stamp_of
-
-    def still(where: Path):
-        stamp = real(where)
-        if stamp is None or where != path:
-            return stamp
-        return (held.st_size, held.st_mtime_ns, held.st_ctime_ns, held.st_ino, device[0])
-
-    monkeypatch.setattr(match_library, "_stamp_of", still)
+    _pin_stamp(monkeypatch, path, lambda _stamp: (
+        held.st_size, held.st_mtime_ns, held.st_ctime_ns, held.st_ino, device[0],
+    ))
     opens = Opens(monkeypatch)
     match.index_library(music)
     match.index_library(music)
     assert opens.of(path) == 1, "an unchanged stamp is answered from memory"
-
     device[0] = held.st_dev + 1
     match.index_library(music)
     assert opens.of(path) == 2
 
 
 def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_flac):
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     held = path.stat()
-    real = match_library._stamp_of
-
-    def still(where: Path):
-        stamp = real(where)
-        if stamp is None or where != path:
-            return stamp
-        return (stamp[0], held.st_mtime_ns, held.st_ctime_ns, held.st_ino, held.st_dev)
-
-    monkeypatch.setattr(match_library, "_stamp_of", still)
+    _pin_stamp(monkeypatch, path, lambda stamp: (
+        stamp[0], held.st_mtime_ns, held.st_ctime_ns, held.st_ino, held.st_dev,
+    ))
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C", "album": "G" * 20000})
     assert path.stat().st_size != held.st_size
-
     assert _titles(match.index_library(music)) == {"C"}
 
 
 def test_a_file_with_a_new_modification_time_is_read_again(tmp_path, monkeypatch, template_flac):
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     held = path.stat()
     when = held.st_mtime_ns
-    real = match_library._stamp_of
-
-    def still(where: Path):
-        stamp = real(where)
-        if stamp is None or where != path:
-            return stamp
-        return stamp[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev)
-
-    monkeypatch.setattr(match_library, "_stamp_of", still)
+    _pin_stamp(monkeypatch, path, lambda s: s[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev))
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C"})
     _backdate(path, ns=when + 1_000_000_000)
     assert path.stat().st_size == held.st_size
-
     assert _titles(match.index_library(music)) == {"C"}
 
 
@@ -434,8 +395,7 @@ def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
     tmp_path, monkeypatch, template_flac
 ):
     """Read from disk on the third walk, even at the first stamp."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     first = match_library._stamp_of(path)
     assert first is not None
     other = (first[0] + 1,) + first[1:]
@@ -448,7 +408,6 @@ def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
         return {"artist": "A", "title": title, "initialkey": None, "isrc": None}, whole
 
     monkeypatch.setattr(tags, "read_tags_noting", noting)
-
     assert _titles(match.index_library(music)) == {"First"}
     assert _titles(match.index_library(music)) == {"Half"}
     assert match.remembered() == 0
@@ -497,11 +456,9 @@ def test_the_noting_reader_answers_what_the_lenient_reader_answers_and_says_what
 def test_a_file_that_cannot_be_stated_is_read_as_before_and_never_remembered(
     tmp_path, monkeypatch, template_flac
 ):
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     monkeypatch.setattr(match_library, "_stamp_of", lambda _where: None)
     opens = Opens(monkeypatch)
-
     assert _titles(match.index_library(music)) == {"B"}
     assert _titles(match.index_library(music)) == {"B"}
     assert opens.of(path) == 2
@@ -534,23 +491,19 @@ def test_the_window_is_two_seconds_to_the_nanosecond(
     tmp_path, monkeypatch, template_flac, age_ns, opened
 ):
     """Under two seconds older than its entry is read again; two or more is remembered."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
+    music, path = _one_file(tmp_path, template_flac, old=False)
     now = time.time_ns()
     _backdate(path, ns=now - age_ns)
     _held_clock(monkeypatch, now)
     opens = Opens(monkeypatch)
-
     match.index_library(music)
     match.index_library(music)
-
     assert opens.of(path) == opened
 
 
 def test_the_entrys_moment_is_taken_before_the_read(tmp_path, monkeypatch, template_flac):
     """Or a write during the read escapes the window; the clock moves a second per read."""
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
+    music, path = _one_file(tmp_path, template_flac, old=False)
     now = time.time_ns()
     _backdate(path, ns=now - 1_500_000_000)
     clock = _held_clock(monkeypatch, now)
@@ -569,21 +522,17 @@ def test_the_entrys_moment_is_taken_before_the_read(tmp_path, monkeypatch, templ
     assert opened.count(str(path)) == 2
 
 
-
 def test_a_test_starts_with_nothing_remembered():
     assert match.remembered() == 0
 
 
 @pytest.mark.parametrize("owner", [match, intake_cli], ids=["match", "intake"])
 def test_a_reset_forgets_every_file(tmp_path, monkeypatch, template_flac, owner):
-    music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    music, path = _one_file(tmp_path, template_flac)
     match.index_library(music)
     assert match.remembered() == 1
     opens = Opens(monkeypatch)
-
     owner.reset_cache()
-
     assert match.remembered() == 0
     match.index_library(music)
     assert opens.of(path) == 1

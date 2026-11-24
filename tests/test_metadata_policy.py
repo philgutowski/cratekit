@@ -1,7 +1,5 @@
-"""The per-field metadata policy, and the key field it may never author (U21).
-
-The structural half walks the syntax tree, not text, since prose may name ``KeyID`` (P3).
-"""
+"""The per-field metadata policy, and the key field it may never author (U21); the structural
+half walks the syntax tree, not text, since prose may name ``KeyID`` (P3)."""
 
 from __future__ import annotations
 
@@ -44,6 +42,13 @@ class FakeGenres:
 
     def get_genre(self, Name=None):  # noqa: N803 - the binding spells it this way
         return [r for r in self._rows if r.Name == Name]
+
+
+#: A soft-deleted namesake listed ahead of the live genre row.
+NAMESAKES = (
+    Row("6", Name="Melodic House", rb_local_deleted=1),
+    Row("7", Name="Melodic House", rb_local_deleted=0),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -93,8 +98,7 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
     baseline = rb_writer.content_writable_columns()
     columns = metadata.enable([metadata.RATING_BACKFILL])
     assert columns - baseline == {"Rating"}
-    assert "Title" not in columns
-    assert "GenreID" not in columns
+    assert not {"Title", "GenreID"} & columns
 
 
 def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
@@ -113,9 +117,7 @@ def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
     row = Row("1", Rating=1)
     plan = metadata.plan_rating_backfill([row], {"1": 9}, cuts=CUTS)
     report = metadata.write_plan(plan, {"1": row})
-    assert report.totals["skip_present"] == 1
-    assert report.totals["write"] == 0
-    assert row.Rating == 1
+    assert (report.totals["skip_present"], report.totals["write"], row.Rating) == (1, 0, 1)
 
 
 def test_the_shipped_curve_plans_one_to_five_stars_for_the_database():
@@ -189,9 +191,7 @@ def test_padding_rewrites_the_key_span_and_leaves_every_other_byte_alone():
     row = Row("1", Title="1A - 124 - Artist - Title 2A Mix", Rating=51, GenreID="7")
     plan = metadata.plan_title_padding([row], template=TEMPLATE)
     metadata.write_plan(plan, {"1": row})
-    assert row.Title == "01A - 124 - Artist - Title 2A Mix"
-    assert row.Rating == 51
-    assert row.GenreID == "7"
+    assert (row.Title, row.Rating, row.GenreID) == ("01A - 124 - Artist - Title 2A Mix", 51, "7")
 
 
 def test_padding_an_already_padded_title_proposes_no_change_at_all():
@@ -360,13 +360,7 @@ def test_a_genre_that_exists_is_linked_by_identifier():
 
 
 def test_a_soft_deleted_namesake_does_not_mask_the_live_genre_row():
-    db = FakeGenres(
-        [
-            Row("6", Name="Melodic House", rb_local_deleted=1),
-            Row("7", Name="Melodic House", rb_local_deleted=0),
-        ]
-    )
-    assert metadata.resolve_genre_id(db, "Melodic House") == "7"
+    assert metadata.resolve_genre_id(FakeGenres(NAMESAKES), "Melodic House") == "7"
 
 
 def test_a_genre_whose_only_row_is_soft_deleted_resolves_to_nothing():
@@ -416,13 +410,7 @@ def test_an_unreadable_marker_is_not_collapsed_into_the_genre_unknown_skip():
 
 def test_a_deleted_marker_is_not_an_error_here_the_way_it_is_for_a_track():
     """The asymmetry that decides the shape of this fix."""
-    db = FakeGenres(
-        [
-            Row("6", Name="Melodic House", rb_local_deleted=1),
-            Row("7", Name="Melodic House", rb_local_deleted=0),
-        ]
-    )
-    assert metadata.resolve_genre_id(db, "Melodic House") == "7"
+    assert metadata.resolve_genre_id(FakeGenres(NAMESAKES), "Melodic House") == "7"
 
 
 def test_the_preview_decisions_equal_the_applied_decisions():

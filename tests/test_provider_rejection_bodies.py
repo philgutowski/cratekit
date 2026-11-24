@@ -127,6 +127,15 @@ def reason_of(failure: BaseException) -> str:
     return account.provider_failure(failure, "heart the track 8").cause.reason
 
 
+#: Failures that are no rejected session: a cyclic chain, an outage under a rejection the
+#: product raised (whose link is not followed), and a name reached only as context.
+NO_REJECTION = [
+    pytest.param(cyclic, id="cyclic"),
+    pytest.param(lambda: inside_a_refusal(lambda: client_failure(503, HTML)), id="outage"),
+    pytest.param(auth_error_as_context, id="context"),
+]
+
+
 # ── 0. the chain the client makes, measured, so the tests below test that one ──
 
 
@@ -162,32 +171,23 @@ def test_a_server_error_mid_sweep_is_still_a_wait_whatever_the_body(status, body
     assert cause.remediation.remedy == Remedy.RETRY_LATER
 
 
-def test_a_rejection_whose_body_is_not_json_drops_the_held_account(installed, monkeypatch):
+@pytest.mark.parametrize(
+    ("status", "dropped"), [(401, True), (503, False)],
+    ids=["a-rejection-drops-the-held-account", "a-server-error-keeps-the-held-account"],
+)
+def test_a_failure_whose_body_is_not_json_judges_the_held_account(
+    installed, monkeypatch, status, dropped
+):
     login_with(monkeypatch, None)
     held = account.resolve(installed)
-    account.provider_failure(client_failure(401, HTML), "heart the track 8")
-    assert account.resolve(installed) is not held
+    account.provider_failure(client_failure(status, HTML), "heart the track 8")
+    assert (account.resolve(installed) is not held) is dropped
 
 
-def test_a_server_error_whose_body_is_not_json_keeps_the_held_account(installed, monkeypatch):
-    login_with(monkeypatch, None)
-    held = account.resolve(installed)
-    account.provider_failure(client_failure(503, HTML), "heart the track 8")
-    assert account.resolve(installed) is held
-
-
-def test_a_cyclic_chain_after_login_ends_and_is_a_wait():
-    assert reason_of(cyclic()) == "unavailable-transient"
-
-
-def test_an_outage_met_while_handling_a_rejected_session_is_a_wait_not_a_login():
-    """A context link into a refusal the product raised is not followed."""
-    assert reason_of(inside_a_refusal(lambda: client_failure(503, HTML))) == "unavailable-transient"
-
-
-def test_an_authentication_error_reached_only_as_context_is_not_a_rejected_session():
+@pytest.mark.parametrize("failure", NO_REJECTION)
+def test_a_failure_after_login_that_is_no_rejection_is_a_wait(failure):
     """A status is the provider's word; a name reached only as context is a guess."""
-    assert reason_of(auth_error_as_context()) == "unavailable-transient"
+    assert reason_of(failure()) == "unavailable-transient"
 
 
 # ── 2. the login itself: provider_session.client_session ────────────────────
@@ -217,16 +217,8 @@ def test_a_login_rejected_with_a_page_tells_the_person_to_log_in_again(installed
     assert excinfo.value.cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
 
 
-@pytest.mark.parametrize(
-    "failure",
-    [
-        pytest.param(cyclic, id="cyclic"),
-        pytest.param(lambda: inside_a_refusal(lambda: client_failure(503, HTML)), id="outage"),
-        pytest.param(auth_error_as_context, id="context"),
-    ],
-)
+@pytest.mark.parametrize("failure", NO_REJECTION)
 def test_a_login_failure_that_is_no_rejection_is_a_wait(monkeypatch, failure):
-    """A cyclic chain, an outage under a rejection, and context only: each a wait at login."""
     login_with(monkeypatch, failure())
     with pytest.raises(provider_session.ProviderUnavailable):
         provider_session.client_session()

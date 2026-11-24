@@ -1,7 +1,5 @@
-"""U39: ``name.apply`` carries an existing head through instead of destroying it.
-
-Real dispatcher, real audio; the tempo is text in the filename and title, never a tag.
-"""
+"""U39: ``name.apply`` carries a head through, by the real dispatcher over real audio; the
+tempo is text in the filename and title, never a tag."""
 
 from __future__ import annotations
 
@@ -119,6 +117,34 @@ def _refused(folder: Path, *untouched: Path) -> dict:
     envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert all(path.is_file() for path in untouched), envelope
     return envelope
+
+
+def _incomplete(folder: Path, name: str, why: str) -> dict:
+    """An apply that exits PRECONDITION with ``name`` alone left behind, for ``why``."""
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [name]
+    assert why in incomplete[0]["why"]
+    return envelope
+
+
+def _after_the_plan(monkeypatch, then) -> None:
+    """``then`` runs once the plan is read, as a change made while the gate waits."""
+    real = naming_cli._plan_for
+
+    def planned(root, *, cfg):
+        plan = real(root, cfg=cfg)
+        then()
+        return plan
+
+    monkeypatch.setattr(naming_cli, "_plan_for", planned)
+
+
+#: Why an identifier file with no artist tag is held.
+NO_ARTIST = (
+    "its name is an identifier and it carries no artist tag, so it is not "
+    "renamed to its title alone"
+)
 
 
 def _moves(plan: dict) -> list[tuple[str, str]]:
@@ -687,10 +713,7 @@ def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, mo
     held, free = _pair(folder)
     reads = iter([(), (str(held),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
-    incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert [item["from"] for item in incomplete] == [held.name]
-    assert "began referencing it" in incomplete[0]["why"]
+    _incomplete(folder, held.name, "began referencing it")
     assert held.is_file()
     assert not free.exists()
 
@@ -888,10 +911,7 @@ def test_a_target_another_mover_still_holds_is_promised_and_then_reported(config
         key="01A",
     )
     assert _actions(_plan(folder)) == {lead.name: "rename", marked.name: "rename"}
-    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
-    incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert [item["from"] for item in incomplete] == [lead.name]
-    assert "already taken" in incomplete[0]["why"]
+    envelope = _incomplete(folder, lead.name, "already taken")
     assert envelope["data"]["totals"]["renamed"] == 1
     assert lead.is_file()
     assert not marked.exists()
@@ -902,18 +922,8 @@ def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, mon
     folder = _folder(configured)
     vanishing = _track(folder, "1A - 124 - Gone.flac", title="1A - 124 - Gone", key="1A")
     staying = _track(folder, "2A - 124 - Here.flac", title="2A - 124 - Here", key="2A")
-    real = naming_cli._plan_for
-
-    def _plan_then_delete(root, *, cfg):
-        plan = real(root, cfg=cfg)
-        vanishing.unlink()
-        return plan
-
-    monkeypatch.setattr(naming_cli, "_plan_for", _plan_then_delete)
-    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
-    incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert [item["from"] for item in incomplete] == [vanishing.name]
-    assert "no longer there" in incomplete[0]["why"]
+    _after_the_plan(monkeypatch, vanishing.unlink)
+    _incomplete(folder, vanishing.name, "no longer there")
     assert not staying.exists() and (folder / "02A - 124 - Here.flac").is_file()
 
 
@@ -929,10 +939,7 @@ def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured
         return original(self, target)
 
     monkeypatch.setattr(Path, "rename", _refuse_rename)
-    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
-    incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert [item["from"] for item in incomplete] == [track.name]
-    assert "no space left on device" in incomplete[0]["why"]
+    _incomplete(folder, track.name, "no space left on device")
     assert track.is_file()
     assert not (folder / "01A - 124 - Alpha.flac").exists()
 
@@ -1028,10 +1035,7 @@ def test_an_identifier_with_no_artist_tag_is_held_and_named_in_the_plan(configur
     _acquired(folder, "12345.flac", title="Affection")
     plan = _plan(folder)
     assert _renames(plan) == []
-    assert _held(plan) == {"12345.flac": (
-        "its name is an identifier and it carries no artist tag, so it is not "
-        "renamed to its title alone"
-    )}
+    assert _held(plan) == {"12345.flac": NO_ARTIST}
     assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 0, "unnamed": 1}
     before = plan["digest"]
     assert tags.write_tags(folder / "12345.flac", {"artist": "Tirzah"})
@@ -1105,16 +1109,13 @@ def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, m
     """The apply re-reads the tags after the gate, so a body from a tag that is gone is not written."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
-    real = naming_cli._plan_for
 
-    def plan_then_strip(root, *, cfg):
-        plan = real(root, cfg=cfg)
+    def strip():
         handle = mutagen.File(path)
         del handle["ARTIST"]
         handle.save()
-        return plan
 
-    monkeypatch.setattr(naming_cli, "_plan_for", plan_then_strip)
+    _after_the_plan(monkeypatch, strip)
     envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert path.is_file()
     assert not (folder / "Tirzah - Affection.flac").exists()
@@ -1131,10 +1132,7 @@ def test_the_gate_shows_the_totals_and_every_item(configured):
     assert (shown["renames"], shown["referenced"], shown["collides"], shown["unnamed"]) == (1, 0, 0, 1)
     assert shown["planned"] == [{"from": "92654769.flac", "to": "Tirzah - Affection.flac"}]
     assert shown["held"] == [
-        {"from": "12345.flac", "as": "unnamed", "why": (
-            "its name is an identifier and it carries no artist tag, so it is not "
-            "renamed to its title alone"
-        )}
+        {"from": "12345.flac", "as": "unnamed", "why": NO_ARTIST}
     ]
     assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac", "92654769.flac"]
 
@@ -1193,14 +1191,11 @@ def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(c
     """The plan showed one name and the tags now render another."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
-    real = naming_cli._plan_for
 
-    def plan_then_edit(root, *, cfg):
-        plan = real(root, cfg=cfg)
+    def edit():
         assert tags.write_tags(path, {"artist": "Tirza"})
-        return plan
 
-    monkeypatch.setattr(naming_cli, "_plan_for", plan_then_edit)
+    _after_the_plan(monkeypatch, edit)
     envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac"]
     why = envelope["cause"]["detail"]["incomplete"][0]["why"]
@@ -1244,9 +1239,8 @@ def test_the_gate_screen_omits_the_not_listed_keys_under_the_bound(configured):
 def test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept(
     configured,
 ):
-    """U343: a run since then writes no head and no ``initialkey``, so ``name apply``
-    names its file with no head, even where a provider's key tag is there, and never
-    strips a head a file already carries, on its name or in its title."""
+    """U343: an analysed file is named with no head, even beside a provider's key tag, and a
+    head a file already carries, on its name or in its title, is never stripped."""
     folder = _folder(configured)
     measured = _track(folder, "Ada - Bare.flac", title="Bare")
     tags.write_tags(measured, {"analyzed": "1"})

@@ -1,10 +1,6 @@
-"""R-1724: a file asked by its name is asked with its title, never the old ``_PN`` tail.
-
-5,637 of 10,997 library files end in ``_PN``; the tail cost by-name misses, and the shared
-matcher read ``mix)_pn`` as title words. Guarded: a name loses its tail in every question and
-match, through ``tag folder`` and ``tag retag``; a title tag is never touched; a name with no
-tail reads byte for byte as before; and a name that is the tail alone is read as written, so
-it still reaches the general catalogue by its ISRC. No network; the token is a fixture word.
+"""R-1724: a file asked by its name is asked with its title, never the old ``_PN`` tail, which
+half the library carries. A title tag is never touched, a name with no tail reads byte for byte,
+and the tail alone is read as written, so it still reaches the catalogue by ISRC. No network.
 """
 
 from __future__ import annotations

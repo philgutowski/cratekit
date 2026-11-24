@@ -4,16 +4,20 @@ DEADCA7 stamps pushed rows ``0001-01-01T00:00:00Z``, which west of UTC overflowe
 
 from __future__ import annotations
 
-from datetime import datetime
+import sqlite3
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 import pytest
-from pyrekordbox.db6 import tables
+from pyrekordbox import Rekordbox6Database
+from pyrekordbox.db6 import aux_files, tables
 
 from cratekit.core import rb_dates
 from cratekit.core import rb_writer as W
 from tests import deadca7_fixtures as dc7
 from tests.test_rb_writer_db import (  # noqa: F401 - fixtures
     _build_disposable_database,
+    _rekordbox_closed,
     cloud_sync_off,
     library,
 )
@@ -37,23 +41,12 @@ def _binding() -> object:
 
 @pytest.fixture
 def unwrapped(monkeypatch):
-    from pyrekordbox.db6 import aux_files
-
     monkeypatch.setattr(tables, "string_to_datetime", _binding())
     update = aux_files.MasterPlaylistXml.update
     monkeypatch.setattr(
         aux_files.MasterPlaylistXml, "update", getattr(update, "__wrapped__", update)
     )
     return tables.string_to_datetime
-
-
-@pytest.fixture(autouse=True)
-def _rekordbox_closed(monkeypatch):
-    from pyrekordbox.db6 import database as binding
-
-    monkeypatch.setattr(W, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(W, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
 
 
 # The conversion
@@ -66,17 +59,16 @@ def test_the_binding_alone_cannot_place_the_zero_date_west_of_utc(unwrapped):
 
 
 @pytest.mark.parametrize("zone", ZONES)
-def test_the_zero_date_reads_as_the_floor_in_every_zone(unwrapped, zone):
+@pytest.mark.parametrize(
+    ("text", "bound", "expected"),
+    [(dc7.ZERO_STAMP, "FLOOR", datetime(1, 1, 2)),
+     ("9999-12-31T23:59:59Z", "CEILING", datetime(9999, 12, 30))],
+    ids=["the-zero-date-reads-as-the-floor", "the-calendars-last-moment-reads-as-the-ceiling"],
+)
+def test_a_calendar_edge_reads_as_its_bound_in_every_zone(unwrapped, zone, text, bound, expected):
     read = rb_dates.placeable(unwrapped)
     with dc7.west_of_utc(zone):
-        assert read(dc7.ZERO_STAMP) == rb_dates.FLOOR == datetime(1, 1, 2)
-
-
-@pytest.mark.parametrize("zone", ZONES)
-def test_the_calendars_last_moment_reads_as_the_ceiling(unwrapped, zone):
-    read = rb_dates.placeable(unwrapped)
-    with dc7.west_of_utc(zone):
-        assert read("9999-12-31T23:59:59Z") == rb_dates.CEILING == datetime(9999, 12, 30)
+        assert read(text) == getattr(rb_dates, bound) == expected
 
 
 @pytest.mark.parametrize("zone", ZONES)
@@ -148,15 +140,11 @@ def test_an_overflow_away_from_the_calendars_edge_is_raised_as_it_came():
 
 
 def test_an_aware_answer_is_handed_on_as_it_came():
-    from datetime import timezone
-
     aware = datetime(1, 1, 1, tzinfo=timezone.utc)
     assert rb_dates.placeable(lambda value: aware)(dc7.ZERO_STAMP) is aware
 
 
 def test_installing_twice_wraps_once(unwrapped):
-    from pyrekordbox.db6 import aux_files
-
     shipped_update = aux_files.MasterPlaylistXml.update
     rb_dates.install()
     first = tables.string_to_datetime
@@ -191,8 +179,6 @@ def test_a_bound_is_never_handed_to_the_xml_update():
 
 @pytest.fixture
 def zero_pushed(library):  # noqa: F811 - the imported fixture
-    import sqlite3
-
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     conn = sqlite3.connect(path)
@@ -223,8 +209,6 @@ def test_a_handle_reads_the_whole_tree_over_a_zero_dated_push_and_writes_nothing
     unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
 ):
     """Every row loads over a zero dated push, read as the floor, and nothing written."""
-    import sqlite3
-
     path, pushed = zero_pushed
     before = dc7.written(path, pushed)
     conn = sqlite3.connect(path)
@@ -262,8 +246,6 @@ def test_a_wrapper_installed_after_a_handle_has_read_is_still_the_one_called(
     unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
 ):
     """The column looks the conversion up per row, so a late install still takes effect."""
-    from pyrekordbox import Rekordbox6Database
-
     path, pushed = zero_pushed
     with dc7.west_of_utc(WEST):
         db = Rekordbox6Database(path=str(path), unlock=False)
@@ -295,8 +277,6 @@ def _playlist_xml(db_path, timestamps: dict[str, int]):
 
 
 def _node_attributes(xml, node: str) -> dict[str, str]:
-    import xml.etree.ElementTree as ET
-
     for element in ET.parse(xml).getroot().iter("NODE"):
         if element.get("Id") == f"{int(node):X}":
             return dict(element.attrib)
@@ -336,8 +316,6 @@ def test_a_commit_leaves_the_pushed_nodes_xml_timestamps_and_still_syncs_its_own
 
 def test_before_the_seam_such_a_commit_failed_after_its_write(unwrapped, zero_pushed):
     """Without the seam, the binding's sync raised after the database write."""
-    from pyrekordbox import Rekordbox6Database
-
     path, pushed = zero_pushed
     _playlist_xml(path, {node: PUSHED_MS for node in (pushed.folder_id, *pushed.playlist_ids)})
     with dc7.west_of_utc("UTC0"):

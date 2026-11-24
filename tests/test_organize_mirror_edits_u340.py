@@ -1,8 +1,4 @@
-"""U340: an edit on the account to one of a track's two genre folders leaves the other.
-
-Track 1 sits in Deep House Low by its genre and in Tech House Low by its second
-genre. The disposable library and the faked account are U201's. D1 applies.
-"""
+"""U340: an account edit to one of a track's two genre folders leaves the other. D1 applies."""
 
 from __future__ import annotations
 
@@ -84,8 +80,7 @@ def test_a_one_genre_track_beside_it_moves_as_before(machine):
 
 
 def test_a_move_that_would_wake_a_second_genre_naming_its_own_folder_is_not_taken(machine):
-    """Round one's R3: a second genre naming the genre's own folder files
-    nothing, until a new genre makes it name a folder the account never showed."""
+    """Round one's R3: a second genre naming its genre's own folder files nothing."""
     assert tags.write_tags(machine.files["2"], {"secondgenre": DEEP})
     machine.take_off(f"{DEEP} Med", "r2")
     machine.put_in(f"{TECH} Med", "r2")

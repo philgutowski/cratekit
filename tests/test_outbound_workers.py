@@ -1,8 +1,4 @@
-"""U51: the two outbound verbs run end to end through the queue, never reaching a remove.
-
-The provider is a stand in on ``account.resolve``; dispatcher, gate, queue,
-driver and engines are real.
-"""
+"""U51: both outbound verbs run end to end through the queue, never reaching a remove."""
 
 from __future__ import annotations
 
@@ -67,11 +63,7 @@ _PARSERS: dict = {}
 
 @pytest.fixture(autouse=True)
 def _less_work(monkeypatch):
-    """No syncs and one cached command tree per membership; neither is under test here.
-
-    The cached tree binds each handler and registry entry when first built, so a test
-    patching either must not use this.
-    """
+    """No syncs, one command tree per membership: a test patching a handler cannot use it."""
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
     opened = private_store.PrivateStore.__init__
     def unsynced(self, path):
@@ -147,8 +139,11 @@ def test_both_verbs_report_a_bound_worker_rather_than_a_reason_they_have_none():
     assert {EXPORT_KEY, FAVORITES_KEY} <= declared
 
 
-def test_job_show_reports_the_bound_worker_for_a_queued_export(queue):
-    code, shown = drive(["job", "show", queue(fake(1, 2, 3))])
+@pytest.mark.parametrize(
+    "queued, rows", [("queue", (1, 2, 3)), ("sweep", (1, 2))], ids=["export", "sweep"]
+)
+def test_job_show_reports_the_bound_worker_for_a_queued_job(request, queued, rows):
+    code, shown = drive(["job", "show", request.getfixturevalue(queued)(fake(*rows))])
     assert code == int(ExitCode.OK), shown
     assert shown["data"]["progress"]["worker"] == "bound"
     assert shown["data"]["progress"]["worker_reason"] is None
@@ -175,13 +170,9 @@ def _precondition(verb: list[str], reason: str) -> dict:
     ids=["export.playlist", "sync.favorites"],
 )
 def test_neither_verb_queues_anything_without_an_export(installed, verb):
-    """No document, no items, no job. Not a usage error either."""
+    """No document, no items, no job, and a precondition rather than a usage error."""
     del installed
-    code, refused = drive(verb)
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert code != int(ExitCode.USAGE)
-    assert refused["cause"]["reason"] == "outbound-export-required"
-    assert _queue_is_empty()
+    _precondition(verb, "outbound-export-required")
 
 
 def test_an_export_naming_a_playlist_the_document_lacks_queues_nothing(exported):
@@ -291,7 +282,6 @@ def _retried(job_id: str) -> tuple[int, dict]:
 
 
 def test_an_export_runs_pending_to_done_and_its_artifact_reads_back(installed, queue):
-    """The whole point of the unit, driven through the real resume path."""
     account = fake(1, 2, 3)
     job_id = queue(account)
     resumed = _done(job_id)
@@ -323,10 +313,8 @@ def test_the_envelope_names_the_tracks_the_provider_could_not_match(queue):
     """Without this a person sees three of three items done and is told nothing."""
     resumed = _done(queue(fake(2)))
     assert resumed["data"]["progress"]["outbound"]["added"] == ["tid-2"]
-    assert sorted(resumed["data"]["progress"]["outbound"]["unmatched"]) == ["1", "3"], (
-        "the envelope must name the library identity of each unmatched row, not "
-        "a stringified mapping nothing downstream can key on"
-    )
+    unmatched = resumed["data"]["progress"]["outbound"]["unmatched"]
+    assert sorted(unmatched) == ["1", "3"], "each unmatched row by its library identity"
 
 
 def _codes(envelope: dict) -> list[str]:
@@ -405,7 +393,6 @@ def _match_fails_for(account, identity: str, *, transient: bool = True) -> None:
 
 
 def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(queue):
-    """The engine's resume guarantee, through the binding rather than beside it."""
     account = fake(1, 2, 3, fail_on={"armed"})
     _match_fails_for(account, "2")
     job_id = queue(account)
@@ -495,10 +482,7 @@ def test_a_second_sweep_writes_nothing_because_the_ledger_remembers(sweep):
     assert sorted(first_account.hearted) == ["tid-1", "tid-2"]
     second_account = fake(1, 2)
     _done(sweep(second_account))
-    assert second_account.hearted == [], (
-        "the ledger is the only thing that can stop this write: this account "
-        "hearts nothing, so a re-write means the recorded hearts were not read"
-    )
+    assert second_account.hearted == [], "a re-write means the recorded hearts were not read"
 
 
 def test_an_unmatched_favourite_is_reported_and_does_not_fail_its_item(sweep):
@@ -761,7 +745,6 @@ def test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound(
 
 
 def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(queue):
-    """What this build actually delivers on a machine with nothing bound."""
     job_id = queue()
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK)
@@ -820,9 +803,7 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
         return real(payload, item_id, cfg, remote, *rest)
     monkeypatch.setattr(module, worker, watched)
     _done(job_id)
-    assert seen and all(days != 99 for days in seen), (
-        "the handler saw the CURRENT configuration, not the one its job froze"
-    )
+    assert seen and all(days != 99 for days in seen), "the handler saw the CURRENT configuration"
 
 
 # 7. First-caller failure paths through the engines
@@ -842,7 +823,6 @@ def test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing
 
 
 def test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating(installed, queue):
-    """The engine's own refusal, reached through the binding for the first time."""
     account = fake(1, 2, 3)
     job_id = queue(account)
     ledger_path = config.state_path("outbound_writes", installed)
@@ -879,10 +859,7 @@ def test_the_two_engines_receive_the_same_rows_for_one_playlist(installed, expor
     candidates = source.heart_candidates(library, resolved.track_ids, cfg=installed)
     assert [track.identity for track in tracks] == [c.row_id for c in candidates]
     assert [track.isrc for track in tracks] == [c.isrc for c in candidates]
-    assert all(track.isrc == "" for track in tracks), (
-        "these rows name no audio file, so there is no ISRC to read, and "
-        "inventing one would hand the provider seam a fabricated identity"
-    )
+    assert all(track.isrc == "" for track in tracks), "a row naming no file has no ISRC to read"
     assert all(track.title and track.artist for track in tracks)
 
 
@@ -914,9 +891,8 @@ def test_the_isrc_is_read_through_the_prefix_map_and_folded(installed, tmp_path,
     rules = [locations.PrefixRule(str(old), str(root))]
     found = source.isrc_for(_entry(recorded), root=root, prefix_map=rules)
     assert found == "ZZX9A2600042"
-    assert source.isrc_for(_entry(recorded), root=root, prefix_map=[]) == "", (
-        "an unmapped prefix is not guessed onto the current root"
-    )
+    unmapped = source.isrc_for(_entry(recorded), root=root, prefix_map=[])
+    assert unmapped == "", "an unmapped prefix is not guessed onto the current root"
 
 
 @pytest.mark.parametrize(
@@ -980,7 +956,6 @@ def test_the_default_favourites_playlist_is_the_one_the_fixture_carries():
 # 9. What the review found a green suite could not see
 
 def test_a_dangling_track_is_named_in_the_queued_envelope(installed, queue):
-    """The derivation collected it and nothing drove the reporting of it."""
     path = _export(installed, crate=(1, 2, 99), tracks=2)
     job_id = queue(fake(1, 2), verb=export_verb(path))
     code, shown = drive(["job", "show", job_id])
@@ -1010,10 +985,7 @@ def test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all(monke
     monkeypatch.setattr(ledger, "_locked", unwritable)
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
-    assert account.created == [], (
-        "an unwritable ledger must refuse BEFORE the remote playlist is made; "
-        "a create the ledger cannot record is one the next item makes again"
-    )
+    assert account.created == [], "an unwritable ledger refuses BEFORE the playlist is made"
 
 
 def test_a_cancelled_job_does_not_report_a_clean_resume(queue):
@@ -1043,7 +1015,6 @@ def test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success(queue
 def test_a_confirm_does_not_authorise_a_different_track_set_at_the_same_path(
     installed, monkeypatch
 ):
-    """The case the two-path test could not reach, and the one a person hits."""
     bind(monkeypatch, fake(1, 2, 3))
     path = _export(installed, crate=(1,))
     run_id = _decided(_asked(export_verb(path)))
@@ -1052,15 +1023,7 @@ def test_a_confirm_does_not_authorise_a_different_track_set_at_the_same_path(
     _stale(run_id, export_verb(path))
 
 
-def test_job_show_reports_the_bound_worker_for_a_queued_sweep(sweep):
-    """The plan named this for both verbs and only the export verb had it."""
-    code, shown = drive(["job", "show", sweep(fake(1, 2))])
-    assert code == int(ExitCode.OK), shown
-    assert shown["data"]["progress"]["worker"] == "bound"
-
-
 def test_a_failed_favourite_leaves_the_sweep_resumable(sweep):
-    """The plan named it for both verbs and only the export verb had it."""
     account = fake(1, 2, fail_on={"tid-2"}, transient=True)
     job_id = sweep(account)
     assert _resume(job_id)[0] != int(ExitCode.OK)
@@ -1089,7 +1052,6 @@ def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(installe
 
 
 def test_an_export_the_provider_matches_nothing_of_says_so_in_the_envelope(queue):
-    """The plan's success criterion, at its worst case rather than its easy one."""
     resumed = _done(queue(fake()))
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["added"] == []
@@ -1097,7 +1059,6 @@ def test_an_export_the_provider_matches_nothing_of_says_so_in_the_envelope(queue
 
 
 def test_aborting_the_confirmation_queues_nothing(exported):
-    """The other option on the gate, which no test had ever chosen."""
     refused = _asked(export_verb(exported))
     detail = refused["cause"]["detail"]
     assert detail["options"][-1] == "abort"
@@ -1302,10 +1263,8 @@ def test_an_age_is_built_whole_or_not_at_all(tmp_path):
         source.ExportAge(path=tmp_path / "x.xml", limit_days=7, judged_at=_WRITTEN)
 
 
-def test_a_modification_time_no_date_can_hold_is_unknown_rather_than_a_crash(tmp_path, monkeypatch):
+def test_a_modification_time_no_date_can_hold_is_unknown_rather_than_a_crash(document, monkeypatch):
     """``export_age`` says it never raises, and only the stat was guarded."""
-    document = tmp_path / "collection.xml"
-    document.write_text("<x/>")
     class _Stat:
         st_mtime = 1e20
     monkeypatch.setattr(Path, "stat", lambda self, **kwargs: _Stat())
@@ -1460,11 +1419,10 @@ def test_a_confirmed_adoption_does_not_authorise_a_create(installed, queue):
 
 def test_an_export_that_adopts_nothing_digests_as_it_always_did():
     """A job frozen before the key existed must still resume (``DecisionStale``)."""
-    plain = export_cli.confirm_digest("crate", "/x/collection.xml", ["1", "2"])
-    assert export_cli.confirm_digest("crate", "/x/collection.xml", ["1", "2"], adopts="") == plain
-    assert export_cli.confirm_digest(
-        "crate", "/x/collection.xml", ["1", "2"], adopts="old"
-    ) != plain
+    asked = ("crate", "/x/collection.xml", ["1", "2"])
+    plain = export_cli.confirm_digest(*asked)
+    assert export_cli.confirm_digest(*asked, adopts="") == plain
+    assert export_cli.confirm_digest(*asked, adopts="old") != plain
     assert export_cli._frozen_adoption({}) == {"adopts": ""}
     assert export_cli._frozen_adoption({export_cli.ADOPTS: "old"}) == {"adopts": "old"}
 

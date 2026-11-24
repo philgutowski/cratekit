@@ -1,12 +1,6 @@
-"""U344: the tail's restamp no longer measures energy on files ``analyze run`` just scored.
-
-``analyze run`` measures energy through the restamp's own measure, so a file
-it scored carries the level a restamp would give it. ``analyze restamp
---scored-by RUN_JOB`` leaves out exactly those files, and only while the run's
-calibration is still the active one and the file's tag still reads its level;
-every other file is restamped as it always was. The tail passes the flag from
-its own pass state and says what was left out. A hand run is unchanged.
-"""
+"""U344: ``analyze restamp --scored-by RUN_JOB`` leaves out the files the run scored, while its
+calibration is active and the tag still reads its level; the tail passes the flag, a hand run
+is unchanged."""
 
 from __future__ import annotations
 
@@ -99,6 +93,14 @@ def run_over(folder: Path) -> jobs.Job:  # noqa: F811 - the imported fixture's n
         return jobs.get(store, job_id)
 
 
+def scored_run(folder, silence, monkeypatch, *names, **detected) -> jobs.Job:  # noqa: F811
+    """``names`` placed in ``folder`` and run over, each detected at ``detected`` (level 6)."""
+    for name in names:
+        place(folder, silence, name)
+    bind_scoring(monkeypatch, detect_=detector(**{"level": 6, **detected}))
+    return run_over(folder)
+
+
 def restamp_jobs() -> list[jobs.Job]:
     key = registry.entry("analyze.restamp").handler_key
     with jobs.open_store() as store:
@@ -121,9 +123,7 @@ def energy_of(path: Path) -> str | None:
 def test_the_run_report_names_the_calibration_its_level_was_scored_under(
     cfg, folder, silence, monkeypatch, calibrated  # noqa: F811
 ):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a")
     (report,) = artifacts.committed(cfg, run.job_id)
     assert report["status"] == "analyzed" and report["energy"] == 6
     assert report[analysis_cli.SCORED_UNDER] == energy.fingerprint(calibrated)
@@ -145,9 +145,7 @@ def test_the_shipped_detector_records_the_calibration_its_settings_carry(
 def test_the_run_reads_the_slices_length_before_and_after_its_own_write(
     cfg, folder, silence, monkeypatch, calibrated, lengths  # noqa: F811
 ):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a")
     (report,) = artifacts.committed(cfg, run.job_id)
     assert report[analysis_cli.SLICE_HELD] is True
     assert lengths.asked == ["a.flac", "a.flac"]
@@ -156,11 +154,8 @@ def test_the_run_reads_the_slices_length_before_and_after_its_own_write(
 def test_a_run_that_scored_no_energy_reads_no_length(
     cfg, folder, silence, monkeypatch, calibrated, lengths  # noqa: F811
 ):
-    place(folder, silence, "a")
-    bind_scoring(
-        monkeypatch, detect_=detector(level=None, status=energy.STATUS_FEATURES_UNAVAILABLE)
-    )
-    run = run_over(folder)
+    unavailable = energy.STATUS_FEATURES_UNAVAILABLE
+    run = scored_run(folder, silence, monkeypatch, "a", level=None, status=unavailable)
     (report,) = artifacts.committed(cfg, run.job_id)
     assert report[analysis_cli.SLICE_HELD] is False and lengths.asked == []
 
@@ -173,8 +168,7 @@ def test_a_run_that_scored_no_energy_reads_no_length(
 def test_a_file_whose_slice_moved_or_went_unread_with_the_runs_write_is_restamped(
     cfg, folder, silence, monkeypatch, calibrated, measuring, lengths, answers  # noqa: F811
 ):
-    """The review's MP3 with no Xing header: its length is read off its size, which the
-    run's tag write grows, so the restamp's slice is not the one the run measured."""
+    """An MP3 with no Xing header grows with the run's tag write, so the slice is not the run's."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=6))
     lengths.answers = list(answers)
@@ -225,10 +219,7 @@ def test_a_run_report_short_of_a_scored_level_leaves_its_file_to_the_restamp(
 ):
     """Each condition of a left out file, broken alone on the run's own committed report."""
     import json
-
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=1 if value is True else 6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a", level=1 if value is True else 6)
     scored = folder / "a.flac"
     if value is True:
         # True reads as 1, so the tag carries 1, and only the type tells them apart.
@@ -239,9 +230,7 @@ def test_a_run_report_short_of_a_scored_level_leaves_its_file_to_the_restamp(
     report = json.loads(report_path.read_text(encoding="utf-8"))
     report[field] = value
     report_path.write_text(json.dumps(report), encoding="utf-8")
-
     queue_restamp(folder, "--scored-by", run.job_id)
-
     (job,) = restamp_jobs()
     assert list(item_states(job.job_id)) == [scored.name]
 
@@ -270,9 +259,8 @@ def test_a_run_with_no_calibration_records_none_and_the_restamp_still_refuses(
     cfg, folder, silence, monkeypatch  # noqa: F811
 ):
     """Nothing scored, nothing left out: the refusal at the queue is today's."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=None, status=energy.STATUS_UNCALIBRATED))
-    run = run_over(folder)
+    uncalibrated = energy.STATUS_UNCALIBRATED
+    run = scored_run(folder, silence, monkeypatch, "a", level=None, status=uncalibrated)
     (report,) = artifacts.committed(cfg, run.job_id)
     assert report[analysis_cli.SCORED_UNDER] is None
     code, envelope = drive([*RESTAMP, "--scored-by", run.job_id, "--queue-only", str(folder)])
@@ -286,14 +274,9 @@ def test_a_run_with_no_calibration_records_none_and_the_restamp_still_refuses(
 def test_a_restamp_told_the_run_measures_none_of_the_files_it_scored(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    place(folder, silence, "a")
-    place(folder, silence, "b")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a", "b")
     before = {path.name: energy_of(path) for path in folder.iterdir()}
-
     envelope = queue_restamp(folder, "--scored-by", run.job_id)
-
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["state"] == analysis_cli.ALL_SCORED
     assert envelope["data"]["progress"] == {"left_out": 2, "scored_by": run.job_id}
@@ -306,8 +289,7 @@ def test_a_restamp_told_the_run_measures_none_of_the_files_it_scored(
 def test_a_file_the_run_did_not_score_is_restamped_and_the_rest_left_out(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    """A name already carrying the head is skipped by the run (its marker before U343),
-    so the restamp takes it."""
+    """A name already headed is skipped by the run (before U343), so the restamp takes it."""
     place(folder, silence, "a")
     headed = place(folder, silence, "05B - 120 - headed", energylevel=2)
     bind_scoring(monkeypatch, detect_=detector(level=6))
@@ -336,15 +318,10 @@ def test_a_file_the_run_did_not_score_is_restamped_and_the_rest_left_out(
 def test_a_file_whose_tag_moved_since_the_run_is_restamped(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    place(folder, silence, "a")
-    place(folder, silence, "b")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a", "b")
     moved = folder / "a.flac"
     assert tags.write_tags(moved, {"energylevel": 3})
-
     queue_restamp(folder, "--scored-by", run.job_id)
-
     (job,) = restamp_jobs()
     assert list(item_states(job.job_id)) == [moved.name]
     assert job.payload["left_out"] == ["b.flac"]
@@ -353,14 +330,9 @@ def test_a_file_whose_tag_moved_since_the_run_is_restamped(
 def test_every_file_is_restamped_once_the_calibration_changed_since_the_run(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    place(folder, silence, "a")
-    place(folder, silence, "b")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a", "b")
     energy.save_calibration(cfg, calibration_over(count=21))
-
     envelope = queue_restamp(folder, "--scored-by", run.job_id)
-
     (job,) = restamp_jobs()
     assert sorted(item_states(job.job_id)) == ["a.flac", "b.flac"]
     assert envelope["data"]["progress"]["left_out"] == 0
@@ -371,12 +343,8 @@ def test_a_file_the_run_could_not_score_is_restamped(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
     """A level the features could not give is no level, so the restamp tries again."""
-    place(folder, silence, "a")
-    bind_scoring(
-        monkeypatch,
-        detect_=detector(level=None, status=energy.STATUS_FEATURES_UNAVAILABLE),
-    )
-    run = run_over(folder)
+    unavailable = energy.STATUS_FEATURES_UNAVAILABLE
+    run = scored_run(folder, silence, monkeypatch, "a", level=None, status=unavailable)
     queue_restamp(folder, "--scored-by", run.job_id)
     (job,) = restamp_jobs()
     assert list(item_states(job.job_id)) == ["a.flac"]
@@ -386,9 +354,7 @@ def test_a_file_the_run_could_not_score_is_restamped(
 def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says_so(
     cfg, folder, silence, monkeypatch, calibrated, measuring, tmp_path, which  # noqa: F811
 ):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run = run_over(folder)
+    run = scored_run(folder, silence, monkeypatch, "a")
     named = run.job_id
     if which == "unknown":
         named = "no-such-job"
@@ -420,7 +386,6 @@ def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says
         named = fresh.job_id
 
     envelope = queue_restamp(folder, "--scored-by", named)
-
     open_jobs = [job for job in restamp_jobs() if job.job_id != named and job.is_open()]
     (job,) = open_jobs
     assert list(item_states(job.job_id)) == ["a.flac"]
@@ -433,9 +398,7 @@ def test_a_restamp_driven_in_the_foreground_still_says_it_left_nothing_out(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
     """The review's mistyped job: the foreground answer is the resume's, so it reads the payload."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run_over(folder)
+    scored_run(folder, silence, monkeypatch, "a")
     code, envelope = drive([*RESTAMP, "--scored-by", "no-such-job", str(folder)])
     assert code == int(ExitCode.OK), envelope
     (said,) = [w for w in envelope["warnings"] if w["code"] == "restamp-left-out-nothing"]
@@ -447,12 +410,8 @@ def test_a_hand_run_of_restamp_is_what_it_always_was(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
     """No flag, no new key anywhere: every file queued, the payload and answer unchanged."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch, detect_=detector(level=6))
-    run_over(folder)
-
+    scored_run(folder, silence, monkeypatch, "a")
     envelope = queue_restamp(folder)
-
     (job,) = restamp_jobs()
     assert list(item_states(job.job_id)) == ["a.flac"]
     assert "scored_by" not in job.payload and "left_out" not in job.payload
@@ -543,8 +502,7 @@ def test_a_tail_pass_restamps_the_file_the_run_did_not_score_and_counts_the_rest
 def test_a_resumed_tail_restamps_every_file_since_its_run_scored_none(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    """Run again over files the first pass named, the run skips them all, so the restamp
-    takes them all, and the row says none was left out."""
+    """A second pass's run skips every file the first named, so the restamp takes them all."""
     place(folder, silence, "a")
     place(folder, silence, "b")
     bind_scoring(monkeypatch, detect_=detector(level=6))
@@ -564,9 +522,8 @@ def test_a_resumed_tail_restamps_every_file_since_its_run_scored_none(
 def test_the_tail_over_the_real_verbs_leaves_every_title_headless_for_the_landing(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    """U343, the tail end to end on fixtures: run, rescore, restamp and name apply leave
-    each file under its own name with its measures and its mark, no head, no title
-    head and no key, and the landing plans each title as its title tag gives it."""
+    """U343, end to end: each file keeps its name, measures and mark, with no head, title head
+    or key, and the landing plans each title as its title tag gives it."""
     from cratekit.intake import ingest
     from cratekit.write import naming_cli
 

@@ -1,7 +1,5 @@
-"""U227: a track queued by an account edit is filed where the edit put it.
-
-The landing's own filing is the landing's and the edit is carried once. Pure.
-"""
+"""U227: a track queued by an account edit is filed where the edit put it; the landing's own
+filing is the landing's and the edit is carried once. Pure."""
 
 from __future__ import annotations
 

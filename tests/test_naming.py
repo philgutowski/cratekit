@@ -1,8 +1,5 @@
-"""The name template and the ONE head parser.
-
-Eight regexes once read or wrote the ``{key} - {bpm} - `` head; each delta of the deleted
-looser parser has a separating input. Three templates render in one process. D1 applies.
-"""
+"""The name template and the ONE head parser, which replaced eight regexes: each delta of the
+deleted looser parser has a separating input. D1 applies."""
 
 from __future__ import annotations
 

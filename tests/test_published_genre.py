@@ -148,6 +148,20 @@ def lookup_over(track, album=None, *, seen=None, naps: list[float] | None = None
     )
 
 
+def getter(status: int, body: str, sent: list[dict]):
+    """The one HTTP getter, answering ``status`` and ``body``, recording each request."""
+
+    class Answered:
+        status_code = status
+        text = body
+
+    def get(url, *, headers, timeout):
+        sent.append({"url": url, "headers": headers, "timeout": timeout})
+        return Answered()
+
+    return get
+
+
 def never_asked(isrc: object) -> published.Published:
     raise AssertionError(f"the general catalogue was asked about {isrc!r}")
 
@@ -199,16 +213,10 @@ def test_a_value_that_is_not_an_isrc_never_becomes_a_request(given):
     assert seen == []
 
 
-def test_an_isrc_is_folded_before_it_is_asked_about():
-    seen: list[str] = []
-    said = lookup_over(deezer_track(), deezer_album(["Rock"]), seen=seen)("us-rc1-76-07839")
-    assert said.answer == "matched"
-    assert seen[0] == f"{published.TRACK_BY_ISRC}{ISRC}"
-
-
 @pytest.mark.parametrize(
     "given",
     [
+        pytest.param("us-rc1-76-07839", id="an-isrc-is-folded-before-it-is-asked-about"),
         f"{ISRC}\x00{OTHER_ISRC}",
         f"{ISRC}; {OTHER_ISRC}",
         f"{ISRC} / {OTHER_ISRC}",
@@ -220,7 +228,7 @@ def test_an_isrc_is_folded_before_it_is_asked_about():
     ],
 )
 def test_a_field_holding_several_values_is_read_as_its_first_isrc(given):
-    """An ID3 frame with two ISRCs reads back joined by a null, which folds to nothing whole."""
+    """A spelling is folded; an ID3 frame with two ISRCs reads back joined by a null."""
     seen: list[str] = []
     said = lookup_over(deezer_track(), deezer_album(["Rock"]), seen=seen)(given)
     assert said.answer == "matched"
@@ -273,18 +281,9 @@ def test_a_429_is_waited_on_by_the_shared_backoff_and_then_is_blocked():
     """A 429 through the real fetch: three attempts, two waits, refused, nothing tried after."""
     calls: list[dict] = []
     waits: list[float] = []
-
-    class Limited:
-        status_code = 429
-        text = ""
-
-    def get(url, **kwargs):
-        calls.append({"url": url, **kwargs})
-        return Limited()
-
+    get = getter(429, "", calls)
     fetch = searchers.default_fetch(get=get, sleep=waits.append, headers=published.HEADERS)
     said = published.genre_lookup(fetch=fetch, sleep=lambda _seconds: None)(ISRC)
-
     assert said.answer == "blocked"
     assert len(calls) == searchers.RATE_LIMIT_ATTEMPTS
     assert waits == [searchers.RATE_LIMIT_BASE_WAIT_S, 2 * searchers.RATE_LIMIT_BASE_WAIT_S]
@@ -292,20 +291,11 @@ def test_a_429_is_waited_on_by_the_shared_backoff_and_then_is_blocked():
 
 
 def test_the_quota_error_is_not_retried_at_all():
-    calls: list[str] = []
-
-    class Answered:
-        status_code = 200
-        text = QUOTA
-
-    def get(url, **_kwargs):
-        calls.append(url)
-        return Answered()
-
+    calls: list[dict] = []
     waits: list[float] = []
+    get = getter(200, QUOTA, calls)
     fetch = searchers.default_fetch(get=get, sleep=waits.append, headers=published.HEADERS)
     said = published.genre_lookup(fetch=fetch, sleep=lambda _seconds: None)(ISRC)
-
     assert said.answer == "blocked"
     assert len(calls) == 1
     assert waits == []
@@ -351,16 +341,19 @@ def test_a_known_track_whose_album_could_not_be_read_is_unread_and_not_a_match(a
     assert said.genres == ()
 
 
-def test_an_album_with_no_genre_is_a_match_that_publishes_none():
-    said = lookup_over(deezer_track(), deezer_album([]))(ISRC)
+@pytest.mark.parametrize(
+    ("album", "note"),
+    [
+        pytest.param(deezer_album([]), "publishes no genre",
+                     id="an-album-with-no-genre-is-a-match-that-publishes-none"),
+        pytest.param(UNKNOWN, "lists no album",
+                     id="a-track-whose-album-the-catalogue-does-not-list-is-not-a-miss"),
+    ],
+)
+def test_a_known_track_whose_album_names_no_genre_is_a_match_with_none(album, note):
+    said = lookup_over(deezer_track(), album)(ISRC)
     assert (said.answer, said.genres) == ("matched", ())
-    assert "publishes no genre" in said.note
-
-
-def test_a_track_whose_album_the_catalogue_does_not_list_is_not_a_miss():
-    said = lookup_over(deezer_track(), UNKNOWN)(ISRC)
-    assert (said.answer, said.genres) == ("matched", ())
-    assert "lists no album" in said.note
+    assert note in said.note
 
 
 def test_a_refusal_is_remembered_and_nothing_more_is_asked_in_the_run():
@@ -452,20 +445,10 @@ def test_no_picture_is_read_off_the_general_catalogues_answer():
 def test_the_request_names_this_tool_and_not_a_browser(monkeypatch):
     """KTD7: the unseamed fetch reaches the one HTTP getter with headers naming the asker."""
     sent: list[dict] = []
-
-    class Answered:
-        status_code = 200
-        text = UNKNOWN
-
-    def get(url, *, headers, timeout):
-        sent.append(headers)
-        return Answered()
-
-    monkeypatch.setattr(searchers, "_requests_get", get)
+    monkeypatch.setattr(searchers, "_requests_get", getter(200, UNKNOWN, sent))
     said = published.genre_lookup(sleep=lambda _seconds: None)(ISRC)
-
     assert said.answer == "miss"
-    assert sent == [published.HEADERS]
+    assert [one["headers"] for one in sent] == [published.HEADERS]
     agent = published.HEADERS["User-Agent"]
     assert agent.startswith("cratekit/") and "Mozilla" not in agent
     assert published.HEADERS != searchers.HEADERS
@@ -474,17 +457,9 @@ def test_the_request_names_this_tool_and_not_a_browser(monkeypatch):
 def test_the_record_shops_are_still_asked_with_the_headers_they_were():
     """The headers seam defaults to the old constant, so the other catalogues ask as before."""
     sent: list[dict] = []
-
-    class Answered:
-        status_code = 200
-        text = "<html></html>"
-
-    def get(url, *, headers, timeout):
-        sent.append(headers)
-        return Answered()
-
+    get = getter(200, "<html></html>", sent)
     searchers.default_fetch(get=get, sleep=lambda _s: None)("https://example.test/search")
-    assert sent == [searchers.HEADERS]
+    assert [one["headers"] for one in sent] == [searchers.HEADERS]
 
 
 def test_the_suite_cannot_reach_the_live_catalogue_through_the_shared_lookup():
@@ -654,6 +629,14 @@ MISSED = (
     SourceAnswer(searchers.BANDCAMP, "blocked"),
 )
 MISSED_HIT = SearchHit(answers=MISSED, unread=(searchers.TRAXSOURCE, searchers.BANDCAMP))
+#: Beatport's own catch-all word, with its picture.
+BEATPORT_DECLINED = SearchHit(
+    genre=None,
+    source=searchers.BEATPORT,
+    source_genre=REFUSED[0],
+    art_url=BEATPORT_ART,
+    answers=(SourceAnswer(searchers.BEATPORT, "matched", source_genre=REFUSED[0]),),
+)
 
 
 def said(answer: str, *genres: str, note: str = "") -> published.Lookup:
@@ -725,20 +708,24 @@ def test_a_file_with_no_isrc_is_said_to_have_none_whatever_beatport_answered(giv
     assert out.unread == (searchers.BEATPORT,)
 
 
-def test_a_file_with_no_isrc_whose_genre_a_shop_settled_is_still_not_asked():
-    hit = SearchHit(
-        genre=BUCKET_GENRE,
-        source=searchers.BEATPORT,
-        answers=(SourceAnswer(searchers.BEATPORT, "matched", source_genre=BUCKET_GENRE),),
-    )
-    out = opinion(never_asked)(hit, "")
-    assert out.answers[-1].answer == searchers.NOT_ASKED
-
-
-def test_a_hit_that_names_no_beatport_answer_is_not_asked_about():
-    hit = SearchHit(answers=(SourceAnswer(searchers.TRAXSOURCE, "miss"),))
-    out = opinion(never_asked)(hit, ISRC)
-    assert out.answers[-1].answer == searchers.NOT_ASKED
+@pytest.mark.parametrize(
+    ("hit", "isrc"),
+    [
+        pytest.param(
+            SearchHit(
+                genre=BUCKET_GENRE,
+                source=searchers.BEATPORT,
+                answers=(SourceAnswer(searchers.BEATPORT, "matched", source_genre=BUCKET_GENRE),),
+            ),
+            "",
+            id="a-file-with-no-isrc-whose-genre-a-shop-settled-is-still-not-asked",
+        ),
+        pytest.param(SearchHit(answers=(SourceAnswer(searchers.TRAXSOURCE, "miss"),)), ISRC,
+                     id="a-hit-that-names-no-beatport-answer-is-not-asked-about"),
+    ],
+)
+def test_a_hit_beatport_did_not_leave_unsettled_is_not_asked_about(hit, isrc):
+    assert opinion(never_asked)(hit, isrc).answers[-1].answer == searchers.NOT_ASKED
 
 
 def test_a_published_genre_that_maps_becomes_the_hits_genre_with_no_inferred_mark():
@@ -775,14 +762,7 @@ def test_an_answer_that_maps_to_no_folder_is_declined_and_says_what_was_answered
 
 def test_a_declined_answer_beside_beatports_own_declined_word_keeps_beatports():
     """AE2 at the seam: both answers recorded, the source genre stays the record shop's."""
-    hit = SearchHit(
-        genre=None,
-        source=searchers.BEATPORT,
-        source_genre=REFUSED[0],
-        art_url=BEATPORT_ART,
-        answers=(SourceAnswer(searchers.BEATPORT, "matched", source_genre=REFUSED[0]),),
-    )
-    out = opinion(said("matched", FALLBACK_GENRE))(hit, ISRC)
+    out = opinion(said("matched", FALLBACK_GENRE))(BEATPORT_DECLINED, ISRC)
     assert out.genre is None
     assert (out.source, out.source_genre) == (searchers.BEATPORT, REFUSED[0])
     assert [(one.source, one.source_genre) for one in out.answers] == [
@@ -794,14 +774,7 @@ def test_a_declined_answer_beside_beatports_own_declined_word_keeps_beatports():
 
 def test_a_published_genre_over_beatports_declined_word_is_written_and_keeps_beatports_picture():
     """A Beatport catch-all is not usable, so the general catalogue's answer is written."""
-    hit = SearchHit(
-        genre=None,
-        source=searchers.BEATPORT,
-        source_genre=REFUSED[0],
-        art_url=BEATPORT_ART,
-        answers=(SourceAnswer(searchers.BEATPORT, "matched", source_genre=REFUSED[0]),),
-    )
-    out = opinion(said("matched", SUB_GENRE))(hit, ISRC)
+    out = opinion(said("matched", SUB_GENRE))(BEATPORT_DECLINED, ISRC)
     assert (out.source, out.source_genre) == (published.SOURCE, SUB_GENRE)
     assert out.genre == routing.suggest_tag(TAXONOMY, SUB_GENRE).tag
     assert (out.art_url, out.art_source) == (BEATPORT_ART, searchers.BEATPORT)
@@ -842,12 +815,18 @@ def silence(tmp_path_factory) -> Path:
 
 
 @pytest.fixture
-def track(tmp_path, silence) -> Path:
-    """One real FLAC carrying an artist, a title and an ISRC, and no genre."""
+def bare(tmp_path, silence) -> Path:
+    """One real FLAC carrying no tag at all."""
     path = tmp_path / f"{TITLE}.flac"
     shutil.copy2(silence, path)
-    assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE, "isrc": ISRC})
     return path
+
+
+@pytest.fixture
+def track(bare) -> Path:
+    """The FLAC carrying an artist, a title and an ISRC, and no genre."""
+    assert tags.write_tags(bare, {"artist": ARTIST, "title": TITLE, "isrc": ISRC})
+    return bare
 
 
 EMPTY_BEATPORT = _beatport_page([])
@@ -867,6 +846,17 @@ def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp
     )
 
 
+def every_shop_missing(path: Path, lookup: published.Lookup, **kwargs) -> tag.TagResult:
+    """``path`` tagged with all three record shops read and missing, then ``lookup`` asked."""
+    searcher = shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>")
+    return tag.tag_one(path, searcher=searcher, published=opinion(lookup), **kwargs)
+
+
+def album_of(*words: str, seen: list[str] | None = None) -> published.Lookup:
+    """The general catalogue knowing the track, its album publishing ``words``."""
+    return lookup_over(deezer_track(), deezer_album(list(words)), seen=seen)
+
+
 def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
     """AE1: Beatport misses, the catalogue's album word has a folder, and that is written."""
     word = "Rock"
@@ -876,12 +866,7 @@ def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
     (rock,) = [sub for sub in TAXONOMY.bucket("non_electronic").subs if sub.id == "rock"]
     assert suggestion.tag == rock.display
 
-    result = tag.tag_one(
-        track,
-        searcher=shops(),
-        published=opinion(lookup_over(deezer_track(), deezer_album([word]))),
-    )
-
+    result = tag.tag_one(track, searcher=shops(), published=opinion(album_of(word)))
     assert result.skipped is None
     assert result.genre_written == suggestion.tag
     assert tags.read_genre_from_file(track) == suggestion.tag
@@ -903,12 +888,7 @@ def test_ae2_two_coarse_answers_write_nothing_and_the_record_shows_both(track):
     """AE2: Beatport's catch-all and the catalogue's, in the words each was measured to use."""
     beatport = _beatport_page([_beatport_track(ARTIST, TITLE, "Electronica")])
 
-    result = tag.tag_one(
-        track,
-        searcher=shops(beatport),
-        published=opinion(lookup_over(deezer_track(), deezer_album(["Electro"]))),
-    )
-
+    result = tag.tag_one(track, searcher=shops(beatport), published=opinion(album_of("Electro")))
     assert result.genre_written is None
     assert tags.read_genre_from_file(track) is None
     assert result.skipped == tag.UNMAPPED_GENRE
@@ -922,26 +902,16 @@ def test_ae2_two_coarse_answers_write_nothing_and_the_record_shows_both(track):
 
 def test_ae3_a_usable_beatport_answer_is_written_and_the_general_catalogue_is_not_asked(track):
     beatport = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)])
-
     result = tag.tag_one(track, searcher=shops(beatport), published=opinion(never_asked))
-
     assert result.genre_written == BUCKET_GENRE
     assert result.source == searchers.BEATPORT
     assert result.answers[-1] == SourceAnswer(published.SOURCE, searchers.NOT_ASKED)
 
 
-def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(tmp_path, silence):
+def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(bare):
     """AE4, every record shop answering MISS, which was a clean ``no-hit`` before this unit."""
-    path = tmp_path / f"{TITLE}.flac"
-    shutil.copy2(silence, path)
     seen: list[str] = []
-
-    result = tag.tag_one(
-        path,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(deezer_track(), deezer_album(["Rock"]), seen=seen)),
-    )
-
+    result = every_shop_missing(bare, album_of("Rock", seen=seen))
     assert result.skipped == tag.NO_ISRC
     assert result.skipped != tag.NO_HIT
     assert result.answers[-1] == SourceAnswer(published.SOURCE, tag.NO_ISRC, note="no ISRC was given")
@@ -949,50 +919,30 @@ def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(tmp_path,
     assert seen == [], "a file with no ISRC is never asked about"
 
 
-def test_a_file_with_no_isrc_beside_blocked_fallbacks_keeps_the_unread_reason(tmp_path, silence):
+def test_a_file_with_no_isrc_beside_blocked_fallbacks_keeps_the_unread_reason(bare):
     """``sources-unread`` keeps its R-791 meaning and wins; the answer still says no ISRC."""
-    path = tmp_path / f"{TITLE}.flac"
-    shutil.copy2(silence, path)
-
-    result = tag.tag_one(path, searcher=shops(), published=opinion(lookup_over(UNKNOWN)))
-
+    result = tag.tag_one(bare, searcher=shops(), published=opinion(lookup_over(UNKNOWN)))
     assert result.skipped == tag.SOURCES_UNREAD
     assert result.answers[-1].answer == tag.NO_ISRC
 
 
-def test_a_malformed_isrc_tag_is_reported_with_what_it_held(tmp_path, silence):
-    path = tmp_path / f"{TITLE}.flac"
-    shutil.copy2(silence, path)
-    assert tags.write_tags(path, {"isrc": "CAT-0042"})
-
-    result = tag.tag_one(
-        path,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(deezer_track(), deezer_album(["Rock"]))),
-    )
-
+def test_a_malformed_isrc_tag_is_reported_with_what_it_held(bare):
+    assert tags.write_tags(bare, {"isrc": "CAT-0042"})
+    result = every_shop_missing(bare, album_of("Rock"))
     assert result.skipped == tag.NO_ISRC
     assert "CAT-0042" in result.answers[-1].note
 
 
 def test_a_track_no_catalogue_knows_with_every_source_read_is_still_no_hit(track):
     """Four misses is the absence ``no-hit`` means, and stays it."""
-    result = tag.tag_one(
-        track,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(UNKNOWN)),
-    )
+    result = every_shop_missing(track, lookup_over(UNKNOWN))
     assert result.skipped == tag.NO_HIT
     assert [one.answer for one in result.answers] == ["miss"] * 4
     assert result.unread == ()
 
 
 def test_a_blocked_general_catalogue_leaves_the_file_untagged_and_askable(track):
-    result = tag.tag_one(
-        track,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(RATE_LIMITED)),
-    )
+    result = every_shop_missing(track, lookup_over(RATE_LIMITED))
     assert result.skipped == tag.SOURCES_UNREAD
     assert result.unread == (published.SOURCE,)
     assert tags.read_genre_from_file(track) is None
@@ -1041,12 +991,8 @@ def test_a_published_genre_brings_no_picture_and_the_image_fetch_is_not_called(t
         raise AssertionError(f"a picture was fetched, {url}")
 
     result = tag.tag_one(
-        track,
-        searcher=shops(),
-        fetch_image=fetch_image,
-        published=opinion(lookup_over(deezer_track(), deezer_album(["Rock"]))),
+        track, searcher=shops(), fetch_image=fetch_image, published=opinion(album_of("Rock"))
     )
-
     assert result.genre_written is not None
     assert result.art_fetch == tag.ART_UNAVAILABLE
     assert result.art_fetch_detail == (
@@ -1057,11 +1003,7 @@ def test_a_published_genre_brings_no_picture_and_the_image_fetch_is_not_called(t
 
 
 def test_a_declined_published_word_does_not_put_the_picture_question_to_the_catalogue(track):
-    result = tag.tag_one(
-        track,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(deezer_track(), deezer_album([UNDECLARED]))),
-    )
+    result = every_shop_missing(track, album_of(UNDECLARED))
     assert result.skipped == tag.UNMAPPED_GENRE
     assert result.art_fetch_detail == (
         "no catalogue that is asked for pictures carried the track, so no picture "
@@ -1071,11 +1013,7 @@ def test_a_declined_published_word_does_not_put_the_picture_question_to_the_cata
 
 def test_a_match_with_no_genre_leaves_the_file_as_the_shops_left_it(track):
     """Every record shop missed; the catalogue knows the track but publishes no genre."""
-    result = tag.tag_one(
-        track,
-        searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
-        published=opinion(lookup_over(deezer_track(), deezer_album([]))),
-    )
+    result = every_shop_missing(track, album_of())
     assert result.skipped == tag.NO_HIT
     assert (result.source, result.source_genre) == ("", "")
     assert result.answers[-1].answer == "matched"
@@ -1104,19 +1042,17 @@ def test_beatports_picture_is_embedded_under_a_published_genre_and_says_whose_it
         track,
         searcher=shops(_beatport_page([row])),
         fetch_image=fetch_image,
-        published=opinion(lookup_over(deezer_track(), deezer_album(["Rock"]))),
+        published=opinion(album_of("Rock")),
     )
-
     assert result.source == published.SOURCE
     assert len(fetched) == 1 and "beatport" in fetched[0]
     assert result.art_fetch == tag.ART_EMBEDDED
     assert result.art_fetch_detail.endswith(f"from {searchers.BEATPORT}")
 
 
-def test_a_picture_from_beatports_row_is_reported_as_beatports(tmp_path, silence):
+def test_a_picture_from_beatports_row_is_reported_as_beatports(bare):
     """The hit's source became the general catalogue and the picture did not."""
-    path = tmp_path / f"{TITLE}.flac"
-    shutil.copy2(silence, path)
+    path = bare
     hit = SearchHit(
         genre="anything",
         source=published.SOURCE,
@@ -1174,12 +1110,9 @@ def test_the_isrc_tag_is_not_read_for_a_file_a_record_shop_settled(track, monkey
     assert "isrc" not in read
 
 
-def test_a_searcher_that_returns_nothing_is_not_offered(tmp_path, silence):
-    path = tmp_path / f"{TITLE}.flac"
-    shutil.copy2(silence, path)
-
+def test_a_searcher_that_returns_nothing_is_not_offered(bare):
     def seam(hit: SearchHit, isrc: str | None) -> SearchHit:
         raise AssertionError("None was offered to the general catalogue")
 
-    result = tag.tag_one(path, searcher=lambda _a, _t: None, published=seam)
+    result = tag.tag_one(bare, searcher=lambda _a, _t: None, published=seam)
     assert result.skipped == tag.NO_HIT

@@ -1,8 +1,4 @@
-"""R-1308: a removal from an account playlist whose read lags the removal is taken as done.
-
-On the U220 stand in: tracks and count both after is done, either before is a
-bounded lag, anything else refuses; nothing is sent again. D1 applies.
-"""
+"""R-1308: a removal whose read back lags is taken as done, and nothing is sent again. D1."""
 
 from __future__ import annotations
 

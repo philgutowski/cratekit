@@ -1,29 +1,12 @@
 """U38: the reserved exit-code table, and the two ways a module can bypass it.
 
-S4 says every structured refusal cause has a reserved code and a remediation.
-``cratekit.cli.exit_codes`` is that reservation, and this file makes it a
-constraint rather than a lookup table nobody must consult. It hunts five
-defects a registry in this repository has shipped:
-
-1. A duplicate key Python resolves silently: the reservations are a tuple, so
-   the count sees a repeat a dict literal would collapse.
-2. One symbol meaning two things: a key that is also a remediation token
-   reserves its own token, and a slug shared with ``core.cause.REASONS``
-   reserves the identical code.
-3. A range nothing enforces: 10 through 59, clear of the process band, the
-   growth band and any code no verb may return.
-4. A table that can be bypassed: two source guards, bound through the import
-   graph, forbid a second table and a bare integer becoming a process status,
-   each with fixtures proving it bites the evasion and stays silent on correct
-   code in every import shape the repository allows (P7).
-5. A set that quantifies and enumerates: the completeness check derives the
-   causes by walking the package (P3).
-
-Most of the file is the fixtures six review rounds wrote after a plausible
-``modules/tools/tagger.py`` with unreserved causes, its own table and bare
-exits passed the suite; the unit record has the story. The measurements are in
-the residual "The tiers were bought with a number that does not exist" and the residual
-"The mutation table for this unit's guards, written into the repository".
+S4: every structured refusal cause has a reserved code and a remediation, and
+``cratekit.cli.exit_codes`` is held to it against five defects a registry here
+shipped: a duplicate key, one symbol meaning two things, a range nothing enforced,
+a table a module could bypass (two source guards, each biting the evasion and
+silent on correct code, P7), and a set enumerated rather than derived (P3). The
+measurements are in the residual "The tiers were bought with a number that does not exist"
+and the residual "The mutation table for this unit's guards, written into the repository".
 """
 
 from __future__ import annotations
@@ -89,84 +72,49 @@ CAUSES = frozenset(reserved_codes.RESERVED_CAUSES)
 #: The range the guard measures a bare integer against, taken from the table.
 RANGE = reserved_codes.RESERVED_RANGE
 
-#: The package enums that are NOT a refusal cause vocabulary, and why. Every
-#: OTHER package enum reaching an exception's constructor is one.
-#:
-#: By enum identity, never by parameter name: reading the role from the name let
-#: a rename drop ``preflight.LibraryVolumeError`` and restore ``Scope``. A new
-#: enum on an exception must be classified here by a person, with a reason;
-#: ``test_every_enum_declared_not_a_cause_exists`` keeps the entries honest.
+
+def _narrow(source: str, package: str | None = None) -> list[str]:
+    """The second-table guard over ``source``, keyed on the reserved table's causes."""
+    return reserved_code_tables(source, CAUSES, RANGE, package)
+
+
+def _wide(source: str) -> list[str]:
+    """The second-table guard over ``source``, keyed on every declared cause."""
+    return reserved_code_tables(source, declared_causes(), RANGE)
+
+
+#: The package enums that are NOT a refusal cause vocabulary, by identity and with a
+#: reason; every other enum on an exception's constructor is one.
 NOT_A_CAUSE: Mapping[str, str] = MappingProxyType(
     {
-        "cratekit.core.cause.Scope": (
-            "how wide a failure's blast radius is. Context travelling ON a "
-            "refusal, not the reason for it; every cause already carries one"
-        ),
-        "cratekit.core.cause.Outcome": (
-            "what a run DID. An envelope field, and a successful run has one"
-        ),
+        "cratekit.core.cause.Scope": "how wide a failure reaches, context ON a refusal",
+        "cratekit.core.cause.Outcome": "what a run DID, which a successful run has too",
         "cratekit.core.jobs.JobState": "where a job is in its lifecycle",
         "cratekit.core.jobs.ItemState": "where one item of a job is in its lifecycle",
-        "cratekit.core.backup_facts.Portion": (
-            "WHICH half of a backup, the files or the database. A subject, and "
-            "both portions appear on a run that refused nothing"
-        ),
-        "cratekit.core.backup_facts.AgeState": (
-            "whether a recorded age is usable. A reading, and its usable value "
-            "is the ordinary one"
-        ),
+        "cratekit.core.backup_facts.Portion": "WHICH half of a backup, a subject",
+        "cratekit.core.backup_facts.AgeState": "whether a recorded age is usable, a reading",
         "cratekit.core.binaries.PackageManager": (
-            "WHERE a missing program is installed from, carried on the install "
-            "hint that rides beside the remedy. The cause is that the program is "
-            "absent; this says which command line would fix it, which is the "
-            "remediation's own detail. Found by the dataclass hop, which is the "
-            "identity rule doing its job: it demanded a classification for an "
-            "enum a person had to look at, rather than guessing from a name"
+            "WHERE a missing program is installed from, the remediation's own detail"
         ),
         "cratekit.acquire.adapter.TrackOutcome": "what happened to one requested track",
         "cratekit.acquire.adapter.InvocationOutcome": "how one adapter invocation ended",
-        "cratekit.acquire.download.ProviderSignal": (
-            "what the provider signalled during a download, including nothing "
-            "unusual at all"
-        ),
-        "cratekit.core.routing.Decline": (
-            "why tagging would not answer. A decline is a RESULT and the module "
-            "says so in its own docstring, not a refusal that ends a process"
-        ),
+        "cratekit.acquire.download.ProviderSignal": "what the provider signalled, often nothing",
+        "cratekit.core.routing.Decline": "why tagging would not answer, a RESULT not a refusal",
     }
 )
 
-#: The refusals whose discriminator this table deliberately does NOT reserve, and
-#: the conversion that already gives each a code and a remediation. Named, not
-#: excluded by an annotation the derivation could not read.
-#: ``test_every_exclusion_names_a_refusal_something_already_converts`` proves each.
+#: The refusals this table deliberately does NOT reserve, and the conversion that
+#: already gives each a code and a remediation.
 CONVERTED_ELSEWHERE: Mapping[str, str] = MappingProxyType(
     {
         "cratekit.core.config.ConfigError": (
-            "cratekit/cli/__init__.py catches this AT THE COMMAND-LINE BOUNDARY "
-            "and builds a cause with reason config-unusable, which core.cause "
-            "already reserves at PRECONDITION, carrying the module's own token "
-            "through unchanged. Reserving its six tokens here would be a second "
-            "opinion, and for upgrade-cratekit it would be a WRONG one: this "
-            "table reserves that key at 32 for the unreadable fact file, and the "
-            "configuration path exits 30. See the module docstring, which now "
-            "records that collision instead of claiming it does not exist"
+            "the command-line boundary builds a config-unusable cause, reserved by core.cause"
         ),
         "cratekit.acquire.adapter.AdapterError": (
-            "the acquisition layer catches its own failures and folds them into "
-            "an InvocationOutcome carrying exc.remedy, so an adapter refusal "
-            "becomes a run RESULT rather than an exception at the boundary. Its "
-            "nine tokens are remediation for a track, not a status for a process"
+            "acquisition folds it into an InvocationOutcome, a run RESULT, carrying exc.remedy"
         ),
         "cratekit.core.preflight.LibraryVolumeError": (
-            "cratekit/core/session.py converts every MountState through "
-            "_MOUNT_REASONS into a slug core.cause.REASONS already reserves, "
-            "with MOUNT_LIBRARY_VOLUME as the remedy, before a destructive "
-            "session resolves a single path. Its seven states are a diagnosis "
-            "of one condition the closed registry already spells four ways. "
-            "This entry is the one the previous round excluded by ACCIDENT: the "
-            "parameter is called status and the enum sits one field down inside "
-            "a dataclass, so the walk lost a live refusal and said nothing"
+            "core/session.py converts every MountState into a slug core.cause.REASONS reserves"
         ),
     }
 )
@@ -216,8 +164,7 @@ def test_the_index_runs_at_import_rather_than_only_when_a_test_calls_it():
         and node.value.func.id == "_index"
     ]
     assert built_at_import, (
-        "RESERVED_CAUSES is no longer built by a module-level call to _index, so "
-        "nothing enforces the range or the duplicate check until a test asks"
+        "RESERVED_CAUSES is no longer built at import by a module-level _index call"
     )
 
 
@@ -240,21 +187,14 @@ def test_a_reservation_with_no_remediation_cannot_be_constructed():
 
 
 def test_every_reserved_code_sits_inside_the_reserved_range():
-    """10 through 59, and a test that fails on anything else.
-
-    Below 10 is the process band (0 success, 1 defect, 2 the argument parser,
-    KTD25). At or above MAX_CODE is the shell's territory: 126, 127, 128 plus a
-    signal up to SIGRTMAX 64, and truncation past a byte. The job engine reads a
-    negative signal number through subprocess.returncode; the range is clear of both.
-    """
+    """10 through 59: clear of the process band below 10 and the shell's codes from MAX_CODE up."""
     low, high = reserved_codes.RESERVED_RANGE
     assert (low, high) == (10, 60)
     assert high <= MAX_CODE
     for reservation in reserved_codes.RESERVATIONS:
         value = int(reservation.code)
         assert isinstance(reservation.code, ExitCode), (
-            f"{reservation.cause} reserves a bare integer rather than a member of "
-            f"the one vocabulary"
+            f"{reservation.cause} reserves a bare integer, not a vocabulary member"
         )
         assert low <= value < high, f"{reservation.cause} reserves {value}"
         assert value not in (0, 1, 2)
@@ -267,8 +207,7 @@ def test_the_growth_band_is_closed_at_both_ends_rather_than_merely_unused():
     growth = BANDS[-1]
     assert growth.name == "unclaimed"
     assert reserved_codes.RESERVED_RANGE[1] <= growth.start, (
-        "the reserved range now reaches into the growth band, so the room is "
-        "claimable by the next reservation rather than kept"
+        "the reserved range reaches into the growth band"
     )
     inhabited = [code.name for code in ExitCode if growth.start <= int(code) < growth.stop]
     assert not inhabited, f"the growth room has been built on: {inhabited}"
@@ -285,8 +224,7 @@ def test_the_permitted_bands_are_exactly_the_bands_the_range_spans():
     low, high = reserved_codes.RESERVED_RANGE
     spanned = {band.name for band in BANDS if band.start < high and band.stop > low}
     assert reserved_codes.RESERVED_BANDS == spanned, (
-        f"the permitted bands are {sorted(reserved_codes.RESERVED_BANDS)} and the "
-        f"range {low} to {high - 1} spans {sorted(spanned)}"
+        f"bands {sorted(reserved_codes.RESERVED_BANDS)}, the range spans {sorted(spanned)}"
     )
 
 
@@ -330,34 +268,23 @@ def test_where_this_table_and_the_closed_reason_registry_overlap_they_agree():
     assert shared, "the overlap vanished; this check has stopped checking anything"
     for slug in shared:
         assert reserved_codes.code_for(slug) is REASONS[slug], (
-            f"{slug!r} exits with {reserved_codes.code_for(slug).name} here and "
-            f"{REASONS[slug].name} in the closed reason registry, so one refusal "
-            f"has two meanings depending on which table a caller read"
+            f"{slug!r} exits {reserved_codes.code_for(slug).name} here, {REASONS[slug].name} there"
         )
 
 
 def test_the_two_tables_spell_two_conditions_twice_and_still_agree():
-    """Two conditions spelled twice across the tables, invisible to the overlap check, agree on 22.
-
-    Not renamed: a slug is persisted in a stored cause and crosses the job
-    engine's process boundary, so renaming one is a breaking change.
-    """
+    """Two conditions spelled twice across the tables agree; a persisted slug is never renamed."""
     for reserved_slug, registry_slug in (
         ("library-root-absent", "library-directory-missing"),
         ("database-absent", "library-database-missing"),
     ):
         assert reserved_codes.code_for(reserved_slug) is REASONS[registry_slug], (
-            f"{reserved_slug!r} and {registry_slug!r} are two spellings of one "
-            f"condition and now exit with two different statuses"
+            f"{reserved_slug!r} and {registry_slug!r} spell one condition and exit apart"
         )
 
 
 def test_upgrade_cratekit_is_declared_twice_and_this_table_reserves_one_meaning():
-    """``upgrade-cratekit`` means 32 for an unreadable fact file and 30 for config, pinned.
-
-    Declared by ``backup_facts.Remedy`` and the canonical vocabulary, which
-    ``config.Remedy`` is since U329, so the distinct declarers are two.
-    """
+    """``upgrade-cratekit`` is 32 for an unreadable fact file and 30 for config: two declarers."""
     declaring = sorted(
         {
             f"{owner.__module__}.{owner.__qualname__}"
@@ -382,8 +309,7 @@ def test_a_reserved_cause_that_is_also_a_remedy_token_reserves_that_token():
     for slug in overlapping:
         reservation = reserved_codes.reserved(slug)
         assert reservation.remedy is tokens[slug], (
-            f"{slug!r} is a remediation token and reserves {reservation.remedy!r}, "
-            f"so the same symbol says two different things"
+            f"{slug!r} is a remedy token and reserves {reservation.remedy!r}"
         )
 
 
@@ -411,10 +337,7 @@ def test_every_reserved_cause_renders_to_something_a_user_can_act_on():
         )
         body = line.removeprefix("  fix: ").strip()
         assert body, f"{reservation.cause} renders to nothing"
-        assert body not in generic, (
-            f"{reservation.cause} renders as the exit code's generic summary "
-            f"rather than as its own remediation"
-        )
+        assert body not in generic, f"{reservation.cause} renders as the generic summary"
 
 
 def test_a_reservation_builds_the_remediation_a_cause_carries():
@@ -442,11 +365,7 @@ _NAMESPACES: dict[str, dict[str, object]] = {}
 
 
 def _annotation_namespace(module: ModuleType | None) -> dict[str, object]:
-    """Every name this module's import statements bind, TYPE_CHECKING included.
-
-    ``get_type_hints`` raises ``NameError`` for a name imported only under
-    ``if TYPE_CHECKING:``, so the imports are read from the source instead.
-    """
+    """Every name this module's imports bind, read from source so TYPE_CHECKING names resolve."""
     if module is None:
         return {}
     cached = _NAMESPACES.get(module.__name__)
@@ -489,13 +408,9 @@ def _is_a_record(hint: type) -> bool:
 def _declared_enums(
     hint: object, owner: str, packages: tuple[str, ...], hops: int = 0
 ) -> Iterator[type]:
-    """Every enum this repository declares that an annotation can carry.
+    """Every repository enum an annotation can carry, through unions and one record field.
 
-    Recursive over unions (``Refusal | None``), and one field into a record
-    (dataclass or ``NamedTuple``), since ``preflight.LibraryVolumeError`` carries a
-    ``MountStatus`` holding the ``MountState`` cause. One hop only. ``ExitCode``
-    alone is excluded: a status is not a cause, and excluding its whole module hid
-    the canonical ``Remedy``.
+    ``ExitCode`` alone is excluded: a status is not a cause.
     """
     if isinstance(hint, type) and issubclass(hint, enum.Enum):
         if hint is ExitCode:
@@ -521,16 +436,10 @@ def refusal_causes_in(
     packages: tuple[str, ...] = ("cratekit",),
     excluded: Mapping[str, str] = CONVERTED_ELSEWHERE,
 ) -> dict[str, frozenset[str]]:
-    """The structured refusal causes ONE module declares, as producer -> slugs.
+    """The refusal causes ONE module declares, as producer -> slugs, read by enum identity.
 
-    Derived, and the derivation is what this table owes. A ``CratekitError``
-    carries a registry cause and is reserved by construction. The gap is every
-    other exception defined here whose constructor takes a parameter annotated
-    with an enum this repository declares and ``NOT_A_CAUSE`` does not exclude.
-    The role is read from the enum, by identity, never from the parameter name.
-
-    It cannot see ``core.secrets``, whose exception TYPE is the discriminator;
-    that is recorded in ``docs/residual-findings.md``.
+    An exception counts when its constructor takes an enum this repository declares and
+    ``NOT_A_CAUSE`` does not exclude; ``core.secrets``, keyed by TYPE, is out of reach.
     """
     namespace_owner = module
     found: dict[str, frozenset[str]] = {}
@@ -572,11 +481,7 @@ def refusal_causes_in(
 
 
 def imported_package_modules() -> tuple[list[ModuleType], dict[str, str]]:
-    """Every module in the package, imported, and the ones that would not import.
-
-    The failures are returned, not skipped, so coverage never depends silently
-    on which extras are installed (P3).
-    """
+    """Every package module imported, and the failures returned so coverage never hides (P3)."""
     modules: list[ModuleType] = []
     unimportable: dict[str, str] = {}
     for info in pkgutil.walk_packages(cratekit.__path__, "cratekit."):
@@ -596,8 +501,7 @@ def structured_refusal_causes() -> dict[str, frozenset[str]]:
     # of the derivation reading a short answer as complete. See the residual
     # "One check in this unit is unreachable".
     assert not unimportable, (
-        f"the walk could not import these, so whatever refusal causes they "
-        f"declare are invisible to the completeness check: {unimportable}"
+        f"unimportable, so invisible to the completeness check: {unimportable}"
     )
     found: dict[str, frozenset[str]] = {}
     for module in modules:
@@ -619,16 +523,10 @@ def test_every_structured_refusal_cause_in_the_package_is_reserved():
 
     unreserved = sorted(raised - CAUSES)
     assert not unreserved, (
-        f"these structured refusal causes have no reserved exit code, so each one "
-        f"reaches the process boundary as a bare status with its remediation "
-        f"discarded: {unreserved}. They are raised by {sorted(derived)}"
+        f"unreserved causes reach the boundary bare: {unreserved}, from {sorted(derived)}"
     )
     orphaned = sorted(CAUSES - raised)
-    assert not orphaned, (
-        f"these causes are reserved and nothing in the package raises them: "
-        f"{orphaned}. A reservation with no producer is read as a contract and is "
-        f"not one"
-    )
+    assert not orphaned, f"reserved and raised by nothing in the package: {orphaned}"
 
 
 def test_the_three_surfaces_the_waiting_guard_names_are_covered():
@@ -654,11 +552,8 @@ def _local_function_names(tree: ast.AST) -> set[str]:
 
 
 def _handler_uses_what_it_bound(handler: ast.ExceptHandler, helpers: set[str]) -> bool:
-    """Whether THIS handler uses the exception it bound, rather than discarding it.
+    """Whether THIS handler reads an attribute off the exception it bound or hands it to a helper.
 
-    Scoped to the handler: scoped to the file, any ``exc.anything`` elsewhere
-    vouched for it. Two uses count: an attribute read off the bound name, or
-    handing it to a function this file defines (``acquire/download.py``).
     ``str(exc)`` reads nothing and stays a swallow.
     """
     bound = handler.name
@@ -706,16 +601,11 @@ def _converted_exception_types() -> set[type]:
 
 @functools.cache
 def _converted_exception_types_once() -> frozenset[type]:
-    """Exception classes this package catches and then inspects, resolved for real.
+    """Exception classes the package catches and inspects, resolved as classes, not spellings.
 
-    Each clause is resolved against its module's globals, so it answers for the
-    class, never for a spelling like ``Exception`` or a local ``ConfigError``.
-    "Inspects" is ``_handler_uses_what_it_bound``, per handler.
-
-    It cannot prove a conversion is lossless, as the residual
-    "The conversion proof shows that a conversion exists, not that it keeps anything"
-    records; the historical example is item 2 of the residual
-    "Five accepted findings from the U38 reviews", closed by U48.
+    Not proof of a lossless conversion, the residual
+    "The conversion proof shows that a conversion exists, not that it keeps anything";
+    the historical example is the residual "Five accepted findings from the U38 reviews".
     """
     found: set[type] = set()
     modules, _ = imported_package_modules()
@@ -780,12 +670,10 @@ def test_the_conversion_proof_is_scoped_to_the_handler_that_bound_the_exception(
     assert converting_handlers(ast.parse(A_HANDLER_THAT_READS_AN_ATTRIBUTE))
     assert converting_handlers(ast.parse(A_HANDLER_THAT_HANDS_IT_TO_A_HELPER))
     assert converting_handlers(ast.parse(A_HANDLER_THAT_DISCARDS_IT)) == [], (
-        "the handler binds the exception and throws it away, and the attribute "
-        "read that vouched for it belongs to an unrelated helper"
+        "a handler that discards what it bound is a swallow"
     )
     assert converting_handlers(ast.parse(A_HANDLER_THAT_ONLY_STRINGIFIES_IT)) == [], (
-        "str(exc) reads nothing off the exception, which is what separates a "
-        "conversion from a swallow"
+        "str(exc) reads nothing, so it is a swallow"
     )
 
 
@@ -810,22 +698,14 @@ def test_every_exclusion_names_a_refusal_something_already_converts():
         family = {
             candidate for candidate in converted if issubclass(candidate, excluded)
         }
-        assert family, (
-            f"{qualname} is excluded from the completeness walk because something "
-            f"already converts it, and nothing in this package catches that class "
-            f"and inspects it. Either the conversion went away, in which case the "
-            f"exclusion has to go too, or the entry was never true"
-        )
+        assert family, f"{qualname} is excluded as converted, and nothing catches and inspects it"
 
 
 def test_the_conversion_proof_answers_for_a_class_and_not_for_a_spelling():
     """The proof answers for a class: never ``Exception``, ``BaseException`` or a spelling."""
     converted = _converted_exception_types()
     assert config.ConfigError in converted
-    assert Exception not in converted, (
-        "the proof accepts a catch-all handler, so any module with an except "
-        "Exception clause can keep any exclusion alive"
-    )
+    assert Exception not in converted, "a catch-all handler keeps any exclusion alive"
     assert BaseException not in converted
     assert all(issubclass(entry, BaseException) for entry in converted)
 
@@ -837,16 +717,11 @@ def test_the_excluded_refusals_are_absent_from_the_derivation():
     assert not [producer for producer in derived if producer.startswith("cratekit.acquire.adapter.")]
     for slug in ("fix-config-values", "switch-adapter", "repair-config-file"):
         assert slug not in CAUSES, (
-            f"{slug!r} is reserved here as well as carried by the module that "
-            f"already converts it, which is the second opinion this table "
-            f"exists to prevent"
+            f"{slug!r} is reserved here and carried by the module that already converts it"
         )
 
 
-# The derivation itself, driven against modules written to defeat it (P7)
-#
-# These build a real module from source, so annotations, hierarchies and the
-# TYPE_CHECKING fixture behave as they do in the package.
+# The derivation itself, driven against real modules built to defeat it (P7)
 
 FIXTURE_PACKAGES = ("cratekit", "u38fix")
 
@@ -1307,9 +1182,8 @@ PORTION_CODES = {
 
 # ── Correct code keyed on a cause slug and mapped to an INTEGER ─────────────
 #
-# A guard that fires on correct code gets its file added to the owners and
-# switched off. Six reserved keys are remediation tokens, so an order, a retry
-# budget and a backoff are slugs mapped to small integers and not reservations.
+# A guard firing on correct code gets switched off; a remedy token's order or
+# backoff is a slug mapped to a small integer and not a reservation.
 
 CORRECT_A_RETRY_FLAG_PER_CAUSE = """
 RETRYABLE = {
@@ -1435,9 +1309,7 @@ CODES = {"encoder-missing": exit_codes.ExitCode.PRECONDITION}
 
 # ── A second table for causes NOBODY has reserved ───────────────────────────
 #
-# Each declares its causes in its own enum, as the tree's vocabularies do,
-# which makes the key a cause. The package-wide derivation route is driven
-# separately below with the declaration removed.
+# Each declares its causes in its own enum, which makes the key a cause.
 
 DECLARES_ITS_CAUSES = """
 from enum import StrEnum
@@ -1452,9 +1324,7 @@ class Refusal(StrEnum):
 
 # ── HOW AN ENUM IS RECOGNIZED, in the two spellings that tell the rules apart ──
 #
-# Every base in ``tests/`` was ``Enum``, ``StrEnum`` or ``IntEnum``, so the
-# "ends in Enum" rule was indistinguishable from that list. Each fixture here is
-# silent under the other clause alone.
+# Each fixture here is silent under the other clause alone.
 
 DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE = """
 from enum import StrEnum as Vocabulary
@@ -1691,11 +1561,7 @@ CODES = {"rclone-" "missing": 30}
 
 # ── A second opinion about a slug only the CLOSED REGISTRY reserves ─────────
 #
-# Most of ``core.cause.REASONS`` lies outside the reserved table, and a module
-# contradicting one of those is the same defect. Derive the counts rather than
-# reading them here: ``len(REASONS)`` and its overlap with ``RESERVED_CAUSES``.
-# The sixteen shapes below are ordinary Python and each a second opinion; the
-# tiered rule of round four reported two of them, the wide rule all sixteen.
+# The same defect; round four's tiered rule reported two of these sixteen shapes.
 
 EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG = """
 from cratekit.core.exit_codes import ExitCode
@@ -1709,9 +1575,9 @@ from cratekit.core.exit_codes import ExitCode
 CODES = {"credential-missing": int(ExitCode.PRECONDITION)}
 """
 
-# The residual "The tiers were bought with a number that does not exist"
-# said tier two accepted a conversion round the vocabulary. These two are that
-# spelling, the second from the residual "One check in this unit is unreachable".
+# A conversion round the vocabulary, which the residual
+# "The tiers were bought with a number that does not exist" said tier two accepted;
+# the second from the residual "One check in this unit is unreachable".
 EVASION_A_CONSTRUCTOR_ON_A_REGISTRY_SLUG = """
 from cratekit.core.exit_codes import ExitCode
 
@@ -1840,9 +1706,8 @@ CODES = {"tagger-art-rejected": OFFSET + 1}
 
 # ── Ordinary code keyed on a registry slug, with integers that MATTER ───────
 #
-# THIS IS THE RESIDUAL, not a silence: a poll interval of 30 keyed on a cause
-# slug reads as a reservation of 30, and is reported. One genuinely not a
-# reservation is a decision recorded here, never a comment on the line.
+# THIS IS THE RESIDUAL: a poll interval of 30 keyed on a cause reads as a
+# reservation of 30, and is reported, answered by a recorded decision.
 
 RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS = """
 POLL_SECONDS = {"session-lock-held": 30, "write-lock-held": 15}
@@ -1882,11 +1747,8 @@ def wait_for(cause):
     return 0
 """
 
-#: THE SAME RESIDUAL, KEYED ON A NAME rather than an inline string, the tree's
-#: own dominant idiom. ``TrackOutcome`` is copied from
-#: ``src/cratekit/acquire/adapter.py``, a ``StrEnum`` of registry causes. Kept
-#: as a fixture: a key rule that read the string and not the name holding it
-#: would answer one question two ways by spelling.
+#: THE SAME RESIDUAL, KEYED ON A NAME, the tree's own idiom; ``TrackOutcome`` is
+#: copied from ``src/cratekit/acquire/adapter.py``.
 RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME = """
 from enum import StrEnum
 
@@ -2362,7 +2224,7 @@ def refuse():
 )
 def test_the_second_table_guard_stays_silent_on_correct_code(source):
     """P7: silent on correct code, aliased imports, own data and small integers on remedy tokens."""
-    assert reserved_code_tables(source, CAUSES, RANGE) == []
+    assert _narrow(source) == []
 
 
 @pytest.mark.parametrize(
@@ -2380,7 +2242,7 @@ def test_the_second_table_guard_stays_silent_on_correct_code(source):
 )
 def test_the_second_table_guard_bites_every_shape_of_second_opinion(source):
     """Including the two aliased shapes, which is what defeated the armed guards once."""
-    assert reserved_code_tables(source, CAUSES, RANGE)
+    assert _narrow(source)
 
 
 @pytest.mark.parametrize(
@@ -2411,48 +2273,34 @@ def test_the_second_table_guard_bites_every_shape_of_second_opinion(source):
 )
 def test_the_second_table_guard_bites_a_module_reserving_causes_of_its_own(source):
     """A module deciding codes for causes nobody has reserved, in eleven ordinary shapes."""
-    assert reserved_code_tables(source, CAUSES, RANGE)
+    assert _narrow(source)
 
 
 def test_an_enum_is_recognized_by_its_base_and_each_clause_has_its_own_case():
-    """An enum is recognized by what the source bound its base to, or by the base's spelling.
-
-    ``from enum import StrEnum as Vocabulary`` is answered only by the import
-    clause; ``class Refusal(CratekitEnum)`` against our own base only by the
-    spelling clause. A plain class of string constants is not a declaration (P7).
-    """
-    assert reserved_code_tables(
-        DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, CAUSES, RANGE
+    """An enum is known by its bound base or its base's spelling, each clause by a case (P7)."""
+    assert _narrow(
+        DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE
     ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
-        "an enum whose base is imported under another name declares its causes "
-        "exactly as the unaliased spelling does, or one `as` keyword decides "
-        "whether the guard can see a module's whole vocabulary"
+        "an aliased enum base must declare its causes as the unaliased one does"
     )
-    assert reserved_code_tables(
-        DECLARES_ITS_CAUSES_ON_A_BASE_OF_OUR_OWN, CAUSES, RANGE
+    assert _narrow(
+        DECLARES_ITS_CAUSES_ON_A_BASE_OF_OUR_OWN
     ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
-        "a base named in another of our modules is the shape the spelling clause "
-        "exists for, and narrowing that clause to the three names the enum "
-        "module exports silences it"
+        "a base named in another of our modules is the spelling clause's own case"
     )
-    assert reserved_code_tables(
-        DECLARES_ITS_CAUSES_THROUGH_THE_ENUM_MODULE, CAUSES, RANGE
+    assert _narrow(
+        DECLARES_ITS_CAUSES_THROUGH_THE_ENUM_MODULE
     ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
-        "the module-qualified spelling is answered by the SPELLING clause, "
-        "because the last dotted part of `vocabularies.StrEnum` ends in Enum. "
-        "It is here as the control that says so, not as the import clause's case"
+        "the module-qualified spelling is the spelling clause's control"
     )
-    assert reserved_code_tables(
-        CORRECT_A_PLAIN_CLASS_DECLARES_NOTHING, CAUSES, RANGE
-    ) == [], (
-        "a plain class holding strings is not a vocabulary, and reading one as a "
-        "declaration would let any module invent a cause by writing a constant"
+    assert _narrow(CORRECT_A_PLAIN_CLASS_DECLARES_NOTHING) == [], (
+        "a plain class of strings is not a vocabulary"
     )
 
 
 def test_renaming_the_enum_or_the_name_holding_it_changes_nothing():
     """Renaming the enum, its base alias or the name holding it changes nothing."""
-    original = reserved_code_tables(DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, CAUSES, RANGE)
+    original = _narrow(DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE)
     assert original, "the fixture stopped reporting, so the renames below prove nothing"
 
     for before, after in (
@@ -2463,14 +2311,11 @@ def test_renaming_the_enum_or_the_name_holding_it_changes_nothing():
     ):
         renamed = DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE.replace(before, after)
         assert renamed != DECLARES_ITS_CAUSES_ON_AN_ALIASED_BASE, (
-            f"{before!r} is not in the fixture any more, so this rename renamed "
-            f"nothing and the assertion below would pass over an unchanged source"
+            f"{before!r} is not in the fixture any more, so the rename renamed nothing"
         )
         # The base alias is spelled twice, so renaming it means renaming both or the
         # fixture stops being valid Python.
-        assert (
-            reserved_code_tables(renamed, CAUSES, RANGE) == original
-        ), f"renaming {before!r} changed what the guard reports"
+        assert _narrow(renamed) == original, f"renaming {before!r} changed what the guard reports"
 
 
 @pytest.mark.parametrize(
@@ -2483,44 +2328,23 @@ def test_renaming_the_enum_or_the_name_holding_it_changes_nothing():
 )
 def test_the_second_table_guard_reads_every_relative_import_shape(source):
     """``from .exit_codes import ExitCode`` and ``from . import exit_codes`` are read too."""
-    assert reserved_code_tables(source, CAUSES, RANGE)
+    assert _narrow(source)
 
 
 def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in():
     """A relative import resolves against its own package: from . import exit_codes in cli."""
-    assert reserved_code_tables(
-        EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, "cratekit.core"
+    assert _narrow(
+        EVASION_A_SIBLING_RELATIVE_IMPORT, "cratekit.core"
     ) == ["line 4: 'rclone-missing' -> ExitCode.PRECONDITION"]
-    assert (
-        reserved_code_tables(
-            EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, "cratekit.cli"
-        )
-        == []
-    )
-    assert reserved_code_tables(
-        EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, CAUSES, RANGE, "cratekit.modules"
-    )
-    assert (
-        reserved_code_tables(
-            EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, CAUSES, RANGE, "cratekit"
-        )
-        == []
-    ), (
-        "two dots from the top package walks off it, so Python imports nothing "
-        "either. This does NOT prove the off the top clause: with the clause "
-        "removed the negative slice leaves a base that matches nothing here "
-        "either, so it stays silent for the wrong reason. The test below is the "
-        "one that proves it"
+    assert _narrow(EVASION_A_SIBLING_RELATIVE_IMPORT, "cratekit.cli") == []
+    assert _narrow(EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, "cratekit.modules")
+    assert _narrow(EVASION_A_RELATIVE_IMPORT_TWO_LEVELS_UP, "cratekit") == [], (
+        "two dots from the top walks off it; the test below proves the off the top clause"
     )
 
 
 def test_a_relative_import_that_walks_off_the_top_names_nothing():
-    """A relative import walking off the top names nothing, in the resolver and in the guard.
-
-    The base slice goes negative and Python hands back a shorter package, so
-    without the check five dots from ``cratekit.core.sub`` would resolve onto
-    ``cratekit.core`` and report a module that cannot import.
-    """
+    """A relative import walking off the top names nothing, where a negative slice would not."""
     off_the_top = [
         ("cratekit.core.sub", 4),
         ("cratekit.core.sub", 5),
@@ -2530,61 +2354,27 @@ def test_a_relative_import_that_walks_off_the_top_names_nothing():
     for package, level in off_the_top:
         node = ast.ImportFrom(module="exit_codes", names=[], level=level)
         assert _guards._relative_module(node, package) is None, (
-            f"{level} dots from {package} walks off the top of the tree, which "
-            f"Python refuses to import, so it names no module here either"
+            f"{level} dots from {package} walk off the top of the tree"
         )
 
     node = ast.ImportFrom(module="exit_codes", names=[], level=5)
     parts = "cratekit.core.sub".split(".")
     assert parts[: len(parts) - (node.level - 1)] == ["cratekit", "core"], (
-        "the negative slice is what makes this dangerous rather than merely "
-        "wrong, and if Python ever stops silently shortening the base here the "
-        "clause is no longer load bearing and this test should say so"
+        "the negative slice no longer shortens the base, so the clause is not load bearing"
     )
-    assert (
-        reserved_code_tables(
-            EVASION_A_RELATIVE_IMPORT_THAT_WALKS_OFF_THE_TOP,
-            CAUSES,
-            RANGE,
-            "cratekit.core.sub",
-        )
-        == []
-    ), (
-        "an import Python refuses resolved onto the vocabulary module, so the "
-        "guard reports a second reservation table in a module that cannot even "
-        "be imported"
+    assert _narrow(EVASION_A_RELATIVE_IMPORT_THAT_WALKS_OFF_THE_TOP, "cratekit.core.sub") == [], (
+        "an import Python refuses resolved onto the vocabulary module"
     )
 
 
 def test_a_boolean_is_not_an_integer_here():
-    """A boolean is not an integer here; the first entry of the residual
+    """A boolean is not an integer, the first entry of the residual
     "One check in this unit is unreachable".
     """
     assert _guards.resolve_int(ast.parse("True").body[0].value, {}, {}) is None
     assert _guards.resolve_int(ast.parse("False").body[0].value, {}, {}) is None
     assert _guards.resolve_int(ast.parse("30").body[0].value, {}, {}) == 30
-    assert reserved_code_tables(CORRECT_A_RETRY_FLAG_PER_CAUSE, CAUSES, RANGE) == []
-
-
-def test_a_conversion_is_read_through_the_module_name_as_well_as_the_class_name():
-    """``exit_codes.ExitCode(30)`` is a conversion too; the fourth entry of the residual
-    "One check in this unit is unreachable".
-    """
-    assert reserved_code_tables(
-        EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME, CAUSES, RANGE
-    ) == ["line 4: 'rclone-missing' -> exit_codes.ExitCode(30)"]
-
-
-def test_a_two_argument_call_is_not_a_conversion():
-    """A call taking a code and a sentence is a constructor, not a conversion (P7).
-
-    The third entry of the residual "One check in this unit is unreachable":
-    dropping ``len(node.args) == 1`` reports this fixture.
-    """
-    assert (
-        reserved_code_tables(CORRECT_A_TWO_ARGUMENT_CALL_IS_NOT_A_CONVERSION, CAUSES, RANGE)
-        == []
-    )
+    assert _narrow(CORRECT_A_RETRY_FLAG_PER_CAUSE) == []
 
 
 def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
@@ -2611,34 +2401,22 @@ def test_the_guard_bites_through_the_derivation_when_the_file_declares_nothing()
     """With the local enum stripped, the guard still bites through the package-wide derivation."""
     source = EVASION_A_NEW_MODULE_DECIDES_ITS_OWN_CODES.replace(DECLARES_ITS_CAUSES, "")
     assert "Refusal" not in source
-    assert reserved_code_tables(source, CAUSES, RANGE) == []
+    assert _narrow(source) == []
     elsewhere = CAUSES | frozenset({"tagger-source-unreadable", "tagger-art-rejected"})
     assert reserved_code_tables(source, elsewhere, RANGE)
 
 
 def test_a_mutually_recursive_pair_of_constants_resolves_to_nothing():
-    """A mutually recursive pair of constants resolves to nothing rather than raising.
-
-    This is ``MAX_HOPS``'s ceiling, which bounds the walk so ``A = B`` beside
-    ``B = A`` cannot hang the suite with a ``RecursionError``.
-    """
+    """``A = B`` beside ``B = A`` resolves to nothing: ``MAX_HOPS`` keeps it off recursion."""
     tree = ast.parse("A = B\nB = A\n")
     names = _guards._module_level_literals(tree)
     assert set(names) == {"A", "B"}
     assert _guards.resolve_int(names["A"], names, {}) is None
     assert _guards.resolve_int(names["B"], names, {}) is None
     assert _guards.MAX_HOPS < sys.getrecursionlimit(), (
-        "the bound is above the interpreter's own, so the pair above raises "
-        "RecursionError instead of resolving to nothing and the suite dies "
-        "rather than the guard staying silent"
+        "the bound is above the interpreter's own, so the pair raises RecursionError"
     )
-    assert reserved_code_tables(MUTUALLY_RECURSIVE_CONSTANTS, CAUSES, RANGE) == []
-
-
-def test_the_residual_is_pinned_rather_than_discovered():
-    """Once a string IS a cause, a duration in range reads as a status, reported on purpose."""
-    hits = reserved_code_tables(RESIDUAL_A_BACKOFF_ON_A_REAL_CAUSE, CAUSES, RANGE)
-    assert hits == ["line 2: 'rekordbox-running' -> status 30"]
+    assert _narrow(MUTUALLY_RECURSIVE_CONSTANTS) == []
 
 
 #: Every shape a module would plausibly use to give a registry-only slug a code
@@ -2666,20 +2444,18 @@ REGISTRY_SLUG_SECOND_TABLES = (
 
 @pytest.mark.parametrize("source", REGISTRY_SLUG_SECOND_TABLES)
 def test_the_wide_key_set_reports_what_the_tiers_missed(source):
-    """The sixteen shapes the tiered key set of round four left silent, all reported now.
-
-    Measured by re-implementing that gate over this tuple: it reported two. See
-    the residual "The tiers were bought with a number that does not exist".
+    """The sixteen shapes round four's tiers left silent, all reported now. See the residual
+    "The tiers were bought with a number that does not exist".
     """
-    assert reserved_code_tables(source, declared_causes(), RANGE)
+    assert _wide(source)
 
 
 def test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares():
     """The input that rejected narrowing to the live integers is reported by this scheme."""
     assert "tree-registry-unusable" in registry_only_causes()
     assert 33 not in {int(code) for code in ExitCode}
-    assert reserved_code_tables(
-        EVASION_AN_INVENTED_CODE_FOR_A_REGISTRY_SLUG, declared_causes(), RANGE
+    assert _wide(
+        EVASION_AN_INVENTED_CODE_FOR_A_REGISTRY_SLUG
     ) == ["line 2: 'tree-registry-unusable' -> status 33"]
 
 
@@ -2692,14 +2468,7 @@ def test_the_alternative_is_not_rejected_for_a_flaw_this_scheme_shares():
 )
 def test_a_vocabulary_member_held_in_a_name_is_still_a_code(source):
     """``CODE = ExitCode.PRECONDITION`` beside ``{"rclone-missing": CODE}`` is a code."""
-    assert reserved_code_tables(source, CAUSES, RANGE)
-
-
-def test_the_reported_text_keeps_both_spellings_of_a_code_reached_by_name():
-    """A hit a reader can chase needs the name AND what it held."""
-    assert reserved_code_tables(
-        EVASION_A_VOCABULARY_MEMBER_HELD_IN_A_CONSTANT, CAUSES, RANGE
-    ) == ["line 6: 'rclone-missing' -> ExitCode.PRECONDITION as CODE"]
+    assert _narrow(source)
 
 
 #: THE KEY SIDE OF THE SAME QUESTION: a cause held in a module constant or a
@@ -2843,9 +2612,7 @@ CODES = {"config-unusable": A3}
 
 # ── The two constructs the key widening reached past ────────────────────────
 #
-# The ``if`` arm of ``_branches`` and a dict comprehension's iterable each
-# filtered to ``ast.Constant`` before asking ``cause_key``. The pairs below are
-# kept together: a spelling that goes quiet alone is this shape coming back.
+# A branch's ``if`` arm and a comprehension's iterable, each paired with its control.
 
 EVASION_A_BRANCH_COMPARING_AGAINST_A_CLASS_ATTRIBUTE = """
 class Slug:
@@ -2950,9 +2717,7 @@ CODES = {"config-unusable": BASE * 2}
 )
 def test_a_key_held_in_a_name_is_still_a_cause(source, line):
     """A key held in a name or a class attribute is a cause, as a value held in one is a code."""
-    assert reserved_code_tables(source, declared_causes(), RANGE) == [
-        f"line {line}: 'config-unusable' -> status 30"
-    ]
+    assert _wide(source) == [f"line {line}: 'config-unusable' -> status 30"]
 
 
 @pytest.mark.parametrize(
@@ -2966,9 +2731,7 @@ def test_a_key_held_in_a_name_is_still_a_cause(source, line):
 )
 def test_a_branch_table_reads_its_key_the_same_way_whichever_branch_it_is(source, line):
     """A branch table reads its key alike in the ``match`` arm and the ``if`` arm."""
-    assert reserved_code_tables(source, declared_causes(), RANGE) == [
-        f"line {line}: 'config-unusable' -> status 30"
-    ]
+    assert _wide(source) == [f"line {line}: 'config-unusable' -> status 30"]
 
 
 @pytest.mark.parametrize(
@@ -2980,7 +2743,7 @@ def test_a_branch_table_reads_its_key_the_same_way_whichever_branch_it_is(source
 )
 def test_a_comprehension_reads_named_slugs_and_inlined_slugs_alike(source, line):
     """A comprehension over named slugs reads them as one over inlined slugs does."""
-    assert reserved_code_tables(source, declared_causes(), RANGE) == [
+    assert _wide(source) == [
         f"line {line}: 'config-unusable' -> status 30",
         f"line {line}: 'smoke-test-failed' -> status 30",
     ]
@@ -2995,19 +2758,7 @@ def test_a_comprehension_reads_named_slugs_and_inlined_slugs_alike(source, line)
 )
 def test_a_constructor_on_the_vocabulary_is_a_code_at_any_value(source, spelled):
     """A constructor on the vocabulary is a code at any value; the range gates integers only."""
-    assert reserved_code_tables(source, declared_causes(), RANGE) == [
-        f"line 4: 'config-unusable' -> {spelled}"
-    ]
-
-
-def test_a_constructor_wrapping_a_runtime_value_reserves_nothing():
-    """A one-argument call on the vocabulary reserves only when its argument resolves (P7)."""
-    assert (
-        reserved_code_tables(
-            CORRECT_A_CONSTRUCTOR_ON_A_RUNTIME_VALUE, declared_causes(), RANGE
-        )
-        == []
-    )
+    assert _wide(source) == [f"line 4: 'config-unusable' -> {spelled}"]
 
 
 @pytest.mark.parametrize(
@@ -3019,41 +2770,24 @@ def test_a_constructor_wrapping_a_runtime_value_reserves_nothing():
     ],
 )
 def test_an_integer_outside_the_reserved_range_is_silent_however_it_is_spelled(source):
-    """An integer outside the reserved range is silent, spelled as a constant or arithmetic.
-
-    Widening past the range would report every count, width and percent in the
-    package. The residual "The tiers were bought with a number that does not exist"
-    once described this rule wrongly; this drives it at its boundary.
+    """Outside the range is silent however spelled, or every count would report; the residual
+    "The tiers were bought with a number that does not exist" once said otherwise.
     """
-    assert reserved_code_tables(source, declared_causes(), RANGE) == []
+    assert _wide(source) == []
 
 
 def test_resolving_the_key_widens_what_is_read_and_not_what_is_a_cause():
     """A name resolving to an undeclared string answers as the undeclared literal does."""
-    assert reserved_code_tables(
-        CORRECT_A_KEY_HELD_IN_A_CONSTANT_THAT_IS_NOT_A_CAUSE, declared_causes(), RANGE
-    ) == []
+    assert _wide(CORRECT_A_KEY_HELD_IN_A_CONSTANT_THAT_IS_NOT_A_CAUSE) == []
     assert "column-width" not in declared_causes()
-
-
-def test_a_record_written_as_a_mapping_is_still_a_record():
-    """A record written ``{"cause": ..., "code": ...}`` is read as the tuple and constructor are."""
-    assert reserved_code_tables(
-        EVASION_A_LIST_OF_RECORD_DICTS, declared_causes(), RANGE
-    ) == [
-        "line 3: 'config-unusable' -> status 30",
-        "line 4: 'credential-missing' -> status 40",
-    ]
 
 
 def test_a_code_fetched_by_getattr_is_still_a_code():
     """``getattr`` on the imported vocabulary class is a code, as ``getattr(sys, "exit")`` exits."""
-    assert reserved_code_tables(
-        EVASION_A_CODE_FETCHED_BY_GETATTR, declared_causes(), RANGE
+    assert _wide(
+        EVASION_A_CODE_FETCHED_BY_GETATTR
     ) == ["line 4: 'config-unusable' -> getattr(ExitCode, 'PRECONDITION')"]
-    assert reserved_code_tables(
-        CORRECT_GETATTR_FOR_A_CODE_ON_SOMEBODY_ELSE, declared_causes(), RANGE
-    ) == []
+    assert _wide(CORRECT_GETATTR_FOR_A_CODE_ON_SOMEBODY_ELSE) == []
 
 
 @pytest.mark.parametrize(
@@ -3067,76 +2801,38 @@ def test_a_code_fetched_by_getattr_is_still_a_code():
 )
 def test_the_arithmetic_the_resolver_reads_is_the_whole_set(source, spelled):
     """All five arithmetic operators resolve, each limb driven by a reported case."""
-    assert reserved_code_tables(source, declared_causes(), RANGE) == [
-        f"line 3: 'config-unusable' -> status 30 as {spelled}"
-    ]
-
-
-def test_a_zip_of_one_sequence_is_not_a_pair_of_sequences():
-    """``dict(zip(SLUGS))`` is ordinary Python and does not raise ``IndexError`` out of the walk."""
-    assert reserved_code_tables(CORRECT_A_ZIP_OF_ONE_SEQUENCE, CAUSES, RANGE) == []
-
-
-def test_a_division_by_zero_resolves_to_nothing_rather_than_raising():
-    """A division by zero resolves to nothing rather than raising ``ZeroDivisionError``."""
-    assert reserved_code_tables(
-        CORRECT_A_DIVISION_BY_ZERO_RESOLVES_TO_NOTHING, declared_causes(), RANGE
-    ) == []
+    assert _wide(source) == [f"line 3: 'config-unusable' -> status 30 as {spelled}"]
 
 
 def test_the_house_style_of_an_annotated_assignment_is_read_on_both_sides():
     """``NAME: type = value``, the house way of writing a table, read by all three collectors."""
-    assert reserved_code_tables(
-        EVASION_A_CODE_HELD_IN_AN_ANNOTATED_CONSTANT, declared_causes(), RANGE
+    assert _wide(
+        EVASION_A_CODE_HELD_IN_AN_ANNOTATED_CONSTANT
     ) == ["line 4: 'config-unusable' -> status 30 as PRECONDITION"]
-    assert reserved_code_tables(
-        EVASION_A_CODE_HELD_ON_AN_ANNOTATED_CLASS_ATTRIBUTE, declared_causes(), RANGE
+    assert _wide(
+        EVASION_A_CODE_HELD_ON_AN_ANNOTATED_CLASS_ATTRIBUTE
     ) == ["line 6: 'config-unusable' -> status 30 as Status.PRECONDITION"]
-    assert reserved_code_tables(
-        EVASION_AN_ANNOTATED_ENUM_MEMBER_IS_A_DECLARATION, CAUSES, RANGE
+    assert _narrow(
+        EVASION_AN_ANNOTATED_ENUM_MEMBER_IS_A_DECLARATION
     ) == ["line 9: 'tagger-art-rejected' -> status 41"], (
-        "an annotated enum member IS a member to the interpreter, so a module "
-        "declaring its vocabulary that way declares its causes exactly as the "
-        "unannotated spelling does"
+        "an annotated enum member is a member, and declares its causes"
     )
 
 
 def test_the_key_side_carries_its_own_hop_bound_and_this_is_where_it_stops():
     """The key side reads two aliases and gives up on three, as the value side does."""
-    assert reserved_code_tables(
-        A_KEY_CHAIN_THE_HOP_BOUND_READS, declared_causes(), RANGE
-    ) == ["line 5: 'config-unusable' -> status 30"]
-    assert reserved_code_tables(
-        A_KEY_CHAIN_THE_HOP_BOUND_GIVES_UP, declared_causes(), RANGE
-    ) == [], (
-        "the key side now reads three aliases, which is a different boundary "
-        "from the value side's. Say where the new one is and pin both"
+    assert _wide(A_KEY_CHAIN_THE_HOP_BOUND_READS) == ["line 5: 'config-unusable' -> status 30"]
+    assert _wide(A_KEY_CHAIN_THE_HOP_BOUND_GIVES_UP) == [], (
+        "the key side's alias boundary moved: say where and pin both"
     )
 
 
-def test_a_duplicate_key_in_a_second_table_is_reported_once():
-    """A duplicate key in a second table is reported once, so the count is right."""
-    assert reserved_code_tables(
-        EVASION_A_DUPLICATE_KEY_IN_A_SECOND_TABLE, declared_causes(), RANGE
-    ) == ["line 2: 'config-unusable' -> status 30"]
-
-
 def test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up():
-    """``MAX_HOPS`` is a coverage dial, and this pins what it gives up at three.
-
-    Any value below the recursion limit stops the hang; the value decides how
-    long an alias chain is read. Swept 2 to 6: two aliases are read at all, three
-    only from 4. Raising it fails this test and demands the new boundary.
-    """
+    """``MAX_HOPS`` is a coverage dial: at three it reads two aliases and gives up on three."""
     assert _guards.MAX_HOPS == 3
-    assert reserved_code_tables(
-        A_CHAIN_THE_HOP_BOUND_READS, declared_causes(), RANGE
-    ) == ["line 4: 'config-unusable' -> status 30 as A1"]
-    assert reserved_code_tables(
-        A_CHAIN_THE_HOP_BOUND_GIVES_UP, declared_causes(), RANGE
-    ) == [], (
-        "the bound now reaches three aliases, which is more coverage and a "
-        "different boundary, so say where the new one is and pin it here"
+    assert _wide(A_CHAIN_THE_HOP_BOUND_READS) == ["line 4: 'config-unusable' -> status 30 as A1"]
+    assert _wide(A_CHAIN_THE_HOP_BOUND_GIVES_UP) == [], (
+        "the bound now reaches three aliases: say where the boundary is and pin it"
     )
 
 
@@ -3192,13 +2888,7 @@ def test_the_bare_status_guard_bites_a_module_that_returns_a_raw_literal(source)
 
 
 def test_a_negative_status_is_a_bare_status_too():
-    """A negative status is a bare status too, and the worst one.
-
-    The shell truncates ``exit(-1)`` to 255 and ``subprocess.returncode`` reads a
-    negative as a signal death. Two edits blinded the guard to every negative,
-    dropping ``resolve_int``'s unary minus or widening ``status == 0`` to
-    ``status <= 0``. The three spellings are the literal, a name and a raise.
-    """
+    """A negative status is a bare status too, as a literal, a name and a raise (255 to a shell)."""
     assert process_status_literals(EVASION_A_NEGATIVE_STATUS) == [
         "line 5: sys.exit(-1)"
     ]
@@ -3214,27 +2904,69 @@ def test_a_negative_status_is_a_bare_status_too():
     )
 
 
-def test_a_negative_is_outside_the_reserved_range_on_the_table_side():
-    """A second table mapping a cause to a negative is silent, by the reserved range."""
-    assert reserved_code_tables(
-        'CODES = {"config-unusable": -30}\n', declared_causes(), RANGE
-    ) == []
+#: One guard call each, with exactly what it reports. The ``len(node.args) == 1``
+#: and module-name conversion cases are the third and fourth entries of the
+#: residual "One check in this unit is unreachable".
+@pytest.mark.parametrize(
+    ("guard", "source", "expected"),
+    [
+        pytest.param(
+            _narrow, EVASION_A_CONVERSION_THROUGH_THE_MODULE_NAME,
+            ["line 4: 'rclone-missing' -> exit_codes.ExitCode(30)"],
+            id="a-conversion-is-read-through-the-module-name-as-well-as-the-class-name",
+        ),
+        pytest.param(
+            _narrow, CORRECT_A_TWO_ARGUMENT_CALL_IS_NOT_A_CONVERSION, [],
+            id="a-two-argument-call-is-not-a-conversion",
+        ),
+        pytest.param(
+            _narrow, RESIDUAL_A_BACKOFF_ON_A_REAL_CAUSE,
+            ["line 2: 'rekordbox-running' -> status 30"],
+            id="the-residual-is-pinned-rather-than-discovered",
+        ),
+        pytest.param(
+            _narrow, EVASION_A_VOCABULARY_MEMBER_HELD_IN_A_CONSTANT,
+            ["line 6: 'rclone-missing' -> ExitCode.PRECONDITION as CODE"],
+            id="the-reported-text-keeps-both-spellings-of-a-code-reached-by-name",
+        ),
+        pytest.param(
+            _wide, CORRECT_A_CONSTRUCTOR_ON_A_RUNTIME_VALUE, [],
+            id="a-constructor-wrapping-a-runtime-value-reserves-nothing",
+        ),
+        pytest.param(
+            _wide, EVASION_A_LIST_OF_RECORD_DICTS,
+            ["line 3: 'config-unusable' -> status 30", "line 4: 'credential-missing' -> status 40"],
+            id="a-record-written-as-a-mapping-is-still-a-record",
+        ),
+        pytest.param(
+            _narrow, CORRECT_A_ZIP_OF_ONE_SEQUENCE, [],
+            id="a-zip-of-one-sequence-is-not-a-pair-of-sequences",
+        ),
+        pytest.param(
+            _wide, CORRECT_A_DIVISION_BY_ZERO_RESOLVES_TO_NOTHING, [],
+            id="a-division-by-zero-resolves-to-nothing-rather-than-raising",
+        ),
+        pytest.param(
+            _wide, EVASION_A_DUPLICATE_KEY_IN_A_SECOND_TABLE,
+            ["line 2: 'config-unusable' -> status 30"],
+            id="a-duplicate-key-in-a-second-table-is-reported-once",
+        ),
+        pytest.param(
+            _wide, 'CODES = {"config-unusable": -30}\n', [],
+            id="a-negative-is-outside-the-reserved-range-on-the-table-side",
+        ),
+    ],
+)
+def test_the_second_table_guard_reports_exactly_this(guard, source, expected):
+    """Each spelling is reported exactly as listed, or not at all, and nothing raises."""
+    assert guard(source) == expected
 
 
 def declared_causes() -> frozenset[str]:
-    """Every string anybody in this repository has declared to be a refusal cause.
+    """Every declared refusal cause: the table, the derived causes and ``core.cause.REASONS``.
 
-    One key set and one value rule; the tree has zero offenders under it outside
-    the two table owners. Three declarations feed it: the reservation table, the
-    causes the completeness walk derived, and ``core.cause.REASONS``. A fourth
-    arrives per file, a source's own enum, which ``ReservedCodeTable`` adds.
-
-    The derived term is empty in the tree today;
-    ``test_the_key_set_is_the_union_of_all_three_declarations`` drives it.
-    ``preflight.MountState`` spells its states with underscores and is outside the
-    key set; the residual
-    "Two refusal vocabularies stay outside the second-table guard's key set"
-    records why.
+    ``preflight.MountState`` stays outside, as the residual
+    "Two refusal vocabularies stay outside the second-table guard's key set" records.
     """
     derived = structured_refusal_causes()
     return CAUSES | frozenset().union(*derived.values()) | frozenset(REASONS)
@@ -3250,10 +2982,8 @@ def package_of(relative: str) -> str:
     return ".".join(["cratekit"] + relative.split("/")[:-1])
 
 
-#: Every residual cited by TITLE anywhere the rule below reaches. A residual
-#: number can mean different findings on two branches in flight; a title
-#: survives a merge. Declared and scanned titles are asserted EQUAL, so an
-#: invented or drifted title fails.
+#: Every residual cited by TITLE where the rule below reaches, since a number can
+#: change subject at a merge; declared and scanned titles are asserted EQUAL.
 CITED_RESIDUALS = (
     "A pink row outside the named playlist is not swept",
     "Five accepted findings from the U38 reviews",
@@ -3289,9 +3019,8 @@ CITED_RESIDUALS = (
     "A row the native landing creates leaves rekordbox's own defaults empty",
 )
 
-#: WHAT A CITATION LOOKS LIKE: the word ``residual``, then only whitespace and
-#: comment prefixes, then the TITLE in double quotes. Prose naming a title any
-#: other way is invisible to the scan and has to be rewritten into this form.
+#: WHAT A CITATION LOOKS LIKE: ``residual``, whitespace or comment prefixes, then
+#: the TITLE in double quotes; any other spelling is invisible to the scan.
 CITATION = re.compile(r"\bresiduals?\b[\s#:]*\"([^\"\n]+)\"")
 
 #: The authored surface the citation rule is scanned over, vendored code excluded.
@@ -3319,12 +3048,7 @@ def authored_sources() -> list[tuple[str, str]]:
 
 
 def owned_sources() -> list[str]:
-    """The files the citation rule covers: every file that adopted it, plus the residual documents.
-
-    Derived, so a file cannot fall out by being forgotten. Not the branch's
-    changed files, which go empty at merge. A file citing a residual only by
-    number (``src/cratekit/modules/tools/backup.py``) has adopted nothing.
-    """
+    """The files the citation rule covers, derived: each file that adopted it, and the documents."""
     found = set(findings_documents())
     for relative, text in authored_sources():
         if "residual" in text and CITATION.search(text):
@@ -3346,20 +3070,13 @@ def residual_headings() -> list[tuple[str, str]]:
 def test_a_residual_heading_names_exactly_one_finding():
     """No two findings share a title, and no two share a number, read off a list."""
     headings = residual_headings()
-    assert headings, (
-        "no residual headings were found in docs/residual-findings.md or its "
-        "archives, so every "
-        "citation check below would pass over nothing"
-    )
+    assert headings, "no residual headings were found, so every citation check passes over nothing"
     titles = [title for _number, title in headings]
     numbers = [number for number, _title in headings]
     repeated_titles = sorted({title for title in titles if titles.count(title) > 1})
     repeated_numbers = sorted({number for number in numbers if numbers.count(number) > 1})
     assert repeated_titles == [], (
-        f"these residual TITLES name more than one finding: {repeated_titles}. A "
-        f"title is the identifier this unit's citations use, so a duplicate title "
-        f"is the collision the convention exists to prevent, arriving through the "
-        f"identifier that replaced the colliding one"
+        f"these residual TITLES name more than one finding: {repeated_titles}"
     )
     assert repeated_numbers == [], (
         f"these residual NUMBERS name more than one finding: {repeated_numbers}"
@@ -3367,12 +3084,7 @@ def test_a_residual_heading_names_exactly_one_finding():
 
 
 def test_every_residual_this_unit_cites_is_cited_by_title():
-    """Every residual is cited by title, never by a number that can change subject at merge.
-
-    1. Every declared title resolves to exactly one heading.
-    2. Every title written in a covered file is declared.
-    3. No covered file carries a bare residual number.
-    """
+    """Every declared title names one heading, every written title is declared, and no number."""
     headings = residual_headings()
     # Matched as a prefix, resolving to exactly ONE heading, so a leading phrase
     # can never later fit two findings.
@@ -3384,9 +3096,7 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
         title: matches for title, matches in resolved.items() if len(matches) != 1
     }
     assert unresolved == {}, (
-        f"these cited titles do not name exactly one heading in "
-        f"{FINDINGS_DOCUMENT}: {unresolved}. A citation that names nothing "
-        f"is worse than a number, because it looks resolved"
+        f"these cited titles do not name exactly one heading in {FINDINGS_DOCUMENT}: {unresolved}"
     )
 
     # The reverse direction catches the typo the forward one cannot see.
@@ -3404,22 +3114,18 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
         if title not in set(CITED_RESIDUALS)
     }
     assert undeclared == {}, (
-        f"these titles are cited as residuals and are not declared in "
-        f"CITED_RESIDUALS: {undeclared}. A citation nobody declared is a citation "
-        f"nothing checks, which is what a number was"
+        f"these titles are cited as residuals and not declared in CITED_RESIDUALS: {undeclared}"
     )
     assert set(CITED_RESIDUALS) == set(written), (
-        f"CITED_RESIDUALS and the citations actually written disagree. Declared "
-        f"and never written: {sorted(set(CITED_RESIDUALS) - set(written))}. "
-        f"Written and never declared: {sorted(set(written) - set(CITED_RESIDUALS))}"
+        f"CITED_RESIDUALS disagrees with the citations written: declared only "
+        f"{sorted(set(CITED_RESIDUALS) - set(written))}, written only "
+        f"{sorted(set(written) - set(CITED_RESIDUALS))}"
     )
 
     numbered = {}
     documents = set(findings_documents())
     for relative, source in authored:
-        # The residual documents are exempt from the number ban only: since numbers
-        # became append only (2026-08-10) a number there never moves. The ban still
-        # covers code.
+        # The residual documents alone are exempt: their numbers are append only.
         if relative not in covered or relative in documents:
             continue
         hits = [
@@ -3432,9 +3138,7 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
         if hits:
             numbered[relative] = sorted(set(hits))
     assert numbered == {}, (
-        f"these files cite a residual by NUMBER: {numbered}. Six numbers collide "
-        f"across the branches in flight, so a number silently changes subject at "
-        f"merge. Cite the title from CITED_RESIDUALS instead"
+        f"these files cite a residual by NUMBER, which changes subject at merge: {numbered}"
     )
 
 
@@ -3448,17 +3152,11 @@ def test_the_covered_file_set_is_derived_and_reaches_what_the_unit_touched():
         "src/cratekit/cli/exit_codes.py",
         "tests/modules/test_tools.py",
         *findings_documents(),
-    } <= covered, (
-        f"the derivation lost a file that carries citations: {sorted(covered)}"
-    )
+    } <= covered, f"the derivation lost a file that carries citations: {sorted(covered)}"
 
 
 def test_the_package_scan_reaches_the_modules_it_claims_to():
-    """A positive control on the scanner: files at three depths, and modules, not just inits.
-
-    The two tree-wide guards assert absence, so a scan narrowed from ``rglob``
-    to ``glob`` would pass both. The size is a floor, so a new module needs no edit.
-    """
+    """A positive control on the scanner, since the tree-wide guards assert absence."""
     scanned = {relative for relative, _ in package_sources()}
     for reached in (
         "__init__.py",
@@ -3466,40 +3164,24 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
         "core/cause.py",
         "modules/tools/backup.py",
     ):
-        assert reached in scanned, (
-            f"the scan no longer reaches {reached}, so every guard driven over "
-            f"package_sources is silent about it and says so by finding nothing"
-        )
+        assert reached in scanned, f"the scan no longer reaches {reached}"
     assert len(scanned) >= 51, f"the scan collapsed to {len(scanned)} files"
     modules = {relative for relative in scanned if not relative.endswith("__init__.py")}
     assert len(modules) >= 43, (
-        f"the scan reaches {len(scanned)} files but only {len(modules)} of them "
-        f"are modules, so it is counting package inits and looking at less code "
-        f"than the count suggests"
+        f"only {len(modules)} of {len(scanned)} scanned files are modules rather than inits"
     )
     assert all(relative.endswith(".py") for relative in scanned)
     assert not [relative for relative in scanned if relative.startswith("_vendor/")]
-    assert TABLE_OWNERS <= scanned, (
-        "the guard exempts files the scan does not reach, which is an exemption "
-        "for nothing and a scan that shrank"
-    )
+    assert TABLE_OWNERS <= scanned, "the guard exempts files the scan does not reach"
 
 
 # ── The at-risk population, measured on ONE basis and pinned ─────────────────
-#
-# Every count is over the files ``package_sources()`` returns that are not
-# table owners, with the shipped ``cause_key`` asked of every ``ast.Name`` and
-# ``ast.Attribute``.
 
 
 def population_under_measurement(
     sources: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:
-    """The non-owner files every count in this section is taken over.
-
-    ``sources`` is one reading of ``package_sources()`` by the test asking, so
-    every count one test takes is over one reading of the package (U258).
-    """
+    """The non-owner files of one reading of ``package_sources()``, every count's basis (U258)."""
     return [
         (relative, source)
         for relative, source in sources
@@ -3510,12 +3192,7 @@ def population_under_measurement(
 def modules_holding_a_named_cause(
     sources: list[tuple[str, str]], *, own_declarations: bool
 ) -> dict[str, list[str]]:
-    """Modules where a NAME or a class attribute resolves to a declared cause.
-
-    ``own_declarations`` adds each file's own enum declarations, as
-    ``ReservedCodeTable`` reads them; the gap between the two answers is the
-    effect of the key-side widening.
-    """
+    """Modules where a NAME or class attribute resolves to a cause, optionally own enums too."""
     causes = declared_causes()
     found: dict[str, list[str]] = {}
     for relative, source in population_under_measurement(sources):
@@ -3604,44 +3281,33 @@ def kebab_literals_by_module(sources: list[tuple[str, str]]) -> dict[str, list[s
     return found
 
 
+def _every_literal(by_module: Mapping[str, list[str]]) -> frozenset[str]:
+    """The distinct literals across every module of a by-module mapping."""
+    if not by_module:
+        return frozenset()
+    return frozenset().union(*(frozenset(v) for v in by_module.values()))
+
+
+def _with_integer(holders: Mapping[str, list[str]], sources: dict[str, str]) -> list[str]:
+    """The holders whose source also holds an in-range integer."""
+    return [relative for relative in holders if holds_an_in_range_integer(sources[relative])]
+
 
 @shares_parses
 def test_pinned_populations_derive_totals_and_key_by_module():
-    """U125: totals derive from per-module pins, so parallel cards edit different lines.
-
-    Since U296 the pins are one file per package under
-    ``tests/ratchets/reserved_causes/``, read by ``_pinned_reserved_populations.py``.
-    """
+    """U125: totals derive from per-module pins under ``tests/ratchets/reserved_causes/``."""
     causes = declared_causes()
     non_reserved = causes - CAUSES
     scanned = package_sources()
     by_module = kebab_literals_by_module(scanned)
-    literals = (
-        frozenset().union(*(frozenset(v) for v in by_module.values()))
-        if by_module
-        else frozenset()
-    )
+    literals = _every_literal(by_module)
     without = modules_holding_a_named_cause(scanned, own_declarations=False)
     with_own = modules_holding_a_named_cause(scanned, own_declarations=True)
     literal_holders = modules_holding_a_cause_literal(scanned)
     sources = dict(scanned)
-    both = [
-        relative
-        for relative in with_own
-        if holds_an_in_range_integer(sources[relative])
-    ]
-    literal_both = [
-        relative
-        for relative in literal_holders
-        if holds_an_in_range_integer(sources[relative])
-    ]
-    pinned_literals = (
-        frozenset().union(
-            *(frozenset(v) for v in PINNED_KEBAB_LITERALS_BY_MODULE.values())
-        )
-        if PINNED_KEBAB_LITERALS_BY_MODULE
-        else frozenset()
-    )
+    both = _with_integer(with_own, sources)
+    literal_both = _with_integer(literal_holders, sources)
+    pinned_literals = _every_literal(PINNED_KEBAB_LITERALS_BY_MODULE)
 
     # Derived totals from the pins equal the figures measured on the tree.
     assert (
@@ -3652,8 +3318,7 @@ def test_pinned_populations_derive_totals_and_key_by_module():
         "derived cause totals from the pins disagree with the tree"
     )
     assert len(pinned_literals) == len(literals), (
-        f"derived kebab-literal total {len(pinned_literals)} disagrees with "
-        f"the tree's {len(literals)}"
+        f"pinned kebab-literal total {len(pinned_literals)}, the tree's {len(literals)}"
     )
     assert (
         len(PINNED_NAMED_WITHOUT_OWN),
@@ -3678,13 +3343,8 @@ def test_pinned_populations_derive_totals_and_key_by_module():
 
 @shares_parses
 def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
-    """The population figures the residuals argue from, recomputed from the tree and pinned.
-
-    See the residual "The tiers were bought with a number that does not exist".
-    When this fails, look, then update the pin for the module or slug that moved,
-    and the residual's prose if a total it argues from moved. Never widen the
-    assertion or bring back a whole-repository total tuple, the merge hotspot
-    U125 removed. Both halves are measured on the one basis above.
+    """The population figures the residuals argue from, recomputed and pinned. See the residual
+    "The tiers were bought with a number that does not exist". Update the moved pin, never widen.
     """
     causes = declared_causes()
     # One slug per line in PINNED_NON_RESERVED_CAUSES plus the table size, so
@@ -3697,8 +3357,7 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         "slugs in PINNED_NON_RESERVED_CAUSES, measured on the merged tree"
     )
     assert len(CAUSES) == PINNED_RESERVED_CAUSE_COUNT, (
-        f"the reserved table moved to {len(CAUSES)}; update "
-        "PINNED_RESERVED_CAUSE_COUNT and name what joined or left"
+        f"the reserved table moved to {len(CAUSES)}; update PINNED_RESERVED_CAUSE_COUNT"
     )
     assert (len(causes), len(non_reserved), len(CAUSES)) == (
         PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
@@ -3714,20 +3373,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         f"{ {k: sorted(set(by_module.get(k, [])) - set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, []))) for k in sorted(set(by_module) | set(PINNED_KEBAB_LITERALS_BY_MODULE)) if set(by_module.get(k, [])) != set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, [])) } }. "
         "Update only those module entries in KEBAB_LITERALS, " + _PIN_FILES
     )
-    literals = frozenset().union(*(frozenset(v) for v in by_module.values())) if by_module else frozenset()
-    pinned_literals = (
-        frozenset().union(*(frozenset(v) for v in PINNED_KEBAB_LITERALS_BY_MODULE.values()))
-        if PINNED_KEBAB_LITERALS_BY_MODULE
-        else frozenset()
-    )
+    literals = _every_literal(by_module)
+    pinned_literals = _every_literal(PINNED_KEBAB_LITERALS_BY_MODULE)
     assert literals == pinned_literals
     assert (len(literals), len(literals - set(causes))) == (
         len(pinned_literals),
         len(pinned_literals - set(causes)),
-    ), (
-        f"the kebab-literal population moved to {len(literals)} distinct with "
-        f"{len(literals - set(causes))} that are not keys"
-    )
+    ), f"the kebab-literal population moved to {len(literals)}"
 
     widened = frozenset(set(causes) | literals)
     wide = {
@@ -3737,24 +3389,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         for relative, source in population_under_measurement(scanned)
     }
     assert {relative: hits for relative, hits in wide.items() if hits} == {}, (
-        "the wide rule has a headroom problem now: adding every kebab-shaped "
-        "literal in the package to the key set reports an offender, and the "
-        "argument for one key set rests on it reporting none"
+        "adding every kebab-shaped literal to the key set reports an offender"
     )
 
     without = modules_holding_a_named_cause(scanned, own_declarations=False)
     with_own = modules_holding_a_named_cause(scanned, own_declarations=True)
     literal_holders = modules_holding_a_cause_literal(scanned)
-    both = [
-        relative
-        for relative in with_own
-        if holds_an_in_range_integer(sources[relative])
-    ]
-    literal_both = [
-        relative
-        for relative in literal_holders
-        if holds_an_in_range_integer(sources[relative])
-    ]
+    both = _with_integer(with_own, sources)
+    literal_both = _with_integer(literal_holders, sources)
     assert without == PINNED_NAMED_WITHOUT_OWN, (
         "the named without-own population moved; update only the modules that "
         f"joined or left in NAMED_WITHOUT_OWN, {_PIN_FILES}: joined "
@@ -3768,19 +3410,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         f"{sorted(set(PINNED_NAMED_WITH_OWN) - set(with_own))}"
     )
     assert frozenset(both) == PINNED_NAMED_WITH_INTEGER, (
-        "the named-with-integer population moved; update "
-        "NAMED_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
+        "update NAMED_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
     )
     assert (len(without), len(with_own), len(both)) == (
         len(PINNED_NAMED_WITHOUT_OWN),
         len(PINNED_NAMED_WITH_OWN),
         len(PINNED_NAMED_WITH_INTEGER),
-    ), (
-        f"the named at-risk population moved: {len(without)} modules hold a name "
-        f"resolving to a cause declared elsewhere, {len(with_own)} once each "
-        f"file's own enum declarations count, {len(both)} of those also hold an "
-        f"in-range integer. Update the residual"
-    )
+    ), f"the named at-risk population moved: {len(without)}, {len(with_own)}, {len(both)}"
     assert literal_holders == PINNED_LITERAL_HOLDERS, (
         "the literal-holder population moved; update only the modules that "
         f"joined or left in LITERAL_HOLDERS, {_PIN_FILES}: joined "
@@ -3788,20 +3424,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         f"{sorted(set(PINNED_LITERAL_HOLDERS) - set(literal_holders))}"
     )
     assert frozenset(literal_both) == PINNED_LITERAL_HOLDERS_WITH_INTEGER, (
-        "the literal-holders-with-integer population moved; update "
-        "LITERAL_HOLDERS_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
+        "update LITERAL_HOLDERS_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
     )
     assert (len(literal_holders), len(literal_both)) == (
         len(PINNED_LITERAL_HOLDERS),
         len(PINNED_LITERAL_HOLDERS_WITH_INTEGER),
-    ), (
-        f"the literal at-risk population moved to {len(literal_holders)} modules, "
-        f"{len(literal_both)} of them also holding an in-range integer"
-    )
+    ), f"the literal at-risk population moved to {len(literal_holders)}, {len(literal_both)}"
     assert len(with_own) < len(literal_holders), (
-        "the named surface the key widening added is now LARGER than the literal "
-        "surface that predates it, which is the comparison the decision to keep "
-        "the widening rests on. Re-argue it or narrow the key side"
+        "the named surface the key widening added outgrew the literal surface; re-argue it"
     )
 
     sharpest = sources["core/exit_codes.py"]
@@ -3815,28 +3445,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         and not isinstance(node.value, bool)
         and low <= node.value < high
     ]
-    # Re-pinned on the U27 merge (GRANT_PATH_ACCESS, REMOUNT_WRITABLE, UNLOCK_PATH,
-    # the first also a reserved cause) and by U138 (RUN_BACKUP, not one). The
-    # integers stay at 28.
+    # Re-pinned by U27 and U138, as members joined the Remedy enum.
     assert (
         len(declared_in_its_own_enum),
         len(declared_in_its_own_enum & CAUSES),
         len(integers),
-    ) == (46, 7, 28), (
-        "core/exit_codes.py is the sharpest case in the residual and its figures "
-        "moved. It declares cause-shaped strings in its own Remedy enum, some of "
-        "which are also reserved-table causes, and it holds in-range integers "
-        "while not being a table owner"
-    )
+    ) == (46, 7, 28), "core/exit_codes.py, the residual's sharpest case, moved its figures"
 
 
 def test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package():
-    """Every class the interpreter calls an enum is one the static rule found, with its members.
-
-    The static rule reads base names only, so a ``class Cause(Vocabulary)``
-    against a base of ours fails here, naming the file. One direction only:
-    reading more than the interpreter is the safe side.
-    """
+    """Every enum the interpreter sees declaring a cause-shaped value, the static rule saw too."""
     modules, unimportable = imported_package_modules()
     assert not unimportable
     static = {
@@ -3869,14 +3487,10 @@ def test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package
             if unseen:
                 missed[f"{relative}:{value.__name__}"] = unseen
     assert checked >= 15, (
-        f"only {checked} enums declaring a cause-shaped value were reached at "
-        f"runtime, so the agreement below is being measured over almost nothing. "
-        f"The tree holds 45 enums and 19 of them declare one"
+        f"only {checked} enums declaring a cause-shaped value were reached at runtime"
     )
     assert not missed, (
-        f"the interpreter says these are enums declaring cause-shaped values and "
-        f"the static rule did not see them, so every one of those causes is out "
-        f"of the key set for its own file: {missed}"
+        f"enums the static rule did not see, so their causes are out of the key set: {missed}"
     )
 
 
@@ -3893,19 +3507,12 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
 
 
 def test_the_table_owner_escape_is_exactly_these_two_files():
-    """``TABLE_OWNERS`` is pinned by exact membership, each entry a file that holds a table.
-
-    It switches the guard off for a whole file, so widening it is the cheapest
-    way to stop the guard looking; the rule is from the residual
-    "Two copies of one import walk still carry a relative-import defect", and
-    "The mutation table for this unit's guards, written into the repository"
-    carries the row.
+    """``TABLE_OWNERS`` is pinned exactly, from the residual
+    "Two copies of one import walk still carry a relative-import defect"; the residual
+    "The mutation table for this unit's guards, written into the repository" carries the row.
     """
     assert TABLE_OWNERS == frozenset({"cli/exit_codes.py", "core/cause.py"}), (
-        "the second-table guard is off for every file named here, so widening "
-        "this set is how the guard gets switched off one file at a time. Adding "
-        "an entry needs a reason written beside it and this assertion updated, "
-        "which is the review this set never had"
+        "widening the table owners switches the guard off a file at a time; give a reason"
     )
     causes = declared_causes()
     sources = dict(package_sources())
@@ -3913,46 +3520,27 @@ def test_the_table_owner_escape_is_exactly_these_two_files():
         assert owner in sources, f"{owner} is exempted and is not in the package"
         assert reserved_code_tables(
             sources[owner], causes, RANGE, package_of(owner)
-        ), (
-            f"{owner} is exempted from the second-table guard and maps no cause "
-            f"to a code, so the exemption covers nothing and the file it was "
-            f"written for has moved"
-        )
+        ), f"{owner} is exempted and maps no cause to a code, so the exemption covers nothing"
 
 
 def test_the_closed_reason_registry_is_in_the_one_key_set():
     """The registry's slugs are keys: answers differ with and without the registry in the set."""
     assert "config-unusable" in REASONS
-    assert "config-unusable" not in CAUSES, (
-        "pick a slug only the registry declares, or this proves nothing about "
-        "the registry's contribution to the key set"
-    )
+    assert "config-unusable" not in CAUSES, "pick a slug only the registry declares"
     assert "config-unusable" in declared_causes()
 
-    reported = reserved_code_tables(
-        EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG, declared_causes(), RANGE
-    )
+    reported = _wide(EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG)
     assert reported == ["line 4: 'config-unusable' -> ExitCode.LIBRARY_UNAVAILABLE"]
-    assert (
-        reserved_code_tables(EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG, CAUSES, RANGE)
-        == []
-    ), (
-        "the registry is what puts this key in the set, so dropping it has to "
-        "silence the hit. If it does not, the reservation was being found some "
-        "other way and this test is measuring nothing"
+    assert _narrow(EVASION_A_NAMED_CODE_FOR_A_REGISTRY_SLUG) == [], (
+        "dropping the registry from the key set must silence the hit"
     )
-    assert reserved_code_tables(
-        EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG, declared_causes(), RANGE
+    assert _wide(
+        EVASION_A_CONVERSION_ON_A_REGISTRY_SLUG
     ) == ["line 4: 'credential-missing' -> int(ExitCode.PRECONDITION)"]
 
 
 def _reported_key_kinds(source: str) -> dict[str, int]:
-    """What kind of expression each reported key is, off the syntax tree.
-
-    A slug reads the same inline or through a constant, so a fixture claiming to
-    cover names needs this to fail when rewritten into literals. Deduplicated as
-    ``reserved_code_tables`` deduplicates.
-    """
+    """What kind of expression each reported key is, deduplicated as the guard deduplicates."""
     tree = ast.parse(source)
     table = _guards.ReservedCodeTable(tree, declared_causes(), RANGE, None)
     counted: dict[str, int] = {}
@@ -3974,13 +3562,7 @@ def _reported_key_kinds(source: str) -> dict[str, int]:
 
 
 def _construct_shapes(source: str) -> dict[str, int]:
-    """How many of each table shape a source is written with, off the syntax tree.
-
-    A list of hits cannot express a shape, so swapping a construct for another
-    with the same slugs and values on the same lines needs this to fail. The
-    residual fixture is eighteen hits from eleven constructs, tallied as thirteen
-    nodes: ``SENTENCES`` and the empty ``DELAYS`` produce no hit.
-    """
+    """How many of each table shape a source is written with, so a swapped construct fails."""
     counted: dict[str, int] = {}
 
     def tally(shape: str) -> None:
@@ -4015,14 +3597,8 @@ def _construct_shapes(source: str) -> dict[str, int]:
 def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays():
     """The wide rule's false alarms, listed rather than narrowed away. See the residual
     "The tiers were bought with a number that does not exist".
-
-    Each costs one look and a recorded decision; the other side of the trade is
-    a second table nothing notices. The tree has zero offenders today, even with
-    every kebab literal in the package added to the key set.
     """
-    hits = reserved_code_tables(
-        RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
-    )
+    hits = _wide(RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS)
     assert hits == [
         "line 10: 'decision-required' -> status 40",
         "line 10: 'decision-stale' -> status 24",
@@ -4042,15 +3618,7 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
         "line 5: 'credential-missing' -> status 10",
         "line 6: 'config-unusable' -> status 20",
         "line 7: 'internal-error' -> status 30",
-    ], (
-        "eighteen HITS from ELEVEN ordinary constructs, every integer inside "
-        "the reserved range and every key a registry slug. The three counts "
-        "here are different numbers and the round before wrote one of them for "
-        "all three: eighteen hits, eleven constructs that produce a hit, and "
-        "thirteen nodes in the shape tally below, which counts two dict "
-        "literals that produce none. If this list shrinks, the fixture has "
-        "drifted and the residual is smaller than it is written down as"
-    )
+    ], "eighteen hits from eleven constructs; a shorter list means the fixture drifted"
 
     # THE SHAPE HALF: the list above pins keys, values and lines, not how each
     # construct is written.
@@ -4061,31 +3629,17 @@ def test_ordinary_data_keyed_on_a_cause_slug_is_the_residual_the_wide_rule_pays(
         "setdefault call": 1,
         "dict comprehension": 1,
         "branch returning a value": 1,
-    }, (
-        "the fixture is here to cover distinct construct shapes, so swapping one "
-        "for another that reports the same slugs and values has to fail rather "
-        "than pass quietly"
-    )
+    }, "swapping one construct for another reporting the same hits has to fail"
 
     # THE KEY-KIND HALF: every key above is an inline string.
     assert _reported_key_kinds(RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS) == {
         "Constant": 18
-    }, (
-        "this fixture is the LITERAL half of the residual. If a named key appears "
-        "here it belongs in the fixture below, where the named half is pinned"
-    )
+    }, "a named key belongs in the NAME fixture below"
 
 
 def test_ordinary_data_keyed_on_a_NAME_is_the_same_residual_in_the_tree_s_own_idiom():
-    """The same residual keyed on NAMES, the tree's own idiom, which the resolver widening moved.
-
-    ``TrackOutcome`` is copied from ``src/cratekit/acquire/adapter.py``. The
-    tree still reports zero offenders with the resolver on; the at-risk
-    population it moved is pinned by the population test.
-    """
-    hits = reserved_code_tables(
-        RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME, declared_causes(), RANGE
-    )
+    """The same residual keyed on NAMES, the tree's own idiom (``TrackOutcome`` from adapter.py)."""
+    hits = _wide(RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME)
     assert hits == [
         "line 18: 'unavailable-transient' -> status 30",
         "line 20: 'decision-stale' -> status 20",
@@ -4095,22 +3649,14 @@ def test_ordinary_data_keyed_on_a_NAME_is_the_same_residual_in_the_tree_s_own_id
         "line 26: 'config-unusable' -> status 30",
         "line 26: 'decision-stale' -> status 30",
         "line 30: 'unavailable-transient' -> status 45",
-    ], (
-        "eight HITS from six ordinary constructs, none of them keyed on an inline "
-        "string. If this list shrinks the resolver has been narrowed and the "
-        "named spelling of a second table went quiet with it"
-    )
+    ], "eight hits from six named-key constructs; a shorter list means the resolver narrowed"
 
     # THE ANTI-VACUITY HALF: named and inline keys report identically, so the key
     # kinds are what keep this fixture distinct from the one above.
     assert _reported_key_kinds(RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME) == {
         "Attribute": 5,
         "Name": 3,
-    }, (
-        "no reported key here may be an inline string. This fixture exists to "
-        "cover the spelling the key widening reached, and a Constant appearing "
-        "in it means the coverage drifted back to the spelling already covered"
-    )
+    }, "no key here may be an inline string, or the coverage drifted back"
 
     # THE SHAPES, so a construct cannot be swapped for another on the same lines.
     assert _construct_shapes(RESIDUAL_ORDINARY_DATA_KEYED_ON_A_NAME) == {
@@ -4121,53 +3667,29 @@ def test_ordinary_data_keyed_on_a_NAME_is_the_same_residual_in_the_tree_s_own_id
 
 
 def test_a_comment_cannot_silence_a_reservation():
-    """The per-line escape hatch is deleted, and this fails if it comes back.
-
-    ``# not-a-reservation: <reason>`` silenced a one line ``def`` body, two
-    statements on one line, and a whole registry from one comment (61
-    reservations to 0). It was never used, and the wide rule has no false alarms
-    in the tree to make cheap, so a reservation is answered by a recorded
-    decision instead.
-    """
+    """The deleted ``# not-a-reservation:`` hatch stays gone: every spelling it silenced reports."""
     def without_lines(hits: list[str]) -> set[str]:
         """The slug and the status, because the two copies wrap differently."""
         return {hit.split(": ", 1)[1] for hit in hits}
 
-    hits = reserved_code_tables(
-        COMMENTED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
-    )
+    hits = _wide(COMMENTED_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS)
     assert without_lines(hits) == without_lines(
-        reserved_code_tables(
-            RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, declared_causes(), RANGE
-        )
-    ), (
-        "a comment changed what the guard reports, so a per-line off switch is "
-        "back and the residual can be silenced one line at a time again"
-    )
+        _wide(RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS)
+    ), "a comment changed what the guard reports"
     assert len(hits) == 18
 
-    assert reserved_code_tables(
-        COMMENT_ON_A_ONE_LINE_FUNCTION, declared_causes(), RANGE
-    ) == ["line 2: 'config-unusable' -> status 30"], (
-        "a one line def with the comment on it is silent, which is the escape "
-        "covering a whole function body while claiming it never covers one"
+    assert _wide(COMMENT_ON_A_ONE_LINE_FUNCTION) == ["line 2: 'config-unusable' -> status 30"], (
+        "a comment on a one line def silenced it"
     )
-    assert reserved_code_tables(
-        COMMENT_ON_TWO_STATEMENTS_AT_ONCE, declared_causes(), RANGE
-    ) == [
+    assert _wide(COMMENT_ON_TWO_STATEMENTS_AT_ONCE) == [
         "line 2: 'config-unusable' -> status 30",
         "line 2: 'credential-missing' -> status 40",
     ], "one reason silenced two statements"
-    assert reserved_code_tables(
-        COMMENT_ON_THE_OPENING_LINE_OF_A_TABLE, declared_causes(), RANGE
-    ) == [
+    assert _wide(COMMENT_ON_THE_OPENING_LINE_OF_A_TABLE) == [
         "line 3: 'config-unusable' -> status 30",
         "line 4: 'credential-missing' -> status 40",
         "line 5: 'internal-error' -> status 50",
-    ], (
-        "a comment on the opening line of a mapping silenced every key below it, "
-        "which is how one comment took the sixty one entry registry to zero"
-    )
+    ], "a comment on a mapping's opening line silenced every key below it"
 
 
 #: The one call a source string is allowed to reach in the guard module.
@@ -4175,14 +3697,9 @@ THE_ONLY_SINK = "ast.parse"
 
 
 def text_the_guard_module_reads(source: str) -> list[str]:
-    """Every place the guard module does anything with raw source text but parse it.
+    """Every place the guard module uses raw source text other than as ``ast.parse``'s argument.
 
-    A comment exists only in the text; ``ast.parse`` discards it, so a guard
-    that never touches the text cannot have a per-line off switch. Each
-    module-level ``source: str`` parameter is a seed, tainting names it is
-    assigned to and parameters of this module's functions it is passed to. The
-    only permitted use is as the single argument of ``ast.parse``. A function
-    reading text of its own is not seeded; the import whitelist closes that route.
+    A ``source: str`` parameter seeds a taint through assignments and calls in the module.
     """
     tree = ast.parse(source)
     functions = {
@@ -4343,35 +3860,22 @@ def _with_a_fresh_hatch_wired_in(source: str) -> str:
         1,
     )
     assert hatched != source and "_hushed" in hatched, (
-        "the hatch could not be wired in, so the assertion it exists for would "
-        "be measuring an unchanged file. The anchors moved: repair them"
+        "the hatch could not be wired in: the anchors moved"
     )
     return hatched
 
 
 def test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says():
-    """The guard's answer cannot depend on a comment: a source and its comment-free twin agree.
-
-    Forbidding the last hatch's symbol names forbids that implementation, not
-    the feature. Driven over the two table owners, the only files reporting
-    anything, as well as the fixtures.
-    """
+    """A source and its comment-free twin report alike, over the table owners and fixtures."""
     causes = declared_causes()
     for owner in sorted(TABLE_OWNERS):
         source = dict(package_sources())[owner]
         package = package_of(owner)
         with_comments = reserved_code_tables(source, causes, RANGE, package)
-        assert len(with_comments) >= 22, (
-            f"{owner} reports {len(with_comments)} reservations, so the "
-            f"comparison below is being made over almost nothing"
-        )
+        assert len(with_comments) >= 22, f"{owner} reports only {len(with_comments)} reservations"
         assert _slugs_and_statuses(with_comments) == _slugs_and_statuses(
             reserved_code_tables(_without_comments(source), causes, RANGE, package)
-        ), (
-            f"{owner} reports differently once its comments are gone, so a "
-            f"comment is an input to this guard and a per-line off switch is "
-            f"back, whatever it is called"
-        )
+        ), f"{owner} reports differently once its comments are gone"
 
     for marker in FRESH_ESCAPE_MARKERS:
         marked = "\n".join(
@@ -4384,29 +3888,17 @@ def test_a_comment_cannot_change_what_the_guard_reports_whatever_it_says():
             reserved_code_tables(
                 RESIDUAL_ORDINARY_DATA_KEYED_ON_REGISTRY_SLUGS, causes, RANGE
             )
-        ), (
-            f"{marker!r} on every line changed what the guard reports, so a "
-            f"per-line escape exists under a name this test does not have to know"
-        )
+        ), f"{marker!r} on every line changed what the guard reports"
 
 
 def test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text():
-    """The structural half: the guard module's source parameters reach only ``ast.parse``.
-
-    Both directions: the module as shipped answers clean, and with a fresh hatch
-    wired in it answers with the hatch's line.
-    """
+    """The guard's source parameters reach only ``ast.parse``, and a wired-in hatch is seen."""
     source = _guard_module_source()
     assert text_the_guard_module_reads(source) == [], (
-        "the guard module does something with its raw source text other than "
-        "parse it, which is the one way a comment can reach a rule that should "
-        "only be able to see the syntax tree"
+        "the guard module uses its raw source text other than to parse it"
     )
     reported = text_the_guard_module_reads(_with_a_fresh_hatch_wired_in(source))
-    assert reported, (
-        "a per-line escape hatch reading the source text was wired into the "
-        "guard module and this rule did not see it, so it is measuring nothing"
-    )
+    assert reported, "a hatch reading the source text was wired in and not seen"
     assert any("_hushed" in entry for entry in reported), reported
 
 
@@ -4419,9 +3911,7 @@ def test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs():
         elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
             imported.add(node.module.split(".")[0])
     assert imported == {"__future__", "ast", "re"}, (
-        f"the guard module imports {sorted(imported)}. Everything the guards ask "
-        f"is a question about a syntax tree, so an import beyond the tree and the "
-        f"slug shape is how something that can see a comment gets in"
+        f"the guard module imports {sorted(imported)}, beyond what reading a syntax tree needs"
     )
 
 
@@ -4432,20 +3922,14 @@ def test_nobody_in_the_package_writes_the_marker_that_was_deleted():
         for relative, source in package_sources()
         if "not-a-reservation" in source
     ]
-    assert marked == [], (
-        f"a deleted escape is written in {marked}, so somebody is expecting it "
-        f"to work and the guard is silently ignoring them"
-    )
+    assert marked == [], f"a deleted escape is written in {marked}"
 
 
 def test_the_key_set_is_the_union_of_all_three_declarations():
     """The key set is the union of all three declarations; the empty derived term is driven."""
     derived = frozenset().union(*structured_refusal_causes().values())
     assert derived, "the walk found nothing, so the guard's key set collapsed to the table"
-    assert derived == CAUSES, (
-        "the derived term is no longer empty against the table, so the swap "
-        "below is not the only thing driving it and this docstring is stale"
-    )
+    assert derived == CAUSES, "the derived term is no longer empty against the table"
     assert CAUSES < declared_causes(), "the registry has to widen the key set"
     assert registry_only_causes() < declared_causes()
 
@@ -4457,13 +3941,9 @@ def test_the_key_set_is_the_union_of_all_three_declarations():
     }
     try:
         assert invented in declared_causes(), (
-            "a cause the package-wide walk derives has to reach the key set, or "
-            "a module reserving codes for causes it declares somewhere else is "
-            "invisible to the guard"
+            "a cause the package-wide walk derives has to reach the key set"
         )
-        assert reserved_code_tables(
-            f'CODES = {{"{invented}": 30}}\n', declared_causes(), RANGE
-        )
+        assert _wide(f'CODES = {{"{invented}": 30}}\n')
     finally:
         globals()["structured_refusal_causes"] = original
     assert invented not in declared_causes()
@@ -4481,21 +3961,12 @@ def test_the_package_a_relative_import_resolves_against_is_derived():
 
     # END TO END: a sibling of the vocabulary module resolves onto it from
     # ``cratekit.core`` only, and ``package_of`` supplies that over a real file.
-    assert reserved_code_tables(
-        EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, package_of("core/session.py")
-    )
-    assert (
-        reserved_code_tables(
-            EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE, package_of("session.py")
-        )
-        == []
-    )
+    assert _narrow(EVASION_A_SIBLING_RELATIVE_IMPORT, package_of("core/session.py"))
+    assert _narrow(EVASION_A_SIBLING_RELATIVE_IMPORT, package_of("session.py")) == []
 
 
 def test_the_module_and_the_class_are_named_once_each(monkeypatch):
-    """The vocabulary's module leaf and class name are derived from the constants at use.
-
-    Moving ``EXIT_CODE_MODULE`` moves every binding with it; the rule is from the
+    """The vocabulary's module and class names follow their constants; the rule is from the
     residual "Two copies of one import walk still carry a relative-import defect".
     """
     with pytest.MonkeyPatch.context() as moved_module:
@@ -4505,11 +3976,9 @@ from cratekit.core import statuses
 
 CODES = {"rclone-missing": statuses.ExitCode.PRECONDITION}
 """
-        assert reserved_code_tables(moved, CAUSES, RANGE) == [
-            "line 4: 'rclone-missing' -> statuses.ExitCode.PRECONDITION"
-        ]
+        assert _narrow(moved) == ["line 4: 'rclone-missing' -> statuses.ExitCode.PRECONDITION"]
         assert (
-            reserved_code_tables(EVASION_A_SIBLING_BOUND_AS_A_MODULE, CAUSES, RANGE) == []
+            _narrow(EVASION_A_SIBLING_BOUND_AS_A_MODULE) == []
         ), "the module moved and the binding did not follow it"
 
     monkeypatch.setattr(_guards, "EXIT_CODE_CLASS", "Status")
@@ -4518,35 +3987,26 @@ from cratekit.core.exit_codes import Status
 
 CODES = {"rclone-missing": Status.PRECONDITION}
 """
-    assert reserved_code_tables(renamed, CAUSES, RANGE) == [
-        "line 4: 'rclone-missing' -> Status.PRECONDITION"
-    ]
+    assert _narrow(renamed) == ["line 4: 'rclone-missing' -> Status.PRECONDITION"]
     assert (
-        reserved_code_tables(EVASION_A_SIBLING_RELATIVE_IMPORT, CAUSES, RANGE) == []
+        _narrow(EVASION_A_SIBLING_RELATIVE_IMPORT) == []
     ), "the class was renamed and the walk still answers for the old name"
 
 
 def test_the_hop_bound_is_the_depth_of_the_deepest_spelling(monkeypatch):
     """``MAX_HOPS`` is the deepest promised spelling's depth: resolved at it, silent below."""
     assert _guards.MAX_HOPS == 3
-    assert reserved_code_tables(
-        EVASION_A_CODE_NAMED_TWICE_THEN_ADJUSTED, CAUSES, RANGE
+    assert _narrow(
+        EVASION_A_CODE_NAMED_TWICE_THEN_ADJUSTED
     ) == ["line 14: 'tagger-art-rejected' -> status 31 as OFFSET + 1"]
 
     monkeypatch.setattr(_guards, "MAX_HOPS", _guards.MAX_HOPS - 1)
-    assert (
-        reserved_code_tables(EVASION_A_CODE_NAMED_TWICE_THEN_ADJUSTED, CAUSES, RANGE)
-        == []
-    ), (
-        "one hop below the bound the deepest promised spelling still resolves, "
-        "so the bound is higher than anything needs and the number is decoration"
+    assert _narrow(EVASION_A_CODE_NAMED_TWICE_THEN_ADJUSTED) == [], (
+        "one hop below the bound still resolves, so the bound is decoration"
     )
 
 
 def test_no_module_in_the_package_turns_a_bare_integer_into_a_status():
     found = {relative: process_status_literals(source) for relative, source in package_sources()}
     offenders = {relative: hits for relative, hits in found.items() if hits}
-    assert not offenders, (
-        f"these bypass the vocabulary entirely and exit with an integer nobody "
-        f"reserved: {offenders}"
-    )
+    assert not offenders, f"these exit with an integer nobody reserved: {offenders}"

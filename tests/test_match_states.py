@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.acquire import match, match_cli
+from cratekit.acquire import match, match_cli, match_identity, match_library
 from cratekit.cli import output, registry
-from cratekit.core import config, naming, review, tags
+from cratekit.core import config, naming, review, tags, tombstone
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 
@@ -124,6 +124,14 @@ def one(*, artist="Aurora Bloom", title="Sun Path", version="", key=None, origin
     return match.Wanted(artist=artist, title=title, version=version, key=key, origin=origin)
 
 
+def settle(music: Path, *held: str, suppresses=None, **wanted) -> match.TrackMatch:
+    """Hold each named file, then resolve the one row ``wanted`` names against the library."""
+    for name in held:
+        hold(music, name)
+    found = resolve([one(**wanted)], index_of(music), suppresses=suppresses or nothing_suppressed)
+    return found.matches[0]
+
+
 def drive(argv: list[str]) -> tuple[int, dict]:
     """Run the real dispatcher and return (status, envelope)."""
     out, err = io.StringIO(), io.StringIO()
@@ -135,6 +143,37 @@ def write_list(tmp_path: Path, body: str, name: str = "list.txt") -> str:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return str(path)
+
+
+def write_document(tmp_path: Path, origin: str, tracks: list, name: str) -> str:
+    """A list document declaring ``origin``, as the provider readers receive one."""
+    return write_list(tmp_path, json.dumps({"list": 1, "origin": origin, "tracks": tracks}), name)
+
+
+def run_list(tmp_path: Path, body: str, name: str = "list.txt") -> tuple[int, dict]:
+    """``match run`` over a list written for this one run."""
+    return drive(["match", "run", write_list(tmp_path, body, name)])
+
+
+def entomb(cfg, identity: dict[str, str], actor: str = "deletion") -> review.Suppression:
+    """A version tombstone recorded straight into the store the match consults."""
+    store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
+    return store.record(kind=match.TOMBSTONE_KIND, identity=identity, actor=actor)
+
+
+def warned(envelope: dict, code: str = match_cli.SUPPRESSED_WARNING) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == code]
+
+
+def answer(row: dict, verdict: str, *, option: bool = False) -> tuple[int, dict]:
+    """``review resolve`` on a row's item, naming its first candidate when ``option``."""
+    chosen = ["--option", row["candidates"][0]["id"]] if option else []
+    return drive(["review", "resolve", row["review_item"], "--verdict", verdict, *chosen])
+
+
+def first_question(path: str) -> dict:
+    """The first needs-review row ``match run`` reports over ``path``."""
+    return drive(["match", "run", path])[1]["data"]["needs_review"][0]
 
 
 # ── Part 1: folding, and what counts as a version ─────────────────────────
@@ -244,9 +283,6 @@ def test_a_group_whose_first_word_is_a_credit_still_comes_off(tmp_path, group):
 
 def test_a_group_whose_first_word_is_the_abbreviation_ft_stays_a_credit(tmp_path):
     """``Ft`` IS the word ``ft`` ``core.tombstone`` records deletions by, pinned so it is seen."""
-    from cratekit.acquire import match_identity
-    from cratekit.core import tombstone
-
     spelled = "Sun Path (Ft Worth Edit)"
     assert match.split_title(spelled) == ("Sun Path", "")
     assert match_identity._is_a_credit("Ft Worth Edit") and tombstone._is_a_credit("Ft Worth Edit")
@@ -278,23 +314,15 @@ U262_EVERY_GROUP: tuple[str, ...] = (
 @pytest.mark.parametrize("group", U262_EVERY_GROUP)
 def test_the_matcher_and_the_tombstone_agree_on_what_a_credit_is(group):
     """U262. The matcher's copy of ``core.tombstone._is_a_credit`` is held equal to it."""
-    from cratekit.acquire import match_identity
-    from cratekit.core import tombstone
-
     assert match_identity._is_a_credit(group) == tombstone._is_a_credit(group)
 
 
 def test_the_matcher_and_the_tombstone_share_one_credit_vocabulary():
-    from cratekit.acquire import match_identity
-    from cratekit.core import tombstone
-
     assert match_identity._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
 
 
 def test_a_defect_title_keeps_the_tombstone_identity_its_spelling_always_had():
     """The identity is the listing's verbatim spelling, so an old tombstone is still met."""
-    from cratekit.core import tombstone
-
     spelled = "Sun Path (Without You Remix)"
     wanted = u262_wanted(spelled)
     recorded = tombstone.version_identity(
@@ -418,13 +446,8 @@ def test_the_fold_pins_actually_discriminate_between_normalizations():
 
 
 def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
-    """A tombstone recorded under one spelling is invisible to the other, so it is fetched back.
-
-    What cannot reconcile is named in ``UNRECONCILED``. Still unproved, per the residual titled
-    "The two tombstone derivations are reconciled only at merge": ``u24_records`` imitates it.
-    """
-    from cratekit.core import tombstone
-
+    """A spelling one side cannot see is fetched back, so ``UNRECONCILED`` names each; per "The
+    two tombstone derivations are reconciled only at merge", ``u24_records`` imitates it."""
     assert match.TOMBSTONE_KIND == tombstone.KIND_VERSION
     assert match.UNCREDITED_KIND == tombstone.KIND_VERSION_UNCREDITED
     assert match_cli.TOMBSTONE_STORE == tombstone.STORE_KEY
@@ -469,10 +492,7 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
             u24_uncredited("Aurora Bloom", row[0], row[1]),
         )
     )
-    assert missed == UNRECONCILED, (
-        "a library row spelling this side cannot address changed, so a tombstone "
-        "became invisible"
-    )
+    assert missed == UNRECONCILED, "a row spelling this side cannot address hides a tombstone"
 
 
 def test_the_tombstone_identity_is_u24s_algorithm_byte_for_byte():
@@ -743,15 +763,10 @@ def test_a_deletion_of_the_plain_record_never_withholds_a_credit_spelled_late(
     cfg, music, tmp_path, origin, listed, provider, spelled_addresses, provider_addresses
 ):
     """Deleting the plain record never withholds a credit spelled late, one list line per reader."""
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND,
-        identity=u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"), actor="deletion",
-    )
+    entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"))
     path = list_document(tmp_path, origin, listed, provider, "credited")
     _code, envelope = drive(["match", "run", path])
-    assert len(envelope["data"]["missing"]) == 1, (
-        "a deletion of the plain record silently withheld the credited one"
-    )
+    assert len(envelope["data"]["missing"]) == 1, "the plain deletion withheld the credited one"
     assert envelope["warnings"] == []
 
 
@@ -766,20 +781,13 @@ def list_document(
     else:
         rows = [{"id": "1", "title": provider[0], "version": provider[1],
                  "artist": {"name": "Aurora Bloom"}}]
-    return write_list(
-        tmp_path, json.dumps({"list": 1, "origin": origin, "tracks": rows}),
-        f"{name}-{origin}.json",
-    )
+    return write_document(tmp_path, origin, rows, f"{name}-{origin}.json")
 
 
 def test_the_plain_record_is_still_suppressed_for_the_list_that_names_it(cfg, music, tmp_path):
     """The other half: no address at all would pass every negative assertion above."""
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND,
-        identity=u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"), actor="deletion",
-    )
-    plain = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended) (Remastered)\n", "p.txt")
-    _code, still = drive(["match", "run", plain])
+    entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Extended) (Remastered)"))
+    _code, still = run_list(tmp_path, "Aurora Bloom - Sun Path (Extended) (Remastered)\n", "p.txt")
     assert still["data"]["missing"] == []
     assert [w["code"] for w in still["warnings"]] == [match_cli.SUPPRESSED_WARNING]
 
@@ -796,16 +804,11 @@ def test_a_credited_listing_reaches_the_other_bracket_shape_of_its_own_version(
     cfg, music, tmp_path, listed, recorded_row
 ):
     """What ``_head_of`` is for: losing either bracket shape makes the credited row unreachable."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", recorded_row),
-        actor="deletion",
-    )
-    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "credited.txt")
-    code, envelope = drive(["match", "run", path])
-
+    recorded = entomb(cfg, u24_records("Aurora Bloom", recorded_row))
+    code, envelope = run_list(tmp_path, f"Aurora Bloom - {listed}\n", "credited.txt")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["missing"] == []
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(envelope)
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
@@ -937,8 +940,7 @@ def test_a_tombstone_under_a_spelling_the_composition_never_produces_is_found(re
         match.read_tidal_tracks([PROVIDER_ROW])[0], match.LibraryIndex(by_recording={}),
         suppresses=suppresses, suppression_id=no_identifier,
     )
-    assert found.state is match.MatchState.SUPPRESSED
-    assert found.why is match.Why.TOMBSTONED
+    assert (found.state, found.why) == (match.MatchState.SUPPRESSED, match.Why.TOMBSTONED)
 
 
 @pytest.mark.parametrize(
@@ -973,15 +975,10 @@ def test_a_tombstone_is_addressed_by_every_reading_except_the_undecidable_one(
     cfg, music, tmp_path, line, suppressed
 ):
     """``Sun Path - Live`` must not compose ``Sun Path (Live)``: over eager withholds silently."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
-        actor="deletion",
-    )
-    path = write_list(tmp_path, f"{line}\n", "gone.txt")
-    code, envelope = drive(["match", "run", path])
-
+    recorded = entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Live)"))
+    code, envelope = run_list(tmp_path, f"{line}\n", "gone.txt")
     assert code == int(ExitCode.OK)
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(envelope)
     if suppressed:
         assert envelope["data"]["missing"] == []
         assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
@@ -990,10 +987,7 @@ def test_a_tombstone_is_addressed_by_every_reading_except_the_undecidable_one(
         assert [row["why"] for row in envelope["data"]["missing"]] == [
             str(match.Why.NOT_IN_LIBRARY)
         ]
-        assert envelope["data"]["missing"][0]["acquisition"], (
-            "a missed suppression is the cheap side only because the run says "
-            "what it is about to go and get"
-        )
+        assert envelope["data"]["missing"][0]["acquisition"], "a miss must say what it fetches"
 
 
 def test_neither_reading_of_an_ambiguous_title_composes_the_other_ones_address():
@@ -1149,116 +1143,87 @@ def headed_tag(music: Path, tmp_path: Path, name: str, *, artist: str, title: st
     return tagged_container(tmp_path, music / f"{name}.flac", artist=artist, title=title)
 
 
-def test_a_head_inside_the_title_tag_is_stripped_so_a_plain_provider_row_matches(music, tmp_path):
-    """The headed tag, first scenario: stripped, so the row is not offered or missing."""
-    headed_tag(
-        music, tmp_path, "06A - 126 - Felixcw - Dr. Beat",
-        artist="Felixcw", title="06A - 126 - Dr. Beat",
-    )
-
-    index = index_of(music)
-    held = index.versions(match.recording_token("Felixcw", "Dr. Beat"))
-    assert [(row.artist, row.title, row.version, row.key) for row in held] == [
-        ("Felixcw", "Dr. Beat", "", "06A")
-    ]
-    assert index.versions(match.recording_token("Felixcw", "06A - 126 - Dr. Beat")) == ()
-    found = resolve([one(artist="Felixcw", title="Dr. Beat", origin=match.TIDAL)], index)
-    assert found.matches[0].state is match.MatchState.MATCHED
+def fields_of(held, names: tuple[str, ...]) -> list[tuple]:
+    return [tuple(getattr(row, name) for name in names) for row in held]
 
 
-def test_a_headed_tag_titled_wholly_in_brackets_matches_the_provider_row(music, tmp_path):
-    """U213. Both sides read the bracketed title through one function, so they converge."""
-    headed_tag(
-        music, tmp_path, "06A - 126 - Glass Animals - [Premade Sandwiches]",
-        artist="Glass Animals", title="06A - 126 - [Premade Sandwiches]",
-    )
-    index = index_of(music)
-    held = index.versions(match.recording_token("Glass Animals", "Premade Sandwiches"))
-    assert [(row.title, row.version) for row in held] == [("Premade Sandwiches", "")]
-    rows = match.read_tidal_tracks(
-        [{"id": "5", "name": "[Premade Sandwiches]", "artist": {"name": "Glass Animals"}}]
-    )
-    assert resolve(rows, index).matches[0].state is match.MatchState.MATCHED
+#: (file, artist, title tag, title looked up, fields read, what they read, a title that must
+#: index nothing, the rows that must match). One rule reads the head off tag and stem alike.
+HEADED_TAGS = (
+    pytest.param(
+        "06A - 126 - Felixcw - Dr. Beat", "Felixcw", "06A - 126 - Dr. Beat", "Dr. Beat",
+        ("artist", "title", "version", "key"), [("Felixcw", "Dr. Beat", "", "06A")],
+        "06A - 126 - Dr. Beat",
+        lambda: [one(artist="Felixcw", title="Dr. Beat", origin=match.TIDAL)],
+        id="a-head-inside-the-title-tag-is-stripped-so-a-plain-provider-row-matches",
+    ),
+    pytest.param(
+        "06A - 126 - Glass Animals - [Premade Sandwiches]", "Glass Animals",
+        "06A - 126 - [Premade Sandwiches]", "Premade Sandwiches", ("title", "version"),
+        [("Premade Sandwiches", "")], None, lambda: match.read_tidal_tracks(
+            [{"id": "5", "name": "[Premade Sandwiches]", "artist": {"name": "Glass Animals"}}]
+        ),
+        id="a-headed-tag-titled-wholly-in-brackets-matches-the-provider-row",
+    ),
+    pytest.param(
+        "06A - 126 - Felixcw - Dr. Beat", "Felixcw", "Dr. Beat", "Dr. Beat",
+        ("artist", "title", "version", "key"), [("Felixcw", "Dr. Beat", "", "06A")], None, None,
+        id="a-head-only-in-the-filename-with-a-plain-tag-indexes-as-it-did",
+    ),
+    pytest.param(
+        "10A - 100 - Mira Vale - 50 BPM Metronome", "Mira Vale", "10A - 100 - 50 BPM Metronome",
+        "50 BPM Metronome", ("title",), [("50 BPM Metronome",)], None,
+        lambda: [one(artist="Mira Vale", title="50 BPM Metronome")],
+        id="the-tempo-goes-with-the-head-and-a-number-opening-the-title-stays",
+    ),
+    pytest.param(
+        "Aurora Bloom - 8A - 124 - Sun Path", "Aurora Bloom", "8A - 124 - Sun Path", "Sun Path",
+        ("title",), [("Sun Path",)], "8A - 124 - Sun Path", None,
+        id="a-title-that-genuinely-opens-with-a-camelot-code-and-a-number-is-read-as-a-head",
+    ),
+    pytest.param(
+        "06A - 126 - Aurora Bloom - Sun Path", "Aurora Bloom", "06A - 126 -", "Sun Path",
+        ("artist", "title", "key"), [("Aurora Bloom", "Sun Path", "06A")], None, None,
+        id="a-tag-that-is-only-a-head-falls-to-the-filename-the-way-an-empty-tag-does",
+    ),
+    pytest.param(
+        "08A - 124 - Aurora Bloom - Sun Path", "Aurora Bloom", "Sun Path - Radio Edit",
+        "Sun Path", ("title", "version"), [("Sun Path", "Radio Edit")], None, None,
+        id="a-plain-title-tag-is-untouched-by-the-head-strip",
+    ),
+    pytest.param(
+        "Aurora Bloom - Sun Path - 08A - 124", "Aurora Bloom", "Sun Path - 08A - 124", "Sun Path",
+        ("title",), [("Sun Path",)], None, None,
+        id="a-head-written-as-a-suffix-inside-the-tag-comes-off-as-it-does-from-the-stem",
+    ),
+    pytest.param(
+        "Aurora Bloom - Sun Path", "Aurora Bloom", "06A - 126 - Sun Path", "Sun Path",
+        ("title", "key"), [("Sun Path", "06A")], None, None,
+        id="a-head-found-only-in-the-tag-carries-the-key-when-the-stem-has-none",
+    ),
+    pytest.param(
+        "Aurora Bloom - Room - 12B - 100", "Aurora Bloom", "Room - 12B - 100", "Room",
+        ("title",), [("Room",)], "Room - 12B - 100", None,
+        id="a-title-that-genuinely-ends-with-a-camelot-code-and-a-number-loses-that-tail",
+    ),
+)
 
 
-def test_a_head_only_in_the_filename_with_a_plain_tag_indexes_as_it_did(music, tmp_path):
-    """The headed tag, second scenario: the change moves nothing that already worked."""
-    headed_tag(
-        music, tmp_path, "06A - 126 - Felixcw - Dr. Beat", artist="Felixcw", title="Dr. Beat"
-    )
-    held = index_of(music).versions(match.recording_token("Felixcw", "Dr. Beat"))
-    assert [(row.artist, row.title, row.version, row.key) for row in held] == [
-        ("Felixcw", "Dr. Beat", "", "06A")
-    ]
-
-
-def test_the_tempo_goes_with_the_head_and_a_number_opening_the_title_stays(music, tmp_path):
-    """The headed tag, third scenario: ``50`` after the terminator is the title's own first word."""
-    headed_tag(
-        music, tmp_path, "10A - 100 - Mira Vale - 50 BPM Metronome",
-        artist="Mira Vale", title="10A - 100 - 50 BPM Metronome",
-    )
-    index = index_of(music)
-    held = index.versions(match.recording_token("Mira Vale", "50 BPM Metronome"))
-    assert [row.title for row in held] == ["50 BPM Metronome"]
-    found = resolve([one(artist="Mira Vale", title="50 BPM Metronome")], index)
-    assert found.matches[0].state is match.MatchState.MATCHED
-
-
-def test_a_title_that_genuinely_opens_with_a_camelot_code_and_a_number_is_read_as_a_head(
-    music, tmp_path
+@pytest.mark.parametrize(
+    ("name", "artist", "tag", "title", "fields", "expected", "unindexed", "rows"), HEADED_TAGS
+)
+def test_a_head_in_the_title_tag_reads_as_the_stems_head_does(
+    music, tmp_path, name, artist, tag, title, fields, expected, unindexed, rows
 ):
-    """A collision the filename side already accepts, named rather than hidden."""
-    headed_tag(
-        music, tmp_path, "Aurora Bloom - 8A - 124 - Sun Path",
-        artist="Aurora Bloom", title="8A - 124 - Sun Path",
-    )
+    """A collision the stem already accepts is named, and the tag never reads a second way."""
+    headed_tag(music, tmp_path, name, artist=artist, title=tag)
     index = index_of(music)
-    assert index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert index.versions(match.recording_token("Aurora Bloom", "8A - 124 - Sun Path")) == ()
-
-
-def test_a_tag_that_is_only_a_head_falls_to_the_filename_the_way_an_empty_tag_does(music, tmp_path):
-    """The headed tag, fourth scenario."""
-    headed_tag(
-        music, tmp_path, "06A - 126 - Aurora Bloom - Sun Path",
-        artist="Aurora Bloom", title="06A - 126 -",
-    )
-    index = index_of(music)
-    held = index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert [(row.artist, row.title, row.key) for row in held] == [("Aurora Bloom", "Sun Path", "06A")]
     assert len(index) == 1
-
-
-def test_a_plain_title_tag_is_untouched_by_the_head_strip(music, tmp_path):
-    """The headed tag, fourth scenario's other half: a title with no head reads as it always has."""
-    headed_tag(
-        music, tmp_path, "08A - 124 - Aurora Bloom - Sun Path",
-        artist="Aurora Bloom", title="Sun Path - Radio Edit",
-    )
-    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert [(row.title, row.version) for row in held] == [("Sun Path", "Radio Edit")]
-
-
-def test_a_head_written_as_a_suffix_inside_the_tag_comes_off_as_it_does_from_the_stem(
-    music, tmp_path
-):
-    """One rule on both ends, so the two surfaces cannot disagree about one file."""
-    headed_tag(
-        music, tmp_path, "Aurora Bloom - Sun Path - 08A - 124",
-        artist="Aurora Bloom", title="Sun Path - 08A - 124",
-    )
-    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert [row.title for row in held] == ["Sun Path"]
-
-
-def test_a_head_found_only_in_the_tag_carries_the_key_when_the_stem_has_none(music, tmp_path):
-    """Same bytes, same key, before or after ``naming apply``: stem, tag, then ``initialkey``."""
-    headed_tag(
-        music, tmp_path, "Aurora Bloom - Sun Path", artist="Aurora Bloom", title="06A - 126 - Sun Path"
-    )
-    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert [(row.title, row.key) for row in held] == [("Sun Path", "06A")]
+    assert fields_of(index.versions(match.recording_token(artist, title)), fields) == expected
+    if unindexed is not None:
+        assert index.versions(match.recording_token(artist, unindexed)) == ()
+    if rows is not None:
+        assert resolve(rows(), index).matches[0].state is match.MatchState.MATCHED
 
 
 def test_the_tag_head_outranks_the_stem_head_and_both_outrank_the_initialkey_tag(music, tmp_path):
@@ -1300,19 +1265,6 @@ def test_a_headless_file_takes_its_key_from_initialkey_and_has_none_without_it(m
     moon = index.versions(match.recording_token("Aurora Bloom", "Moon Path"))
     assert [(row.title, row.key) for row in sun] == [("Sun Path", "06A")]
     assert [(row.title, row.key) for row in moon] == [("Moon Path", None)]
-
-
-def test_a_title_that_genuinely_ends_with_a_camelot_code_and_a_number_loses_that_tail(
-    music, tmp_path
-):
-    """Accepted for the tag as for the stem: one rule on both surfaces."""
-    headed_tag(
-        music, tmp_path, "Aurora Bloom - Room - 12B - 100",
-        artist="Aurora Bloom", title="Room - 12B - 100",
-    )
-    index = index_of(music)
-    assert [row.title for row in index.versions(match.recording_token("Aurora Bloom", "Room"))] == ["Room"]
-    assert index.versions(match.recording_token("Aurora Bloom", "Room - 12B - 100")) == ()
 
 
 def test_a_headed_tag_with_a_lossy_marker_strips_under_the_librarys_template(music, tmp_path, cfg):
@@ -1362,21 +1314,34 @@ def row(*, artist: str, title: str, isrc: str | None, key=None) -> match.Wanted:
     return match.read_row(shaped, origin=match.TIDAL, position=1)
 
 
+def burning_row(**changed) -> match.Wanted:
+    """The brief's row, ``Malive - Burning (Extended Mix)`` under its ISRC, as ``changed``."""
+    named = {"artist": "Malive", "title": "Burning (Extended Mix)", "isrc": "USNRS2644532"}
+    return row(**{**named, **changed})
+
+
+def the_match(index: match.LibraryIndex, wanted: match.Wanted) -> match.TrackMatch:
+    (found,) = resolve([wanted], index).matches
+    return found
+
+
+def asks_only(found: match.TrackMatch, why: match.Why) -> bool:
+    """A question for ``why`` whose one candidate differs by exactly that."""
+    differences = [c.difference for c in found.candidates]
+    return (found.state, found.why, differences) == (match.MatchState.NEEDS_REVIEW, why, [why])
+
+
+BURNING_FILE = "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac"
+
+
 def test_a_file_held_under_the_rows_isrc_is_owned_whatever_its_artist_tag_says(music, tmp_path):
     """First scenario: the credited list defeats text comparison, and both sides carry the ISRC."""
     burning(music, tmp_path)
-
     index = index_of(music)
     assert [held.isrc for held in index.held_by_isrc("USNRS2644532")] == ["USNRS2644532"]
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.MATCHED
-    assert one_match.why is match.Why.ISRC_EXACT
-    assert [Path(p).name for p in one_match.paths] == [
-        "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac"
-    ]
+    found = the_match(index, burning_row())
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.ISRC_EXACT)
+    assert [Path(p).name for p in found.paths] == [BURNING_FILE]
 
 
 def test_a_file_with_no_isrc_tag_is_owned_when_the_primary_artist_is_a_credited_member(
@@ -1384,18 +1349,13 @@ def test_a_file_with_no_isrc_tag_is_owned_when_the_primary_artist_is_a_credited_
 ):
     """Second scenario: with no ISRC tag the credited list rule holds the file by membership."""
     burning(music, tmp_path, isrc=None)
-
     index = index_of(music)
     assert index.held_by_isrc("USNRS2644532") == ()
-        # No empty key, or a row with no ISRC would be held by every untagged file.
+    # No empty key, or a row with no ISRC would be held by every untagged file.
     assert "" not in index.by_isrc
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.MATCHED
-    assert one_match.why is match.Why.CREDITED_EXACT
-    assert len(one_match.paths) == 1
+    found = the_match(index, burning_row())
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.CREDITED_EXACT)
+    assert len(found.paths) == 1
 
 
 def test_the_primary_artist_need_not_be_first_in_the_credited_list(music, tmp_path):
@@ -1414,36 +1374,22 @@ def test_a_different_recording_sharing_the_title_under_another_isrc_is_not_owned
         music, tmp_path, "09A - 124 - Nova Reef - Burning (Extended Mix)",
         artist="Nova Reef", title="09A - 124 - Burning (Extended Mix)", isrc="GBAYE0000001",
     )
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is not match.MatchState.MATCHED
-    assert one_match.paths == ()
+    found = the_match(index_of(music), burning_row())
+    assert found.state is not match.MatchState.MATCHED
+    assert found.paths == ()
 
 
 def test_an_isrc_hit_still_asks_about_the_key(music, tmp_path):
     """The ISRC settles recording and version, not the library's key: a relative minor asks."""
     burning(music, tmp_path)
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04B")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.NEEDS_REVIEW
-    assert one_match.why is match.Why.KEY_RELATIVE
-    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+    assert asks_only(the_match(index_of(music), burning_row(key="04B")), match.Why.KEY_RELATIVE)
 
 
 def test_a_rows_isrc_is_folded_before_it_is_asked(music, tmp_path):
     """Folded as the tag reader and the missing verb fold, not a third spelling."""
     burning(music, tmp_path)
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="us-nrs-26-44532")],
-        index_of(music),
-    )
-    assert found.matches[0].why is match.Why.ISRC_EXACT
+    found = the_match(index_of(music), burning_row(isrc="us-nrs-26-44532"))
+    assert found.why is match.Why.ISRC_EXACT
 
 
 @pytest.mark.parametrize(
@@ -1462,14 +1408,7 @@ def test_a_rows_isrc_is_folded_before_it_is_asked(music, tmp_path):
 def test_an_isrc_hit_asks_about_the_key_alone(music, tmp_path, stem, artist, title, key):
     """The ISRC settles recording and version however the file spells them or credits nobody."""
     credited(music, tmp_path, stem, artist=artist, title=title, isrc="USNRS2644532")
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key=key)],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.NEEDS_REVIEW
-    assert one_match.why is match.Why.KEY_RELATIVE
-    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+    assert asks_only(the_match(index_of(music), burning_row(key=key)), match.Why.KEY_RELATIVE)
 
 
 def test_a_files_isrc_tag_is_folded_before_it_is_indexed(music, tmp_path):
@@ -1481,10 +1420,7 @@ def test_a_files_isrc_tag_is_folded_before_it_is_indexed(music, tmp_path):
     )
     index = index_of(music)
     assert list(index.by_isrc) == ["USNRS2644532"]
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
-    )
-    assert found.matches[0].why is match.Why.ISRC_EXACT
+    assert the_match(index, burning_row()).why is match.Why.ISRC_EXACT
 
 
 def test_a_malformed_isrc_tag_is_not_an_identity(music, tmp_path):
@@ -1496,7 +1432,7 @@ def test_a_malformed_isrc_tag_is_not_an_identity(music, tmp_path):
     index = index_of(music)
     assert index.held_by_isrc(match.isrc_token("CAT-001")) == ()
     assert match.isrc_token("CAT-001") == ""
-        # Not in the map under any spelling: a junk key nothing asks for is still trusted later.
+    # Not in the map under any spelling: a junk key nothing asks for is still trusted later.
     assert index.by_isrc == {}
     found = resolve([row(artist="Someone Else", title="Tide", isrc="CAT-001")], index)
     assert found.matches[0].state is not match.MatchState.MATCHED
@@ -1510,23 +1446,14 @@ def test_a_credited_hit_at_another_version_is_a_version_question_not_an_approxim
         music, tmp_path, "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Radio Edit)",
         artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Radio Edit)", isrc=None,
     )
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.NEEDS_REVIEW
-    assert one_match.why is match.Why.VERSION_DIFFERS
-    assert [c.difference for c in one_match.candidates] == [match.Why.VERSION_DIFFERS]
+    assert asks_only(the_match(index_of(music), burning_row()), match.Why.VERSION_DIFFERS)
 
 
 def test_membership_is_whole_names_not_substrings(music, tmp_path):
     """Or a solo ``Tito`` would be handed every collaboration naming ``Tito Azevedo``."""
     burning(music, tmp_path, isrc=None)
-    found = resolve(
-        [row(artist="Tito", title="Burning (Extended Mix)", isrc=None)], index_of(music)
-    )
-    assert found.matches[0].state is not match.MatchState.MATCHED
+    found = the_match(index_of(music), burning_row(artist="Tito", isrc=None))
+    assert found.state is not match.MatchState.MATCHED
 
 
 def test_a_single_artist_file_is_indexed_once_and_the_rule_moves_nothing(music, tmp_path):
@@ -1550,17 +1477,11 @@ def test_an_isrc_hit_whose_title_disagrees_is_a_question_not_a_match(music, tmp_
         music, tmp_path, "09A - 124 - Nova Reef - Tide",
         artist="Nova Reef", title="09A - 124 - Tide", isrc="USNRS2644532",
     )
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.NEEDS_REVIEW
-    assert one_match.why is match.Why.TITLE_APPROXIMATE
-    assert [Path(p).name for c in one_match.candidates for p in c.paths] == [
+    found = the_match(index_of(music), burning_row())
+    assert asks_only(found, match.Why.TITLE_APPROXIMATE)
+    assert [Path(p).name for c in found.candidates for p in c.paths] == [
         "09A - 124 - Nova Reef - Tide.flac"
     ]
-    assert [c.difference for c in one_match.candidates] == [match.Why.TITLE_APPROXIMATE]
 
 
 def test_an_isrc_settled_row_lists_the_files_carrying_the_isrc_and_no_other(music, tmp_path):
@@ -1570,16 +1491,9 @@ def test_an_isrc_settled_row_lists_the_files_carrying_the_isrc_and_no_other(musi
         music, tmp_path, "archive/07B - 126 - Malive - Burning (Extended Mix)",
         artist="Malive", title="07B - 126 - Burning (Extended Mix)", isrc=None,
     )
-    found = resolve(
-        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04A")],
-        index_of(music),
-    )
-    (one_match,) = found.matches
-    assert one_match.state is match.MatchState.MATCHED
-    assert one_match.why is match.Why.ISRC_EXACT
-    assert [Path(p).name for p in one_match.paths] == [
-        "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac"
-    ]
+    found = the_match(index_of(music), burning_row(key="04A"))
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.ISRC_EXACT)
+    assert [Path(p).name for p in found.paths] == [BURNING_FILE]
 
 
 def test_an_empty_isrc_token_asks_the_index_nothing(music):
@@ -1669,10 +1583,7 @@ def _imports_of(source: str, *, package: str) -> frozenset[str]:
 
 
 def reaches_an_export_reader(source: str, *, package: str = "cratekit.acquire") -> set[str]:
-    """Which export reader this source binds to, through the import graph, transitively.
-
-    ``open`` imports nothing, so a second guard covers string literals.
-    """
+    """Every export reader this source binds to, transitively; ``open`` needs the text guard."""
     reached: set[str] = set()
     pending = [(source, package)]
     seen: set[str] = set()
@@ -1824,12 +1735,8 @@ def _adjudicated(store, wanted, index) -> match.TrackMatch:
 def _ask_about_burning(store, music) -> match.TrackMatch:
     """The brief's row: the radio edit held, the extended mix asked, one open VERSION item."""
     hold(music, "04A - 126 - Malive - Burning (Radio Edit)")
-    asked = _adjudicated(
-        store, row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
-        index_of(music),
-    )
-    assert asked.state is match.MatchState.NEEDS_REVIEW
-    assert asked.why is match.Why.VERSION_DIFFERS
+    asked = _adjudicated(store, burning_row(), index_of(music))
+    assert (asked.state, asked.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
     assert [one.item_id for one in review.list_items(store)] == [asked.item_id]
     return asked
 
@@ -1846,13 +1753,9 @@ def test_a_row_owned_by_a_later_resolution_retires_its_open_question_naming_the_
     with review.open_store(cfg) as store:
         asked = _ask_about_burning(store, music)
         burning(music, tmp_path, isrc=isrc_on_the_file)
-        owned = _adjudicated(
-            store, row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
-            index_of(music),
-        )
+        owned = _adjudicated(store, burning_row(), index_of(music))
         assert (owned.state, owned.why) == (match.MatchState.MATCHED, rule)
         assert owned.item_id is None, "an owned row is not a question and names no item"
-
         assert [one.item_id for one in review.list_items(store)] == []
         assert [one.item_id for one in review.list_items(store, include_suppressed=True)] == []
         retired = review.get(store, asked.item_id)
@@ -1866,7 +1769,7 @@ def test_a_retired_question_offered_again_is_neither_reopened_nor_duplicated(cfg
     with review.open_store(cfg) as store:
         asked = _ask_about_burning(store, music)
         burning(music, tmp_path)
-        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        line = burning_row()
         for _ in range(2):
             owned = _adjudicated(store, line, index_of(music))
             assert owned.why is match.Why.ISRC_EXACT
@@ -1881,10 +1784,7 @@ def test_a_persons_answer_is_never_overwritten_by_a_later_resolution(cfg, music,
         asked = _ask_about_burning(store, music)
         review.resolve(store, asked.item_id, review.Verdict.REJECTED, actor="phillip")
         burning(music, tmp_path)
-        owned = _adjudicated(
-            store, row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
-            index_of(music),
-        )
+        owned = _adjudicated(store, burning_row(), index_of(music))
         assert owned.why is match.Why.ISRC_EXACT
         kept = review.get(store, asked.item_id)
         assert kept.verdict is review.Verdict.REJECTED
@@ -1898,10 +1798,9 @@ def test_a_retired_question_the_row_asks_again_is_reopened_not_read_as_a_rejecti
     with review.open_store(cfg) as store:
         asked = _ask_about_burning(store, music)
         carrying = burning(music, tmp_path)
-        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        line = burning_row()
         assert _adjudicated(store, line, index_of(music)).why is match.Why.ISRC_EXACT
         assert review.get(store, asked.item_id).verdict is review.Verdict.SUPERSEDED
-
         carrying.unlink()
         again = _adjudicated(store, line, index_of(music))
         assert (again.state, again.why) == (
@@ -1920,7 +1819,7 @@ def test_a_retired_question_whose_row_goes_missing_keeps_the_verdict(cfg, music,
     with review.open_store(cfg) as store:
         asked = _ask_about_burning(store, music)
         carrying = burning(music, tmp_path)
-        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        line = burning_row()
         assert _adjudicated(store, line, index_of(music)).why is match.Why.ISRC_EXACT
         carrying.unlink()
         (music / "04A - 126 - Malive - Burning (Radio Edit).flac").unlink()
@@ -1945,10 +1844,7 @@ def test_a_persons_acceptance_being_applied_retires_nothing(cfg, music, tmp_path
             store, asked.item_id, review.Verdict.ACCEPTED,
             option=candidate.candidate_id, actor="phillip",
         )
-        applied = _adjudicated(
-            store, row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
-            index_of(music),
-        )
+        applied = _adjudicated(store, burning_row(), index_of(music))
         assert (applied.state, applied.why) == (
             match.MatchState.MATCHED, match.Why.VERDICT_ACCEPTED,
         )
@@ -2014,17 +1910,11 @@ def test_every_question_identity_is_one_per_shape_and_agrees_with_the_asked_one(
 def test_the_verb_lists_a_retired_question_only_when_asked_for_everything(cfg, music, tmp_path):
     """End to end through ``match run`` and ``review list``, the third verdict under ``--all``."""
     hold(music, "04A - 126 - Malive - Burning (Radio Edit)")
-    listing = write_list(
-        tmp_path,
-        json.dumps({
-            "list": 1, "origin": match.TIDAL,
-            "tracks": [{
-                "id": "301", "artist": {"name": "Malive"},
-                "title": "Burning (Extended Mix)", "isrc": "USNRS2644532",
-            }],
-        }),
-        "burning.json",
-    )
+    burning_track = {
+        "id": "301", "artist": {"name": "Malive"}, "title": "Burning (Extended Mix)",
+        "isrc": "USNRS2644532",
+    }
+    listing = write_document(tmp_path, match.TIDAL, [burning_track], "burning.json")
     code, first = drive(["match", "run", listing])
     assert code == int(ExitCode.PENDING_HUMAN)
     item_id = first["data"]["needs_review"][0]["review_item"]
@@ -2051,36 +1941,74 @@ def test_the_verb_lists_a_retired_question_only_when_asked_for_everything(cfg, m
 # ── Part 3: the three states ─────────────────────────────────────────────────
 
 
-def test_an_exact_version_is_matched_and_asks_nobody(music):
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
-    found = resolve([one(version="Extended Mix")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.MATCHED
-    assert found.why is match.Why.EXACT
-    assert found.candidates == ()
+#: (files held, the row, whether every tombstone stands, state and why, or None where the old
+#: test read neither, and what the candidates must show). Each is one way a row settles.
+SETTLED = (
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path (Extended Mix)"], {"version": "Extended Mix"},
+        False, (match.MatchState.MATCHED, match.Why.EXACT), lambda found: found.candidates == (),
+        id="an-exact-version-is-matched-and-asks-nobody",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path (Someone Remix)"], {"version": "Extended Mix"},
+        False, (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS),
+        lambda found: [(c.version, c.difference) for c in found.candidates]
+        == [("Someone Remix", match.Why.VERSION_DIFFERS)],
+        id="a-track-owned-only-as-a-different-remix-needs-review-and-names-the-difference",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path"], {"key": "8B"}, False,
+        (match.MatchState.NEEDS_REVIEW, match.Why.KEY_RELATIVE), None,
+        id="a-relative-key-disagreement-surfaces-rather-than-picking-one",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path"], {"key": "3B"}, False,
+        (None, match.Why.KEY_DIFFERS), None,
+        id="a-key-that-disagrees-outright-is-a-different-answer",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Pathway"], {"title": "Sun Path"}, False,
+        (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE),
+        lambda found: (found.candidates[0].difference, found.candidates[0].title)
+        == (match.Why.TITLE_APPROXIMATE, "Sun Pathway"),
+        id="an-approximate-hit-is-a-question-and-never-a-match",
+    ),
+    pytest.param(
+        ["08A - 124 - Nova Reef - Tide Line"], {}, False,
+        (match.MatchState.MISSING, match.Why.NOT_IN_LIBRARY), lambda found: found.candidates == (),
+        id="nothing-resembling-it-at-all-is-missing",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Pathway", "08A - 124 - Aurora Blooms - Sun Path"],
+        {"title": "Sun Path Way"}, False, (match.MatchState.NEEDS_REVIEW, None),
+        lambda found: len({c.candidate_id for c in found.candidates}) == len(found.candidates) >= 2,
+        id="two-approximate-recordings-with-no-qualifier-stay-two-candidates",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path"], {"version": "Extended Mix"}, True,
+        (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS),
+        lambda found: [c.version for c in found.candidates] == [""],
+        id="a-tombstone-does-not-pre-empt-a-question-about-a-version-the-library-holds",
+    ),
+    pytest.param(
+        [], {}, True, (match.MatchState.SUPPRESSED, None), None,
+        id="a-tombstone-still-suppresses-when-the-library-can-say-nothing",
+    ),
+    pytest.param(
+        ["08A - 124 - Aurora Bloom - Sun Path"], {}, True, (match.MatchState.MATCHED, None), None,
+        id="a-tombstone-over-a-version-the-disk-actually-holds-does-not-beat-the-disk",
+    ),
+)
 
 
-def test_a_track_owned_only_as_a_different_remix_needs_review_and_names_the_difference(music):
-    """AE8: the source system calls this owned, and the gig finds out otherwise."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
-    found = resolve([one(version="Extended Mix")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.VERSION_DIFFERS
-    assert [c.version for c in found.candidates] == ["Someone Remix"]
-    assert found.candidates[0].difference is match.Why.VERSION_DIFFERS
-
-
-def test_a_relative_key_disagreement_surfaces_rather_than_picking_one(music):
-    """8A and 8B share a wheel position and every note, but are two recordings."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    found = resolve([one(key="8B")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.KEY_RELATIVE
-
-
-def test_a_key_that_disagrees_outright_is_a_different_answer(music):
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    found = resolve([one(key="3B")], index_of(music)).matches[0]
-    assert found.why is match.Why.KEY_DIFFERS
+@pytest.mark.parametrize(("held", "wanted", "entombed", "settled", "shows"), SETTLED)
+def test_a_row_settles_by_what_the_disk_holds(music, held, wanted, entombed, settled, shows):
+    """Matched, missing or a question, read from the files and never from a lagging export."""
+    found = settle(music, *held, suppresses=(lambda _k, _i: True) if entombed else None, **wanted)
+    state, why = settled
+    assert state is None or found.state is state
+    assert why is None or found.why is why
+    assert shows is None or shows(found)
 
 
 @pytest.mark.parametrize("first_folder", ["A archive", "C archive"], ids=["sorts-first", "sorts-last"])
@@ -2093,8 +2021,7 @@ def test_the_key_check_reads_every_held_copy_rather_than_whichever_sorted_first(
     (music / first_folder / "Aurora Bloom - Sun Path.flac").write_bytes(b"")
     (music / "B sorted" / "03A - 124 - Aurora Bloom - Sun Path.flac").write_bytes(b"")
     found = resolve([one(key="08A")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.KEY_DIFFERS
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.KEY_DIFFERS)
 
 
 def test_the_relative_key_wins_the_reporting_when_both_disagreements_are_present(music):
@@ -2131,33 +2058,6 @@ def test_key_disagreement_is_silent_about_a_code_it_cannot_parse():
     assert match.key_disagreement("08a", "8A") is None
 
 
-def test_an_approximate_hit_is_a_question_and_never_a_match(music):
-    """A fuzzy or substring hit is discovery. It is never an identity."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Pathway")
-    found = resolve([one(title="Sun Path")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
-    assert found.candidates[0].difference is match.Why.TITLE_APPROXIMATE
-    assert found.candidates[0].title == "Sun Pathway"
-
-
-def test_nothing_resembling_it_at_all_is_missing(music):
-    hold(music, "08A - 124 - Nova Reef - Tide Line")
-    found = resolve([one()], index_of(music)).matches[0]
-    assert found.state is match.MatchState.MISSING
-    assert found.why is match.Why.NOT_IN_LIBRARY
-    assert found.candidates == ()
-
-
-def test_two_approximate_recordings_with_no_qualifier_stay_two_candidates(music):
-    """Or accepting one would accept the other."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Pathway")
-    hold(music, "08A - 124 - Aurora Blooms - Sun Path")
-    found = resolve([one(title="Sun Path Way")], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert len({c.candidate_id for c in found.candidates}) == len(found.candidates) >= 2
-
-
 def test_two_files_of_one_version_are_one_candidate_carrying_two_paths(music):
     """A lossless copy and its lossy twin are one answer to one question."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
@@ -2192,8 +2092,7 @@ def test_a_tombstoned_version_is_suppressed_while_another_remix_resolves_normall
         suppresses=suppresses,
     )
     first, second = result.matches
-    assert first.state is match.MatchState.SUPPRESSED
-    assert first.why is match.Why.TOMBSTONED
+    assert (first.state, first.why) == (match.MatchState.SUPPRESSED, match.Why.TOMBSTONED)
     assert first.suppression_id
     assert second.state is match.MatchState.MISSING
 
@@ -2204,30 +2103,6 @@ def test_a_suppressed_track_is_in_none_of_the_three_arrays(music):
     payload = result.payload()
     assert [] == payload["matched"] == payload["needs_review"] == payload["missing"]
     assert len(result.suppressed) == 1
-
-
-def test_a_tombstone_does_not_pre_empt_a_question_about_a_version_the_library_holds(music):
-    """R36 governs what acquisition may fetch, not what a person may be asked."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    found = resolve(
-        [one(version="Extended Mix")], index_of(music), suppresses=lambda _k, _i: True
-    ).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.VERSION_DIFFERS
-    assert [c.version for c in found.candidates] == [""]
-
-
-def test_a_tombstone_still_suppresses_when_the_library_can_say_nothing(music):
-    """The case R36 is actually about: something is about to be acquired."""
-    found = resolve([one()], index_of(music), suppresses=lambda _k, _i: True).matches[0]
-    assert found.state is match.MatchState.SUPPRESSED
-
-
-def test_a_tombstone_over_a_version_the_disk_actually_holds_does_not_beat_the_disk(music):
-    """Ownership is on-disk truth, so a tombstone over a held file is stale."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    found = resolve([one()], index_of(music), suppresses=lambda _k, _i: True).matches[0]
-    assert found.state is match.MatchState.MATCHED
 
 
 def test_the_tombstone_lookup_has_no_default(music):
@@ -2267,15 +2142,11 @@ def test_the_offer_limit_keeps_the_best_scoring_answers_and_says_what_it_kept_ba
     for number in range(5):
         hold(music, f"0{number + 1}A - 124 - Aurora Bloom - Sun Path Alt (Mix {number})")
     hold(music, "08A - 124 - Aurora Bloom - Sun Pathx")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "near.txt")
-    _code, envelope = drive(["match", "run", path])
-
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n", "near.txt")
     row = envelope["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
     titles = [candidate["title"] for candidate in row["candidates"]]
-    assert "Sun Pathx" in titles, (
-        "the best-scoring recording was dropped by an alphabetical truncation"
-    )
+    assert "Sun Pathx" in titles, "an alphabetical truncation dropped the best-scoring recording"
     assert titles[0] == "Sun Pathx", "the offer is no longer in score order"
     assert len(row["candidates"]) == match.APPROXIMATE_LIMIT
     assert row["candidates_withheld"] == 1
@@ -2288,12 +2159,9 @@ def test_the_withheld_warning_survives_onto_the_run_that_actually_acquires(cfg, 
         hold(music, f"0{number + 1}A - 124 - Aurora Bloom - Sun Path Alt (Mix {number})")
     hold(music, "08A - 124 - Aurora Bloom - Sun Pathx")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "near.txt")
-
     first_code, first = drive(["match", "run", path])
     assert first_code == int(ExitCode.PENDING_HUMAN)
-    drive(["review", "resolve", first["data"]["needs_review"][0]["review_item"],
-           "--verdict", "rejected"])
-
+    answer(first["data"]["needs_review"][0], "rejected")
     code, envelope = drive(["match", "run", path])
     assert code == int(ExitCode.OK)
     row = envelope["data"]["missing"][0]
@@ -2307,26 +2175,17 @@ def test_rejecting_a_question_about_a_tombstoned_version_does_not_hand_it_to_acq
 ):
     """A rejection reaches MISSING by another road, and must still consult the store."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND,
-        identity=match.version_identity(
-            artist="Aurora Bloom", title="Sun Path (Extended Mix)"
-        ),
-        actor="test",
-    )
+    identity = match.version_identity(artist="Aurora Bloom", title="Sun Path (Extended Mix)")
+    entomb(cfg, identity, "test")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
     _code, first = drive(["match", "run", path])
     assert first["data"]["needs_review"][0]["why"] == str(match.Why.VERSION_DIFFERS)
-    drive(["review", "resolve", first["data"]["needs_review"][0]["review_item"],
-           "--verdict", "rejected"])
-
+    answer(first["data"]["needs_review"][0], "rejected")
     code, second = drive(["match", "run", path])
     assert code == int(ExitCode.OK)
-    assert second["data"]["missing"] == [], (
-        "a tombstoned version was handed to acquisition by a rejection"
-    )
+    assert second["data"]["missing"] == [], "a rejection handed a tombstoned version to acquisition"
     assert second["data"]["matched"] == second["data"]["needs_review"] == []
-    warnings = [w for w in second["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(second)
     assert len(warnings) == 1 and warnings[0]["suppression"]
 
 
@@ -2606,11 +2465,7 @@ def test_two_rows_sharing_a_title_and_naming_two_artists_are_two_records(cfg, mu
 def test_two_anonymous_rows_can_no_longer_collapse_onto_one_row(cfg, music, tmp_path):
     """Driven through the verb, where the collapse was invisible, with a junk file present."""
     (music / "-.flac").write_bytes(b"")
-    path = write_list(
-        tmp_path,
-        json.dumps({"list": 1, "origin": match.TIDAL, "tracks": [{"id": "a"}, {"id": "b"}]}),
-        "anon.json",
-    )
+    path = write_document(tmp_path, match.TIDAL, [{"id": "a"}, {"id": "b"}], "anon.json")
     code, envelope = drive(["match", "run", path])
     assert code == int(ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "intake-list-unusable"
@@ -2627,8 +2482,7 @@ def queue_items(cfg) -> list[review.Item]:
 
 def test_the_verb_emits_one_match_envelope_with_the_status_agreeing(cfg, music, tmp_path):
     hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n")
     assert code == int(ExitCode.OK)
     assert output.envelope_problems(envelope) == []
     assert envelope["schema"] == output.current_schema("match")
@@ -2639,8 +2493,7 @@ def test_the_verb_emits_one_match_envelope_with_the_status_agreeing(cfg, music, 
 def test_only_the_needs_review_state_reaches_the_queue(cfg, music, tmp_path):
     """U11's split, driven; the static half lives in tests/test_review_queue.py."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\nNova Reef - Tide Line\n")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\nNova Reef - Tide Line\n")
     assert code == int(ExitCode.OK)
     assert len(envelope["data"]["matched"]) == 1
     assert len(envelope["data"]["missing"]) == 1
@@ -2652,13 +2505,11 @@ def test_a_missing_track_carries_its_options_as_data_rather_than_as_a_question(
 ):
     """Whether a missing row is queued is the residual titled "Two briefs disagree about
     whether a missing track is a review item", a decision reserved for a person."""
-    path = write_list(tmp_path, "Nova Reef - Tide Line\n")
-    _code, envelope = drive(["match", "run", path])
+    _code, envelope = run_list(tmp_path, "Nova Reef - Tide Line\n")
     row = envelope["data"]["missing"][0]
     assert row["why"] == str(match.Why.NOT_IN_LIBRARY)
     assert row["review_item"] is None
     assert queue_items(cfg) == []
-
     options = row["acquisition"]
     assert options, "a missing row carries no acquisition options at all"
     assert [option["how"] for option in options] == [match.BY_SEARCH]
@@ -2686,8 +2537,7 @@ def test_a_rejected_verdict_leaves_a_missing_row_that_says_what_to_go_and_get(cf
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
     _code, first = drive(["match", "run", path])
-    drive(["review", "resolve", first["data"]["needs_review"][0]["review_item"],
-           "--verdict", "rejected"])
+    answer(first["data"]["needs_review"][0], "rejected")
     _code, second = drive(["match", "run", path])
     row = second["data"]["missing"][0]
     assert row["why"] == str(match.Why.VERDICT_REJECTED)
@@ -2700,24 +2550,11 @@ def test_the_dash_spelling_of_a_public_playlist_resolves_the_same_as_the_provide
 ):
     """Through the verb; the approximate pass did not rescue it (72.4 against 82)."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)")
-    dashed = write_list(
-        tmp_path,
-        json.dumps(
-            {"list": 1, "origin": match.SPOTIFY,
-             "tracks": [{"id": "sp1", "name": "Sun Path - Nightwave Remix",
-                         "artists": [{"name": "Aurora Bloom"}]}]}
-        ),
-        "dashed.json",
-    )
-    provider = write_list(
-        tmp_path,
-        json.dumps(
-            {"list": 1, "origin": match.TIDAL,
-             "tracks": [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
-                         "artist": {"name": "Aurora Bloom"}}]}
-        ),
-        "provider.json",
-    )
+    spelled = {
+        "id": "sp1", "name": "Sun Path - Nightwave Remix", "artists": [{"name": "Aurora Bloom"}],
+    }
+    dashed = write_document(tmp_path, match.SPOTIFY, [spelled], "dashed.json")
+    provider = write_document(tmp_path, match.TIDAL, [{"id": "1", **PROVIDER_ROW}], "provider.json")
     code, envelope = drive(["match", "run", dashed])
     assert code == int(ExitCode.OK)
     assert envelope["data"]["missing"] == []
@@ -2816,8 +2653,7 @@ def test_a_verdict_survives_the_rename_that_flips_the_reading(cfg, music, tmp_pa
 def test_the_dashed_one_word_spelling_is_asked_about_rather_than_acquired(cfg, music, tmp_path):
     """A QUESTION exiting zero, so R11 needs it named on the warning channel."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Instrumental)")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path - Instrumental\n", "oneword.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path - Instrumental\n", "oneword.txt")
     assert code == int(ExitCode.OK)
     assert envelope["pending_human_action"] is None
     assert envelope["data"]["missing"] == []
@@ -2827,8 +2663,8 @@ def test_the_dashed_one_word_spelling_is_asked_about_rather_than_acquired(cfg, m
     assert row["acquisition"] == []
     assert [candidate["version"] for candidate in row["candidates"]] == ["Instrumental"]
         # Not silent: named on the warning channel with its item and the verb that shows it.
-    warned = [w for w in envelope["warnings"] if w["code"] == match_cli.READING_UNSETTLED]
-    assert [(w["item"], w["remedy"]) for w in warned] == [
+    flagged = warned(envelope, match_cli.READING_UNSETTLED)
+    assert [(w["item"], w["remedy"]) for w in flagged] == [
         (row["review_item"], match_cli.REVIEW_VERB)
     ]
     assert queue_items(cfg)[0].item_id == row["review_item"]
@@ -2841,12 +2677,8 @@ def test_an_ungated_question_still_gates_once_its_verdict_cannot_be_applied(cfg,
     code, asked = drive(["match", "run", path])
     assert code == int(ExitCode.OK)
     row = asked["data"]["needs_review"][0]
-    drive(
-        ["review", "resolve", row["review_item"], "--verdict", "accepted",
-         "--option", row["candidates"][0]["id"]]
-    )
+    answer(row, "accepted", option=True)
     held.rename(music / "11B - 124 - Aurora Bloom - Sun Path (Live).flac")
-
     code, after = drive(["match", "run", path])
     assert code == int(ExitCode.PENDING_HUMAN)
     assert after["data"]["needs_review"][0]["why"] == str(match.Why.CANDIDATE_GONE)
@@ -2859,8 +2691,7 @@ def test_an_undecidable_parse_is_never_promoted_to_a_match(cfg, music):
     found = resolve(
         match.read_text_lines("Long Player - Long - Live\n"), index_of(music)
     ).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.READING_AMBIGUOUS
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.READING_AMBIGUOUS)
     assert found.paths == ()
     assert found.wanted.title == "Long - Live"
 
@@ -2915,9 +2746,7 @@ def test_the_reading_the_list_actually_spelled_wins_when_the_library_holds_both(
 
 def test_a_version_question_becomes_an_addressable_item_with_its_candidates(cfg, music, tmp_path):
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
-    code, envelope = drive(["match", "run", path])
-
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
     assert code == int(ExitCode.PENDING_HUMAN)
     assert envelope["outcome"] == "pending"
     assert envelope["pending_human_action"]["verify_verb"] == match_cli.REVIEW_VERB
@@ -2946,20 +2775,15 @@ def test_a_run_over_an_answered_question_reports_matched_and_writes_nothing(cfg,
     _code, first = drive(["match", "run", path])
     item_id = first["data"]["needs_review"][0]["review_item"]
     option = first["data"]["needs_review"][0]["candidates"][0]["id"]
-
     code, _ = drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
     assert code == int(ExitCode.OK)
     before = queue_items(cfg)[0].updated
-
     code, second = drive(["match", "run", path])
     assert code == int(ExitCode.OK)
     row = second["data"]["matched"][0]
     assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
     assert row["paths"]
-    assert queue_items(cfg)[0].updated == before, (
-        "an answered question was written to again, so 'a decision is never "
-        "re-asked' is true only until somebody looks at the timestamps"
-    )
+    assert queue_items(cfg)[0].updated == before, "an answered question was written to again"
 
 
 def test_a_rejected_question_makes_the_track_missing_rather_than_matched(cfg, music, tmp_path):
@@ -2980,11 +2804,9 @@ def test_an_accepted_candidate_that_has_since_gone_is_not_reported_matched(cfg, 
     """A verdict does not put a file back: the track returns as a question naming the item."""
     remix = hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
-    _code, first = drive(["match", "run", path])
-    item_id = first["data"]["needs_review"][0]["review_item"]
-    option = first["data"]["needs_review"][0]["candidates"][0]["id"]
-    drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
-
+    asked = first_question(path)
+    item_id = asked["review_item"]
+    answer(asked, "accepted", option=True)
     remix.unlink()
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Another Remix)")
     _code, second = drive(["match", "run", path])
@@ -2998,19 +2820,16 @@ def test_an_acceptance_naming_no_candidate_is_applied_only_when_there_is_one(cfg
     """With several it does not say which version."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
-    _code, first = drive(["match", "run", path])
-    single = first["data"]["needs_review"][0]["review_item"]
-    drive(["review", "resolve", single, "--verdict", "accepted"])
+    asked = first_question(path)
+    answer(asked, "accepted")
     _code, settled = drive(["match", "run", path])
     assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
-
     hold(music, "08A - 124 - Nova Reef - Tide Line (Someone Remix)")
     hold(music, "08A - 124 - Nova Reef - Tide Line (Another Remix)")
     many = write_list(tmp_path, "Nova Reef - Tide Line (Extended Mix)\n", "many.txt")
     _code, offered = drive(["match", "run", many])
     item_id = offered["data"]["needs_review"][0]["review_item"]
     assert len(offered["data"]["needs_review"][0]["candidates"]) == 2
-
     drive(["review", "resolve", item_id, "--verdict", "accepted"])
     _code, after = drive(["match", "run", many])
     row = next(r for r in after["data"]["needs_review"] if r["review_item"] == item_id)
@@ -3024,15 +2843,7 @@ def test_one_answered_key_question_never_settles_another_one(cfg, music, tmp_pat
     asked = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "plain.txt")
 
     def with_key(code: str, name: str) -> str:
-        return write_list(
-            tmp_path,
-            json.dumps(
-                {"list": 1, "origin": match.TIDAL,
-                 "tracks": [{"id": "1", "title": "Sun Path", "key": code,
-                             "artist": {"name": "Aurora Bloom"}}]}
-            ),
-            name,
-        )
+        return keyed_list(tmp_path, name, key=code)
 
     _code, first = drive(["match", "run", with_key("08A", "k08a.json")])
     item_id = first["data"]["needs_review"][0]["review_item"]
@@ -3058,10 +2869,7 @@ def test_one_answered_key_question_never_settles_another_one(cfg, music, tmp_pat
 def test_a_list_line_that_names_a_key_is_a_different_question_from_one_that_does_not(
     cfg, music, tmp_path
 ):
-    """The identity is a function of the LIST LINE and includes the key, a cost recorded.
-
-    The alternative, the library deciding it, left an exported answer unfindable (R13).
-    """
+    """The identity is the LIST LINE's, key included: the library's left an export unfindable."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     plain = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n", "plain.txt")
 
@@ -3070,63 +2878,56 @@ def test_a_list_line_that_names_a_key_is_a_different_question_from_one_that_does
                "artist": {"name": "Aurora Bloom"}}
         if code is not None:
             row["key"] = code
-        return write_list(
-            tmp_path, json.dumps({"list": 1, "origin": match.TIDAL, "tracks": [row]}), name,
-        )
+        return write_document(tmp_path, match.TIDAL, [row], name)
 
     _code, first = drive(["match", "run", plain])
     item_id = first["data"]["needs_review"][0]["review_item"]
     _code, with_key = drive(["match", "run", keyed("08A", "keyed.json")])
     assert with_key["data"]["needs_review"][0]["review_item"] != item_id
     assert len(queue_items(cfg)) == 2
-
         # The promise that survives: the same line through a different reader is the same question.
     _code, unkeyed = drive(["match", "run", keyed(None, "unkeyed.json")])
     assert unkeyed["data"]["needs_review"][0]["review_item"] == item_id
     assert len(queue_items(cfg)) == 2
 
 
+def machine_library(tmp_path: Path, room: str, name: str) -> match.LibraryIndex:
+    """Another machine's library, holding the one named file."""
+    hold(tmp_path / room, name)
+    return index_of(tmp_path / room)
+
+
+#: One provider row, keyed and versioned, as two machines both read it.
+NIGHTWAVE_AT_08A = {
+    "id": "1", "title": "Sun Path", "version": "Nightwave Remix", "key": "08A",
+    "artist": {"name": "Aurora Bloom"},
+}
+
+
 def test_a_verdict_travels_between_two_machines_that_hold_different_versions(cfg, music, tmp_path):
     """One question about one line has one identity wherever asked, so an import applies."""
-    line = match.read_tidal_tracks(
-        [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
-          "key": "08A", "artist": {"name": "Aurora Bloom"}}]
-    )
-
-    def library(name: str, room_id: str) -> match.LibraryIndex:
-        room = tmp_path / f"lib{room_id}"
-        room.mkdir(parents=True, exist_ok=True)
-        hold(room, name)
-        return index_of(room)
+    (line,) = match.read_tidal_tracks([NIGHTWAVE_AT_08A])
 
     def settled(index, store) -> match.TrackMatch:
-        return match_cli.adjudicate(
-            store, resolve(line, index), handler_key="acquire.match.run",
-            suppresses=nothing_suppressed, suppression_id=no_identifier,
-        ).matches[0]
+        return _adjudicated(store, line, index)
 
-        # MACHINE A holds the extended cut, at 03A.
-    machine_a = library("03A - 124 - Aurora Bloom - Sun Path (Extended)", "a")
-        # MACHINE B holds the instrumental, at 08A: another file, version and key, same question.
-    machine_b = library("08A - 124 - Aurora Bloom - Sun Path (Instrumental)", "b")
-
+    # MACHINE A holds the extended cut at 03A; B the instrumental at 08A, the same question.
+    machine_a = machine_library(tmp_path, "liba", "03A - 124 - Aurora Bloom - Sun Path (Extended)")
+    machine_b = machine_library(
+        tmp_path, "libb", "08A - 124 - Aurora Bloom - Sun Path (Instrumental)"
+    )
     with review.open_store(cfg, path=tmp_path / "a.sqlite3") as store_a:
         asked = settled(machine_a, store_a)
         assert asked.why is match.Why.VERSION_DIFFERS
         review.resolve(store_a, asked.item_id, review.Verdict.REJECTED, actor="phillip")
         document = review.export_document(store_a)
-
     with review.open_store(cfg, path=tmp_path / "b.sqlite3") as store_b:
         fresh = settled(machine_b, store_b)
         assert fresh.why is match.Why.VERSION_DIFFERS
-        assert fresh.item_id == asked.item_id, (
-            "the two machines opened two items for one list line, so the export "
-            "lands under an identifier this one never looks up"
-        )
+        assert fresh.item_id == asked.item_id, "two machines opened two items for one line"
         taken = review.import_document(store_b, document, actor="importer")
         assert taken.conflicts == ()
         answered = settled(machine_b, store_b)
-
     assert (answered.state, answered.why) == (match.MatchState.MISSING, match.Why.VERDICT_REJECTED)
     assert answered.item_id == asked.item_id
     assert asked.match_id == answered.match_id
@@ -3135,39 +2936,26 @@ def test_a_verdict_travels_between_two_machines_that_hold_different_versions(cfg
 def test_a_key_question_answered_elsewhere_does_not_settle_a_version_question(cfg, music, tmp_path):
     """Two items, since the answers are not interchangeable: the residual titled "A question
     answered on one machine does not settle a different question about the same line"."""
-    line = match.read_tidal_tracks(
-        [{"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
-          "key": "08A", "artist": {"name": "Aurora Bloom"}}]
-    )
-
-    def library(name: str, room_id: str) -> match.LibraryIndex:
-        room = tmp_path / f"cost{room_id}"
-        room.mkdir(parents=True, exist_ok=True)
-        hold(room, name)
-        return index_of(room)
+    (line,) = match.read_tidal_tracks([NIGHTWAVE_AT_08A])
 
     def settled(index, store) -> match.TrackMatch:
-        return match_cli.adjudicate(
-            store, resolve(line, index), handler_key="acquire.match.run",
-            suppresses=nothing_suppressed, suppression_id=no_identifier,
-        ).matches[0]
+        return _adjudicated(store, line, index)
 
-    keyed = library("03A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)", "k")
-    versioned = library("08A - 124 - Aurora Bloom - Sun Path (Extended)", "v")
-
+    keyed = machine_library(
+        tmp_path, "costk", "03A - 124 - Aurora Bloom - Sun Path (Nightwave Remix)"
+    )
+    versioned = machine_library(tmp_path, "costv", "08A - 124 - Aurora Bloom - Sun Path (Extended)")
     with review.open_store(cfg, path=tmp_path / "k.sqlite3") as store_k:
         asked = settled(keyed, store_k)
         assert asked.why is match.Why.KEY_DIFFERS
         review.resolve(store_k, asked.item_id, review.Verdict.REJECTED, actor="phillip")
         document = review.export_document(store_k)
-
     with review.open_store(cfg, path=tmp_path / "v.sqlite3") as store_v:
         fresh = settled(versioned, store_v)
         assert fresh.why is match.Why.VERSION_DIFFERS
         assert fresh.item_id != asked.item_id
         review.import_document(store_v, document, actor="importer")
         after = settled(versioned, store_v)
-
         # The imported answer is not applied, and the row stays a question.
     assert (after.state, after.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
     assert after.item_id == fresh.item_id
@@ -3179,25 +2967,21 @@ def test_a_run_blocked_by_an_unapplicable_verdict_names_the_verb_that_can_act(cf
     """``review resolve`` refuses a RESOLVED item, so ``review clear`` is what is named."""
     remix = hold(music, "08A - 124 - Aurora Bloom - Sun Path (Someone Remix)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)\n")
-    _code, first = drive(["match", "run", path])
-    item_id = first["data"]["needs_review"][0]["review_item"]
-    option = first["data"]["needs_review"][0]["candidates"][0]["id"]
-    drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
-
+    asked = first_question(path)
+    item_id = asked["review_item"]
+    answer(asked, "accepted", option=True)
     remix.unlink()
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Another Remix)")
     code, second = drive(["match", "run", path])
-
     assert code == int(ExitCode.PENDING_HUMAN)
     assert second["data"]["needs_review"][0]["why"] == str(match.Why.CANDIDATE_GONE)
     pending = second["pending_human_action"]
     assert pending["verify_verb"] == match_cli.CLEAR_VERB
     assert any(item_id in step for step in pending["steps"])
         # And the item identifier reaches a consumer on the channel built for codes.
-    stalled = [w for w in second["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE]
+    stalled = warned(second, match_cli.VERDICT_UNAPPLICABLE)
     assert [w["item"] for w in stalled] == [item_id]
     assert stalled[0]["remedy"] == match_cli.CLEAR_VERB
-
         # The escape actually works, which is what makes naming it worth anything.
     code, _ = drive(["review", "clear", item_id])
     assert code == int(ExitCode.OK)
@@ -3216,10 +3000,7 @@ def stall(cfg, music, tmp_path, how_many: int) -> tuple[list[str], dict]:
     path = write_list(tmp_path, "\n".join(lines) + "\n", f"stall{how_many}.txt")
     _code, first = drive(["match", "run", path])
     for row in first["data"]["needs_review"]:
-        drive(
-            ["review", "resolve", row["review_item"], "--verdict", "accepted",
-             "--option", row["candidates"][0]["id"]]
-        )
+        answer(row, "accepted", option=True)
     for number in range(how_many):
         (music / f"08A - 124 - Artist{number} - Track{number} (Someone Remix).flac").unlink()
         hold(music, f"08A - 124 - Artist{number} - Track{number} (Another Remix)")
@@ -3266,20 +3047,17 @@ def test_the_pending_action_counts_questions_rather_than_rows_in_both_halves(cfg
     assert len(envelope["data"]["needs_review"]) == 2
     assert envelope["pending_human_action"]["summary"].startswith("1 tracks")
     assert len(queue_items(cfg)) == 1
-
     row = envelope["data"]["needs_review"][0]
-    drive(["review", "resolve", row["review_item"], "--verdict", "accepted",
-           "--option", row["candidates"][0]["id"]])
+    answer(row, "accepted", option=True)
     (music / "08A - 124 - Aurora Bloom - Sun Path (Someone Remix).flac").unlink()
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Another Remix)")
     _code, stalled = drive(["match", "run", path])
-
     summary = stalled["pending_human_action"]["summary"]
     assert summary.startswith("1 tracks")
     assert "1 of them carry a verdict" in summary
     assert len(runnable_steps(stalled["pending_human_action"])) == 1
         # And the warning channel says it once, not once per row.
-    assert len([w for w in stalled["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE]) == 1
+    assert len(warned(stalled, match_cli.VERDICT_UNAPPLICABLE)) == 1
 
 
 def test_a_verdict_this_build_cannot_read_leaves_the_item_answerable(cfg, music, tmp_path):
@@ -3307,17 +3085,10 @@ def test_a_question_answered_from_one_source_is_never_asked_again_from_another(
     """R13 and R12: an identity carrying the provider's id would ask again from pasted text."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
     hold(music, "08A - 124 - Nova Reef - Tide Line")
-    provider = write_list(
-        tmp_path, json.dumps({"list": 1, "origin": match.TIDAL, "tracks": TIDAL_ROWS}),
-        "provider.json",
-    )
-    _code, first = drive(["match", "run", provider])
-    item_id = first["data"]["needs_review"][0]["review_item"]
-    option = first["data"]["needs_review"][0]["candidates"][0]["id"]
-    drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
-
-    pasted = write_list(tmp_path, TEXT_LINES, "pasted.txt")
-    code, second = drive(["match", "run", pasted])
+    provider = write_document(tmp_path, match.TIDAL, TIDAL_ROWS, "provider.json")
+    asked = first_question(provider)
+    answer(asked, "accepted", option=True)
+    code, second = run_list(tmp_path, TEXT_LINES, "pasted.txt")
     assert code == int(ExitCode.OK)
     assert second["data"]["needs_review"] == []
     assert len(queue_items(cfg)) == 1
@@ -3333,12 +3104,10 @@ def test_a_suppressed_version_is_reported_as_a_warning_carrying_its_identifier(
         identity=match.version_identity(artist="Aurora Bloom", title="Sun Path (Someone Remix)"),
         actor="test",
     )
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Someone Remix)\n")
-    code, envelope = drive(["match", "run", path])
-
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path (Someone Remix)\n")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["missing"] == []
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(envelope)
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
     assert queue_items(cfg) == []
 
@@ -3353,15 +3122,10 @@ def test_a_tombstone_recorded_from_any_row_spelling_suppresses_the_list_that_nam
         kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", row_title),
         actor="deletion",
     )
-    path = write_list(tmp_path, f"Aurora Bloom - {row_title}\n", "seam.txt")
-    code, envelope = drive(["match", "run", path])
-
+    code, envelope = run_list(tmp_path, f"Aurora Bloom - {row_title}\n", "seam.txt")
     assert code == int(ExitCode.OK)
-    assert envelope["data"]["missing"] == [], (
-        "a version standing under a tombstone was reported missing, so the next "
-        "verb fetches back exactly what somebody deleted"
-    )
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert envelope["data"]["missing"] == [], "a deleted version reported missing is fetched"
+    warnings = warned(envelope)
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
@@ -3374,20 +3138,15 @@ def test_a_revoked_tombstone_stops_suppressing(cfg, music, tmp_path):
         actor="test",
     )
     store.revoke(recorded.suppression_id, actor="test")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Someone Remix)\n")
-    _code, envelope = drive(["match", "run", path])
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path (Someone Remix)\n")
     assert len(envelope["data"]["missing"]) == 1
     assert envelope["warnings"] == []
 
 
 def test_a_tombstone_over_a_held_version_is_reported_rather_than_hidden(cfg, music, tmp_path):
     hold(music, "08A - 124 - Aurora Bloom - Sun Path")
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND,
-        identity=match.version_identity(artist="Aurora Bloom", title="Sun Path"), actor="test",
-    )
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n")
-    _code, envelope = drive(["match", "run", path])
+    entomb(cfg, match.version_identity(artist="Aurora Bloom", title="Sun Path"), "test")
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n")
     assert len(envelope["data"]["matched"]) == 1
     assert [w["code"] for w in envelope["warnings"]] == [match_cli.TOMBSTONE_OVER_OWNED]
 
@@ -3397,32 +3156,20 @@ def test_a_stale_tombstone_is_reported_under_every_spelling_the_match_consults(
 ):
     """Not only ``track.identity``: ``Sun Path [Live]`` reports a ``Sun Path (Live)`` tombstone."""
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
-        actor="deletion",
-    )
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path [Live]\n", "stale.txt")
-    _code, envelope = drive(["match", "run", path])
-
+    recorded = entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Live)"))
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path [Live]\n", "stale.txt")
     assert len(envelope["data"]["matched"]) == 1
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    warnings = warned(envelope, match_cli.TOMBSTONE_OVER_OWNED)
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
 def test_a_deletion_of_the_plain_record_never_withholds_the_credited_one(cfg, music, tmp_path):
     """An over eager suppression withholds wanted music silently; both directions asserted."""
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path"),
-        actor="deletion",
-    )
+    entomb(cfg, u24_records("Aurora Bloom", "Sun Path"))
     credited = write_list(tmp_path, "Aurora Bloom - Sun Path (feat. Mira)\n", "credited.txt")
     _code, envelope = drive(["match", "run", credited])
-    assert len(envelope["data"]["missing"]) == 1, (
-        "a deletion of the plain record silently withheld the credited one"
-    )
-
-    plain = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "plain.txt")
-    _code, still = drive(["match", "run", plain])
+    assert len(envelope["data"]["missing"]) == 1, "the plain deletion withheld the credited one"
+    _code, still = run_list(tmp_path, "Aurora Bloom - Sun Path\n", "plain.txt")
     assert still["data"]["missing"] == []
     assert [w["code"] for w in still["warnings"]] == [match_cli.SUPPRESSED_WARNING]
 
@@ -3455,15 +3202,12 @@ def test_a_credited_deletion_suppresses_the_listing_that_never_spelled_the_credi
 ):
     """From the real recorder: the residual titled "A deleted track the tombstone consult
     cannot reach is listed for download" measured it MISSING and downloaded."""
-    from cratekit.core import tombstone
-
     written = deleted(cfg, row_title, version=row_version)
     path = write_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "provider.txt")
     code, envelope = drive(["match", "run", path])
-
     assert code == int(ExitCode.OK)
     assert envelope["data"]["missing"] == []
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(envelope)
     assert len(warnings) == 1
     store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
     by_id = {record.suppression_id: record for record in store.suppressions()}
@@ -3481,9 +3225,7 @@ def test_a_credited_deletion_suppresses_the_listing_that_never_spelled_the_credi
 def test_a_credited_deletion_withholds_nothing_but_its_own_version(cfg, music, tmp_path, listed):
     """Another guest, another remix and the bare recording, nobody deleted, stay missing."""
     deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
-    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "other.txt")
-    _code, envelope = drive(["match", "run", path])
-
+    _code, envelope = run_list(tmp_path, f"Aurora Bloom - {listed}\n", "other.txt")
     assert len(envelope["data"]["missing"]) == 1
     assert envelope["warnings"] == []
 
@@ -3510,8 +3252,7 @@ def test_a_listing_both_records_answer_is_reported_under_the_tombstone(cfg, musi
     """The record a person wrote for that row, rather than the companion."""
     plain = deleted(cfg, "Sun Path (Nightwave Remix)", content_id="9002")
     deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "both.txt")
-    _code, envelope = drive(["match", "run", path])
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "both.txt")
     assert [w["suppression"] for w in envelope["warnings"]] == [plain.suppression_id]
 
 
@@ -3559,7 +3300,7 @@ def test_a_held_file_crediting_somebody_else_never_calls_the_companion_stale(cfg
 
     assert [one["version"] for one in envelope["data"]["matched"]] == ["Nightwave Remix"]
     assert [one["version"] for one in envelope["data"]["needs_review"]] == ["Daybreak Remix"]
-    assert [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED] == []
+    assert warned(envelope, match_cli.TOMBSTONE_OVER_OWNED) == []
 
 
 def test_a_deletion_of_the_plain_record_writes_no_companion(cfg, music, tmp_path):
@@ -3605,16 +3346,11 @@ def test_the_two_spellings_of_no_qualifier_at_all_reach_each_other(
     cfg, music, tmp_path, recorded_row, listed
 ):
     """"Original Mix" folds to nothing in ``version_token`` and must in the consult too."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", recorded_row),
-        actor="deletion",
-    )
-    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "null.txt")
-    code, envelope = drive(["match", "run", path])
-
+    recorded = entomb(cfg, u24_records("Aurora Bloom", recorded_row))
+    code, envelope = run_list(tmp_path, f"Aurora Bloom - {listed}\n", "null.txt")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["missing"] == []
-    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    warnings = warned(envelope)
     assert [w["suppression"] for w in warnings] == [recorded.suppression_id]
 
 
@@ -3623,8 +3359,7 @@ def test_a_tombstone_store_that_cannot_be_read_refuses_rather_than_matching(cfg,
     store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
     store.path.parent.mkdir(parents=True, exist_ok=True)
     store.path.write_text("[]")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n")
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "review-file-unusable"
 
@@ -3731,17 +3466,14 @@ def test_a_tracklist_with_no_track_lines_refuses_rather_than_matching_over_nothi
     cfg, music, tmp_path, body
 ):
     """"Every track is owned" and "your list was empty" are the same three empty arrays."""
-    path = write_list(tmp_path, body, "blank.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, body, "blank.txt")
     assert code == int(ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "intake-list-unusable"
 
 
 def test_a_document_that_declares_an_empty_track_array_is_still_a_list(cfg, tmp_path):
     """A positive declaration of zero tracks HAS said something."""
-    path = write_list(
-        tmp_path, json.dumps({"list": 1, "origin": match.TEXT, "tracks": []}), "empty.json"
-    )
+    path = write_document(tmp_path, match.TEXT, [], "empty.json")
     assert match_cli.read_list(Path(path)) == ()
 
 
@@ -3772,10 +3504,7 @@ def test_a_malformed_document_row_is_refused_at_its_own_position(tmp_path):
 
 
 def test_a_text_document_and_a_plain_text_file_read_the_same(tmp_path):
-    document = write_list(
-        tmp_path, json.dumps({"list": 1, "origin": match.TEXT, "tracks": TEXT_LINES.splitlines()}),
-        "lines.json",
-    )
+    document = write_document(tmp_path, match.TEXT, TEXT_LINES.splitlines(), "lines.json")
     plain = write_list(tmp_path, TEXT_LINES, "plain.txt")
     assert match_cli.read_list(Path(document)) == match_cli.read_list(Path(plain))
 
@@ -3792,35 +3521,28 @@ def keyed_list(tmp_path, name: str, **fields) -> str:
     """One provider row as a list document, so the key travels in its own field."""
     row = {"id": "1", "title": "Sun Path", "artist": {"name": "Aurora Bloom"}}
     row.update(fields)
-    return write_list(
-        tmp_path, json.dumps({"list": 1, "origin": match.TIDAL, "tracks": [row]}), name,
-    )
+    return write_document(tmp_path, match.TIDAL, [row], name)
 
 
 def test_a_version_answer_never_settles_a_key_question_about_the_same_line(cfg, music, tmp_path):
     """Through the real verbs: an answer about the extended mix must not settle 03B's key."""
     hold(music, "05B - 124 - Aurora Bloom - Sun Path (Extended Mix)")
     path = keyed_list(tmp_path, "relative.json", key="03A")
-
     code, asked = drive(["match", "run", path])
     assert code == int(ExitCode.PENDING_HUMAN)
     version_row = asked["data"]["needs_review"][0]
     assert version_row["why"] == str(match.Why.VERSION_DIFFERS)
     version_item = version_row["review_item"]
     drive(["review", "resolve", version_item, "--verdict", "accepted"])
-
     _code, settled = drive(["match", "run", path])
     accepted = settled["data"]["matched"][0]
     assert accepted["why"] == str(match.Why.VERDICT_ACCEPTED)
     assert [Path(p).name for p in accepted["paths"]] == [
         "05B - 124 - Aurora Bloom - Sun Path (Extended Mix).flac"
     ]
-
     hold(music, "03B - 124 - Aurora Bloom - Sun Path")
     code, after = drive(["match", "run", path])
-    assert code == int(ExitCode.PENDING_HUMAN), (
-        "the version answer settled a key question nobody asked"
-    )
+    assert code == int(ExitCode.PENDING_HUMAN), "the version answer settled a key question"
     assert after["data"]["matched"] == []
     key_row = after["data"]["needs_review"][0]
     assert key_row["why"] == str(match.Why.KEY_RELATIVE)
@@ -3864,33 +3586,23 @@ def test_two_versions_of_one_recording_are_two_questions_and_two_answers(cfg, mu
 def test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_another(
     cfg, music, tmp_path, answered_at, then_held, answered_why, later_why
 ):
-    """An unspecific yes binds to the offered option: another candidate stalls as gone.
-
-    The same yes against the UNCHANGED library must still apply.
-    """
+    """An unspecific yes binds to the offered option, so another copy stalls as gone."""
     listed = keyed_list(tmp_path, "asked.json", key="03A")
     held = hold(music, f"{answered_at} - 124 - Aurora Bloom - Sun Path")
-
     _code, first = drive(["match", "run", listed])
     asked = first["data"]["needs_review"][0]
     assert asked["why"] == str(answered_why)
     item_id = asked["review_item"]
     drive(["review", "resolve", item_id, "--verdict", "accepted"])
-
         # The answer applies to the copy it was given about.
     code, settled = drive(["match", "run", listed])
     assert code == int(ExitCode.OK)
     assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
     assert [Path(p).name for p in settled["data"]["matched"][0]["paths"]] == [held.name]
-
     held.unlink()
     swapped = hold(music, f"{then_held} - 124 - Aurora Bloom - Sun Path")
-
     code, after = drive(["match", "run", listed])
-    assert code == int(ExitCode.PENDING_HUMAN), (
-        f"an unspecific yes about the {answered_at} copy was applied to the "
-        f"{then_held} copy"
-    )
+    assert code == int(ExitCode.PENDING_HUMAN), f"a yes about {answered_at} applied to {then_held}"
     assert after["data"]["matched"] == []
     row = after["data"]["needs_review"][0]
     assert row["review_item"] == item_id
@@ -3899,8 +3611,8 @@ def test_an_unspecific_yes_about_one_copy_does_not_settle_a_question_about_anoth
         path for state in after["data"].values() for r in state for path in r["paths"]
     ]
         # And the run says so, on the channel that carries a verdict it cannot apply.
-    warned = [w for w in after["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE]
-    assert [(w["item"], w["remedy"]) for w in warned] == [(item_id, match_cli.CLEAR_VERB)]
+    flagged = warned(after, match_cli.VERDICT_UNAPPLICABLE)
+    assert [(w["item"], w["remedy"]) for w in flagged] == [(item_id, match_cli.CLEAR_VERB)]
         # Still the other question: a binding on the answer, not a split of the identity.
     assert match.question_shape(later_why) == match.question_shape(answered_why)
 
@@ -3963,12 +3675,8 @@ def test_the_declared_width_survives_a_population_a_narrower_one_does_not():
     assert len(population) == 100_000
     narrow = {digest_at(8, parts) for parts in population}
     declared = {digest_at(match.DIGEST_WIDTH, parts) for parts in population}
-    assert len(population) - len(narrow) > 0, (
-        "the narrow width stopped colliding, so this no longer discriminates"
-    )
-    assert len(declared) == len(population), (
-        f"{len(population) - len(declared)} collisions at the declared width"
-    )
+    assert len(population) - len(narrow) > 0, "the narrow width stopped colliding"
+    assert len(declared) == len(population), f"{len(population) - len(declared)} collisions"
 
 
 def test_every_identifier_this_module_generates_is_the_declared_width(cfg, music, tmp_path):
@@ -4000,18 +3708,13 @@ def test_a_resemblance_below_the_floor_is_missing_rather_than_a_question(cfg, mu
     stays narrow": ``Sun Path`` against ``Sun Path Instrumental`` scores 76.4.
     """
     from rapidfuzz import fuzz
-
     score = fuzz.token_sort_ratio(
         match.recording_token("Aurora Bloom", "Sun Path"),
         match.recording_token("Aurora Bloom", "Sun Path Instrumental"),
     )
-    assert 41 <= score < match.APPROXIMATE_FLOOR, (
-        "this row no longer sits between the two floors it is meant to separate"
-    )
-
+    assert 41 <= score < match.APPROXIMATE_FLOOR, "the row no longer sits between the floors"
     hold(music, "08A - 124 - Aurora Bloom - Sun Path Instrumental")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "floor.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n", "floor.txt")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["needs_review"] == []
     assert envelope["data"]["missing"][0]["why"] == str(match.Why.NOT_IN_LIBRARY)
@@ -4024,27 +3727,17 @@ FLOOR_NEIGHBOURS = ("Sun Pat Reprise", "Sun Path Meridian")
 def test_the_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way(cfg, music, tmp_path):
     """At 82 one of two resembling recordings is a candidate, lower both, higher none."""
     from rapidfuzz import fuzz
-
     asked = match.recording_token("Aurora Bloom", "Sun Path")
     below, above = (
         fuzz.token_sort_ratio(asked, match.recording_token("Aurora Bloom", title))
         for title in FLOOR_NEIGHBOURS
     )
-    assert below < match.APPROXIMATE_FLOOR <= above, (
-        f"{FLOOR_NEIGHBOURS} no longer straddle the floor: {below} and {above}"
-    )
-    assert int(above) - int(below) <= 1, (
-        "the two neighbours drifted apart, so they no longer pin the floor to one value"
-    )
-
+    assert below < match.APPROXIMATE_FLOOR <= above, f"no longer straddled: {below}, {above}"
+    assert int(above) - int(below) <= 1, "the neighbours no longer pin the floor to one value"
     for title in FLOOR_NEIGHBOURS:
         hold(music, f"08A - 124 - Aurora Bloom - {title}")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "band.txt")
-    code, envelope = drive(["match", "run", path])
-
-    assert code == int(ExitCode.PENDING_HUMAN), (
-        "raising the floor past the nearer neighbour removed the question entirely"
-    )
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n", "band.txt")
+    assert code == int(ExitCode.PENDING_HUMAN), "a floor past the nearer neighbour asks nothing"
     row = envelope["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
     assert [candidate["title"] for candidate in row["candidates"]] == [
@@ -4056,14 +3749,11 @@ def test_the_scorer_is_capped_at_the_same_number_the_offer_is(cfg, music, tmp_pa
     """Told apart by the WITHHELD COUNT: capped, five built and none kept back; else three."""
     for suffix in "ABCDEFGH":
         hold(music, f"08A - 124 - Aurora Bloom - Sun Path {suffix}")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path\n", "cap.txt")
-    _code, envelope = drive(["match", "run", path])
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path\n", "cap.txt")
     row = envelope["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
     assert len(row["candidates"]) == match.APPROXIMATE_LIMIT
-    assert row["candidates_withheld"] == 0, (
-        "more recordings reached the candidate builder than the recording cap allows"
-    )
+    assert row["candidates_withheld"] == 0, "more recordings reached the builder than the cap"
     assert [
         warning for warning in envelope["warnings"]
         if warning["code"] == match_cli.CANDIDATES_WITHHELD
@@ -4086,8 +3776,8 @@ def test_an_unspecific_acceptance_stalls_the_run_the_same_way_a_gone_candidate_d
     assert code == int(ExitCode.PENDING_HUMAN)
     row = after["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.VERDICT_UNSPECIFIC)
-    warned = [w for w in after["warnings"] if w["code"] == match_cli.VERDICT_UNAPPLICABLE]
-    assert [(w["item"], w["remedy"]) for w in warned] == [(item_id, match_cli.CLEAR_VERB)]
+    flagged = warned(after, match_cli.VERDICT_UNAPPLICABLE)
+    assert [(w["item"], w["remedy"]) for w in flagged] == [(item_id, match_cli.CLEAR_VERB)]
     pending = after["pending_human_action"]
     assert pending["verify_verb"] == match_cli.CLEAR_VERB
     assert f"crate review clear {item_id}" in pending["steps"]
@@ -4107,7 +3797,6 @@ def test_an_unanswered_item_is_re_offered_so_its_candidates_follow_the_library(
     assert stored == {
         candidate["id"] for candidate in asked["data"]["needs_review"][0]["candidates"]
     }
-
     first_file.unlink()
     hold(music, "03A - 124 - Aurora Bloom - Sun Path (Another Remix)")
     _code, again = drive(["match", "run", path])
@@ -4117,35 +3806,25 @@ def test_an_unanswered_item_is_re_offered_so_its_candidates_follow_the_library(
     assert {option.option_id for option in refreshed.options} == {
         candidate["id"] for candidate in offered["candidates"]
     }
-    assert {option.option_id for option in refreshed.options} != stored, (
-        "the item kept offering a candidate the library no longer holds"
-    )
+    assert {option.option_id for option in refreshed.options} != stored, "a gone candidate stayed"
     assert refreshed.payload["candidates"] == offered["candidates"]
 
 
 def test_a_tombstone_over_the_file_being_offered_as_the_answer_is_reported(cfg, music, tmp_path):
     """In both states: asking only under ``Wanted.addresses`` missed the OFFERED file."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
-        actor="deletion",
-    )
+    recorded = entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Live)"))
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
     path = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "stale.txt")
-
     code, asked = drive(["match", "run", path])
     assert code == int(ExitCode.OK)
     row = asked["data"]["needs_review"][0]
     assert row["why"] == str(match.Why.READING_AMBIGUOUS)
-    stale = [w for w in asked["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    stale = warned(asked, match_cli.TOMBSTONE_OVER_OWNED)
     assert [w["suppression"] for w in stale] == [recorded.suppression_id]
-
-    drive(
-        ["review", "resolve", row["review_item"], "--verdict", "accepted",
-         "--option", row["candidates"][0]["id"]]
-    )
+    answer(row, "accepted", option=True)
     _code, settled = drive(["match", "run", path])
     assert settled["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
-    still = [w for w in settled["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    still = warned(settled, match_cli.TOMBSTONE_OVER_OWNED)
     assert [w["suppression"] for w in still] == [recorded.suppression_id], (
         "the row that reports ownership of a tombstoned file says nothing about it"
     )
@@ -4153,14 +3832,10 @@ def test_a_tombstone_over_the_file_being_offered_as_the_answer_is_reported(cfg, 
 
 def test_one_tombstone_over_one_row_is_one_warning_however_it_is_reached(cfg, music, tmp_path):
     """The row's own address and the offered file are one suppression."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
-        actor="deletion",
-    )
+    recorded = entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Live)"))
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
-    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Live)\n", "once.txt")
-    _code, envelope = drive(["match", "run", path])
-    stale = [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED]
+    _code, envelope = run_list(tmp_path, "Aurora Bloom - Sun Path (Live)\n", "once.txt")
+    stale = warned(envelope, match_cli.TOMBSTONE_OVER_OWNED)
     assert [w["suppression"] for w in stale] == [recorded.suppression_id]
 
 
@@ -4183,7 +3858,6 @@ VOCABULARY_GAP: tuple[str, ...] = (
 
 def test_the_version_vocabulary_is_u24s_element_for_element():
     """One question, one vocabulary; ``rerecorded`` is the one deliberate difference, a HEAD."""
-    from cratekit.acquire import match_identity
     assert match.VERSION_WORDS == U24_VERSION_WORDS
     assert set(VOCABULARY_GAP) < match.VERSION_WORDS
         # Derived, so a word cannot be added to one and forgotten in the other.
@@ -4243,45 +3917,35 @@ def test_an_ungated_question_on_its_own_still_leaves_the_run_at_exit_zero(cfg, m
     assert code == int(ExitCode.OK)
     assert envelope["pending_human_action"] is None
     assert len(envelope["data"]["needs_review"]) == 2
-    assert len([w for w in envelope["warnings"] if w["code"] == match_cli.READING_UNSETTLED]) == 2
+    assert len(warned(envelope, match_cli.READING_UNSETTLED)) == 2
 
 
 def test_rejecting_an_ambiguous_reading_can_skip_rather_than_acquire(cfg, music, tmp_path):
     """Under a tombstone over the spelled reading, accepting holds and rejecting is SUPPRESSED."""
-    review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path - Live"),
-        actor="deletion",
-    )
+    entomb(cfg, u24_records("Aurora Bloom", "Sun Path - Live"))
     hold(music, "08A - 124 - Aurora Bloom - Sun Path (Live)")
     hold(music, "08A - 124 - Nova Reef - Tide Line (Live)")
     tombstoned = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "skip.txt")
     control = write_list(tmp_path, "Nova Reef - Tide Line - Live\n", "fetch.txt")
-
     for path, verdict in ((tombstoned, "accepted"), (control, "accepted")):
         _code, asked = drive(["match", "run", path])
         row = asked["data"]["needs_review"][0]
-        drive(
-            ["review", "resolve", row["review_item"], "--verdict", verdict,
-             "--option", row["candidates"][0]["id"]]
-        )
+        answer(row, verdict, option=True)
     _code, held = drive(["match", "run", tombstoned])
     assert held["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
     assert len(held["data"]["matched"][0]["paths"]) == 1
-
         # Now the other answer to the same question, on both lists.
     for path in (tombstoned, control):
         item_id = drive(["match", "run", path])[1]["data"]["matched"][0]["review_item"]
         drive(["review", "clear", item_id])
         _code, asked = drive(["match", "run", path])
         row = asked["data"]["needs_review"][0]
-        drive(["review", "resolve", row["review_item"], "--verdict", "rejected"])
-
+        answer(row, "rejected")
     _code, skipped = drive(["match", "run", tombstoned])
     assert skipped["data"]["matched"] == []
     assert skipped["data"]["missing"] == []
     assert skipped["data"]["needs_review"] == []
     assert [w["code"] for w in skipped["warnings"]] == [match_cli.SUPPRESSED_WARNING]
-
     _code, fetched = drive(["match", "run", control])
     row = fetched["data"]["missing"][0]
     assert row["why"] == str(match.Why.VERDICT_REJECTED)
@@ -4292,29 +3956,21 @@ def test_the_dash_spelling_re_acquires_a_deleted_version_and_says_nothing_about_
     cfg, music, tmp_path
 ):
     """The enumeration residual's cost: no warning, where the bracket control warns."""
-    recorded = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg).record(
-        kind=match.TOMBSTONE_KIND, identity=u24_records("Aurora Bloom", "Sun Path (Live)"),
-        actor="deletion",
-    )
+    recorded = entomb(cfg, u24_records("Aurora Bloom", "Sun Path (Live)"))
     bracketed = write_list(tmp_path, "Aurora Bloom - Sun Path (Live)\n", "bracket.txt")
     dashed = write_list(tmp_path, "Aurora Bloom - Sun Path - Live\n", "dash.txt")
-
     code, reached = drive(["match", "run", bracketed])
     assert code == int(ExitCode.OK)
     assert reached["data"] == {"matched": [], "needs_review": [], "missing": []}
     assert [(w["code"], w["suppression"]) for w in reached["warnings"]] == [
         (match_cli.SUPPRESSED_WARNING, recorded.suppression_id)
     ]
-
     code, missed = drive(["match", "run", dashed])
     assert code == int(ExitCode.OK)
     row = missed["data"]["missing"][0]
     assert row["why"] == str(match.Why.NOT_IN_LIBRARY)
     assert [option["query"] for option in row["acquisition"]] == ["Aurora Bloom Sun Path - Live"]
-    assert missed["warnings"] == [], (
-        "the run that undoes a deliberate deletion now says so, and this entry's "
-        "cost has changed"
-    )
+    assert missed["warnings"] == [], "the undoing run now says so: this entry's cost changed"
 
 
 #: A residual cited the old way, built from pieces so it does not match its own line.
@@ -4499,8 +4155,6 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
         calls.append(token)
         return real(token)
 
-    from cratekit.acquire import match_library
-
     monkeypatch.setattr(match, "_sorted_words", counted)
     monkeypatch.setattr(match_library, "_sorted_words", counted)
     index, rows = _u265_library(11)
@@ -4508,12 +4162,10 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
     for wanted in rows:
         match._approximate(wanted, index, limit=match.APPROXIMATE_LIMIT)
     assert len(calls) == recordings + len(rows)
-
     calls.clear()
     again, _rows = _u265_library(12)
     match._approximate(rows[0], again, limit=match.APPROXIMATE_LIMIT)
     assert len(calls) == len(again.by_recording) + 1
-
     calls.clear()
     assert match._approximate(rows[0], match.LibraryIndex(by_recording={}), limit=None) == ()
     assert calls == [], "an empty index sorts nothing and asks the scorer nothing"
@@ -4544,13 +4196,9 @@ def test_a_short_title_sharing_nothing_with_the_held_one_settles_missing(
     music, artist, wanted, held
 ):
     """Each clears the discovery floor and the title test drops it, so it is downloaded."""
-    assert _discovery_score(artist, wanted, artist, held) >= match.APPROXIMATE_FLOOR, (
-        "the pair no longer clears the discovery floor, so it no longer tests the title"
-    )
-    hold(music, f"08A - 124 - {artist} - {held}")
-    found = resolve([one(artist=artist, title=wanted)], index_of(music)).matches[0]
-    assert found.state is match.MatchState.MISSING
-    assert found.why is match.Why.NOT_IN_LIBRARY
+    assert _discovery_score(artist, wanted, artist, held) >= match.APPROXIMATE_FLOOR, held
+    found = settle(music, f"08A - 124 - {artist} - {held}", artist=artist, title=wanted)
+    assert (found.state, found.why) == (match.MatchState.MISSING, match.Why.NOT_IN_LIBRARY)
     assert found.candidates == ()
     assert found.acquisitions, "a missing row with nothing to acquire downloads nothing"
 
@@ -4558,8 +4206,7 @@ def test_a_short_title_sharing_nothing_with_the_held_one_settles_missing(
 def test_joy_against_goodbye_is_downloaded_through_the_real_verb(cfg, music, tmp_path):
     """The sitting's own row, through ``match run``: missing, not offered."""
     hold(music, "07A - 124 - Monkey Safari - Goodbye")
-    path = write_list(tmp_path, "Monkey Safari - Joy\n", "joy.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Monkey Safari - Joy\n", "joy.txt")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["needs_review"] == []
     (missing,) = envelope["data"]["missing"]
@@ -4591,10 +4238,8 @@ def test_a_real_near_match_is_still_offered(music, wanted, held):
     assert _discovery_score("Aurora Bloom", wanted, "Aurora Bloom", held) >= (
         match.APPROXIMATE_FLOOR
     ), "the pair no longer clears the discovery floor, so it tests nothing here"
-    hold(music, f"08A - 124 - Aurora Bloom - {held}")
-    found = resolve([one(title=wanted)], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    found = settle(music, f"08A - 124 - Aurora Bloom - {held}", title=wanted)
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert [candidate.title for candidate in found.candidates] == [held]
 
 
@@ -4611,9 +4256,7 @@ def test_of_two_near_hits_only_the_one_whose_title_resembles_is_offered(music):
     for number, version in enumerate(("A", "B", "C", "D", "E"), start=1):
         hold(music, f"0{number}A - 124 - Aurora Bloom - Goodbye (Mix {version})")
     near = match._approximate(one(title="Joy"), index_of(music), limit=None)
-    assert {held.title for held in near} == {"Joys", "Goodbye"}, (
-        "discovery no longer returns both, so the filter is not being tested"
-    )
+    assert {held.title for held in near} == {"Joys", "Goodbye"}, "discovery lost one of the two"
     found = resolve([one(title="Joy")], index_of(music)).matches[0]
     assert found.why is match.Why.TITLE_APPROXIMATE
     assert [candidate.title for candidate in found.candidates] == ["Joys"]
@@ -4639,19 +4282,22 @@ def test_unrelated_titles_scoring_higher_do_not_push_a_real_near_match_out(music
 
 def test_a_file_whose_artist_and_title_are_the_rows_swapped_is_still_offered(music):
     """A swapped listing is the same record, so each half may stand for the other."""
-    hold(music, "08A - 124 - Sun Path - Aurora Bloom")
-    found = resolve([one()], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    found = settle(music, "08A - 124 - Sun Path - Aurora Bloom")
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert [(c.artist, c.title) for c in found.candidates] == [("Sun Path", "Aurora Bloom")]
 
 
 def test_a_swap_is_offered_only_when_both_halves_cross():
     """One half crossing is not a swap."""
-    held = match.Owned(path=Path("x.flac"), artist="Sun Path", title="Tide Line", version="", key=None)
+    held = held_as("Sun Path", "Tide Line")
     assert not match._title_resembles(one(), held)
-    held = match.Owned(path=Path("x.flac"), artist="Nova Reef", title="Aurora Bloom", version="", key=None)
+    held = held_as("Nova Reef", "Aurora Bloom")
     assert not match._title_resembles(one(), held)
+
+
+def held_as(artist: str, title: str, path: str = "x.flac") -> match.Owned:
+    """A library row built by hand: no version and no key."""
+    return match.Owned(path=Path(path), artist=artist, title=title, version="", key=None)
 
 
 def _index_of_owned(*held: match.Owned) -> match.LibraryIndex:
@@ -4668,26 +4314,21 @@ LONG_ARTIST = "Aurora Bloom and the Harbour Lights Orchestra"
 @pytest.mark.parametrize(("wanted", "held"), [("!!!", "Sun"), ("Sun", "!!!")])
 def test_a_title_that_folds_to_nothing_is_offered_as_before(wanted, held):
     """An unreadable title leaves the discovery score to decide, as before U286."""
-    owned = match.Owned(path=Path("x.flac"), artist=LONG_ARTIST, title=held, version="", key=None)
+    owned = held_as(LONG_ARTIST, held)
     index = _index_of_owned(owned)
     asked = one(artist=LONG_ARTIST, title=wanted)
-    assert match._approximate(asked, index, limit=None) == (owned,), (
-        "the pair no longer clears the discovery floor, so it tests nothing here"
-    )
+    assert match._approximate(asked, index, limit=None) == (owned,), "under the discovery floor"
     found = resolve([asked], index).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert [c.title for c in found.candidates] == [held]
 
 
 def test_a_one_letter_title_is_judged_by_the_same_rule(music):
     """A against B settles missing, A against A is owned."""
     assert _discovery_score("Aurora Bloom", "A", "Aurora Bloom", "B") >= match.APPROXIMATE_FLOOR
-    hold(music, "08A - 124 - Aurora Bloom - B")
-    found = resolve([one(title="A")], index_of(music)).matches[0]
+    found = settle(music, "08A - 124 - Aurora Bloom - B", title="A")
     assert found.state is match.MatchState.MISSING
-    hold(music, "08A - 124 - Aurora Bloom - A")
-    found = resolve([one(title="A")], index_of(music)).matches[0]
+    found = settle(music, "08A - 124 - Aurora Bloom - A", title="A")
     assert found.state is match.MatchState.MATCHED
 
 
@@ -4703,8 +4344,7 @@ def test_an_isrc_hit_on_an_abbreviated_title_is_still_asked_about(music, tmp_pat
     found = resolve(
         [row(artist="Stefan Ringer", title="SO", isrc="USNRS2644599")], index_of(music)
     ).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
 
 
 #: The title pairs either side of the title floor, 65.0 and 66.67 (one changed letter of a
@@ -4714,7 +4354,6 @@ TITLE_FLOOR_NEIGHBOURS = (("Burning Sunlight", "Morning Starlight Rising"), ("Jo
 
 def test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way():
     from rapidfuzz import fuzz
-
     below, above = (
         fuzz.token_set_ratio(match.fold(asked), match.fold(held))
         for asked, held in TITLE_FLOOR_NEIGHBOURS
@@ -4722,12 +4361,8 @@ def test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_w
     assert below < match.APPROXIMATE_TITLE_FLOOR <= above, (below, above)
     assert int(above) - int(below) <= 1
     (low_asked, low_held), (high_asked, high_held) = TITLE_FLOOR_NEIGHBOURS
-
-    def owned(title: str) -> match.Owned:
-        return match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=title, version="", key=None)
-
-    assert not match._title_resembles(one(title=low_asked), owned(low_held))
-    assert match._title_resembles(one(title=high_asked), owned(high_held))
+    assert not match._title_resembles(one(title=low_asked), held_as("Aurora Bloom", low_held))
+    assert match._title_resembles(one(title=high_asked), held_as("Aurora Bloom", high_held))
         # And the highest of the card's live pairs sits under it.
     assert fuzz.token_set_ratio("get out", "agenou") < match.APPROXIMATE_TITLE_FLOOR
 
@@ -4737,9 +4372,6 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     """The reference written apart: shipped hits kept by the title rule, capped at five, led
     by what the card 833 lookup finds that the score did not."""
     from rapidfuzz import fuzz
-
-    from cratekit.acquire import match_library
-
     listed = match_library._SPELLED_OUT
 
     def spelled(name):
@@ -4821,7 +4453,6 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
             and match.fold(wanted.title) != match.fold(g[0].title)
             for g in kept
         )
-
         shipped = by_recording(_shipped_approximate(wanted, index))
         if not first and all(passes(wanted, group[0]) for group in shipped):
             assert match._resembling(wanted, index) == _shipped_approximate(wanted, index)
@@ -4839,9 +4470,9 @@ def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
     from rapidfuzz import fuzz
 
     assert fuzz.ratio("getout", "agenou") >= match.APPROXIMATE_TITLE_FLOOR
-    agenou = match.Owned(path=Path("x.flac"), artist="Traumer", title="Agenou", version="", key=None)
+    agenou = held_as("Traumer", "Agenou")
     assert not match._title_resembles(one(artist="Traumer", title="Get Out"), agenou)
-    goodbye = match.Owned(path=Path("x.flac"), artist="Traumer", title="Goodbye", version="", key=None)
+    goodbye = held_as("Traumer", "Goodbye")
     assert match._title_resembles(one(artist="Traumer", title="Good Bye"), goodbye)
 
 
@@ -4857,8 +4488,7 @@ def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
 def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_path, held, listed):
     """Each crossed half gets the same equality the titles do."""
     hold(music, f"08A - 124 - {held}")
-    path = write_list(tmp_path, f"{listed}\n", "swapped.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, f"{listed}\n", "swapped.txt")
     assert code == int(ExitCode.PENDING_HUMAN)
     (row,) = envelope["data"]["needs_review"]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
@@ -4887,10 +4517,8 @@ def test_a_title_in_slang_or_numerals_is_offered_its_spelled_out_copy(
 ):
     """Both ways round: offered as a resemblance, never matched and never missing."""
     asked, held = (spelled, slang) if reverse else (slang, spelled)
-    hold(music, f"08A - 124 - {artist} - {held}")
-    found = resolve([one(artist=artist, title=asked)], index_of(music)).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    found = settle(music, f"08A - 124 - {artist} - {held}", artist=artist, title=asked)
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert [(c.artist, c.title) for c in found.candidates] == [(artist, held)]
     assert found.paths == (), "a spelled out reading is a question, never ownership"
     assert found.acquisitions == ()
@@ -4900,7 +4528,7 @@ def test_the_lookup_is_what_reaches_a_pair_discovery_cannot_score():
     """Two pairs score under the discovery floor; scores computed, not remembered."""
     for artist, slang, spelled in (("Prince", "4 U", "For You"), ("Prince", "Luv U", "Love You")):
         assert _discovery_score(artist, slang, artist, spelled) < match.APPROXIMATE_FLOOR
-        held = match.Owned(path=Path("x.flac"), artist=artist, title=spelled, version="", key=None)
+        held = held_as(artist, spelled)
         index = _index_of_owned(held)
         asked = one(artist=artist, title=slang)
         assert match._approximate(asked, index, limit=None) == ()
@@ -4909,8 +4537,7 @@ def test_the_lookup_is_what_reaches_a_pair_discovery_cannot_score():
 
 def test_a_slang_title_through_the_real_verb_is_asked_and_not_downloaded(cfg, music, tmp_path):
     hold(music, "08A - 124 - Prince - For You")
-    path = write_list(tmp_path, "Prince - 4 U\n", "slang.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Prince - 4 U\n", "slang.txt")
     assert code == int(ExitCode.PENDING_HUMAN)
     assert envelope["data"]["missing"] == []
     (asked,) = envelope["data"]["needs_review"]
@@ -4920,15 +4547,13 @@ def test_a_slang_title_through_the_real_verb_is_asked_and_not_downloaded(cfg, mu
 def test_the_slang_title_itself_held_is_owned_and_the_spelled_out_one_is_not_offered(music):
     """Nothing new is owned, and the exact branch still comes first."""
     own = hold(music, "08A - 124 - Prince - 4 U")
-    hold(music, "08A - 124 - Prince - For You")
-    found = resolve([one(artist="Prince", title="4 U")], index_of(music)).matches[0]
+    found = settle(music, "08A - 124 - Prince - For You", artist="Prince", title="4 U")
     assert found.state is match.MatchState.MATCHED
     assert found.paths == (str(own),)
 
 
 def test_a_spelled_out_copy_by_another_artist_is_not_offered(music):
-    hold(music, "08A - 124 - Nova Reef - For You")
-    found = resolve([one(artist="Prince", title="4 U")], index_of(music)).matches[0]
+    found = settle(music, "08A - 124 - Nova Reef - For You", artist="Prince", title="4 U")
     assert found.state is match.MatchState.MISSING
 
 
@@ -4943,12 +4568,10 @@ STILL_MISSING = (
 
 @pytest.mark.parametrize(("wanted", "held"), STILL_MISSING)
 def test_a_pair_the_spelled_out_reading_does_not_join_still_settles_missing(wanted, held):
-    owned = match.Owned(path=Path("x.flac"), artist=LONG_ARTIST, title=held, version="", key=None)
+    owned = held_as(LONG_ARTIST, held)
     index = _index_of_owned(owned)
     asked = one(artist=LONG_ARTIST, title=wanted)
-    assert match._approximate(asked, index, limit=None) == (owned,), (
-        "the pair no longer clears the discovery floor, so it tests nothing here"
-    )
+    assert match._approximate(asked, index, limit=None) == (owned,), "under the discovery floor"
     found = resolve([asked], index).matches[0]
     assert found.state is match.MatchState.MISSING
 
@@ -4961,7 +4584,7 @@ def test_a_title_split_differently_is_still_kept_when_its_spelled_out_reading_is
 
 def test_the_lookup_does_not_widen_a_title_split_differently():
     """``OK`` against ``O.K.`` holds no listed word, so only the score offers it."""
-    held = match.Owned(path=Path("x.flac"), artist="Prince", title="O.K.", version="", key=None)
+    held = held_as("Prince", "O.K.")
     index = _index_of_owned(held)
     assert index.spelled_alike(match.recording_token("Prince", "OK")) == ()
     assert index.spelled_alike(match.recording_token("Prince", "K.O.")) == ()
@@ -4988,9 +4611,7 @@ def test_a_lookup_hit_pushing_a_scored_one_out_of_the_offer_says_so(music):
         hold(music, f"08A - 124 - Prince - {title}")
     hold(music, "08A - 124 - Prince - Love You")
     asked = one(artist="Prince", title="Luv U")
-    assert len(match._approximate(asked, index_of(music), limit=None)) == 6, (
-        "the six near titles no longer clear the discovery floor"
-    )
+    assert len(match._approximate(asked, index_of(music), limit=None)) == 6, "under the floor"
     found = resolve([asked], index_of(music)).matches[0]
     assert len(found.candidates) == match.APPROXIMATE_LIMIT
     assert found.withheld == 1, "five scored plus one looked up, five shown"
@@ -5012,7 +4633,7 @@ def test_every_listed_spelling_offers_its_spelled_out_title(word, spelled):
     """Each entry on its own, both ways, for an artist too short for the discovery score."""
     artist = "Moby"
     for asked, held_title in ((word, spelled), (spelled, word)):
-        held = match.Owned(path=Path("x.flac"), artist=artist, title=held_title, version="", key=None)
+        held = held_as(artist, held_title)
         found = resolve([one(artist=artist, title=asked)], _index_of_owned(held)).matches[0]
         assert found.state is match.MatchState.NEEDS_REVIEW, (asked, held_title)
         assert [c.title for c in found.candidates] == [held_title]
@@ -5020,7 +4641,7 @@ def test_every_listed_spelling_offers_its_spelled_out_title(word, spelled):
 
 def test_the_lookup_reads_the_artist_as_it_folds_and_never_spelled_out():
     """``Lil Kid`` and ``Little Kid`` are two artists: only the title is read spelled out."""
-    held = match.Owned(path=Path("x.flac"), artist="Little Kid", title="For You", version="", key=None)
+    held = held_as("Little Kid", "For You")
     found = resolve([one(artist="Lil Kid", title="4 U")], _index_of_owned(held)).matches[0]
     assert found.state is match.MatchState.MISSING
 
@@ -5028,7 +4649,7 @@ def test_the_lookup_reads_the_artist_as_it_folds_and_never_spelled_out():
 @pytest.mark.parametrize(("wanted", "held"), [("Two Day", "Today"), ("Four Tune", "Fortune")])
 def test_a_spelled_number_is_not_read_as_a_numeral(wanted, held):
     """``two`` and ``four`` read as ``to`` and ``for`` once joined two unrelated titles."""
-    owned = match.Owned(path=Path("x.flac"), artist="Moby", title=held, version="", key=None)
+    owned = held_as("Moby", held)
     found = resolve([one(artist="Moby", title=wanted)], _index_of_owned(owned)).matches[0]
     assert found.state is match.MatchState.MISSING
 
@@ -5045,21 +4666,18 @@ def test_a_lookup_hit_discovery_ranked_past_the_five_still_leads(cfg, music, tmp
     assert found.candidates[0].title == "Luv U"
     assert len(found.candidates) == match.APPROXIMATE_LIMIT
     assert found.withheld == 1
-    path = write_list(tmp_path, "Aurora Bloom - Love You\n", "ranked.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Love You\n", "ranked.txt")
     assert code == int(ExitCode.PENDING_HUMAN)
     (row,) = envelope["data"]["needs_review"]
     assert row["candidates"][0]["title"] == "Luv U"
 
 
 def test_the_word_list_is_the_curated_one():
-    from cratekit.acquire import match_library
     assert dict(SPELLINGS) == dict(match_library._SPELLED_OUT)
 
 
 def test_the_word_list_maps_no_word_to_itself_and_only_folded_words():
     """A key is one folded word, found after :func:`fold`; a value is folded and not the key."""
-    from cratekit.acquire import match_library
     for word, spelled in match_library._SPELLED_OUT.items():
         assert word == match.fold(word) and " " not in word, word
         assert spelled == match.fold(spelled) and spelled != word, word
@@ -5077,8 +4695,6 @@ def _old_agree(one_name: str, other_name: str) -> bool:
 def test_the_title_test_only_adds_agreement_and_only_for_a_spelled_out_equal_pair():
     """The differential over a title corpus: nothing stops agreeing, and what newly agrees is
     one string with the spaces gone once each listed word is spelled out."""
-    from cratekit.acquire import match_library
-
     listed = match_library._SPELLED_OUT
 
     def spelled(name: str) -> str:
@@ -5116,20 +4732,17 @@ FIRE, DROP, SNOW = "\U0001f525", "\U0001f4a7", "❄"
 
 def test_two_different_emoji_titles_by_one_artist_are_not_one_recording(music):
     """``fold`` takes both to nothing, so ``💧`` was owned by ``🔥``; now it is asked."""
-    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
-    found = resolve([one(title=DROP)], index_of(music)).matches[0]
+    found = settle(music, f"08A - 124 - Aurora Bloom - {FIRE}", title=DROP)
     assert found.state is not match.MatchState.MATCHED
     assert found.paths == ()
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert [c.title for c in found.candidates] == [FIRE]
 
 
 def test_two_different_emoji_titles_through_the_real_verb_are_not_owned(cfg, music, tmp_path):
     """Through ``match run``: not matched, so the row reaches a person."""
     hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
-    path = write_list(tmp_path, f"Aurora Bloom - {DROP}\n", "emoji.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, f"Aurora Bloom - {DROP}\n", "emoji.txt")
     assert code == int(ExitCode.PENDING_HUMAN)
     assert envelope["data"]["matched"] == []
     (row,) = envelope["data"]["needs_review"]
@@ -5137,10 +4750,8 @@ def test_two_different_emoji_titles_through_the_real_verb_are_not_owned(cfg, mus
 
 
 def test_the_same_emoji_title_by_one_artist_is_still_owned(music):
-    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
-    found = resolve([one(title=FIRE)], index_of(music)).matches[0]
-    assert found.state is match.MatchState.MATCHED
-    assert found.why is match.Why.EXACT
+    found = settle(music, f"08A - 124 - Aurora Bloom - {FIRE}", title=FIRE)
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
     assert [Path(p).name for p in found.paths] == [f"08A - 124 - Aurora Bloom - {FIRE}.flac"]
 
 
@@ -5171,7 +4782,7 @@ def test_the_wanted_emoji_title_is_owned_beside_another_one_the_library_holds(mu
 )
 def test_a_title_that_folds_to_nothing_spelled_another_way_is_still_owned(wanted, held):
     """The bare text drops width, case, spacing and invisible characters: no second download."""
-    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    owned = held_as("Aurora Bloom", held)
     assert match.same_title(wanted, held)
     found = resolve([one(title=wanted)], _index_of_owned(owned)).matches[0]
     assert found.state is match.MatchState.MATCHED, found.why
@@ -5189,7 +4800,7 @@ def test_a_title_that_folds_to_nothing_spelled_another_way_is_still_owned(wanted
     ],
 )
 def test_two_titles_that_fold_to_nothing_and_differ_are_not_one_title(wanted, held):
-    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    owned = held_as("Aurora Bloom", held)
     assert not match.same_title(wanted, held)
     found = resolve([one(title=wanted)], _index_of_owned(owned)).matches[0]
     assert found.state is not match.MatchState.MATCHED
@@ -5209,8 +4820,7 @@ def test_two_held_emoji_titles_are_offered_as_two_candidates(music):
 
 def test_a_candidate_whose_title_folds_to_something_keeps_its_identifier(music):
     """The bare title joins the digest only when it is not empty, so answers still apply."""
-    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
-    found = resolve([one()], index_of(music)).matches[0]
+    found = settle(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
     (candidate,) = found.candidates
     expected = match._digest(
         match.recording_token("Aurora Bloom", "Sun Path"), "extended mix", "08A"
@@ -5270,7 +4880,7 @@ def test_a_held_emoji_row_does_not_retire_another_emoji_rows_question(cfg, music
         assert asked["title"] == DROP
     _code, listed = drive(["review", "list"])
     assert [item["id"] for item in listed["data"]["items"]] == [asked["review_item"]]
-    code, _ = drive(["review", "resolve", asked["review_item"], "--verdict", "rejected"])
+    code, _ = answer(asked, "rejected")
     assert code == int(ExitCode.OK)
     _code, after = drive(["match", "run", path])
     assert [row["title"] for row in after["data"]["missing"]] == [DROP]
@@ -5282,13 +4892,11 @@ def test_an_answer_about_one_emoji_title_does_not_settle_another(cfg, music, tmp
     first = write_list(tmp_path, "Aurora Bloom - \u2665\n", "heart.txt")
     _code, asked = drive(["match", "run", first])
     (row,) = asked["data"]["needs_review"]
-    option = row["candidates"][0]["id"]
-    code, _ = drive(["review", "resolve", row["review_item"], "--verdict", "accepted", "--option", option])
+    code, _ = answer(row, "accepted", option=True)
     assert code == int(ExitCode.OK)
     _code, again = drive(["match", "run", first])
     assert again["data"]["matched"][0]["why"] == str(match.Why.VERDICT_ACCEPTED)
-    later = write_list(tmp_path, "Aurora Bloom - \U0001f494\n", "broken.txt")
-    _code, other = drive(["match", "run", later])
+    _code, other = run_list(tmp_path, "Aurora Bloom - \U0001f494\n", "broken.txt")
     assert other["data"]["matched"] == []
     (open_row,) = other["data"]["needs_review"]
     assert open_row["review_item"] != row["review_item"]
@@ -5304,8 +4912,7 @@ def test_two_emoji_rows_in_one_list_carry_two_match_identifiers(cfg, music, tmp_
 
 def test_an_emoji_candidate_offered_for_another_is_named_a_resemblance(music):
     """``_same_recording`` reads the title by its identity, so it is not ``exact``."""
-    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
-    found = resolve([one(title=DROP)], index_of(music)).matches[0]
+    found = settle(music, f"08A - 124 - Aurora Bloom - {FIRE}", title=DROP)
     assert [c.difference for c in found.candidates] == [match.Why.TITLE_APPROXIMATE]
 
 
@@ -5326,8 +4933,7 @@ def test_an_isrc_under_another_artist_and_another_emoji_title_is_asked(music, tm
     found = resolve(
         [row(artist="Aurora Bloom", title=DROP, isrc="USNRS2644532")], index_of(music)
     ).matches[0]
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     assert found.paths == ()
 
 
@@ -5340,8 +4946,7 @@ def test_an_isrc_on_a_file_under_another_emoji_title_is_asked_not_settled(music,
     index = index_of(music)
     asked = resolve([row(artist="Aurora Bloom", title=DROP, isrc="USNRS2644532")], index)
     (found,) = asked.matches
-    assert found.state is match.MatchState.NEEDS_REVIEW
-    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.TITLE_APPROXIMATE)
     owned = resolve([row(artist="Aurora Bloom", title=FIRE, isrc="USNRS2644532")], index)
     assert owned.matches[0].why is match.Why.ISRC_EXACT
 
@@ -5412,8 +5017,7 @@ def test_an_answer_recorded_before_naming_an_emoji_file_still_applies(cfg, music
     """The former identifier moved, so the acceptance is carried over, not read as gone."""
     hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
     _answer_recorded_before(cfg, music, "Fire", FIRE)
-    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
     assert code == int(ExitCode.OK), envelope["data"]["needs_review"]
     (row,) = envelope["data"]["matched"]
     assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
@@ -5424,8 +5028,7 @@ def test_a_yes_recorded_before_naming_no_option_still_applies(cfg, music, tmp_pa
     """The one option is stored under its former identifier, so that is carried too."""
     hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
     _answer_recorded_before(cfg, music, "Fire", FIRE, named=False)
-    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
     assert code == int(ExitCode.OK), envelope["data"]["needs_review"]
     (row,) = envelope["data"]["matched"]
     assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
@@ -5437,8 +5040,7 @@ def test_an_answer_recorded_before_is_not_carried_to_another_emoji_file(cfg, mus
     _answer_recorded_before(cfg, music, "Fire", FIRE)
     (music / f"08A - 124 - Aurora Bloom - {FIRE}.flac").unlink()
     hold(music, f"08A - 124 - Aurora Bloom - {SNOW}")
-    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
-    code, envelope = drive(["match", "run", path])
+    code, envelope = run_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
     assert code == int(ExitCode.PENDING_HUMAN)
     assert envelope["data"]["matched"] == []
     (row,) = envelope["data"]["needs_review"]
@@ -5447,8 +5049,8 @@ def test_an_answer_recorded_before_is_not_carried_to_another_emoji_file(cfg, mus
 
 def test_a_former_identifier_is_carried_only_with_one_fit_and_its_title():
     owned = (
-        match.Owned(path=Path("a.flac"), artist="Aurora Bloom", title=FIRE, version="", key=None),
-        match.Owned(path=Path("b.flac"), artist="Aurora Bloom", title=SNOW, version="", key=None),
+        held_as("Aurora Bloom", FIRE, "a.flac"),
+        held_as("Aurora Bloom", SNOW, "b.flac"),
     )
     found = resolve([one(title="Fire")], _index_of_owned(*owned)).matches[0]
     by_title = {c.title: c for c in found.candidates}

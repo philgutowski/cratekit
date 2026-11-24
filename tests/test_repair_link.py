@@ -62,8 +62,8 @@ def _sets(*specs: str) -> list[str]:
     return [part for spec in specs for part in ("--set", spec)]
 
 
-def _planned(cfg, *specs: str) -> row_link.ProbePlan:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+def _planned(cfg, *specs: str, path=None) -> row_link.ProbePlan:
+    db = rb_writer.open_db(path or cfg.library.db_path, unlock=False, cfg=cfg)
     try:
         return row_link.plan_probes(db, [row_link.parse_triple(spec) for spec in specs])
     finally:
@@ -171,20 +171,10 @@ def test_the_plan_is_each_triple_its_values_and_who_else_carries_each(machine):
     }
 
 
-def test_no_triple_at_all_refuses(machine):
-    seed(machine)
-    db = rb_writer.open_db(machine.library.db_path, unlock=False, cfg=machine)
-    try:
-        with pytest.raises(CratekitError) as caught:
-            row_link.plan_probes(db, [])
-    finally:
-        rb_writer.close_db(db)
-    assert caught.value.cause.reason == row_link.PROBE_INVALID
-
-
 @pytest.mark.parametrize(
     ("update", "specs", "reason"),
     [
+        pytest.param(None, (), row_link.PROBE_INVALID, id="no-triple-at-all"),
         pytest.param(
             None, (f"101:{LINK}={HOUSE}", f"101:{LINK}={HOUSE}"), row_link.PROBE_INVALID,
             id="the-same-row-and-column-twice",
@@ -268,12 +258,7 @@ def test_the_digest_is_equal_on_a_copy_at_another_path(machine, tmp_path):
     copy.parent.mkdir()
     shutil.copy2(machine.library.db_path, copy)
     specs = (f"101:{LINK}={HOUSE}", f"102:{ISRC}=")
-    db = rb_writer.open_db(copy, unlock=False, cfg=machine)
-    try:
-        on_copy = row_link.plan_probes(db, [row_link.parse_triple(s) for s in specs])
-    finally:
-        rb_writer.close_db(db)
-    assert on_copy.digest == _planned(machine, *specs).digest
+    assert _planned(machine, *specs, path=copy).digest == _planned(machine, *specs).digest
 
 
 def test_the_digest_is_equal_whatever_order_the_triples_are_given_in(machine):
@@ -404,25 +389,19 @@ def test_an_abort_writes_nothing(acknowledged):
     assert str(_content(acknowledged)["101"][LINK]) == str(BINDING)
 
 
-def test_a_plan_refusal_reaches_no_gate(acknowledged):
+@pytest.mark.parametrize(
+    ("specs", "reason"),
+    [
+        pytest.param((f"999:{LINK}={HOUSE}",), row_link.ROW_UNKNOWN, id="a-plan-refusal"),
+        pytest.param(("101:AnalysisUpdated=2",), row_link.PROBE_INVALID, id="a-malformed-triple"),
+        pytest.param((), row_link.PROBE_INVALID, id="no-set-at-all"),
+    ],
+)
+def test_a_refused_plan_refuses_through_the_verb_and_reaches_no_gate(acknowledged, specs, reason):
     seed(acknowledged)
-    code, payload = drive([*VERB, *_sets(f"999:{LINK}={HOUSE}")])
+    code, payload = drive([*VERB, *_sets(*specs)])
     assert code == int(ExitCode.PRECONDITION), payload
-    assert payload["cause"]["reason"] == row_link.ROW_UNKNOWN
-
-
-def test_a_malformed_triple_refuses_through_the_verb_before_any_gate(acknowledged):
-    seed(acknowledged)
-    code, payload = drive([*VERB, *_sets("101:AnalysisUpdated=2")])
-    assert code == int(ExitCode.PRECONDITION), payload
-    assert payload["cause"]["reason"] == row_link.PROBE_INVALID
-
-
-def test_no_set_at_all_refuses_through_the_verb(acknowledged):
-    seed(acknowledged)
-    code, payload = drive(VERB)
-    assert code == int(ExitCode.PRECONDITION), payload
-    assert payload["cause"]["reason"] == row_link.PROBE_INVALID
+    assert payload["cause"]["reason"] == reason
 
 
 def test_a_column_changed_since_the_plan_refuses_stale_and_writes_nothing(acknowledged):
@@ -489,35 +468,30 @@ def test_the_guard_refuses_a_probe_column_written_without_the_policy(acknowledge
     assert str(row[LINK]) == str(BINDING) and row[ISRC] is None
 
 
-def test_a_plan_writing_one_column_admits_only_that_one_to_the_guard(acknowledged, monkeypatch):
-    """The policy is the columns written, so an ISRC beside a ContentLink plan is refused."""
+@pytest.mark.parametrize(
+    ("column", "value", "specs"),
+    [
+        # The policy is the columns written, so an ISRC beside a ContentLink plan is refused.
+        pytest.param("ISRC", "", (f"101:{LINK}={HOUSE}",), id="an-isrc-beside-a-link-plan"),
+        pytest.param(
+            "BPM", 12800, (f"101:{LINK}={HOUSE}", f"101:{ISRC}="), id="a-tempo-beside-the-write"
+        ),
+    ],
+)
+def test_a_column_written_beside_the_plan_is_refused_by_the_guard(
+    acknowledged, monkeypatch, column, value, specs
+):
+    """The probe's policy admits the columns its plan writes and no other."""
     seed(acknowledged)
     real = rb_writer.write_metadata_field
 
-    def and_an_isrc(row, owner, field_name, new_value, **kwargs):
-        row.ISRC = ""
+    def and_another(row, owner, field_name, new_value, **kwargs):
+        setattr(row, column, value)
         return real(row, owner, field_name, new_value, **kwargs)
 
-    monkeypatch.setattr(rb_writer, "write_metadata_field", and_an_isrc)
+    monkeypatch.setattr(rb_writer, "write_metadata_field", and_another)
     with pytest.raises(CratekitError) as caught:
-        _apply(acknowledged, _planned(acknowledged, f"101:{LINK}={HOUSE}"))
-    assert caught.value.cause.reason == "whitelist-violation"
-    row = _content(acknowledged)["101"]
-    assert str(row[LINK]) == str(BINDING) and row[ISRC] is None
-
-
-def test_a_tempo_moved_beside_the_write_is_refused_by_the_guard(acknowledged, monkeypatch):
-    """The probe's policy admits its columns only."""
-    seed(acknowledged)
-    real = rb_writer.write_metadata_field
-
-    def and_a_tempo(row, owner, field_name, new_value, **kwargs):
-        row.BPM = 12800
-        return real(row, owner, field_name, new_value, **kwargs)
-
-    monkeypatch.setattr(rb_writer, "write_metadata_field", and_a_tempo)
-    with pytest.raises(CratekitError) as caught:
-        _apply(acknowledged, _planned(acknowledged, f"101:{LINK}={HOUSE}", f"101:{ISRC}="))
+        _apply(acknowledged, _planned(acknowledged, *specs))
     assert caught.value.cause.reason == "whitelist-violation"
     row = _content(acknowledged)["101"]
     assert str(row[LINK]) == str(BINDING) and row["BPM"] == 0 and row[ISRC] is None

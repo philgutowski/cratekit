@@ -136,6 +136,9 @@ def test_a_file_edited_inside_a_scope_is_read_as_it_now_is(tmp_path, parses):
     """An edit that keeps the file's length is read afresh, where a path or size key would not."""
     module = tmp_path / "planted.py"
     module.write_text('CODES = {"rclone-missing": 30}\n')
+    # The cause set parses through its own cache; asked first to keep it out of the count.
+    reserved.declared_causes()
+    parses.clear()
     with sharing_parses():
         before = guards.reserved_code_tables_in(
             parsed(module.read_text()), reserved.declared_causes(), reserved.RANGE

@@ -1,7 +1,4 @@
-"""R-1032: the mirror takes one of several agreeing releases where a heart would refuse.
-
-Every write through U147's recording fake, every match through the real adapter. D1 applies.
-"""
+"""R-1032: the mirror takes one of several agreeing releases where a heart would refuse. D1."""
 
 from __future__ import annotations
 

@@ -99,7 +99,7 @@ def _silence(tmp_path_factory) -> Path:
 
 
 @pytest.fixture
-def installed(tmp_path, monkeypatch):
+def installed(tmp_path, monkeypatch, no_rekordbox):
     """A machine the real dispatcher can load, with every module switched on."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
@@ -110,8 +110,6 @@ def installed(tmp_path, monkeypatch):
     resolved = config.from_dict(data)
     config.save(resolved)
     config.reset_cache()
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     return resolved
 
 

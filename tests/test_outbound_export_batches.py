@@ -1,8 +1,4 @@
-"""U270. Exporting a crate adds its tracks a hundred to a request, each recorded once named.
-
-On the fake account and the real client over U255's counting transport; the
-request count is the assertion.
-"""
+"""U270: an export adds its tracks a hundred to a request, each recorded once named."""
 
 from __future__ import annotations
 

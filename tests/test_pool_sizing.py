@@ -87,16 +87,23 @@ def _plan(available: int, **arguments) -> pool.PoolPlan:
     return pool.plan_pool(**arguments, read_available=reader(available))
 
 
+def _expect(plan: pool.PoolPlan, **fields) -> None:
+    """Each named field of ``plan``: by identity for a flag, a bound or None, else by value."""
+    for name, want in fields.items():
+        got = getattr(plan, name)
+        exact = want is None or isinstance(want, bool | pool.Bound)
+        assert got is want if exact else got == want, f"{name} is {got!r}, not {want!r}"
+
+
 # The plan's own scenarios
 
 
 def test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process():
     """First scenario: 2 GiB affords none under the reserve, so one worker in process."""
-    plan = _plan(2 * GIB)
-    assert plan.workers == 1
-    assert plan.in_process is True
-    assert plan.bound is pool.Bound.INSUFFICIENT_MEMORY
-    assert plan.max_tasks_per_child is None
+    _expect(
+        _plan(2 * GIB), workers=1, in_process=True, bound=pool.Bound.INSUFFICIENT_MEMORY,
+        max_tasks_per_child=None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -108,17 +115,14 @@ def test_the_default_ceiling_of_two_binds_where_memory_affords_several(available
     assert affordable_for(available) > 2, (
         "the fixture no longer leaves the ceiling as the binding constraint"
     )
-    plan = _plan(available)
-    assert plan.workers == 2
-    assert plan.bound is pool.Bound.CEILING
+    _expect(_plan(available), workers=2, bound=pool.Bound.CEILING)
 
 
 def test_sixteen_gigabytes_is_bound_by_the_headroom_once_the_ceiling_is_raised():
     """With the ceiling raised, the reserve and headroom bind: never sixteen workers from 16 GiB."""
     plan = _plan(16 * GIB, ceiling=64)
-    assert plan.workers == affordable_for(16 * GIB)
+    _expect(plan, workers=affordable_for(16 * GIB), bound=pool.Bound.AVAILABLE_MEMORY)
     assert plan.workers < 16
-    assert plan.bound is pool.Bound.AVAILABLE_MEMORY
 
 
 def test_a_memory_read_failure_falls_back_to_one_worker_rather_than_raising():
@@ -126,9 +130,7 @@ def test_a_memory_read_failure_falls_back_to_one_worker_rather_than_raising():
     def broken() -> int:
         raise OSError("no memory statistics on this platform")
     plan = pool.plan_pool(worker_bytes=WORKER, items=500, read_available=broken)
-    assert plan.workers == 1
-    assert plan.in_process is True
-    assert plan.bound is pool.Bound.MEMORY_UNREADABLE
+    _expect(plan, workers=1, in_process=True, bound=pool.Bound.MEMORY_UNREADABLE)
     assert plan.available_bytes is None
 
 
@@ -155,9 +157,7 @@ def test_the_fallback_is_never_the_ceiling_or_the_item_count():
 def test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable(value):
     """A nonsense reading lands like an exception. ``True`` equals one and must not size a pool."""
     plan = pool.plan_pool(worker_bytes=WORKER, items=500, read_available=lambda: value)
-    assert plan.workers == 1
-    assert plan.bound is pool.Bound.MEMORY_UNREADABLE
-    assert plan.available_bytes is None
+    _expect(plan, workers=1, bound=pool.Bound.MEMORY_UNREADABLE, available_bytes=None)
 
 
 def test_the_core_count_does_not_change_the_computed_cap():
@@ -180,54 +180,41 @@ def test_the_worker_count_flips_exactly_at_the_affordable_boundary(workers):
     """One byte below the derived boundary is one fewer worker. Test the edges, not the middle."""
     # Derived, NOT a pin (see affordable_for): the flip is under test.
     edge = threshold_for(workers, percent=pool.DEFAULT_HEADROOM_PERCENT)
-    below = _plan(edge - 1, ceiling=64)
-    at = _plan(edge, ceiling=64)
-    assert below.workers == workers - 1
-    assert at.workers == workers
+    assert _plan(edge - 1, ceiling=64).workers == workers - 1
+    assert _plan(edge, ceiling=64).workers == workers
 
 
-def test_the_headroom_is_applied_to_the_bytes_before_they_are_divided_into_workers():
-    """The headroom scales the bytes before they are divided into workers, not the count."""
-    available = 2900 * MIB
-    percent = 75
-    shipped = available * percent // 100 // WORKER
-    reversed_order = available // WORKER * percent // 100
-    assert shipped != reversed_order, "the fixture no longer distinguishes the two orders"
-    plan = _plan(available, ceiling=64, headroom_percent=percent, reserve_bytes=0)
-    assert plan.workers == shipped == 2
-    assert plan.workers != reversed_order
-
-
-def test_the_reserve_comes_off_the_reading_before_the_percent_scales_it():
-    """The reserve comes off the reading, not the share, so it does not shrink when tight."""
-    available = 8 * GIB
-    reserve = 2 * GIB
-    percent = 50
-    shipped = (available - reserve) * percent // 100 // WORKER
-    reserve_after = (available * percent // 100 - reserve) // WORKER
-    assert shipped != reserve_after, "the fixture no longer distinguishes the two orders"
+@pytest.mark.parametrize(
+    "available,reserve,percent,shipped,wrong",
+    [
+        (2900 * MIB, 0, 75, 2, 2900 * MIB // WORKER * 75 // 100),
+        (8 * GIB, 2 * GIB, 50, 3, (8 * GIB * 50 // 100 - 2 * GIB) // WORKER),
+    ],
+    ids=["the-headroom-scales-the-bytes-not-the-count", "the-reserve-comes-off-before-the-share"],
+)
+def test_the_reserve_then_the_headroom_come_off_the_bytes_before_the_division(
+    available, reserve, percent, shipped, wrong
+):
+    """The reserve comes off the reading, then the share scales the bytes, then they divide."""
+    derived = (available - reserve) * percent // 100 // WORKER
+    assert derived != wrong, "the fixture no longer distinguishes the two orders"
     plan = _plan(available, ceiling=64, headroom_percent=percent, reserve_bytes=reserve)
-    assert plan.workers == shipped == 3
-    assert plan.workers != reserve_after
+    assert plan.workers == derived == shipped
+    assert plan.workers != wrong
 
 
 def test_a_reading_smaller_than_the_reserve_affords_nothing_rather_than_going_negative():
     """A reading below the reserve clamps to zero: INSUFFICIENT_MEMORY, never negative."""
     plan = _plan(1 * GIB, ceiling=64, reserve_bytes=4 * GIB)
-    assert plan.workers == 1
-    assert plan.bound is pool.Bound.INSUFFICIENT_MEMORY
+    _expect(plan, workers=1, bound=pool.Bound.INSUFFICIENT_MEMORY)
 
 
 def test_the_hard_ceiling_and_the_headroom_agree_at_the_point_they_cross():
     """Where ceiling and memory tie, the smaller wins and the tie names memory."""
     # Derived, NOT a pin (see affordable_for): the tie is under test.
     edge = threshold_for(2, percent=pool.DEFAULT_HEADROOM_PERCENT)
-    tied = _plan(edge, ceiling=2)
-    assert tied.workers == 2
-    assert tied.bound is pool.Bound.AVAILABLE_MEMORY
-    memory_wins = _plan(edge - 1, ceiling=2)
-    assert memory_wins.workers == 1
-    assert memory_wins.bound is pool.Bound.AVAILABLE_MEMORY
+    _expect(_plan(edge, ceiling=2), workers=2, bound=pool.Bound.AVAILABLE_MEMORY)
+    _expect(_plan(edge - 1, ceiling=2), workers=1, bound=pool.Bound.AVAILABLE_MEMORY)
 
 
 @pytest.mark.parametrize("percent", [1, 25, 50, 75, 99, 100])
@@ -259,20 +246,11 @@ def test_the_shipped_default_is_the_one_this_platform_earns():
 def test_the_machine_the_kill_happened_on_gets_no_pool_under_the_shipped_rule():
     """A reading off the real 18 GiB machine gets one worker where the old rule gave three."""
     measured_available = 5 * GIB + 256 * MIB
-    measured_swap = 2 * GIB + 215 * MIB
-    measured_used_percent = 70.8
-
     old_rule = measured_available * 75 // 100 // WORKER
     assert old_rule == 3, "the recorded reading no longer reproduces the old rule's answer"
-
-    plan = _plan(
-        measured_available,
-        ceiling=64,
-        read_pressure=pressure(swap_used_bytes=measured_swap, used_percent=measured_used_percent),
-    )
-    assert plan.workers == 1
-    assert plan.in_process is True
-    assert plan.bound is pool.Bound.MEMORY_PRESSURE
+    measured = pressure(swap_used_bytes=2 * GIB + 215 * MIB, used_percent=70.8)
+    plan = _plan(measured_available, ceiling=64, read_pressure=measured)
+    _expect(plan, workers=1, in_process=True, bound=pool.Bound.MEMORY_PRESSURE)
 
 
 @pytest.mark.parametrize(
@@ -289,9 +267,7 @@ def test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else(reading, gate
     """Either pressure signal gates at its literal line and not one below."""
     plan = _plan(64 * GIB, ceiling=64, read_pressure=pressure(**reading))
     if gated:
-        assert plan.workers == 1
-        assert plan.bound is pool.Bound.MEMORY_PRESSURE
-        assert plan.max_tasks_per_child is None
+        _expect(plan, workers=1, bound=pool.Bound.MEMORY_PRESSURE, max_tasks_per_child=None)
     else:
         assert plan.workers > 1
         assert plan.bound is not pool.Bound.MEMORY_PRESSURE
@@ -300,8 +276,7 @@ def test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else(reading, gate
 def test_a_gated_plan_still_reports_the_reading_it_was_gated_despite():
     """A gated plan still reports the available bytes, so the log can say why it went in process."""
     plan = _plan(6 * GIB, ceiling=64, read_pressure=pressure(swap_used_bytes=3 * GIB))
-    assert plan.available_bytes == 6 * GIB
-    assert plan.bound is pool.Bound.MEMORY_PRESSURE
+    _expect(plan, available_bytes=6 * GIB, bound=pool.Bound.MEMORY_PRESSURE)
 
 
 @pytest.mark.parametrize(
@@ -373,8 +348,7 @@ def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_our
     )
     affords_one = pool.plan_pool(**common, read_available=reader(2 * GIB + WORKER))
     affords_none = pool.plan_pool(**common, read_available=reader(2 * GIB + WORKER - 1))
-    assert affords_one.workers == 1
-    assert affords_one.bound is pool.Bound.AVAILABLE_MEMORY
+    _expect(affords_one, workers=1, bound=pool.Bound.AVAILABLE_MEMORY)
     assert affords_none.bound is pool.Bound.INSUFFICIENT_MEMORY
 
 
@@ -410,9 +384,7 @@ def test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly(
     items, generations
 ):
     """A hundred tasks per child, pinned by how many generations a real folder takes."""
-    plan = _plan(64 * GIB, items=items, ceiling=2)
-    assert plan.workers == 2
-    assert plan.generations == generations
+    _expect(_plan(64 * GIB, items=items, ceiling=2), workers=2, generations=generations)
 
 
 #: A cold load of the 300 MB model in ``_probe_entry`` off a slow platter, written here and
@@ -502,29 +474,17 @@ def test_every_probe_deadline_default_names_the_constant_rather_than_repeating_i
 
 def test_the_windows_pool_limit_is_the_interpreters_own_and_falls_back_to_sixty_one():
     """Both arms of the windows limit, which never run here: the interpreter's value, else 61."""
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(sys, "platform", "win32")
-        patch.setattr(_process_pool, "_MAX_WINDOWS_WORKERS", 32, raising=False)
-        assert pool.platform_worker_ceiling() == 32
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(sys, "platform", "win32")
-        patch.delattr(_process_pool, "_MAX_WINDOWS_WORKERS", raising=False)
-        assert pool.platform_worker_ceiling() == 61
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(sys, "platform", "win32")
-        patch.setattr(_process_pool, "_MAX_WINDOWS_WORKERS", 0, raising=False)
-        assert pool.platform_worker_ceiling() == 61
+    for written, ceiling in ((32, 32), (None, 61), (0, 61)):
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(sys, "platform", "win32")
+            if written is None:
+                patch.delattr(_process_pool, "_MAX_WINDOWS_WORKERS", raising=False)
+            else:
+                patch.setattr(_process_pool, "_MAX_WINDOWS_WORKERS", written, raising=False)
+            assert pool.platform_worker_ceiling() == ceiling
 
 
 # Affording exactly one, and affording none, which are two different machines
-
-
-def test_a_machine_that_affords_exactly_one_worker_says_so():
-    # Derived, NOT a pin (see affordable_for): the bound is under test.
-    edge = threshold_for(1, percent=pool.DEFAULT_HEADROOM_PERCENT)
-    plan = _plan(edge, ceiling=64)
-    assert plan.workers == 1
-    assert plan.bound is pool.Bound.AVAILABLE_MEMORY
 
 
 def test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it_is():
@@ -533,6 +493,7 @@ def test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it
     edge = threshold_for(1, percent=pool.DEFAULT_HEADROOM_PERCENT)
     affords_one = _plan(edge, ceiling=64)
     affords_none = _plan(edge - 1, ceiling=64)
+    _expect(affords_one, workers=1, bound=pool.Bound.AVAILABLE_MEMORY)
     assert affords_one.workers == affords_none.workers == 1
     assert affords_one.bound is not affords_none.bound
     assert affords_none.bound is pool.Bound.INSUFFICIENT_MEMORY
@@ -542,41 +503,36 @@ def test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it
 # The other two bounds, and the refusals
 
 
-def test_the_item_count_bounds_the_pool_so_no_child_is_started_with_nothing_to_do():
-    plan = _plan(64 * GIB, items=3, ceiling=64)
-    assert plan.workers == 3
-    assert plan.bound is pool.Bound.WORK_ITEMS
+@pytest.mark.parametrize(
+    "items,expected",
+    [
+        (3, dict(workers=3, bound=pool.Bound.WORK_ITEMS)),
+        (0, dict(workers=1, in_process=True, bound=pool.Bound.WORK_ITEMS)),
+        (1, dict(in_process=True)),
+    ],
+    ids=["no-child-started-with-nothing-to-do", "no-work-is-one-not-zero", "one-item-in-process"],
+)
+def test_the_item_count_bounds_the_pool(items, expected):
+    """No child starts with nothing to do, and zero items is one worker: a pool of zero hangs."""
+    _expect(_plan(64 * GIB, items=items, ceiling=64), **expected)
 
 
-def test_no_work_at_all_plans_one_in_process_worker_rather_than_zero():
-    """Zero items must not become zero workers. A pool of zero never returns."""
-    plan = _plan(64 * GIB, items=0, ceiling=64)
-    assert plan.workers == 1
-    assert plan.in_process is True
-    assert plan.bound is pool.Bound.WORK_ITEMS
-
-
-def test_one_item_runs_in_process():
-    plan = _plan(64 * GIB, items=1, ceiling=64)
-    assert plan.in_process is True
-
-
-def test_the_platform_limit_bounds_the_pool_where_the_platform_has_one():
-    """A platform limit reaches the arithmetic, since windows raises above a fixed width."""
+@pytest.mark.parametrize(
+    "limit,worker_bytes,workers,bound",
+    [
+        (61, 1 * MIB, 61, pool.Bound.PLATFORM_LIMIT),
+        (None, 1 * GIB, affordable_for(64 * GIB), pool.Bound.AVAILABLE_MEMORY),
+    ],
+    ids=["a-platform-limit-bounds-the-pool", "no-limit-contributes-nothing"],
+)
+def test_the_platform_limit_bounds_the_pool_where_the_platform_has_one(
+    limit, worker_bytes, workers, bound
+):
+    """Windows raises above a fixed width; no limit is absent, never a sentinel that loses."""
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(pool, "platform_worker_ceiling", lambda: 61)
-        plan = _plan(64 * GIB, worker_bytes=1 * MIB, items=10_000, ceiling=1024)
-    assert plan.workers == 61
-    assert plan.bound is pool.Bound.PLATFORM_LIMIT
-
-
-def test_a_platform_with_no_limit_contributes_nothing_to_the_arithmetic():
-    """Absent, never a huge sentinel. A sentinel that always loses is never checked."""
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(pool, "platform_worker_ceiling", lambda: None)
-        plan = _plan(64 * GIB, worker_bytes=1 * GIB, items=10_000, ceiling=1024)
-    assert plan.workers == affordable_for(64 * GIB)
-    assert plan.bound is pool.Bound.AVAILABLE_MEMORY
+        patch.setattr(pool, "platform_worker_ceiling", lambda: limit)
+        plan = _plan(64 * GIB, worker_bytes=worker_bytes, items=10_000, ceiling=1024)
+    _expect(plan, workers=workers, bound=bound)
 
 
 def test_the_platform_limit_is_the_real_one_for_the_platform_running_this():
@@ -608,9 +564,7 @@ def test_an_impossible_request_refuses_rather_than_being_repaired(arguments):
 
 def test_a_plan_reports_what_it_measured_and_what_decided_it():
     plan = _plan(16 * GIB)
-    assert plan.available_bytes == 16 * GIB
-    assert plan.worker_bytes == WORKER
-    assert plan.items == 500
+    _expect(plan, available_bytes=16 * GIB, worker_bytes=WORKER, items=500)
     assert "2 workers" in plan.explain()
     assert pool.BOUND_PHRASES[pool.Bound.CEILING] in plan.explain()
 
@@ -659,19 +613,22 @@ def test_a_plan_says_how_many_generations_of_children_its_work_takes(items, gene
 
 
 def test_an_in_process_plan_runs_no_generations_at_all():
-    plan = _plan(2 * GIB)
-    assert plan.in_process is True
-    assert plan.tasks_per_generation is None
-    assert plan.generations == 0
+    _expect(_plan(2 * GIB), in_process=True, tasks_per_generation=None, generations=0)
 
 
 def test_a_pool_that_never_retires_a_child_is_one_generation():
     plan = _plan(64 * GIB, items=10_000, ceiling=4, max_tasks_per_child=None)
-    assert plan.tasks_per_generation is None
-    assert plan.generations == 1
+    _expect(plan, tasks_per_generation=None, generations=1)
 
 
 # The probe
+
+
+def _probed(answer: object, floor_bytes: int) -> int:
+    """What the probe reports when its runner answers ``answer`` over this floor."""
+    return pool.measure_worker_bytes(
+        lambda: None, floor_bytes=floor_bytes, runner=lambda _loader: answer
+    )
 
 
 @pytest.mark.parametrize(
@@ -681,10 +638,7 @@ def test_a_pool_that_never_retires_a_child_is_one_generation():
 )
 def test_the_probe_reports_its_measure_and_never_below_the_floor(answered, reported):
     """The floor is a floor, not a fallback: a working worker allocates past its load."""
-    measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: answered
-    )
-    assert measured == reported
+    assert _probed(answered, 1 * GIB) == reported
 
 
 @pytest.mark.parametrize(
@@ -693,10 +647,7 @@ def test_the_probe_reports_its_measure_and_never_below_the_floor(answered, repor
     ids=["zero", "negative", "none", "text", "float", "bool"],
 )
 def test_a_probe_that_answers_with_nonsense_returns_the_floor(outcome):
-    measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=512 * MIB, runner=lambda _loader: outcome
-    )
-    assert measured == 512 * MIB
+    assert _probed(outcome, 512 * MIB) == 512 * MIB
 
 
 def test_a_probe_that_fails_returns_the_floor_rather_than_propagating():
@@ -706,25 +657,21 @@ def test_a_probe_that_fails_returns_the_floor_rather_than_propagating():
     assert pool.measure_worker_bytes(lambda: None, floor_bytes=777, runner=broken) == 777
 
 
-def test_a_probe_floor_below_one_byte_refuses():
+@pytest.mark.parametrize(
+    "arguments",
+    [dict(floor_bytes=0, runner=lambda _loader: 1), dict(floor_bytes=1, timeout_seconds=0)],
+    ids=["a-floor-below-one-byte", "no-time-to-answer"],
+)
+def test_a_probe_asked_for_the_impossible_refuses_rather_than_reporting_the_floor(arguments):
+    """A floor under one byte or a timeout of zero is a caller mistake, and raises."""
     with pytest.raises(ValueError):
-        pool.measure_worker_bytes(lambda: None, floor_bytes=0, runner=lambda _loader: 1)
-
-
-def test_a_probe_with_no_time_to_answer_refuses_rather_than_reporting_the_floor():
-    """A timeout of zero is a caller mistake and raises, rather than reporting the floor."""
-    with pytest.raises(ValueError):
-        pool.measure_worker_bytes(lambda: None, floor_bytes=1, timeout_seconds=0)
+        pool.measure_worker_bytes(lambda: None, **arguments)
 
 
 def test_a_measured_worker_size_flows_into_the_plan_it_was_taken_for():
     """Measuring and planning are one decision: the measured size is the one planned against."""
-    worker_bytes = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=512 * MIB, runner=lambda _loader: 2 * GIB
-    )
-    plan = _plan(16 * GIB, worker_bytes=worker_bytes, ceiling=64)
-    assert plan.worker_bytes == 2 * GIB
-    assert plan.workers == affordable_for(16 * GIB, worker_bytes=2 * GIB)
+    plan = _plan(16 * GIB, worker_bytes=_probed(2 * GIB, 512 * MIB), ceiling=64)
+    _expect(plan, worker_bytes=2 * GIB, workers=affordable_for(16 * GIB, worker_bytes=2 * GIB))
 
 
 # Real processes. Only where nothing else can answer the question.
@@ -965,9 +912,7 @@ def test_recycling_is_on_by_default_for_any_pool_wider_than_one():
 def test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model():
     """No worker crosses a generation boundary, and every one is initialized."""
     plan = _plan(16 * GIB, items=4, ceiling=2, max_tasks_per_child=1)
-    assert plan.workers == 2
-    assert plan.tasks_per_generation == 2
-    assert plan.generations == 2
+    _expect(plan, workers=2, tasks_per_generation=2, generations=2)
     results = pool.map_workers(
         plan, _report, range(4), initializer=_load, initargs=("reloaded",)
     )
@@ -987,25 +932,19 @@ def test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model
 # the deadlock, run where a hang cannot take the suite with it
 # The executor's own counter blocks forever, so a watchdog firing IS the failure.
 
-_REPRODUCTION = '''\
-"""A run above the recycle threshold, at a width and a counter given on the command line."""
-
+#: What both scripts share: a calm machine and a plan of a given width, counter and size.
+_SCRIPT_HEAD = '''\
 import sys
 
 from cratekit.core import pool
-
-
-def double(value):
-    return value * 2
 
 
 def calm():
     return pool.Pressure(swap_used_bytes=0, used_percent=1.0)
 
 
-def main():
-    workers, tasks, items = (int(argument) for argument in sys.argv[1:4])
-    plan = pool.plan_pool(
+def plan_of(workers, tasks, items):
+    return pool.plan_pool(
         worker_bytes=1,
         items=items,
         ceiling=workers,
@@ -1013,17 +952,31 @@ def main():
         read_available=lambda: 64 * 1024 ** 3,
         read_pressure=calm,
     )
+'''
+
+_SCRIPT_FOOT = '''
+
+if __name__ == "__main__":
+    main()
+'''
+
+#: A run above the recycle threshold, at a width and a counter given on the command line.
+_REPRODUCTION = _SCRIPT_HEAD + '''
+
+def double(value):
+    return value * 2
+
+
+def main():
+    workers, tasks, items = (int(argument) for argument in sys.argv[1:4])
+    plan = plan_of(workers, tasks, items)
     assert plan.workers == workers, plan
     assert plan.max_tasks_per_child == tasks, plan
     assert items > workers * tasks, "the fixture is below the threshold it exists to cross"
     results = pool.map_workers(plan, double, range(items))
     assert results == [value * 2 for value in range(items)], "wrong results or wrong order"
     print(len(results))
-
-
-if __name__ == "__main__":
-    main()
-'''
+''' + _SCRIPT_FOOT
 
 #: Generous by two orders of magnitude: the healthy worst case takes a tenth of a second.
 _WATCHDOG_SECONDS = 90
@@ -1058,11 +1011,8 @@ def test_work_above_the_recycle_threshold_finishes(tmp_path, workers, tasks, ite
     assert finished.stdout.strip() == str(items)
 
 
-_A_CHILD_THAT_DIES = '''\
-"""A run in which one child is taken down mid task, above the generation boundary."""
-
-from cratekit.core import pool
-
+#: A run in which one child is taken down mid task, above the generation boundary.
+_A_CHILD_THAT_DIES = _SCRIPT_HEAD + '''
 
 def double_but_die_on_the_fourth(value):
     if value == 3:
@@ -1072,19 +1022,8 @@ def double_but_die_on_the_fourth(value):
     return value * 2
 
 
-def calm():
-    return pool.Pressure(swap_used_bytes=0, used_percent=1.0)
-
-
 def main():
-    plan = pool.plan_pool(
-        worker_bytes=1,
-        items=8,
-        ceiling=2,
-        max_tasks_per_child=2,
-        read_available=lambda: 64 * 1024 ** 3,
-        read_pressure=calm,
-    )
+    plan = plan_of(2, 2, 8)
     assert plan.workers == 2, plan
     assert plan.generations == 2, plan
     try:
@@ -1093,11 +1032,7 @@ def main():
         print(type(failure).__name__)
         return
     print("returned")
-
-
-if __name__ == "__main__":
-    main()
-'''
+''' + _SCRIPT_FOOT
 
 
 def test_a_child_that_dies_mid_generation_ends_the_run_rather_than_hanging(tmp_path):
@@ -1122,12 +1057,20 @@ def _one_plan_in_process_and_one_not() -> tuple[pool.PoolPlan, pool.PoolPlan]:
     return tight, roomy
 
 
-def test_a_function_no_child_could_receive_is_refused_before_anything_runs():
-    """An unpicklable function is refused on a plan of one and of two alike."""
+@pytest.mark.parametrize(
+    "work,options,named",
+    [
+        (lambda item: item * 2, {}, "map_workers"),
+        (_report, {"initializer": _load, "initargs": (lambda: None,)}, "initializer argument 0"),
+    ],
+    ids=["a-function-no-child-could-receive", "an-initializer-argument-no-child-could-receive"],
+)
+def test_what_no_child_could_receive_is_refused_before_anything_runs(work, options, named):
+    """An unpicklable function or initializer argument is refused on a plan of one and two."""
     for plan in _one_plan_in_process_and_one_not():
         with pytest.raises(ValueError) as refusal:
-            pool.map_workers(plan, lambda item: item * 2, range(4))
-        assert "map_workers" in str(refusal.value)
+            pool.map_workers(plan, work, range(4), **options)
+        assert named in str(refusal.value)
 
 
 def test_an_initializer_no_child_could_receive_is_refused_on_the_same_terms():
@@ -1137,16 +1080,6 @@ def test_an_initializer_no_child_could_receive_is_refused_on_the_same_terms():
     with pytest.raises(ValueError) as refusal:
         pool.map_workers(plan, _report, range(4), initializer=loads_here, initargs=("x",))
     assert "initializer" in str(refusal.value)
-
-
-def test_an_initializer_argument_no_child_could_receive_is_refused_on_the_same_terms():
-    """An unpicklable initializer argument is refused on a plan of one and of two alike."""
-    for plan in _one_plan_in_process_and_one_not():
-        with pytest.raises(ValueError) as refusal:
-            pool.map_workers(
-                plan, _report, range(4), initializer=_load, initargs=(lambda: None,)
-            )
-        assert "initializer argument 0" in str(refusal.value)
 
 
 def test_one_raising_item_discards_every_completed_result():
@@ -1419,25 +1352,39 @@ def test_a_cgroup_path_that_is_a_directory_is_no_cap_rather_than_a_crash(
 # which cgroup is THIS process in
 # A namespaced container sits at "/"; a systemd unit's cap is at its own slice path.
 
+_SERVICE = "system.slice/cratekit.service"
+
+
+def _service(tmp_path: Path, limit: int, *, current: str = "0", line: str | None = None):
+    """A mount with a capped systemd service cgroup, and a self file naming it unless told."""
+    root = _hierarchy(tmp_path)
+    (root / _SERVICE).mkdir(parents=True)
+    _version_two(root / _SERVICE, limit=str(limit), current=current)
+    return root, _self_cgroup(tmp_path, f"0::/{_SERVICE}\n" if line is None else line)
+
+
+def _headroom(root: Path, tmp_path: Path, line: str) -> int | None:
+    """The headroom under ``root`` for a process whose self file reads ``line``."""
+    return pool.cgroup_memory_headroom_bytes(root, self_cgroup=_self_cgroup(tmp_path, line))
+
+
+def _plan_inside(root: Path, where: Path, worker_bytes: int) -> pool.PoolPlan:
+    """``plan_pool`` on the real available reading under this mount and self file."""
+    def read() -> int:
+        return pool.available_bytes(cgroup_root=root, cgroup_self=where)
+    return pool.plan_pool(worker_bytes=worker_bytes, items=500, ceiling=64, read_available=read)
+
 
 def test_a_cap_on_a_nested_cgroup_is_read_rather_than_the_empty_root(tmp_path):
     """The systemd shape, which reading the root alone cannot see at all."""
-    root = _hierarchy(tmp_path)
-    unit = root / "system.slice" / "cratekit.service"
-    unit.mkdir(parents=True)
-    _version_two(unit, limit=str(4 * GIB), current=str(1 * GIB))
-    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    root, where = _service(tmp_path, 4 * GIB, current=str(1 * GIB))
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 3 * GIB
 
 
 def test_the_tightest_cap_on_the_chain_is_the_one_that_binds(tmp_path):
     """A cgroup nested inside another is held by both, and the tightest cap binds."""
-    root = _hierarchy(tmp_path)
-    unit = root / "system.slice" / "cratekit.service"
-    unit.mkdir(parents=True)
-    _version_two(unit.parent, limit=str(2 * GIB), current="0")
-    _version_two(unit, limit=str(8 * GIB), current="0")
-    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    root, where = _service(tmp_path, 8 * GIB)
+    _version_two((root / _SERVICE).parent, limit=str(2 * GIB), current="0")
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 2 * GIB
 
 
@@ -1445,21 +1392,18 @@ def test_a_namespaced_container_sits_at_the_root_and_reads_what_it_always_read(t
     """The common Docker case, unchanged, which is the half a walk could break."""
     root = _hierarchy(tmp_path)
     _version_two(root, limit=str(512 * MIB), current=str(64 * MIB))
-    where = _self_cgroup(tmp_path, "0::/\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+    assert _headroom(root, tmp_path, "0::/\n") == 448 * MIB
 
 
 def test_the_older_layout_is_walked_from_this_processs_own_path_too(tmp_path):
     """Version one is walked from this process's path, with a comma separated controller field."""
     root = _hierarchy(tmp_path)
-    unit = root / "memory" / "system.slice" / "cratekit.service"
+    unit = root / "memory" / _SERVICE
     unit.mkdir(parents=True)
     (unit / "memory.limit_in_bytes").write_text(str(2 * GIB))
     (unit / "memory.usage_in_bytes").write_text(str(512 * MIB))
-    where = _self_cgroup(
-        tmp_path, "9:cpu,memory:/system.slice/cratekit.service\n12:pids:/\n"
-    )
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 1536 * MIB
+    line = f"9:cpu,memory:/{_SERVICE}\n12:pids:/\n"
+    assert _headroom(root, tmp_path, line) == 1536 * MIB
 
 
 @pytest.mark.parametrize(
@@ -1474,8 +1418,7 @@ def test_a_controller_field_that_merely_contains_the_word_memory_is_not_it(tmp_p
     stranger.mkdir(parents=True)
     (stranger / "memory.limit_in_bytes").write_text(str(64 * MIB))
     (stranger / "memory.usage_in_bytes").write_text("0")
-    where = _self_cgroup(tmp_path, line)
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+    assert _headroom(root, tmp_path, line) is None, (
         "a controller name merely containing memory was read as the memory controller"
     )
 
@@ -1490,14 +1433,18 @@ def test_a_machine_with_no_proc_file_at_all_reads_the_root_it_was_given(tmp_path
     )
 
 
+def _a_capped_directory(parent: Path, name: str) -> Path:
+    """A directory under ``parent`` holding a 64 MiB version two cap, nothing used."""
+    directory = parent / name
+    directory.mkdir()
+    return _version_two(directory, limit=str(64 * MIB), current="0")
+
+
 def test_a_cgroup_path_that_climbs_out_of_the_mount_is_not_followed(tmp_path):
     """A cgroup path with ``..`` is not followed out of the mount."""
     root = _hierarchy(tmp_path)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    _version_two(outside, limit=str(64 * MIB), current="0")
-    where = _self_cgroup(tmp_path, "0::/../outside\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None
+    _a_capped_directory(tmp_path, "outside")
+    assert _headroom(root, tmp_path, "0::/../outside\n") is None
 
 
 @pytest.mark.parametrize(
@@ -1508,11 +1455,8 @@ def test_a_cgroup_path_that_climbs_out_of_the_mount_is_not_followed(tmp_path):
 def test_a_climb_that_lands_on_a_real_cgroup_inside_the_mount_is_refused_too(tmp_path, line):
     """A path with ``..`` is refused even when it lands on a real cgroup inside the mount."""
     root = _hierarchy(tmp_path)
-    sibling = root / "sibling"
-    sibling.mkdir()
-    _version_two(sibling, limit=str(64 * MIB), current="0")
-    where = _self_cgroup(tmp_path, line)
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+    _a_capped_directory(root, "sibling")
+    assert _headroom(root, tmp_path, line) is None, (
         "a cgroup this process is not in was read as its own"
     )
 
@@ -1521,11 +1465,8 @@ def test_a_climb_still_leaves_the_mounts_own_cap_readable(tmp_path):
     """Refusing a climbing path still reads the mount's own cap, an ancestor's cap that binds."""
     root = _hierarchy(tmp_path)
     _version_two(root, limit=str(512 * MIB), current=str(64 * MIB))
-    sibling = root / "sibling"
-    sibling.mkdir()
-    _version_two(sibling, limit=str(64 * MIB), current="0")
-    where = _self_cgroup(tmp_path, "0::/../sibling\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+    _a_capped_directory(root, "sibling")
+    assert _headroom(root, tmp_path, "0::/../sibling\n") == 448 * MIB
 
 
 # the walk really staying inside the mount, rather than spelling it
@@ -1534,24 +1475,26 @@ def test_a_climb_still_leaves_the_mounts_own_cap_readable(tmp_path):
 # is read at an assumed location" records the mount point as assumed.
 
 
+def _an_uncapped_mount(tmp_path: Path) -> Path:
+    """A mount point that declares no cap of its own."""
+    return _version_two(_hierarchy(tmp_path), limit="max", current="0")
+
+
 def test_a_component_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
     """A path component that symlinks out of the mount is not read as a level."""
-    root = _hierarchy(tmp_path)
-    _version_two(root, limit="max", current="0")
+    root = _an_uncapped_mount(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
     _version_two(outside, limit=str(4 * MIB), current="0")
     (root / "sneaky").symlink_to(outside, target_is_directory=True)
-    where = _self_cgroup(tmp_path, "0::/sneaky\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+    assert _headroom(root, tmp_path, "0::/sneaky\n") is None, (
         "a cap outside the mount was read through a path that never spells a climb"
     )
 
 
 def test_a_limit_file_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
     """A limit file that symlinks out of the mount is not read either."""
-    root = _hierarchy(tmp_path)
-    _version_two(root, limit="max", current="0")
+    root = _an_uncapped_mount(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "memory.max").write_text(str(4 * MIB))
@@ -1559,31 +1502,28 @@ def test_a_limit_file_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
     unit.mkdir()
     (unit / "memory.max").symlink_to(outside / "memory.max")
     (unit / "memory.current").write_text("0")
-    where = _self_cgroup(tmp_path, "0::/cratekit.service\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None, (
+    assert _headroom(root, tmp_path, "0::/cratekit.service\n") is None, (
         "a cap file outside the mount was read through a directory that was inside it"
     )
 
 
 def test_a_symlink_that_stays_inside_the_mount_is_still_read(tmp_path):
     """A symlink that lands inside the mount is still read; containment is not a link ban."""
-    root = _hierarchy(tmp_path)
-    _version_two(root, limit="max", current="0")
+    root = _an_uncapped_mount(tmp_path)
     real = root / "real.service"
     real.mkdir()
     _version_two(real, limit=str(512 * MIB), current=str(64 * MIB))
     (root / "link.service").symlink_to(real, target_is_directory=True)
-    where = _self_cgroup(tmp_path, "0::/link.service\n")
-    assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
+    assert _headroom(root, tmp_path, "0::/link.service\n") == 448 * MIB
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        "0::/system.slice/cratekit.service\n\n",
-        "0::/system.slice/cratekit.service\n0:",
-        "overlayfs\n0::/system.slice/cratekit.service\n",
-        "\n0::/system.slice/cratekit.service\n",
+        f"0::/{_SERVICE}\n\n",
+        f"0::/{_SERVICE}\n0:",
+        f"overlayfs\n0::/{_SERVICE}\n",
+        f"\n0::/{_SERVICE}\n",
     ],
     ids=["a-trailing-blank-line", "a-short-read", "a-line-with-no-colon", "a-leading-blank"],
 )
@@ -1591,25 +1531,15 @@ def test_a_line_this_reader_cannot_parse_is_skipped_rather_than_raised_out_of(
     tmp_path, monkeypatch, text
 ):
     """An unparsable cgroup line is skipped, not raised into MEMORY_UNREADABLE."""
-    root = _hierarchy(tmp_path)
-    unit = root / "system.slice" / "cratekit.service"
-    unit.mkdir(parents=True)
-    _version_two(unit, limit=str(4 * GIB), current="0")
-    where = _self_cgroup(tmp_path, text)
+    root, where = _service(tmp_path, 4 * GIB, line=text)
     _host_reads(monkeypatch, available=512 * GIB)
 
     assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 4 * GIB
-    plan = pool.plan_pool(
-        worker_bytes=256 * MIB,
-        items=500,
-        ceiling=64,
-        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
-    )
+    plan = _plan_inside(root, where, 256 * MIB)
     assert plan.bound is pool.Bound.AVAILABLE_MEMORY, (
         f"one unparsable line turned a readable 4 GiB cap into {plan.bound}"
     )
-    assert plan.available_bytes == 4 * GIB
-    assert plan.workers == 4
+    _expect(plan, available_bytes=4 * GIB, workers=4)
 
 
 @pytest.mark.parametrize(
@@ -1628,35 +1558,19 @@ def test_a_kernel_file_that_is_not_readable_as_text_is_an_absent_reading(
 
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) is None
     assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 8 * GIB
-    plan = pool.plan_pool(
-        worker_bytes=256 * MIB,
-        items=500,
-        ceiling=64,
-        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
-    )
-    assert plan.bound is pool.Bound.AVAILABLE_MEMORY
+    assert _plan_inside(root, where, 256 * MIB).bound is pool.Bound.AVAILABLE_MEMORY
 
 
 def test_a_capped_service_on_a_huge_host_is_sized_by_the_service(tmp_path, monkeypatch):
     """A 4 GiB service on a 512 GiB host is sized by the service, end to end."""
-    root = _hierarchy(tmp_path)
-    unit = root / "system.slice" / "cratekit.service"
-    unit.mkdir(parents=True)
-    _version_two(unit, limit=str(4 * GIB), current="0")
-    where = _self_cgroup(tmp_path, "0::/system.slice/cratekit.service\n")
+    root, where = _service(tmp_path, 4 * GIB)
     _host_reads(monkeypatch, available=512 * GIB)
 
     assert pool.available_bytes(cgroup_root=root, cgroup_self=where) == 4 * GIB
-    inside = pool.plan_pool(
-        worker_bytes=WORKER,
-        items=500,
-        ceiling=64,
-        read_available=lambda: pool.available_bytes(cgroup_root=root, cgroup_self=where),
-    )
+    inside = _plan_inside(root, where, WORKER)
     host = _plan(512 * GIB, ceiling=64)
     assert host.workers == 64, "the fixture no longer distinguishes the two readings"
-    assert inside.workers == 1
-    assert inside.in_process is True
+    _expect(inside, workers=1, in_process=True)
 
 
 def test_the_two_kernel_paths_the_reader_defaults_to_are_the_ones_the_kernel_uses():
@@ -1673,12 +1587,8 @@ def test_a_container_capped_below_its_host_is_sized_by_the_cap(tmp_path, monkeyp
     assert host_only.workers > 1, "the fixture no longer distinguishes the two readings"
     inside = pool.available_bytes(cgroup_root=tmp_path)
     assert inside == 448 * MIB
-    capped = pool.plan_pool(
-        worker_bytes=WORKER, items=500, ceiling=64, read_available=lambda: inside
-    )
-    assert capped.workers == 1
-    assert capped.in_process is True
-    assert capped.bound is pool.Bound.INSUFFICIENT_MEMORY
+    capped = _plan(inside, ceiling=64)
+    _expect(capped, workers=1, in_process=True, bound=pool.Bound.INSUFFICIENT_MEMORY)
 
 
 def test_an_uncapped_machine_reads_exactly_what_the_platform_reports(tmp_path, monkeypatch):
@@ -1782,18 +1692,13 @@ def _bindings(tree: ast.AST) -> list[tuple[str, ast.AST]]:
     found: list[tuple[str, ast.AST]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
-            for target in node.targets:
-                name = _dotted(target)
-                if name is not None:
-                    found.append((name, _unwrap(node.value)))
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            name = _dotted(node.target)
-            if name is not None:
-                found.append((name, _unwrap(node.value)))
-        elif isinstance(node, ast.NamedExpr):
-            name = _dotted(node.target)
-            if name is not None:
-                found.append((name, _unwrap(node.value)))
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign | ast.NamedExpr) and node.value is not None:
+            targets = [node.target]
+        else:
+            continue
+        for name in filter(None, map(_dotted, targets)):
+            found.append((name, _unwrap(node.value)))
     return found
 
 
@@ -2124,13 +2029,30 @@ def pool_plan_constructions(source: str, *, package: str | None = None) -> list[
     )
 
 
+def _sized(imports: str, prefix: str = "pool.", ceiling: str = "") -> str:
+    """A source that plans through ``plan_pool`` and runs on ``map_workers``, as imported."""
+    return (
+        f"{imports}\ndef run(items, cost):\n"
+        f"    plan = {prefix}plan_pool(worker_bytes=cost, items=len(items){ceiling})\n"
+        f"    return {prefix}map_workers(plan, analyse, items)\n"
+        "def analyse(item):\n    return item\n"
+    )
+
+
+#: The reviewer's evasion, verbatim in shape: the right seam, the wrong number.
+_NINE_BY_HAND = (
+    "from cratekit.core import pool\n"
+    "def run(items):\n"
+    "    plan = pool.PoolPlan(workers=9, items=len(items), bound=pool.Bound.CEILING,\n"
+    "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
+    "                         max_tasks_per_child=100)\n"
+    "    return pool.map_workers(plan, analyse, items)\n"
+    "def analyse(item):\n    return item\n"
+)
+
 PLAN_PROVENANCE_CORRECT = (
     # The shape every caller wants: measured, planned, run.
-    "from cratekit.core import pool\n"
-    "def run(items, cost):\n"
-    "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-    "    return pool.map_workers(plan, analyse, items)\n"
-    "def analyse(item):\n    return item\n",
+    _sized("from cratekit.core import pool"),
     # A plan from a caller, safe because no shipped module may build one.
     "from cratekit.core import pool\n"
     "def run(plan, items):\n    return pool.map_workers(plan, analyse, items)\n"
@@ -2142,17 +2064,9 @@ PLAN_PROVENANCE_CORRECT = (
     "from elsewhere import PoolPlan\n"
     "def run():\n    return PoolPlan(workers=9)\n",
     # A sibling inside cratekit/core, in the relative shape such a module writes.
-    "from . import pool\n"
-    "def run(items, cost):\n"
-    "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-    "    return pool.map_workers(plan, analyse, items)\n"
-    "def analyse(item):\n    return item\n",
+    _sized("from . import pool"),
     # The same through an ancestor package, which is ordinary idiom.
-    "from cratekit import core\n"
-    "def run(items, cost):\n"
-    "    plan = core.pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-    "    return core.pool.map_workers(plan, analyse, items)\n"
-    "def analyse(item):\n    return item\n",
+    _sized("from cratekit import core", "core.pool."),
 )
 
 def _typed_plan(imports: str, constructor: str, run: str = "run(items)") -> str:
@@ -2164,14 +2078,7 @@ def _typed_plan(imports: str, constructor: str, run: str = "run(items)") -> str:
 
 
 PLAN_PROVENANCE_EVASIONS = (
-    # The reviewer's evasion, verbatim in shape: the right seam, the wrong number.
-    "from cratekit.core import pool\n"
-    "def run(items):\n"
-    "    plan = pool.PoolPlan(workers=9, items=len(items), bound=pool.Bound.CEILING,\n"
-    "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
-    "                         max_tasks_per_child=100)\n"
-    "    return pool.map_workers(plan, analyse, items)\n"
-    "def analyse(item):\n    return item\n",
+    _NINE_BY_HAND,
     # The same with the count taken from the cores.
     "import os\n"
     "from cratekit.core import pool\n"
@@ -2379,14 +2286,7 @@ def analysis_sizing_violations(
     return problems
 
 
-_ANALYSIS_LIGHT = (
-    "light.py",
-    "from cratekit.core import pool\n"
-    "def run(items, cost):\n"
-    "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-    "    return pool.map_workers(plan, analyse, items)\n"
-    "def analyse(item):\n    return item\n",
-)
+_ANALYSIS_LIGHT = ("light.py", _sized("from cratekit.core import pool"))
 
 
 def _light_and(name: str, source: str) -> list[tuple[str, str]]:
@@ -2396,14 +2296,7 @@ def _light_and(name: str, source: str) -> list[tuple[str, str]]:
 
 ANALYSIS_CORRECT = (
     # Two passes, each sizing itself through the seam.
-    _light_and(
-        "vocals.py",
-        "from cratekit.core import pool\n"
-        "def run(items, cost):\n"
-        "    plan = pool.plan_pool(worker_bytes=cost, items=len(items), ceiling=2)\n"
-        "    return pool.map_workers(plan, analyse, items)\n"
-        "def analyse(item):\n    return item\n",
-    ),
+    _light_and("vocals.py", _sized("from cratekit.core import pool", ceiling=", ceiling=2")),
     # One pass plans, a shared runner runs. Split across modules and still correct.
     _light_and(
         "shared.py",
@@ -2412,25 +2305,10 @@ ANALYSIS_CORRECT = (
         "    return pool.map_workers(plan, analyse, items)\n",
     ),
     # Correctly sized through an ancestor package, once falsely accused (P7).
-    [("light.py",
-      "from cratekit import core\n"
-      "def run(items, cost):\n"
-      "    plan = core.pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-      "    return core.pool.map_workers(plan, analyse, items)\n"
-      "def analyse(item):\n    return item\n")],
+    [("light.py", _sized("from cratekit import core", "core.pool."))],
     # The same relatively, as two packages so neither shape covers for the other.
-    [("light.py",
-      "from ..core import pool\n"
-      "def run(items, cost):\n"
-      "    plan = pool.plan_pool(worker_bytes=cost, items=len(items))\n"
-      "    return pool.map_workers(plan, analyse, items)\n"
-      "def analyse(item):\n    return item\n")],
-    [("light.py",
-      "from ..core.pool import map_workers, plan_pool\n"
-      "def run(items, cost):\n"
-      "    plan = plan_pool(worker_bytes=cost, items=len(items), ceiling=2)\n"
-      "    return map_workers(plan, analyse, items)\n"
-      "def analyse(item):\n    return item\n")],
+    [("light.py", _sized("from ..core import pool"))],
+    [("light.py", _sized("from ..core.pool import map_workers, plan_pool", "", ", ceiling=2"))],
     # U241's shape: a ceiling from the one core reader, the work run through the stream.
     [("ahead.py",
       "from cratekit.core import cores, pool\n"
@@ -2450,16 +2328,7 @@ ANALYSIS_CORRECT = (
 
 ANALYSIS_EVASIONS = (
     # The verified evasion: one module sized, another hands the seam a plan of nine.
-    _light_and(
-        "vocals.py",
-        "from cratekit.core import pool\n"
-        "def run(items):\n"
-        "    plan = pool.PoolPlan(workers=9, items=len(items), bound=pool.Bound.CEILING,\n"
-        "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
-        "                         max_tasks_per_child=100)\n"
-        "    return pool.map_workers(plan, analyse, items)\n"
-        "def analyse(item):\n    return item\n",
-    ),
+    _light_and("vocals.py", _NINE_BY_HAND),
     # The same with the count taken from the cores, at a spelling once unchecked here.
     _light_and(
         "vocals.py",
@@ -2495,16 +2364,7 @@ ANALYSIS_EVASIONS = (
         "def analyse(item):\n    return item\n",
     ),
     # The hand built plan again, through the stream U241 added.
-    _light_and(
-        "ahead.py",
-        "from cratekit.core import pool\n"
-        "def run(items):\n"
-        "    plan = pool.PoolPlan(workers=9, items=len(items), bound=pool.Bound.CEILING,\n"
-        "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
-        "                         max_tasks_per_child=100)\n"
-        "    return pool.stream_workers(plan, analyse, items)\n"
-        "def analyse(item):\n    return item\n",
-    ),
+    _light_and("ahead.py", _NINE_BY_HAND.replace("pool.map_workers", "pool.stream_workers")),
     # Nothing sizes anything.
     [("light.py",
       "def run(items):\n    return [analyse(item) for item in items]\n"

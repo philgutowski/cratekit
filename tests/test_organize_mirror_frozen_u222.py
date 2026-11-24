@@ -1,8 +1,4 @@
-"""U222: the mirror's apply after a library write between its acts holds the gate's plan.
-
-Sitting 66 on U204's library: the gate freezes, ``mirror-edits`` writes, the decided
-run rebuilds. D1 applies.
-"""
+"""U222: after a library write between the mirror's acts, its apply holds the gate's plan. D1."""
 
 from __future__ import annotations
 

@@ -69,6 +69,11 @@ def _recording(tmp_path: Path, name: str = "REC001.wav", *, seconds: int = 1) ->
     return _synthesize(tmp_path / name, "anullsrc=r=44100:cl=stereo", seconds)
 
 
+def _two_parts(directory: Path) -> tuple[Path, Path]:
+    """A recording the player split in two, ``REC001`` then ``REC002``."""
+    return _recording(directory, "REC001.wav"), _recording(directory, "REC002.wav")
+
+
 #: ffmpeg's rendering of each lavfi source, kept so a second request copies it.
 _RENDERED: dict[tuple, bytes] = {}
 
@@ -388,6 +393,17 @@ def _items(job_id: str) -> tuple[jobs.Item, ...]:
         return jobs.items(store, job_id)
 
 
+def _queued_recording(configured) -> tuple[Path, str]:
+    """A real recording in the library, queued, with the job it was queued under."""
+    source = _recording(configured.library.root)
+    return source, _queued(source)
+
+
+def _job_state(job_id: str) -> jobs.JobState:
+    with jobs.open_store() as store:
+        return jobs.get(store, job_id).state
+
+
 def test_queueing_a_recording_gives_the_driver_one_item_to_claim(configured):
     """Without this the queue holds a job with nothing in it."""
     source = configured.library.root / "REC001.wav"
@@ -416,29 +432,23 @@ def test_a_queued_recording_runs_from_pending_to_done_through_the_resume_branch(
     configured, monkeypatch
 ):
     """The whole point of U46. Read from the store, not from the exit code."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
+    source, job_id = _queued_recording(configured)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
-
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code == int(ExitCode.OK), envelope
     item = _items(job_id)[0]
     assert item.state == jobs.ItemState.DONE
     assert item.artifact == str(mastering.output_path(source))
     assert Path(item.artifact).is_file()
-    with jobs.open_store() as store:
-        assert jobs.get(store, job_id).state is jobs.JobState.SUCCEEDED
+    assert _job_state(job_id) is jobs.JobState.SUCCEEDED
 
 
 def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_place(
     configured, monkeypatch
 ):
     """The staging directory is why a killed encode does not poison the resume."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
+    source, job_id = _queued_recording(configured)
     seen: list[str] = []
-
     encoder = _encoder()
 
     def watching(command):
@@ -447,23 +457,19 @@ def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_pla
 
     monkeypatch.setattr(mastering, "subprocess_runner", watching)
     _drive(["master", str(source), "--job", job_id])
-
     assert any(master_cli.MASTER_STAGING_DIRNAME in target for target in seen), seen
     assert str(mastering.output_path(source)) not in seen, "the encode aimed at the destination"
 
 
 def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(configured, monkeypatch):
     """The failure that made a killed master job permanently unresumable."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
+    source, job_id = _queued_recording(configured)
     final = mastering.output_path(source)
     stale = final.parent / master_cli.MASTER_STAGING_DIRNAME / job_id / "0"
     stale.mkdir(parents=True)
     (stale / final.name).write_bytes(b"half an encode")
-
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code == int(ExitCode.OK), envelope
     assert _items(job_id)[0].state == jobs.ItemState.DONE
 
@@ -472,16 +478,13 @@ def test_a_missing_recording_reports_the_engines_own_cause_on_the_item(configure
     """Closes the half of R-191 that a driven job can close."""
     source = configured.library.root / "nope.wav"
     job_id = _queued(source)
-
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "no-evidence"
     item = _items(job_id)[0]
     assert item.state == jobs.ItemState.FAILED
     assert item.cause is not None and item.cause.reason == "source-missing"
-    with jobs.open_store() as store:
-        assert jobs.get(store, job_id).state is jobs.JobState.FAILED
+    assert _job_state(job_id) is jobs.JobState.FAILED
 
 
 def test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it(
@@ -555,13 +558,10 @@ def test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect(
     configured, monkeypatch
 ):
     """R-192's drive. Cheap once something calls this path at all."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
-
+    source, job_id = _queued_recording(configured)
     # Through the override the resolver reads, not a stand-in resolver.
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", str(configured.library.root / "no-ffmpeg"))
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code != int(ExitCode.OK)
     item = _items(job_id)[0]
     assert item.cause is not None and item.cause.reason == "encoder-missing"
@@ -571,12 +571,9 @@ def test_an_encode_that_produces_nothing_reaches_the_item_as_the_engines_own_cau
     configured, monkeypatch
 ):
     """An encoder that reports success and writes nothing."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
+    source, job_id = _queued_recording(configured)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder(encode_writes=False))
-
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code != int(ExitCode.OK)
     assert not mastering.output_path(source).exists()
     item = _items(job_id)[0]
@@ -661,15 +658,11 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
     configured, tmp_path, monkeypatch
 ):
     """Drift, driven through the verb's own envelope rather than through the driver."""
-    source = _recording(configured.library.root)
-    job_id = _queued(source)
-
+    source, job_id = _queued_recording(configured)
     config.save(_config(configured.library.root, tmp_path / "moved-staging"))
     config.reset_cache()
-
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     code, envelope = _drive(["master", str(source), "--job", job_id])
-
     assert code == int(ExitCode.OK), envelope
     codes = [warning["code"] for warning in envelope.get("warnings", [])]
     assert "config-drift" in codes, envelope.get("warnings")
@@ -856,12 +849,9 @@ def test_a_split_recording_and_its_target_survive_the_resume_argv(configured):
 
 def test_parts_at_different_sample_rates_refuse_before_anything_is_written(tmp_path):
     """The brief's hazard. A stream copy would not fail, it would lie."""
-    first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.wav")
+    first, second = _two_parts(tmp_path)
     run, seen = _recorder({"REC002.wav": {"sample_rate": "48000"}})
-
     cause = _refused(first, second, runner=run)
-
     assert cause.reason == "source-unsupported"
     assert "48000" in cause.message
     assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
@@ -886,14 +876,11 @@ def test_a_missing_part_refuses_as_missing(tmp_path):
 def test_a_queued_split_recording_lands_as_one_master_through_the_resume(configured, monkeypatch):
     """The whole path a person travels: queue two parts, resume, one master."""
     root = configured.library.root
-    first = _recording(root, "REC001.wav")
-    second = _recording(root, "REC002.wav")
+    first, second = _two_parts(root)
     run, seen = _recorder()
     monkeypatch.setattr(mastering, "subprocess_runner", run)
-
     job_id = _queued(first, str(second), "--lufs", "-12")
     code, envelope = _drive(["master", str(first), str(second), "--lufs=-12", "--job", job_id])
-
     assert code == int(ExitCode.OK), envelope
     assert (root / "REC001_set_mastered.flac").is_file()
     assert not (root / "REC001_mastered.flac").exists()
@@ -906,16 +893,13 @@ def test_a_queued_split_recording_lands_as_one_master_through_the_resume(configu
 def test_an_existing_joined_master_is_refused_on_the_real_destination(configured, monkeypatch):
     """The pre-check before staging names the JOINED master, not part one's."""
     root = configured.library.root
-    first = _recording(root, "REC001.wav")
-    second = _recording(root, "REC002.wav")
+    first, second = _two_parts(root)
     kept = root / "REC001_set_mastered.flac"
     kept.write_bytes(b"a master somebody kept")
     run, seen = _recorder()
     monkeypatch.setattr(mastering, "subprocess_runner", run)
-
     job_id = _queued(first, str(second))
     code, envelope = _drive(["master", str(first), str(second), "--job", job_id])
-
     assert code != int(ExitCode.OK)
     assert _items(job_id)[0].cause.reason == "output-exists"
     assert kept.read_bytes() == b"a master somebody kept"
@@ -929,10 +913,8 @@ def test_an_existing_joined_master_is_refused_on_the_real_destination(configured
 )
 def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
     """Rate alone admitted a mono part, and a 24 bit part beside a 32 bit one."""
-    first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.wav")
+    first, second = _two_parts(tmp_path)
     run, seen = _recorder({"REC002.wav": differs})
-
     assert _refused(first, second, runner=run).reason == "source-unsupported"
     assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
     assert not any("concat" in c.argv for c in seen)
@@ -940,8 +922,7 @@ def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
 
 def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
     """Both are ``s32`` as a sample format, so the codec is the only field that separates them."""
-    first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.wav")
+    first, second = _two_parts(tmp_path)
     same_fmt = {"sample_fmt": "s32"}
     run, _ = _recorder({
         "REC001.wav": {**same_fmt, "codec_name": "pcm_s24le"},
@@ -952,15 +933,13 @@ def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
 
 def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
     """Found by this unit's review."""
-    first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.wav")
+    first, second = _two_parts(tmp_path)
     run, seen = _recorder()
     _master(first, second, runner=run)
     join = next(c for c in seen if "concat" in c.argv)
     assert join.argv[join.argv.index("-rf64") + 1] == "auto"
     drift = next(c for c in seen if "pcm_s24le" in c.argv)
     assert drift.argv[drift.argv.index("-rf64") + 1] == "auto"
-
     # A joined FLAC, in a folder of its own, carries no WAV muxer option.
     (tmp_path / "flac").mkdir()
     first, second = tmp_path / "flac" / "REC001.flac", tmp_path / "flac" / "REC002.flac"
@@ -974,14 +953,11 @@ def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
 
 def test_the_engine_refuses_an_existing_joined_master_before_archiving(tmp_path):
     """The engine's own check, not the handler's pre-check."""
-    first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.wav")
+    first, second = _two_parts(tmp_path)
     (tmp_path / "REC001_set_mastered.flac").write_bytes(b"kept")
     run, seen = _recorder()
-
     with pytest.raises(mastering.MasteringRefused) as excinfo:
         mastering.master_parts([first, second], runner=run)
-
     assert excinfo.value.refusal is mastering.Refusal.OUTPUT_EXISTS
     assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
     assert seen == []

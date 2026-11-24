@@ -63,7 +63,6 @@ DOWNLOAD_SOURCE = REPO_ROOT / "src" / "cratekit" / "acquire" / "download.py"
 FIXED_NOW = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
-
 class Response:
     """The minimum of a client's response object: a status and some headers."""
 
@@ -169,6 +168,15 @@ def run_pool(source, settings, *, pacing=None, sleep=None, **kw) -> DownloadRun:
     )
 
 
+def run_keys(source, settings, *keys: str, **kw) -> DownloadRun:
+    """``run_pool`` over one request per key."""
+    return run_pool(source, settings, requests=requests_for(*keys), **kw)
+
+
+def unjittered(**kw) -> Pacing:
+    """A pacing with no base delay and no jitter, so every sleep is exact."""
+    return Pacing(base_delay_s=0.0, jitter_fraction=0.0, **kw)
+
 
 def test_every_signal_is_classified_as_retrying_stopping_or_inert():
     """Derived, not enumerated (P4): a new signal with no set would fall into the retry branch."""
@@ -227,7 +235,6 @@ def test_the_status_is_read_from_whichever_attribute_the_client_exposes():
     assert status_of(ProviderError("no response")) is None
 
 
-
 @pytest.mark.parametrize(
     "name,value,seconds",
     [("Retry-After", "45", 45.0), ("retry-after", "20", 20.0)],
@@ -270,7 +277,6 @@ def test_no_hint_at_all_reads_as_no_hint_rather_than_as_zero():
 def test_a_nonsense_header_is_ignored_rather_than_guessed_at():
     exc = rate_limited(headers={"Retry-After": "soon"})
     assert retry_hint_seconds(exc, now=FIXED_NOW) is None
-
 
 
 def test_the_default_window_reproduces_the_proven_one():
@@ -317,51 +323,42 @@ def test_a_pacing_policy_refuses_values_that_cannot_mean_anything():
         Pacing(base_delay_s=-1.0)
 
 
-
-@pytest.mark.parametrize("cap", [1, 2, 3])
-def test_the_cap_bounds_simultaneous_acquisitions(tmp_path, cap):
-    """Observed on the double: a barrier forces overlap, so no cap shows a peak of eight."""
+def _overlapping(tmp_path, cap: int, **kw) -> tuple[Instrumented, DownloadRun]:
+    """Eight held fetches at this cap; a barrier released after 0.4 s forces overlap."""
     staging = tmp_path / "staging"
     staging.mkdir()
     settings = AdapterSettings(download_staging=staging, concurrency=cap)
     source = Instrumented(hold=0.05)
-    keys = tuple(f"t{i}" for i in range(8))
-
     timer = threading.Timer(0.4, source.release)
     timer.start()
     try:
-        run = run_pool(source, settings, requests=requests_for(*keys))
+        run = run_keys(source, settings, *[f"t{i}" for i in range(8)], **kw)
     finally:
         timer.cancel()
         source.release()
+    return source, run
 
+
+@pytest.mark.parametrize("cap", [1, 2, 3])
+def test_the_cap_bounds_simultaneous_acquisitions(tmp_path, cap):
+    """Observed on the double: a barrier forces overlap, so no cap shows a peak of eight."""
+    source, run = _overlapping(tmp_path, cap)
     assert source.peak <= cap
     assert run.invocation.outcome is InvocationOutcome.OK
-    assert len(run.invocation.acquired()) == len(keys)
+    assert len(run.invocation.acquired()) == 8
 
 
 def test_an_injected_pool_cannot_widen_the_cap(tmp_path):
     """The semaphore is the invariant: a shared executor must not raise the cap."""
-    staging = tmp_path / "staging"
-    staging.mkdir()
-    settings = AdapterSettings(download_staging=staging, concurrency=2)
-    source = Instrumented(hold=0.05)
-    timer = threading.Timer(0.4, source.release)
-    timer.start()
     with ThreadPoolExecutor(max_workers=8) as pool:
-        try:
-            run_pool(source, settings, requests=requests_for(*[f"t{i}" for i in range(8)]),
-                     executor=pool)
-        finally:
-            timer.cancel()
-            source.release()
+        source, _run = _overlapping(tmp_path, 2, executor=pool)
     assert source.peak <= 2
 
 
 def test_results_come_back_in_request_order_whatever_order_they_finished_in(settings):
     keys = tuple(f"t{i}" for i in range(6))
     paced = AdapterSettings(download_staging=settings.download_staging, concurrency=4)
-    run = run_pool(Instrumented(), paced, requests=requests_for(*keys))
+    run = run_keys(Instrumented(), paced, *keys)
     assert tuple(r.key for r in run.invocation.results) == keys
 
 
@@ -401,15 +398,10 @@ def test_configuration_refuses_a_cap_that_would_acquire_nothing(tmp_path, bad):
     assert any("acquisition.concurrency" in problem for problem in problems), problems
 
 
-
 def test_a_rate_limit_backs_off_and_eventually_succeeds(settings):
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(), rate_limited()]})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0), sleep=sleeps,
-    )
-
+    run = run_keys(source, settings, "t", pacing=unjittered(backoff_base_s=1.0), sleep=sleeps)
     assert run.ok
     assert run.invocation.results[0].outcome is TrackOutcome.ACQUIRED
     assert source.attempts == ["t", "t", "t"]
@@ -420,10 +412,7 @@ def test_the_providers_own_retry_hint_replaces_our_backoff(settings):
     """Honouring the hint is the difference between polite and merely persistent."""
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(headers={"Retry-After": "40"})]})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0), sleep=sleeps,
-    )
+    run = run_keys(source, settings, "t", pacing=unjittered(backoff_base_s=1.0), sleep=sleeps)
     assert run.ok
     assert sleeps.slept == [40.0]
 
@@ -431,10 +420,7 @@ def test_the_providers_own_retry_hint_replaces_our_backoff(settings):
 def test_exhausting_the_attempts_leaves_the_track_requeueable(settings):
     """A throttle that never lifts is transient: permanent feeds quarantine, never re-queued."""
     source = Instrumented(script={"t": [rate_limited()] * 10})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, max_attempts=3),
-    )
+    run = run_keys(source, settings, "t", pacing=unjittered(max_attempts=3))
     assert source.attempts == ["t", "t", "t"]
     assert run.invocation.results[0].outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
     assert run.invocation.requeue_keys() == ("t",)
@@ -445,22 +431,15 @@ def test_a_pacing_delay_is_taken_before_every_acquisition_including_the_first(se
     """At a cap above one, skipping the first delay sends the batch as a burst."""
     sleeps = Recorder()
     paced = AdapterSettings(download_staging=settings.download_staging, concurrency=2)
-    run_pool(
-        Instrumented(), paced, requests=requests_for("a", "b", "c"),
-        pacing=Pacing(base_delay_s=5.0, jitter_fraction=0.0), sleep=sleeps,
-    )
+    pacing = Pacing(base_delay_s=5.0, jitter_fraction=0.0)
+    run_keys(Instrumented(), paced, "a", "b", "c", pacing=pacing, sleep=sleeps)
     assert sleeps.slept == [5.0, 5.0, 5.0]
-
 
 
 def test_a_forbidden_response_stops_immediately_and_does_not_retry(settings):
     sleeps = Recorder()
     source = Instrumented(script={"t": [blocked()] * 10})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, max_attempts=5), sleep=sleeps,
-    )
-
+    run = run_keys(source, settings, "t", pacing=unjittered(max_attempts=5), sleep=sleeps)
     assert source.attempts == ["t"], "a block was retried; that is the lockout"
     assert sleeps.slept == []
     assert run.parked is not None
@@ -473,10 +452,7 @@ def test_a_block_halts_the_tracks_that_had_not_started(settings):
     """"Stops immediately" measured across the queue, not just the one track."""
     source = Instrumented(script={"a": [blocked()]})
     keys = tuple(f"k{i}" for i in range(40))
-    run = run_pool(
-        source, settings, requests=(TrackRequest(key="a"), *requests_for(*keys)),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
-    )
+    run = run_keys(source, settings, "a", *keys, pacing=unjittered())
     assert run.parked is not None
     assert len(source.attempts) < len(keys)
 
@@ -484,10 +460,7 @@ def test_a_block_halts_the_tracks_that_had_not_started(settings):
 def test_a_blocked_run_never_advances_a_watermark_and_never_quarantines(settings):
     """The three behaviours a block requires, asserted on the shipped result."""
     source = Instrumented(script={"a": [blocked()]})
-    run = run_pool(
-        source, settings, requests=requests_for("a", "b"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
-    )
+    run = run_keys(source, settings, "a", "b", pacing=unjittered())
     assert run.invocation.advances_watermark is False
     assert run.invocation.quarantine_keys() == ()
     assert set(run.invocation.requeue_keys()) == {"a", "b"}
@@ -497,10 +470,7 @@ def test_a_blocked_run_never_advances_a_watermark_and_never_quarantines(settings
 def test_a_permanent_verdict_reached_before_a_block_is_softened(settings):
     """A bot wall answers with any status, so a delisted track before a block stays requeueable."""
     source = Instrumented(script={"gone": [ProviderError("404 not found")], "wall": [blocked()]})
-    run = run_pool(
-        source, settings, requests=requests_for("gone", "wall"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
-    )
+    run = run_keys(source, settings, "gone", "wall", pacing=unjittered())
     assert run.parked is not None
     by_key = {r.key: r for r in run.invocation.results}
     assert by_key["gone"].outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
@@ -511,11 +481,8 @@ def test_a_retry_hint_longer_than_the_ceiling_is_a_refusal_wearing_a_wait(settin
     """It parks: sleeping looks hung and truncating is the early retry the hint prevents."""
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(headers={"Retry-After": "86400"})] * 5})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, retry_hint_ceiling_s=900.0),
-        sleep=sleeps,
-    )
+    pacing = unjittered(retry_hint_ceiling_s=900.0)
+    run = run_keys(source, settings, "t", pacing=pacing, sleep=sleeps)
     assert source.attempts == ["t"]
     assert sleeps.slept == []
     assert run.parked is not None
@@ -525,11 +492,7 @@ def test_a_retry_hint_longer_than_the_ceiling_is_a_refusal_wearing_a_wait(settin
 def test_the_parked_cause_is_what_a_job_engine_can_actually_park_on(settings):
     """The U10 seam re-invokes the command line (KTD26), so ``retryable`` survives the JSON."""
     source = Instrumented(script={"t": [blocked()]})
-    run = run_pool(
-        source, settings, requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
-    )
-    cause = run.parked
+    cause = run_keys(source, settings, "t", pacing=unjittered()).parked
     assert cause is not None
     restored = Cause.from_json(cause.to_json())
     assert restored.reason == "provider-blocked"
@@ -569,17 +532,13 @@ def test_a_parked_run_cannot_carry_a_retryable_cause():
         DownloadRun(invocation=broken, parked=retryable)
 
 
-
 def test_two_concurrent_runs_draw_distinct_schedules(settings):
     """Each run gets its own generator; the jitter width prevents a retry storm."""
-    keys = requests_for(*[f"t{i}" for i in range(12)])
-    first = run_pool(
-        Instrumented(), settings, requests=keys, pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
+    keys = [f"t{i}" for i in range(12)]
+    first, second = (
+        run_keys(Instrumented(), settings, *keys, pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S))
+        for _ in range(2)
     )
-    second = run_pool(
-        Instrumented(), settings, requests=keys, pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
-    )
-
     assert len(first.schedule) == len(second.schedule) == len(keys)
     assert sorted(first.schedule) != sorted(second.schedule)
     assert len(set(first.schedule)) == len(keys), "one run repeated a delay"
@@ -589,10 +548,9 @@ def test_two_runs_backing_off_from_the_same_limit_do_not_wake_together(settings)
     """The storm case: a shared limiter hits both runs at the same instant."""
     schedules = []
     for _ in range(2):
-        run = run_pool(
+        run = run_keys(
             Instrumented(script={f"t{i}": [rate_limited()] for i in range(8)}), settings,
-            requests=requests_for(*[f"t{i}" for i in range(8)]),
-            pacing=Pacing(base_delay_s=0.0, backoff_base_s=10.0),
+            *[f"t{i}" for i in range(8)], pacing=Pacing(base_delay_s=0.0, backoff_base_s=10.0),
         )
         schedules.append(sorted(run.schedule))
     assert schedules[0] != schedules[1]
@@ -607,11 +565,10 @@ def test_a_seeded_generator_makes_a_run_reproducible(settings):
     assert sorted(one.schedule) == sorted(two.schedule)
 
 
-
 def test_a_dead_session_at_authentication_reports_auth_failure_not_missing_tracks(settings):
     """AE9. The report that made the source system's outage look like an empty catalogue."""
     source = Instrumented(auth_error=AdapterAuthFailed("session rejected"))
-    run = run_pool(source, settings, requests=requests_for("a", "b"), alternatives=("other",))
+    run = run_keys(source, settings, "a", "b", alternatives=("other",))
     assert run.invocation.outcome is InvocationOutcome.AUTH_FAILED
     assert run.invocation.advances_watermark is False
     assert set(run.invocation.requeue_keys()) == {"a", "b"}
@@ -621,10 +578,7 @@ def test_a_dead_session_at_authentication_reports_auth_failure_not_missing_track
 
 def test_a_session_that_dies_mid_run_stops_the_pool_and_keeps_what_landed(settings):
     source = Instrumented(script={"b": [AdapterAuthFailed("expired")]})
-    run = run_pool(
-        source, settings, requests=requests_for("a", "b", "c"), alternatives=("other",),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
-    )
+    run = run_keys(source, settings, "a", "b", "c", alternatives=("other",), pacing=unjittered())
     assert run.invocation.outcome is InvocationOutcome.AUTH_FAILED
     assert run.invocation.advances_watermark is False
     assert "b" in run.invocation.requeue_keys()
@@ -633,7 +587,7 @@ def test_a_session_that_dies_mid_run_stops_the_pool_and_keeps_what_landed(settin
 def test_a_broken_adapter_reports_breakage_rather_than_a_block(settings):
     """The two failures have different remedies, so they must stay apart."""
     source = Instrumented(auth_error=AdapterBroken("the tool is not installed"))
-    run = run_pool(source, settings, requests=requests_for("a"))
+    run = run_keys(source, settings, "a")
     assert run.invocation.outcome is InvocationOutcome.ADAPTER_BROKEN
     assert run.parked is None
 
@@ -642,7 +596,6 @@ def test_an_empty_request_list_is_a_clean_no_op(settings):
     run = run_pool(Instrumented(), settings, requests=())
     assert run.ok
     assert run.invocation.results == ()
-
 
 
 class Paced(BaseAdapter):
@@ -679,7 +632,6 @@ def test_a_built_adapter_that_cannot_run_reports_the_contract_shape(tmp_path):
     assert run.invocation.outcome is InvocationOutcome.ADAPTER_BROKEN
     assert run.invocation.remedy is Remedy.INSTALL_ADAPTER
     assert run.parked is None
-
 
 
 def test_the_pool_declares_no_second_cap_and_no_second_delay():
