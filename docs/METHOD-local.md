@@ -115,7 +115,8 @@ when a newer release exists and prints the pipx command that upgrades it,
 keeping its extras. No package index, no automatic upgrade, no cadence.
 **The cut is the Mac's**: a cloud session's proxy refuses tag pushes and the
 releases API, so a cloud session plans and judges the bump and hands the cut
-to an attended card, which runs it with `--mac-battery`.
+to an attended card, which runs it with `--mac-battery`, and the green cut
+writes the standing battery's line (below).
 
 ## Local attended work, decided 2026-10-28
 
@@ -144,4 +145,21 @@ writes `main` at any hour:
    the same files, merge `origin/main` in again just before the merge, and
    run the battery once more if it moved.
 4. Close the card with a comment naming the record's commit.
+
+**The standing macOS battery, decided by Phillip on 2026-11-24.** The cloud
+runs on Linux, so the tests bound to the machine (METHOD's battery on
+Linux) run only here. That debt belongs to `main`, not to a unit, and one
+green run settles every merge before the commit it ran on. It is run on a fresh `main` at the start of
+every attended sitting, at every local build before its merge, and by every
+release cut (`--mac-battery`), and recorded in `docs/cutover.md` as one line
+in this form, so the next session finds the last one with a grep:
+
+    macOS battery green at <full sha>: N passed, N skipped, ruff and scan clean
+
+A failure is not recorded as green: the line reads `red` and names each
+failing test id, and each failure is a card by the `file-card` skill. No
+attended card is ever filed for the battery itself (the `cloud-unit` skill's
+rules for filing attended cards). A card still open from before this rule
+whose only owed step is the battery is closed against the line that covers
+its merge; one with a live step keeps the live step only.
 
