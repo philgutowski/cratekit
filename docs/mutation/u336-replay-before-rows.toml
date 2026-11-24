@@ -1,0 +1,373 @@
+name = "u336-replay-before"
+pass_kind = "replay"
+
+[[rows]]
+id = "u297.B10_a_changed_mode_unseen"
+source = { table = "u297.json", id = "B10_a_changed_mode_unseen" }
+description = "compare_files: stop comparing permission bits, so a private file written world readable compares clean"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '        if one.get("mode") != other.get("mode"):'
+new = '        if False:'
+
+[[rows]]
+id = "u297.B11_a_changed_schema_unseen"
+source = { table = "u297.json", id = "B11_a_changed_schema_unseen" }
+description = "compare_databases: compare no declarations, so a table that lost its key, a constraint or an index compares clean"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '            one.get("schema", []), other.get("schema", []), words, limit,'
+new = '            [], [], words, limit,'
+
+[[rows]]
+id = "u297.B1_a_root_outside_the_temporary_directory"
+source = { table = "u297.json", id = "B1_a_root_outside_the_temporary_directory" }
+description = "refuse_outside_temporary: accept any root, so a capture can be pointed at a directory somebody keeps"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    if not is_inside(path, temporary_directory()):'
+new = '    if False:'
+
+[[rows]]
+id = "u297.B2_the_temporary_directory_itself"
+source = { table = "u297.json", id = "B2_the_temporary_directory_itself" }
+description = "is_inside: read a directory as inside itself, so the whole temporary directory can be a capture's root and be emptied"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    return relative != Path(".")'
+new = '    return True'
+
+[[rows]]
+id = "u297.B3_somebodys_directory_emptied"
+source = { table = "u297.json", id = "B3_somebodys_directory_emptied" }
+description = "take_root: take a root, or the source directory beside it, that holds files no capture left"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '        if not left_by_a_capture(folder, holder):'
+new = '        if False:'
+
+[[rows]]
+id = "u297.B4_a_failed_run_closed_as_a_capture"
+source = { table = "u297.json", id = "B4_a_failed_run_closed_as_a_capture" }
+description = "run_capture: write the manifest though the scenario run failed, so a capture missing scenarios reads as finished"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    if done.returncode != 0 or not recorded or missing:'
+new = '    if not recorded or missing:'
+
+[[rows]]
+id = "u297.B5_a_scenario_with_no_record_closed_over"
+source = { table = "u297.json", id = "B5_a_scenario_with_no_record_closed_over" }
+description = "run_capture: close the capture though a scenario the run collected, or a whole scenario file, left no record"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    if done.returncode != 0 or not recorded or missing:'
+new = '    if done.returncode != 0 or not recorded:'
+
+[[rows]]
+id = "u297.B6_any_two_texts_the_same"
+source = { table = "u297.json", id = "B6_any_two_texts_the_same" }
+description = "same_but_for: read any two texts as the same once a capture has a word of its own, so no difference in output, a file or a row is seen"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    return re.fullmatch("".join(pattern), second, flags=re.DOTALL) is not None'
+new = '    return True'
+
+[[rows]]
+id = "u297.B7_a_word_read_inside_a_longer_one"
+source = { table = "u297.json", id = "B7_a_word_read_inside_a_longer_one" }
+description = "same_but_for: drop the leading end of the whole word rule, so a process id is read inside a longer number"
+file = "scripts/behaviour_compare.py"
+surface = "maintainer"
+tests = ["tests/test_behaviour_compare.py"]
+old = '        r"(?<![0-9A-Za-z_])(?:" + "|".join(re.escape(one) for one in longest_first) + r")(?![0-9A-Za-z_])"'
+new = '        r"(?:" + "|".join(re.escape(one) for one in longest_first) + r")(?![0-9A-Za-z_])"'
+
+[[rows]]
+id = "u297.B8_a_changed_exit_code_unseen"
+source = { table = "u297.json", id = "B8_a_changed_exit_code_unseen" }
+description = "compare_commands: stop comparing exit codes"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '            if one["exit"] != other["exit"]:'
+new = '            if False:'
+
+[[rows]]
+id = "u297.B9_a_file_in_one_capture_only_unseen"
+source = { table = "u297.json", id = "B9_a_file_in_one_capture_only_unseen" }
+description = "compare_files: walk only the paths both captures hold, so an extra file and a missing one are never reported"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '    for relative in sorted(set(before) | set(after)):'
+new = '    for relative in sorted(set(before) & set(after)):'
+
+[[rows]]
+id = "u339-composites.C6_census_tombstone"
+source = { table = "u339-composites.json", id = "C6_census_tombstone" }
+description = "scan_rows: a tombstoned row is read as live by the census, the layer M6_tombstone_row's guard sits on (its composite)"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_behaviour_compare.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py"]
+old = '''
+        if row.deleted:
+            continue'''
+new = ''
+
+[[rows]]
+id = "u248.L10_built_before_the_builder"
+source = { table = "u248.json", id = "L10_built_before_the_builder" }
+description = "build: count the verb built before its builder returns, so a builder that failed part way hands on a half built verb"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '''
+            ) from exc
+        self.built = True'''
+new = '''
+            ) from exc
+        self.built = self.built'''
+
+[[rows]]
+id = "u248.L1_lazy_off"
+source = { table = "u248.json", id = "L1_lazy_off" }
+description = "build_parser: build every verb eagerly whatever eager says, so every command imports every verb module again"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cli_lazy.py"]
+old = '''
+        if not eager:
+            sub = target.add_parser(path[-1], help=entry.summary)'''
+new = '''
+        if False:
+            sub = target.add_parser(path[-1], help=entry.summary)'''
+
+[[rows]]
+id = "u248.L2_chosen_never_built"
+source = { table = "u248.json", id = "L2_chosen_never_built" }
+description = "_LazyChoices.__call__: never build the chosen verb, so it parses as an empty subparser with no handler"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cli_lazy.py"]
+old = '''
+        if waiting is not None:
+            waiting.build()'''
+new = '''
+        if waiting is not None:
+            pass'''
+
+[[rows]]
+id = "u248.L3_listing_asks_everyone"
+source = { table = "u248.json", id = "L3_listing_asks_everyone" }
+description = "ask_for_listing: ask every verb, not only those declaring extras, so a group help imports all its verbs"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '        if self.built or self.asked or not self.entry.extras_modules:'
+new = '        if self.built or self.asked:'
+
+[[rows]]
+id = "u248.L4_listing_drops_the_stub_line"
+source = { table = "u248.json", id = "L4_listing_drops_the_stub_line" }
+description = "ask_for_listing: a missing extra no longer makes the stub, so the listing omits (requires the extra)"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py", "tests/test_analysis.py", "tests/test_vocals_cli.py"]
+old = '''
+            if _is_missing_extra(exc, self.entry):
+                self._stub(exc)'''
+new = '''
+            if _is_missing_extra(exc, self.entry):
+                pass'''
+
+[[rows]]
+id = "u248.L5_listing_asked_twice"
+source = { table = "u248.json", id = "L5_listing_asked_twice" }
+description = "ask_for_listing: forget it was asked, so one help screen imports the module twice"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '        self.asked = True'
+new = '        self.asked = False'
+
+[[rows]]
+id = "u248.L6_built_twice"
+source = { table = "u248.json", id = "L6_built_twice" }
+description = "build: drop the built check, so a parser asked twice runs the builder twice and argparse refuses a duplicate option"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''
+        if self.built:
+            return
+        try:
+            try:
+                module = self.importer(self.entry.module)'''
+new = '''
+        try:
+            try:
+                module = self.importer(self.entry.module)'''
+
+[[rows]]
+id = "u248.L7_defect_as_stub"
+source = { table = "u248.json", id = "L7_defect_as_stub" }
+description = "build: treat every import error as a missing extra, so a defect of our own reads as install the extra"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cli_lazy.py"]
+old = '''
+                if not _is_missing_extra(exc, self.entry):
+                    raise
+                self._stub(exc)
+                return'''
+new = '''
+                self._stub(exc)
+                return'''
+
+[[rows]]
+id = "u248.L8_listing_raises_a_defect"
+source = { table = "u248.json", id = "L8_listing_raises_a_defect" }
+description = "ask_for_listing: let a non extra failure escape, so a broken module takes its whole group's help down"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''
+        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
+            pass'''
+new = '''
+        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
+            raise'''
+
+[[rows]]
+id = "u331.S13_doctor_state_loads_the_taxonomy_loader_at_top"
+source = { table = "u331.json", id = "S13_doctor_state_loads_the_taxonomy_loader_at_top" }
+description = "cli/doctor_state: import the active taxonomy loader at the top again, so crate doctor --help loads the foreign tree with it"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''
+from cratekit.core import (
+    config,
+    provider_gate,'''
+new = '''
+from cratekit.core import (
+    active_taxonomy,  # noqa: F401
+    config,
+    provider_gate,'''
+
+[[rows]]
+id = "u328.S1_a_part_left_out_of_the_table"
+source = { table = "u328.json", id = "S1_a_part_left_out_of_the_table" }
+description = "ENTRIES: leave the modules part out of the assembly, so adoption, deletion, export and the utilities are not registered"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_analyze_adopt.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cli_lazy.py", "tests/test_crate_sync_skill.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_docs_current.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_gate_not_reached.py", "tests/test_gate_siblings.py", "tests/test_gate_stale_screen.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_import_rules.py", "tests/test_install_command.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_artists.py", "tests/test_label_heard.py", "tests/test_label_judge.py", "tests/test_label_playlists.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_label_workers.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_organize.py", "tests/test_organize_inspiration.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_pending_units.py", "tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_prune.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_rekordbox_visit_skill.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_restamp_scored_by.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_run_retire.py", "tests/test_schedule.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_setup_discogs.py", "tests/test_sync_all.py", "tests/test_sync_bandcamp.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_sync_mark.py", "tests/test_sync_night.py", "tests/test_sync_removed.py", "tests/test_sync_removed_gone.py", "tests/test_sync_unmark.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_tag_guess.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_second.py", "tests/test_tag_set.py", "tests/test_tag_suggest.py", "tests/test_tag_workers.py", "tests/test_u129_set_account_playlist.py", "tests/test_u242_taken.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+    *MODULE_VERBS,
+'''
+new = ''
+
+[[rows]]
+id = "u43-author-light.R1_marker_restored"
+source = { table = "u43-author-light.json", id = "R1_marker_restored" }
+description = "The planned_in marker is put back on the setbuild entry, which withdraws the verb from every conformance property that only drives landed entries"
+file = "src/cratekit/cli/registry_modules.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '''
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        # Landed (U43).'''
+new = '''
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        planned_in="U35",
+        # Landed (U43).'''
+
+[[rows]]
+id = "u42-author.R1_planned_marker_returns"
+source = { table = "u42-author.json", id = "R1_planned_marker_returns" }
+description = "Restore planned_in on acquire.download, which is the state that hid rows 6 and 7"
+file = "src/cratekit/cli/registry_pipeline.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/cli/registry_pipeline.py, was in src/cratekit/cli/registry.py"
+tests = ["tests/test_cli_contract.py"]
+old = '''
+        destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
+        # Landed (U42).'''
+new = '''
+        destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
+        planned_in="U15",
+        # Landed (U42).'''
+
+[[rows]]
+id = "r395.M11_render_literal"
+source = { table = "r395.json", id = "M11_render_literal" }
+description = "Put the old bare pip literal back in the parser stub"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_install_command.py"]
+old = '    return extras.install_command(entry.extras)'
+new = '''    return f"pip install '{registry.DISTRIBUTION}[{entry.extras}]'"'''
+
+[[rows]]
+id = "r679-a.E1_cli_offers_every_verdict"
+source = { table = "r679-a.json", id = "E1_cli_offers_every_verdict" }
+description = "review resolve: offer the whole enum as --verdict choices"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '        choices=tuple(str(member) for member in review.PERSON_VERDICTS),'
+new = '        choices=tuple(str(member) for member in review.Verdict),'
+
+[[rows]]
+id = "r679-a.A7_person_verdicts_are_all_verdicts"
+source = { table = "r679-a.json", id = "A7_person_verdicts_are_all_verdicts" }
+description = "PERSON_VERDICTS: include the machine's verdict, so the command line offers it"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '    member for member in Verdict if member is not Verdict.SUPERSEDED'
+new = '    member for member in Verdict'
+
+[[rows]]
+id = "u331.S14_upgrade_loads_the_taxonomy_loader_at_top"
+source = { table = "u331.json", id = "S14_upgrade_loads_the_taxonomy_loader_at_top" }
+description = "core/taxonomy_upgrade: import the active taxonomy loader at the top again, so crate doctor --help loads the foreign tree with it"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''
+from cratekit.core import config, taxonomy
+'''
+new = '''
+from cratekit.core import active_taxonomy, config, taxonomy  # noqa: F401
+'''
+
+[[rows]]
+id = "u184.A2_any_actor_accepted"
+source = { table = "u184.json", id = "A2_any_actor_accepted" }
+description = "build_ack: drop the one value restriction, so --as names any actor and is parsed"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py", "tests/test_crate_sync_skill.py", "tests/test_rekordbox_visit_skill.py"]
+old = '        choices=(session.SESSION_ACTOR,),'
+new = '        choices=None,'
+
+[[rows]]
+id = "u297.S1_a_root_outside_the_scenarios_own_directory"
+source = { table = "u297.json", id = "S1_a_root_outside_the_scenarios_own_directory" }
+description = "refuse_a_root_outside: accept a configuration or state directory anywhere in the temporary directory, another test's included"
+file = "tests/behaviour/conftest.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '        if not compare.is_inside(path, scenario_root):'
+new = '        if False:'
