@@ -937,7 +937,16 @@ before the item's row flips to done; durable across kills and refusals.
 ### Left behind
 A membership in a governed playlist the declaration does not place, as a resort
 names it; the engine calls it **unexpected**. A sub the run did not derive is
-unexpected but not left behind. The removal is offered, never instructed.
+unexpected but not left behind, and an **untagged** vocal membership is not
+unexpected. The removal is offered, never instructed.
+
+### Untagged
+A membership in a bucket's vocal sub whose file clears the vocal cut and whose
+row carries no `vox` My Tag (R-2056). The tag files the vocal sub (U127), so
+the declaration does not place it, yet it is not left behind: `converge` names
+it `untagged:` and counts it a difference. Tagging it settles it, by `metadata
+mytags-vocals` for a row that never carried the tag or in rekordbox for one
+whose tag was taken off, as taking it out of the playlist does.
 
 ### Driver
 The job driver: claims items, runs the handler, takes the driver lock, releases

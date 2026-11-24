@@ -40,7 +40,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.write import metadata_cli, rebuild, routing_pass, trees
+from cratekit.write import metadata_cli, rebuild, routing_pass, trees, vox_tag
 from tests import deadca7_fixtures
 from tests.test_active_taxonomy import write_active
 from tests.test_config import valid_data
@@ -543,6 +543,7 @@ def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(rig):
 def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(rig):
     """The additive dimension end to end: the vocal sub is a destination a rebuild creates."""
     cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
     landed = {node.playlist_display for node in rebuild.read_tree(db, str(adopted_root.ID))}
@@ -584,18 +585,234 @@ def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(rig
 def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(rig):
     """"I could not observe" must not reach a person as "take this out" (R-312)."""
     cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=None)
     assert [entry.sub for entry in report.after.unexpected] == [trees.VOX_SUB_CLASS]
     assert rebuild.left_behind(report.after, declared) == ()
 
-    # Calibrated again and below the cut, it is a leftover somebody can act on, and named.
+    # Calibrated again, the tag taken off and below the cut, it is a leftover
+    # somebody can act on, and named.
+    _untag_vox(db, "2")
     quiet = _truth(cfg, declared, PLAIN, voxlevel=0)
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0)
     assert [entry.sub for entry in rebuild.left_behind(report.after, declared)] == [
         trees.VOX_SUB_CLASS
     ]
+
+
+# ── R-2056: the vocal sub is the vox My Tag's on every database path (U127) ──────
+
+
+def _tag_vox(db, content_id: str):
+    """Put the vox My Tag on one row, as the landing and ``metadata mytags-vocals`` do."""
+    value = rb_writer.ensure_my_tag_value(db, vox_tag.CATEGORY, vox_tag.VALUE_VOX)
+    rb_writer.add_my_tag(db, value, content_id)
+    db.session.commit()
+
+
+def _untag_vox(db, content_id: str) -> None:
+    """Take the tag off as rekordbox does, by marking the association removed (R-758)."""
+    from pyrekordbox.db6 import tables
+
+    for row in db.session.query(tables.DjmdSongMyTag).filter_by(ContentID=content_id):
+        row.rb_local_deleted = 1
+    db.session.commit()
+
+
+def _vocal_members(db, adopted_root, declared) -> frozenset[str]:
+    sub = declared.sub_class(trees.VOX_SUB_CLASS).display
+    found = frozenset()
+    for node in rebuild.read_tree(db, str(adopted_root.ID)):
+        if node.playlist_display == sub:
+            found |= node.content_ids
+    return found
+
+
+def test_a_tagged_track_under_the_cut_is_filed_and_is_never_read_as_a_leftover(rig):
+    """The Sworn Virgins shape: adoption filed it by its tag, and the check must agree."""
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    quiet = _truth(cfg, declared, PLAIN, voxlevel=0)
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0)
+    assert [entry.sub for entry in report.before.missing if entry.sub == trees.VOX_SUB_CLASS] == [
+        trees.VOX_SUB_CLASS
+    ]
+    assert _vocal_members(db, adopted_root, declared) == {"2"}
+    assert report.after.converged
+    assert report.after.unexpected == () and report.after.untagged == ()
+    again = _report(cfg, db, adopted_root, declared, quiet, vocal_threshold=5.0)
+    assert again.converged
+
+
+def test_an_untagged_track_over_the_cut_is_not_filed_and_reads_untagged_not_left_behind(rig):
+    """The 607 shape: the score would file it and the tag does not, so it is named apart."""
+    cfg, db, adopted_root, declared = rig
+    loud = _truth(cfg, declared, PLAIN, voxlevel=90)
+    _tag_vox(db, "2")
+    _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
+    _untag_vox(db, "2")
+
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
+    assert report.repaired == 0
+    assert report.before.untagged == report.after.untagged
+    assert report.after.unexpected == ()
+    assert [(entry.direction, entry.sub, entry.content_id) for entry in report.after.untagged] == [
+        (rebuild.Direction.UNTAGGED, trees.VOX_SUB_CLASS, "2")
+    ]
+    assert report.after.untagged[0].location == _music(cfg, PLAIN)
+    assert not report.after.converged
+    assert rebuild.left_behind(report.after, declared) == ()
+    assert [line.split(":")[0] for line in report.after.summaries()] == ["untagged"]
+
+
+def test_an_untagged_track_in_another_buckets_vocal_sub_is_still_a_leftover(rig):
+    """Untagged names only the bucket the score files in; an old bucket's vocal sub is left behind."""
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    was = [rebuild.Truth(location=_music(cfg, PLAIN), genre="Deep House", energy=9, voxlevel=90)]
+    _rebuild(cfg, db, adopted_root, declared, [], truth=was, vocal_threshold=5.0)
+    _untag_vox(db, "2")
+    now = [rebuild.Truth(location=_music(cfg, PLAIN), genre="Techno", energy=9, voxlevel=90)]
+    report = _rebuild(cfg, db, adopted_root, declared, [], truth=now, vocal_threshold=5.0)
+    assert [(entry.bucket, entry.sub) for entry in report.after.untagged] == []
+    assert ("deep_house", trees.VOX_SUB_CLASS) in {
+        (entry.bucket, entry.sub) for entry in rebuild.left_behind(report.after, declared)
+    }
+
+
+def test_an_untagged_track_under_the_cut_in_the_vocal_sub_is_still_a_leftover(rig):
+    """Neither signal places it, so it stays the leftover a person takes out."""
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=_truth(cfg, declared, PLAIN, voxlevel=90),
+             vocal_threshold=5.0)
+    _untag_vox(db, "2")
+    quiet = _truth(cfg, declared, PLAIN, voxlevel=0)
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0)
+    assert report.after.untagged == ()
+    assert [entry.sub for entry in rebuild.left_behind(report.after, declared)] == [
+        trees.VOX_SUB_CLASS
+    ]
+
+
+def test_a_library_with_no_vox_tag_files_no_vocal_sub_however_loud_the_file(rig):
+    """No tag row at all is no track tagged; the dimension is still compared."""
+    cfg, db, adopted_root, declared = rig
+    loud = _truth(cfg, declared, PLAIN, voxlevel=90)
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
+    assert _vocal_members(db, adopted_root, declared) == frozenset()
+    assert rebuild.VOCAL_DIMENSION not in report.after.not_compared
+    assert report.after.converged
+
+
+def test_the_derivation_files_the_vocal_sub_by_the_tag_when_one_is_read(declared):
+    """The tag's answer decides, never the score, and only on a calibrated library."""
+    loud = [rebuild.Truth(location="/x/one.flac", genre=None, energy=9, voxlevel=90)]
+    quiet = [rebuild.Truth(location="/x/one.flac", genre=None, energy=9, voxlevel=0)]
+
+    def subs(truth, threshold, carries):
+        placed, _gaps = rebuild.derive_from_taxonomy(
+            declared, truth, vocal_threshold=threshold, carries_vox=carries
+        )
+        return trees.VOX_SUB_CLASS in {entry.sub for entry in placed}
+
+    assert subs(quiet, 5.0, lambda location: location == "/x/one.flac")
+    assert not subs(loud, 5.0, lambda _location: False)
+    assert not subs(quiet, None, lambda _location: True)
+    # With no tag read, the score stands in, as the landing writes the tag by it.
+    assert subs(loud, 5.0, None) and not subs(quiet, 5.0, None)
+
+
+def test_a_removed_vox_tag_category_is_no_tag(rig):
+    """The one reader's marker rule reaches the derivation (R-758)."""
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    from pyrekordbox.db6 import tables
+
+    for row in db.session.query(tables.DjmdMyTag).filter_by(Name=vox_tag.CATEGORY):
+        row.rb_local_deleted = 1
+    db.session.commit()
+    assert vox_tag.vox_tagged(db) is None
+    carries = rebuild.vox_carrier(cfg, db, _rows(cfg))
+    assert not carries(_music(cfg, PLAIN))
+
+
+def test_the_carrier_answers_for_the_one_row_a_file_matches(rig):
+    cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
+    carries = rebuild.vox_carrier(cfg, db, _rows(cfg))
+    assert carries(_music(cfg, PLAIN))
+    assert not carries(_music(cfg, COMPOSED))
+    assert not carries(_music(cfg, "Not In The Library.flac"))
+    # A tombstone is not the file's row, however it is tagged.
+    gone = [trees.ContentRow("2", _music(cfg, PLAIN), deleted=True)]
+    assert not rebuild.vox_carrier(cfg, db, gone)(_music(cfg, PLAIN))
+
+
+def test_the_after_report_names_the_untagged_apart_with_the_write_that_tags_them(rig):
+    """A resort's and a rebuild's report: never told to take out a track the tag would keep."""
+    cfg, db, adopted_root, declared = rig
+    loud = _truth(cfg, declared, PLAIN, voxlevel=90)
+    _tag_vox(db, "2")
+    _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
+    _untag_vox(db, "2")
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=loud, vocal_threshold=5.0)
+
+    staged = rebuild.after_report(TREE_ID, report.after, declared)
+    assert staged["left_behind"] == []
+    assert [entry["content_id"] for entry in staged["untagged"]] == ["2"]
+    warnings, steps = rebuild.after_messages([staged], listed_in="the job folder")
+    assert [warning["code"] for warning in warnings] == [rebuild.UNTAGGED_VOCALS]
+    assert "crate metadata mytags-vocals" in steps[0]
+    assert _music(cfg, PLAIN) in steps[0]
+    assert "the job folder" in steps[0]
+
+
+def test_converge_counts_the_untagged_ahead_of_a_cut_list_of_leftovers(monkeypatch):
+    """Twenty lines of leftovers would cut every untagged line off; the count leads."""
+
+    def difference(direction, content_id):
+        return rebuild.Difference(direction, "bucket", "with_vox", "F", "P", content_id)
+
+    report = rebuild.ConvergenceReport(
+        tree_id=TREE_ID,
+        root_id=ADOPTED_ROOT,
+        unexpected=tuple(difference(rebuild.Direction.UNEXPECTED, str(n)) for n in range(25)),
+        untagged=tuple(difference(rebuild.Direction.UNTAGGED, f"t{n}") for n in range(3)),
+        derived=1,
+    )
+    monkeypatch.setattr(rebuild, "report_convergence", lambda *args, **kwargs: report)
+    monkeypatch.setattr(converge_cli, "_library_rows", lambda db: [])
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda cfg: None)
+    db = unittest.mock.Mock()
+    db.get_playlist.return_value = []
+    status, detail = converge_cli._compare(
+        object(), db, tree_id=TREE_ID, entries=None, declared=None
+    )
+    assert status == converge_cli.DIFFERING
+    assert detail.startswith(converge_cli.UNTAGGED_COUNT.format(3)), detail
+    assert len(detail.split("; ")) == 20
+
+
+def test_a_declaration_with_no_vocal_sub_never_reads_the_tag(rig, monkeypatch):
+    """The tag table, and its marker refusal, is opened only where it could file something:
+    a declaration with a vocal sub, on a calibrated library."""
+    cfg, db, adopted_root, declared = rig
+    trimmed = replace(declared, sub_classes=tuple(s for s in declared.sub_classes if not s.additive))
+
+    def unreadable(handle):
+        raise AssertionError("the vox My Tag was read for a declaration with no vocal sub")
+
+    monkeypatch.setattr(vox_tag, "vox_tagged", unreadable)
+    report = _rebuild(cfg, db, adopted_root, trimmed, [PLAIN], vocal_threshold=5.0)
+    assert report.after.converged
+    # Nor on a library never calibrated, where it could file nothing either.
+    uncalibrated = _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=None)
+    assert rebuild.VOCAL_DIMENSION in uncalibrated.after.not_compared
+    with pytest.raises(AssertionError):
+        _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=5.0)
 
 
 def test_the_read_only_report_derives_through_the_registrys_recorded_source(rig):
@@ -1529,6 +1746,7 @@ def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(rig
 def test_dropping_the_additive_sub_class_leaves_both_verbs_working(rig):
     """Removing a recorded additive sub-class is curation; both verbs still answer."""
     cfg, db, adopted_root, declared = rig
+    _tag_vox(db, "2")
     def vocal(declared_taxonomy):
         return _truth(cfg, declared_taxonomy, PLAIN, voxlevel=90)
 

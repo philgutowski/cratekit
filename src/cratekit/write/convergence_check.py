@@ -334,6 +334,13 @@ class Direction(StrEnum):
     #: The database holds a track in a declared destination that the declaration
     #: does not place there.
     UNEXPECTED = "unexpected"
+    #: The database holds a track in a vocal sub its file's score clears the cut
+    #: for and its row carries no vox My Tag (R-2056). The tag decides the vocal
+    #: sub (U127), so the declaration does not place it there, and it is not a
+    #: leftover either: a person tags it (``metadata mytags-vocals`` for a row
+    #: that never carried the tag, rekordbox for one whose tag was taken off)
+    #: or takes it out.
+    UNTAGGED = "untagged"
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +395,10 @@ class ConvergenceReport:
     #: Destinations the NODE RECORD names that this taxonomy no longer declares,
     #: reported so "not compared" reads apart from "matched".
     undeclared: tuple[str, ...] = ()
+    #: Every vocal sub membership the file's score would place and the vox My Tag
+    #: does not (R-2056): a difference, so ``converged`` waits on it, and never a
+    #: leftover, since tagging the row settles it as well as taking it out does.
+    untagged: tuple[Difference, ...] = ()
     #: Every playlist :func:`unidentified` names, as ``folder/playlist`` in the
     #: names a person finds them by (R-1991). NOT COMPARED AND NOT A DIFFERENCE:
     #: ``converged`` does not wait on it, since no rebuild can answer it and a
@@ -397,14 +408,14 @@ class ConvergenceReport:
 
     @property
     def differences(self) -> tuple[Difference, ...]:
-        """Both directions, in one tuple, because R39 asks for both."""
-        return self.missing + self.unexpected
+        """Every direction, in one tuple, because R39 asks for both and R-2056 a third."""
+        return self.missing + self.unexpected + self.untagged
 
     @property
     def converged(self) -> bool:
         """Whether this tree matches what the library declares. THREE conditions.
 
-        No difference in either direction; a derivation that placed something;
+        No difference in any direction; a derivation that placed something;
         and no playlist holding a track twice, which an additive rebuild cannot
         repair. ``unidentified`` is not one: see it.
         """
@@ -605,11 +616,15 @@ def check(
     root_exists: Callable[[str], bool],
     prefix_map: Sequence[locations.PrefixRule] | None = None,
     not_compared: Sequence[str] = (),
+    untagged: Sequence[DeclaredPlacement] = (),
 ) -> ConvergenceReport:
     """Report, for one governed tree, how the declaration and the database differ.
 
     READ ONLY, so it runs against a library that is refusing every write; it
-    resolves destinations exactly as the rebuild does.
+    resolves destinations exactly as the rebuild does. ``untagged`` is the
+    vocal placements the file's score would make and the vox My Tag does not
+    (R-2056); a membership one of them names is reported ``untagged``, never
+    ``unexpected``, and one it does not name is the leftover it always was.
     """
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     rules = trees.prefix_rules(cfg, prefix_map)
@@ -663,7 +678,22 @@ def check(
             declared, nodes, governed, not_compared, record, set(resolved_id.values()) & active
         )
     }
+    # The score's vocal placements the tag does not make, as the rows they reach.
+    scored = {
+        (entry.bucket, entry.sub, match.content_id)
+        for entry, match in zip(
+            untagged,
+            trees.match_indexed_rows(
+                [entry.location for entry in untagged],
+                index,
+                root=cfg.library.root,
+                prefix_map=rules,
+            ),
+        )
+        if match.outcome is trees.MatchOutcome.MATCHED and match.content_id
+    }
     unexpected: list[Difference] = []
+    untagged_found: list[Difference] = []
     foreign: list[str] = []
     not_read: list[str] = []
     doubled: list[str] = []
@@ -678,8 +708,11 @@ def check(
             doubled.append(f"{destination.bucket}/{destination.sub}:{content_id}")
         declared_here = wanted.get((destination.bucket, destination.sub), set())
         for content_id in sorted((node.content_ids & active) - declared_here):
-            unexpected.append(destination.difference(Direction.UNEXPECTED, content_id))
-    if unexpected:
+            if (destination.bucket, destination.sub, content_id) in scored:
+                untagged_found.append(destination.difference(Direction.UNTAGGED, content_id))
+            else:
+                unexpected.append(destination.difference(Direction.UNEXPECTED, content_id))
+    if unexpected or untagged_found:
         # The file each leftover row resolved to, since a person finds a track
         # by its file and not by its row identifier (R-312).
         located_at = {
@@ -688,6 +721,10 @@ def check(
         unexpected = [
             replace(entry, location=located_at.get(entry.content_id or ""))
             for entry in unexpected
+        ]
+        untagged_found = [
+            replace(entry, location=located_at.get(entry.content_id or ""))
+            for entry in untagged_found
         ]
 
     # A PLAYLIST DIMENSION THIS RUN COULD NOT READ IS NOT A DIFFERENCE (U119).
@@ -700,6 +737,7 @@ def check(
         root_id=root_id,
         missing=tuple(missing),
         unexpected=tuple(unexpected),
+        untagged=tuple(untagged_found),
         unmatched=tuple(unmatched),
         foreign=tuple(sorted(foreign)),
         renamed=tuple(
