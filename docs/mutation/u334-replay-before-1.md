@@ -5643,8 +5643,8 @@ _keyword_gate_passes: return False always, so the two alternations never scan an
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[client_secret]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refreshToken]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refresh_token]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"-credential assignment]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "<a-planted-token>"-credential assignment]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "<a-planted-token>"}-OAuth token field]`
   - ... and 7 more, see the JSON sidecar
 
 Old text:
@@ -5686,8 +5686,8 @@ _keyword_gate_passes: do not step back over a quote after the keyword, so the JS
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[client_secret]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refreshToken]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refresh_token]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"refresh_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "<a-planted-token>"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"refresh_token": "<a-planted-token>"}-OAuth token field]`
   - ... and 5 more, see the JSON sidecar
 
 Old text:
@@ -5714,7 +5714,7 @@ _keyword_gate_passes: do not walk back over whitespace, so key = "value" with a 
 - Collected: 175 against a baseline of 175
 - Kills: 3 (killed)
 - Killed:
-  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"-credential assignment]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "<a-planted-token>"-credential assignment]`
   - `tests/test_scan_secret_equality.py::test_the_fast_scan_equals_the_reference_on_generated_texts`
   - `tests/test_scan_secret_equality.py::test_the_fast_scan_equals_the_reference_on_the_planted_corpus`
 
@@ -5745,9 +5745,9 @@ the portability scanner stops exempting a placeholder home segment, so a documen
   - `tests/test_portability.py::test_a_detected_ordinary_word_is_caught_where_it_names_the_machine[2b7562b4e9]`
   - `tests/test_portability.py::test_a_detected_ordinary_word_is_caught_where_it_names_the_machine[b48f8dc5c5]`
   - `tests/test_portability.py::test_any_home_directory_is_caught_not_just_one`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[.github/workflows/other.yml-    run: ls /Users/jdoe/Documents/project\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[skills/crate-sync/SKILL.md-Work in /Users/jdoe/Documents/project when running this.\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[tests/test_something.py-PATH = "/Users/jdoe/Documents/project"\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[.github/workflows/other.yml-    run: ls /Users/<a-planted-user>/Documents/project\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[skills/crate-sync/SKILL.md-Work in /Users/<a-planted-user>/Documents/project when running this.\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[tests/test_something.py-PATH = "/Users/<a-planted-user>/Documents/project"\n]`
   - `tests/test_portability.py::test_placeholder_paths_are_allowed`
   - `tests/test_portability.py::test_the_login_and_home_name_are_relaxed_like_the_hostname`
   - `tests/test_portability.py::test_the_repository_is_clean_on_a_machine_named_by_a_word_it_uses`
