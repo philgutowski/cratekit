@@ -69,11 +69,26 @@ def unbound(monkeypatch):
     monkeypatch.setattr(energy, "_EXTRACTOR", None)
 
 
+@pytest.fixture
+def calibrated(cfg) -> energy.Calibration:
+    """The machine's energy calibration, fitted over twenty tracks and saved."""
+    fitted = calibration_over(count=20)
+    energy.save_calibration(cfg, fitted)
+    return fitted
+
+
 def place(folder: Path, silence: Path, name: str, **fields) -> Path:
     path = folder / f"{name}.flac"
     shutil.copy2(silence, path)
     if fields:
         assert tags.write_tags(path, fields), f"the fixture could not tag {name}"
+    return path
+
+
+def planted(path: Path, text: str) -> Path:
+    """``text`` at a state file's ``path``, its private folder made first."""
+    config.mkdir_private(path.parent)
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -124,16 +139,36 @@ def resume_argv(job_id: str) -> list[str]:
         return cli_jobs.argv_for(jobs.get(store, job_id))
 
 
-def queued(verb: str, folder: Path):
-    """Queue ``analyze <verb>`` over ``folder`` and answer the one job it made."""
-    drive(["analyze", verb, "--queue-only", str(folder)])
+def queued(verb: str, folder: Path, *extra: str):
+    """Queue ``analyze <verb>`` over ``folder``, which must end OK, and answer its one job."""
+    driven_ok(["analyze", verb, "--queue-only", str(folder), *extra])
     return analysis_job(f"analyze.{verb}")
+
+
+def run_queued(monkeypatch, folder: Path, silence: Path, name: str):
+    """One track placed, the scoring bound, and its ``analyze run`` queued."""
+    place(folder, silence, name)
+    bind_scoring(monkeypatch)
+    return queued("run", folder)
+
+
+def driven_ok(argv: list[str]) -> dict:
+    """Drive ``argv``, which must end OK, and answer its envelope."""
+    code, envelope = drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
 
 
 def resumed_ok(job) -> dict:
     """Drive ``job``'s resume command, which must end OK, and answer its envelope."""
+    return driven_ok(resume_argv(job.job_id))
+
+
+def failed_with(job, causes: dict[str, str]) -> dict:
+    """Drive ``job``'s resume, which must not end OK with exactly these item causes."""
     code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    assert code != int(ExitCode.OK), resumed
+    assert item_causes(job.job_id) == causes
     return resumed
 
 
@@ -189,9 +224,7 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     head = detector()
     bind_scoring(monkeypatch, detect_=head)
 
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     assert list(item_states(job.job_id)) == ["a.flac", "b.flac"], (
         "the items are the folder's audio filenames, sorted, relative to the folder"
     )
@@ -231,9 +264,7 @@ def test_a_prefixed_file_is_the_resume_marker_and_is_skipped_without_a_read(
     head = detector()
     bind_scoring(monkeypatch, detect_=head)
 
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     resumed_ok(job)
 
     assert head.seen == ["fresh.flac"]
@@ -259,8 +290,7 @@ def test_a_keyless_track_is_a_terminal_skip_with_nothing_written(
 
 
 def test_a_folder_with_no_audio_queues_nothing_and_says_so(cfg, folder):
-    code, envelope = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "run", "--queue-only", str(folder)])
     assert envelope["outcome"] == "no_op"
     assert envelope["data"] == {"job_id": "", "state": "no-audio", "cause": None, "progress": {}}
     with jobs.open_store() as store:
@@ -270,14 +300,10 @@ def test_a_folder_with_no_audio_queues_nothing_and_says_so(cfg, folder):
 def test_a_file_removed_between_queueing_and_drive_is_refused_by_name(
     cfg, folder, silence, monkeypatch
 ):
-    place(folder, silence, "gone")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "gone")
     (folder / "gone.flac").unlink()
 
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"gone.flac": "source-missing"}
+    failed_with(job, {"gone.flac": "source-missing"})
 
 
 def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
@@ -288,10 +314,8 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
     job = queued("run", folder)
 
-    code, resumed = drive(resume_argv(job.job_id))
     # A failed one item job is no-evidence with the item's cause inside it.
-    assert code != int(ExitCode.OK), resumed
-    assert item_causes(job.job_id) == {"track.flac": "module-extras-missing"}
+    resumed = failed_with(job, {"track.flac": "module-extras-missing"})
     inner = resumed["cause"]["inner"]
     assert inner["reason"] == "module-extras-missing"
     assert inner["code"] == int(ExitCode.MODULE_UNAVAILABLE)
@@ -322,9 +346,7 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
     monkeypatch.setattr(tags, "write_tags", lambda p, fields: False)
     job = queued("run", folder)
 
-    code, _ = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"stuck.flac": "analysis-write-failed"}
+    failed_with(job, {"stuck.flac": "analysis-write-failed"})
     assert path.is_file(), "a failed tag write must not rename"
     assert tags.read_tag(path, "analyzed") is None, "unmarked, so the next pass measures it"
 
@@ -332,8 +354,7 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
 def test_a_file_beside_its_headed_twin_is_measured_where_it_is_and_named_nothing(
     cfg, folder, silence, monkeypatch
 ):
-    """Before U343 the head this file would be renamed to was taken, and the item
-    failed. The run renames nothing now, so there is no name to take."""
+    """The run renames nothing since U343, so a head name already taken fails nothing."""
     path = place(folder, silence, "twin", title="twin")
     headed = place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
@@ -350,8 +371,7 @@ def test_a_file_beside_its_headed_twin_is_measured_where_it_is_and_named_nothing
 def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
     missing = tmp_path / "nowhere"
     for verb in ("run", "restamp"):
-        code, envelope = drive(["analyze", verb, str(missing)])
-        assert code == int(ExitCode.OK), envelope
+        envelope = driven_ok(["analyze", verb, str(missing)])
         assert envelope["outcome"] == "no_op"
         assert envelope["data"]["state"] == "folder-absent"
         assert [w["code"] for w in envelope["warnings"]] == ["folder-absent"]
@@ -365,8 +385,7 @@ def test_the_frozen_folder_is_absolute_so_a_resume_from_elsewhere_finds_it(
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     monkeypatch.chdir(folder.parent)
-    code, queued = drive(["analyze", "run", "--queue-only", folder.name])
-    assert code == int(ExitCode.OK), queued
+    driven_ok(["analyze", "run", "--queue-only", folder.name])
     job = analysis_job("analyze.run")
     assert job.payload["folder"] == str(folder.absolute())
 
@@ -397,8 +416,7 @@ def kill_after_the_write(monkeypatch):
 def test_an_item_written_before_its_row_moved_resumes_by_its_mark_and_is_measured_once(
     cfg, folder, silence, monkeypatch
 ):
-    """The kill between the tag write and the row flipping to done (U343): the
-    file carries its mark, so the resume skips it unread and renames nothing."""
+    """A kill between the tag write and the row moving (U343): the mark skips it unread."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     seen = detector()
     bind_scoring(monkeypatch, detect_=seen)
@@ -435,7 +453,6 @@ def renamed_by_an_older_build(cfg, job, item_id: str, target_name: str) -> Path:
 def test_an_item_an_older_build_renamed_before_its_row_moved_resumes_as_finished(
     cfg, folder, silence, monkeypatch
 ):
-    """The twin recovery is kept for a job a build before U343 left half done."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     seen = detector()
     bind_scoring(monkeypatch, detect_=seen)
@@ -457,17 +474,12 @@ def test_an_item_an_older_build_renamed_before_its_row_moved_resumes_as_finished
 def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed(
     cfg, folder, silence, monkeypatch
 ):
-    """A headed file of the same stem from an earlier pass, then the source deleted:
-    nothing this job did produced it, so it is not this item, done."""
+    """Nothing this job did produced an earlier pass's headed file, so it is not this item."""
     place(folder, silence, "twin")
-    place(folder, silence, "08A - 124 - twin")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "08A - 124 - twin")
     (folder / "twin.flac").unlink()
 
-    code, _ = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"twin.flac": "source-missing"}
+    failed_with(job, {"twin.flac": "source-missing"})
     # The older headed file is an item of its own and the resume marker.
     assert [r["item"] for r in artifacts.committed(cfg, job.job_id)] == ["08A - 124 - twin.flac"]
 
@@ -582,11 +594,8 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
 def test_a_job_an_older_build_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """No intent: the staged report naming the file is the item's proof of the rename,
-    for a job a build before U343 renamed and left half done."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    """With no intent, the staged report naming the file proves a pre U343 build's rename."""
+    job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     twin = renamed_by_an_older_build(cfg, job, "a.flac", "08A - 124 - a.flac")
     artifacts.intent_path(cfg, job.job_id, item.ordinal).unlink()
@@ -595,9 +604,7 @@ def test_a_job_an_older_build_left_with_no_intent_resumes_from_its_staged_report
         {"item": "a.flac", "path": str(twin), "renamed_to": twin.name, "status": "analyzed"},
     )
 
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["resumed_after_rename"] is True
     assert report["path"] == str(folder / "08A - 124 - a.flac")
@@ -678,7 +685,6 @@ def test_a_staged_report_that_is_not_json_or_not_a_mapping_is_no_twin(cfg, folde
 
 
 def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, folder):
-    """A second attempt starts from a clean staging directory, keeping only the intent."""
     first = _stage(cfg, {"item": "a.flac", "status": "analyzed"})
     (first.parent / "scratch.tmp").write_text("x", encoding="utf-8")
     (first.parent / "nested").mkdir()
@@ -696,18 +702,13 @@ def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, fold
 def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
     cfg, folder, silence, monkeypatch
 ):
-    """An intent whose source is still a file names a rename that never landed, so it
-    is dropped before it can name a later file as this item's twin."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    """An intent whose source is still a file names a rename that never landed."""
+    job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     unrelated = folder / "unrelated.flac"
     artifacts.record_rename_intent(cfg, job, item, unrelated)
 
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert artifacts.rename_intent(cfg, job, item) is None, (
         "the stale intent was dropped, and an attempt since U343 records none"
     )
@@ -716,11 +717,8 @@ def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
 def test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin(
     cfg, folder, silence, monkeypatch
 ):
-    """An attempt whose source is a file drops the staged report with the intent,
-    before any work a kill can interrupt, so it cannot name a later twin."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    """The staged report goes with the intent, before any work a kill can interrupt."""
+    job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     headed = folder / "08A - 124 - a.flac"
     staged = artifacts.write(
@@ -757,7 +755,6 @@ def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, t
 
 
 def test_a_linked_intent_or_report_is_never_read_as_the_twin(cfg, folder, tmp_path):
-    """The read path never follows a planted link to name its far end as the twin."""
     job = _job_over(folder)
     other = folder / "other.flac"
     other.write_bytes(b"x")
@@ -796,39 +793,28 @@ def test_the_discard_never_reaches_through_a_linked_staging_directory(cfg, folde
 def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
     cfg, folder, silence, monkeypatch
 ):
-    """A directory at the report name does not fail the item for good."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     staged = artifacts.staged_path(cfg, job.job_id, item.ordinal)
     staged.mkdir()
     (staged / "inside").write_text("x", encoding="utf-8")
 
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
 
 
 def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkeypatch):
-    place(folder, silence, "08A - 124 - a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "08A - 124 - a")
     item = _item(job.job_id, "08A - 124 - a.flac")
     artifacts.record_rename_intent(cfg, job, item, folder / "unrelated.flac")
 
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert artifacts.rename_intent(cfg, job, item) is None
 
 
 def test_a_run_records_no_rename_intent_and_never_renames(cfg, folder, silence, monkeypatch):
     """U343: no head, so no target, no claim and no intent, even where a rename would fail."""
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "a")
 
     def refuse_rename(self, target):
         raise AssertionError(f"the run renamed {self.name} to {target}")
@@ -862,9 +848,7 @@ def test_a_container_the_tag_writer_does_not_know_fails_under_the_analysis_slug(
     path.write_bytes(b"not-audio")
     bind_scoring(monkeypatch)
     job = queued("run", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"odd.webm": "analysis-write-failed"}
+    failed_with(job, {"odd.webm": "analysis-write-failed"})
     assert path.is_file()
 
 
@@ -923,8 +907,7 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
 
 
 def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
-    """The partial carries a path and never samples, under any key; reading
-    ``result.get("wav")`` scored every track zero."""
+    """Reading ``result.get("wav")`` off the partial, which carries a path, scored zero."""
     tree = ast.parse(VOCALS_SOURCE.read_text(encoding="utf-8"))
     literals = {
         node.value
@@ -936,12 +919,7 @@ def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
 
 
 def test_the_decoder_receives_the_partials_path(monkeypatch):
-    asked: list[object] = []
-
-    def decoder(path):
-        asked.append(path)
-        return np.full(16000, 0.2, dtype=np.float32)
-
+    asked, decoder = spying()
     bind_scoring(monkeypatch, decoder=decoder)
     vocals.analyse({"path": "the-track.flac", "terminal": None})
     assert asked == ["the-track.flac"]
@@ -954,6 +932,17 @@ def test_a_decode_that_fails_is_reported_as_inactive_and_never_as_zero(monkeypat
     assert scored["vocal_reason"] == "vocal-audio-undecodable"
     assert scored["voxlevel"] is None
     assert scored["voxgender"] is None
+
+
+def spying():
+    """A decoder that records each path it is handed and answers a vocal signal."""
+    asked: list[object] = []
+
+    def spy(path):
+        asked.append(path)
+        return np.full(16000, 0.2, dtype=np.float32)
+
+    return asked, spy
 
 
 def sparse(path: Path, size: int) -> Path:
@@ -971,12 +960,7 @@ def test_the_shipped_oversize_cap_is_two_hundred_and_fifty_mebibytes():
 
 def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
     """R-408. The decode is what hung the source system, so it is never begun."""
-    asked: list[object] = []
-
-    def spy(path):
-        asked.append(path)
-        return np.full(16000, 0.2, dtype=np.float32)
-
+    asked, spy = spying()
     track = sparse(tmp_path / "live-set.flac", vocals.VOCAL_MAX_BYTES + 1)
     bind_scoring(monkeypatch, decoder=spy)
     scored = vocals.analyse(
@@ -1013,12 +997,7 @@ def test_an_oversize_file_is_refused_without_loading_the_model(tmp_path, monkeyp
 
 def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
     """Strictly greater: the cap is the largest size allowed, as in the source system."""
-    asked: list[object] = []
-
-    def spy(path):
-        asked.append(path)
-        return np.full(16000, 0.2, dtype=np.float32)
-
+    asked, spy = spying()
     track = sparse(tmp_path / "long-track.flac", vocals.VOCAL_MAX_BYTES)
     bind_scoring(monkeypatch, decoder=spy)
     scored = vocals.analyse({"path": str(track), "terminal": None})
@@ -1041,8 +1020,7 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
 
 
 def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
-    """``unscored_warning`` counts only the reason an install would mend, with
-    ``panns_inference`` kept unimported."""
+    """Only the reason an install would mend is counted, ``panns_inference`` unimported."""
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
     monkeypatch.setattr(vocals, "missing_requirement", lambda: "the extra is not here")
@@ -1059,8 +1037,7 @@ def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch)
 def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     cfg, folder, silence, monkeypatch
 ):
-    """Through the verb with the cap at a byte; the light pass is faked, so this
-    proves the vocal half only (R-583)."""
+    """The vocal half only, through the verb with the cap at a byte (R-583)."""
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
@@ -1142,8 +1119,7 @@ def test_an_uncalibrated_library_writes_no_energy_tag_and_routes_to_the_sink(
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=None, status=energy.STATUS_UNCALIBRATED))
     job = queued("run", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK)
+    resumed_ok(job)
 
     done = folder / "a.flac"
     assert tags.read_tag(done, "analyzed") == "1", "the file the run wrote, under its own name"
@@ -1163,8 +1139,7 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=9))
     job = queued("run", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK)
+    resumed_ok(job)
 
     read = tags.read_energy_from_file(folder / "a.flac")
     assert read == 9
@@ -1205,16 +1180,24 @@ def test_the_detector_names_why_energy_is_what_it_is(monkeypatch, tmp_path):
     assert asked == [track, track], "the restamp's own measure, asked of the file by path"
 
 
-def test_the_head_scores_energy_through_the_restamps_measure_not_its_own_samples():
-    """U344: the head hands the calibration the restamp's slice, so one file has one level."""
+@pytest.mark.parametrize(
+    ("needle", "held"),
+    [
+        pytest.param(
+            "energy_from_path(path, calibration=calibration)", True,
+            id="the-head-scores-energy-through-the-restamps-measure",
+        ),
+        pytest.param("features_from_samples", False, id="and-not-its-own-samples"),
+        pytest.param('"energy": None', False, id="energy-is-no-longer-a-literal-none"),
+        pytest.param("decode.load(path, MEASURE_RATE)", True, id="the-head-decodes-at-the-measure-rate"),
+        pytest.param("22050", False, id="a-second-literal-for-the-rate-is-how-the-two-drift"),
+    ],
+)
+def test_the_detector_source_measures_as_the_restamp_does(needle, held):
+    """U344: the head hands the calibration the restamp's slice, so one file has one level,
+    decoded through the one decoder since U263, at the same constant."""
     source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    assert "energy_from_path(path, calibration=calibration)" in source
-    assert "features_from_samples" not in source
-
-
-def test_the_detector_source_no_longer_returns_energy_as_a_literal_none():
-    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    assert '"energy": None' not in source
+    assert (needle in source) is held, needle
 
 
 def test_a_calibration_spreads_a_library_across_the_scale():
@@ -1257,15 +1240,6 @@ def test_a_calibration_with_the_wrong_number_of_cuts_is_refused():
         energy.Calibration.from_json(data)
 
 
-def test_a_corrupt_calibration_raises_rather_than_reading_as_absent(cfg):
-    path = energy.calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text("{not json", encoding="utf-8")
-    with pytest.raises(CratekitError) as caught:
-        energy.load_calibration(cfg)
-    assert caught.value.cause.reason == "energy-calibration-unreadable"
-
-
 _LIST_WHERE_A_MAPPING_BELONGS = json.dumps(
     {"thresholds": list(range(9)), "mean": [], "std": {}, "weights": {}, "n_tracks": 1}
 )
@@ -1274,9 +1248,7 @@ _LIST_WHERE_A_MAPPING_BELONGS = json.dumps(
 @pytest.mark.parametrize("text", ["{not json", "{}", "[]", _LIST_WHERE_A_MAPPING_BELONGS])
 def test_every_corrupt_calibration_shape_is_the_same_named_refusal(cfg, text):
     """The fourth shape is refused, not an ``AttributeError`` traceback."""
-    path = energy.calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text(text, encoding="utf-8")
+    planted(energy.calibration_path(cfg), text)
     with pytest.raises(CratekitError) as caught:
         energy.load_calibration(cfg)
     assert caught.value.cause.reason == "energy-calibration-unreadable"
@@ -1287,9 +1259,7 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
 ):
     """Driven through both verbs: the queue path and the worker path."""
     place(folder, silence, "a")
-    path = energy.calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text("{not json", encoding="utf-8")
+    path = planted(energy.calibration_path(cfg), "{not json")
 
     code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
@@ -1304,9 +1274,7 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
     job = queued("run", folder)
     path.write_text("{not json", encoding="utf-8")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"a.flac": "energy-calibration-unreadable"}
+    failed_with(job, {"a.flac": "energy-calibration-unreadable"})
 
 
 def test_calibrating_over_nothing_is_refused():
@@ -1327,6 +1295,19 @@ def bind_measuring(monkeypatch, table: dict[str, int]):
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(table[Path(path).stem]))
 
 
+def twelve_measured(monkeypatch, folder: Path, silence: Path, vox=None) -> None:
+    """Tracks t00 to t11, each measured at its index, ``vox`` giving each its vocal score."""
+    names = [f"t{i:02d}" for i in range(12)]
+    for index, name in enumerate(names):
+        place(folder, silence, name, **({} if vox is None else {"voxlevel": vox(index)}))
+    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+
+
+def two_clusters(index: int) -> int:
+    """Eight instrumentals and four vocals, the split Otsu cuts."""
+    return 2 if index < 8 else 40
+
+
 def test_a_restamp_job_runs_pending_to_done_and_records_the_previous_value(
     cfg, folder, silence, monkeypatch
 ):
@@ -1337,11 +1318,8 @@ def test_a_restamp_job_runs_pending_to_done_and_records_the_previous_value(
     untagged = place(folder, silence, "untagged")
     bind_measuring(monkeypatch, {"low": 0, "high": 19, "untagged": 10})
 
-    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.restamp")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("restamp", folder)
+    resumed = resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
 
     assert tags.read_energy_from_file(low) == energy.LEVEL_MIN
@@ -1379,8 +1357,7 @@ def test_a_file_whose_level_did_not_move_is_reported_unchanged_and_not_rewritten
     before = steady.stat().st_mtime_ns
     bind_measuring(monkeypatch, {"steady": 19})
     job = queued("restamp", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK)
+    resumed_ok(job)
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["status"] == "unchanged" and report["written"] is False
     assert steady.stat().st_mtime_ns == before
@@ -1388,36 +1365,24 @@ def test_a_file_whose_level_did_not_move_is_reported_unchanged_and_not_rewritten
 
 
 def test_the_undo_log_keeps_the_first_previous_value_across_a_second_restamp(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    energy.save_calibration(cfg, calibration_over(count=20))
     track = place(folder, silence, "track", energylevel=4)
     bind_measuring(monkeypatch, {"track": 19})
     for _ in range(2):
         drive(["analyze", "restamp", "--queue-only", str(folder)])
         with jobs.open_store() as store:
             job = max(jobs.list_jobs(store), key=lambda j: j.created)
-        code, _ = drive(resume_argv(job.job_id))
-        assert code == int(ExitCode.OK)
+        resumed_ok(job)
         bind_measuring(monkeypatch, {"track": 0})
     assert tags.read_energy_from_file(track) == energy.LEVEL_MIN
     assert energy.read_undo_log(cfg) == {str(track): "4"}
 
 
-def test_a_restamp_with_no_calibration_refuses_at_the_queue(cfg, folder, silence):
-    place(folder, silence, "a")
-    code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "energy-calibration-missing"
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
-
-
 def test_a_restamp_over_an_empty_folder_is_the_honest_zero_whatever_the_calibration(
     cfg, folder
 ):
-    code, envelope = drive(["analyze", "restamp", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "restamp", "--queue-only", str(folder)])
     assert envelope["data"]["state"] == "no-audio"
 
 
@@ -1428,8 +1393,7 @@ def test_a_track_that_cannot_be_measured_is_reported_and_left_alone(
     track = place(folder, silence, "odd", energylevel=5)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
     job = queued("restamp", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK)
+    resumed_ok(job)
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["status"] == "features-unavailable"
     assert report["written"] is False
@@ -1444,22 +1408,16 @@ def test_a_restamp_worker_without_the_extra_refuses_rather_than_skipping(
     place(folder, silence, "a")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
     job = queued("restamp", folder)
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK), resumed
-    assert item_causes(job.job_id) == {"a.flac": "module-extras-missing"}
+    resumed = failed_with(job, {"a.flac": "module-extras-missing"})
     assert resumed["cause"]["inner"]["reason"] == "module-extras-missing"
 
 
 def test_calibrate_fits_the_energy_reference_over_a_folder_and_writes_it(
     cfg, folder, silence, monkeypatch
 ):
-    names = [f"t{i:02d}" for i in range(12)]
-    for name in names:
-        place(folder, silence, name)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    twelve_measured(monkeypatch, folder, silence)
 
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert envelope["outcome"] == "ok"
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.energy"]["status"] == "ok"
@@ -1480,13 +1438,9 @@ def test_calibrate_fits_the_energy_reference_over_a_folder_and_writes_it(
 def test_calibrate_cuts_the_vocal_threshold_between_the_two_clusters(
     cfg, folder, silence, monkeypatch
 ):
-    names = [f"t{i:02d}" for i in range(12)]
-    for index, name in enumerate(names):
-        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    twelve_measured(monkeypatch, folder, silence, vox=two_clusters)
 
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "ok"
     written = json.loads(calibrate.vocal_calibration_path(cfg).read_text())
@@ -1502,12 +1456,8 @@ def test_otsu_separates_a_bimodal_distribution():
 
 def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monkeypatch):
     """Twelve instrumentals: Otsu finds a cut, and the separation check says no."""
-    names = [f"t{i:02d}" for i in range(12)]
-    for index, name in enumerate(names):
-        place(folder, silence, name, voxlevel=index % 6)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    twelve_measured(monkeypatch, folder, silence, vox=lambda index: index % 6)
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "skipped"
     assert "do not split into two clusters" in checks["calibrate.vocals"]["detail"]
@@ -1528,8 +1478,7 @@ def hand_day(monkeypatch):
 
 
 def test_a_hand_cut_is_written_and_the_one_loader_reads_it_back(cfg, hand_day):
-    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", "--vocal-cut", "5"])
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["summary"] == {
         "folder": None, "vocal_cut": 5.0, "previous_vocal_cut": None
@@ -1549,8 +1498,7 @@ def test_a_hand_cut_is_written_and_the_one_loader_reads_it_back(cfg, hand_day):
 
 def test_a_second_hand_cut_reports_the_cut_it_replaces(cfg, hand_day):
     drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "7.5"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", "--vocal-cut", "7.5"])
     summary = envelope["data"]["summary"]
     assert (summary["previous_vocal_cut"], summary["vocal_cut"]) == (5.0, 7.5)
     assert (
@@ -1562,8 +1510,7 @@ def test_a_second_hand_cut_reports_the_cut_it_replaces(cfg, hand_day):
 
 @pytest.mark.parametrize("cut", ["0", "100"])
 def test_the_ends_of_the_score_range_are_cuts(cfg, cut):
-    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", cut])
-    assert code == int(ExitCode.OK), envelope
+    driven_ok(["analyze", "calibrate", "--vocal-cut", cut])
     assert metadata_cli.load_vocal_threshold(cfg) == float(cut)
 
 
@@ -1591,33 +1538,25 @@ def test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser(cfg, folder)
 
 
 def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read(cfg):
-    path = calibrate.vocal_calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text("{not json", encoding="utf-8")
-    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    assert code == int(ExitCode.OK), envelope
+    planted(calibrate.vocal_calibration_path(cfg), "{not json")
+    envelope = driven_ok(["analyze", "calibrate", "--vocal-cut", "5"])
     assert "could not be read" in envelope["data"]["checks"][0]["detail"]
     assert metadata_cli.load_vocal_threshold(cfg) == 5.0
 
 
 def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(cfg):
     """A hand edited "5.0" is converted, so every comparison meets a float."""
-    path = calibrate.vocal_calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
+    planted(calibrate.vocal_calibration_path(cfg), '{"threshold": "5.0", "method": "hand"}')
     assert metadata_cli.load_vocal_calibration(cfg)["threshold"] == 5.0
     assert isinstance(metadata_cli.load_vocal_threshold(cfg), float)
-    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "7"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", "--vocal-cut", "7"])
     assert envelope["data"]["summary"]["previous_vocal_cut"] == 5.0
     assert "this replaces the cut of 5 set by hand" in envelope["data"]["checks"][0]["detail"]
 
 
 def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     """Not the unreadable slug the hand cut writes over: a permission refusal."""
-    path = calibrate.vocal_calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text('{"threshold": 9.0, "method": "otsu"}', encoding="utf-8")
+    path = planted(calibrate.vocal_calibration_path(cfg), '{"threshold": 9.0, "method": "otsu"}')
     path.chmod(0)
     try:
         code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
@@ -1632,13 +1571,8 @@ def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
     cfg, folder, silence, monkeypatch
 ):
     """The energy half lands first, so the vocal half fails its check and the verb runs."""
-    names = [f"t{i:02d}" for i in range(12)]
-    for index, name in enumerate(names):
-        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
-    path = calibrate.vocal_calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text('{"threshold": 9.0, "method": "hand"}', encoding="utf-8")
+    twelve_measured(monkeypatch, folder, silence, vox=two_clusters)
+    path = planted(calibrate.vocal_calibration_path(cfg), '{"threshold": 9.0, "method": "hand"}')
     path.chmod(0)
     try:
         code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
@@ -1666,13 +1600,9 @@ def test_a_fit_after_a_hand_cut_replaces_it_and_says_so(
     cfg, folder, silence, monkeypatch, hand_day
 ):
     drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    names = [f"t{i:02d}" for i in range(12)]
-    for index, name in enumerate(names):
-        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    twelve_measured(monkeypatch, folder, silence, vox=two_clusters)
 
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "ok"
     assert (
@@ -1685,14 +1615,10 @@ def test_a_fit_after_a_hand_cut_replaces_it_and_says_so(
 
 
 def test_a_fit_over_a_fitted_cut_names_the_fit_it_replaces(cfg, folder, silence, monkeypatch):
-    names = [f"t{i:02d}" for i in range(12)]
-    for index, name in enumerate(names):
-        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
-    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    twelve_measured(monkeypatch, folder, silence, vox=two_clusters)
     drive(["analyze", "calibrate", str(folder), "--accept-partial"])
     first = metadata_cli.load_vocal_threshold(cfg)
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert (
         f"this replaces the cut of {first:g} (fitted over 12 of 12 under {folder})"
@@ -1706,8 +1632,7 @@ def test_calibrate_over_too_few_tracks_writes_nothing_and_says_so(
     for name in ("a", "b"):
         place(folder, silence, name)
     bind_measuring(monkeypatch, {"a": 0, "b": 1})
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert envelope["outcome"] == "no_op"
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.energy"]["status"] == "failed"
@@ -1716,24 +1641,21 @@ def test_calibrate_over_too_few_tracks_writes_nothing_and_says_so(
 
 
 def test_calibrate_with_no_folder_measures_nothing(cfg):
-    code, envelope = drive(["analyze", "calibrate"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate"])
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["checks"][0]["status"] == "skipped"
     assert envelope["data"]["summary"]["calibrated"] is False
 
 
 def test_calibrate_over_an_empty_folder_is_a_failed_check_not_a_traceback(cfg, folder):
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     (check,) = envelope["data"]["checks"]
     assert check["key"] == "calibrate.folder" and check["status"] == "failed"
     assert "holds no audio files" in check["detail"]
 
 
 def test_calibrate_over_a_folder_that_is_not_there_says_that_and_not_empty(cfg, tmp_path):
-    code, envelope = drive(["analyze", "calibrate", str(tmp_path / "nowhere")])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(tmp_path / "nowhere")])
     (check,) = envelope["data"]["checks"]
     assert check["key"] == "calibrate.folder" and check["status"] == "failed"
     assert "is not a folder on this machine" in check["detail"]
@@ -1750,8 +1672,7 @@ def test_calibrate_without_the_extra_refuses_rather_than_fitting_over_nothing(
 
 
 def test_validate_says_plainly_that_nothing_was_scored(cfg):
-    code, envelope = drive(["analyze", "validate"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "validate"])
     assert envelope["outcome"] == "no_op"
     check = envelope["data"]["checks"][0]
     assert check["status"] == "unavailable"
@@ -1795,15 +1716,11 @@ def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_
 ):
     path = place(folder, silence, "a", energylevel=4)
     energy.save_calibration(cfg, calibration_over())
-    log = energy.undo_log_path(cfg)
-    config.mkdir_private(log.parent)
-    log.write_text("[]", encoding="utf-8")
+    log = planted(energy.undo_log_path(cfg), "[]")
     bind_measuring(monkeypatch, {"a": 9})
     job = queued("restamp", folder)
 
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code != int(ExitCode.OK)
-    assert item_causes(job.job_id) == {"a.flac": "analysis-write-failed"}
+    resumed = failed_with(job, {"a.flac": "analysis-write-failed"})
     inner = resumed["cause"]["inner"]
     assert inner["detail"]["undo_log"] == str(log)
     assert "only record" in inner["message"]
@@ -1828,8 +1745,7 @@ def test_a_model_whose_inference_raises_is_a_named_absence_with_the_head_intact(
 
 
 def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, monkeypatch):
-    """The ``analysis`` extra without ``vocals`` finalizes with no vocal tags, and
-    the envelope says so as the item reports do."""
+    """The ``analysis`` extra without ``vocals`` says so on the envelope as items do."""
     place(folder, silence, "a")
 
     def no_model():
@@ -1837,8 +1753,7 @@ def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, 
 
     bind_scoring(monkeypatch, loader=no_model)
     job = queued("run", folder)
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed = resumed_ok(job)
     assert [w["code"] for w in resumed["warnings"]] == [vocals.REASON_MODEL_UNAVAILABLE]
     assert "cratekit[vocals]" in resumed["warnings"][0]["message"]
     assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {
@@ -1847,9 +1762,7 @@ def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, 
 
 
 def test_a_run_with_the_model_loaded_carries_no_vocal_warning(cfg, folder, silence, monkeypatch):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    job = queued("run", folder)
+    job = run_queued(monkeypatch, folder, silence, "a")
     resumed = resumed_ok(job)
     assert resumed["warnings"] == []
     assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {}
@@ -1879,13 +1792,6 @@ def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless
     assert light.analyse("stinger.flac")["terminal"] == "skipped-unanalysable"
 
 
-def test_the_head_decodes_at_the_energy_measure_rate():
-    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    # Through the one decoder since U263, at the same constant.
-    assert "decode.load(path, MEASURE_RATE)" in source
-    assert "22050" not in source, "a second literal for the rate is how the two drift"
-
-
 def test_the_feature_vector_measures_its_own_tempo_on_every_path():
     """The head's integer tempo is not handed down, so run and restamp agree."""
     import inspect
@@ -1896,22 +1802,13 @@ def test_the_feature_vector_measures_its_own_tempo_on_every_path():
 
 def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
-    path = energy.calibration_path(cfg)
-    config.mkdir_private(path.parent)
-    path.write_text("{not json", encoding="utf-8")
+    planted(energy.calibration_path(cfg), "{not json")
     bind_scoring(monkeypatch)
     code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), queued
     assert queued["cause"]["reason"] == "energy-calibration-unreadable"
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
-
-
-def test_an_absent_calibration_still_queues_a_run(cfg, folder, silence, monkeypatch):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
 
 
 def test_calibrate_refuses_with_the_library_away_rather_than_writing_beside_the_mount(
@@ -1966,8 +1863,7 @@ def test_the_restamp_reads_the_tag_once_and_records_its_text(cfg, folder, silenc
     energy.save_calibration(cfg, calibration_over())
     bind_measuring(monkeypatch, {"a": 9})
     job = queued("restamp", folder)
-    code, _ = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK)
+    resumed_ok(job)
     assert energy.read_undo_log(cfg) == {str(path): "7/10"}
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["previous"] is None
@@ -1993,19 +1889,24 @@ def nest(folder: Path, silence: Path, relative: str, **fields) -> Path:
     return path
 
 
+def link_elsewhere(folder: Path, silence: Path, tmp_path: Path) -> None:
+    """A linked folder holding a track, which the recursive walk declines."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+
 def test_a_recursive_restamp_queues_every_nested_file_once_in_sorted_order(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """R-376's shape on the restamp half: one invocation instead of one per folder."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/a.flac", energylevel=7)
     nest(folder, silence, "techno/deep/b.flac", energylevel=7)
     place(folder, silence, "top", energylevel=7)
     bind_measuring(monkeypatch, {"a": 0, "b": 19, "top": 10})
 
-    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     assert sorted(item_states(job.job_id)) == [
         "house/a.flac",
         "techno/deep/b.flac",
@@ -2013,9 +1914,8 @@ def test_a_recursive_restamp_queues_every_nested_file_once_in_sorted_order(
     ]
 
 
-def test_a_recursive_restamp_freezes_the_flag_in_the_payload(cfg, folder, silence, monkeypatch):
+def test_a_recursive_restamp_freezes_the_flag_in_the_payload(calibrated, folder, silence, monkeypatch):
     """The payload records what the queue meant, so a job is readable after the fact."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/a.flac", energylevel=7)
     bind_measuring(monkeypatch, {"a": 5})
     drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
@@ -2023,32 +1923,27 @@ def test_a_recursive_restamp_freezes_the_flag_in_the_payload(cfg, folder, silenc
 
 
 def test_a_restamp_without_the_flag_stays_one_level_and_says_so_in_the_payload(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """The default is unchanged, which is what every existing job and resume assumed."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     place(folder, silence, "top", energylevel=7)
     nest(folder, silence, "house/a.flac", energylevel=7)
     bind_measuring(monkeypatch, {"top": 5})
 
-    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
     assert sorted(item_states(job.job_id)) == ["top.flac"]
     assert job.payload["recursive"] is False
 
 
 def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right_file(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """The item id is a path, so the worker has to resolve it against the frozen folder."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     low = nest(folder, silence, "house/low.flac", energylevel=7)
     high = nest(folder, silence, "techno/deep/high.flac", energylevel=7)
     bind_measuring(monkeypatch, {"low": 0, "high": 19})
 
-    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert tags.read_energy_from_file(low) == energy.LEVEL_MIN
@@ -2059,24 +1954,20 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
 
 
 def test_two_nested_folders_holding_the_same_filename_are_two_items(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """``job_items`` is keyed ``(job_id, item_id)``; one name in two genre folders."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     nest(folder, silence, "techno/track.flac", energylevel=7)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    assert code == int(ExitCode.OK), queued
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     assert sorted(item_states(job.job_id)) == ["house/track.flac", "techno/track.flac"]
 
 
 def test_a_nested_appledouble_sidecar_and_a_dot_directory_are_not_items(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     nest(folder, silence, "house/._track.flac")
     nest(folder, silence, ".Trashes/deleted.flac")
@@ -2087,15 +1978,13 @@ def test_a_nested_appledouble_sidecar_and_a_dot_directory_are_not_items(
 
 
 def test_a_nested_file_deleted_after_the_queue_refuses_that_item_only(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    energy.save_calibration(cfg, calibration_over(count=20))
     kept = nest(folder, silence, "house/kept.flac", energylevel=7)
     doomed = nest(folder, silence, "techno/doomed.flac", energylevel=7)
     bind_measuring(monkeypatch, {"kept": 19, "doomed": 0})
 
-    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     doomed.unlink()
     code, _ = drive(resume_argv(job.job_id))
 
@@ -2109,13 +1998,12 @@ def test_a_nested_file_deleted_after_the_queue_refuses_that_item_only(
 
 
 def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """A real SIGINT through the engine's own checkpoint, not a hand edited store."""
     import os
     import signal
 
-    energy.save_calibration(cfg, calibration_over(count=20))
     for relative in ("house/a.flac", "house/b.flac", "techno/c.flac", "techno/d.flac"):
         nest(folder, silence, relative, energylevel=7)
 
@@ -2128,8 +2016,7 @@ def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
         return features(19)
 
     monkeypatch.setattr(energy, "_EXTRACTOR", interrupting)
-    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     drive(resume_argv(job.job_id))
     done_after_kill = [
         item for item, state in item_states(job.job_id).items() if state is jobs.ItemState.DONE
@@ -2153,35 +2040,25 @@ def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
 
 
 def test_a_recursive_restamp_says_which_linked_folders_it_did_not_walk(
-    cfg, folder, silence, tmp_path, monkeypatch
+    cfg, calibrated, folder, silence, tmp_path, monkeypatch
 ):
     """A silent skip would be a clean report over a subtree nothing read."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    shutil.copy2(silence, elsewhere / "other.flac")
-    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    link_elsewhere(folder, silence, tmp_path)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    assert code == int(ExitCode.OK), queued
+    queued = driven_ok(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
     assert any(w["code"] == "linked-folder-skipped" for w in queued["warnings"]), queued
 
 
 def test_a_tree_whose_only_folders_are_links_says_so_on_the_zero(
-    cfg, folder, silence, tmp_path
+    cfg, calibrated, folder, silence, tmp_path
 ):
     """The one place the omission changes the answer completely."""
-    energy.save_calibration(cfg, calibration_over(count=20))
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    shutil.copy2(silence, elsewhere / "other.flac")
-    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    link_elsewhere(folder, silence, tmp_path)
 
-    code, said = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    assert code == int(ExitCode.OK), said
+    said = driven_ok(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert said["data"]["state"] == "no-audio"
     assert any(w["code"] == "linked-folder-skipped" for w in said["warnings"]), said
 
@@ -2207,30 +2084,23 @@ def test_a_restamp_item_that_would_leave_the_frozen_folder_is_refused(cfg, folde
 
 
 def test_the_resume_repeats_what_the_walk_left_out_rather_than_only_the_queue(
-    cfg, folder, silence, tmp_path, monkeypatch
+    cfg, calibrated, folder, silence, tmp_path, monkeypatch
 ):
     """The resume is the report a person keeps. The queue is the one they scroll past."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    shutil.copy2(silence, elsewhere / "other.flac")
-    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    link_elsewhere(folder, silence, tmp_path)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder, "--recursive")
     assert job.payload["skipped_links"] == ["linked"]
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed = resumed_ok(job)
     assert any(w["code"] == "linked-folder-skipped" for w in resumed["warnings"]), resumed
 
 
 def test_an_unreadable_nested_folder_is_named_rather_than_quietly_contributing_nothing(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """``os.walk`` swallows the error by default, and nothing in the output shows it."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     shut = folder / "locked"
     shut.mkdir()
@@ -2250,23 +2120,20 @@ def test_an_unreadable_nested_folder_is_named_rather_than_quietly_contributing_n
 
 
 def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """The default mode's envelope is unchanged, which is what U93 promised."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     place(folder, silence, "top", energylevel=7)
     bind_measuring(monkeypatch, {"top": 5})
     drive(["analyze", "restamp", "--queue-only", str(folder)])
-    code, resumed = drive(resume_argv(analysis_job("analyze.restamp").job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed = resumed_ok(analysis_job("analyze.restamp"))
     assert [w["code"] for w in resumed["warnings"]] == ["db-metadata-not-written"]
 
 
 def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
     """Both halves of the walk's omission are frozen, so both are read back (U93 D19)."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     shut = folder / "locked"
     shut.mkdir()
@@ -2281,8 +2148,7 @@ def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
     job = analysis_job("analyze.restamp")
     assert job.payload["unreadable_folders"] == ["locked"]
     assert job.payload["skipped_links"] == []
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed = resumed_ok(job)
     unreadable = [w for w in resumed["warnings"] if w["code"] == "folder-unreadable"]
     assert unreadable, resumed
     assert "locked" in unreadable[0]["message"]
@@ -2321,8 +2187,7 @@ def test_a_single_genre_folder_without_the_flag_writes_nothing_and_says_why(
 ):
     root, seen = genre_tree(cfg, silence, monkeypatch, per_folder=12, voxlevel=3)
     house = root / "Music" / "House"
-    code, envelope = drive(["analyze", "calibrate", str(house)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(house)])
     assert envelope["outcome"] == "no_op"
     (check,) = envelope["data"]["checks"]
     assert check["key"] == "calibrate.sample" and check["status"] == "failed"
@@ -2340,8 +2205,7 @@ def test_a_recursive_run_at_the_root_writes_a_calibration_with_the_sample_note(
     cfg, silence, monkeypatch
 ):
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    code, envelope = drive(["analyze", "calibrate", str(root), "--recursive"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root), "--recursive"])
     assert envelope["outcome"] == "ok"
     checks = checks_of(envelope)
     assert checks["calibrate.sample"]["status"] == "ok"
@@ -2369,8 +2233,7 @@ def test_the_same_tree_gives_the_same_sample_twice(cfg, silence, monkeypatch):
     assert first == seen
     assert len(first) == 10 == len(set(first))
     assert {path.parent.name for path in first} == {"House", "Techno"}, (
-        "an even stride over the sorted walk takes from every folder, where the "
-        "first ten items would all be House"
+        "an even stride takes from every folder; the first ten would all be House"
     )
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.n_tracks == 10
@@ -2382,8 +2245,7 @@ def test_the_same_tree_gives_the_same_sample_twice(cfg, silence, monkeypatch):
 def test_accept_partial_writes_and_warns(cfg, silence, monkeypatch):
     root, _ = genre_tree(cfg, silence, monkeypatch, per_folder=12)
     house = root / "Music" / "House"
-    code, envelope = drive(["analyze", "calibrate", str(house), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(house), "--accept-partial"])
     assert envelope["outcome"] == "ok"
     checks = checks_of(envelope)
     assert checks["calibrate.sample"]["status"] == "skipped", (
@@ -2401,8 +2263,7 @@ def test_the_root_read_one_level_deep_is_partial_and_names_the_flag(cfg, silence
     root, seen = genre_tree(cfg, silence, monkeypatch, per_folder=12)
     for index in range(12):
         place(root, silence, f"loose{index:02d}")
-    code, envelope = drive(["analyze", "calibrate", str(root)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root)])
     (check,) = envelope["data"]["checks"]
     assert check["key"] == "calibrate.sample" and check["status"] == "failed"
     assert "one level deep" in check["detail"]
@@ -2413,8 +2274,7 @@ def test_the_root_read_one_level_deep_is_partial_and_names_the_flag(cfg, silence
 def test_a_recursive_walk_of_one_genre_is_still_one_genre(cfg, silence, monkeypatch):
     root, seen = genre_tree(cfg, silence, monkeypatch, per_folder=12)
     house = root / "Music" / "House"
-    code, envelope = drive(["analyze", "calibrate", str(house), "--recursive"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(house), "--recursive"])
     (check,) = envelope["data"]["checks"]
     assert check["status"] == "failed" and "is not the library root" in check["detail"]
     assert seen == [] and energy.load_calibration(cfg) is None
@@ -2424,8 +2284,7 @@ def test_the_music_folder_walked_recursively_is_the_library_too(cfg, silence, mo
     """Every module that places a track places it under the music folder."""
     root, _ = genre_tree(cfg, silence, monkeypatch)
     music = root / cfg.library.music_dir
-    code, envelope = drive(["analyze", "calibrate", str(music), "--recursive"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(music), "--recursive"])
     assert checks_of(envelope)["calibrate.sample"]["status"] == "ok"
     assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
     loaded = energy.load_calibration(cfg)
@@ -2437,8 +2296,7 @@ def test_the_root_with_no_loose_tracks_and_no_flag_is_told_about_the_flag(
 ):
     """The normal layout, genre folders, holds audio files."""
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    code, envelope = drive(["analyze", "calibrate", str(root)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root)])
     (check,) = envelope["data"]["checks"]
     assert check["key"] == "calibrate.sample" and check["status"] == "failed"
     assert "add --recursive" in check["detail"]
@@ -2468,8 +2326,7 @@ def test_the_wrong_folder_is_said_before_the_missing_extra(cfg, silence, monkeyp
     root, _ = genre_tree(cfg, silence, monkeypatch)
     monkeypatch.setattr(energy, "_EXTRACTOR", None)
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    code, envelope = drive(["analyze", "calibrate", str(root / "Music" / "House")])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root / "Music" / "House")])
     assert envelope["data"]["checks"][0]["key"] == "calibrate.sample"
 
 
@@ -2478,8 +2335,7 @@ def test_the_root_reached_through_a_link_is_still_the_root(cfg, silence, monkeyp
     root, _ = genre_tree(cfg, silence, monkeypatch)
     link = tmp_path / "shortcut"
     link.symlink_to(root, target_is_directory=True)
-    code, envelope = drive(["analyze", "calibrate", str(link), "--recursive"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(link), "--recursive"])
     assert checks_of(envelope)["calibrate.sample"]["status"] == "ok"
     assert energy.load_calibration(cfg) is not None
 
@@ -2505,8 +2361,7 @@ def test_a_sample_below_the_fit_floor_is_refused_before_measuring(
 def test_a_sample_at_the_fit_floor_is_accepted(cfg, silence, monkeypatch):
     root, seen = genre_tree(cfg, silence, monkeypatch)
     at = str(calibrate.MIN_CALIBRATION_TRACKS)
-    code, envelope = drive(["analyze", "calibrate", str(root), "--recursive", "--sample", at])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root), "--recursive", "--sample", at])
     assert checks_of(envelope)["calibrate.energy"]["status"] == "ok"
     assert len(seen) == calibrate.MIN_CALIBRATION_TRACKS
 
@@ -2523,8 +2378,7 @@ def test_the_vocal_cut_reads_every_tagged_file_while_energy_reads_the_sample(
             seeds[name] = len(seeds)
             place(root / genre, silence, name, voxlevel=level)
     bind_measuring(monkeypatch, seeds)
-    code, envelope = drive(["analyze", "calibrate", str(root), "--recursive", "--sample", "10"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root), "--recursive", "--sample", "10"])
     assert checks_of(envelope)["calibrate.vocals"]["status"] == "ok"
     record = metadata_cli.load_vocal_calibration(cfg)
     assert record["n_tracks"] == 30, "the vocal half is a tag read and is never sampled"
@@ -2550,8 +2404,7 @@ def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypa
     elsewhere.mkdir()
     (root / "Music" / "Linked").symlink_to(elsewhere, target_is_directory=True)
 
-    code, refused = drive(["analyze", "calibrate", str(root), "--recursive"])
-    assert code == int(ExitCode.OK), refused
+    refused = driven_ok(["analyze", "calibrate", str(root), "--recursive"])
     (check,) = refused["data"]["checks"]
     assert check["key"] == "calibrate.sample" and check["status"] == "failed"
     assert "left out 1 folder " in check["detail"]
@@ -2562,8 +2415,7 @@ def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypa
     )
     assert seen == [] and energy.load_calibration(cfg) is None
 
-    code, fitted = drive(["analyze", "calibrate", str(root), "--recursive", "--accept-partial"])
-    assert code == int(ExitCode.OK), fitted
+    fitted = driven_ok(["analyze", "calibrate", str(root), "--recursive", "--accept-partial"])
     assert checks_of(fitted)["calibrate.sample"]["status"] == "skipped"
     assert {"linked-folder-skipped", calibrate.PARTIAL_SAMPLE} <= set(codes_of(fitted))
     loaded = energy.load_calibration(cfg)
@@ -2601,8 +2453,7 @@ def test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op(
     for index, path in enumerate(sorted((root / "Music").rglob("*.flac"))):
         assert tags.write_tags(path, {"voxlevel": 2 if index < 10 else 40})
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
-    code, envelope = drive(["analyze", "calibrate", str(root), "--recursive"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(root), "--recursive"])
     checks = checks_of(envelope)
     assert checks["calibrate.energy"]["status"] == "failed"
     assert checks["calibrate.vocals"]["status"] == "ok"
@@ -2617,8 +2468,7 @@ def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(
     for name in ("a", "b"):
         place(folder, silence, name)
     bind_measuring(monkeypatch, {"a": 0, "b": 1})
-    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = driven_ok(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert checks_of(envelope)["calibrate.energy"]["status"] == "failed"
     assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
 
@@ -2629,8 +2479,7 @@ def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     assert len(taken) == 100 == len(set(taken))
     assert taken == sorted(taken) and taken[0] == items[0]
     assert items.index(taken[-1]) >= len(items) - 11, (
-        "a fixed step of len // count stops 3 short per hundred and never "
-        "reaches the tail, which in a sorted walk is whole folders"
+        "a fixed step of len // count never reaches the tail, whole folders of a walk"
     )
     gaps = {items.index(b) - items.index(a) for a, b in zip(taken, taken[1:])}
     assert gaps <= {10, 11}
@@ -2649,6 +2498,8 @@ def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silen
     code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "energy-calibration-missing"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
     steps = " ".join(refused["cause"]["remediation"]["steps"])
     assert "--recursive" in steps and "representative folder" not in steps
 
@@ -2670,9 +2521,8 @@ def test_analyze_run_by_hand_queues_and_drives_its_job_to_succeeded_in_one_call(
     head = detector()
     bind_scoring(monkeypatch, detect_=head)
 
-    code, settled = drive(["analyze", "run", str(folder)])
+    settled = driven_ok(["analyze", "run", str(folder)])
 
-    assert code == int(ExitCode.OK), settled
     job = analysis_job("analyze.run")
     assert settled["data"]["job_id"] == job.job_id
     assert settled["data"]["state"] == "succeeded"
@@ -2688,16 +2538,14 @@ def test_analyze_run_by_hand_queues_and_drives_its_job_to_succeeded_in_one_call(
 
 
 def test_analyze_restamp_by_hand_drives_its_job_and_says_the_database_note_once(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    energy.save_calibration(cfg, calibration_over(count=20))
     low = place(folder, silence, "low", energylevel=7)
     high = place(folder, silence, "high", energylevel=7)
     bind_measuring(monkeypatch, {"low": 0, "high": 19})
 
-    code, settled = drive(["analyze", "restamp", str(folder)])
+    settled = driven_ok(["analyze", "restamp", str(folder)])
 
-    assert code == int(ExitCode.OK), settled
     job = analysis_job("analyze.restamp")
     assert settled["data"]["state"] == "succeeded"
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
@@ -2710,20 +2558,15 @@ def test_analyze_restamp_by_hand_drives_its_job_and_says_the_database_note_once(
 
 
 def test_a_restamp_driven_at_its_queue_names_a_linked_folder_once(
-    cfg, folder, silence, tmp_path, monkeypatch
+    cfg, calibrated, folder, silence, tmp_path, monkeypatch
 ):
     """The walk's omission is read back off the frozen payload, not said twice."""
-    energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    shutil.copy2(silence, elsewhere / "other.flac")
-    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    link_elsewhere(folder, silence, tmp_path)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    code, settled = drive(["analyze", "restamp", str(folder), "--recursive"])
+    settled = driven_ok(["analyze", "restamp", str(folder), "--recursive"])
 
-    assert code == int(ExitCode.OK), settled
     queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])[1]
     said = [w for w in settled["warnings"] if w["code"] != "db-metadata-not-written"]
     expected = [w for w in queued["warnings"] if w["code"] != "db-metadata-not-written"]
@@ -2733,16 +2576,14 @@ def test_a_restamp_driven_at_its_queue_names_a_linked_folder_once(
 
 @pytest.mark.parametrize("verb", ["run", "restamp"])
 def test_queue_only_returns_the_job_queued_with_nothing_driven(
-    cfg, folder, silence, monkeypatch, verb
+    cfg, calibrated, folder, silence, monkeypatch, verb
 ):
-    energy.save_calibration(cfg, calibration_over(count=20))
     place(folder, silence, "a", energylevel=7)
     bind_scoring(monkeypatch)
     bind_measuring(monkeypatch, {"a": 3})
 
-    code, queued = drive(["analyze", verb, "--queue-only", str(folder)])
+    queued = driven_ok(["analyze", verb, "--queue-only", str(folder)])
 
-    assert code == int(ExitCode.OK), queued
     job = analysis_job(f"analyze.{verb}")
     assert queued["data"]["state"] == "queued"
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.PENDING}
@@ -2762,15 +2603,13 @@ def test_queue_only_beside_job_is_refused_before_anything_is_queued(cfg, folder,
 
 
 def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_it(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    """A real SIGINT in the call that queued the job leaves it queued and resumable
-    without measuring a settled file again."""
+    """A real SIGINT leaves the job resumable, and no settled file is measured again."""
     import os
     import shlex
     import signal
 
-    energy.save_calibration(cfg, calibration_over(count=20))
     for name in ("a", "b", "c", "d"):
         place(folder, silence, name, energylevel=7)
     measured: list[str] = []
@@ -2797,9 +2636,7 @@ def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_
     done = sorted(i for i, s in item_states(job.job_id).items() if s is jobs.ItemState.DONE)
     assert done and len(done) < 4, done
 
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert not set(done) & set(measured[2:]), "the resume measured a settled file again"
 
@@ -2826,11 +2663,9 @@ def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
 
 
 def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_back(
-    cfg, folder, silence, monkeypatch
+    cfg, calibrated, folder, silence, monkeypatch
 ):
-    """U327: the restamp writes the energy tag alone, so a title and key tag that took
-    rekordbox's answer keep it, and the file name keeps its older head."""
-    energy.save_calibration(cfg, calibration_over(count=20))
+    """U327: the restamp writes the energy tag alone, so nothing adopt corrected moves."""
     corrected = folder / "01A - 124 - Golf.flac"
     shutil.copy2(silence, corrected)
     assert tags.write_tags(
@@ -2838,11 +2673,8 @@ def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_ba
     )
     bind_measuring(monkeypatch, {"01A - 124 - Golf": 0})
 
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
+    job = queued("restamp", folder)
+    resumed_ok(job)
     assert tags.read_energy_from_file(corrected) == energy.LEVEL_MIN
     assert tags.read_tags(corrected, ("title", "initialkey")) == {
         "title": "09A - 98 - Golf",
@@ -2864,8 +2696,7 @@ def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_ba
 def test_the_run_titles_only_a_file_with_no_title_and_never_with_a_head(
     cfg, folder, silence, monkeypatch, stem, fields, title
 ):
-    """U343 review rounds one and two: the naming engine's title with no head, R21's
-    marker set first for a lossy stem, so the landing's title and the tag are one."""
+    """U343 rounds one and two: the engine's title with no head, R21's marker first if lossy."""
     path = place(folder, silence, stem, **fields)
     bind_scoring(monkeypatch)
     resumed_ok(queued("run", folder))

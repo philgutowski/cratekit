@@ -70,6 +70,20 @@ def native_library(full_machine) -> tuple[config.Config, str]:
     return full_machine
 
 
+@pytest.fixture
+def visited(native_library, silence) -> config.Config:
+    """The machine with the visit of 2026-11-22 landed and analysed."""
+    _landed_and_visited(native_library[0], silence)
+    return native_library[0]
+
+
+@pytest.fixture
+def bare_visited(native_library, silence) -> config.Config:
+    """The machine with four titles landed bare and analysed."""
+    _bare_and_visited(native_library[0], silence)
+    return native_library[0]
+
+
 @pytest.fixture(autouse=True)
 def _field_policies():
     """The policy registry is process wide and the apply registers into it."""
@@ -200,6 +214,13 @@ def _visit(
     conn.close()
 
 
+def _execute(cfg: config.Config, sql: str, params=()) -> None:
+    """One statement on the disposable database, committed."""
+    with sqlite3.connect(cfg.library.db_path) as conn:
+        conn.execute(sql, params)
+    conn.close()
+
+
 def _file(cfg: config.Config, stem: str) -> Path:
     ((recorded,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", _id(cfg, stem))
     resolved = locations.resolve_recorded_path(
@@ -225,6 +246,20 @@ def _content(cfg: config.Config) -> dict[str, dict]:
         conn.close()
 
 
+def _changed_columns(before: dict[str, dict], after: dict[str, dict]) -> dict[str, list[str]]:
+    """Each row whose columns moved, bookkeeping aside, with the columns that did."""
+    changed = {
+        content_id: sorted(
+            column
+            for column in after[content_id]
+            if column not in rb_writer.BOOKKEEPING_COLUMNS
+            and after[content_id][column] != before[content_id].get(column)
+        )
+        for content_id in after
+    }
+    return {cid: cols for cid, cols in changed.items() if cols}
+
+
 def _analysis_bytes(cfg: config.Config) -> dict[str, str]:
     root = Path(cfg.library.root)
     return {
@@ -247,6 +282,13 @@ def _two_acts(argv: list[str] = VERB) -> tuple[int, dict, dict]:
     _decide(refused["run_id"])
     code, acted = drive(["--run", refused["run_id"], *argv])
     return code, acted, refused
+
+
+def _applied(argv: list[str] = VERB) -> dict:
+    """Both acts, the apply ending OK, and its envelope."""
+    code, acted, _refused = _two_acts(argv)
+    assert code == int(ExitCode.OK), acted
+    return acted
 
 
 def _items(envelope: dict) -> dict[str, dict]:
@@ -294,11 +336,8 @@ def _landed_and_visited(cfg: config.Config, silence: Path) -> None:
         _visit(cfg, stem, scale=scale, bpm=bpm)
 
 
-def test_the_plan_shows_each_row_before_and_after_with_its_key_relation_and_tempo(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_the_plan_shows_each_row_before_and_after_with_its_key_relation_and_tempo(visited):
+    cfg = visited
 
     code, refused = drive(VERB)
 
@@ -341,28 +380,17 @@ class plan_handle:  # noqa: N801 - a context manager read as a phrase
         return None
 
 
-def test_the_apply_writes_title_title_tag_and_key_tag_and_nothing_else(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_the_apply_writes_title_title_tag_and_key_tag_and_nothing_else(visited):
+    cfg = visited
     before = _content(cfg)
     grids = _analysis_bytes(cfg)
     names = {stem: _surfaces(cfg, stem)[3] for stem in LANDED}
 
-    code, acted, _refused = _two_acts()
+    acted = _applied()
 
-    assert code == int(ExitCode.OK), acted
     after = _content(cfg)
-    changed = {
-        content_id: sorted(
-            column
-            for column in after[content_id]
-            if column not in rb_writer.BOOKKEEPING_COLUMNS
-            and after[content_id][column] != before[content_id].get(column)
-        )
-        for content_id in after
-    }
     written = {_id(cfg, stem) for stem in ("Alpha", "Bravo", "Echo", "Golf", "Hotel")}
-    assert {cid: cols for cid, cols in changed.items() if cols} == {
+    assert _changed_columns(before, after) == {
         cid: ["Title"] for cid in written
     }
     for stem, title in AFTER.items():
@@ -382,25 +410,21 @@ def test_the_apply_writes_title_title_tag_and_key_tag_and_nothing_else(native_li
     assert codes[0] == head_adopt_cli.HEADS_WRITTEN
 
 
-def test_no_tempo_tag_or_grid_reaches_a_file_the_verb_wrote(native_library, silence):
+def test_no_tempo_tag_or_grid_reaches_a_file_the_verb_wrote(visited):
     """R17 on the file surface: the head's text changes, and no tempo key appears."""
     import mutagen
 
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+    cfg = visited
+    _applied()
     for stem in LANDED:
         handle = mutagen.File(_file(cfg, stem))
         keys = {str(key).lower() for key in (handle.tags or {}).keys()}
         assert not keys & {"bpm", "tbpm", "tmpo", "averagebpm", "beatgrid"}, (stem, keys)
 
 
-def test_the_record_keeps_every_surface_s_old_value_for_a_restore(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+def test_the_record_keeps_every_surface_s_old_value_for_a_restore(visited):
+    cfg = visited
+    _applied()
     (record,) = [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
     kept = {entry["content_id"]: entry for entry in record.detail[ha.RECORD_KEY]}
     golf = kept[_id(cfg, "Golf")]
@@ -414,11 +438,9 @@ def test_the_record_keeps_every_surface_s_old_value_for_a_restore(native_library
     assert record.snapshot_path
 
 
-def test_a_second_run_plans_nothing_still_asks_and_ends_no_op(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+def test_a_second_run_plans_nothing_still_asks_and_ends_no_op(visited):
+    cfg = visited
+    _applied()
     before = _content(cfg)
 
     code, again, refused = _two_acts()
@@ -431,14 +453,12 @@ def test_a_second_run_plans_nothing_still_asks_and_ends_no_op(native_library, si
     assert len([r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]) == 1
 
 
-def test_leave_holds_a_row_out_in_the_plan_and_on_the_apply(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_leave_holds_a_row_out_in_the_plan_and_on_the_apply(visited):
+    cfg = visited
     golf = _id(cfg, "Golf")
 
-    code, acted, _refused = _two_acts([*VERB, "--leave", golf, "--leave", "no-such-row"])
+    acted = _applied([*VERB, "--leave", golf, "--leave", "no-such-row"])
 
-    assert code == int(ExitCode.OK), acted
     assert _surfaces(cfg, "Golf")[:2] == ("01A - 124 - Golf", "01A - 124 - Golf")
     assert _surfaces(cfg, "Alpha")[0] == "07B - 124 - Alpha"
     held = {item["content_id"]: item for item in acted["data"]["items"]}[golf]
@@ -451,9 +471,8 @@ def test_leave_holds_a_row_out_in_the_plan_and_on_the_apply(native_library, sile
     assert head_adopt_cli.LEAVE_UNMATCHED in codes and head_adopt_cli.ROWS_LEFT in codes
 
 
-def test_the_same_leave_is_needed_on_the_run_that_applies(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_the_same_leave_is_needed_on_the_run_that_applies(visited):
+    cfg = visited
     golf = _id(cfg, "Golf")
     code, refused = drive([*VERB, "--leave", golf])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -466,9 +485,8 @@ def test_the_same_leave_is_needed_on_the_run_that_applies(native_library, silenc
     assert _content(cfg) == before
 
 
-def test_a_title_changed_between_plan_and_apply_refuses_and_writes_nothing(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_title_changed_between_plan_and_apply_refuses_and_writes_nothing(visited):
+    cfg = visited
     code, refused = drive(VERB)
     _decide(refused["run_id"])
     with sqlite3.connect(cfg.library.db_path) as conn:
@@ -486,11 +504,10 @@ def test_a_title_changed_between_plan_and_apply_refuses_and_writes_nothing(nativ
     assert not [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
 
 
-def test_a_plan_that_moves_on_the_write_handle_refuses_before_any_file(native_library, silence, monkeypatch):
+def test_a_plan_that_moves_on_the_write_handle_refuses_before_any_file(visited, monkeypatch):
     """The plan taken again on the write handle is the last word: a file gone between
     the gate's check and the write handle's plan refuses, and no file is written."""
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+    cfg = visited
     code, refused = drive(VERB)
     _decide(refused["run_id"])
     gone = _file(cfg, "Hotel")
@@ -513,9 +530,8 @@ def test_a_plan_that_moves_on_the_write_handle_refuses_before_any_file(native_li
     assert not [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
 
 
-def test_a_file_gone_before_the_plan_is_left_and_named(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_file_gone_before_the_plan_is_left_and_named(visited):
+    cfg = visited
     _file(cfg, "Hotel").unlink()
     with plan_handle(cfg) as found:
         items = {item.title.rsplit(" - ", 1)[-1]: item for item in found.items}
@@ -562,9 +578,7 @@ def test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named(
     # (U342); a title the engine could not stamp and read back is no head.
     assert tags.write_tags(_file(cfg, "Papa"), {"title": "01A - 124 - Papa (Edit)"})
     quebec = _id(cfg, "Quebec")
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET Title = 'Quebec' WHERE ID = ?", (quebec,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET Title = 'Quebec' WHERE ID = ?", (quebec,))
 
     with plan_handle(cfg) as found:
         reasons = {item.title: item.reason for item in found.items}
@@ -574,28 +588,24 @@ def test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named(
         "01A - 124 - Papa": ha.TAG_DIFFERS,
         "Quebec": ha.TAG_DIFFERS,
     }
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET Title = ' Quebec' WHERE ID = ?", (quebec,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET Title = ' Quebec' WHERE ID = ?", (quebec,))
     with plan_handle(cfg) as found:
         reasons = {item.title: item.reason for item in found.items}
     assert reasons[" Quebec"] == ha.NO_HEAD
     assert found.writes == ()
 
 
-def test_a_file_already_corrected_is_continued_by_planning_again(native_library, silence):
+def test_a_file_already_corrected_is_continued_by_planning_again(visited):
     """A run stopped after the files and before the rows: the file reads as planned,
     so only the row is written, and the key tag already right is left."""
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+    cfg = visited
     assert tags.write_tags(_file(cfg, "Golf"), {"title": "09A - 98 - Golf", "initialkey": "9A"})
 
     with plan_handle(cfg) as found:
         golf = {item.title.rsplit(" - ", 1)[-1]: item for item in found.items}["Golf"]
 
     assert golf.action == ha.ADOPT and golf.writes_title and not golf.writes_file
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+    _applied()
     assert _surfaces(cfg, "Golf")[:3] == ("09A - 98 - Golf", "09A - 98 - Golf", "9A")
 
 
@@ -620,8 +630,7 @@ def test_the_scope_is_never_the_back_catalogue_unasked(native_library, silence):
     (landing,) = [
         r.session_id for r in session.records(cfg) if r.workflow == native.WORKFLOW
     ]
-    code, acted, _refused = _two_acts([*VERB, "--session", landing])
-    assert code == int(ExitCode.OK), acted
+    _applied([*VERB, "--session", landing])
     assert _surfaces(cfg, "Golf")[0] == "09A - 98 - Golf"
 
 
@@ -633,9 +642,8 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(unacknowledged,
     assert not gates.run_path(envelope["run_id"]).exists()
 
 
-def test_the_gate_takes_no_inline_answer(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_the_gate_takes_no_inline_answer(visited):
+    cfg = visited
     before = _content(cfg)
     code, refused = drive(["-d", f"{GATE}=apply", *VERB])
     assert code != int(ExitCode.OK), refused
@@ -674,17 +682,14 @@ def test_the_operation_owns_title_alone_and_never_the_key_or_tempo():
 # tests/test_analysis_workers.py, beside the restamp it drives
 
 
-def test_the_check_after_the_adopt_reads_every_title_equal(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_the_check_after_the_adopt_reads_every_title_equal(visited):
     code, before = drive(["analyze", "check"])
     assert code == int(ExitCode.OK), before
     assert before["data"]["summary"]["differs"] == 5
     detail = [c for c in before["data"]["checks"] if c["key"] == "check.key_agreement"][0]
     assert detail["status"] == "info" and check_cli.ADOPT_VERB in detail["detail"]
 
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+    _applied()
 
     code, after = drive(["analyze", "check"])
     summary = after["data"]["summary"]
@@ -692,11 +697,9 @@ def test_the_check_after_the_adopt_reads_every_title_equal(native_library, silen
     assert summary["key_agreement"][rc.KEY_EQUAL] == len(LANDED)
 
 
-def test_a_full_library_name_apply_after_the_adopt_brings_nothing_back(native_library, silence):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+def test_a_full_library_name_apply_after_the_adopt_brings_nothing_back(visited):
+    cfg = visited
+    _applied()
     surfaces = {stem: _surfaces(cfg, stem) for stem in LANDED}
 
     argv = ["name", "apply", "--root", str(Path(cfg.library.root))]
@@ -720,11 +723,8 @@ def test_a_full_library_name_apply_after_the_adopt_brings_nothing_back(native_li
 # 4. The guard under the write, driven
 
 
-def test_a_plan_that_would_write_the_tempo_column_is_refused_by_policy(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_plan_that_would_write_the_tempo_column_is_refused_by_policy(visited, monkeypatch):
+    cfg = visited
     before = _content(cfg)
     real = ha.row_changes
 
@@ -743,11 +743,8 @@ def test_a_plan_that_would_write_the_tempo_column_is_refused_by_policy(
     assert {stem: _surfaces(cfg, stem) for stem in LANDED} == tagged
 
 
-def test_a_tempo_set_on_the_row_behind_the_policy_is_refused_at_the_commit(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_tempo_set_on_the_row_behind_the_policy_is_refused_at_the_commit(visited, monkeypatch):
+    cfg = visited
     before = _content(cfg)
     real = metadata.write_plan
 
@@ -768,11 +765,8 @@ def test_a_tempo_set_on_the_row_behind_the_policy_is_refused_at_the_commit(
 # 5. A file that does not take, and the row read back
 
 
-def test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named(visited, monkeypatch):
+    cfg = visited
     golf = _file(cfg, "Golf")
     real = tags.write_tags
 
@@ -799,11 +793,8 @@ def test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named(
     assert _surfaces(cfg, "Alpha")[:2] == ("07B - 124 - Alpha", "07B - 124 - Alpha")
 
 
-def test_a_file_that_does_not_read_back_keeps_its_row_s_title_and_is_named(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_file_that_does_not_read_back_keeps_its_row_s_title_and_is_named(visited, monkeypatch):
+    cfg = visited
     golf = _file(cfg, "Golf")
     real = tags.write_tags
 
@@ -882,9 +873,8 @@ def test_an_empty_inbox_analyze_says_why_nothing_was_planned(native_library):
     assert f"no {native.ANALYZE} playlist" in shown or "holds no row" in shown
 
 
-def test_session_records_the_log_could_not_read_are_said(native_library, silence, monkeypatch):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_session_records_the_log_could_not_read_are_said(visited, monkeypatch):
+    cfg = visited
     (landing,) = [r.session_id for r in session.records(cfg) if r.workflow == native.WORKFLOW]
     real = rc.resolve_scope
 
@@ -900,16 +890,11 @@ def test_session_records_the_log_could_not_read_are_said(native_library, silence
     assert "1 session record(s) could not be read" in shown
 
 
-def test_a_row_gone_from_the_collection_or_with_an_unreadable_file_is_left_and_named(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_row_gone_from_the_collection_or_with_an_unreadable_file_is_left_and_named(visited):
+    cfg = visited
     _file(cfg, "Hotel").write_bytes(b"not audio at all")
     alpha = _id(cfg, "Alpha")
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (alpha,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (alpha,))
 
     with plan_handle(cfg) as found:
         reasons = {item.content_id: item.reason for item in found.items}
@@ -919,14 +904,11 @@ def test_a_row_gone_from_the_collection_or_with_an_unreadable_file_is_left_and_n
     assert alpha not in {item.content_id for item in found.writes}
 
 
-def test_an_out_of_band_restore_is_looked_for_before_the_session_opens(
-    native_library, silence, monkeypatch
-):
+def test_an_out_of_band_restore_is_looked_for_before_the_session_opens(visited, monkeypatch):
     from cratekit.core import convergence
     from cratekit.core.cause import refuse
 
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+    cfg = visited
     tagged = {stem: _surfaces(cfg, stem) for stem in LANDED}
     before = _content(cfg)
 
@@ -941,12 +923,9 @@ def test_an_out_of_band_restore_is_looked_for_before_the_session_opens(
     assert {stem: _surfaces(cfg, stem) for stem in LANDED} == tagged
 
 
-def test_the_old_values_are_on_disk_before_the_first_file_is_written(
-    native_library, silence, monkeypatch
-):
+def test_the_old_values_are_on_disk_before_the_first_file_is_written(visited, monkeypatch):
     """A run killed at its first file leaves a record a person can put the files back from."""
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+    cfg = visited
     seen: list[list] = []
 
     def crash(path, fields):
@@ -969,9 +948,7 @@ def test_the_check_counts_only_a_title_whose_own_head_differs(native_library, si
     cfg, _root = native_library
     _land_headed(cfg, silence, "2026-11-22_bare", {"Romeo": "01A - 124"})
     _visit(cfg, "Romeo", scale="7B", bpm=9000)
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET Title = 'Romeo' WHERE ID = ?", (_id(cfg, "Romeo"),))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET Title = 'Romeo' WHERE ID = ?", (_id(cfg, "Romeo"),))
 
     code, checked = drive(["analyze", "check"])
 
@@ -982,11 +959,10 @@ def test_the_check_counts_only_a_title_whose_own_head_differs(native_library, si
     assert checked["data"]["summary"]["headless"] == 0, "adopt leaves it, so it is not counted"
 
 
-def test_a_commit_that_lands_and_then_raises_is_still_recorded(native_library, silence, monkeypatch):
+def test_a_commit_that_lands_and_then_raises_is_still_recorded(visited, monkeypatch):
     """The witness, not the exception, says whether the rows landed: a commit that
     lands and then raises keeps its record, so a restore knows to undo it."""
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+    cfg = visited
     real = rb_writer.commit_guarded
 
     def lands_then_raises(db, *args, **kwargs):
@@ -1002,9 +978,8 @@ def test_a_commit_that_lands_and_then_raises_is_still_recorded(native_library, s
     assert _surfaces(cfg, "Golf")[0] == "09A - 98 - Golf"
 
 
-def test_a_commit_that_raises_before_landing_records_no_commit(native_library, silence, monkeypatch):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_commit_that_raises_before_landing_records_no_commit(visited, monkeypatch):
+    cfg = visited
 
     def refuses(db, *args, **kwargs):
         raise RuntimeError("the database is locked")
@@ -1024,9 +999,7 @@ def test_a_bare_title_s_tempo_is_not_counted_as_differing(native_library, silenc
     cfg, _root = native_library
     _land_headed(cfg, silence, "2026-11-22_bare", {"Romeo": "01A - 124"})
     _visit(cfg, "Romeo", scale="1A", bpm=9000)
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET Title = 'Romeo' WHERE ID = ?", (_id(cfg, "Romeo"),))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET Title = 'Romeo' WHERE ID = ?", (_id(cfg, "Romeo"),))
 
     code, checked = drive(["analyze", "check"])
 
@@ -1105,13 +1078,10 @@ def test_a_title_with_no_head_is_stamped_and_keeps_every_byte(title, key, tempo,
         assert parse_head(stamped, template=TEMPLATE) == {"key": stamped[:3], "bpm": str(tempo)}
 
 
-def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(
-    native_library, silence
-):
+def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(bare_visited):
     """U343: a run writes no head, so every landed title is bare after the visit, and
     the check counts each and names the verb that stamps it; none reads as suspect."""
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+    cfg = bare_visited
 
     code, checked = drive(["analyze", "check"])
 
@@ -1179,11 +1149,8 @@ def test_a_file_with_no_title_tag_is_titled_by_the_run_so_adopt_stamps_it_after_
     }
 
 
-def test_a_headless_title_is_planned_stamped_apart_from_the_corrected_rows(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _landed_and_visited(cfg, silence)
+def test_a_headless_title_is_planned_stamped_apart_from_the_corrected_rows(visited, silence):
+    cfg = visited
     _bare_and_visited(cfg, silence)
 
     code, refused = drive(VERB)
@@ -1213,29 +1180,18 @@ def _stem(title: str) -> str:
     return title
 
 
-def test_the_apply_stamps_title_title_tag_and_key_tag_and_nothing_else(native_library, silence):
+def test_the_apply_stamps_title_title_tag_and_key_tag_and_nothing_else(bare_visited):
     import mutagen
 
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+    cfg = bare_visited
     before = _content(cfg)
     grids = _analysis_bytes(cfg)
     names = {stem: _file(cfg, stem).name for stem in BARE}
 
-    code, acted, _refused = _two_acts()
+    acted = _applied()
 
-    assert code == int(ExitCode.OK), acted
     after = _content(cfg)
-    changed = {
-        content_id: sorted(
-            column
-            for column in after[content_id]
-            if column not in rb_writer.BOOKKEEPING_COLUMNS
-            and after[content_id][column] != before[content_id].get(column)
-        )
-        for content_id in after
-    }
-    assert {cid: cols for cid, cols in changed.items() if cols} == {
+    assert _changed_columns(before, after) == {
         _id(cfg, stem): ["Title"] for stem in BARE
     }
     for stem, title in STAMPED.items():
@@ -1280,9 +1236,8 @@ def test_a_headless_row_rekordbox_did_not_key_or_time_is_left_and_named(native_l
         _visit(cfg, stem, scale=scale, bpm=bpm)
     before = _content(cfg)
 
-    code, acted, _refused = _two_acts()
+    acted = _applied()
 
-    assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     items = {item["title"]: item for item in acted["data"]["items"]}
     for stem, (_scale, _bpm, notes) in UNANSWERED.items():
@@ -1299,14 +1254,12 @@ def test_a_headless_row_rekordbox_did_not_key_or_time_is_left_and_named(native_l
     assert {stem: _surfaces(cfg, stem)[1] for stem in UNANSWERED} == {s: s for s in UNANSWERED}
 
 
-def test_leave_holds_a_stamped_row_out_in_the_plan_and_on_the_apply(native_library, silence):
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+def test_leave_holds_a_stamped_row_out_in_the_plan_and_on_the_apply(bare_visited):
+    cfg = bare_visited
     sierra = _id(cfg, "Sierra")
 
-    code, acted, _refused = _two_acts([*VERB, "--leave", sierra])
+    acted = _applied([*VERB, "--leave", sierra])
 
-    assert code == int(ExitCode.OK), acted
     assert _surfaces(cfg, "Sierra")[:3] == ("Sierra", "Sierra", None)
     assert _surfaces(cfg, "Tango")[0] == STAMPED["Tango"]
     held = {item["content_id"]: item for item in acted["data"]["items"]}[sierra]
@@ -1316,16 +1269,11 @@ def test_leave_holds_a_stamped_row_out_in_the_plan_and_on_the_apply(native_libra
     assert head_adopt_cli.LEAVE_UNMATCHED not in [w["code"] for w in acted["warnings"]]
 
 
-def test_a_stamped_row_moved_between_plan_and_apply_refuses_and_writes_nothing(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+def test_a_stamped_row_moved_between_plan_and_apply_refuses_and_writes_nothing(bare_visited):
+    cfg = bare_visited
     code, refused = drive(VERB)
     _decide(refused["run_id"])
-    with sqlite3.connect(cfg.library.db_path) as conn:
-        conn.execute("UPDATE djmdContent SET BPM = 13000 WHERE ID = ?", (_id(cfg, "Sierra"),))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET BPM = 13000 WHERE ID = ?", (_id(cfg, "Sierra"),))
     before = _content(cfg)
     tags_before = {stem: _surfaces(cfg, stem) for stem in BARE}
 
@@ -1336,41 +1284,35 @@ def test_a_stamped_row_moved_between_plan_and_apply_refuses_and_writes_nothing(
     assert {stem: _surfaces(cfg, stem) for stem in BARE} == tags_before
 
 
-def test_a_second_run_after_a_stamp_plans_nothing_and_ends_no_op(native_library, silence):
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+def test_a_second_run_after_a_stamp_plans_nothing_and_ends_no_op(bare_visited):
+    cfg = bare_visited
+    _applied()
     before = _content(cfg)
 
-    code, again, _refused = _two_acts()
+    again = _applied()
 
-    assert code == int(ExitCode.OK), again
     assert again["outcome"] == "no_op"
     assert again["warnings"][0]["code"] == head_adopt_cli.NOTHING_TO_WRITE
     assert {item["action"] for item in again["data"]["items"]} == {ha.AGREE}
     assert _content(cfg) == before
 
 
-def test_a_file_already_stamped_is_continued_by_planning_again(native_library, silence):
+def test_a_file_already_stamped_is_continued_by_planning_again(bare_visited):
     """A run stopped after the files and before the rows: the tag already reads as
     the stamped title, so only the row is written."""
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+    cfg = bare_visited
     assert tags.write_tags(_file(cfg, "Sierra"), {"title": STAMPED["Sierra"], "initialkey": "6A"})
 
     with plan_handle(cfg) as found:
         sierra = {_stem(item.title): item for item in found.items}["Sierra"]
 
     assert sierra.action == ha.STAMPED and sierra.writes_title and not sierra.writes_file
-    code, acted, _refused = _two_acts()
-    assert code == int(ExitCode.OK), acted
+    _applied()
     assert _surfaces(cfg, "Sierra")[:3] == (STAMPED["Sierra"], STAMPED["Sierra"], "6A")
 
 
-def test_a_headless_row_whose_tag_carries_another_title_is_left(native_library, silence):
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+def test_a_headless_row_whose_tag_carries_another_title_is_left(bare_visited):
+    cfg = bare_visited
     assert tags.write_tags(_file(cfg, "Sierra"), {"title": "Sierra (Edit)"})
 
     with plan_handle(cfg) as found:
@@ -1408,11 +1350,10 @@ def test_a_stamped_file_carries_the_tempo_as_text_and_no_tempo_tag_in_any_contai
     assert not spelled & {key.lower() for key in FORBIDDEN_TAG_KEYS}, sorted(held)
 
 
-def test_a_stamped_row_is_counted_written_and_never_as_left(native_library, silence, monkeypatch):
+def test_a_stamped_row_is_counted_written_and_never_as_left(bare_visited, silence, monkeypatch):
     """The rows left count names only rows left, never a stamped one, and the written
     message counts a stamped title only when its file took it."""
-    cfg, _root = native_library
-    _bare_and_visited(cfg, silence)
+    cfg = bare_visited
     _land_bare(cfg, silence, "2026-11-23_one_left", {"Whiskey": "Whiskey"})
     _visit(cfg, "Whiskey", scale=None, bpm=12400)
     tango = _file(cfg, "Tango")

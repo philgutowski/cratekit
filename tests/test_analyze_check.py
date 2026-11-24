@@ -268,8 +268,7 @@ def test_an_analysed_row_with_no_head_in_its_title_is_counted_for_adopt_and_neve
               _row(state=rc.NOT_ANALYSED, headed=False)),
     )
     assert found.headless == (bare,), (
-        "a row not analysed is not yet adopt's, and adopt leaves one whose file name "
-        "has a head and one rekordbox answered half"
+        "an unanalysed row, a headed file name, a half answer: none is adopt's to stamp"
     )
     summary = found.summary()
     assert summary["headless"] == 1 and summary["differs"] == 0
@@ -282,20 +281,33 @@ def test_no_row_or_only_gone_rows_is_nothing():
     assert _verdict(_row(state=rc.GONE)) == rc.NOTHING
 
 
+def _execute(cfg: config.Config, sql: str, params=()) -> None:
+    """One statement on the disposable database, committed."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(sql, params)
+    conn.close()
+
+
+@pytest.fixture
+def five(native_library, silence) -> config.Config:
+    """The machine with FIVE landed into INBOX / Analyze, none analysed yet."""
+    _land(native_library[0], silence, "2026-10-31_five", FIVE)
+    return native_library[0]
+
+
 def _key_id(cfg: config.Config, scale: str) -> str:
     """The djmdKey row naming ``scale``, made when absent, as rekordbox keeps them."""
     found = _query(cfg, "SELECT ID FROM djmdKey WHERE ScaleName = ?", scale)
     if found:
         return str(found[0][0])
     key_id = f"k-{scale}"
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "INSERT INTO djmdKey (ID, ScaleName, Seq, rb_local_deleted, created_at, updated_at) "
-            "VALUES (?, ?, 1, 0, '2026-10-31', '2026-10-31')",
-            (key_id, scale),
-        )
-    conn.close()
+    _execute(
+        cfg,
+        "INSERT INTO djmdKey (ID, ScaleName, Seq, rb_local_deleted, created_at, updated_at) "
+        "VALUES (?, ?, 1, 0, '2026-10-31', '2026-10-31')",
+        (key_id, scale),
+    )
     return key_id
 
 
@@ -316,13 +328,11 @@ def _visit(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(anlz(tempos, before=PATH_TAG))
     key_id = _key_id(cfg, scale) if scale else None
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ?, KeyID = ? WHERE ID = ?",
-            (stored, key_id, content_id),
-        )
-    conn.close()
+    _execute(
+        cfg,
+        "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ?, KeyID = ? WHERE ID = ?",
+        (stored, key_id, content_id),
+    )
     return path
 
 
@@ -353,9 +363,8 @@ def _items(envelope: dict) -> dict[str, dict]:
     }
 
 
-def test_rows_landed_and_not_yet_analysed_are_waiting_on_a_pending_action(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_rows_landed_and_not_yet_analysed_are_waiting_on_a_pending_action(five):
+    cfg = five
     _visit(cfg, "Alpha")
 
     code, envelope = drive(VERB)
@@ -372,9 +381,8 @@ def test_rows_landed_and_not_yet_analysed_are_waiting_on_a_pending_action(native
     assert items["Bravo"]["state"] == rc.NOT_ANALYSED and items["Bravo"]["grid"] == rc.NOT_READ
 
 
-def test_every_row_analysed_right_is_done_and_exits_zero(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_every_row_analysed_right_is_done_and_exits_zero(five):
+    cfg = five
     for stem in FIVE:
         _visit(cfg, stem)
 
@@ -397,9 +405,8 @@ def test_every_row_analysed_right_is_done_and_exits_zero(native_library, silence
     }
 
 
-def test_a_variable_grid_on_a_row_not_marked_dyn_is_suspect_and_exits_27(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_variable_grid_on_a_row_not_marked_dyn_is_suspect_and_exits_27(five):
+    cfg = five
     for stem in FIVE:
         _visit(cfg, stem, tempos=VARIABLE_GRID if stem == "Charlie" else CONSTANT_GRID)
 
@@ -417,9 +424,8 @@ def test_a_variable_grid_on_a_row_not_marked_dyn_is_suspect_and_exits_27(native_
     assert grids[0]["status"] == "fail" and "Charlie" in grids[0]["detail"]
 
 
-def test_the_same_variable_grid_on_a_row_marked_dyn_is_done(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_the_same_variable_grid_on_a_row_marked_dyn_is_done(five):
+    cfg = five
     for stem in FIVE:
         _visit(cfg, stem, tempos=VARIABLE_GRID if stem == "Charlie" else CONSTANT_GRID)
     _mark_dyn(cfg, "Charlie")
@@ -430,9 +436,8 @@ def test_the_same_variable_grid_on_a_row_marked_dyn_is_done(native_library, sile
     assert _items(envelope)["Charlie"]["dyn"] is True
 
 
-def test_an_analysed_row_whose_file_is_missing_is_suspect(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_an_analysed_row_whose_file_is_missing_is_suspect(five):
+    cfg = five
     for stem in FIVE:
         _visit(cfg, stem, write_file=stem != "Delta")
 
@@ -443,9 +448,8 @@ def test_an_analysed_row_whose_file_is_missing_is_suspect(native_library, silenc
     assert "could not read" in envelope["cause"]["message"]
 
 
-def test_suspect_outranks_waiting_through_the_verb(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_suspect_outranks_waiting_through_the_verb(five):
+    cfg = five
     _visit(cfg, "Alpha", tempos=VARIABLE_GRID)
 
     code, envelope = drive(VERB)
@@ -475,9 +479,8 @@ def test_title_keys_are_classified_equal_one_step_and_far(native_library, silenc
     assert items["Charlie"]["head_key"] == "07B" and items["Charlie"]["key"] == "01A"
 
 
-def test_a_pass_names_its_landing_s_rows_over_the_playlist(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_pass_names_its_landing_s_rows_over_the_playlist(five, silence):
+    cfg = five
     for name in ("Foxtrot", "Golf"):
         _stage(cfg, silence, f"{name}.flac")
     code, acted, _refused = _land_acts(
@@ -495,9 +498,8 @@ def test_a_pass_names_its_landing_s_rows_over_the_playlist(native_library, silen
     assert sorted(_items(envelope)) == ["Foxtrot", "Golf"]
 
 
-def test_a_landing_s_session_names_its_rows(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_landing_s_session_names_its_rows(five):
+    cfg = five
     (landing,) = [r.session_id for r in native_records(cfg)]
     _visit(cfg, "Alpha")
 
@@ -515,9 +517,7 @@ def native_records(cfg: config.Config):
 
 
 @pytest.mark.parametrize("flag", ["--pass", "--session"])
-def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(native_library, silence, flag):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(five, flag):
 
     code, envelope = drive([*VERB, flag, "no-such-landing"])
 
@@ -534,10 +534,7 @@ def test_an_empty_analyze_playlist_falls_to_every_row_not_analysed(native_librar
     analyze = _query(
         cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ?", native.ANALYZE, root_id
     )[0][0]
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ?", (analyze,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ?", (analyze,))
     for stem in FIVE[:3]:
         _visit(cfg, stem)
 
@@ -564,11 +561,7 @@ def test_nothing_in_scope_ends_no_op_and_says_nothing_was_checked(native_library
     assert [w["code"] for w in envelope["warnings"]] == [check_cli.NOTHING_CHECKED]
 
 
-def test_with_rekordbox_running_the_check_refuses_as_every_reader_does(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_with_rekordbox_running_the_check_refuses_as_every_reader_does(five, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
 
     code, envelope = drive(VERB)
@@ -576,10 +569,9 @@ def test_with_rekordbox_running_the_check_refuses_as_every_reader_does(
     assert code == int(ExitCode.REKORDBOX_OPEN), envelope
 
 
-def test_no_file_under_the_library_is_opened_for_writing(native_library, silence):
+def test_no_file_under_the_library_is_opened_for_writing(five):
     """Every open the check makes is watched: none writes, and no byte under the library moves."""
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+    cfg = five
     files = [_visit(cfg, stem) for stem in FIVE[:4]]
     _visit(cfg, "Echo", tempos=VARIABLE_GRID)
     library_root = Path(cfg.library.root)
@@ -643,11 +635,8 @@ def test_a_pass_whose_playlists_hold_no_live_row_refuses_rather_than_reading_emp
     )
     assert code == int(ExitCode.OK), acted
     batch = _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-10-31_two'")[0][0]
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (batch,))
-        conn.execute("DELETE FROM djmdPlaylist WHERE ID = ?", (batch,))
-    conn.close()
+    _execute(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (batch,))
+    _execute(cfg, "DELETE FROM djmdPlaylist WHERE ID = ?", (batch,))
 
     code, envelope = drive([*VERB, "--pass", "pass-two"])
 
@@ -656,19 +645,11 @@ def test_a_pass_whose_playlists_hold_no_live_row_refuses_rather_than_reading_emp
     assert "hold no live row" in envelope["cause"]["message"]
 
 
-def test_a_row_gone_from_the_collection_is_named_and_does_not_hold_the_visit(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_row_gone_from_the_collection_is_named_and_does_not_hold_the_visit(five):
+    cfg = five
     for stem in FIVE[1:]:
         _visit(cfg, stem)
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "Alpha"),)
-        )
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "Alpha"),))
 
     code, envelope = drive(VERB)
 
@@ -690,17 +671,11 @@ def test_an_intake_tree_not_cut_over_falls_to_every_row_not_analysed_and_says_wh
     assert f"INBOX / {native.ANALYZE} was not read" in scope["detail"]
 
 
-def test_a_named_landing_whose_every_row_left_the_collection_refuses(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_named_landing_whose_every_row_left_the_collection_refuses(five):
+    cfg = five
     (landing,) = [r.session_id for r in native_records(cfg)]
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        for stem in FIVE:
-            conn.execute(
-                "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, stem),)
-            )
-    conn.close()
+    for stem in FIVE:
+        _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, stem),))
 
     code, envelope = drive([*VERB, "--session", landing])
 
@@ -709,16 +684,12 @@ def test_a_named_landing_whose_every_row_left_the_collection_refuses(native_libr
     assert "has left the collection" in envelope["cause"]["message"]
 
 
-def test_a_removed_dyn_mark_does_not_excuse_a_variable_grid(native_library, silence):
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
+def test_a_removed_dyn_mark_does_not_excuse_a_variable_grid(five):
+    cfg = five
     for stem in FIVE:
         _visit(cfg, stem, tempos=VARIABLE_GRID if stem == "Charlie" else CONSTANT_GRID)
     _mark_dyn(cfg, "Charlie")
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("UPDATE djmdSongMyTag SET rb_local_deleted = 1 WHERE MyTagID = 't-dyn'")
-    conn.close()
+    _execute(cfg, "UPDATE djmdSongMyTag SET rb_local_deleted = 1 WHERE MyTagID = 't-dyn'")
 
     code, envelope = drive(VERB)
 
@@ -833,14 +804,9 @@ def _mixed(cfg: config.Config, silence: Path) -> None:
     _visit(cfg, "Golf", scale=None)
     _mark_dyn(cfg, "Bravo")
     echo, hotel, india = (_content_id(cfg, stem) for stem in ("Echo", "Hotel", "India"))
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = '' WHERE ID = ?", (echo,)
-        )
-        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (hotel,))
-        conn.execute("DELETE FROM djmdContent WHERE ID = ?", (india,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = '' WHERE ID = ?", (echo,))
+    _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (hotel,))
+    _execute(cfg, "DELETE FROM djmdContent WHERE ID = ?", (india,))
 
 
 MIXED = ("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India")
@@ -909,10 +875,7 @@ def test_the_mixed_library_reads_as_the_per_row_reads_read_it_for_a_named_landin
 def _empty_analyze(cfg: config.Config, root_id: str) -> None:
     """Remove every membership of INBOX / Analyze, so the scope falls to every row."""
     analyze = _analyze_id(cfg, root_id)
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ?", (analyze,))
-    conn.close()
+    _execute(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ?", (analyze,))
 
 
 @pytest.mark.parametrize("scope", [rc.SCOPE_ANALYZE, rc.SCOPE_UNANALYSED])
@@ -926,11 +889,8 @@ def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
     if scope == rc.SCOPE_UNANALYSED:
         _empty_analyze(cfg, root_id)
     bravo, delta = _content_id(cfg, "Bravo"), _content_id(cfg, "Delta")
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        for content_id in (bravo, delta):
-            conn.execute("UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (content_id,))
-    conn.close()
+    for content_id in (bravo, delta):
+        _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (content_id,))
 
     batched, per_row = _both(monkeypatch, VERB)
 
@@ -940,20 +900,12 @@ def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
 
 
 def test_a_row_the_binding_cannot_load_after_one_that_refuses_still_refuses_as_it_did(
-    native_library, silence, monkeypatch
+    five, monkeypatch
 ):
     """An unparseable later row does not pre-empt an earlier row's refusal."""
-    cfg, _root = native_library
-    _land(cfg, silence, "2026-10-31_five", FIVE)
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (_content_id(cfg, "Alpha"),)
-        )
-        conn.execute(
-            "UPDATE djmdContent SET created_at = 'garbage' WHERE ID = ?", (_content_id(cfg, "Delta"),)
-        )
-    conn.close()
+    cfg = five
+    _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (_content_id(cfg, "Alpha"),))
+    _execute(cfg, "UPDATE djmdContent SET created_at = 'garbage' WHERE ID = ?", (_content_id(cfg, "Delta"),))
 
     batched, per_row = _both(monkeypatch, VERB)
 
@@ -1138,11 +1090,8 @@ def test_a_scope_past_one_chunk_is_read_a_statement_a_500_and_answers_as_the_per
     _land(cfg, silence, "2026-10-31_five", FIVE)
     _clone(cfg, "Alpha", 1010, analyze=_analyze_id(cfg, root_id))
     _visit(cfg, "C900")
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "C700"),))
-        conn.execute("DELETE FROM djmdContent WHERE ID = ?", (_content_id(cfg, "C800"),))
-    conn.close()
+    _execute(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "C700"),))
+    _execute(cfg, "DELETE FROM djmdContent WHERE ID = ?", (_content_id(cfg, "C800"),))
 
     count, rows = _statements(monkeypatch, scope=rc.SCOPE_ANALYZE)
     batched, per_row = _both(monkeypatch, VERB)
