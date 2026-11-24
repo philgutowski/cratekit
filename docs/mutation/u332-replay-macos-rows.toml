@@ -1,0 +1,1218 @@
+name = "u332-replay-macos"
+pass_kind = "replay"
+
+[[rows]]
+id = "r289-c.B9r_children_unreadable_raises"
+source = { table = "r289-c.json", id = "B9r_children_unreadable_raises" }
+description = "Let an unlistable directory raise out of the sweep and fail the verb"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_acquire_workers.py", "tests/test_intake_missing.py", "tests/test_listdoc.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    try:
+        return tuple(sorted(directory.iterdir()))
+    except OSError:
+        return ()'''
+new = '    return tuple(sorted(directory.iterdir()))'
+
+[[rows]]
+id = "u42-author.W1_onerror_hook"
+source = { table = "u42-author.json", id = "W1_onerror_hook" }
+description = "Revert the walk to Path.rglob, which swallows the PermissionError"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py"]
+old = '''
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=note):
+        here = Path(dirpath)
+        for name in filenames:
+            path = here / name'''
+new = '''
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if True:'''
+
+[[rows]]
+id = "u42-author.W3_onerror_silent"
+source = { table = "u42-author.json", id = "W3_onerror_silent" }
+description = "Keep os.walk but make the error hook a no-op, the half-fix"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py"]
+old = '        unreadable.append(Path(exc.filename) if exc.filename else root)'
+new = '        return None'
+
+[[rows]]
+id = "u23-round-8-independent-composites.X6_adoptable_widens_to_online_only__rerun"
+source = { table = "u23-round-8-independent-composites.json", id = "X6_adoptable_widens_to_online_only__rerun" }
+description = "The X6 row again, now that a guard test for it exists. Was zero against the branch as delivered."
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = 'ADOPTABLE: frozenset[Readability] = frozenset({Readability.READABLE})'
+new = '''
+ADOPTABLE: frozenset[Readability] = frozenset(
+    {Readability.READABLE, Readability.ONLINE_ONLY}
+)'''
+
+[[rows]]
+id = "u241-dsp.D4_settings_not_handed_to_the_head"
+source = { table = "u241-dsp.json", id = "D4_settings_not_handed_to_the_head" }
+description = "handle_run: the item's settings are not compared with the workers', so a real run stops its pool at the first head"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead_real.py"]
+old = '''
+    partial = ahead.head(job.job_id, str(path), settings)
+'''
+new = '''
+    partial = ahead.head(job.job_id, str(path), None)
+'''
+
+[[rows]]
+id = "u263.D3_libsndfile_opens_always"
+source = { table = "u263.json", id = "D3_libsndfile_opens_always" }
+description = "libsndfile_opens: answer yes for every file, so an M4A never reaches ffmpeg"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        soundfile.info(str(path))
+    except Exception:
+        return False
+    return True'''
+new = '''
+        soundfile.info(str(path))
+    except Exception:
+        return True
+    return True'''
+
+[[rows]]
+id = "u263.D4_resampler"
+source = { table = "u263.json", id = "D4_resampler" }
+description = "decode.load: resample the ffmpeg samples with soxr_mq rather than librosa's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = 'res_type="soxr_hq")'
+new = 'res_type="soxr_mq")'
+
+[[rows]]
+id = "u263.D6_window_round"
+source = { table = "u263.json", id = "D6_window_round" }
+description = "_window: round the frame count rather than truncate it as libsndfile does"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    return native[..., start : start + int(duration * native_rate)]'
+new = '    return native[..., start : start + round(duration * native_rate)]'
+
+[[rows]]
+id = "u264.M10_window_dropped"
+source = { table = "u264.json", id = "M10_window_dropped" }
+description = "decode.load: read the whole file through librosa, dropping the offset and duration"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'
+new = '        native, native_rate = librosa.load(str(path), sr=None, mono=False)'
+
+[[rows]]
+id = "u264.M11_ffmpeg_left_channel"
+source = { table = "u264.json", id = "M11_ffmpeg_left_channel" }
+description = "decode.load: mix the ffmpeg path's samples by keeping the left channel"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    native = native[0] if native.ndim == 2 else native
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+
+[[rows]]
+id = "u264.M12_resampler"
+source = { table = "u264.json", id = "M12_resampler" }
+description = "_mono_at: resample with soxr_mq rather than librosa.load's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_hq")'
+new = '    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_mq")'
+
+[[rows]]
+id = "u264.M14_ffmpeg_numpy_mean"
+source = { table = "u264.json", id = "M14_ffmpeg_numpy_mean" }
+description = "decode.load: mix the ffmpeg path's samples with numpy's mean, the arithmetic before librosa 1.0, rather than the shared mix"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    samples = native.mean(axis=0) if native.ndim == 2 else native
+    return librosa.resample(samples, orig_sr=native_rate, target_sr=rate, res_type="soxr_hq"), rate'''
+
+[[rows]]
+id = "u264.M1_fast_path_never"
+source = { table = "u264.json", id = "M1_fast_path_never" }
+description = "mono: never take the one add, so every mix is librosa.to_mono (the speed is lost, the samples are not)"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+    )'''
+new = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+        and False
+    )'''
+
+[[rows]]
+id = "u264.M7_three_channels_one_add"
+source = { table = "u264.json", id = "M7_three_channels_one_add" }
+description = "_two_float32_channels: take the one add for two or more channels, so a three channel file mixes its first two"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        and samples.shape[0] == 2'
+new = '        and samples.shape[0] >= 2'
+
+[[rows]]
+id = "u264.M8_finite_check"
+source = { table = "u264.json", id = "M8_finite_check" }
+description = "mono: drop librosa's valid_audio before the one add, so mono no longer refuses audio that is not finite itself"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    librosa.util.valid_audio(samples)
+    return _mean_of_two(samples, zero_after=zero_after)'''
+new = '    return _mean_of_two(samples, zero_after=zero_after)'
+
+[[rows]]
+id = "u264.M9_read_at_target_rate"
+source = { table = "u264.json", id = "M9_read_at_target_rate" }
+description = "decode.load: read through librosa.load at the target rate, so the channels are resampled before the mix rather than after"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'
+new = '        native, native_rate = librosa.load(str(path), sr=rate, mono=False, **window)'
+
+[[rows]]
+id = "r744-b.E7_no_prior"
+source = { table = "r744-b.json", id = "E7_no_prior" }
+description = "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)'
+new = '    score = np.where(inside, strength, -np.inf)'
+
+[[rows]]
+id = "r744.E1_no_floor"
+source = { table = "r744.json", id = "E1_no_floor" }
+description = "the window's floor is not applied, so a pulse below it is named at its own level rather than by the level inside the window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
+new = '    inside = (frequencies > 0) & (frequencies <= ceiling)'
+
+[[rows]]
+id = "r744.E2_no_ceiling"
+source = { table = "r744.json", id = "E2_no_ceiling" }
+description = "the window's ceiling is not applied, so a 166 pulse is named 166 under the shipped window instead of 83"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
+new = '    inside = (frequencies >= floor) & (frequencies <= 10 * ceiling)'
+
+[[rows]]
+id = "r744.E3_no_interpolation"
+source = { table = "r744.json", id = "E3_no_interpolation" }
+description = "the strongest bin alone is named, which is the six beat bin width R-744 recorded as off by one to three"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''
+    lag = _interpolated_peak(strength, index)
+    if lag <= 0.0:'''
+new = '''
+    lag = float(index)
+    if lag <= 0.0:'''
+
+[[rows]]
+id = "r744.E4_offset_not_held"
+source = { table = "r744.json", id = "E4_offset_not_held" }
+description = "the parabola's offset is not held to half a bin, so a stronger raw neighbour pulls the vertex past the midpoint toward a bin the score did not choose"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    return index + max(-0.5, min(0.5, offset))'
+new = '    return index + offset'
+
+[[rows]]
+id = "r744.E5_answer_not_held_in_window"
+source = { table = "r744.json", id = "E5_answer_not_held_in_window" }
+description = "the interpolated answer is not held inside the window, so an edge bin's parabola can name a tempo below the floor"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))'
+new = '    return 60.0 * rate / (hop * lag)'
+
+[[rows]]
+id = "r744.E6_flat_run_divides"
+source = { table = "r744.json", id = "E6_flat_run_divides" }
+description = "a flat run of three equal bins is fitted anyway, dividing by a zero curvature"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''
+    if curvature >= 0.0:
+        return float(index)'''
+new = '''
+    if curvature > 0.0:
+        return float(index)'''
+
+[[rows]]
+id = "u157.D10_verdict_cut"
+source = { table = "u157.json", id = "D10_verdict_cut" }
+description = "analyse_file: read the verdict against the shipped default, not the bound cut"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'drift_words.verdict(drift, drift_cut)'
+new = 'drift_words.verdict(drift, DEFAULT_DRIFT_CUT)'
+
+[[rows]]
+id = "u157.D1_band_narrow"
+source = { table = "u157.json", id = "D1_band_narrow" }
+description = "DRIFT_BAND: back to the first band of 0.12, so the other section of a two tempo track falls outside it"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_BAND = 0.25'
+new = 'DRIFT_BAND = 0.12'
+
+[[rows]]
+id = "u157.D2_band_wide"
+source = { table = "u157.json", id = "D2_band_wide" }
+description = "DRIFT_BAND: widened to 0.5, so a window reaches a related metrical level"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_BAND = 0.25'
+new = 'DRIFT_BAND = 0.5'
+
+[[rows]]
+id = "u157.D3_pulse_gate"
+source = { table = "u157.json", id = "D3_pulse_gate" }
+description = "drift_from_tempogram: drop the pulse contrast gate, so a breakdown's window counts"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '(peak - float(column[around].mean())) / peak < DRIFT_PULSE_CONTRAST'
+new = '(peak - float(column[around].mean())) / peak < -1.0'
+
+[[rows]]
+id = "u157.D4_onset_floor"
+source = { table = "u157.json", id = "D4_onset_floor" }
+description = "drift_from_tempogram: drop the absolute onset floor, so a pad alone is judged"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'if strength[i] < DRIFT_ONSET_FLOOR or strength[i]'
+new = 'if strength[i] < -1.0 or strength[i]'
+
+[[rows]]
+id = "u157.D6_min_counted"
+source = { table = "u157.json", id = "D6_min_counted" }
+description = "drift_from_tempogram: judge on a single counted window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '    if len(tempos) < DRIFT_MIN_WINDOWS:'
+new = '    if len(tempos) < 1:'
+
+[[rows]]
+id = "u157.D8_percentile"
+source = { table = "u157.json", id = "D8_percentile" }
+description = "DRIFT_PERCENTILE: the whole range instead of the tenth to ninetieth"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_PERCENTILE = 10.0'
+new = 'DRIFT_PERCENTILE = 0.0'
+
+[[rows]]
+id = "u157.D9_no_interpolation"
+source = { table = "u157.json", id = "D9_no_interpolation" }
+description = "drift_from_tempogram: the window's bin instead of its interpolated peak"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''
+        lag = _interpolated_peak(column, index)
+        if lag <= 0.0:
+            continue'''
+new = '''
+        lag = float(index)
+        if lag <= 0.0:
+            continue'''
+
+[[rows]]
+id = "u263.D16_head_no_decoder"
+source = { table = "u263.json", id = "D16_head_no_decoder" }
+description = "detect.analyse_file: report a missing decoder as undecodable, blaming the file"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''
+    except decode.DecoderMissing:
+        return {"path": path, "terminal": TERMINAL_NO_DECODER}
+'''
+new = ''
+
+[[rows]]
+id = "u241-dsp.D1_margin_not_applied"
+source = { table = "u241-dsp.json", id = "D1_margin_not_applied" }
+description = "separation: the mask ignores the margin, so the key's harmonic part is not the one librosa returns"
+file = "src/cratekit/analysis/separation.py"
+surface = "user"
+tests = ["tests/test_analysis_separation.py"]
+old = '''
+            along_time, along_frequency * margin, power=POWER, split_zeros=split_zeros
+'''
+new = '''
+            along_time, along_frequency, power=POWER, split_zeros=split_zeros
+'''
+
+[[rows]]
+id = "u263.D17_vocal_reraise"
+source = { table = "u263.json", id = "D17_vocal_reraise" }
+description = "vocal.decode: swallow a missing decoder as an undecodable file"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''
+    except decoder.DecoderMissing:
+        raise
+'''
+new = ''
+
+[[rows]]
+id = "r1761.P24_flag_lost_in_the_worker"
+source = { table = "r1761.json", id = "P24_flag_lost_in_the_worker" }
+description = "perform_backup: the frozen flag is not handed to the plan, so a queued emptied backup refuses"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '            emptied=bool(payload.get(EMPTIED)),'
+new = '            emptied=False,'
+
+[[rows]]
+id = "r349-b.B3_clear_before_attempt"
+source = { table = "r349-b.json", id = "B3_clear_before_attempt" }
+description = "The handler no longer clears the previous attempt's record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    backup_facts.clear_outcome(job.job_id, named)
+    report = perform_backup('''
+new = '    report = perform_backup('
+
+[[rows]]
+id = "r349-b.B4_stage_error_completes"
+source = { table = "r349-b.json", id = "B4_stage_error_completes" }
+description = "A staging write error escapes the handler instead of completing the item"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError:
+        return None
+    return jobs.Produced'''
+new = '''
+    except KeyError:
+        return None
+    return jobs.Produced'''
+
+[[rows]]
+id = "r349-c.C2_write_failure_step"
+source = { table = "r349-c.json", id = "C2_write_failure_step" }
+description = "A failed record write returns the refusal without the step saying the record is missing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError as exc:
+        cause = refusal.cause'''
+new = '''
+    except OSError as exc:
+        return refusal
+        cause = refusal.cause'''
+
+[[rows]]
+id = "r757-c1.S3_work_body_plans_fast"
+source = { table = "r757-c1.json", id = "S3_work_body_plans_fast" }
+description = "perform_backup: plan in the fast mode whatever the payload froze"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            full=bool(payload.get(FULL)),'
+new = '            full=False,'
+
+[[rows]]
+id = "r757-c1.S4_rehearsal_says_it_sent"
+source = { table = "r757-c1.json", id = "S4_rehearsal_says_it_sent" }
+description = "comparison_warning: say sent over a rehearsal, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        if recorded.get("dry_run")'
+new = '        if False'
+
+[[rows]]
+id = "r757-c2.S7_verb_says_nothing_of_the_comparison"
+source = { table = "r757-c2.json", id = "S7_verb_says_nothing_of_the_comparison" }
+description = "backup_library: leave the comparison sentence off the resumed envelope"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *comparison_warning(reported["progress"].get(OUTCOMES)),'
+new = '                *(),'
+
+[[rows]]
+id = "u50-author.W1_no_narrowing"
+source = { table = "u50-author.json", id = "W1_no_narrowing" }
+description = "Ignore the portion and run the whole plan for every item, so each item does the whole backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if portion is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "r685-a.L6_a_permission_is_a_defect_to_report"
+source = { table = "r685-a.json", id = "L6_a_permission_is_a_defect_to_report" }
+description = "The unreadable branch always says report a defect, never grant access"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+'''
+new = '''
+            remedy=Remedy.REPORT_DEFECT,
+'''
+
+[[rows]]
+id = "r349-b.B2_iterdir"
+source = { table = "r349-b.json", id = "B2_iterdir" }
+description = "Revert the listing to Path.glob, which swallows a permission error"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        files = sorted(p for p in directory.iterdir() if p.suffix == ".json")'
+new = '        files = sorted(directory.glob("*.json"))'
+
+[[rows]]
+id = "u317.Q18_week_doubled"
+source = { table = "u317.json", id = "Q18_week_doubled" }
+description = "_full_check_schedule: a full check is due at twice the week, so an eight day old one is not run"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '    if answer.age is None or answer.age >= timedelta(days=FULL_CHECK_DAYS):'
+new = '    if answer.age is None or answer.age >= timedelta(days=2 * FULL_CHECK_DAYS):'
+
+[[rows]]
+id = "r1761.P10_move_nothing_only_when_new"
+source = { table = "r1761.json", id = "P10_move_nothing_only_when_new" }
+description = "_plan_files: delete nothing only for a new library, so a census of none mirrors a lost volume's mount point (round two's B3)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    move_nothing = held == 0 and not emptied'
+new = '    move_nothing = new_library'
+
+[[rows]]
+id = "r1761.P11_move_nothing_dropped"
+source = { table = "r1761.json", id = "P11_move_nothing_dropped" }
+description = "_full_commands: a new library's mirror is not told to delete nothing, so a stray state folder archives the mirror"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                *(MOVE_NOTHING if move_nothing else ()),'
+new = '                *(()),'
+
+[[rows]]
+id = "r1761.P19_census_not_written"
+source = { table = "r1761.json", id = "P19_census_not_written" }
+description = "run_backup: no census is kept after a completed files portion"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                backup_record.write_census(cfg, entry.held, at=moment)'
+new = '                pass'
+
+[[rows]]
+id = "r1761.P1_identity_not_asked"
+source = { table = "r1761.json", id = "P1_identity_not_asked" }
+description = "_plan_files: skip the identity proof, so a root on another volume is walked and mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if foreign:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+new = '''
+    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+
+[[rows]]
+id = "r1761.P20_runtime_check_skipped"
+source = { table = "r1761.json", id = "P20_runtime_check_skipped" }
+description = "run_backup: the full mirror is not held to the root the plan read, so a volume lost after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+                if lost:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was sent or archived: {lost}"
+                    )
+                    break'''
+new = '''
+                if False:
+                    break'''
+
+[[rows]]
+id = "r1761.P25_max_delete_sentence_on_any_failure"
+source = { table = "r1761.json", id = "P25_max_delete_sentence_on_any_failure" }
+description = "run_backup: the remote holds files sentence is said for any failure of a move nothing mirror, round one's B2"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                and MOVE_NOTHING[0].lstrip("-") in failed.stderr'
+new = '                and True'
+
+[[rows]]
+id = "r1761.P2_identity_at_read_strength_tolerates_mismatch"
+source = { table = "r1761.json", id = "P2_identity_at_read_strength_tolerates_mismatch" }
+description = "_not_the_recorded_volume: read every refusal of the gate as an unread identity, so a foreign volume is left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        if recorded is None or observed is None:
+            return ""'''
+new = '''
+        if True:
+            return ""'''
+
+[[rows]]
+id = "r1761.P3_identity_raise_refuses"
+source = { table = "r1761.json", id = "P3_identity_raise_refuses" }
+description = "_not_the_recorded_volume: an identity read that raises is a refusal, so a flaky probe stops every backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return "the identity could not be read"'''
+
+[[rows]]
+id = "r1761.P4_content_proof_skipped"
+source = { table = "r1761.json", id = "P4_content_proof_skipped" }
+description = "_plan_files: ignore the content proof's refusal, so an empty root is mirrored (the defect)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if unproven:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+new = '''
+    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+
+[[rows]]
+id = "r757-a.E1_full_mode_still_lists_recursively"
+source = { table = "r757-a.json", id = "E1_full_mode_still_lists_recursively" }
+description = "_plan_files: the full mode carries the recursive listing option too, so --full is the fast run under another name"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *(() if full else (FAST_LIST,)),'
+new = '                *((FAST_LIST,)),'
+
+[[rows]]
+id = "r757-a.E2_fast_mode_lists_folder_by_folder"
+source = { table = "r757-a.json", id = "E2_fast_mode_lists_folder_by_folder" }
+description = "_plan_files: the ordinary run drops the recursive listing option, which is the whole of the speed fix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *(() if full else (FAST_LIST,)),'
+new = '                *(() if True else (FAST_LIST,)),'
+
+[[rows]]
+id = "r757-a.E5_mode_read_backwards"
+source = { table = "r757-a.json", id = "E5_mode_read_backwards" }
+description = "comparison_mode: report fast for a command without the option and full for one with it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    return COMPARISON_FAST if FAST_LIST in command.argv else COMPARISON_FULL'
+new = '    return COMPARISON_FAST if FAST_LIST not in command.argv else COMPARISON_FULL'
+
+[[rows]]
+id = "r757-a.E6_unread_total_is_zero"
+source = { table = "r757-a.json", id = "E6_unread_total_is_zero" }
+description = "_count: answer zero for a total rclone did not give, so an unread run says it sent nothing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value'''
+new = '''
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return value'''
+
+[[rows]]
+id = "r757-a.E7_first_totals_win"
+source = { table = "r757-a.json", id = "E7_first_totals_win" }
+description = "comparison_report: keep the first totals logged and not the last"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''
+        if isinstance(found, dict):
+            stats = found'''
+new = '''
+        if isinstance(found, dict) and not stats:
+            stats = found'''
+
+[[rows]]
+id = "r757-a.E8_failed_mirror_reports_nothing"
+source = { table = "r757-a.json", id = "E8_failed_mirror_reports_nothing" }
+description = "run_backup: read the comparison only when the mirror returned zero"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            if command.label == MIRROR:'
+new = '            if command.label == MIRROR and result.returncode == 0:'
+
+[[rows]]
+id = "r757-a.E9_stats_interval_zero"
+source = { table = "r757-a.json", id = "E9_stats_interval_zero" }
+description = "MIRROR_STATS_ARGS: a stats interval of zero, at which rclone logs no totals at all"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    "--stats", "1h",'
+new = '    "--stats", "0",'
+
+[[rows]]
+id = "r757-b1.E10_fast_run_records_a_full_comparison"
+source = { table = "r757-b1.json", id = "E10_fast_run_records_a_full_comparison" }
+description = "run_backup: record a full comparison for either mode, so doctor says one ran after every fast backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                    and comparison["mode"] == COMPARISON_FULL'
+new = '                    and comparison["mode"] in (COMPARISON_FULL, COMPARISON_FAST)'
+
+[[rows]]
+id = "r757-b1.E11_full_run_records_nothing"
+source = { table = "r757-b1.json", id = "E11_full_run_records_nothing" }
+description = "run_backup: never record a full comparison, so doctor asks for one for ever"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                    and comparison["mode"] == COMPARISON_FULL'
+new = '                    and False'
+
+[[rows]]
+id = "r757-b1.E12_plain_line_dropped"
+source = { table = "r757-b1.json", id = "E12_plain_line_dropped" }
+description = "_said: drop a line that is not a logged object, the review's fix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''
+        if not isinstance(entry, dict):
+            lines.append(line)'''
+new = '''
+        if not isinstance(entry, dict):
+            pass'''
+
+[[rows]]
+id = "r757-b1.E13_runner_times_nothing"
+source = { table = "r757-b1.json", id = "E13_runner_times_nothing" }
+description = "subprocess_runner: report no elapsed time"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        elapsed=time.monotonic() - started,'
+new = '        elapsed=None,'
+
+[[rows]]
+id = "u317.Q14_no_invalidation"
+source = { table = "u317.json", id = "Q14_no_invalidation" }
+description = "run_backup: the record is not removed before a transfer, so a failed run leaves it to be trusted"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '                backup_record.invalidate(_record_path(entry.portion))'
+new = '                pass'
+
+[[rows]]
+id = "u317.Q15_archive_not_rechecked"
+source = { table = "u317.json", id = "Q15_archive_not_rechecked" }
+description = "run_backup: the quick archive runs without asking still_removed first"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+                if stale:
+                    failed = CommandResult('''
+new = '''
+                if False:
+                    failed = CommandResult('''
+
+[[rows]]
+id = "u317.Q16_token_not_asked"
+source = { table = "u317.json", id = "Q16_token_not_asked" }
+description = "_plan_files: the library's files fact is not asked for the record's token, so another writer's run is not seen (round one's B1)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+    if manifest is not None and not why:
+        why = _record_unpublished(cfg, manifest)'''
+new = '''
+    if manifest is not None and not why:
+        why = ""'''
+
+[[rows]]
+id = "u317.Q19_self_written_empty"
+source = { table = "u317.json", id = "Q19_self_written_empty" }
+description = "_self_written: the fact file counts as a change, so no run after a backup is ever skipped"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '    return frozenset({rel.as_posix()})'
+new = '    return frozenset()'
+
+[[rows]]
+id = "u317.Q20_resend_keeps_times"
+source = { table = "u317.json", id = "Q20_resend_keeps_times" }
+description = "_quick_commands: the resend loses --ignore-times, so a rewrite with its size and time kept is never sent"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '                    rclone, "copy", root, dest, *listed, "--ignore-times",'
+new = '                    rclone, "copy", root, dest, *listed,'
+
+[[rows]]
+id = "u317.Q21_send_without_archive"
+source = { table = "u317.json", id = "Q21_send_without_archive" }
+description = "_quick_commands: the send loses --backup-dir, so an overwritten version is not archived"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '                    rclone, "copy", root, dest, *listed, "--backup-dir", archive,'
+new = '                    rclone, "copy", root, dest, *listed,'
+
+[[rows]]
+id = "u317.Q22_flags_do_not_force_a_snapshot"
+source = { table = "u317.json", id = "Q22_flags_do_not_force_a_snapshot" }
+description = "plan_backup: --check and --full do not force a snapshot of an unchanged database"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '                snapshot_anyway=check or full,'
+new = '                snapshot_anyway=False,'
+
+[[rows]]
+id = "u317.Q24_marker_failure_kept"
+source = { table = "u317.json", id = "Q24_marker_failure_kept" }
+description = "_settle_record: a snapshot whose marker failed keeps its fingerprint, so it is never retaken (round one's R2)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+            if marker_failed:
+                why = "the snapshot's identity marker could not be written"
+            elif _not_confirmed_gone(lister):'''
+new = '            if _not_confirmed_gone(lister):'
+
+[[rows]]
+id = "u317.Q25_second_read_without_scan"
+source = { table = "u317.json", id = "Q25_second_read_without_scan" }
+description = "_settle_record: the database is read again with no second process scan (round one's R4)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+            elif _not_confirmed_gone(lister):
+                why = "rekordbox was not confirmed gone after the copy"
+            elif'''
+new = '            elif'
+
+[[rows]]
+id = "u323.I1_unread_identity_refuses"
+source = { table = "u323.json", id = "I1_unread_identity_refuses" }
+description = "_not_the_recorded_volume: an identity the platform cannot read (observed None) refuses as foreign instead of being left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''
+        if recorded is None or observed is None:
+            return ""'''
+new = '''
+        if recorded is None:
+            return ""'''
+
+[[rows]]
+id = "u323.I3_raising_read_escapes"
+source = { table = "u323.json", id = "I3_raising_read_escapes" }
+description = "_not_the_recorded_volume: an identity read that raises escapes the plan instead of being left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        raise'''
+
+[[rows]]
+id = "u323.I5_provider_dropped_by_the_plan"
+source = { table = "u323.json", id = "I5_provider_dropped_by_the_plan" }
+description = "plan_backup: the caller's identity provider is not handed to the files portion, so the platform's own is read"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''
+                emptied=emptied,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
+        )
+    if backup_facts.Portion.DATABASE in wanted:'''
+new = '''
+                emptied=emptied,
+                identity_provider=None,
+                mount_enumerator=mount_enumerator,
+            )
+        )
+    if backup_facts.Portion.DATABASE in wanted:'''
+
+[[rows]]
+id = "u323.I6_provider_dropped_at_the_gate"
+source = { table = "u323.json", id = "I6_provider_dropped_at_the_gate" }
+description = "_not_the_recorded_volume: the volume gate is asked with no provider, so the platform's own identity read answers"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''
+        session.assert_volume_identity(
+            cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+        )'''
+new = '''
+        session.assert_volume_identity(
+            cfg, identity_provider=None, mount_enumerator=mount_enumerator
+        )'''
+
+[[rows]]
+id = "r1761.P12_history_census_ignored"
+source = { table = "r1761.json", id = "P12_history_census_ignored" }
+description = "_history: the census is not read, so a failed run that removed the record leaves no history"
+file = "src/cratekit/modules/tools/backup_proof.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    census = backup_record.read_census(cfg)
+    if census is not None:'''
+new = '''
+    census = backup_record.read_census(cfg)
+    if False:'''
+
+[[rows]]
+id = "r1761.P5_empty_root_passes"
+source = { table = "r1761.json", id = "P5_empty_root_passes" }
+description = "_unproven: a root holding nothing at all is not refused, so with no history it runs as a new library"
+file = "src/cratekit/modules/tools/backup_proof.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if not anything:
+        held_before = ""'''
+new = '''
+    if False:
+        held_before = ""'''
+
+[[rows]]
+id = "r1761.P8_floor_comparison_inclusive"
+source = { table = "r1761.json", id = "P8_floor_comparison_inclusive" }
+description = "_unproven: the floor refuses at a tenth as well as under it, so two of twenty refuses"
+file = "src/cratekit/modules/tools/backup_proof.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    if had and held * backup_record.LIBRARY_FLOOR < had:'
+new = '    if had and held * backup_record.LIBRARY_FLOOR <= had:'
+
+[[rows]]
+id = "r1761.P17_census_damaged_is_none"
+source = { table = "r1761.json", id = "P17_census_damaged_is_none" }
+description = "read_census: a census that cannot be parsed is no census, so it is not history"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return Census(files=None)'''
+new = '''
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return None'''
+
+[[rows]]
+id = "r1761.P18_census_any_root"
+source = { table = "r1761.json", id = "P18_census_any_root" }
+description = "read_census: a census kept for another library root answers for this one"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '        if data["library_root"] != str(cfg.library.root) or data["dest"] != str(cfg.backup.dest):'
+new = '        if data["dest"] != str(cfg.backup.dest):'
+
+[[rows]]
+id = "r1761.P21_runtime_device_unchecked"
+source = { table = "r1761.json", id = "P21_runtime_device_unchecked" }
+description = "root_still_holds: the device is not compared, so a volume swapped for one holding a copy is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+new = '''
+        if os.stat(root).st_dev != os.stat(root).st_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+
+[[rows]]
+id = "r1761.P22_runtime_files_unchecked"
+source = { table = "r1761.json", id = "P22_runtime_files_unchecked" }
+description = "root_still_holds: the files half is not asked, so a root emptied on its own volume after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    if files and not probe(root, excludes, state_dirname, first=True)[1]:'
+new = '    if False:'
+
+[[rows]]
+id = "r1761.P7_floor_coefficient_halved"
+source = { table = "r1761.json", id = "P7_floor_coefficient_halved" }
+description = "LIBRARY_FLOOR: a twentieth rather than a tenth, so one file where twelve were passes"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = 'LIBRARY_FLOOR = 10'
+new = 'LIBRARY_FLOOR = 20'
+
+[[rows]]
+id = "u317.Q11_line_break_carried"
+source = { table = "u317.json", id = "Q11_line_break_carried" }
+description = "_carriable: a name holding a line break is put on rclone's list of paths"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '    if "\n" in rel or "\r" in rel:'
+new = '    if False:'
+
+[[rows]]
+id = "u317.Q12_root_volume_not_rechecked"
+source = { table = "u317.json", id = "Q12_root_volume_not_rechecked" }
+description = "still_removed: a quick run's archive runs over a root that went away or changed volume (round one's B2)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one walked"
+    except OSError as exc:
+        return f"the library root {root} could not be read before the archive: {exc}"'''
+new = '''
+        pass
+    except OSError:
+        pass'''
+
+[[rows]]
+id = "u317.Q13_returned_path_archived"
+source = { table = "u317.json", id = "Q13_returned_path_archived" }
+description = "still_removed: a removed path that came back after the plan is archived off the mirror"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '        return f"{rel} was found removed by the walk and is there again"'
+new = '        continue'
+
+[[rows]]
+id = "u317.Q1_unlisted_folder_is_absence"
+source = { table = "u317.json", id = "Q1_unlisted_folder_is_absence" }
+description = "walk: a listed folder that is gone is skipped as absent, so its files read as removed (round one's B2)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+            raise WalkRefused(
+                f"{directory} was listed and then was not there, so the walk did "
+                f"not see the whole library"
+            ) from None'''
+new = '            continue'
+
+[[rows]]
+id = "u317.Q4_racy_file_not_hashed"
+source = { table = "u317.json", id = "Q4_racy_file_not_hashed" }
+description = "walk: a file inside the racy window is not hashed, so a rewrite keeping size and time is skipped"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '            if rel in must_hash or status.st_mtime_ns >= racy_after_ns:'
+new = '            if rel in must_hash:'
+
+[[rows]]
+id = "u317.Q5_rewrite_not_compared"
+source = { table = "u317.json", id = "Q5_rewrite_not_compared" }
+description = "difference: a hash that moved under a kept size and time is not a change"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '        elif was.sha256 is not None and was.sha256 != now.sha256:'
+new = '        elif False:'
+
+[[rows]]
+id = "u317.Q6_removed_not_found"
+source = { table = "u317.json", id = "Q6_removed_not_found" }
+description = "difference: a path in the record and not in the walk is not removed"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '    removed = [rel for rel in recorded if rel not in walked]'
+new = '    removed = []'
+
+[[rows]]
+id = "u317.Q7_only_additions_count"
+source = { table = "u317.json", id = "Q7_only_additions_count" }
+description = "Difference.anything: only added paths count, so a change or a removal is skipped"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '        return any(path not in self.self_written for path in self.paths)'
+new = '        return any(path not in self.self_written for path in self.added)'
+
+[[rows]]
+id = "u317.Q8_settled_trusts_the_first_walk"
+source = { table = "u317.json", id = "Q8_settled_trusts_the_first_walk" }
+description = "settled: every entry of the walk before the transfer is trusted, so a file changed mid run is never sent again"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '        out[rel] = was if now is not None and was.agrees(now) else DOUBT'
+new = '        out[rel] = was'
+
+[[rows]]
+id = "u317.Q9_doubt_through_plain_copy"
+source = { table = "u317.json", id = "Q9_doubt_through_plain_copy" }
+description = "difference: a present doubt is a plain change, so it is never resent with the times ignored (round one's R1)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''
+        elif was == DOUBT:
+            doubted.append(rel)'''
+new = '''
+        elif was == DOUBT:
+            changed.append(rel)'''
+
+[[rows]]
+id = "u304.S3_agreement_clock_through_its_module"
+source = { table = "u304.json", id = "S3_agreement_clock_through_its_module" }
+description = "pair_plan._moved_since_stop: the agreement window read off the wall clock, not pair_model._now; maintainer facing, since the two clocks agree outside a test, and round one's review measured that no test moves the clock on this path"
+file = "src/cratekit/sync/pair_plan.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py", "tests/test_jobs.py"]
+old = '        elif first is not None and pair_model._now() - first >= AGREE_AFTER:'
+new = '        elif first is not None and __import__("datetime").datetime.now(__import__("datetime").UTC) - first >= AGREE_AFTER:'
+
+[[rows]]
+id = "u119.G16_read_back_blind_to_leftovers"
+source = { table = "u119.json", id = "G16_read_back_blind_to_leftovers" }
+description = "_read_back: a track still in Favorites after the removals is not a disagreement"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py"]
+old = '        if removed_too and live - wanted:'
+new = '        if False:'
+
+[[rows]]
+id = "u125.D1_derive_test_tautology"
+source = { table = "u125.json", id = "D1_derive_test_tautology" }
+description = "Restore the derive test's cause-total assert to x == x so a broken reserved count stays green there"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (len(causes), len(non_reserved), len(CAUSES)), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
+new = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
