@@ -14,7 +14,9 @@ under INBOX, never Old.
 
 ONE GUARDED SESSION FOR EVERY TRACK: the file's two tags first, each read back,
 then the row's genre where rekordbox already holds that name, then the tree
-memberships by the rule ``route resort`` writes by. A file whose tag did not
+memberships by the rule ``route resort`` writes by, its vocal sub by the row's
+``vox`` My Tag and never the file's score (U127, R-2062), so a membership taken
+here is never one the next resort adds back. A file whose tag did not
 take keeps its row. Nothing leaves the collection and no beat grid is written:
 the two tags are the only fields, and the writable field set refuses a tempo.
 An unfile cannot empty the row's genre, so the Genre column keeps its word until
@@ -26,7 +28,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -500,10 +502,18 @@ def _plan_genre(
     from cratekit.core import routing
     from cratekit.modules.outbound import mirror_edits as edits
     from cratekit.organize import account_mirror
-    from cratekit.write import rebuild, routing_pass
+    from cratekit.write import rebuild, routing_pass, vox_tag
 
     tree = read_tree(db, declared, registry)
     routed = _routed(declared)
+    # THE VOX MY TAG FILES THE VOCAL SUB (U127, R-2062), as the resort after
+    # this reads it: read once for every edit, and only where it could file
+    # something. A library with no vox tag carries it on no row.
+    tagged = (
+        vox_tag.vox_tagged(db) or frozenset()
+        if rebuild.reads_vox_tag(declared, vocal_threshold)
+        else frozenset()
+    )
     changes: list[Change] = []
     for decision in carried:
         row = live(decision)
@@ -559,6 +569,7 @@ def _plan_genre(
                     second_genre=second,
                 )],
                 vocal_threshold=vocal_threshold,
+                carries_vox=_carries(tagged, decision.content_id),
             )
             wanted: set[str] = set()
             for placement in placements:
@@ -582,6 +593,11 @@ def _plan_genre(
             tree=edits.GENRE,
         ))
     return changes
+
+
+def _carries(tagged: frozenset[str], content_id: str) -> Callable[[str], bool]:
+    """The vox My Tag's answer for the edit's own row, whichever file the derivation names."""
+    return lambda _location: content_id in tagged
 
 
 def _tagless(decision: edits.Decision, row: Any, tree: str, **rest: Any) -> Change:
