@@ -389,7 +389,7 @@ def test_a_volume_literal_in_any_skill_fails(tmp_path):
     _mk_skill(tmp_path, "crate-backup", f"mirror {_A_VOLUME_LITERAL} nightly\n")
     problems = _lint(tmp_path, set())
     assert any(p.startswith("crate-x: personal literal") for p in problems)
-    assert any(p.startswith("crate-backup: personal literal") for p in problems), "a skill was exempt"
+    assert any(p.startswith("crate-backup: personal literal") for p in problems), "an exemption"
 
 
 def test_a_bare_volume_name_in_a_skill_fails(tmp_path):
