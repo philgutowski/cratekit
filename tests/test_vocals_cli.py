@@ -339,29 +339,37 @@ def test_owed_by_unit_no_longer_lists_25():
     assert registry.entry("metadata.mytags-vocals").planned_in is None
 
 
-def test_a_recursive_vocals_pass_queues_every_nested_file_once_in_sorted_order(
-    cfg, folder, silence, monkeypatch
+@pytest.mark.parametrize(
+    ("layout", "flags", "items"),
+    [
+        # R-376 itself: 343 leaf folders and about 7.7 hours become one invocation.
+        pytest.param(
+            ["house/a.flac", "techno/deep/b.flac", "top.flac"], ["--recursive"],
+            ["house/a.flac", "techno/deep/b.flac", "top.flac"], id="recursive-every-file-once",
+        ),
+        # The default is unchanged, so an existing job and an existing resume are too.
+        pytest.param(["top.flac", "house/a.flac"], [], ["top.flac"], id="one-level-by-default"),
+        # ``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
+        pytest.param(
+            ["house/track.flac", "techno/track.flac"], ["--recursive"],
+            ["house/track.flac", "techno/track.flac"], id="one-name-in-two-folders",
+        ),
+        pytest.param(
+            ["house/track.flac", "house/._track.flac", ".Trashes/deleted.flac"], ["--recursive"],
+            ["house/track.flac"], id="no-sidecar-or-dot-directory",
+        ),
+    ],
+)
+def test_a_vocals_pass_queues_each_file_its_walk_finds_in_sorted_order(
+    cfg, folder, silence, monkeypatch, layout, flags, items
 ):
-    """R-376 itself: 343 leaf folders and about 7.7 hours become one invocation."""
     bind_scoring(monkeypatch)
-    nest(folder, silence, "house/a.flac")
-    nest(folder, silence, "techno/deep/b.flac")
-    place(folder, silence, "top")
-    exited(_vocals(folder, "--recursive"))
+    for relative in layout:
+        nest(folder, silence, relative)
+    exited(_vocals(folder, *flags))
     job = vocals_job()
-    assert sorted(item_states(job.job_id)) == ["house/a.flac", "techno/deep/b.flac", "top.flac"]
-    assert job.payload["recursive"] is True
-
-
-def test_a_vocals_pass_without_the_flag_stays_one_level(cfg, folder, silence, monkeypatch):
-    """The default is unchanged, so an existing job and an existing resume are too."""
-    bind_scoring(monkeypatch)
-    place(folder, silence, "top")
-    nest(folder, silence, "house/a.flac")
-    exited(_vocals(folder))
-    job = vocals_job()
-    assert sorted(item_states(job.job_id)) == ["top.flac"]
-    assert job.payload["recursive"] is False
+    assert sorted(item_states(job.job_id)) == items
+    assert job.payload["recursive"] is bool(flags)
 
 
 def test_a_recursive_vocals_pass_scores_the_nested_file_the_item_names(
@@ -375,28 +383,6 @@ def test_a_recursive_vocals_pass_scores_the_nested_file_the_item_names(
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert tags.read_vox_from_file(nested) is not None
     assert _reports(cfg, job.job_id)["house/deep/a.flac"]["path"] == str(nested)
-
-
-def test_two_nested_folders_holding_the_same_filename_are_two_vocals_items(
-    cfg, folder, silence, monkeypatch
-):
-    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide."""
-    bind_scoring(monkeypatch)
-    nest(folder, silence, "house/track.flac")
-    nest(folder, silence, "techno/track.flac")
-    exited(_vocals(folder, "--recursive"))
-    assert sorted(item_states(vocals_job().job_id)) == ["house/track.flac", "techno/track.flac"]
-
-
-def test_a_nested_sidecar_and_a_dot_directory_are_not_vocals_items(
-    cfg, folder, silence, monkeypatch
-):
-    bind_scoring(monkeypatch)
-    nest(folder, silence, "house/track.flac")
-    nest(folder, silence, "house/._track.flac")
-    nest(folder, silence, ".Trashes/deleted.flac")
-    _vocals(folder, "--recursive")
-    assert sorted(item_states(vocals_job().job_id)) == ["house/track.flac"]
 
 
 def test_a_nested_file_deleted_after_the_vocals_queue_refuses_that_item_only(
