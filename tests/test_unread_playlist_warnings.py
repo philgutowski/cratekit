@@ -346,3 +346,29 @@ def test_the_message_names_every_playlist_uncapped_and_sorted():
         "code": "playlist-not-compared",
         "message": rebuild.unidentified_message(["F/P"]),
     }
+
+
+def test_the_count_is_every_entry_named_a_name_two_trees_share_included():
+    """Row M5: two trees' playlists of one folder and name are two, as the list shows them."""
+    message = rebuild.unidentified_message(["F/P", "F/P"])
+    assert message is not None
+    assert message.startswith("2 playlist(s)"), message
+    assert "F/P; F/P" in message, message
+
+
+def test_every_item_report_of_a_job_is_read_back():
+    """Row M9: a job over several trees names what each one's check found, not the first's."""
+    reports = [
+        {"tree_id": "one", "left_behind": [], "unidentified": ["A/One"]},
+        {"tree_id": "two", "left_behind": [], "unidentified": ["B/Two"]},
+    ]
+    warnings, steps = rebuild.after_messages(reports, listed_in="the list")
+    (warning,) = warnings
+    assert warning == {
+        "code": rebuild.UNIDENTIFIED_PLAYLISTS,
+        "message": rebuild.unidentified_message(["A/One", "B/Two"]),
+    }
+    assert steps == (warning["message"],)
+    # A report an older build wrote, with no such key, adds nothing and breaks nothing.
+    assert rebuild.after_messages([{"tree_id": "old", "left_behind": []}], listed_in="x") == ((), ())
+
