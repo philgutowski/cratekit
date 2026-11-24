@@ -65,13 +65,13 @@ def _playlist(name: str, *files: guess.Staged, owned: tuple[guess.Member, ...] =
     return guess.Playlist(name=name, files=tuple(one.path for one in files), owned=owned)
 
 
-def _lone(*others: guess.Staged, artist: str = "Ana Vale", in_playlist: bool = False,
+def _lone(*others: guess.Staged, artist: str = "Ana Vale", in_playlist: str = "",
           first: bool = False, **signals) -> guess.Item:
-    """The guess for ``lone`` by ``artist`` staged after ``others``, or ``first``; with
-    ``in_playlist``, all of them in playlist ``p``, ``lone`` last."""
+    """The guess for ``lone`` by ``artist`` staged after ``others``, or ``first``; all of them
+    in the playlist named ``in_playlist`` if one is, ``lone`` last."""
     lone = _staged("lone", artist=artist)
     if in_playlist:
-        signals["playlists"] = (_playlist("p", *others, lone),)
+        signals["playlists"] = (_playlist(in_playlist, *others, lone),)
     return _item(_plan((lone, *others) if first else (*others, lone), **signals), "lone")
 
 
@@ -124,7 +124,7 @@ def test_a_playlist_mostly_of_one_genre_gives_it_to_a_track_no_artist_knows():
 def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
     """One voice per playlist: ten members weigh four, the artist's three tracks six."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=MELODIC) for n in range(10)]
-    item = _lone(*members, library={"ana vale": (DEEP, DEEP, DEEP)}, in_playlist=True)
+    item = _lone(*members, library={"ana vale": (DEEP, DEEP, DEEP)}, in_playlist="long")
     assert item.genre == DEEP
     assert dict(item.votes) == {DEEP: Fraction(6), MELODIC: Fraction(4)}
 
@@ -132,7 +132,7 @@ def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
 def test_a_track_by_the_same_artist_votes_once_as_the_artists():
     same = _staged("same", artist="Ana Vale", genre=DEEP)
     other = _staged("other", artist="Other", genre=MELODIC)
-    item = _lone(same, other, library={}, in_playlist=True)
+    item = _lone(same, other, library={}, in_playlist="p")
     # The same artist's track is two as the artist's and nothing in the share,
     # so the playlist's whole voice goes to the other member.
     assert dict(item.votes) == {DEEP: Fraction(2), MELODIC: Fraction(4)}
@@ -151,7 +151,7 @@ def test_a_three_way_tie_goes_to_the_artist_then_to_the_name():
     # a Deep House member: one voice of four over two members is two each.
     deep = _staged("d", artist="Other Two", genre=DEEP)
     item = _lone(
-        melodic, deep, library={"ana vale": (PROGRESSIVE,)}, in_playlist=True, first=True
+        melodic, deep, library={"ana vale": (PROGRESSIVE,)}, in_playlist="p", first=True
     )
     assert item.band == suggest.SPLIT
     assert set(item.tied) == {DEEP, MELODIC, PROGRESSIVE}
@@ -161,7 +161,7 @@ def test_a_three_way_tie_goes_to_the_artist_then_to_the_name():
 def test_a_tie_no_artist_breaks_goes_to_the_first_by_name():
     melodic = _staged("m", artist="Other", genre=MELODIC)
     deep = _staged("d", artist="Other Two", genre=DEEP)
-    item = _lone(melodic, deep, artist="Nobody Known", library={}, in_playlist=True, first=True)
+    item = _lone(melodic, deep, artist="Nobody Known", library={}, in_playlist="p", first=True)
     assert item.band == suggest.SPLIT and item.genre == min(DEEP, MELODIC)
 
 
@@ -176,7 +176,7 @@ def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
     """Twelve fifths against eight is exactly the sixty percent bound, banded as whole votes."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
     others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
-    item = _lone(*members, *others, artist="Nobody Known", library={}, in_playlist=True)
+    item = _lone(*members, *others, artist="Nobody Known", library={}, in_playlist="p")
     assert dict(item.votes) == {DEEP: Fraction(12, 5), MELODIC: Fraction(8, 5)}
     assert item.band == suggest.band_of(12 / 5, 4) == suggest.MEDIUM
 
@@ -558,7 +558,7 @@ def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
     """24/5 against 6/5 is exactly eighty percent, which a float sum reads as just under."""
     members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
     members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
-    item = _lone(*members, library={"ana vale": (DEEP,)}, in_playlist=True)
+    item = _lone(*members, library={"ana vale": (DEEP,)}, in_playlist="p")
     assert dict(item.votes) == {DEEP: Fraction(24, 5), MELODIC: Fraction(6, 5)}
     assert item.band == suggest.band_of(24, 30) == suggest.HIGH
 

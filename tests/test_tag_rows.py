@@ -121,8 +121,11 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
-    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
+    monkeypatch.setattr(
+        rb_writer,
+        "read_rekordbox_settings",
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
+    )
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
