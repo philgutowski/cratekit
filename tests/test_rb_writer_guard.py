@@ -1352,14 +1352,39 @@ def test_an_admitted_creation_still_refuses_a_second_content_row_nobody_asked_ab
     assert len(violations) == 1 and "Analysed" in violations[0]
 
 
+#: Who may pass ``creations`` to ``commit_guarded``, and the ``rb_writer`` table
+#: names each may pass, read off its source; None for the native landing, whose
+#: tables are its own commit's. WIDENED 2026-11-23 FOR R-1967 (#1008), by
+#: Phillip's scoped exception: ``tag set`` makes the genre row its rows link, and
+#: may name ``djmdGenre`` alone.
+_CREATION_ASKERS = {"intake/native.py": None, "tagging/genre_set.py": frozenset({"GENRE_TABLE"})}
+
+
 def test_every_other_writer_in_the_package_asks_for_no_creation():
-    """The callers that pass ``creations`` are the native landing and nobody else.
+    """The callers that pass ``creations`` are the native landing and ``tag set``,
+    and nobody else.
 
     A source guard rather than a runtime one, because the property is about who
     may ask: a membership writer that learned to name the content table would
     pass every runtime check and still be the hazard the whitelist exists for.
+    ``tag set`` is held to its tables the same way: every ``creations=`` it
+    passes is a tuple of ``rb_writer`` names its allowance lists, or a choice
+    between such tuples, so a variable, a call, a string or any other table
+    fails here though the runtime guard would admit a lookup table it asked for.
     """
+    import ast
     import re
+
+    def allowed(value, names):
+        if isinstance(value, ast.IfExp):
+            return allowed(value.body, names) and allowed(value.orelse, names)
+        return isinstance(value, ast.Tuple) and all(
+            isinstance(one, ast.Attribute)
+            and isinstance(one.value, ast.Name)
+            and one.value.id == "rb_writer"
+            and one.attr in names
+            for one in value.elts
+        )
 
     root = Path(__file__).resolve().parents[1] / "src" / "cratekit"
     askers = sorted(
@@ -1367,7 +1392,21 @@ def test_every_other_writer_in_the_package_asks_for_no_creation():
         for path in root.rglob("*.py")
         if re.search(r"commit_guarded\([^)]*creations=", path.read_text(encoding="utf-8"), re.S)
     )
-    assert askers == ["intake/native.py"], askers
+    assert askers == sorted(_CREATION_ASKERS), askers
+    for asker, names in _CREATION_ASKERS.items():
+        if names is None:
+            continue
+        calls = [
+            node
+            for node in ast.walk(ast.parse((root / asker).read_text(encoding="utf-8")))
+            if isinstance(node, ast.Call)
+            and getattr(node.func, "attr", getattr(node.func, "id", "")) == "commit_guarded"
+        ]
+        asked = [word.value for call in calls for word in call.keywords if word.arg == "creations"]
+        assert asked, asker
+        assert all(word.arg is not None for call in calls for word in call.keywords), asker
+        refused = [ast.unparse(value) for value in asked if not allowed(value, names)]
+        assert refused == [], (asker, refused)
 
 
 # ── the per-field policy ─────────────────────────────────────────────────────

@@ -6,7 +6,9 @@ the backup acknowledgment, then the plan on a read handle closed before the
 gate; the explicit gate over the digest, taking no inline answer, AN EMPTY PLAN
 STILL ASKS; only ``apply`` over a plan that writes opens the database to write,
 takes the plan again on that handle and refuses ``decision-stale`` if it moved.
-``--leave`` holds a row out, in the plan and its digest. A run that wrote names
+``--leave`` holds a row out, in the plan and its digest. A genre the library
+has no lookup row for shows ``mint`` at the gate, and the apply makes the row
+on the commit that links it. A run that wrote names
 ``adopt apply``, which files the rows under the new genre's folder, and
 ``adopt move`` where a row leaves the genre folder its old genre filed it in.
 
@@ -21,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.adopt import placements
+from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
@@ -33,13 +36,13 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 CONFIRM_GATE = "tag.set.confirm"
 
 #: The warnings: nothing to write, what was written and read back, rows left,
-#: a ``--leave`` naming no row in scope, a genre with no lookup row, and the
-#: step that files the rows.
+#: a ``--leave`` naming no row in scope, a genre row the apply would make, and
+#: the step that files the rows.
 NOTHING_TO_WRITE = "set-nothing-to-write"
 GENRE_WRITTEN = "set-genre-written"
 ROWS_LEFT = "set-rows-left"
 LEAVE_UNMATCHED = "set-leave-unmatched"
-GENRE_NO_ROW = "set-genre-has-no-row"
+GENRE_ROW_TO_MAKE = "set-genre-row-to-make"
 FILE_NEXT = "set-file-next"
 
 #: The refusal over the files that did not take, after the rest landed.
@@ -130,7 +133,7 @@ def _payload(plan: gs.SetPlan) -> dict[str, Any]:
         plan,
         rows=len(plan.items),
         genre=plan.genre,
-        genre_row=plan.genre_row or gs.NO_ROW,
+        genre_row=plan.shown_row,
         playlist=plan.playlist,
         outcomes=dict(plan.counts),
     )
@@ -140,7 +143,7 @@ def _facts(plan: gs.SetPlan) -> dict[str, Any]:
     """What the gate puts in front of the items: the genre, its row, the counts."""
     facts: dict[str, Any] = {
         "genre": plan.genre,
-        "genre_row": plan.genre_row or gs.NO_ROW,
+        "genre_row": plan.shown_row,
         "rows": len(plan.items),
         "outcomes": dict(plan.counts),
     }
@@ -168,17 +171,16 @@ def _left(plan: gs.SetPlan) -> list[dict[str, str]]:
     )]
 
 
-def _no_row(plan: gs.SetPlan) -> list[dict[str, str]]:
-    """The warning, on every path, when the library has no genre row for the
-    word, naming the act, since only rekordbox makes one."""
-    if plan.genre_row or not plan.counts[gs.GENRE_UNKNOWN]:
+def _to_make(plan: gs.SetPlan) -> list[dict[str, str]]:
+    """The warning, on a path that wrote nothing, when the apply would make the
+    genre's lookup row."""
+    if not plan.mint:
         return []
     return [warning(
-        GENRE_NO_ROW,
-        f"the library has no genre row for {plan.genre!r}, so nothing was written "
-        f"on any file or row: give one track that genre in rekordbox, which makes "
-        f"the row, then run this again; this verb links a genre row and never "
-        f"makes one, since only a landing may add a lookup row",
+        GENRE_ROW_TO_MAKE,
+        f"the library has no genre row for {plan.genre!r}, so the apply makes one, "
+        f"on the commit that links the rows to it and only if a row is written; a "
+        f"restore of its session takes the row back",
     )]
 
 
@@ -193,46 +195,75 @@ def _unmatched(plan: gs.SetPlan) -> list[dict[str, str]]:
 
 
 def _advisories(plan: gs.SetPlan) -> list[dict[str, str]]:
-    return [*_no_row(plan), *_left(plan), *_unmatched(plan)]
+    return [*_left(plan), *_unmatched(plan)]
 
 
 def _nothing(plan: gs.SetPlan) -> dict[str, str]:
-    if not plan.genre_row and plan.counts[gs.GENRE_UNKNOWN]:
-        said = f"the library has no genre row for {plan.genre!r} (below)"
-    else:
-        said = (
-            f"{plan.counts[gs.ALREADY]} of {len(plan.items)} named row(s) already "
-            f"carry {plan.genre!r} on the file and the row, and the rest are left"
-        )
-    return warning(NOTHING_TO_WRITE, f"no genre is to be written: {said}")
+    return warning(
+        NOTHING_TO_WRITE,
+        f"no genre is to be written: {plan.counts[gs.ALREADY]} of {len(plan.items)} "
+        f"named row(s) already carry {plan.genre!r} on the file and the row, and "
+        f"the rest are left",
+    )
 
 
-def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
+def _written(
+    plan: gs.SetPlan, written: gs.Written, root: Path | str
+) -> list[dict[str, str]]:
     files = written.files
+    made = (
+        f", to the genre row {written.minted} this run made for it, the library "
+        f"having none"
+        if written.minted
+        else ""
+    )
+    taken = ", takes the genre row away," if written.minted else ""
     said = [warning(
         GENRE_WRITTEN,
         f"{len(files.read_back)} file(s) carry the genre {plan.genre!r}, read back, "
-        f"and {written.written} row(s) link it, {written.read_back} read back from "
-        f"the database as written, the genre and no other column; a restore "
-        f"of session {written.session_id} puts the rows back and each file's old "
-        f"genre, which its record keeps",
+        f"and {written.written} row(s) link it{made}, {written.read_back} read back "
+        f"from the database as written, the genre and no other column; a restore "
+        f"of session {written.session_id} puts the rows back{taken} and puts back "
+        f"each file's old genre, which its record keeps",
     )]
     if written.written:
-        leaving = sum(1 for item in plan.writes if item.leaves)
+        # A ROW OUTSIDE THE LIBRARY ROOT IS ONE ADOPTION LEAVES ALONE (U956), so
+        # neither verb is promised for it; it is named instead. Over the rows
+        # whose file took the genre, never the plan's (review round two).
+        took = frozenset(files.read_back)
+        landed = [item for item in plan.writes if item.content_id in took]
+        outside = sorted(
+            item.content_id
+            for item in landed
+            if item.path and not adopt_scan.within_root(item.path, root)
+        )
+        inside = [item for item in landed if item.content_id not in outside]
+        leaving = sum(1 for item in inside if item.leaves)
         moved = (
             f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
-            f"filed under their old genre out of that genre folder's energy band; "
-            f"a `with vox` or Favorites membership a row holds there stays, for "
-            f"you to remove in rekordbox"
+            f"filed under their old genre out of that genre folder: its energy "
+            f"band, `with vox`, genre sub and Favorites; a playlist you made "
+            f"there, Candy among them, is never touched, and while one holds a "
+            f"row that folder's Favorites keeps it too. A row the move files "
+            f"itself gains its `with vox` at the next `crate adopt apply` and "
+            f"its Favorites at the next `crate favorites refresh`"
             if leaving
             else ""
         )
-        said.append(warning(
-            FILE_NEXT,
-            f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
-            f"files by its energy band each one the tree does not hold in that "
-            f"genre's folder yet{moved}",
-        ))
+        if inside:
+            said.append(warning(
+                FILE_NEXT,
+                f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
+                f"files by its energy band each one the tree does not hold in that "
+                f"genre's folder yet{moved}",
+            ))
+        if outside:
+            said.append(warning(
+                FILE_NEXT,
+                f"{len(outside)} written row(s) have their file outside the library "
+                f"root, which adoption leaves alone, so neither verb files or moves "
+                f"them: {', '.join(outside)}",
+            ))
     return said
 
 
@@ -335,14 +366,16 @@ def tag_set(ctx) -> Envelope:
     plan = read_plan(cfg, declared, genre, ctx.args)
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
+        return ctx.envelope(
+            data=data, outcome=Outcome.NO_OP, warnings=[*_to_make(plan), *_advisories(plan)]
+        )
     if not plan.writes:
         return ctx.envelope(
             data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan), *_advisories(plan)]
         )
     written = apply_plan(cfg, plan, declared, ctx.args)
     data["totals"] = {**data["totals"], "written": written.written, "read_back": written.read_back}
-    answered = ctx.envelope(data=data, warnings=[*_written(plan, written), *_advisories(plan)])
+    answered = ctx.envelope(data=data, warnings=[*_written(plan, written, cfg.library.root), *_advisories(plan)])
     if written.files.clean:
         return answered
     # A PARTIAL APPLY REFUSES, THROUGH ``from_cause``, its counts and every
@@ -359,6 +392,6 @@ def tag_set(ctx) -> Envelope:
 
 
 __all__ = [
-    "CONFIRM_GATE", "FILE_NEXT", "GENRE_NO_ROW", "GENRE_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
+    "CONFIRM_GATE", "FILE_NEXT", "GENRE_ROW_TO_MAKE", "GENRE_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
     "ROWS_LEFT", "UNWRITTEN", "apply_plan", "build", "named_rows", "read_plan", "tag_set",
 ]

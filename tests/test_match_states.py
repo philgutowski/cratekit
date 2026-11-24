@@ -1284,6 +1284,24 @@ def test_the_tag_head_outranks_the_stem_head_and_both_outrank_the_initialkey_tag
     assert sorted(row.key for row in held) == ["06A", "06A"]
 
 
+def test_a_headless_file_takes_its_key_from_initialkey_and_has_none_without_it(music, tmp_path):
+    """U343: a run writes no head, so a file waits headless for the visit; the
+    ``initialkey`` ``analyze adopt`` writes is then its key, and before it none."""
+    tagged_container(
+        tmp_path, music / "Aurora Bloom - Sun Path.flac",
+        artist="Aurora Bloom", title="Sun Path", initialkey="06A", analyzed="1",
+    )
+    tagged_container(
+        tmp_path, music / "Aurora Bloom - Moon Path.flac",
+        artist="Aurora Bloom", title="Moon Path", analyzed="1",
+    )
+    index = index_of(music)
+    sun = index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    moon = index.versions(match.recording_token("Aurora Bloom", "Moon Path"))
+    assert [(row.title, row.key) for row in sun] == [("Sun Path", "06A")]
+    assert [(row.title, row.key) for row in moon] == [("Moon Path", None)]
+
+
 def test_a_title_that_genuinely_ends_with_a_camelot_code_and_a_number_loses_that_tail(
     music, tmp_path
 ):

@@ -80,11 +80,10 @@ Nothing merges until all three are clean:
   time: `stages` for wall time per stage, `memory` for one light worker's
   peak per track, `batch` for one worker against the pool, each over a folder
   it only reads, or over the fixed synthetic set `synthesize` writes.
-  `scripts/head_agreement.py --analyse N` reads the shipped key method's
-  agreement with rekordbox, `plain` since U276, and `--key whole|windows`
-  reads one of the other two over the same sample. After a change to
-  `analysis/detect.py`, `separation.py` or `light.py`, re-run them and replace
-  the numbers those modules quote.
+  `scripts/head_agreement.py --analyse N` reads the detector's tempo
+  agreement with rekordbox; the detector reads no key since U343, so its rows
+  count as unkeyed. After a change to `analysis/detect.py`, `separation.py`
+  or `light.py`, re-run them and replace the numbers those modules quote.
 - `scripts/cyanite_trial.py` is U245's Cyanite trial, a person's command
   rather than a maintainer's, described in the guide. Its suite drives it with
   recorded answers only; the shipped send is detonated for every test in

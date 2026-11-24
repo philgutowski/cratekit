@@ -91,7 +91,7 @@ def _not_read(plan: rows.RowsPlan) -> list[dict[str, str]]:
 
 def _left(plan: rows.RowsPlan) -> list[dict[str, str]]:
     """The warning, on every path, of differing rows left, naming the act for a
-    word with no lookup row, which only rekordbox makes."""
+    word with no lookup row, which this verb never makes."""
     count = sum(plan.counts[name] for name in rows.LEFT)
     if not count:
         return []

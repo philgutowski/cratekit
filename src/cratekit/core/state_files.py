@@ -782,6 +782,12 @@ STATE_FILES: tuple[StateFile, ...] = (
         "NEVER_RESTORED for the inode reason every lock here shares.",
     ),
     _library(
+        "sync_removed_reads", "sync_removed_reads.json", SnapshotRole.NEVER_RESTORED,
+        "R-1716: each synced playlist ``sync removed`` read whole, with the count and stamp the "
+        "account listed, so a run stopped at a ceiling continues without reading it again. "
+        "NEVER_RESTORED: it records the provider's answers. Losing it costs calls.",
+    ),
+    _library(
         "sync_artifacts", "sync_artifacts.json", SnapshotRole.COUPLED,
         "Every file a sync run created, registered at creation so staging crash debris never "
         "becomes intake. COUPLED, so a restore forgets registrations for removed intake and those "

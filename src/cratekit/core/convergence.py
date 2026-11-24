@@ -631,15 +631,28 @@ def record_nodes(
     nodes: Iterable[DestinationNode],
     *,
     replace_all: bool = False,
+    keep_recorded: bool = False,
 ) -> ConvergenceState:
     """Write down which playlist rows a write put each declared destination in.
 
     ``replace_all`` is for the rebuild, which considered every destination;
     merging would keep a dangling entry that can collide (:func:`assert_injective`).
+    ``keep_recorded`` is for adoption, which finds its playlists by display
+    name and so may have filed into a second node after a rename (R-1991): a
+    destination the record already binds keeps its node, and a node the
+    record already gives a destination is given no second, both decided under
+    the lock, so the record stays one to one and nothing raises after the
+    write it follows has landed.
     """
+    if replace_all and keep_recorded:
+        raise ValueError("a record is either replaced whole or only added to, never both")
     with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
+        if keep_recorded:
+            nodes = _unrecorded(current, nodes)
+            if not nodes:
+                return state
         updated = (
             replace(current, nodes=tuple(sorted(nodes, key=lambda e: (e.bucket, e.sub))))
             if replace_all
@@ -648,6 +661,26 @@ def record_nodes(
         state = state.with_tree(updated)
         write(cfg, state)
     return state
+
+
+def _unrecorded(
+    current: TreeConvergence, nodes: Iterable[DestinationNode]
+) -> list[DestinationNode]:
+    """The entries of ``nodes`` whose destination and node ``current`` holds neither of.
+
+    The first of two that share either is kept, so the answer is one to one.
+    """
+    taken = {(entry.bucket, entry.sub) for entry in current.nodes}
+    claimed = {(entry.folder_id, entry.playlist_id) for entry in current.nodes}
+    kept: list[DestinationNode] = []
+    for entry in nodes:
+        destination, node = (entry.bucket, entry.sub), (entry.folder_id, entry.playlist_id)
+        if destination in taken or node in claimed:
+            continue
+        taken.add(destination)
+        claimed.add(node)
+        kept.append(entry)
+    return kept
 
 
 def clear_unconverged(

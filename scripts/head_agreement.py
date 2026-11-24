@@ -5,13 +5,13 @@ Reads a disposable copy of the configured database, or of the database named
 by ``--database``, and prints the four tempo buckets and the two key buckets
 for every row whose filename carries a head. With ``--analyse N`` it also
 runs this product's detector over N files rekordbox analysed itself and
-prints the same buckets for the detector's answer, which is the method's own
-rate. Writes nothing. Refuses while rekordbox or its agent is running.
+prints the tempo buckets for the detector's answer, which is the method's own
+rate; the detector measures no key (U343), so every one of its rows is
+unkeyed. Writes nothing. Refuses while rekordbox or its agent is running.
 
     .venv/bin/python scripts/head_agreement.py
     .venv/bin/python scripts/head_agreement.py --database /path/to/copy.db
     .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4
-    .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4 --key windows
 
 The recorded numbers in ``cratekit.analysis.detect`` are replaced by hand from
 this script's output after any change to the detector.
@@ -30,9 +30,7 @@ if SRC.is_dir() and str(SRC) not in sys.path:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The script's arguments, the key method's default read from the detector."""
-    from cratekit.analysis import detect
-
+    """The script's arguments."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
         "--database", type=Path, default=None,
@@ -45,17 +43,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--step", type=int, default=1,
         help="take every STEP-th eligible file for --analyse, spreading the sample",
-    )
-    parser.add_argument(
-        "--key",
-        default=detect.KEY_DEFAULT,
-        choices=detect.KEY_METHODS,
-        help=(
-            "how --analyse takes the key's chroma: the whole track after the harmonic "
-            "separation, evenly spread windows of it, or the whole track without the "
-            f"separation, which is what ships (default {detect.KEY_DEFAULT}, U276); run "
-            "each over the same sample to compare their key agreement"
-        ),
     )
     parser.add_argument(
         "--json", action="store_true", help="print the distributions as JSON instead"
@@ -92,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         reports["detector_against_rekordbox_own_analysis"] = agreement.reanalyse(
             rows,
             cfg,
-            detector=lambda path: detect.analyse_file(path, tempo_window=window, key=args.key),
+            detector=lambda path: detect.analyse_file(path, tempo_window=window),
             limit=args.analyse,
             step=args.step,
         )

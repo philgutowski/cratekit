@@ -228,7 +228,10 @@ crate converge --tree TREE-ID
 
 Every check is one of three answers, and there is no fourth answer that looks
 like the first: compared and matching, compared and differing, or not compared
-with the reason it did not run. A library whose volume is unmounted, or whose
+with the reason it did not run, or with the playlists it could not read (one
+bearing a name a genre files into and holding a track the tree files that it
+could not tie to one destination, under a folder renamed in rekordbox or
+beside a folder a write made again, named `not-compared:FOLDER/PLAYLIST`). A library whose volume is unmounted, or whose
 database this build cannot open, produces no comparison at all, and reporting an
 empty comparison as a clean one is how a tool tells somebody their damaged tree
 is fine. A derivation that produced zero placements is not converged either.
@@ -274,8 +277,12 @@ The actor has no default and an empty one is refused. An actor nobody typed is
 the product answering for the user, and this is a write to somebody's library
 membership taken on a named person's say so. A rebuild derives that membership
 from the declared sources and the library's own rows, keyed on stable identifiers
-rather than on folder names, so a folder renamed in rekordbox converges rather
-than being filed a second time.
+rather than on folder names, so a playlist a write recorded (`adopt apply`,
+`rebuild` or `route resort`) is written into after its folder is renamed in
+rekordbox rather than filed a second time. A band of that folder no write
+recorded is filed again under the genre's name, beside it, and the rebuild
+still clears the flag; converge then names the playlists it could not tie to
+one destination as not compared, for a person to look through in rekordbox.
 
 A tree still on the XML bridge is refused rather than rebuilt, because the
 membership written would be overwritten by the next import. Cut it over first.

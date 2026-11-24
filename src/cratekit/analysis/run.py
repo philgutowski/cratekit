@@ -1,7 +1,10 @@
-"""Folder-level two-pass: wide head, then capped vocal finalize.
+"""Folder-level two-pass: wide measure, then capped vocal finalize.
 
-Resume is the Camelot-prefixed filename: a kill after a rename leaves the
-name on disk and the next run skips it, with no sidecar.
+RESUME IS A TAG ON THE FILE (U343): ``analyze run`` writes :data:`MARK_FIELD`
+in the same write as the values it measured, so a kill leaves a file either
+marked and finished or unmarked and owed, with no sidecar. A file carrying a
+head on its NAME was measured by a run before U343, which named it, and reads
+as measured too.
 """
 
 from __future__ import annotations
@@ -11,16 +14,21 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from cratekit.analysis import light, vocals
+from cratekit.core import tags
 from cratekit.core.naming import NameTemplate, has_head
 
 _RESUME_TEMPLATE = NameTemplate()
+
+#: The tag ``analyze run`` writes on every file it measured, and its value.
+#: Any value but an empty one reads as marked, so a later build may write another.
+MARK_FIELD = "analyzed"
+MARK_VALUE = "1"
 
 
 @dataclass(frozen=True)
 class Result:
     path: Path
     status: str
-    camelot: str | None = None
     bpm: int | None = None
     energy: int | None = None
     #: Why ``energy`` is what it is: calibrated, uncalibrated, or unmeasurable.
@@ -38,9 +46,23 @@ class Result:
     drift_verdict: str | None = None
 
 
-def already_analyzed(path: Path) -> bool:
-    """True when the filename already carries a complete key-tempo head."""
-    return has_head(path.name, template=_RESUME_TEMPLATE)
+def marked(path: Path) -> bool:
+    """Whether ``path`` carries the mark ``analyze run`` writes on a file it measured.
+
+    A file whose tags cannot be read reads as unmarked, so it is measured
+    again: the safe direction, since the run then refuses its write by name.
+    ``tags.read_tag`` already reads a blank value as absent (review round one).
+    """
+    return tags.read_tag(path, MARK_FIELD) is not None
+
+
+def already_analyzed(path: Path, *, template: NameTemplate = _RESUME_TEMPLATE) -> bool:
+    """True when ``path`` is marked, or its name carries a complete key and tempo head.
+
+    The name is the marker a run before U343 left, so a file it measured is
+    never measured again; asked first, since it reads no file.
+    """
+    return has_head(path.name, template=template) or marked(path)
 
 
 def _as_result(payload: dict[str, Any]) -> Result:
@@ -50,7 +72,6 @@ def _as_result(payload: dict[str, Any]) -> Result:
     return Result(
         path=path,
         status=status,
-        camelot=payload.get("camelot"),
         bpm=payload.get("bpm", payload.get("rate")),
         energy=payload.get("energy"),
         energy_status=payload.get("energy_status"),
@@ -72,7 +93,7 @@ def run_batch(
     vocal: bool = True,
     decode: Callable[[Any], Any] | None = None,
 ) -> list[Result]:
-    """Analyse paths in two pools. Prefixed names are the resume skip.
+    """Analyse paths in two pools. A file already analysed is the resume skip.
 
     ``decode`` is the vocal pass's decoder seam; None binds the shipped one (U58).
     """

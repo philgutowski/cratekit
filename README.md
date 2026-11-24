@@ -24,9 +24,9 @@ you care about, and keep a current backup either way.
 - rekordbox 7
 - pipx (installed below with Homebrew)
 - access to the private GitHub repository, with git signed in to that account
-- per module, command line tools: `ffmpeg` and `ffprobe`, `yt-dlp`, `rclone`
-  (backup) and `keyfinder-cli` (key detection); `crate doctor` names each
-  missing one and its package
+- per module, command line tools: `ffmpeg` and `ffprobe`, `yt-dlp` and
+  `rclone` (backup); `crate doctor` names each missing one and its package.
+  No key detector is needed: the key comes from rekordbox's own analysis
 
 Credentials live in the operating system keychain, never in the configuration
 file.
@@ -49,7 +49,7 @@ supports; write `python3.13` if that is what you have. `command not found:
 crate` means the terminal window predates `pipx ensurepath`.
 
 Modules with heavy dependencies take an extra of the same name: `analysis`
-(key, BPM, energy) and `vocals` (vocal presence, singer gender). Name every
+(tempo, drift, energy) and `vocals` (vocal presence, singer gender). Name every
 extra you want in one command; the quotes stop zsh reading the brackets:
 
 ```bash

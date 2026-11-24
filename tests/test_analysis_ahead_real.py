@@ -149,17 +149,18 @@ def test_the_shipped_detector_in_workers_leaves_what_it_leaves_in_the_driver(
     code, pooled = drive(["analyze", "run", str(pooled_folder)])
     assert code == int(ExitCode.OK), pooled
     check = pooled["data"]["progress"]["analysis"]["checks"][0]
-    assert check["detail"].startswith("2 workers measured key, tempo and energy ahead"), check
+    assert check["detail"].startswith("2 workers measured tempo, drift and energy ahead"), check
     assert check["detail"].endswith("3 of 3 waiting file(s) were read from them"), check
     assert multiprocessing.active_children() == []
 
     assert pooled["data"]["progress"]["analysis"]["by_status"] == {"analyzed": 3}
     assert reports(cfg, pooled) == reports(cfg, serial)
     assert what_is_on_disk(pooled_folder) == what_is_on_disk(serial_folder)
-    # The heads are real ones: each carries a key, a level from the calibration
-    # and a drift verdict, and no file was given a tempo tag by either run.
+    # The heads are real ones: each carries the mark, a level from the calibration
+    # and a drift verdict, and no key (U343); no file was given a tempo tag by either run.
     for path in pooled_folder.iterdir():
-        assert tags.read_tag(path, "initialkey")
+        assert tags.read_tag(path, "analyzed") == "1"
+        assert tags.read_tag(path, "initialkey") is None
         assert tags.read_energy_from_file(path) is not None
         assert tags.read_tag(path, "drift") in ("steady", "variable", "unknown")
     with jobs.open_store() as store:

@@ -1,0 +1,261 @@
+name = "r1965"
+pass_kind = "light"
+
+[[rows]]
+id = "R01_manual_class_beside"
+description = "derived_classes: admit a manual class (Candy), so the move removes it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        if not entry.additive:
+            continue
+        others = tuple(other for other in declared.sub_classes if other is not entry)
+        # The loader's own list of what a bucket's folder holds, without this class.
+        ids, displays = taxonomy.live_places(declared.bucket(bucket_id), declared.energy, others)
+        if entry.id not in ids'''
+new = '''        others = tuple(other for other in declared.sub_classes if other is not entry)
+        # The loader's own list of what a bucket's folder holds, without this class.
+        ids, displays = taxonomy.live_places(declared.bucket(bucket_id), declared.energy, others)
+        if entry.id not in ids'''
+
+[[rows]]
+id = "R02_collision_rule"
+description = "derived_classes: drop the rule that a class whose name a bucket's own place takes is not that bucket's"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        if entry.id not in ids and entry.display not in displays:
+            found.append(entry.id)'''
+new = '''        if True:
+            found.append(entry.id)'''
+
+[[rows]]
+id = "R03_genre_sub_beside"
+description = "alongside_places: leave the genre subs out, so a Rominimal row keeps its old genre sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return (*derived_classes(declared, bucket_id), *genre)'''
+new = '''    return derived_classes(declared, bucket_id)'''
+
+[[rows]]
+id = "R04_no_mirrored_class"
+description = "mirrored_classes: name no class, so Favorites leaves even while Candy keeps the row in the folder"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return frozenset() if found is None else frozenset({found.id})'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "R05_own_folder_always"
+description = "in_own_folder: answer True for every place, a split place of the holder included"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    if routing.split_place(declared, bucket_id, sub_id) is not None:
+        return False
+    former'''
+new = '''    if routing.split_place(declared, bucket_id, sub_id) is not None:
+        return True
+    former'''
+
+[[rows]]
+id = "R06_own_folder_former"
+description = "in_own_folder: read a former place as the declarer's own folder too"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return former is None or former.bucket == bucket_id'''
+new = '''    return True'''
+
+[[rows]]
+id = "R07_folders_every_place"
+description = "placements_from: take the folder of every competing place, a former place's holder included"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''            if in_own_folder(declared, bucket.id, sub_id):
+                folders.update'''
+new = '''            if True:
+                folders.update'''
+
+[[rows]]
+id = "R08_alongside_no_folder"
+description = "placements_from: a place beside the band names no folder"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''            known.update((node.folder_id, node.playlist_id) for node in answering)
+            folders.update(node.folder_id for node in answering)
+        for folder_id in folders:'''
+new = '''            known.update((node.folder_id, node.playlist_id) for node in answering)
+        for folder_id in folders:'''
+
+[[rows]]
+id = "R09_alongside_not_known"
+description = "placements_from: a place beside the band counts among the folder's other playlists"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''                alongside_unnamed,
+            )
+            known.update((node.folder_id, node.playlist_id) for node in answering)'''
+new = '''                alongside_unnamed,
+            )'''
+
+[[rows]]
+id = "R10_others_never_read"
+description = "placements_from: never record another playlist of the folder"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''                if (node.folder_id, node.playlist_id) in known:
+                    continue'''
+new = '''                if True:
+                    continue'''
+
+[[rows]]
+id = "R11_stays_any_folder"
+description = "alongside_left: count a band in another folder (split, former) as keeping the track here"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        if in_own_folder(declared, bucket, sub)
+    } - set(leaving)'''
+new = '''    } - set(leaving)'''
+
+[[rows]]
+id = "R12_stays_ignores_leaving"
+description = "alongside_left: count a band being left as keeping the Favorites"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        if in_own_folder(declared, bucket, sub)
+    } - set(leaving)'''
+new = '''        if in_own_folder(declared, bucket, sub)
+    }'''
+
+[[rows]]
+id = "R13_stays_ignores_others"
+description = "alongside_left: ignore the folder's other playlists, so Candy no longer keeps Favorites"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    if stays or placements.holds_others(bucket, content_id):'''
+new = '''    if stays:'''
+
+[[rows]]
+id = "R14_settled_not_left"
+description = "leaving_moved: a band the other bucket settles keeps the Favorites (round one BLOCKING)"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    leaving = (*held, *settled_in_the_other_bucket(entry, bucket, declared))'''
+new = '''    leaving = held'''
+
+[[rows]]
+id = "R15_alongside_alone_asks_nothing"
+description = "moved_out_of: a track holding only places beside the band is not moved"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    if not held and not alongside:
+        return None'''
+new = '''    if not held:
+        return None'''
+
+[[rows]]
+id = "R16_unnamed_alongside_moved"
+description = "moved_out_of: a place beside the band under another name only does not list the track"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''                *(set(placements.holds_alongside_unnamed(bucket, entry.content_id)) & set(alongside)),
+'''
+new = ''''''
+
+[[rows]]
+id = "R17_alongside_not_removed"
+description = "moved_out_of: the move removes the bands alone (the R-1965 bug)"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    held = tuple(sorted({*held, *alongside}))'''
+new = '''    held = tuple(sorted(held))'''
+
+[[rows]]
+id = "R18_asked_by_band_only"
+description = "buckets_asked: ask a moved out bucket only where a band is held"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        if genre_moved_out_of(entry, bucket.id, declared, moved) and any(
+            leaving_moved(entry, bucket.id, placements, declared, subs)
+        ):'''
+new = '''        if genre_moved_out_of(entry, bucket.id, declared, moved) and any(
+            leaving_moved(entry, bucket.id, placements, declared, subs)[:1]
+        ):'''
+
+[[rows]]
+id = "R19_worker_leavable"
+description = "remaining: refuse a frozen move naming a place beside the band as no longer competing"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''            set(plan_engine.alongside_places(declared, move.bucket))
+            if move.target_bucket'''
+new = '''            set()
+            if move.target_bucket'''
+
+[[rows]]
+id = "R23_discharge_per_track"
+description = "handle: spend a genre move whose track has another move unfinished"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''            if move.content_id not in unfinished:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "R24_sample_second_entry"
+description = "sample of U339's guard: genre_moved_out_of no longer refuses a second genre's entry"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''        and not entry.second
+'''
+new = ''''''
+
+[[rows]]
+id = "R25_sample_vocal_sub"
+description = "sample: vocal_sub answers the vocal class in every bucket, colliding ones included"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return VOX_SUB_CLASS if VOX_SUB_CLASS in derived_classes(declared, bucket_id) else None'''
+new = '''    return VOX_SUB_CLASS'''
+[[rows]]
+id = "R20_done_ignores_alongside"
+description = "remaining: the cross move done check reads the bands alone, a place beside the band still held read as done"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''            if arrived and not still_to_leave(current.placements, declared, move, held):'''
+new = '''            if arrived and not held:'''
+[[rows]]
+id = "R21_read_back_bands_only"
+description = "still_to_leave: never count a place beside the band, so one left behind reads back moved"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return (set(held) | set(beside)) & set(move.remove)'''
+new = '''    return set(held) & set(move.remove)'''
+[[rows]]
+id = "R22_read_back_everything"
+description = "still_to_leave: count everything still held, a band the other bucket settles included (round two row 3)"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_tag_set.py", "tests/test_genre_favorites.py"]
+old = '''    return (set(held) | set(beside)) & set(move.remove)'''
+new = '''    return set(held) | set(beside)'''

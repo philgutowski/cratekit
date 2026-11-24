@@ -150,7 +150,7 @@ def test_the_run_reads_the_slices_length_before_and_after_its_own_write(
     run = run_over(folder)
     (report,) = artifacts.committed(cfg, run.job_id)
     assert report[analysis_cli.SLICE_HELD] is True
-    assert lengths.asked == ["a.flac", "08A - 124 - a.flac"]
+    assert lengths.asked == ["a.flac", "a.flac"]
 
 
 def test_a_run_that_scored_no_energy_reads_no_length(
@@ -185,7 +185,7 @@ def test_a_file_whose_slice_moved_or_went_unread_with_the_runs_write_is_restampe
     queue_restamp(folder, "--scored-by", run.job_id)
 
     (job,) = restamp_jobs()
-    assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
+    assert list(item_states(job.job_id)) == ["a.flac"]
     assert job.payload["left_out"] == []
 
 
@@ -229,7 +229,7 @@ def test_a_run_report_short_of_a_scored_level_leaves_its_file_to_the_restamp(
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=1 if value is True else 6))
     run = run_over(folder)
-    scored = folder / "08A - 124 - a.flac"
+    scored = folder / "a.flac"
     if value is True:
         # True reads as 1, so the tag carries 1, and only the type tells them apart.
         assert energy_of(scored) == "1"
@@ -306,12 +306,13 @@ def test_a_restamp_told_the_run_measures_none_of_the_files_it_scored(
 def test_a_file_the_run_did_not_score_is_restamped_and_the_rest_left_out(
     cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
 ):
-    """A name already carrying the head is skipped by the run, so the restamp takes it."""
+    """A name already carrying the head is skipped by the run (its marker before U343),
+    so the restamp takes it."""
     place(folder, silence, "a")
     headed = place(folder, silence, "05B - 120 - headed", energylevel=2)
     bind_scoring(monkeypatch, detect_=detector(level=6))
     run = run_over(folder)
-    scored = folder / "08A - 124 - a.flac"
+    scored = folder / "a.flac"
     assert scored.is_file()
 
     envelope = queue_restamp(folder, "--scored-by", run.job_id)
@@ -339,14 +340,14 @@ def test_a_file_whose_tag_moved_since_the_run_is_restamped(
     place(folder, silence, "b")
     bind_scoring(monkeypatch, detect_=detector(level=6))
     run = run_over(folder)
-    moved = folder / "08A - 124 - a.flac"
+    moved = folder / "a.flac"
     assert tags.write_tags(moved, {"energylevel": 3})
 
     queue_restamp(folder, "--scored-by", run.job_id)
 
     (job,) = restamp_jobs()
     assert list(item_states(job.job_id)) == [moved.name]
-    assert job.payload["left_out"] == ["08A - 124 - b.flac"]
+    assert job.payload["left_out"] == ["b.flac"]
 
 
 def test_every_file_is_restamped_once_the_calibration_changed_since_the_run(
@@ -361,7 +362,7 @@ def test_every_file_is_restamped_once_the_calibration_changed_since_the_run(
     envelope = queue_restamp(folder, "--scored-by", run.job_id)
 
     (job,) = restamp_jobs()
-    assert sorted(item_states(job.job_id)) == ["08A - 124 - a.flac", "08A - 124 - b.flac"]
+    assert sorted(item_states(job.job_id)) == ["a.flac", "b.flac"]
     assert envelope["data"]["progress"]["left_out"] == 0
     assert job.payload["left_out"] == []
 
@@ -378,7 +379,7 @@ def test_a_file_the_run_could_not_score_is_restamped(
     run = run_over(folder)
     queue_restamp(folder, "--scored-by", run.job_id)
     (job,) = restamp_jobs()
-    assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
+    assert list(item_states(job.job_id)) == ["a.flac"]
 
 
 @pytest.mark.parametrize("which", ["unknown", "another-verb", "another-folder", "unfinished"])
@@ -422,7 +423,7 @@ def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says
 
     open_jobs = [job for job in restamp_jobs() if job.job_id != named and job.is_open()]
     (job,) = open_jobs
-    assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
+    assert list(item_states(job.job_id)) == ["a.flac"]
     assert envelope["data"]["progress"]["left_out"] == 0
     (said,) = [w for w in envelope["warnings"] if w["code"] == "restamp-left-out-nothing"]
     assert named in said["message"] and "every file is restamped" in said["message"]
@@ -453,7 +454,7 @@ def test_a_hand_run_of_restamp_is_what_it_always_was(
     envelope = queue_restamp(folder)
 
     (job,) = restamp_jobs()
-    assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
+    assert list(item_states(job.job_id)) == ["a.flac"]
     assert "scored_by" not in job.payload and "left_out" not in job.payload
     assert "left_out" not in envelope["data"]["progress"]
     assert not [w for w in envelope["warnings"] if w["code"] == "restamp-left-out-nothing"]
@@ -461,7 +462,7 @@ def test_a_hand_run_of_restamp_is_what_it_always_was(
     assert code == int(ExitCode.OK), resumed
     analysis = resumed["data"]["progress"]["analysis"]
     assert "left_out" not in analysis and "scored_by" not in analysis
-    assert measuring.asked == ["08A - 124 - a.flac"]
+    assert measuring.asked == ["a.flac"]
 
 
 def test_the_tail_spells_the_restamps_words_as_the_verb_does():
@@ -553,8 +554,44 @@ def test_a_resumed_tail_restamps_every_file_since_its_run_scored_none(
     through_restamp(again, folder, cfg)
 
     (job,) = restamp_jobs()
-    assert sorted(item_states(job.job_id)) == ["08A - 124 - a.flac", "08A - 124 - b.flac"]
+    assert sorted(item_states(job.job_id)) == ["a.flac", "b.flac"]
     detail = row(again, tail_chain.RESTAMP)["detail"]
     assert "leaving out no staged file" in detail
     assert again.summary["restamp_left_out"] == 0
-    assert sorted(measuring.asked) == ["08A - 124 - a.flac", "08A - 124 - b.flac"]
+    assert sorted(measuring.asked) == ["a.flac", "b.flac"]
+
+
+def test_the_tail_over_the_real_verbs_leaves_every_title_headless_for_the_landing(
+    cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
+):
+    """U343, the tail end to end on fixtures: run, rescore, restamp and name apply leave
+    each file under its own name with its measures and its mark, no head, no title
+    head and no key, and the landing plans each title as its title tag gives it."""
+    from cratekit.intake import ingest
+    from cratekit.write import naming_cli
+
+    first = place(folder, silence, "Ada - Alpha", artist="Ada", title="Alpha")
+    second = place(folder, silence, "Ada - Bravo", artist="Ada", title="Bravo")
+    bind_scoring(monkeypatch, detect_=detector(level=6))
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg_: ())
+    held = chain()
+
+    for step, verb, words in tail_chain.TAIL:
+        if step == tail_chain.TAG:
+            continue
+        tail_chain.tail_step(held, step, verb, words, folder, cfg)
+        if step == tail_chain.ANALYZE:
+            tail_chain.rescore(held, folder, cfg, unable=None)
+    tail_chain.name(held, folder, cfg)
+
+    assert [step for step in held.summary["steps"]] == [
+        tail_chain.ANALYZE, tail_chain.RESTAMP, tail_chain.NAME
+    ], held.summary
+    assert sorted(path.name for path in folder.iterdir()) == [first.name, second.name]
+    for path, title in ((first, "Alpha"), (second, "Bravo")):
+        read = tags.read_tags(path, ("title", "initialkey", "analyzed", "energylevel"))
+        assert read == {
+            "title": title, "initialkey": None, "analyzed": "1", "energylevel": "6",
+        }, path.name
+        meta = ingest.file_meta(path, cfg=cfg)
+        assert (meta["name"], meta["tonality"]) == (title, ""), path.name

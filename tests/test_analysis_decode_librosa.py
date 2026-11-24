@@ -66,17 +66,18 @@ def keyed(tmp_path_factory):
 
 @pytest.mark.parametrize("fallback", ["installed", "none"])
 @pytest.mark.parametrize("codec", ["aac", "alac"])
-def test_an_m4a_gets_a_head_and_the_key_the_flac_gets(keyed, codec, fallback, request):
+def test_an_m4a_gets_the_tempo_the_flac_gets(keyed, codec, fallback, request):
     """The card's defect: an M4A was ``skipped-undecodable`` on librosa 1.0 while the
-    same audio as FLAC was analysed. Driven with and without librosa's fallback."""
+    same audio as FLAC was analysed. Driven with and without librosa's fallback. No
+    key since U343."""
     if fallback == "none":
         request.getfixturevalue("no_fallback")
     flac = detect.analyse_file(keyed["flac"])
     m4a = detect.analyse_file(keyed[codec])
     assert flac is not None and flac.get("terminal") is None, flac
     assert m4a is not None and m4a.get("terminal") is None, m4a
-    assert (flac["camelot"], flac["rate"]) == ("8B", 124)
-    assert (m4a["camelot"], m4a["rate"]) == ("8B", 124)
+    assert (flac["rate"], m4a["rate"]) == (124, 124)
+    assert "camelot" not in flac and "camelot" not in m4a
 
 
 def test_an_alac_m4a_measures_exactly_what_its_wav_measures(keyed):
@@ -213,7 +214,7 @@ def test_no_ffmpeg_names_the_decoder_for_an_m4a_and_spares_a_flac(keyed, monkeyp
         "terminal": detect.TERMINAL_NO_DECODER,
     }
     flac = detect.analyse_file(keyed["flac"])
-    assert flac is not None and flac["camelot"] == "8B"
+    assert flac is not None and flac.get("terminal") is None and flac["rate"] == 124
     with pytest.raises(decode.DecoderMissing):
         vocal.decode(keyed["aac"])
 

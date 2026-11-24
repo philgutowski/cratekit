@@ -199,7 +199,7 @@ the two commands that answer and apply it and the rekordbox visit after.
   `analyze run` job, so it does not measure energy again on a file that run
   just scored: the run measures energy the way the restamp does, over the
   same two minutes of the same audio. It still restamps a file the run
-  skipped (a name already carrying the head), could not key or score, or
+  skipped (one it had measured already), could not measure or score, or
   scored under a calibration that is no longer the active one, a file whose
   energy tag changed since, and a file whose length moved when the run wrote
   its tags (an MP3 with no Xing header, whose length is read off its size,
@@ -298,7 +298,13 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 `analyze check` reads a copy and writes nothing: every row analysed, every
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key and tempo agree with rekordbox's. A title that differs never makes
-the visit suspect; the check counts it and names `crate analyze adopt`.
+the visit suspect; the check counts it and names `crate analyze adopt`. It
+also counts the analysed titles with no head in the title or the file name to
+which rekordbox gave both a key and a tempo (`headless`), every such row a
+landing since U343 added, and names `crate analyze adopt` for them, which
+plans each a head built from them; a row it cannot stamp is left and named
+there. The key floor it once held the title keys to went with the run's own
+key (U343).
 `--pass` or `--session` names one landing.
 
 `analyze adopt` gives each analysed row whose title head names another key or
@@ -797,8 +803,9 @@ crate sync removed
 again, and lists each track its pass recorded that the account no longer
 lists, with what it would do about the track's row in the collection. The
 database is read on a copy, so rekordbox must be closed. A run that offers
-nothing ends there, and writes nothing but Cratekit's own record of synced
-playlists the account answered not found for (below).
+nothing ends there, and writes nothing but Cratekit's own records of synced
+playlists the account answered not found for and of those it read whole
+(both below).
 
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
@@ -880,20 +887,39 @@ not been measured.
   crate --calls N --calls-per-hour M sync removed --retire
   ```
 
-  It reads every synced playlist, about two calls each, so on an account with
-  hundreds of them it needs the ceilings raised as a run that finds a removal
-  does. It stops at the explicit gate
+  It reads every synced playlist the held reads (below) do not hold, two
+  calls or more each, so a first one on an account with hundreds of them stops at
+  the call ceiling as a run that finds a removal does, and is continued the
+  same way. It stops at the explicit gate
   `sync.removed.retire`, which lists each one the account no longer lists
   whose id answered not found on this read, with its id and the dates. Answer
   it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
   then run `crate --run RUN_ID sync removed --retire` again; then run `crate
-  sync removed` to plan without them. `abort` writes nothing. A synced
-  playlist it could not read, or whose id failed other than not found, is
+  sync removed` to plan without them. `abort` writes nothing but the held
+  reads. A synced playlist it could not read, or whose id failed other than not found, is
   named and never offered for retirement.
-- A run that finds a removal reads every synced playlist, about two calls
-  each, so on an account with hundreds of them it stops at the call ceiling
-  with nothing offered; run it again as `crate --calls N --calls-per-hour M
-  sync removed`, as a first `sync pair` plan needs.
+- **A run stopped part way continues where it stopped.** A run that finds a
+  removal reads every synced playlist, two calls or more each, so on an
+  account with hundreds of them it stops at the call ceiling (500 calls by
+  default) or at the hour's read line with nothing offered. Each synced
+  playlist it read whole is held, in the library's `sync_removed_reads.json`,
+  with the track count and the last updated stamp the account listed just
+  before the read, so running `crate sync removed` again, with or without a
+  higher ceiling, reads only what is left, and the stop says how many are
+  held. A held read is used for six hours after it was made, and only while
+  the account still lists the playlist with that count and stamp, so a
+  playlist you or Cratekit wrote since is read again. A read is held only
+  when it holds as many tracks as the account counts and the stamp is at
+  least half an hour old, since the service serves a playlist's old tracks for
+  minutes after a change; a playlist changed lately is read on every run until
+  then. A playlist the account lists with no stamp, one it does not list,
+  one that holds a track twice (its count then differs from the tracks
+  read), the hearts, and a playlist gone, unreadable, short or empty are read
+  on every run. Runs that need more than the hour's line of 1,125 calls go on in the
+  next hour, and the one after, with nothing read twice, as long as the whole
+  read and your answer at the gate come within the six hours. The plan, and
+  the gate when it asks, say how many playlists were taken from held reads.
+  Deleting the file is safe; it only costs calls.
 
 ### Follow record labels
 
@@ -1335,9 +1361,15 @@ crate inbox rotate
   before removing. After `tag set` it also takes each row that run gave a new
   genre out of the genre folder the tree filed it in under its old genre, and
   into the new genre folder's energy band when `adopt apply` has not filed it
-  there yet; a `with vox` or Favorites membership in the old folder stays. Only
-  that folder is asked, and only for rows `tag set` changed, so
-  a track you put in another genre folder by hand is otherwise left where it is.
+  there yet. It leaves the old folder's `with vox`, genre sub (Rominimal and
+  the like) and Favorites with the band; a playlist you made there (Candy
+  among them) is never touched, and a track one still holds keeps that
+  folder's Favorites, which mirrors every playlist of its folder. A `with
+  vox`, genre sub or Favorites there that the move would leave, renamed in
+  rekordbox, lists the row as held under another name and moves nothing for
+  it until the name is put back. Only
+  that folder is asked, and only for rows `tag set` changed, so a track you
+  put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`.
 - Audits and reports are read only. `audit duplicates` never deletes and
@@ -1354,17 +1386,22 @@ crate inbox rotate
 
 **Adopting an existing library.** `crate adopt scan` queues a census; `crate
 adopt apply` shows the plan at `adopt.apply.approve` and files tracks and
-writes their genre tags.
+writes their genre tags. A row whose file resolves outside `library.root`,
+such as rekordbox's own sampler presets made readable by a
+`location_prefix_map` rule, is counted `outside-root`, excluded, and named
+under `outside_root` at the gate; adoption, `adopt move` and the genre moves
+leave it alone, and the tag verbs still read it. A row inside the root that
+cannot be placed still fails the whole pass.
 
 **Genres.**
 
 | Verb | Does |
 |---|---|
-| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre, and any such row whose file is outside the library root, by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
-| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder, or names a row whose file is outside the library root as one neither files. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
@@ -1390,17 +1427,26 @@ its file is missing or unreadable, its file holds several genres, it already
 carries the genre on both, or `--leave CONTENT_ID` holds it. The run that
 applies takes the plan again and refuses `decision-stale` if anything moved.
 It writes the file's genre tag and then the row's genre and nothing else.
-When the library has no genre row for the word yet, it writes nothing on any
-file or row and says so (`set-genre-has-no-row`): give one track that genre in
-rekordbox, which makes the row, then run it again. A file that will not
+When the library has no genre row for the word yet, as for a genre folder you
+have just added to the taxonomy, the gate shows `genre_row` as `mint`, a run whose gate was declined says so
+(`set-genre-row-to-make`), and the apply makes the one genre row on the
+commit that links the first rows to it, and only if a row is written; nothing
+in rekordbox needs doing first, and a restore of the run's session takes the
+row back with the rows. A file that will not
 take the genre keeps its row's old genre and the run ends refused under
 `tag-set-unwritten` after the rest landed. A restore of the run's session puts
 the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
-that folder's energy band; the run's answer names what applies. A `with vox`
-or Favorites membership the row holds in the old folder stays, and the answer
-says so: remove it in rekordbox.
+that folder's energy band, `with vox`, genre sub and Favorites; the run's
+answer names what applies. A row whose file is outside the library root is
+written and named as one neither verb files or moves, since adoption leaves it
+alone. Where adoption held a row back (it still sat in a
+band of the old folder that the new genre's folder also claims, as R&B's bands
+are for Soul), `adopt apply` files nothing for it and the move files its band:
+the next `crate adopt apply` then files its `with vox`, and `crate favorites
+refresh` its Favorites. A playlist you made in the old folder, Candy among
+them, keeps the row, and so does that folder's Favorites while one does.
 
 **A second genre folder.** A track can sit in a second genre folder of BY
 GENRE + ENERGY beside the one its genre names, with its energy band in each.
@@ -1412,7 +1458,7 @@ second genre off. The gate lists every chosen row with its second genre before
 and after, which is the undo, and why any is left: a second genre naming the
 folder the file's genre already names, or a file whose genre names no folder.
 The next `adopt apply` (or `organize --only adopt`) files the track into the
-second folder too, and from then on `adopt move`, `converge`, `rebuild`,
+second folder too, unless its file is outside the library root, and from then on `adopt move`, `converge`, `rebuild`,
 `route resort` and `favorites refresh` keep it in both, an energy change
 moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
@@ -1425,10 +1471,25 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-differences), and `route resort` lists it as left behind. Under a folder
-renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
-recorded that folder. A Candy playlist, which a person fills by hand, is
-never compared this way.
+entries, at most five `not-compared` ones first), and `route resort` lists it
+as left behind. Under a folder
+renamed in rekordbox it is listed the same way when a write recorded that
+playlist, or recorded the folder and nothing else is filed into that band:
+`adopt apply`, `rebuild` and `route resort` each record the playlists they
+file into, `adopt apply` only where nothing is recorded yet. Otherwise it
+cannot be tied to one destination: under a renamed folder no write recorded,
+or beside a folder a `rebuild` or `adopt apply` made again under the genre's
+name, a playlist bearing a name a genre files into (a band, Favorites, a
+genre sub) and holding a track the tree files is named
+`not-compared:FOLDER/PLAYLIST`, first in a `differing` line, or `converge`
+says `not-compared` where nothing else differs, never `matching`. A folder of
+your own under the tree's root whose playlists bear such names and hold filed
+tracks reads the same way. Look in it in rekordbox for a track its genre no
+longer files, or give the folder back its genre's name where no other folder
+bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
+of that name again) and it is compared. It is not a difference, so a
+`rebuild` still clears a tree's flag over it. A Candy playlist, which a person
+fills by hand, is never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 
@@ -1440,7 +1501,9 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **The needs genre backlog.** `tag backlog` reads every row adoption files
-nowhere for want of a genre and puts each in one cause: its file carries a
+nowhere for want of a genre, and a row with the same want whose file is
+outside the library root, which adoption excludes as `outside-root`, and puts
+each in one cause: its file carries a
 genre the row lacks (`tag rows` writes it), no genre on the row or the file
 (`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
 genre word no folder takes, or a file whose genre could not be read. A row
@@ -1562,24 +1625,30 @@ crate metadata mytags-vocals [--apply]
 - Needs the `analysis` and `vocals` extras. Cratekit never writes a beat
   grid, tempo element or average BPM field, in any container; no flag turns
   that on.
-- `analyze run` writes key, energy, vocal scores and a drift to the file's
-  tags (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
-  spread), then renames the file to the naming template's Camelot head. It
-  skips a file already carrying the head, so `analyze vocals --unscored`
-  scores the ones it finished with no `voxlevel`, and a title that took
-  rekordbox's key and tempo with `analyze adopt` is never stamped again
-  when its file name carries a head; a file `analyze adopt` stamped keeps a
-  name with no head, so `analyze run` pointed at it measures and names it
-  again, until U343 gives the run a resume tag;
-  `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
-  row says when vocals cannot score.
+- `analyze run` writes energy, vocal scores and a drift to the file's tags
+  (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
+  spread), and the mark `analyzed` (`TXXX:CratekitAnalyzed`, its MP4 and
+  Vorbis twins) in the same write, with a file's stem as its title tag only
+  when it has none (the lossy marker set before it when the stem carries
+  one), the title the landing lands and `analyze adopt` stamps.
+  Since U343 it measures no key and writes no head and no `initialkey`, and
+  renames nothing: the key and
+  the head come only from rekordbox, after the visit, through `analyze
+  adopt`. The tempo is still measured, for the drift (and the `dyn` My Tag
+  the landing writes from it), and is reported, never written. It skips a
+  file carrying the mark, or a name carrying a head (what a run before U343
+  left), so a file measured before or since is never measured again, and
+  `analyze vocals --unscored` scores the ones it finished with no
+  `voxlevel`; a file `analyze adopt` stamped keeps a name with no head and
+  is skipped by its mark. `analyze restamp` writes the energy tag alone.
+  Doctor's `install.extras` row says when vocals cannot score.
 - `analyze run` measures a track's energy exactly as `analyze restamp` does,
   over the same central two minutes (decoded alone, or for a file only ffmpeg
   reads cut from one whole decode), so one file under one calibration,
   measured over the same audio, gets one level from either verb.
-  Until U344 the run read the energy from the whole track it decoded for the
-  key, which gave a level one step apart on a track sitting on a level's
-  edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
+  Until U344 the run read the energy from the whole track it decoded for its
+  tempo and key, which gave a level one step apart on a track sitting on a
+  level's edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
   `analyze run` job scored at its present name under the calibration active
   now, whose `energylevel` tag still reads that level and whose length did
   not move with the run's own tag write, and restamps the rest. Its JSON
@@ -1588,7 +1657,7 @@ crate metadata mytags-vocals [--apply]
   run over that folder leaves nothing out, with a `restamp-left-out-nothing`
   warning. The tail passes it; by hand, a restamp without it restamps every
   file as it always has.
-- `analyze run` measures key, tempo, drift and energy in worker processes
+- `analyze run` measures tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's
   `analyze.pool` line says how many ran, in the job's last drive that
@@ -1598,20 +1667,16 @@ crate metadata mytags-vocals [--apply]
   for the batch's costliest track (a long one, or one stored at a high
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
-- `analyze run` reads a track's key from the whole track's chroma without
-  the harmonic separation, since U276: the key's reading takes about half
-  the time of the one it replaced, and over 300 library tracks rekordbox
-  analysed itself it agreed with rekordbox's key 161 times against the old
-  reading's 159. A track analysed before U276 keeps the key it was given;
-  analysed again, its key can differ (on generated tonal audio, every key
-  that moved moved one Camelot step, toward the key the track was written
-  in). A file with little or no tone in it, a drum tool, can take an
-  unrelated key under either reading and often a different one under each,
-  and one of clicks alone, which the old reading settled `skipped-no-key`,
-  can now be given a key and renamed. The answer's
-  `head_agreement` names the method the run reads with (`key_method`), the
-  method its `key` counts were read with (`key_read_with`), and each
-  method's reading over one sample (`key_by_method`).
+- `analyze run` reads no key since U343, which took the chroma stage out of
+  the run: on the fixed synthetic set with no vocal model
+  (`scripts/analyze_stages.py stages --no-vocals`, three passes each on a
+  four core Linux container), 104.8 to 108.3 seconds before and 69.5 to 72.0
+  after, the chroma and key stage 34.0 to 36.5 of them. Over 300 library tracks the key it
+  used to read agreed with rekordbox's own 161 times, and rekordbox's key
+  replaced it on two titles in three after the visit, so the run now leaves
+  the key to rekordbox. The answer's `head_agreement` records how far the
+  run's tempo agreed with rekordbox's (2026-09-30, 299 files) and carries no
+  key counts; `scripts/head_agreement.py --analyse` measures the tempo alone.
 - The analysis reads every file the installed librosa reads exactly as it
   always did. A stereo track is mixed to mono with one add rather than
   librosa's mean, the same samples bit for bit and about a quarter of a
@@ -1899,8 +1964,8 @@ valid is reported, not minted again. The record says which rule minted it,
 - **The live database** is written only through the guarded write (see [How it
   works](#how-it-works)). Verbs that only read take a copy.
 - **Files** are trashed only by `delete review`, to the system Trash.
-  Renames go through `name apply` and `repair paths --apply`, behind gates,
-  and `analyze run`, which renames each file it finishes to its Camelot head.
+  Renames go through `name apply` and `repair paths --apply`, behind gates;
+  `analyze run` renames nothing since U343.
 - **The account** is written behind explicit gates. Exports and label
   playlists add only; removals happen only where a verb names them on its
   gate (`export prune`, `label prune`, `label heard`, `sync pair`, organize's

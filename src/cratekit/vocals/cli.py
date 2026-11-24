@@ -1,9 +1,10 @@
-"""``crate analyze vocals``: re-score vocal tags, including Camelot-prefixed names.
+"""``crate analyze vocals``: re-score vocal tags, including on files already analysed.
 
-R-277: ``analyze.run`` skips a name carrying the head, its resume marker, so a
-track finalized with no voxlevel is never scored again, and ``analyze.restamp``
-rewrites energy only. This verb scores every audio file, head or not, and
-writes only the three vocal tags.
+R-277: ``analyze.run`` skips a file it already measured, its resume marker (its
+mark since U343, or a head on the name before), so a track finalized with no
+voxlevel is never scored again, and ``analyze.restamp`` rewrites energy only.
+This verb scores every audio file, measured or not, and writes only the three
+vocal tags.
 
 THE MODEL MODULE IS NEVER IMPORTED AT MODULE SCOPE: ``cli.jobs.argv_for``
 imports this module to build a resume line, and the model imports torch,
@@ -130,9 +131,8 @@ def build(parser, entry) -> None:
         UNSCORED,
         action="store_true",
         help=(
-            "queue only the files whose name carries the analysis head and which "
-            "carry no voxlevel, the ones crate analyze run finalized with no vocal "
-            "score and now skips"
+            "queue only the files crate analyze run already measured and which "
+            "carry no voxlevel, the ones it finalized with no vocal score and now skips"
         ),
     )
     parser.add_argument(
@@ -145,15 +145,16 @@ def build(parser, entry) -> None:
 
 
 def _unscored(cfg: config.Config, folder: Path, items: tuple[str, ...]) -> list[str]:
-    """The items ``analyze run`` will never score again: the head, and no voxlevel (U181).
+    """The items ``analyze run`` will never score again: measured, and no voxlevel (U181).
 
-    A file without the head is the run's to analyse, and one carrying a score
-    is left alone.
+    Measured is the run's own resume marker, its mark or a head on the name
+    (U343). A file not yet measured is the run's to analyse, and one carrying a
+    score is left alone.
     """
     chosen = []
     for item in items:
         path = discovery.item_path(folder, item)
-        if analysis_cli.carries_head(path, cfg) and tags.read_vox_from_file(path) is None:
+        if analysis_cli.already_measured(path, cfg) and tags.read_vox_from_file(path) is None:
             chosen.append(item)
     return chosen
 

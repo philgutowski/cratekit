@@ -526,7 +526,10 @@ rates = false
 # track whose genre names Soul and sits in one is moved by `crate adopt move`
 # to the Soul band its reading names, or to Unsorted with no reading, and
 # leaves the R&B band; a track whose genre names R&B is never touched. Its
-# other memberships stay, "with vox" among them. Adoption will not file a
+# other memberships stay, "with vox" among them, unless `crate tag set` gave
+# it the genre Soul: then the move takes it out of R&B's "with vox" and
+# Favorites too, though a Candy membership stays, and keeps its Favorites.
+# Adoption will not file a
 # Soul track into a band here while it still sits in one of these, and the
 # move lists any Soul track it cannot move out. A Soul track whose second
 # genre is R&B (`crate tag second`) belongs in both folders, so its R&B band

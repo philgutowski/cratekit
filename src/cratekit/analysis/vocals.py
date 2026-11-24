@@ -294,8 +294,8 @@ def analyse(
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
     from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames
 
-    # THE MODEL'S OWN FAILURE IS A REASON, NOT A DEFECT, so the head's key and
-    # tempo survive it. The columns come from the label table (R-370); a model
+    # THE MODEL'S OWN FAILURE IS A REASON, NOT A DEFECT, so the measured tempo,
+    # drift and energy survive it. The columns come from the label table (R-370); a model
     # a test bound directly resolves them here.
     try:
         columns = _VOCAL_COLUMNS if _VOCAL_COLUMNS is not None else class_indices(model)
