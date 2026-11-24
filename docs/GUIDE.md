@@ -1374,6 +1374,18 @@ crate inbox rotate
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
   left behind and every playlist it could not compare, as `route resort` does.
+- The `vox` My Tag files a track into its genre folder's `with vox` on a
+  calibrated library, the same for `adopt apply`, `rebuild`, `route resort`
+  and `converge`; the file's vocal score does not. A track in `with vox`
+  whose file clears the vocal cut and whose row carries no `vox` tag reads
+  `untagged:BUCKET/with_vox:ROW` in `converge`, a difference but not a
+  leftover: `route resort`'s gate counts it under `vocal untagged`, apart
+  from `left behind`, and a driven `rebuild` or `route resort` names it with
+  the step, `crate metadata mytags-vocals --apply` to tag every row whose
+  file clears the cut, or take it out of the playlist. `route inbox` reads no
+  database before its gate and the mirror edits read none for this, so both
+  still file `with vox` by the vocal score, the rule a landing writes the tag
+  by.
 - Audits and reports are read only. `audit duplicates` never deletes and
   remembers intentional alternates. `report genres` names genres with 50 or
   more tracks and no top level folder.
