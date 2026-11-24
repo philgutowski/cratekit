@@ -107,16 +107,21 @@ def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
     return bool(_writer().add_memberships(db, playlist, [content_id]))
 
 
-def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
+def remove_memberships(
+    db: Any, playlist: Any, content_ids: Iterable[str], *, close_up: bool = True
+) -> list[str]:
     """Mark each track's live membership of one playlist removed. Returns the ids.
 
     THE ONE REMOVAL THIS PRODUCT MAKES, AND IT IS A SOFT DELETE (R-758): the
-    marker set, ``updated_at`` now, ``TrackNo`` kept so nothing renumbers. Not
-    the binding's ``remove_from_playlist``, which hard deletes and COMMITS BY
-    ITSELF. rekordbox's observed removed rows all sat in removed playlists, so a
-    single track out of a living one was not observed (in the ledger). EVERY LIVE
-    ROW FOR THE PAIR IS MARKED; unheld ids are skipped. DOES NOT COMMIT: the
-    caller commits through :func:`commit_guarded` naming this table in ``removals``.
+    marker set and ``updated_at`` now. Not the binding's ``remove_from_playlist``,
+    which hard deletes and COMMITS BY ITSELF. EVERY LIVE ROW FOR THE PAIR IS
+    MARKED; unheld ids are skipped. A PLAYLIST IT MARKED A ROW IN IS CLOSED UP AT
+    THE COMMIT (U958): :func:`commit_guarded` numbers its live rows 1 to N in
+    their order and puts its marked rows at 0, since rekordbox's own Remove from
+    Playlist takes the row numbered as the shown position. ``close_up`` False
+    keeps every number, for :func:`remove_playlist_node`, whose playlist goes
+    whole. DOES NOT COMMIT: the caller commits through :func:`commit_guarded`
+    naming this table in ``removals``.
     """
     from datetime import datetime
 
@@ -130,6 +135,8 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
         setattr(song, _writer().SOFT_DELETE_COLUMN, 1)
         song.updated_at = now
         removed.append(key)
+    if removed and close_up:
+        _writer().record_touched(db, playlist.ID)
     return removed
 
 
@@ -184,8 +191,9 @@ def move_playlist_node(db: Any, playlist: Any, parent: Any) -> None:
 def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
     """Mark one ordinary playlist removed, with its own memberships. Returns their ids.
 
-    THE SAME SOFT DELETE (R-758), as rekordbox's own removed playlists show. No
-    content row and no other playlist's membership is touched; ``Seq`` stays.
+    THE SAME SOFT DELETE (R-758), as rekordbox's own removed playlists show,
+    every number kept, since the playlist goes whole (U958). No content row and
+    no other playlist's membership is touched; ``Seq`` stays.
     REFUSED: a folder (carries a tree), a smart playlist (no rows), a removed node.
     DOES NOT COMMIT: ``removals`` must name this and the membership table.
     """
@@ -197,7 +205,7 @@ def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
         for song in list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
         if not _writer().membership_removed(song)
     ]
-    marked = _writer().remove_memberships(db, playlist, held)
+    marked = _writer().remove_memberships(db, playlist, held, close_up=False)
     setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)
     playlist.updated_at = datetime.now()
     return marked
