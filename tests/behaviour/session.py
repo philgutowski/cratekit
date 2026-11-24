@@ -1,9 +1,6 @@
 """The session package's scenarios: the acknowledgment, the release and the three restore verbs (U311).
 
-On the restore suite's library: `crate session ack` through its gate,
-`session release` with nothing held, aborted, and over a previous boot's lock,
-`crate restore list` around a real `restore run`, and `restore bare-metal` onto
-a stand in mount point, refused without its flag and while mounted.
+On the restore suite's library, `restore bare-metal` onto a stand in mount point.
 """
 
 from __future__ import annotations

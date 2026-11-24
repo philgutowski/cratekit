@@ -1,10 +1,6 @@
 """Intake's scenarios: the native landing, what it tags and files, and its refusals (U297, U307).
 
-`crate intake land --rehearse` reports the plan's digest, the live command's
-gate names that rehearsal, and the answered landing writes rows, playlist and
-files. Beside it: label filing, the vox and dyn My Tags, `crate intake shelve`,
-and what refuses and writes nothing (U307). The pass landings, whose suite pins
-the batch day, are in ``intake_pass.py``.
+The pass landings, whose suite pins the batch day, are in ``intake_pass.py``.
 """
 
 from __future__ import annotations

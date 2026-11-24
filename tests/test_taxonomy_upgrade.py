@@ -459,16 +459,17 @@ def _backups(path) -> list:
     return sorted(p for p in path.parent.iterdir() if p.name.endswith(".bak"))
 
 
-def _asked() -> tuple[str, dict]:
-    code, refused = drive(VERB)
+def _asked(argv: list[str] = VERB, gate: str = APPLY) -> tuple[str, dict]:
+    """``argv`` refused at its explicit ``gate``: the run to answer, and the refusal."""
+    code, refused = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
-    assert detail["gate"] == APPLY and detail["explicit"] is True
+    assert detail["gate"] == gate and detail["explicit"] is True
     return refused["run_id"], refused
 
 
-def _decided(run_id: str, option: str) -> None:
-    code, envelope = drive(["run", "decide", run_id, APPLY, option, "--actor", "a-person"])
+def _decided(run_id: str, option: str, gate: str = APPLY) -> None:
+    code, envelope = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
     assert code == int(ExitCode.OK), envelope
 
 
@@ -596,13 +597,14 @@ def test_a_backup_never_takes_an_earlier_backups_name(tmp_path):
     assert not second.exists()
 
 
+def _disagreeing(cfg):
+    """A loader refusing the copy the planner just wrote."""
+    raise refuse("config-unusable", "a loader that disagrees with the planner")
+
+
 def test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced(configured, monkeypatch):
     path, run_id = _resumed(configured, behind())
-
-    def refused(cfg):
-        raise refuse("config-unusable", "a loader that disagrees with the planner")
-
-    monkeypatch.setattr(active_taxonomy, "load", refused)
+    monkeypatch.setattr(active_taxonomy, "load", _disagreeing)
     code, acted = drive(["--run", run_id, *VERB])
     assert acted["cause"]["reason"] == "internal-error", acted
     assert "put back" in acted["cause"]["message"]
@@ -665,10 +667,6 @@ def test_an_edit_after_the_second_plan_is_refused_as_stale(configured, monkeypat
 
 def test_a_restore_that_fails_says_so_and_names_the_backup(configured, monkeypatch):
     path, run_id = _resumed(configured, behind())
-
-    def refused(cfg):
-        raise refuse("config-unusable", "a loader that disagrees with the planner")
-
     writes = []
     real = config.atomic_write_bytes
 
@@ -679,7 +677,7 @@ def test_a_restore_that_fails_says_so_and_names_the_backup(configured, monkeypat
                 raise OSError(28, "No space left on device")
         return real(payload, target, **kwargs)
 
-    monkeypatch.setattr(active_taxonomy, "load", refused)
+    monkeypatch.setattr(active_taxonomy, "load", _disagreeing)
     monkeypatch.setattr(config, "atomic_write_bytes", full_on_the_restore)
     code, acted = drive(["--run", run_id, *VERB])
     cause = acted["cause"]
@@ -773,11 +771,15 @@ def test_an_empty_discogs_table_the_copy_declares_is_its_choice():
     assert found.vocabularies == () and not found.writes
 
 
-def test_a_copy_made_before_r799_gains_both_tables():
+def before_r799() -> str:
+    """The shipped text as a copy made before R-799 has it: no source's vocabulary table."""
     start = "# A SOURCE'S OWN VOCABULARY (R-799)."
-    copy = _shipped()
-    assert copy.count(start) == 1
-    copy = copy.partition(start)[0].rstrip("\n") + "\n"
+    assert _shipped().count(start) == 1
+    return _shipped().partition(start)[0].rstrip("\n") + "\n"
+
+
+def test_a_copy_made_before_r799_gains_both_tables():
+    copy = before_r799()
     found = _plan(copy)
     assert found.vocabularies == ("deezer", "discogs")
     after = tomllib.loads(found.after)["vocabulary"]
@@ -799,8 +801,7 @@ def test_a_table_whose_row_names_no_folder_in_the_copy_is_held_with_the_loaders_
 
 
 def test_a_copy_that_declares_its_vocabulary_inline_is_held_not_forced():
-    start = "# A SOURCE'S OWN VOCABULARY (R-799)."
-    copy = _shipped().partition(start)[0].rstrip("\n") + "\n"
+    copy = before_r799()
     line = f"schema_version = {taxonomy.load_taxonomy(copy).schema_version}\n"
     assert copy.count(line) == 1
     inline = 'vocabulary = { deezer = { words = [{ word = "Rock", tag = "Rock" }] } }\n'

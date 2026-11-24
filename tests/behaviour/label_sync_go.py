@@ -1,8 +1,7 @@
 """Label sync's go: one summary, one gate, one download by the fake adapter (U308).
 
-`crate label sync --go` shows one summary at its gate, downloads what the saved
-answers took through `acquire download`'s worker, and stops at the landing's
-gate; a declined go downloads nothing.
+The download goes through `acquire download`'s worker and stops at the
+landing's gate; a declined go downloads nothing.
 """
 
 from __future__ import annotations

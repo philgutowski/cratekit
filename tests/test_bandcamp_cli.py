@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import pytest
@@ -372,16 +373,24 @@ def test_strict_refuses_a_release_offered_only_lossy(signed_in, tmp_path, silenc
     assert bandcamp_cli.fetched(signed_in) == {}
 
 
-def test_a_permissive_policy_takes_the_lossy_release_marked(library, tmp_path, silence, monkeypatch):
+@pytest.mark.parametrize(
+    "encodings, encoding",
+    [(("mp3-320",), "mp3-320"), (("flac", "mp3-320"), None)],
+    ids=["a-lossy-release", "a-lossy-file-under-a-lossless-offer"],
+)
+def test_a_permissive_policy_marks_a_lossy_file_by_what_it_is(
+    library, tmp_path, silence, monkeypatch, encodings, encoding
+):
     permissive = _configure(library, "allow_lossy_marked")
     secrets.set(SESSION, COOKIE)
-    account = collection(tmp_path, silence, encodings=("mp3-320",))
+    account = collection(tmp_path, silence, encodings=encodings)
     account.archives["4"] = archive({"Coral Arc - Drift - 01 Drift.mp3": mp3_bytes()})
     bind(monkeypatch, account)
     code, envelope = fetch("--seller", "otherlabel", "--batch", "Batch One")
     assert code == int(ExitCode.OK), envelope
     assert staged(permissive, "Batch One") == [f"Coral Arc - Drift - 01 Drift {MARKER}.mp3"]
-    assert bandcamp_cli.fetched(permissive)["4"]["encoding"] == "mp3-320"
+    if encoding is not None:
+        assert bandcamp_cli.fetched(permissive)["4"]["encoding"] == encoding
 
 
 def test_an_empty_job_identifier_is_refused(signed_in, account):
@@ -557,17 +566,6 @@ def test_number_in_reads_after_the_release_prefix_only():
     assert bandcamp_cli.number_in("B - 2 Step - 03 Tide.flac", "A", "2 Step") is None
 
 
-def test_a_lossy_file_under_a_lossless_offer_is_marked_by_what_it_is(library, tmp_path, silence, monkeypatch):
-    permissive = _configure(library, "allow_lossy_marked")
-    secrets.set(SESSION, COOKIE)
-    account = collection(tmp_path, silence)
-    account.archives["4"] = archive({"Coral Arc - Drift - 01 Drift.mp3": mp3_bytes()})
-    bind(monkeypatch, account)
-    code, envelope = fetch("--seller", "otherlabel", "--batch", "Batch One")
-    assert code == int(ExitCode.OK), envelope
-    assert staged(permissive, "Batch One") == [f"Coral Arc - Drift - 01 Drift {MARKER}.mp3"]
-
-
 def test_the_lossless_formats_are_taken_in_order_before_any_lossy_one(signed_in):
     detail = {"artist": "A", "title": "B"}
     take = bandcamp_cli._encoding
@@ -682,35 +680,23 @@ def _resume(job_id: str) -> tuple[jobs.Job, jobs.Item]:
     return job, one
 
 
-def test_a_listing_the_session_is_refused_at_parks_the_resumed_job(signed_in, account):
+@pytest.mark.parametrize(
+    "since, reason",
+    [
+        (lambda account, library: setattr(account, "expired", True), "auth-failed"),
+        (lambda account, library: setattr(account, "post_json", lambda url, payload, *, cookie: (
+            type(account.get("x", cookie=COOKIE))(503, "down"))), "unavailable-transient"),
+        (lambda account, library: secrets.delete(SESSION), "auth-failed"),
+        (lambda account, library: shutil.rmtree(library / "Music"), "library-volume-unmounted"),
+    ],
+    ids=["a-listing-the-session-is-refused-at", "a-listing-bandcamp-cannot-answer",
+         "a-session-removed-since-the-queue", "a-library-unmounted-since-the-queue"],
+)
+def test_what_went_wrong_since_the_queue_parks_the_resumed_job(
+    signed_in, account, library, since, reason
+):
     job_id = _parked_job(account)
-    account.expired = True
+    since(account, library)
     job, one = _resume(job_id)
-    assert str(job.state) == "blocked" and job.cause.reason == "auth-failed"
-    assert str(one.state) == "pending"
-
-
-def test_a_listing_bandcamp_cannot_answer_parks_the_resumed_job(signed_in, account):
-    job_id = _parked_job(account)
-    account.post_json = lambda url, payload, *, cookie: type(account.get("x", cookie=COOKIE))(503, "down")
-    job, one = _resume(job_id)
-    assert str(job.state) == "blocked" and job.cause.reason == "unavailable-transient"
-    assert str(one.state) == "pending"
-
-
-def test_a_session_removed_since_the_queue_parks_the_resumed_job(signed_in, account):
-    job_id = _parked_job(account)
-    secrets.delete(SESSION)
-    job, one = _resume(job_id)
-    assert str(job.state) == "blocked" and job.cause.reason == "auth-failed"
-    assert str(one.state) == "pending"
-
-
-def test_a_library_unmounted_since_the_queue_parks_the_resumed_job(signed_in, account, library):
-    import shutil as _shutil
-
-    job_id = _parked_job(account)
-    _shutil.rmtree(library / "Music")
-    job, one = _resume(job_id)
-    assert str(job.state) == "blocked" and job.cause.reason == "library-volume-unmounted"
+    assert str(job.state) == "blocked" and job.cause.reason == reason
     assert str(one.state) == "pending"

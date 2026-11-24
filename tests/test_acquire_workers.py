@@ -127,6 +127,34 @@ def landings(*keys: str, **fields) -> dict[str, Landing]:
     return {key: Landing(**fields) for key in keys}
 
 
+#: Five rows of a provider list, sliced to the length a test needs.
+ROWS = [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V"), ("4", "D", "W"), ("5", "E", "X")]
+
+
+def driven(library: Path, rows=ROWS[:1]) -> tuple[str, int, dict]:
+    """Queue ``rows`` as a list and drive its job once through the resume path."""
+    job_id = queued(listed(library, list(rows)))
+    code, envelope = drive(resume_argv(job_id))
+    return job_id, code, envelope
+
+
+def refused_as_unusable(code: int, envelope: dict) -> None:
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+
+
+def drives_with(job_id: str, *named: str) -> None:
+    """``--job`` beside the list spelled ``named`` drives the job's one track to done."""
+    code, envelope = drive(["acquire", "download", *named, "--job", job_id])
+    assert code == int(ExitCode.OK), envelope
+    assert states(job_id) == {"1": jobs.ItemState.DONE}
+
+
+def nothing_queued() -> None:
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
 
 def test_the_download_key_resolves_to_this_worker():
     assert handlers.resolve("acquire.download") is acquire_cli.handle
@@ -136,9 +164,7 @@ def test_the_download_key_resolves_to_this_worker():
 def test_the_worker_constructs_the_adapter_through_the_registry(cfg, script, library):
     """R-204's obligation, discharged: ``build`` has a caller, and it is here."""
     script.landings = landings("1")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    driven(library)
 
     assert len(script.constructed) == 1
     built = script.constructed[0]
@@ -161,13 +187,12 @@ def test_a_list_with_no_tracks_queues_nothing_and_says_so(cfg, library):
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"] == {"job_id": "", "state": "no-tracks", "cause": None, "progress": {}}
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_every_queued_download_job_has_as_many_items_as_the_list_has_tracks(cfg, library):
     """Stated as a property over what was queued, not over one example."""
-    for rows in ([("1", "A", "T")], [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]):
+    for rows in ([("1", "A", "T")], ROWS[:3]):
         job_id = queued(listed(library, rows, name=f"l{len(rows)}.json"))
         assert len(items_of(job_id)) == len(rows)
 
@@ -177,22 +202,18 @@ def test_a_pasted_tracklist_is_refused_at_the_queue_rather_than_queued_unacquira
     pasted = library / "pasted.txt"
     pasted.write_text(text_list(["Artist - Title", "Other - Song"]))
     code, envelope = drive(["acquire", "download", str(pasted)])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     assert "text list" in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["origin"] == "text"
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_a_provider_row_without_an_identifier_is_refused_by_position(cfg, library):
     rows = [("1", "A", "T"), ("", "B", "U"), ("3", "C", "V"), ("", "D", "W")]
     code, envelope = drive(["acquire", "download", str(listed(library, rows))])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     assert envelope["cause"]["detail"]["positions"] == [2, 4]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_a_repeated_identifier_is_one_item(cfg, library):
@@ -226,9 +247,7 @@ def test_what_the_list_said_is_frozen_with_the_job(cfg, script, library):
 def test_a_download_job_runs_pending_to_done_through_the_resume_path(cfg, script, library):
     """The whole point of the unit. Read from the store, not from the exit code."""
     script.landings = landings("1", "2")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, ROWS[:2])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["state"] == "succeeded"
@@ -284,7 +303,7 @@ def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(cfg,
     """R-291's cost: one directory per item of every job, kept for good. The sweep is at
     the HEAD of the verb, so the first job's tree is still there when that job returns."""
     script.landings = landings("1", "2")
-    first = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+    first = queued(listed(library, ROWS[:2]))
     drive(resume_argv(first))
     assert job_of(first).state is jobs.JobState.SUCCEEDED
     assert sorted(path.name for path in (staging_tree(cfg) / first).iterdir()) == ["0", "1"]
@@ -404,9 +423,7 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
     script.landings["2"].fetch_raises = AdapterBroken(
         "the tool crashed mid transfer", remedy=acquire.Remedy.SWITCH_ADAPTER
     )
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, ROWS[:3])
 
     # A partial failure is REFUSED, not reported (R-225): the successes are durable, the
     # job is recorded failed, and the verb leaves through the job's cause, non zero.
@@ -450,9 +467,7 @@ def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
     one and log in again; the remaining tracks stay pending."""
     script.landings = landings("1", "2", "3")
     script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, ROWS[:3])
 
     # BLOCKED, not an OK exit (R-290): the block is not legible only inside ``data.cause``.
     assert code != int(ExitCode.OK), envelope
@@ -472,14 +487,7 @@ def test_a_dead_session_logs_in_once_and_not_once_per_track(cfg, script, library
     """The measured cost of failing the item instead: a login per remaining track."""
     script.landings = landings("1", "2", "3", "4", "5")
     script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
-    job_id = queued(
-        listed(
-            library,
-            [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V"), ("4", "D", "W"), ("5", "E", "X")],
-        )
-    )
-
-    drive(resume_argv(job_id))
+    driven(library, ROWS)
 
     assert len(script.constructed) == 1, "the adapter was rebuilt for a track after the refusal"
 
@@ -488,9 +496,7 @@ def test_a_broken_adapter_fails_the_item_and_does_not_park_the_run(cfg, script, 
     """A dead CREDENTIAL stops the run; a broken TOOL fails only the track it broke on."""
     script.landings = landings("1", "2")
     script.authenticate_raises = AdapterBroken("the vendored tool is not installed")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library, ROWS[:2])[0]
 
     assert job_of(job_id).state is not jobs.JobState.BLOCKED
     assert causes(job_id)["1"] == "adapter-broken"
@@ -502,9 +508,7 @@ def test_a_provider_block_parks_the_job_and_makes_no_further_request(cfg, script
     with the item released, and the third track is never asked for."""
     script.landings = landings("1", "2", "3")
     script.landings["2"].fetch_raises = RuntimeError("403 Forbidden: access denied")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, ROWS[:3])
 
     assert code != int(ExitCode.OK), envelope
     assert envelope["outcome"] == "blocked", envelope
@@ -523,9 +527,7 @@ def test_a_rate_limit_is_retried_under_backoff_and_then_lands(cfg, script, libra
     script.landings = landings("1")
     script.landings["1"].fetch_raises = RuntimeError("429 too many requests")
     script.landings["1"].fetch_raises_times = 2
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library)
 
     assert code == int(ExitCode.OK), envelope
     assert states(job_id) == {"1": jobs.ItemState.DONE}
@@ -535,9 +537,7 @@ def test_a_rate_limit_is_retried_under_backoff_and_then_lands(cfg, script, libra
 def test_a_rate_limit_that_never_clears_fails_the_item_as_transient(cfg, script, library, slept):
     script.landings = landings("1")
     script.landings["1"].fetch_raises = RuntimeError("429 too many requests")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library)
 
     assert code != int(ExitCode.OK)
     item = items_of(job_id)[0]
@@ -553,9 +553,7 @@ def test_a_track_the_provider_does_not_have_is_permanent_and_carries_no_remedy(
 ):
     script.landings = landings("1")
     script.landings["1"].offer_raises = LookupError("404 not found")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library)[0]
 
     item = items_of(job_id)[0]
     assert item.cause is not None
@@ -602,9 +600,7 @@ def test_a_lossy_landing_under_strict_policy_is_refused_at_the_item_with_the_cod
     """The offer says lossless and the file is not: the check is at the FILE, and the
     refused file is left where it landed."""
     script.landings = landings("1", kind="lossy", offer_lossless=True)
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library)
 
     # U169: refused for good by the policy is SETTLED, skipped with the cause it was refused under.
     assert code == int(ExitCode.OK), envelope
@@ -632,9 +628,7 @@ def test_three_landed_and_one_refused_by_policy_ends_ok_with_a_warning_naming_it
     """Sitting 47: 116 of 117 landed, the last was lossy only, and the verb said failed."""
     script.landings = landings("2", "3", "4")
     script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
-    job_id = queued(listed(library, FOUR))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, FOUR)
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
@@ -680,9 +674,7 @@ def test_the_human_output_says_ok_and_names_the_refused_track(cfg, script, libra
 def test_three_landed_and_one_network_failure_still_fails(cfg, script, library):
     script.landings = landings("1", "2", "3", "4")
     script.landings["1"].fetch_raises = RuntimeError("connection reset by peer")
-    job_id = queued(listed(library, FOUR))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, FOUR)
 
     assert code != int(ExitCode.OK), envelope
     assert job_of(job_id).state is jobs.JobState.FAILED
@@ -696,9 +688,7 @@ def test_a_refusal_beside_a_network_failure_fails_and_keeps_the_refusal_skipped(
     script.landings = landings("2", "3", "4")
     script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
     script.landings["2"].fetch_raises = RuntimeError("connection reset by peer")
-    job_id = queued(listed(library, FOUR))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, FOUR)
 
     assert code != int(ExitCode.OK), envelope
     assert job_of(job_id).state is jobs.JobState.FAILED
@@ -711,9 +701,7 @@ def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, lib
     brings a delisted track back."""
     script.landings = landings("1", "2")
     script.landings["1"].offer_raises = LookupError("404 not found")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library, ROWS[:2])
 
     assert code == int(ExitCode.OK), envelope
     assert causes(job_id) == {"1": "unavailable-permanent"}
@@ -752,53 +740,37 @@ def test_a_lossy_offer_under_strict_policy_is_refused_before_anything_is_fetched
     cfg, script, library
 ):
     script.landings = landings("1", kind="lossy", offer_lossless=False)
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library)[0]
 
     assert causes(job_id) == {"1": "lossy-refused"}
     assert script.fetched == [], "a lossy offer was fetched under strict policy"
 
 
-def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(library, script):
-    """R21: lossy is permitted only WITH the marker, and config owns its text."""
+@pytest.mark.parametrize("offer_lossless", [False, True], ids=["lossy-offer", "lying-offer"])
+def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(
+    library, script, offer_lossless
+):
+    """R21: lossy is permitted only WITH the marker, and config owns its text. The lying
+    offer is R21's forbidden state reached through the offer: ``requires_lossy_marker`` is
+    derived from the OFFER and the landing's codec check is strict policy's only, so the
+    marker is decided by the file instead."""
     cfg = _configure(library, lossless_policy="allow_lossy_marked")
-    script.landings = landings("1", kind="lossy", offer_lossless=False)
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    script.landings = landings("1", kind="lossy", offer_lossless=offer_lossless)
+    job_id, code, envelope = driven(library)
 
     assert code == int(ExitCode.OK), envelope
     item = items_of(job_id)[0]
     assert item.state is jobs.ItemState.DONE
     marker = cfg.naming.lossy_marker
     assert item.artifact == str(Path(cfg.paths.download_staging) / f"1 {marker}.mp3")
-    assert Path(item.artifact).is_file()
-
-
-def test_a_lying_offer_under_the_permissive_policy_is_still_committed_marked(library, script):
-    """R21's forbidden state, reached through the offer: ``requires_lossy_marker`` is
-    derived from the OFFER and the landing's codec check is strict policy's only, so the
-    marker is decided by the file instead."""
-    cfg = _configure(library, lossless_policy="allow_lossy_marked")
-    script.landings = landings("1", kind="lossy", offer_lossless=True)
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), envelope
-    item = items_of(job_id)[0]
-    assert item.state is jobs.ItemState.DONE
-    marker = cfg.naming.lossy_marker
     assert Path(item.artifact).name == f"1 {marker}.mp3"
+    assert Path(item.artifact).is_file()
 
 
 def test_a_lossless_landing_under_the_permissive_policy_is_not_marked(library, script):
     _configure(library, lossless_policy="allow_lossy_marked")
     script.landings = landings("1")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library)[0]
 
     item = items_of(job_id)[0]
     assert item.state is jobs.ItemState.DONE
@@ -819,9 +791,7 @@ def test_an_unreadable_landing_is_transient_and_not_a_policy_refusal(cfg, script
     """A file nothing could parse is a truncated download; advising a relaxed policy
     would make the product accept it."""
     script.landings = landings("1", kind="unreadable")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library)[0]
 
     item = items_of(job_id)[0]
     assert item.cause is not None
@@ -847,7 +817,7 @@ def test_the_pacing_delay_comes_from_the_frozen_configuration_not_a_fresh_load(
     request waits once, jittered around the frozen nominal, and the drift reaches the person."""
     _configure(library, pacing_delay_s=2.0)
     script.landings = landings("1", "2")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+    job_id = queued(listed(library, ROWS[:2]))
     _configure(library, pacing_delay_s=0.0)
 
     code, envelope = drive(resume_argv(job_id))
@@ -890,9 +860,7 @@ def test_an_existing_file_at_the_destination_refuses_rather_than_replacing_it(cf
     kept = Path(cfg.paths.download_staging) / "1.wav"
     kept.parent.mkdir(parents=True, exist_ok=True)
     kept.write_bytes(b"a file somebody kept")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library)
 
     assert code != int(ExitCode.OK)
     assert causes(job_id) == {"1": "output-exists"}
@@ -907,9 +875,7 @@ def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_nam
     the session scope refuses before there is a source, and the item's row says to
     re-authorise. The fake is registered only so the registry has its per test shape."""
     _configure(library, adapter="vendored")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    drive(resume_argv(job_id))
+    job_id = driven(library)[0]
 
     # Asserts the pair: a dead credential parks the JOB with the track released, a broken
     # tool fails the ITEM, and an offline machine produces either by its keychain.
@@ -932,9 +898,7 @@ def test_a_configuration_naming_an_unknown_adapter_fails_the_item_by_name(librar
     """``load`` refuses an unknown name rather than defaulting; through the queue the
     refusal is the item's, not a traceback."""
     _configure(library, adapter="no-such-adapter")
-    job_id = queued(listed(library, [("1", "A", "T")]))
-
-    code, envelope = drive(resume_argv(job_id))
+    job_id, code, envelope = driven(library)
 
     assert code != int(ExitCode.OK)
     item = items_of(job_id)[0]
@@ -949,8 +913,7 @@ def test_a_pasted_web_address_gets_the_readers_own_refusal(cfg, library):
 
     assert code != int(ExitCode.OK)
     assert "web address" in envelope["cause"]["message"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, library):
@@ -1021,7 +984,7 @@ def test_the_job_alone_drives_the_queued_acquisition(cfg, script, library):
     """Sitting 7: ``--job`` alone was a usage error demanding the list. Typed out, not taken
     from ``resume_argv``, so it holds if the builder carries the list again."""
     script.landings = landings("1", "2")
-    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+    job_id = queued(listed(library, ROWS[:2]))
 
     code, envelope = drive(["acquire", "download", "--job", job_id])
 
@@ -1034,13 +997,11 @@ def test_neither_a_list_nor_a_job_is_refused_by_the_verb_and_queues_nothing(cfg,
     """The verb now says this, naming both forms, not as a usage error it cannot produce."""
     code, envelope = drive(["acquire", "download"])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     steps = " ".join(envelope["cause"]["remediation"]["steps"])
     assert "--job" in steps
     assert "list" in steps
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_the_frozen_list_named_beside_the_job_still_drives(cfg, script, library):
@@ -1049,10 +1010,7 @@ def test_the_frozen_list_named_beside_the_job_still_drives(cfg, script, library)
     path = listed(library, [("1", "A", "T")])
     job_id = queued(path)
 
-    code, envelope = drive(["acquire", "download", str(path), "--job", job_id])
-
-    assert code == int(ExitCode.OK), envelope
-    assert states(job_id) == {"1": jobs.ItemState.DONE}
+    drives_with(job_id, str(path))
 
 
 def test_the_frozen_list_named_relative_from_where_it_was_queued_still_drives(
@@ -1064,10 +1022,7 @@ def test_the_frozen_list_named_relative_from_where_it_was_queued_still_drives(
     listed(library, [("1", "A", "T")])
     job_id = queued(Path("list.json"))
 
-    code, envelope = drive(["acquire", "download", "list.json", "--job", job_id])
-
-    assert code == int(ExitCode.OK), envelope
-    assert states(job_id) == {"1": jobs.ItemState.DONE}
+    drives_with(job_id, "list.json")
 
 
 def test_a_different_list_named_beside_the_job_is_refused_and_nothing_is_fetched(
@@ -1080,8 +1035,7 @@ def test_a_different_list_named_beside_the_job_is_refused_and_nothing_is_fetched
 
     code, envelope = drive(["acquire", "download", str(other), "--job", job_id])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     assert envelope["cause"]["detail"]["named"] == str(other)
     assert envelope["cause"]["detail"]["frozen"] == str(library / "list.json")
     assert f"--job {job_id} alone" in " ".join(envelope["cause"]["remediation"]["steps"])
@@ -1099,10 +1053,7 @@ def test_the_frozen_list_spelled_through_a_symlink_still_drives(cfg, script, lib
     alias = tmp_path / "alias"
     alias.symlink_to(library, target_is_directory=True)
 
-    code, envelope = drive(["acquire", "download", str(alias / "list.json"), "--job", job_id])
-
-    assert code == int(ExitCode.OK), envelope
-    assert states(job_id) == {"1": jobs.ItemState.DONE}
+    drives_with(job_id, str(alias / "list.json"))
 
 
 def test_an_empty_job_identifier_is_refused_rather_than_queueing_the_list_again(cfg, library):
@@ -1111,11 +1062,9 @@ def test_an_empty_job_identifier_is_refused_rather_than_queueing_the_list_again(
 
     code, envelope = drive(["acquire", "download", str(path), "--job", ""])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     assert "empty identifier" in envelope["cause"]["message"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    nothing_queued()
 
 
 def test_a_command_naming_nothing_is_refused_before_the_configuration_is_read(
@@ -1130,8 +1079,7 @@ def test_a_command_naming_nothing_is_refused_before_the_configuration_is_read(
 
     code, envelope = drive(["acquire", "download"])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
 
 
 def test_a_refused_list_leaves_a_dead_drivers_claim_for_the_resume_to_reconcile(
@@ -1174,10 +1122,7 @@ def test_a_deleted_frozen_list_named_relative_from_where_it_was_queued_still_dri
     job_id = queued(Path("list.json"))
     path.unlink()
 
-    code, envelope = drive(["acquire", "download", "list.json", "--job", job_id])
-
-    assert code == int(ExitCode.OK), envelope
-    assert states(job_id) == {"1": jobs.ItemState.DONE}
+    drives_with(job_id, "list.json")
 
 
 def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, library):
@@ -1186,6 +1131,5 @@ def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, lib
 
     code, envelope = drive(["acquire", "download", "~no-such-user-r668/list.json", "--job", job_id])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    refused_as_unusable(code, envelope)
     assert states(job_id) == {"1": jobs.ItemState.PENDING}

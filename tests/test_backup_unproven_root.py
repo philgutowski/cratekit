@@ -12,37 +12,36 @@ against the last completed backup's census. A refusal is a plan with no command;
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from cratekit.backup import cli as backup_cli
-from cratekit.core import backup_facts, binaries, config, preflight
+from cratekit.core import backup_facts, config, preflight
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup, backup_record
+from tests.test_backup_comparison import _held, _saved
+from tests.test_backup_quick import (
+    DATABASE,
+    FILES,
+    MOMENT,
+    Counting,
+    _planned,
+    _portion,
+    _remote,
+    _write,
+)
+from tests.test_backup_quick import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
+from tests.test_backup_quick import real_rclone as real_rclone  # noqa: PLC0414
 
-MOMENT = datetime(2026, 11, 1, 12, 0, 0, tzinfo=timezone.utc)
-OLD = MOMENT - timedelta(days=30)
-FILES = backup_facts.Portion.FILES
-DATABASE = backup_facts.Portion.DATABASE
 #: Every command that sends to, rewrites or moves off the mirror.
 MOVERS = frozenset({backup.MIRROR, *backup.QUICK_LABELS})
 
 #: The real identity proof, taken before ``tests/conftest.py`` neutralizes it.
 REAL_IDENTITY_PROOF = backup._not_the_recorded_volume  # noqa: SLF001
-
-
-def _remote(tmp_path: Path) -> Path:
-    return tmp_path / "remotes" / "remote"
-
-
-@pytest.fixture(autouse=True)
-def _nothing_is_running(monkeypatch):
-    monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
 
 
 @pytest.fixture(autouse=True)
@@ -73,53 +72,10 @@ def _the_machines_own_disk_is_never_read(monkeypatch):
 
 
 @pytest.fixture
-def real_rclone(monkeypatch, tmp_path) -> str:
-    """The rclone on this machine, ASSERTED present, reading no real account."""
-    monkeypatch.delenv("CRATEKIT_BIN_RCLONE", raising=False)
-    declared = tmp_path / "rclone.conf"
-    declared.write_text(f"[remote]\ntype = alias\nremote = {_remote(tmp_path)}\n")
-    monkeypatch.setenv("RCLONE_CONFIG", str(declared))
-    found = binaries.find("rclone")
-    assert found is not None, (
-        "rclone is not installed, so no test in this file can drive a backup. "
-        "It is a declared binary of the backup module"
-    )
-    return str(found)
-
-
-@pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    root.mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-            "backup": {
-                "remote": "remote",
-                "dest": "remote:mirror",
-                "archive_root": "remote:archive",
-                "db_dest_root": "remote:database",
-            },
-        }
-    )
-    config.save(built)
-    config.reset_cache()
-    return built
-
-
-def _write(path: Path, content: bytes, *, at: datetime = OLD) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
-    os.utime(path, (at.timestamp(), at.timestamp()))
+    """An empty library root, what an unmounted volume leaves until a test fills it."""
+    (tmp_path / "library").mkdir()
+    return _saved(tmp_path, monkeypatch, folders=())
 
 
 MUSIC = {f"Music/track-{n:02}.flac": f"track {n}".encode() for n in range(12)}
@@ -131,23 +87,6 @@ def _seed(cfg) -> None:
     _write(config.state_path("rekordbox_db", cfg), b"database")
 
 
-class Counting:
-    """The real runner, with every command it was handed kept in order."""
-
-    def __init__(self, fail: str | None = None) -> None:
-        self.ran: list[backup.Command] = []
-        self.fail = fail
-
-    def __call__(self, command: backup.Command) -> backup.CommandResult:
-        self.ran.append(command)
-        if command.label == self.fail:
-            return backup.CommandResult(returncode=1, stderr="the remote went away")
-        return backup.subprocess_runner(command)
-
-    def labels(self) -> list[str]:
-        return [command.label for command in self.ran]
-
-
 def _backup(cfg, *, at, runner=None, check=False, full=False, emptied=False, **seams):
     plan = backup.plan_backup(
         cfg, now=at, check=check, full=full, emptied=emptied, settings_dirs=(), **seams
@@ -156,23 +95,7 @@ def _backup(cfg, *, at, runner=None, check=False, full=False, emptied=False, **s
     return plan, outcome
 
 
-def _portion(outcome, which):
-    (found,) = [p for p in outcome.portions if p.portion is which]
-    return found
-
-
-def _held(folder: Path) -> dict[str, bytes]:
-    if not folder.is_dir():
-        return {}
-    return {
-        path.relative_to(folder).as_posix(): path.read_bytes()
-        for path in sorted(folder.rglob("*"))
-        if path.is_file()
-    }
-
-
 def _remote_state(tmp_path) -> dict[str, dict[str, bytes]]:
-    """Everything on the remote: the mirror and every dated archive."""
     return {
         "mirror": _held(_remote(tmp_path) / "mirror"),
         "archive": _held(_remote(tmp_path) / "archive"),
@@ -180,7 +103,6 @@ def _remote_state(tmp_path) -> dict[str, dict[str, bytes]]:
 
 
 def _installation_state() -> dict[str, bytes | None]:
-    """The record and the census, byte for byte, or None where absent."""
     out: dict[str, bytes | None] = {}
     for path in (backup_record.manifest_path(), backup_record.census_path()):
         out[path.name] = path.read_bytes() if path.is_file() else None
@@ -322,8 +244,7 @@ def test_with_no_census_or_record_the_librarys_own_fact_is_the_history(
     assert "the library's own record of its backups held files" in plan.portion(FILES).detail
 
     backup_facts.path_for(cfg).write_text("{not json")
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
-    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN, (
+    assert _planned(cfg, MOMENT).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN, (
         "a fact file that cannot be read is still a backup having happened"
     )
 
@@ -398,8 +319,7 @@ def test_one_file_under_the_floor_refuses_and_one_at_it_runs(cfg, real_rclone, t
     assert plan.portion(FILES).refusal is None, plan.portion(FILES)
 
     (cfg.library.root / "Music" / "t01.flac").unlink()
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
-    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert _planned(cfg, MOMENT).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
 # The identity layer
@@ -460,8 +380,7 @@ def test_an_identity_the_platform_cannot_read_is_left_to_the_content(
     unread = {"identity_provider": lambda path: None, "mount_enumerator": lambda: ()}
     _first_backup(cfg, tmp_path, **unread)
     _unmount(cfg, tmp_path)
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **unread)
-    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert _planned(cfg, MOMENT, **unread).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
 # The two ways a root with no music still backs up
@@ -726,8 +645,7 @@ def test_an_identity_read_that_raises_is_left_to_the_census(
     plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **flaky)
     assert plan.portion(FILES).refusal is None, plan.portion(FILES)
     _unmount(cfg, tmp_path)
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **flaky)
-    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert _planned(cfg, MOMENT, **flaky).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
 def test_a_walk_that_refused_is_counted_so_the_floor_still_holds(cfg, real_rclone, tmp_path):
@@ -742,8 +660,7 @@ def test_a_walk_that_refused_is_counted_so_the_floor_still_holds(cfg, real_rclon
 
     _unmount(cfg, tmp_path)
     _write(cfg.library.root / "stray.txt", b"stray")
-    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
-    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert _planned(cfg, MOMENT).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
 # Round two's findings, driven

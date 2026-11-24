@@ -1,9 +1,8 @@
 """The write layer's row repair scenarios: rekordbox's defaults filled behind a gate (U302).
 
-`crate repair rows` fills rekordbox's defaults behind its gate in one guarded
-session. The two landed rows carry a file id of zero, so nothing is renumbered:
-an inode reaches the plan's digest, which no pin covers. Its own file because
-both suites name ``acknowledged``.
+The two landed rows carry a file id of zero, so nothing is renumbered: an inode
+reaches the plan's digest, which no pin covers. Its own file because both suites
+name ``acknowledged``.
 """
 
 from __future__ import annotations

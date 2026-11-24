@@ -1,8 +1,6 @@
 """The rest of core read through its library calls, written down for the capture (U301).
 
-No verb prints these whole, so each answer is written into the scenario's
-directory: the pool plan, the provider gate's spend and refusals, preflight's
-refusals, and the tag writer's fields read back, the tempo field refused.
+No verb prints these whole, so each answer is written into the scenario's directory.
 """
 
 from __future__ import annotations

@@ -1,8 +1,6 @@
 """The job engine's scenarios: a job driven to each end, then read by the job verbs (U301).
 
-Jobs are driven to success, failure, partial failure, park, decline and cancel,
-each item committing a report, then `crate job` lists, shows, resumes and
-cancels them, on the job engine suite's configured library.
+On the job engine suite's configured library, each item committing a report.
 """
 
 from __future__ import annotations

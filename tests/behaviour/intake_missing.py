@@ -1,10 +1,7 @@
 """Intake's missing scenarios: a playlist job's missing rows written as a list (U307).
 
-A playlist job's rows are reported owned, offered or missing, and `crate intake
-missing` writes the missing as the download list with its manifest, the same
-bytes twice; a staged ISRC is named staged (U212), a pass's jobs are listed
-once, and an unfinished job is refused. Its own file for its ``cfg`` and
-``library``.
+The list and its manifest are the same bytes twice; a staged ISRC is named
+staged (U212). Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

@@ -116,22 +116,15 @@ def _tree_doc() -> bytes:
     )
 
 
-def _registry(mode: tree_registry.Mode | None) -> tree_registry.Registry:
+def _registry(mode: tree_registry.Mode | None, *, root_id: str | None = ADOPTED_ROOT):
     """A registry with one record for the fixture tree, or with none at all."""
     if mode is None:
         return tree_registry.EMPTY
     if mode is tree_registry.Mode.DATABASE:
-        return tree_registry.Registry(
-            (
-                tree_registry.TreeRecord(
-                    tree_id=TREE_ID,
-                    mode=mode,
-                    cutover_on=CUTOVER_ON,
-                    root_id=ADOPTED_ROOT,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                ),
-            )
+        record = tree_registry.TreeRecord(
+            tree_id=TREE_ID, mode=mode, cutover_on=CUTOVER_ON, root_id=root_id, source=DERIVATION
         )
+        return tree_registry.Registry((record,))
     return tree_registry.Registry((tree_registry.TreeRecord(tree_id=TREE_ID, mode=mode),))
 
 
@@ -150,9 +143,8 @@ _NATIVE = {
 
 def _write_document(path: Path, trees: list, *, version=tree_registry.SCHEMA_VERSION) -> None:
     """Write a registry document by hand, as another build or a hand edit would."""
-    config.atomic_write_bytes(
-        json.dumps({"schema_version": version, "trees": trees}).encode(), path
-    )
+    document = {"schema_version": version, "trees": trees}
+    config.atomic_write_bytes(json.dumps(document).encode(), path)
 
 
 def _cut_over(cfg, tree_id: str = TREE_ID, root_id: str = ADOPTED_ROOT) -> None:
@@ -188,14 +180,11 @@ def test_a_record_carries_the_mode_the_date_and_the_adopted_root(cfg):
 
 def test_a_native_record_without_an_adopted_root_cannot_be_constructed():
     """Refused at construction, since native naming nothing reads as never cut over."""
+    native = tree_registry.Mode.DATABASE
     with pytest.raises(ValueError, match="adopted root"):
-        tree_registry.TreeRecord(
-            tree_id=TREE_ID, mode=tree_registry.Mode.DATABASE, cutover_on=CUTOVER_ON
-        )
+        tree_registry.TreeRecord(tree_id=TREE_ID, mode=native, cutover_on=CUTOVER_ON)
     with pytest.raises(ValueError, match="cutover date"):
-        tree_registry.TreeRecord(
-            tree_id=TREE_ID, mode=tree_registry.Mode.DATABASE, root_id=ADOPTED_ROOT
-        )
+        tree_registry.TreeRecord(tree_id=TREE_ID, mode=native, root_id=ADOPTED_ROOT)
 
 
 def test_a_cutover_leaves_every_other_tree_alone(cfg):
@@ -228,9 +217,7 @@ def test_the_state_entry_is_library_scoped_coupled_and_never_committed():
     assert entry.relative in ignored
 
 
-def test_the_registry_file_and_the_directories_it_creates_are_private(
-    permissive_umask, cfg
-):
+def test_the_registry_file_and_the_directories_it_creates_are_private(permissive_umask, cfg):
     """P1: the directory mode matters too, since unlink and rename are the directory's."""
     path = tree_registry.write(cfg, _registry(tree_registry.Mode.XML))
     assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
@@ -287,31 +274,36 @@ def test_an_unreadable_registry_is_its_own_answer_and_not_an_empty_one(cfg):
     assert error.remedy is not None
 
 
-def test_a_registry_from_a_newer_build_is_refused_rather_than_guessed_at(cfg):
-    _write_document(tree_registry.path_for(cfg), [], version=tree_registry.SCHEMA_VERSION + 1)
-    with pytest.raises(tree_registry.TreeRegistryUnreadable, match="schema version"):
-        tree_registry.read(cfg)
-
-
-def test_a_record_with_an_unknown_mode_is_refused_rather_than_dropped(cfg):
-    """An unknown mode fails the whole read, since a dropped record reads as the bridge."""
-    _write_document(tree_registry.path_for(cfg), [{"tree": TREE_ID, "mode": "carrier-pigeon"}])
-    with pytest.raises(tree_registry.TreeRegistryUnreadable, match="unusable record"):
-        tree_registry.read(cfg)
-
-
-def test_two_records_for_one_tree_are_refused_rather_than_resolved_by_position(cfg):
-    """Two answers for one tree fail the read, never resolved by line order."""
-    _write_document(tree_registry.path_for(cfg), [{"tree": TREE_ID, "mode": "xml"}, _NATIVE])
-    with pytest.raises(tree_registry.TreeRegistryUnreadable, match="two records"):
+@pytest.mark.parametrize(
+    ("trees", "version", "match"),
+    [
+        pytest.param(
+            [], tree_registry.SCHEMA_VERSION + 1, "schema version",
+            id="a_registry_from_a_newer_build_is_refused_rather_than_guessed_at",
+        ),
+        # An unknown mode fails the whole read, since a dropped record reads as the bridge.
+        pytest.param(
+            [{"tree": TREE_ID, "mode": "carrier-pigeon"}], tree_registry.SCHEMA_VERSION,
+            "unusable record", id="a_record_with_an_unknown_mode_is_refused_rather_than_dropped",
+        ),
+        # Two answers for one tree fail the read, never resolved by line order.
+        pytest.param(
+            [{"tree": TREE_ID, "mode": "xml"}, _NATIVE], tree_registry.SCHEMA_VERSION,
+            "two records",
+            id="two_records_for_one_tree_are_refused_rather_than_resolved_by_position",
+        ),
+    ],
+)
+def test_a_registry_this_build_cannot_vouch_for_is_refused_whole(cfg, trees, version, match):
+    _write_document(tree_registry.path_for(cfg), trees, version=version)
+    with pytest.raises(tree_registry.TreeRegistryUnreadable, match=match):
         tree_registry.read(cfg)
 
 
 def test_the_bytes_are_a_function_of_the_content_alone(cfg):
     """Identical bytes for one registry, so the file only diffs when something changed."""
-    registry = tree_registry.EMPTY.with_record(
-        tree_registry.TreeRecord(tree_id="zulu")
-    ).with_record(tree_registry.TreeRecord(tree_id="alpha"))
+    registry = tree_registry.EMPTY.with_record(tree_registry.TreeRecord(tree_id="zulu"))
+    registry = registry.with_record(tree_registry.TreeRecord(tree_id="alpha"))
     first = tree_registry.write(cfg, registry).read_bytes()
     reversed_order = tree_registry.Registry(tuple(reversed(registry.trees)))
     second = tree_registry.write(cfg, reversed_order).read_bytes()
@@ -337,9 +329,7 @@ _MUTATING_METHODS = frozenset(
 )
 
 
-def _byte_writers_by_annotation(
-    functions: dict[str, object] | None = None,
-) -> frozenset[str]:
+def _byte_writers_by_annotation(functions: dict[str, object] | None = None) -> frozenset[str]:
     """Every public function whose annotation MENTIONS ``bytearray``, the first reading."""
     found = set()
     for name, obj in (_public_functions() if functions is None else functions).items():
@@ -352,12 +342,8 @@ def _byte_writers_by_annotation(
 
 def _byte_writers_by_source(source: str | None = None) -> frozenset[str]:
     """Every public function that mutates a parameter, directly, by method, or transitively."""
-    tree = ast.parse(
-        Path(rbxml.__file__).read_text(encoding="utf-8") if source is None else source
-    )
-    functions = {
-        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
-    }
+    tree = ast.parse(Path(rbxml.__file__).read_text(encoding="utf-8") if source is None else source)
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
 
     direct: set[str] = set()
     calls: dict[str, set[str]] = {}
@@ -366,9 +352,7 @@ def _byte_writers_by_source(source: str | None = None) -> frozenset[str]:
         called: set[str] = set()
         for inner in ast.walk(node):
             targets: list[ast.expr] = []
-            if isinstance(inner, ast.Assign):
-                targets = list(inner.targets)
-            elif isinstance(inner, ast.Delete):
+            if isinstance(inner, (ast.Assign, ast.Delete)):
                 targets = list(inner.targets)
             for target in targets:
                 if (
@@ -454,25 +438,17 @@ def test_every_guarded_writer_accepts_the_tree_the_guard_is_keyed_on():
 
 
 #: One call per guarded emitter, asserted to be EXACTLY the derived guarded set below.
-_CALLABLE_EMITTERS = frozenset(
-    {
-        "splice_into_subplaylist",
-        "remove_tracks_from_subplaylist",
-        "insert_genre_folder",
-        "insert_empty_subplaylist",
-        "insert_catalog_folder",
-        "remove_folder_node",
-        "insert_intake_playlist",
-    }
-)
+_CALLABLE_EMITTERS = frozenset({
+    "splice_into_subplaylist", "remove_tracks_from_subplaylist", "insert_genre_folder",
+    "insert_empty_subplaylist", "insert_catalog_folder", "remove_folder_node",
+    "insert_intake_playlist",
+})
 
 
 def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
     """Drive one emitter so it CHANGES the fixture, or the guard assertions prove nothing."""
     if name == "splice_into_subplaylist":
-        return rbxml.splice_into_subplaylist(
-            content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree
-        )
+        return rbxml.splice_into_subplaylist(content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree)
     if name == "remove_tracks_from_subplaylist":
         return rbxml.remove_tracks_from_subplaylist(
             content, FOLDER_DISPLAY, SUB_DISPLAY, [SEEDED_TRACK], tree=tree
@@ -481,13 +457,9 @@ def _invoke(name: str, content: bytearray, tree: rbxml.Tree | None):
         return rbxml.insert_genre_folder(content, NEW_FOLDER, [SUB_DISPLAY], tree=tree)
     if name == "insert_empty_subplaylist":
         # A name the fixture lacks, since the seeded one is an idempotent no-op.
-        return rbxml.insert_empty_subplaylist(
-            content, FOLDER_DISPLAY, NEW_PLAYLIST, tree=tree
-        )
+        return rbxml.insert_empty_subplaylist(content, FOLDER_DISPLAY, NEW_PLAYLIST, tree=tree)
     if name == "insert_catalog_folder":
-        return rbxml.insert_catalog_folder(
-            content, NEW_FOLDER, [(NEW_PLAYLIST, [901])], tree=tree
-        )
+        return rbxml.insert_catalog_folder(content, NEW_FOLDER, [(NEW_PLAYLIST, [901])], tree=tree)
     if name == "remove_folder_node":
         return rbxml.remove_folder_node(content, FOLDER_DISPLAY, tree=tree)
     if name == "insert_intake_playlist":
@@ -593,21 +565,16 @@ def test_a_governed_tree_scopes_a_REMOVAL_to_its_own_subtree_too():
     """The same narrowing on the writer that DELETES, where a wrong tree goes unseen."""
     content = bytearray(_two_tree_doc())
     removed, warning = rbxml.remove_tracks_from_subplaylist(
-        content,
-        FOLDER_DISPLAY,
-        SUB_DISPLAY,
-        [SEEDED_TRACK],
-        tree=_governed(tree_registry.Mode.XML),
+        content, FOLDER_DISPLAY, SUB_DISPLAY, [SEEDED_TRACK], tree=_governed(tree_registry.Mode.XML)
     )
     assert warning is None and removed == 1
     out = bytes(content)
     first = out.index(b'Name="Other Shelf"')
     second = out.index(_esc(TREE_DISPLAY).encode("utf-8"))
-    assert f'<TRACK Key="{SEEDED_TRACK}"/>'.encode("utf-8") in out[first:second], (
-        "the removal reached into the tree it was not given"
-    )
+    seeded = f'<TRACK Key="{SEEDED_TRACK}"/>'.encode("utf-8")
+    assert seeded in out[first:second], "the removal reached into the tree it was not given"
     assert b'Entries="1"' in out[first:second]
-    assert f'<TRACK Key="{SEEDED_TRACK}"/>'.encode("utf-8") not in out[second:]
+    assert seeded not in out[second:]
     assert b'Entries="0"' in out[second:]
 
 
@@ -630,11 +597,8 @@ def test_a_database_writer_passes_once_the_cutover_is_recorded():
 
 
 def test_the_anchored_root_is_returned_when_the_library_actually_has_it():
-    found = tree_registry.anchored_root(
-        TREE_ID,
-        _registry(tree_registry.Mode.DATABASE),
-        root_exists=lambda root_id: root_id == ADOPTED_ROOT,
-    )
+    native = _registry(tree_registry.Mode.DATABASE)
+    found = tree_registry.anchored_root(TREE_ID, native, root_exists=lambda r: r == ADOPTED_ROOT)
     assert found == ADOPTED_ROOT
 
 
@@ -642,9 +606,7 @@ def test_a_restored_pre_cutover_database_refuses_rather_than_forking_the_tree():
     """A restored pre-cutover database refuses, as the mode alone would fork the root."""
     with pytest.raises(tree_registry.RegistrySkew) as excinfo:
         tree_registry.anchored_root(
-            TREE_ID,
-            _registry(tree_registry.Mode.DATABASE),
-            root_exists=lambda root_id: False,
+            TREE_ID, _registry(tree_registry.Mode.DATABASE), root_exists=lambda root_id: False
         )
     assert excinfo.value.tree_id == TREE_ID
     assert excinfo.value.root_id == ADOPTED_ROOT
@@ -660,9 +622,7 @@ def test_the_anchor_check_refuses_a_tree_on_the_bridge_before_it_looks_anything_
         return True
 
     with pytest.raises(tree_registry.TreeModeRefused):
-        tree_registry.anchored_root(
-            TREE_ID, _registry(tree_registry.Mode.XML), root_exists=watcher
-        )
+        tree_registry.anchored_root(TREE_ID, _registry(tree_registry.Mode.XML), root_exists=watcher)
     assert looked_up == []
 
 
@@ -780,13 +740,23 @@ def test_the_two_tree_constructors_cannot_produce_an_ungoverned_tree_by_default(
     assert rbxml.tree_for(declared.tree, tree_registry.EMPTY).governed
 
 
+def _empty_tree() -> bytes:
+    """The fixture tree holding nothing at all."""
+    opened = f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="0">'
+    return _playlists(opened, "      </NODE>")
+
+
+def _collection(entries: int, *lines: str) -> bytes:
+    """A document whose collection of ``entries`` tracks is ``lines``, beside one empty folder."""
+    return _xml_doc(
+        collection=[f'  <COLLECTION Entries="{entries}">', *lines, "  </COLLECTION>"],
+        root_children=['      <NODE Name="Anything" Type="0" Count="0">', "      </NODE>"],
+    )
+
+
 def test_the_intake_playlist_lands_at_the_pinned_indent():
     """The pinned shape as bytes, derived from the pinned depth."""
-    doc = _playlists(
-        f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="0">',
-        "      </NODE>",
-    )
-    content = bytearray(doc)
+    content = bytearray(_empty_tree())
     assert rbxml.insert_intake_playlist(content, NEW_PLAYLIST, [901, 902]) is None
     out = bytes(content)
     assert (
@@ -800,11 +770,7 @@ def test_the_intake_playlist_lands_at_the_pinned_indent():
 
 def test_a_second_intake_run_replaces_rather_than_duplicating():
     """Every write is re-runnable, so none appends a second copy."""
-    doc = _playlists(
-        f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="0">',
-        "      </NODE>",
-    )
-    content = bytearray(doc)
+    content = bytearray(_empty_tree())
     rbxml.insert_intake_playlist(content, NEW_PLAYLIST, [901])
     once = bytes(content)
     rbxml.insert_intake_playlist(content, NEW_PLAYLIST, [902])
@@ -829,8 +795,7 @@ def test_the_indent_derivation_reproduces_the_pinned_widths():
 #: covering it, so no call site needs a scan of its own.
 LOCATE_SHAPES: dict[str, tuple[str, ...]] = {
     "the playlist section's bounds, so no name search begins at byte zero": (
-        "playlists_span",
-        "playlists_start",
+        "playlists_span", "playlists_start"
     ),
     "the collection's bounds, for track element locates": ("collection_span",),
     "a node found by its name attribute, from an explicit anchor": ("find_node",),
@@ -841,26 +806,16 @@ LOCATE_SHAPES: dict[str, tuple[str, ...]] = {
         "matching_close",
     ),
     "a node's DIRECT children, rather than every descendant": ("child_nodes",),
-    "the whole tree indexed by display path, for a document-to-document diff": (
-        "walk_nodes",
-    ),
-    "the line a tag starts on, for splices that include the leading break": (
-        "line_start",
-    ),
+    "the whole tree indexed by display path, for a document-to-document diff": ("walk_nodes",),
+    "the line a tag starts on, for splices that include the leading break": ("line_start",),
     "the track keys a playlist currently holds, in document order": ("track_keys",),
-    "one track key LINE, tolerating the bare LF an old splicer wrote": (
-        "track_key_line",
-    ),
+    "one track key LINE, tolerating the bare LF an old splicer wrote": ("track_key_line",),
     "one collection track element, matched on its id exactly and bounded by its "
     "real close rather than by the next self-closing token": (
-        "find_collection_track",
-        "collection_tracks",
+        "find_collection_track", "collection_tracks"
     ),
     "one attribute's value inside an already located tag, patched in the original "
-    "bytes rather than re-emitted from a template": (
-        "attribute_span",
-        "patch_attribute",
-    ),
+    "bytes rather than re-emitted from a template": ("attribute_span", "patch_attribute"),
 }
 
 
@@ -919,15 +874,10 @@ def test_the_locates_read_attributes_in_either_order():
     )
     span = rbxml.playlists_span(doc)
     assert span is not None
-    tree_node = rbxml.find_node(
-        doc, TREE_DISPLAY, start=span[0], end=span[1], node_type=rbxml.FOLDER_TYPE
-    )
+    folder = rbxml.FOLDER_TYPE
+    tree_node = rbxml.find_node(doc, TREE_DISPLAY, start=span[0], end=span[1], node_type=folder)
     assert tree_node is not None and tree_node.name == TREE_DISPLAY
-    assert rbxml.attributes(doc, tree_node) == {
-        "Type": "0",
-        "Name": TREE_DISPLAY,
-        "Count": "1",
-    }
+    assert rbxml.attributes(doc, tree_node) == {"Type": "0", "Name": TREE_DISPLAY, "Count": "1"}
     children = rbxml.child_nodes(doc, tree_node)
     assert [child.name for child in children] == [FOLDER_DISPLAY]
     assert children[0].self_closing
@@ -967,9 +917,7 @@ def test_the_tree_walk_reports_a_display_path_for_every_node():
     assert root is not None
     walked = list(rbxml.walk_nodes(doc, root))
     assert [path for path, _ in walked] == [
-        (TREE_DISPLAY,),
-        (TREE_DISPLAY, FOLDER_DISPLAY),
-        (TREE_DISPLAY, FOLDER_DISPLAY, SUB_DISPLAY),
+        (TREE_DISPLAY,), (TREE_DISPLAY, FOLDER_DISPLAY), (TREE_DISPLAY, FOLDER_DISPLAY, SUB_DISPLAY)
     ]
     assert [node.depth for _, node in walked] == [1, 2, 3]
     assert [rbxml.indent_at(node.depth) for _, node in walked] == [6, 8, 10]
@@ -977,15 +925,7 @@ def test_the_tree_walk_reports_a_display_path_for_every_node():
 
 def test_a_collection_track_is_bounded_by_its_real_close_not_the_next_slash_bracket():
     """A track is bounded by its own close tag, so a patch never rewrites rekordbox's data."""
-    doc = _xml_doc(
-        collection=[
-            '  <COLLECTION Entries="2">',
-            *_ml_track(101, "One Track", analyzed=True),
-            *_ml_track(102, "Two Track"),
-            "  </COLLECTION>",
-        ],
-        root_children=['      <NODE Name="Anything" Type="0" Count="0">', "      </NODE>"],
-    )
+    doc = _collection(2, *_ml_track(101, "One Track", analyzed=True), *_ml_track(102, "Two Track"))
     found = rbxml.find_collection_track(doc, 101)
     assert found is not None and not found.self_closing
     assert doc[found.end - len(b"</TRACK>") : found.end] == b"</TRACK>"
@@ -994,14 +934,10 @@ def test_a_collection_track_is_bounded_by_its_real_close_not_the_next_slash_brac
 
 
 def test_a_track_id_never_matches_a_longer_one():
-    doc = _xml_doc(
-        collection=[
-            '  <COLLECTION Entries="2">',
-            '    <TRACK TrackID="42" Name="a" Rating="0" Location="file://localhost/a.flac"/>',
-            '    <TRACK TrackID="421" Name="b" Rating="0" Location="file://localhost/b.flac"/>',
-            "  </COLLECTION>",
-        ],
-        root_children=['      <NODE Name="Anything" Type="0" Count="0">', "      </NODE>"],
+    doc = _collection(
+        2,
+        '    <TRACK TrackID="42" Name="a" Rating="0" Location="file://localhost/a.flac"/>',
+        '    <TRACK TrackID="421" Name="b" Rating="0" Location="file://localhost/b.flac"/>',
     )
     found = rbxml.find_collection_track(doc, 42)
     assert found is not None and rbxml.attributes(doc, found)["Name"] == "a"
@@ -1019,14 +955,7 @@ def test_an_attribute_patch_never_reaches_into_the_next_element():
         '           Location="file://localhost/y.flac" Mix="">',
         "    </TRACK>",
     ]
-    content = bytearray(
-        _xml_doc(
-            collection=['  <COLLECTION Entries="2">', *without_rating, *with_rating,
-                        "  </COLLECTION>"],
-            root_children=['      <NODE Name="Anything" Type="0" Count="0">',
-                           "      </NODE>"],
-        )
-    )
+    content = bytearray(_collection(2, *without_rating, *with_rating))
     before = bytes(content)
     assert rbxml.apply_rating_changes({700: 255}, content) == 0
     assert bytes(content) == before, "the patch reached into the following element"
@@ -1036,22 +965,8 @@ def test_rekordbox_authored_analysis_survives_a_rating_patch_verbatim():
     """R17's other half: never create a grid, and never destroy one either."""
     analysed = _ml_track(101, "One Track", analyzed=True)
     grid_line = next(line for line in analysed if line.strip().startswith("<TEMPO"))
-    content = bytearray(
-        _xml_doc(
-            collection=[
-                '  <COLLECTION Entries="1">',
-                *[
-                    line.replace(' Tonality=', ' Rating="0" Tonality=')
-                    if "Tonality=" in line
-                    else line
-                    for line in analysed
-                ],
-                "  </COLLECTION>",
-            ],
-            root_children=['      <NODE Name="Anything" Type="0" Count="0">',
-                           "      </NODE>"],
-        )
-    )
+    rated = [line.replace(" Tonality=", ' Rating="0" Tonality=') for line in analysed]
+    content = bytearray(_collection(1, *rated))
     assert rbxml.apply_rating_changes({101: 255}, content) == 1
     out = bytes(content)
     assert b'Rating="255"' in out
@@ -1072,19 +987,11 @@ def test_a_missing_section_is_a_warning_and_never_a_corrupting_slice():
 
 
 def test_an_unnamed_tree_is_inferred_only_when_there_is_exactly_one():
-    """Guessing among several would put a folder inside whichever came first.
-
-    So the inference is refused by name instead, and the message says how many it
-    found.
-    """
-    two_trees = bytearray(
-        _playlists(
-            '      <NODE Name="Shelf One" Type="0" Count="0">',
-            "      </NODE>",
-            '      <NODE Name="Shelf Two" Type="0" Count="0">',
-            "      </NODE>",
-        )
-    )
+    """Guessing among several puts a folder in whichever came first, so it is refused by name."""
+    two_trees = bytearray(_playlists(
+        '      <NODE Name="Shelf One" Type="0" Count="0">', "      </NODE>",
+        '      <NODE Name="Shelf Two" Type="0" Count="0">', "      </NODE>",
+    ))
     before = bytes(two_trees)
     warning = rbxml.insert_genre_folder(two_trees, NEW_FOLDER, [])
     assert warning is not None and "cannot be inferred" in warning

@@ -17,11 +17,13 @@ import pytest
 from cratekit.cli import label_sync, sync_land
 from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, tags
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import artifacts, refused, searchers, tag
 from cratekit.tagging import cli as tag_cli
+from tests import test_catalogue_searcher as searched
 from tests._containers import synth_container
+from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_discogs_searcher import SENT, results, routed
@@ -38,10 +40,16 @@ TIMED_OUT = searchers.Fetched(note="transport failure: timed out")
 SERVER_ERROR = searchers.Fetched(note="HTTP 503", status=503)
 #: Discogs refusing this client with a valid token, a 403.
 DISCOGS_403 = searchers.Fetched(note="HTTP 403", status=403)
+#: Discogs rejecting the token it was sent, a 401.
+DISCOGS_401 = searchers.Fetched(note="HTTP 401", status=401)
 
 #: The moment sitting 93 first met Beatport's 403, and the record's clock after it.
 BEGAN = datetime(2026, 11, 10, 3, 49, tzinfo=timezone.utc)
 BEGAN_STAMP = "2026-11-10T03:49:00Z"
+#: What a refusal recorded at BEGAN reads as.
+SINCE = f"beatport, refusing since {BEGAN_STAMP}"
+#: The step that sends a person to set a Discogs token.
+LOGIN = "crate login discogs-token"
 
 
 @pytest.fixture
@@ -63,6 +71,20 @@ def _record_path() -> Path:
     return config.state_path(refused.KEY)
 
 
+def _written_record(text: str) -> Path:
+    """The record's file holding ``text``, whatever its shape."""
+    path = _record_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _refused_days_ago(clock) -> None:
+    """Beatport began refusing at BEGAN, and the clock stands three days on."""
+    refused.refused(searchers.BEATPORT)
+    clock[0] = BEGAN + timedelta(days=3)
+
+
 def _searcher(fetch, *, token: str | None = SENT, run: searchers.Refusals | None = None):
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     return searchers.catalogue_searcher(
@@ -74,8 +96,7 @@ def _searcher(fetch, *, token: str | None = SENT, run: searchers.Refusals | None
 
 
 def test_a_first_refusal_sets_since_and_a_later_one_keeps_it(clock):
-    refused.refused(searchers.BEATPORT)
-    clock[0] = BEGAN + timedelta(days=3)
+    _refused_days_ago(clock)
     refused.refused(searchers.BEATPORT)
 
     held = refused.read()
@@ -103,9 +124,7 @@ def test_an_answer_from_a_catalogue_not_refusing_writes_nothing(clock):
 
 
 def test_a_record_that_does_not_parse_reads_as_none_and_is_written_over(clock):
-    path = _record_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{not json", encoding="utf-8")
+    path = _written_record("{not json")
     assert refused.read() == {}
 
     refused.refused(searchers.BEATPORT)
@@ -116,20 +135,11 @@ def test_a_record_that_does_not_parse_reads_as_none_and_is_written_over(clock):
 
 
 def test_an_entry_of_the_wrong_shape_is_skipped_and_the_rest_read(clock):
-    path = _record_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "catalogues": {
-                    "beatport": {"since": BEGAN_STAMP, "last": BEGAN_STAMP, "count": 4},
-                    "traxsource": {"since": "", "last": BEGAN_STAMP, "count": 1},
-                    "bandcamp": "refusing",
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    _written_record(json.dumps({"catalogues": {
+        "beatport": {"since": BEGAN_STAMP, "last": BEGAN_STAMP, "count": 4},
+        "traxsource": {"since": "", "last": BEGAN_STAMP, "count": 1},
+        "bandcamp": "refusing",
+    }}))
     assert set(refused.read()) == {searchers.BEATPORT}
 
 
@@ -207,8 +217,7 @@ def _raised(searcher, title: str = "a") -> CratekitError:
 
 
 def test_with_no_token_a_refusing_beatport_names_itself_its_date_and_the_token(clock):
-    refused.refused(searchers.BEATPORT)
-    clock[0] = BEGAN + timedelta(days=3)
+    _refused_days_ago(clock)
 
     error = _raised(_searcher(routed(search=results(), beatport=CHALLENGE), token=None))
 
@@ -216,9 +225,9 @@ def test_with_no_token_a_refusing_beatport_names_itself_its_date_and_the_token(c
     assert cause.reason == searchers.UNREACHABLE_REASON
     assert cause.retryable
     assert "every catalogue asked refused this client" in cause.message
-    assert f"beatport, refusing since {BEGAN_STAMP}" in cause.message
+    assert SINCE in cause.message
     first = cause.remediation.steps[0]
-    assert "crate login discogs-token" in first
+    assert LOGIN in first
     assert "carries on" in first
     assert not any("network" in step for step in cause.remediation.steps)
     assert cause.detail["refused"] == {searchers.BEATPORT: BEGAN_STAMP}
@@ -264,16 +273,12 @@ def test_a_refusal_beside_an_outage_is_an_outage_first(clock):
 def test_a_token_discogs_rejects_beside_a_refusing_beatport_names_beatport_too(clock):
     refused.refused(searchers.BEATPORT)
 
-    error = _raised(
-        _searcher(routed(search=searchers.Fetched(note="HTTP 401", status=401), beatport=CHALLENGE))
-    )
+    error = _raised(_searcher(routed(search=DISCOGS_401, beatport=CHALLENGE)))
 
     cause = error.cause
     assert cause.reason == "credential-missing"
-    assert "crate login discogs-token" in " ".join(cause.remediation.steps)
-    assert any(
-        f"beatport, refusing since {BEGAN_STAMP}" in step for step in cause.remediation.steps
-    )
+    assert LOGIN in " ".join(cause.remediation.steps)
+    assert any(SINCE in step for step in cause.remediation.steps)
     assert cause.detail["refused"] == {searchers.BEATPORT: BEGAN_STAMP}
     assert SENT not in json.dumps(cause.detail)
 
@@ -344,19 +349,33 @@ def bind(monkeypatch, *, token: str | None, beatport=CHALLENGE, search=None, by_
     general(monkeypatch, None)
 
 
+def _placed(staging: Path, silence: Path, *names: str) -> None:
+    for name in names:
+        place(staging, silence, name)
+
+
 def _sweep(staging: Path) -> tuple[int, jobs.Job, dict]:
-    code, queued = drive(["tag", "folder", "--queue-only", str(staging)])
-    assert code == int(ExitCode.OK), queued
+    exited(drive(["tag", "folder", "--queue-only", str(staging)]))
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     return code, job, resumed
 
 
+def _tagged(staging: Path) -> dict:
+    """The sweep's tagging totals, the sweep exiting OK."""
+    code, _job, resumed = _sweep(staging)
+    assert code == int(ExitCode.OK), resumed
+    return resumed["data"]["progress"]["tagging"]
+
+
+def _no_genre(staging: Path, names: str = "abc") -> None:
+    assert all(tags.read_genre_from_file(staging / f"{n}.flac") is None for n in names)
+
+
 def test_a_sweep_with_a_token_names_each_file_beatport_refused_and_writes_no_genre(
     cfg, staging, silence, monkeypatch, clock
 ):
-    for name in ("a", "b", "c"):
-        place(staging, silence, name)
+    _placed(staging, silence, "a", "b", "c")
     bind(monkeypatch, token=SENT)
 
     code, job, resumed = _sweep(staging)
@@ -366,39 +385,28 @@ def test_a_sweep_with_a_token_names_each_file_beatport_refused_and_writes_no_gen
     assert tagging["refused"]["files"] == ["a.flac", "b.flac", "c.flac"]
     assert tagging["refused"]["catalogues"] == {searchers.BEATPORT: BEGAN_STAMP}
     assert "a.flac, b.flac, c.flac" in tagging["refused"]["said"]
-    assert f"beatport, refusing since {BEGAN_STAMP}" in tagging["refused"]["said"]
+    assert SINCE in tagging["refused"]["said"]
     assert tagging["skipped"][tag.SOURCES_UNREAD] == 3
     assert tagging["skipped"][tag.NO_HIT] == 0
     assert tagging["refusal_stop"] is None
     for report in artifacts.committed(cfg, job.job_id):
         assert report["skipped"] == tag.SOURCES_UNREAD
         assert report["unread"] == {searchers.BEATPORT: "blocked"}
-    assert all(tags.read_genre_from_file(staging / f"{n}.flac") is None for n in "abc")
+    _no_genre(staging)
 
 
 def test_a_file_beatport_answered_is_tagged_through_it_and_not_named(
     cfg, staging, silence, monkeypatch, clock
 ):
-    from tests.test_catalogue_searcher import (
-        ARTIST,
-        BUCKET_GENRE,
-        TITLE,
-        _beatport_page,
-        _beatport_track,
-    )
-
     answered = place(staging, silence, "a")
-    assert tags.write_tags(answered, {"artist": ARTIST, "title": TITLE})
+    assert tags.write_tags(answered, {"artist": searched.ARTIST, "title": searched.TITLE})
     place(staging, silence, "b")
-    page = searchers.Fetched(
-        text=_beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]), status=200
-    )
+    found = searched._beatport_track(searched.ARTIST, searched.TITLE, searched.BUCKET_GENRE)
+    page = searchers.Fetched(text=searched._beatport_page([found]), status=200)
     bind(monkeypatch, token=SENT, by_title={"Sunrise": page})
 
-    code, _job, resumed = _sweep(staging)
+    tagging = _tagged(staging)
 
-    assert code == int(ExitCode.OK), resumed
-    tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["tagged"] == 1
     assert tagging["refused"]["files"] == ["b.flac"]
 
@@ -407,10 +415,8 @@ def test_a_sweep_beatport_never_refused_names_nothing(cfg, staging, silence, mon
     place(staging, silence, "a")
     bind(monkeypatch, token=SENT, beatport=SERVER_ERROR)
 
-    code, _job, resumed = _sweep(staging)
+    tagging = _tagged(staging)
 
-    assert code == int(ExitCode.OK), resumed
-    tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["skipped"][tag.SOURCES_UNREAD] == 1
     assert tagging["refused"] is None, "an outage beside a miss is not a refusal"
 
@@ -424,11 +430,9 @@ def test_a_file_its_copyright_line_settles_is_tagged_by_its_label_and_not_named(
     place(staging, silence, "b")
     bind(monkeypatch, token=SENT)
 
-    code, _job, resumed = _sweep(staging)
+    tagging = _tagged(staging)
 
-    assert code == int(ExitCode.OK), resumed
     assert tags.read_genre_from_file(staging / "a.flac") == MINIMAL
-    tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["label_genres"] == {RAWAX: 1}
     assert tagging["refused"]["files"] == ["b.flac"]
 
@@ -436,10 +440,8 @@ def test_a_file_its_copyright_line_settles_is_tagged_by_its_label_and_not_named(
 def test_a_sweep_with_no_token_fails_each_file_and_says_who_refused_and_the_token(
     cfg, staging, silence, monkeypatch, clock
 ):
-    refused.refused(searchers.BEATPORT)
-    clock[0] = BEGAN + timedelta(days=3)
-    for name in ("a", "b"):
-        place(staging, silence, name)
+    _refused_days_ago(clock)
+    _placed(staging, silence, "a", "b")
     bind(monkeypatch, token=None)
 
     code, job, resumed = _sweep(staging)
@@ -454,9 +456,9 @@ def test_a_sweep_with_no_token_fails_each_file_and_says_who_refused_and_the_toke
     assert stop["files"] == ["a.flac", "b.flac"]
     assert stop["catalogues"] == {searchers.BEATPORT: BEGAN_STAMP}
     assert stop["discogs"] == searchers.DISCOGS_NO_TOKEN
-    assert "crate login discogs-token" in stop["said"]
+    assert LOGIN in stop["said"]
     assert stop["said"] in resumed["cause"]["message"]
-    assert any("crate login discogs-token" in step for step in stop["steps"])
+    assert any(LOGIN in step for step in stop["steps"])
 
 
 def test_a_sweep_stopped_by_an_outage_carries_no_refusal_stop(
@@ -508,25 +510,34 @@ def _chain() -> tail_chain.Chain:
     )
 
 
+def _ran(chain: tail_chain.Chain, staging: Path, cfg: config.Config, ending: type):
+    """The chain run on pass p1 until it raises ``ending``, which is answered."""
+    with pytest.raises(ending) as ended:
+        tail_chain.run(chain, staging, cfg, ["--pass", "p1"], "p1")
+    return ended.value
+
+
+def _landed_nowhere(rest: Rest) -> None:
+    assert not any(argv[:2] == ["intake", "land"] for argv in rest.calls)
+
+
 def test_with_a_token_the_pass_reaches_its_landing_and_names_the_refused_files(
     cfg, staging, silence, monkeypatch, clock, rest
 ):
-    for name in ("a", "b", "c"):
-        place(staging, silence, name)
+    _placed(staging, silence, "a", "b", "c")
     bind(monkeypatch, token=SENT)
     chain = _chain()
 
-    with pytest.raises(tail_chain.Attend) as attended:
-        tail_chain.run(chain, staging, cfg, ["--pass", "p1"], "p1")
+    attended = _ran(chain, staging, cfg, tail_chain.Attend)
 
-    assert attended.value.step == tail_chain.LAND
+    assert attended.step == tail_chain.LAND
     assert chain.summary["refused"] == {
         "files": ["a.flac", "b.flac", "c.flac"],
         "catalogues": {searchers.BEATPORT: BEGAN_STAMP},
     }
     (row,) = [check for check in chain.checks if check["key"] == "sync.land.refused"]
     assert row["status"] == "warn"
-    for named in ("a.flac", "b.flac", "c.flac", f"beatport, refusing since {BEGAN_STAMP}"):
+    for named in ("a.flac", "b.flac", "c.flac", SINCE):
         assert named in row["detail"]
     assert "needs genre" in row["detail"]
     assert "tag retag" in row["detail"]
@@ -537,27 +548,24 @@ def test_with_a_token_the_pass_reaches_its_landing_and_names_the_refused_files(
         tail_chain.RESTAMP,
         tail_chain.NAME,
     ]
-    assert all(tags.read_genre_from_file(staging / f"{n}.flac") is None for n in "abc")
+    _no_genre(staging)
 
 
 def test_with_no_token_the_pass_stops_at_its_tag_step_saying_who_refused_and_the_token(
     cfg, staging, silence, monkeypatch, clock, rest
 ):
-    refused.refused(searchers.BEATPORT)
-    clock[0] = BEGAN + timedelta(days=3)
+    _refused_days_ago(clock)
     place(staging, silence, "a")
     bind(monkeypatch, token=None)
 
-    with pytest.raises(tail_chain.Stop) as stopped:
-        tail_chain.run(_chain(), staging, cfg, ["--pass", "p1"], "p1")
+    stop = _ran(_chain(), staging, cfg, tail_chain.Stop)
 
-    stop = stopped.value
     assert stop.step == tail_chain.TAG
     cause = stop.error.cause
-    assert f"beatport, refusing since {BEGAN_STAMP}" in cause.message
-    assert "crate login discogs-token" in cause.message
-    assert any("crate login discogs-token" in step for step in cause.remediation.steps)
-    assert not any(argv[:2] == ["intake", "land"] for argv in rest.calls)
+    assert SINCE in cause.message
+    assert LOGIN in cause.message
+    assert any(LOGIN in step for step in cause.remediation.steps)
+    _landed_nowhere(rest)
     assert not any(argv[:2] == ["tag", "guess"] for argv in rest.calls)
 
 
@@ -568,13 +576,12 @@ def test_a_timeout_still_stops_the_pass_at_its_tag_step_with_no_refusal_said(
     bind(monkeypatch, token=None, beatport=TIMED_OUT)
     chain = _chain()
 
-    with pytest.raises(tail_chain.Stop) as stopped:
-        tail_chain.run(chain, staging, cfg, ["--pass", "p1"], "p1")
+    stop = _ran(chain, staging, cfg, tail_chain.Stop)
 
-    assert stopped.value.step == tail_chain.TAG
-    assert "refusing since" not in stopped.value.error.cause.message
+    assert stop.step == tail_chain.TAG
+    assert "refusing since" not in stop.error.cause.message
     assert "refused" not in chain.summary
-    assert not any(argv[:2] == ["intake", "land"] for argv in rest.calls)
+    _landed_nowhere(rest)
 
 
 def test_a_pass_whose_catalogues_answered_says_nothing_of_refusals(
@@ -584,8 +591,7 @@ def test_a_pass_whose_catalogues_answered_says_nothing_of_refusals(
     bind(monkeypatch, token=SENT, beatport=SERVER_ERROR)
     chain = _chain()
 
-    with pytest.raises(tail_chain.Attend):
-        tail_chain.run(chain, staging, cfg, ["--pass", "p1"], "p1")
+    _ran(chain, staging, cfg, tail_chain.Attend)
 
     assert "refused" not in chain.summary
     assert not [check for check in chain.checks if check["key"] == "sync.land.refused"]
@@ -606,15 +612,11 @@ def test_every_landing_verb_runs_the_one_chain_whose_tag_step_this_is():
 
 def test_a_file_discogs_tagged_while_beatport_refused_its_picture_is_not_named():
     """The reason guard: a genre written is never a file left with none."""
-    report = {
-        "item": "a.flac",
-        "skipped": None,
-        "genre_written": "Techno",
-        "answers": [
-            {"source": searchers.DISCOGS, "answer": "matched"},
-            {"source": searchers.BEATPORT, "answer": "blocked"},
-        ],
-    }
+    answers = [
+        {"source": searchers.DISCOGS, "answer": "matched"},
+        {"source": searchers.BEATPORT, "answer": "blocked"},
+    ]
+    report = {"item": "a.flac", "skipped": None, "genre_written": "Techno", "answers": answers}
     assert tag_cli._refused_out(report, "") == ()
     assert tag_cli._refused_out(report, tag.SOURCES_UNREAD) == (searchers.BEATPORT,)
 
@@ -629,9 +631,7 @@ def test_an_outage_never_sets_a_refusal_date(clock):
 
 
 def test_a_rejected_token_beside_a_beatport_miss_names_no_refusing_shop(clock):
-    error = _raised(
-        _searcher(routed(search=searchers.Fetched(note="HTTP 401", status=401)))
-    )
+    error = _raised(_searcher(routed(search=DISCOGS_401)))
 
     cause = error.cause
     assert cause.reason == "credential-missing"
@@ -649,9 +649,7 @@ def test_a_record_whose_target_cannot_be_replaced_never_raises(tmp_path, clock):
 
 
 def test_a_record_nested_past_the_parsers_depth_reads_as_none_and_is_written_over(clock):
-    path = _record_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("[" * 200000, encoding="utf-8")
+    _written_record("[" * 200000)
 
     assert refused.read() == {}
     assert refused.since((searchers.BEATPORT,)) == {searchers.BEATPORT: ""}
@@ -660,20 +658,15 @@ def test_a_record_nested_past_the_parsers_depth_reads_as_none_and_is_written_ove
 
 
 def test_a_stop_over_a_token_discogs_refused_never_says_waiting_mends_it():
-    from cratekit.core.cause import refuse
-
-    cause = refuse(
-        "credential-missing",
-        "Discogs refused the recorded token",
-        origin=("test",),
-        detail={
-            searchers.REFUSED_DETAIL: {searchers.BEATPORT: BEGAN_STAMP},
-            searchers.DISCOGS_DETAIL: searchers.DISCOGS_TOKEN_REFUSED,
-        },
-    ).cause
+    detail = {
+        searchers.REFUSED_DETAIL: {searchers.BEATPORT: BEGAN_STAMP},
+        searchers.DISCOGS_DETAIL: searchers.DISCOGS_TOKEN_REFUSED,
+    }
+    said = "Discogs refused the recorded token"
+    cause = refuse("credential-missing", said, origin=("test",), detail=detail).cause
     stop = tag_cli._refusal_stop({"a.flac": cause})
 
     assert "Discogs refused the recorded token" in stop["said"]
     assert len(stop["steps"]) == 1
-    assert "crate login discogs-token" in stop["steps"][0]
+    assert LOGIN in stop["steps"][0]
     assert not any("later" in step for step in stop["steps"])

@@ -20,18 +20,26 @@ from typing import Any
 
 import pytest
 
-from cratekit.cli import doctor, label_sync, registry, sync_night
+from cratekit.cli import doctor, gates, label_sync, registry, sync_night
 from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, night_budget, provider_gate, rb_writer, staging_lock
 from cratekit.core.cause import Cause, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.intake import native
 from tests import test_sync_land as land
 from tests._sync_builders import exited
 from tests.cli_drive import drive
-from tests.test_sync_land import Tail, _account, _model_cannot_score, _ok, _refused
+from tests.test_sync_land import (
+    Tail,
+    _backup_missing,
+    _enqueue,
+    _model_cannot_score,
+    _ok,
+    _ready,
+    _refused,
+)
 
-#: The sync land suite's own machine and stand ins, bound here by name so
-#: pytest finds them as this module's fixtures.
+#: The sync land suite's own machine and stand ins, bound here as this module's fixtures.
 machine = land.machine
 full = land.full
 tail = land.tail
@@ -79,11 +87,16 @@ class Pass:
         return self.answer
 
 
-@pytest.fixture
-def one_pass(monkeypatch) -> Pass:
-    stand_in = Pass()
+def _standing(monkeypatch, answer: tuple[int, dict[str, Any]] | None = None) -> Pass:
+    """A ``Pass`` bound as the chain's dispatch."""
+    stand_in = Pass(answer)
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
     return stand_in
+
+
+@pytest.fixture
+def one_pass(monkeypatch) -> Pass:
+    return _standing(monkeypatch)
 
 
 @pytest.fixture
@@ -101,8 +114,26 @@ def plain(tmp_path, monkeypatch) -> config.Config:
     return built
 
 
-def _staging(cfg: config.Config) -> Path:
-    return cfg.paths.download_staging.expanduser().absolute()
+def _staging(cfg: config.Config, *files: str) -> Path:
+    """The staging folder, made, holding each of ``files``."""
+    staging = cfg.paths.download_staging.expanduser().absolute()
+    if files:
+        staging.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            (staging / name).write_bytes(b"x")
+    return staging
+
+
+def _spent(cfg: config.Config, **ledger: Any) -> None:
+    """The night's ledger written as ``ledger``, every call spent unless told otherwise."""
+    ledger.setdefault("spent", cfg.provider.night_calls)
+    night_budget._write(night_budget.Ledger(night=_night(), **ledger), night_budget.ledger_path())
+
+
+def _status_text(text: str) -> None:
+    path = sync_night.status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
 
 def _gate_total(calls: int) -> None:
@@ -125,9 +156,7 @@ def _write_status(**fields: Any) -> None:
         "outcome": sync_night.NOTHING,
         **fields,
     }
-    path = sync_night.status_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record))
+    _status_text(json.dumps(record))
 
 
 class _Foreign:
@@ -208,9 +237,7 @@ def test_the_night_module_reaches_no_launcher_no_decide_and_no_acknowledgment():
 def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_confirm(
     machine, monkeypatch, tail
 ):
-    cfg, script = machine
-    _account(monkeypatch, script, "101", "102")
-
+    cfg, script = _ready(machine, monkeypatch, "101", "102")
     envelope = exited(drive(["sync", "night"]), ExitCode.PENDING_HUMAN)
     assert envelope["outcome"] == "pending"
     record = _status()
@@ -222,8 +249,7 @@ def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_
     assert record["night"] == _night()
     assert "waits at the landing gate under run land-run" in record["line"]
     assert envelope["data"]["summary"]["night"] == record
-    # EVERY ANSWER IN THE CHAIN, read off the commands it ran: the tail's
-    # name confirm, and nothing else.
+    # EVERY ANSWER IN THE CHAIN, read off the commands it ran: the tail's name confirm alone.
     answered = [argv for argv in tail.calls if "-d" in argv or "--decision" in argv]
     assert answered and all(
         argv[:2] == ["-d", f"{tail_chain.NAME_GATE}={tail_chain.NAME_OPTION}"] for argv in answered
@@ -242,17 +268,8 @@ def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_
 def test_a_night_pass_that_needs_the_acknowledgment_stops_there_and_mints_none(
     machine, monkeypatch, tail
 ):
-    cfg, script = machine
-    _account(monkeypatch, script, "101")
-    tail.landing = lambda _argv: _refused(
-        refuse(
-            "backup-acknowledgment-missing",
-            "no backup acknowledgment is recorded",
-            remedy=Remedy.ACKNOWLEDGE_BACKUP,
-            origin=("test",),
-        ).cause
-    )
-
+    cfg, script = _ready(machine, monkeypatch, "101")
+    tail.landing = _backup_missing
     exited(drive(["sync", "night"]), ExitCode.PENDING_HUMAN)
     record = _status()
     assert record["outcome"] == sync_night.WAITING_ACK
@@ -267,12 +284,9 @@ def test_a_night_pass_that_needs_the_acknowledgment_stops_there_and_mints_none(
 def test_a_night_pass_the_vocal_model_cannot_score_waits_at_that_gate_and_queues_nothing(
     full, monkeypatch, tail
 ):
-    cfg, script = full
-    _account(monkeypatch, script, "101")
+    cfg, script = _ready(full, monkeypatch, "101")
     _model_cannot_score(monkeypatch)
-
     code, envelope = drive(["sync", "night"])
-
     record = _status()
     assert record["outcome"] == sync_night.WAITING, (code, envelope)
     assert record["gate"] == "sync.land.without-vocals"
@@ -317,18 +331,9 @@ def test_rekordbox_or_its_agent_up_refuses_before_any_call(plain, one_pass, monk
 
 
 def test_a_job_with_a_live_driver_refuses_before_any_call(plain, one_pass):
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key=registry.entry("tag.folder").handler_key,
-            payload={"folder": "x"},
-            cfg=plain,
-            item_ids=("a",),
-        )
-
+    job = _enqueue(plain, "tag.folder", {"folder": "x"}, "a")
     with jobs.driver_lock(job.job_id):
         code, envelope = drive(["sync", "night"])
-
     assert code == int(ExitCode.LIBRARY_BUSY), envelope
     assert envelope["cause"]["reason"] == "job-driver-held"
     assert job.job_id in envelope["cause"]["message"]
@@ -336,15 +341,7 @@ def test_a_job_with_a_live_driver_refuses_before_any_call(plain, one_pass):
 
 
 def test_a_job_whose_driver_died_does_not_hold_the_night(plain, one_pass):
-    with jobs.open_store() as store:
-        jobs.enqueue(
-            store,
-            handler_key=registry.entry("tag.folder").handler_key,
-            payload={"folder": "x"},
-            cfg=plain,
-            item_ids=("a",),
-        )
-
+    _enqueue(plain, "tag.folder", {"folder": "x"}, "a")
     exited(drive(["sync", "night"]))
     assert one_pass.calls == [["sync", "land"]]
 
@@ -364,9 +361,7 @@ def test_another_pass_holding_the_staging_lock_refuses_the_night_naming_it(
 
 
 def test_a_staging_folder_holding_what_a_landing_takes_refuses_a_new_pass(plain, one_pass):
-    staging = _staging(plain)
-    staging.mkdir(parents=True, exist_ok=True)
-    (staging / "Waiting - Track.flac").write_bytes(b"x")
+    _staging(plain, "Waiting - Track.flac")
     _write_status(
         outcome=sync_night.WAITING_GATE, night="2026-11-20",
         line="night of 2026-11-20: waiting at the landing gate under run G",
@@ -383,10 +378,7 @@ def test_a_staging_folder_holding_what_a_landing_takes_refuses_a_new_pass(plain,
 
 
 def test_a_staging_folder_with_nothing_a_landing_takes_lets_the_night_run(plain, one_pass):
-    staging = _staging(plain)
-    staging.mkdir(parents=True, exist_ok=True)
-    (staging / ".DS_Store").write_bytes(b"x")
-
+    _staging(plain, ".DS_Store")
     exited(drive(["sync", "night"]))
     assert one_pass.calls == [["sync", "land"]]
 
@@ -412,11 +404,7 @@ def test_the_pass_runs_under_the_nights_line_and_hour(plain, one_pass):
 
 def test_a_night_already_spent_refuses_before_any_call(plain, one_pass):
     _gate_total(0)
-    night_budget._write(
-        night_budget.Ledger(night=_night(), spent=plain.provider.night_calls),
-        night_budget.ledger_path(),
-    )
-
+    _spent(plain)
     envelope = exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     assert envelope["cause"]["reason"] == provider_gate.NIGHT
     assert str(plain.provider.night_calls) in envelope["cause"]["message"]
@@ -426,11 +414,7 @@ def test_a_night_already_spent_refuses_before_any_call(plain, one_pass):
 
 def test_a_firing_that_died_is_charged_to_the_next_of_the_same_night(plain, one_pass):
     _gate_total(500)
-    night_budget._write(
-        night_budget.Ledger(night=_night(), spent=100, open_start=300),
-        night_budget.ledger_path(),
-    )
-
+    _spent(plain, spent=100, open_start=300)
     drive(["sync", "night"])
 
     (line,) = one_pass.lines
@@ -473,36 +457,26 @@ def _stopped_by(reason: str, pass_run: str = "pass-1") -> tuple[int, dict[str, A
 
 
 def test_a_pass_the_nights_budget_stopped_is_continued_by_the_next_firing(plain, monkeypatch):
-    first = Pass(_stopped_by(provider_gate.NIGHT))
-    monkeypatch.setattr(tail_chain, "dispatch", first)
-
+    _standing(monkeypatch, _stopped_by(provider_gate.NIGHT))
     exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     record = _status()
     assert record["outcome"] == sync_night.STOPPED
     assert record["continue_pass"] == "pass-1"
     assert "the next firing continues pass pass-1" in record["line"]
-    # ITS OWN FILES ARE STAGED, which a new pass would refuse beside; the
-    # continue does not ask the folder, and sync land's own reading guards it.
-    staging = _staging(plain)
-    staging.mkdir(parents=True, exist_ok=True)
-    (staging / "101.wav").write_bytes(b"x")
-    second = Pass()
-    monkeypatch.setattr(tail_chain, "dispatch", second)
-
+    # ITS OWN FILES ARE STAGED, which a new pass would refuse beside; the continue does not ask.
+    _staging(plain, "101.wav")
+    second = _standing(monkeypatch)
     exited(drive(["sync", "night"]))
     assert second.calls == [["sync", "land", "--pass-run", "pass-1"]]
 
 
 @pytest.mark.parametrize("reason", ["unavailable-transient", "intake-list-unusable"])
 def test_a_pass_stopped_for_any_other_reason_is_not_continued(plain, monkeypatch, reason):
-    monkeypatch.setattr(tail_chain, "dispatch", Pass(_stopped_by(reason)))
-
+    _standing(monkeypatch, _stopped_by(reason))
     drive(["sync", "night"])
-
     record = _status()
     assert record["outcome"] == sync_night.STOPPED and record["continue_pass"] is None
-    second = Pass()
-    monkeypatch.setattr(tail_chain, "dispatch", second)
+    second = _standing(monkeypatch)
     drive(["sync", "night"])
     assert second.calls == [["sync", "land"]]
 
@@ -517,14 +491,9 @@ def test_a_pass_with_nothing_new_says_so(plain, one_pass):
 
 
 def test_a_record_that_cannot_be_read_continues_nothing(plain, monkeypatch):
-    path = sync_night.status_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{not json")
-    stand_in = Pass()
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
-
+    _status_text("{not json")
+    stand_in = _standing(monkeypatch)
     drive(["sync", "night"])
-
     assert stand_in.calls == [["sync", "land"]]
 
 
@@ -563,9 +532,7 @@ def test_doctor_shows_the_last_line_as_a_note(plain):
 
 def test_doctor_with_no_night_and_with_a_record_it_cannot_read(plain):
     assert "no night pass has run" in _doctor_row(plain).detail
-    path = sync_night.status_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("[]")
+    _status_text("[]")
     row = _doctor_row(plain)
     assert row.status is doctor.Status.INFO
     assert "could not be read" in row.detail
@@ -580,8 +547,7 @@ def test_doctor_runs_the_night_check_beside_the_hours_budget():
 
 
 def test_a_pass_by_hand_refuses_while_the_night_holds_the_lock(machine, monkeypatch, tail, foreign):
-    cfg, script = machine
-    _account(monkeypatch, script, "101")
+    cfg, script = _ready(machine, monkeypatch, "101")
     foreign(verb="crate sync night", run_id="night-run")
 
     envelope = exited(drive(["sync", "land"]), ExitCode.LIBRARY_BUSY)
@@ -613,7 +579,6 @@ def test_a_label_go_holds_the_lock_and_a_walk_does_not(monkeypatch):
     monkeypatch.setattr(
         label_sync, "_label_sync", lambda ctx: seen.append(staging_lock._HANDLE is not None)
     )
-
     label_sync.label_sync(_go_ctx(True))
     label_sync.label_sync(_go_ctx(False))
 
@@ -662,8 +627,7 @@ def test_the_night_never_reaches_tail_names_it_does_not_own():
 def test_a_refused_firing_keeps_the_pass_waiting_at_its_gate(machine, monkeypatch, tail):
     """Finding 1: the firing after a waiting pass refuses on the occupied folder,
     and once erased every field the landing needs."""
-    cfg, script = machine
-    _account(monkeypatch, script, "101", "102")
+    cfg, script = _ready(machine, monkeypatch, "101", "102")
     drive(["sync", "night"])
     waiting = _status()
     assert waiting["outcome"] == sync_night.WAITING_GATE
@@ -685,40 +649,30 @@ def test_a_refused_firing_keeps_the_pass_waiting_at_its_gate(machine, monkeypatc
 
 def test_a_refused_firing_keeps_the_pass_the_next_night_continues(plain, monkeypatch):
     """Finding 2: a budget stop, a refusal the same night, then the next night."""
-    monkeypatch.setattr(tail_chain, "dispatch", Pass(_stopped_by(provider_gate.NIGHT)))
+    _standing(monkeypatch, _stopped_by(provider_gate.NIGHT))
     drive(["sync", "night"])
-    staging = _staging(plain)
-    staging.mkdir(parents=True, exist_ok=True)
-    (staging / "101.wav").write_bytes(b"x")
+    _staging(plain, "101.wav")
     monkeypatch.setattr(rb_writer, "rekordbox_processes_running", lambda: ("rekordbox",))
     drive(["sync", "night"])
     monkeypatch.setattr(rb_writer, "rekordbox_processes_running", lambda: ())
-    night_budget._write(
-        night_budget.Ledger(night=_night(), spent=plain.provider.night_calls),
-        night_budget.ledger_path(),
-    )
+    _spent(plain)
     drive(["sync", "night"])
     assert _status()["continue_pass"] == "pass-1"
 
     later = datetime(2026, 11, 23, 3, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(sync_night, "_clock", lambda: later)
-    nxt = Pass()
-    monkeypatch.setattr(tail_chain, "dispatch", nxt)
+    nxt = _standing(monkeypatch)
     exited(drive(["sync", "night"]))
     assert nxt.calls == [["sync", "land", "--pass-run", "pass-1"]]
 
 
 def _run_with_gate(run_id: str, *, open_: bool) -> None:
-    from cratekit.cli import gates
-
     state = gates.RunState(run_id=run_id, verb="intake.land", created="then")
     state.open_gate = tail_chain.LAND_GATE if open_ else None
     gates.save(state)
 
 
 def _landed_passes(monkeypatch, *names: str) -> None:
-    from cratekit.intake import native
-
     monkeypatch.setattr(
         native, "landings_of_pass", lambda cfg, name: ("session-1",) if name in names else ()
     )
@@ -735,15 +689,10 @@ def _waiting_at(staging: Path, gate_run: str = "2026-11-22T030000Z-land") -> Non
 def test_an_answered_gate_over_tracks_still_staged_stays_owed(plain, one_pass, monkeypatch):
     """Round two, finding 1: an apply refused beside rekordbox, or an abort,
     answers the gate and leaves every track staged."""
-    staging = _staging(plain)
-    staging.mkdir(parents=True, exist_ok=True)
-    (staging / "101.wav").write_bytes(b"x")
-    _waiting_at(staging)
+    _waiting_at(_staging(plain, "101.wav"))
     _landed_passes(monkeypatch)
     _run_with_gate("2026-11-22T030000Z-land", open_=False)
-
     view = sync_night.settle(sync_night.read_status(), plain)
-
     assert view["outcome"] == sync_night.WAITING_GATE
     assert "has been answered and no landing of pass P is recorded" in view["line"]
     drive(["sync", "night"])
@@ -770,8 +719,7 @@ def test_a_landed_pass_reads_settled_everywhere_whatever_is_staged_since(
     code, envelope = drive(["sync", "night", "--last"])
     assert envelope["data"]["summary"]["night"]["outcome"] == sync_night.SETTLED
     assert "nothing waits" in _doctor_row(plain).detail
-    # THE NEXT FIRING READS IT SETTLED TOO, so its refusal beside 103.wav is a
-    # fresh record and keeps no pass that has landed.
+    # THE NEXT FIRING READS IT SETTLED TOO: its refusal beside 103.wav keeps no landed pass.
     exited(drive(["sync", "night"]), ExitCode.REFUSED_BY_POLICY)
     fresh = _status()
     assert fresh["outcome"] == sync_night.REFUSED and fresh["gate_run"] is None
@@ -790,8 +738,6 @@ def test_an_emptied_staging_folder_alone_never_settles_a_wait(plain, one_pass, m
 
 
 def test_a_landing_that_cannot_be_read_settles_nothing(plain, monkeypatch):
-    from cratekit.intake import native
-
     def unreadable(cfg, name):
         raise refuse("refused-by-policy", "the log cannot be listed", origin=("test",))
 
@@ -817,11 +763,8 @@ def test_every_stop_waiting_mends_is_continued(plain, monkeypatch, reason):
 
 def test_a_track_the_download_refused_is_named_in_the_record(machine, monkeypatch, tail):
     """Finding 7: a pass that waits at its gate is landed without its own run."""
-    cfg, script = machine
-    _account(monkeypatch, script, "101", "107", lossy=("107",))
-
+    cfg, script = _ready(machine, monkeypatch, "101", "107", lossy=("107",))
     drive(["sync", "night"])
-
     record = _status()
     assert record["download_refused"] == [{"item_id": "107", "reason": "lossy-refused"}]
     assert "107 (lossy-refused)" in record["line"]

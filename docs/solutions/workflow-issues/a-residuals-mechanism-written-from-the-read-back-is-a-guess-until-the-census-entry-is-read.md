@@ -38,7 +38,8 @@ author's word the same day.
 
 The shape the card describes, a track already in its target beside a stale
 sub with a genre that routes to that bucket, was already a move under
-R-758: `test_a_track_in_both_has_only_the_stale_one_removed` and the fixture
+R-758: `test_a_track_in_both_has_only_the_stale_one_removed` (now the `in-both` case of
+`test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does`) and the fixture
 row `m-both-reads-high` both pass on `main`. A build against the card would
 have had nothing to change, or would have changed the wrong layer.
 

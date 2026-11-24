@@ -50,21 +50,22 @@ def _adapter(cfg, store: _Store) -> tidal_account.TidalAccount:
     return tidal_account.TidalAccount(_MovableClient(store), sleep=lambda seconds: None, cfg=cfg)
 
 
-def _paired(cfg, store: _Store, playlist_id: str, members: list[str]) -> None:
+def _paired(cfg, playlist_id: str, members: list[str]) -> _Store:
+    """A fresh store whose ``playlist_id`` holds ``members``, paired by the author."""
+    store = _store()
     pairs.PairStore(cfg).mark(playlist_id, f"rb-{playlist_id}", name="Mine")
     store.members[playlist_id] = list(members)
+    return store
 
 
 def test_a_paired_playlist_takes_a_removal(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a", "b", "c"])
+    store = _paired(installed, "mine", ["a", "b", "c"])
     assert _adapter(installed, store).remove_tracks("mine", ("b",)) == ("b",)
     assert store.members["mine"] == ["a", "c"]
 
 
 def test_an_unpaired_playlist_of_the_author_is_still_refused_before_any_call(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a"])
+    store = _paired(installed, "mine", ["a"])
     store.members["theirs"] = ["a", "b"]
     with pytest.raises(CratekitError) as refused:
         _adapter(installed, store).remove_tracks("theirs", ("a",))
@@ -74,8 +75,7 @@ def test_an_unpaired_playlist_of_the_author_is_still_refused_before_any_call(ins
 
 
 def test_a_paired_playlist_is_never_removed_whole(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a"])
+    store = _paired(installed, "mine", ["a"])
     with pytest.raises(CratekitError) as refused:
         _adapter(installed, store).remove_playlist("mine")
     assert refused.value.cause.reason == "outbound-remove-refused"
@@ -83,8 +83,7 @@ def test_a_paired_playlist_is_never_removed_whole(installed):
 
 
 def test_the_order_moves_each_track_to_the_front_and_reads_back(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a", "b", "c", "d"])
+    store = _paired(installed, "mine", ["a", "b", "c", "d"])
     after = _adapter(installed, store).order_tracks("mine", ("a", "d", "b", "c"))
     assert after == ("a", "d", "b", "c")
     assert store.members["mine"] == ["a", "d", "b", "c"]
@@ -94,8 +93,7 @@ def test_the_order_moves_each_track_to_the_front_and_reads_back(installed):
 
 
 def test_an_order_already_standing_sends_nothing(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a", "b"])
+    store = _paired(installed, "mine", ["a", "b"])
     assert _adapter(installed, store).order_tracks("mine", ("a", "b")) == ("a", "b")
     assert store.moves == []
 
@@ -113,8 +111,7 @@ def test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_t
     installed,
 ):
     """U231: no read back between moves, the order's one later reading shows where it landed."""
-    store = _store()
-    _paired(installed, store, "mine", ["a", "b", "c"])
+    store = _paired(installed, "mine", ["a", "b", "c"])
     store.misplace = True
     account = _adapter(installed, store)
     assert account.order_tracks("mine", ("c", "b", "a")) == ("c", "b", "a")
@@ -123,8 +120,7 @@ def test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_t
 
 
 def test_a_track_held_twice_is_not_moved(installed):
-    store = _store()
-    _paired(installed, store, "mine", ["a", "b", "a", "c"])
+    store = _paired(installed, "mine", ["a", "b", "a", "c"])
     after = _adapter(installed, store).order_tracks("mine", ("c", "a", "b"))
     # "a" is held twice so it is not moved, "b" is the tail and stays, so
     # "c" alone goes to the front (U220).

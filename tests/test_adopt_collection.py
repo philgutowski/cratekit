@@ -21,6 +21,9 @@ from cratekit.adopt.scan import CollectionRow
 from cratekit.core import config, locations, rb_writer
 from cratekit.core.cause import CratekitError
 from tests import adopt_fixtures
+from tests.test_adopt_apply_cli import _platform_seams  # noqa: F401
+from tests.test_adopt_workers import _reader_cache as _clear_reader_cache  # noqa: F401
+from tests.test_adopt_workers import library  # noqa: F401
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
@@ -36,25 +39,8 @@ def _url(name: str) -> str:
 # ── Fixtures ──
 
 
-@pytest.fixture(autouse=True)
-def _clear_reader_cache():
-    """No test may inherit another test's library."""
-    collection.reset_cache()
-    yield
-    collection.reset_cache()
-
-
 @pytest.fixture
-def library(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "db").mkdir(parents=True)
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
-
-
-@pytest.fixture
-def cfg(library, monkeypatch):
+def cfg(library, monkeypatch):  # noqa: F811
     """Configuration with the application pin recorded, since an unset one refuses."""
     resolved = config.from_dict(
         valid_data(
@@ -68,22 +54,6 @@ def cfg(library, monkeypatch):
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     return resolved
-
-
-@pytest.fixture(autouse=True)
-def _platform_seams(monkeypatch):
-    """What this machine cannot speak for on behalf of a temporary library; that
-    the guards refuse a running application is proved in ``tests/test_rb_writer_db.py``."""
-    from pyrekordbox.db6 import database as binding
-
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
 
 
 def seed(db_path: Path) -> None:
@@ -118,10 +88,7 @@ def seed(db_path: Path) -> None:
 
 @pytest.fixture
 def synthetic(cfg):
-    """A disposable database carrying exactly the rows :func:`seed` writes.
-
-    Never a supplied snapshot: these tests assert rows by identifier.
-    """
+    """Never a supplied snapshot: these tests assert rows by identifier."""
     path = Path(cfg.library.db_path)
     _build_disposable_database(path, with_tag_category=False)
     seed(path)
@@ -196,11 +163,8 @@ def test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting():
 
 
 def test_the_reader_yields_the_rows_the_database_holds(cfg, synthetic):
-    """The recorded value is the percent-encoded URL rekordbox writes, passed through.
-
-    Both composition forms come back as recorded and distinct, a dangling genre
-    reads as no genre, and a row whose file is absent is still a row.
-    """
+    """The recorded value is the percent-encoded URL rekordbox writes, passed through,
+    and a row whose file is absent is still a row."""
     rows = {row.content_id: row for row in collection.read_collection(cfg)}
     assert set(rows) == {"1", "2", "10", "11", "12"}
     assert rows["10"].genre == "Techno"

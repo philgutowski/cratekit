@@ -1,9 +1,7 @@
 """Intake's set scenarios: a recording identified, queued and resolved, and its refusals (U307).
 
-`crate intake identify` writes a tracklist, `crate intake set` queues and
-resolves its tracks, a mix address is fetched, and an account playlist is made
-behind its gate; the spend refusals queue nothing. Every outside touch is the
-worker suite's fake. Its own file for its ``cfg`` and ``library``.
+Every outside touch is the worker suite's fake. Its own file for its ``cfg``
+and ``library``.
 """
 
 from __future__ import annotations

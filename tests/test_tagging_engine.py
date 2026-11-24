@@ -64,6 +64,23 @@ def answering(table: dict[str, SearchHit | None]):
     return searcher
 
 
+def walked(folder: Path) -> list[str]:
+    """The names of what the walk takes from ``folder``, sorted."""
+    return sorted(found.name for found in tag.audio_files(folder))
+
+
+def one_file(path: Path, hit: SearchHit | None = None, **kwargs) -> tag.TagResult:
+    """``tag_one`` over ``path`` with a searcher answering its stem with ``hit``."""
+    return tag.tag_one(path, searcher=answering({path.stem: hit}), **kwargs)
+
+
+def assert_fields(result, fields: dict) -> None:
+    """Each named field equals its value, ``is`` for None and the booleans."""
+    for name, want in fields.items():
+        got = getattr(result, name)
+        assert got is want if want is None or isinstance(want, bool) else got == want, name
+
+
 # A. The walk, which is also the item derivation
 
 
@@ -103,54 +120,54 @@ def test_a_root_that_is_not_a_directory_is_empty_rather_than_an_error(tmp_path):
 
 def test_the_walk_is_case_insensitive_about_the_extension(folder, silence):
     """A file off a case preserving volume arrives spelled how it was written."""
-    path = folder / "SHOUTED.FLAC"
-    shutil.copy2(silence, path)
+    shutil.copy2(silence, folder / "SHOUTED.FLAC")
 
-    assert [found.name for found in tag.audio_files(folder)] == ["SHOUTED.FLAC"]
-
-
-def test_the_walk_does_not_descend_into_the_acquisition_staging_tree(folder, silence):
-    """R-289: a killed attempt's partial download under the staging dotfile is never queued."""
-    place(folder, silence, "keep")
-    staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
-    place(staged.parent, silence, staged.name)
-
-    assert [found.name for found in tag.audio_files(folder)] == ["keep.flac"]
+    assert walked(folder) == ["SHOUTED.FLAC"]
 
 
-def test_the_walk_skips_the_appledouble_sidecar_beside_a_real_track(folder, silence):
-    """macOS writes ``._track.flac`` beside every file on an exFAT stick; it is no track."""
-    place(folder, silence, "track")
-    place(folder, silence, "._track")
+@pytest.mark.parametrize(
+    ("placed", "expected"),
+    [
+        # R-289: a killed attempt's partial download under the staging dotfile is never queued.
+        pytest.param(
+            ("keep", f"{acquire_cli.ACQUIRE_STAGING_DIRNAME}/job-1/0/partial"), ["keep.flac"],
+            id="the_walk_does_not_descend_into_the_acquisition_staging_tree",
+        ),
+        # macOS writes ``._track.flac`` beside every file on an exFAT stick; it is no track.
+        pytest.param(
+            ("track", "._track"), ["track.flac"],
+            id="the_walk_skips_the_appledouble_sidecar_beside_a_real_track",
+        ),
+        # ``...And Justice For All`` is real, so a guard skipping every dot name hides files.
+        pytest.param(
+            ("...Ready For It", "Metallica/...And Justice For All/01 Blackened"),
+            ["...Ready For It.flac", "01 Blackened.flac"],
+            id="a_title_that_opens_with_dots_is_walked_and_so_is_the_album_holding_it",
+        ),
+        # The guard is about two names, not depth.
+        pytest.param(
+            ("nested/deeper/a",), ["a.flac"], id="the_skip_does_not_stop_the_walk_recursing"
+        ),
+        # ``master.cli.staging_dir`` stages a partial encode under the library, skipped too.
+        pytest.param(
+            ("track", f"{master_cli.MASTER_STAGING_DIRNAME}/job-1/0/partial"), ["track.flac"],
+            id="the_master_staging_tree_is_skipped_too",
+        ),
+    ],
+)
+def test_the_walk_skips_what_is_no_track_and_keeps_every_track(folder, silence, placed, expected):
+    for name in placed:
+        place(folder, silence, name)
 
-    assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
-
-
-def test_a_title_that_opens_with_dots_is_walked_and_so_is_the_album_holding_it(folder, silence):
-    """``...And Justice For All`` is real, so a guard skipping every dot name would hide files."""
-    place(folder, silence, "...Ready For It")
-    place(folder, silence, "Metallica/...And Justice For All/01 Blackened")
-
-    assert sorted(found.name for found in tag.audio_files(folder)) == [
-        "...Ready For It.flac",
-        "01 Blackened.flac",
-    ]
-
-
-def test_the_skip_does_not_stop_the_walk_recursing(folder, silence):
-    """The guard is about two names, not depth."""
-    place(folder, silence, "nested/deeper/a")
-
-    assert [found.name for found in tag.audio_files(folder)] == ["a.flac"]
+    assert walked(folder) == sorted(expected)
 
 
 def test_a_root_that_is_itself_a_staging_tree_is_still_walked(folder, silence):
     """Names match relative to the root, so a library under one of these names is still walked."""
     named = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0"
-    named.mkdir(parents=True)
     place(named, silence, "1")
 
-    assert [found.name for found in tag.audio_files(named)] == ["1.flac"]
+    assert walked(named) == ["1.flac"]
 
 
 def test_the_skipped_dirnames_are_the_two_constants_that_own_them():
@@ -161,27 +178,69 @@ def test_the_skipped_dirnames_are_the_two_constants_that_own_them():
     }
 
 
-def test_the_master_staging_tree_is_skipped_too(folder, silence):
-    """``master.cli.staging_dir`` stages a partial encode under the library, skipped too."""
-    place(folder, silence, "track")
-    staged = folder / master_cli.MASTER_STAGING_DIRNAME / "job-1" / "0"
-    staged.mkdir(parents=True)
-    place(staged, silence, "partial")
-
-    assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
-
-
 # B. One file, which is one job item
 
 
-def test_a_file_with_no_genre_gets_the_answer_written_onto_it(folder, silence):
+@pytest.mark.parametrize(
+    ("hit", "fields", "on_disk"),
+    [
+        pytest.param(
+            SearchHit(genre=SPECIFIC), {"genre_written": SPECIFIC, "skipped": None}, SPECIFIC,
+            id="a_file_with_no_genre_gets_the_answer_written_onto_it",
+        ),
+        pytest.param(
+            None, {"skipped": tag.NO_HIT, "source_genre": ""}, None,
+            id="a_searcher_that_declines_leaves_the_file_alone_and_says_no_hit",
+        ),
+        # ``unmapped-genre`` is the user's to fix and carries the raw string, unlike ``no-hit``.
+        pytest.param(
+            SearchHit(genre=None, source="beatport", source_genre="Hardvapour"),
+            {"skipped": tag.UNMAPPED_GENRE, "source": "beatport", "source_genre": "Hardvapour"},
+            None,
+            id="a_catalogue_answer_the_taxonomy_could_not_map_is_its_own_reason",
+        ),
+        # R-650: the word is written, ``skipped`` None, and the result says the catalogue gave it.
+        pytest.param(
+            SearchHit(genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True),
+            {"skipped": None, "genre_written": "gqom", "off_taxonomy": True}, "gqom",
+            id="a_word_the_taxonomy_does_not_know_is_written_and_reported",
+        ),
+        # The ordinary write, which is the majority of every sweep, stays clean.
+        pytest.param(
+            SearchHit(genre=SPECIFIC, source="beatport", source_genre="Deep House"),
+            {"genre_written": SPECIFIC, "off_taxonomy": False}, SPECIFIC,
+            id="a_tag_the_declared_table_produced_is_not_off_taxonomy",
+        ),
+        # Only the source genre separates the two reasons: none is a catalogue answering nothing.
+        pytest.param(
+            SearchHit(genre=None, source="bandcamp", source_genre=""), {"skipped": tag.NO_HIT},
+            None, id="a_hit_with_no_genre_and_no_source_genre_is_a_plain_miss",
+        ),
+        pytest.param(
+            SearchHit(answers=tuple(tag.SourceAnswer(source, "miss") for source in "abc")),
+            {
+                "skipped": tag.NO_HIT,
+                "answers": tuple(tag.SourceAnswer(source, "miss") for source in "abc"),
+                "art_fetch_detail": "no catalogue carried the track, so no picture was named",
+            },
+            None,
+            id="a_decline_with_every_answer_a_miss_is_still_no_hit",
+        ),
+        # The artifact says where the value came from, not only what it was.
+        pytest.param(
+            SearchHit(genre=SPECIFIC, source="traxsource", source_genre="Deep House"),
+            {"source": "traxsource", "source_genre": "Deep House"}, SPECIFIC,
+            id="the_written_result_carries_which_catalogue_answered",
+        ),
+    ],
+)
+def test_a_file_with_no_genre_takes_what_the_searcher_answered(
+    folder, silence, hit, fields, on_disk
+):
     path = place(folder, silence, "track")
 
-    result = tag.tag_one(path, searcher=answering({"track": SearchHit(genre=SPECIFIC)}))
-
-    assert result.genre_written == SPECIFIC
-    assert result.skipped is None
-    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert_fields(one_file(path, hit), fields)
+    assert tags.read_genre_from_file(path) == on_disk
 
 
 def test_a_file_that_already_carries_a_genre_is_skipped_and_never_overwritten(folder, silence):
@@ -198,85 +257,22 @@ def test_a_file_that_already_carries_a_genre_is_skipped_and_never_overwritten(fo
     assert searcher.asked == [], "the searcher was asked about a file it cannot touch"
 
 
-def test_a_searcher_that_declines_leaves_the_file_alone_and_says_no_hit(folder, silence):
-    path = place(folder, silence, "track")
-
-    result = tag.tag_one(path, searcher=answering({}))
-
-    assert result.skipped == tag.NO_HIT
-    assert result.source_genre == ""
-    assert tags.read_genre_from_file(path) is None
-
-
-def test_a_catalogue_answer_the_taxonomy_could_not_map_is_its_own_reason(folder, silence):
-    """``unmapped-genre`` is the user's to fix and carries the raw string, unlike ``no-hit``."""
-    path = place(folder, silence, "track")
-    hit = SearchHit(genre=None, source="beatport", source_genre="Hardvapour")
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
-
-    assert result.skipped == tag.UNMAPPED_GENRE
-    assert result.source == "beatport"
-    assert result.source_genre == "Hardvapour"
-    assert tags.read_genre_from_file(path) is None
-
-
-def test_a_word_the_taxonomy_does_not_know_is_written_and_reported(folder, silence):
-    """R-650: the word is written, ``skipped`` None, and the result says the catalogue gave it."""
-    path = place(folder, silence, "track")
-    hit = SearchHit(genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True)
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
-
-    assert result.skipped is None
-    assert result.genre_written == "gqom"
-    assert tags.read_genre_from_file(path) == "gqom"
-    assert result.off_taxonomy is True
-
-
-def test_a_tag_the_declared_table_produced_is_not_off_taxonomy(folder, silence):
-    """The ordinary write, which is the majority of every sweep, stays clean."""
-    path = place(folder, silence, "track")
-    hit = SearchHit(genre=SPECIFIC, source="beatport", source_genre="Deep House")
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
-
-    assert result.genre_written == SPECIFIC
-    assert result.off_taxonomy is False
-
-
 def test_a_file_this_engine_did_not_tag_is_never_off_taxonomy(folder, silence):
     """The flag qualifies a write; a genre file searched for art holds a flagged hit unwritten."""
     tagged = place(folder, silence, "tagged")
     assert tags.write_genre(tagged, SPECIFIC)
     flagged = SearchHit(genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True)
-    result = tag.tag_one(tagged, searcher=answering({"tagged": flagged}))
+    result = one_file(tagged, flagged)
     assert result.skipped == tag.HAS_GENRE
     assert result.off_taxonomy is False
     assert tags.read_genre_from_file(tagged) == SPECIFIC
 
-    unmapped = place(folder, silence, "unmapped")
-    result = tag.tag_one(
-        unmapped,
-        searcher=answering(
-            {"unmapped": SearchHit(genre=None, source="beatport", source_genre="Techno")}
-        ),
-    )
+    unmapped = SearchHit(genre=None, source="beatport", source_genre="Techno")
+    result = one_file(place(folder, silence, "unmapped"), unmapped)
     assert (result.skipped, result.off_taxonomy) == (tag.UNMAPPED_GENRE, False)
 
-    missed = place(folder, silence, "missed")
-    result = tag.tag_one(missed, searcher=answering({"missed": None}))
+    result = one_file(place(folder, silence, "missed"))
     assert (result.skipped, result.off_taxonomy) == (tag.NO_HIT, False)
-
-
-def test_a_hit_with_no_genre_and_no_source_genre_is_a_plain_miss(folder, silence):
-    """Only the source genre separates the two reasons: none is a catalogue answering nothing."""
-    path = place(folder, silence, "track")
-    hit = SearchHit(genre=None, source="bandcamp", source_genre="")
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
-
-    assert result.skipped == tag.NO_HIT
 
 
 def test_a_decline_beside_an_unread_catalogue_is_sources_unread_and_not_no_hit(folder, silence):
@@ -287,9 +283,7 @@ def test_a_decline_beside_an_unread_catalogue_is_sources_unread_and_not_no_hit(f
         tag.SourceAnswer("traxsource", "blocked", note="HTTP 403"),
         tag.SourceAnswer("bandcamp", "blocked"),
     )
-    hit = SearchHit(answers=answers, unread=("traxsource", "bandcamp"))
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
+    result = one_file(path, SearchHit(answers=answers, unread=("traxsource", "bandcamp")))
 
     assert result.skipped == tag.SOURCES_UNREAD
     assert result.genre_written is None
@@ -298,27 +292,6 @@ def test_a_decline_beside_an_unread_catalogue_is_sources_unread_and_not_no_hit(f
     assert tags.read_genre_from_file(path) is None
     assert result.art_fetch == tag.ART_UNAVAILABLE
     assert "traxsource, bandcamp went unread" in result.art_fetch_detail
-
-
-def test_a_decline_with_every_answer_a_miss_is_still_no_hit(folder, silence):
-    path = place(folder, silence, "track")
-    answers = tuple(tag.SourceAnswer(source, "miss") for source in ("a", "b", "c"))
-
-    result = tag.tag_one(path, searcher=answering({"track": SearchHit(answers=answers)}))
-
-    assert result.skipped == tag.NO_HIT
-    assert result.answers == answers
-    assert result.art_fetch_detail == "no catalogue carried the track, so no picture was named"
-
-
-def test_the_written_result_carries_which_catalogue_answered(folder, silence):
-    """The artifact says where the value came from, not only what it was."""
-    path = place(folder, silence, "track")
-    hit = SearchHit(genre=SPECIFIC, source="traxsource", source_genre="Deep House")
-
-    result = tag.tag_one(path, searcher=answering({"track": hit}))
-
-    assert (result.source, result.source_genre) == ("traxsource", "Deep House")
 
 
 def test_the_title_tag_is_used_and_the_stem_is_the_fallback(folder, silence):
@@ -418,12 +391,8 @@ def test_a_candidate_whose_answer_is_itself_too_coarse_is_refused_per_candidate(
     place(folder, silence, "coarse", CATCH_ALL)
     (candidate,) = retag.select(folder, declared=TAXONOMY).candidates
 
-    result = retag.retag_one(
-        candidate,
-        searcher=answering({"coarse": SearchHit(genre=CATCH_ALL)}),
-        declared=TAXONOMY,
-        decided={},
-    )
+    searcher = answering({"coarse": SearchHit(genre=CATCH_ALL)})
+    result = retag.retag_one(candidate, searcher=searcher, declared=TAXONOMY, decided={})
 
     assert result.reason == retag.ANSWER_TOO_COARSE
     assert result.written is None
@@ -575,7 +544,7 @@ def test_a_corrupt_image_reports_an_error_and_the_genre_flow_still_proceeds(fold
     plant(path, b"\xff\xd8\xff\xe0 not really a jpeg")
     stored = blocks(path)[0].data
 
-    result = tag.tag_one(path, searcher=answering({"track": SearchHit(genre=SPECIFIC)}))
+    result = one_file(path, SearchHit(genre=SPECIFIC))
 
     assert result.art_repair == art.REPAIR_ERROR
     assert "could not be repaired" in result.art_repair_detail
@@ -661,9 +630,7 @@ def test_a_save_that_fails_is_an_error_and_never_raises(folder, silence, monkeyp
 
 
 def test_a_result_built_without_the_repair_does_not_claim_it_passed():
-    assert tag.TagResult(path=Path("x.flac"), genre_written=None).art_repair == (
-        art.REPAIR_UNCHECKED
-    )
+    assert tag.TagResult(path=Path("x.flac"), genre_written=None).art_repair == art.REPAIR_UNCHECKED
 
 
 def _noise_jpeg(width: int, height: int) -> bytes:
@@ -697,29 +664,41 @@ def test_a_picture_too_large_for_the_cap_at_native_size_is_shrunk_not_left_blank
     assert decoded(block.data)[:3] == ("JPEG", (800, 571), False)
 
 
-def test_a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlarged(
-    folder, silence, monkeypatch
+@pytest.mark.parametrize(
+    ("raised", "detail"),
+    [
+        pytest.param(
+            art.ArtError("does not fit"), "too small to shrink",
+            id="a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlarged",
+        ),
+        # The repair never raises, whatever Pillow throws, not only ``ArtError``.
+        pytest.param(
+            OSError("decoder fell over"), "decoder fell over",
+            id="an_encoder_failure_that_is_not_an_art_error_is_still_an_error",
+        ),
+    ],
+)
+def test_an_encoder_that_raises_is_an_error_and_the_picture_is_kept(
+    folder, silence, monkeypatch, raised, detail
 ):
     path = place(folder, silence, "track")
     plant(path, _jpeg(320, 200))
     stored = blocks(path)[0].data
 
-    def never_fits(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
-        raise art.ArtError("does not fit")
+    def encoder(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
+        raise raised
 
-    monkeypatch.setattr(art, "to_cdj_jpeg", never_fits)
+    monkeypatch.setattr(art, "to_cdj_jpeg", encoder)
 
     repair = art.repair_in_place(path)
 
     assert repair.status == art.REPAIR_ERROR
-    assert "too small to shrink" in repair.detail
+    assert detail in repair.detail
     assert blocks(path)[0].data == stored
 
 
 @pytest.mark.parametrize(
-    "data",
-    [b"garbage", _jpeg(320, 200)[:400]],
-    ids=["not-an-image", "truncated-jpeg"],
+    "data", [b"garbage", _jpeg(320, 200)[:400]], ids=["not-an-image", "truncated-jpeg"]
 )
 def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silence, data):
     """An undecodable filled block renders blank; the truncated JPEG fails only a full decode."""
@@ -727,24 +706,6 @@ def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silen
     plant(path, data, dims=(320, 200, 24))
 
     assert art.repair_in_place(path).status == art.REPAIR_ERROR
-
-
-def test_an_encoder_failure_that_is_not_an_art_error_is_still_an_error(
-    folder, silence, monkeypatch
-):
-    """The repair never raises, whatever Pillow throws, not only ``ArtError``."""
-    path = place(folder, silence, "track")
-    plant(path, _jpeg(320, 200))
-
-    def breaks(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
-        raise OSError("decoder fell over")
-
-    monkeypatch.setattr(art, "to_cdj_jpeg", breaks)
-
-    repair = art.repair_in_place(path)
-
-    assert repair.status == art.REPAIR_ERROR
-    assert "decoder fell over" in repair.detail
 
 
 # D. U85: a file with no picture gets the catalogue's, and no other file does
@@ -766,14 +727,16 @@ def fetching(answer: bytes | None = None, *, raises: Exception | None = None):
     return fetch_image
 
 
+#: The hit most art cases answer: a genre and a picture to fetch.
+ART_HIT = SearchHit(genre=SPECIFIC, art_url=ART_URL)
+
+
 def test_a_file_with_no_genre_and_no_art_gets_both(folder, silence):
     path = place(folder, silence, "track")
     fetch = fetching()
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, source="beatport", art_url=ART_URL)}),
-        fetch_image=fetch,
+    result = one_file(
+        path, SearchHit(genre=SPECIFIC, source="beatport", art_url=ART_URL), fetch_image=fetch
     )
 
     assert result.genre_written == SPECIFIC
@@ -791,9 +754,8 @@ def test_a_file_with_a_genre_and_no_art_gets_art_and_its_genre_is_untouched(fold
     """Art and genre are independent needs, so the tagged file is still asked."""
     path = place(folder, silence, "track", SPECIFIC)
     searcher = answering({"track": SearchHit(genre="Techno", source="beatport", art_url=ART_URL)})
-    fetch = fetching()
 
-    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch)
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetching())
 
     assert searcher.asked == [("", "track")]
     assert result.skipped == tag.HAS_GENRE
@@ -825,11 +787,7 @@ def test_an_untagged_file_with_zeroed_art_gets_its_genre_and_keeps_its_picture(f
     plant(path, _jpeg(320, 200))
     fetch = fetching()
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetch,
-    )
+    result = one_file(path, ART_HIT, fetch_image=fetch)
 
     assert result.genre_written == SPECIFIC
     assert result.art_fetch == tag.ART_PRESENT
@@ -838,48 +796,37 @@ def test_an_untagged_file_with_zeroed_art_gets_its_genre_and_keeps_its_picture(f
     assert (block.width, block.height) == (320, 200)
 
 
-def test_an_image_404_still_writes_the_genre_and_reports_art_unavailable(folder, silence):
+@pytest.mark.parametrize(
+    ("fetch", "detail"),
+    [
+        pytest.param(
+            {"fetch_image": fetching(b"")}, ART_URL,
+            id="an_image_404_still_writes_the_genre_and_reports_art_unavailable",
+        ),
+        pytest.param(
+            {"fetch_image": fetching(raises=OSError("connection reset"))}, "connection reset",
+            id="a_fetch_that_raises_is_unavailable_and_never_fails_the_item",
+        ),
+        pytest.param(
+            {"fetch_image": fetching(b"<html>not found</html>")}, "not a usable picture",
+            id="bytes_that_are_not_a_picture_are_unavailable_and_nothing_is_embedded",
+        ),
+        pytest.param(
+            {}, "no image fetch", id="no_fetch_supplied_is_unavailable_rather_than_a_silent_skip"
+        ),
+    ],
+)
+def test_a_picture_that_cannot_be_fetched_is_unavailable_and_the_genre_still_lands(
+    folder, silence, fetch, detail
+):
     path = place(folder, silence, "track")
-    fetch = fetching(b"")
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetch,
-    )
+    result = one_file(path, ART_HIT, **fetch)
 
     assert result.genre_written == SPECIFIC
     assert tags.read_genre_from_file(path) == SPECIFIC
     assert result.art_fetch == tag.ART_UNAVAILABLE
-    assert ART_URL in result.art_fetch_detail
-    assert blocks(path) == []
-
-
-def test_a_fetch_that_raises_is_unavailable_and_never_fails_the_item(folder, silence):
-    path = place(folder, silence, "track")
-
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetching(raises=OSError("connection reset")),
-    )
-
-    assert result.genre_written == SPECIFIC
-    assert result.art_fetch == tag.ART_UNAVAILABLE
-    assert "connection reset" in result.art_fetch_detail
-
-
-def test_bytes_that_are_not_a_picture_are_unavailable_and_nothing_is_embedded(folder, silence):
-    path = place(folder, silence, "track")
-
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetching(b"<html>not found</html>"),
-    )
-
-    assert result.art_fetch == tag.ART_UNAVAILABLE
-    assert "not a usable picture" in result.art_fetch_detail
+    assert detail in result.art_fetch_detail
     assert blocks(path) == []
 
 
@@ -887,9 +834,7 @@ def test_a_fake_searcher_with_no_art_url_still_works_and_nothing_is_fetched(fold
     path = place(folder, silence, "track")
     fetch = fetching()
 
-    result = tag.tag_one(
-        path, searcher=answering({"track": SearchHit(genre=SPECIFIC)}), fetch_image=fetch
-    )
+    result = one_file(path, SearchHit(genre=SPECIFIC), fetch_image=fetch)
 
     assert result.genre_written == SPECIFIC
     assert result.art_fetch == tag.ART_UNAVAILABLE
@@ -897,23 +842,11 @@ def test_a_fake_searcher_with_no_art_url_still_works_and_nothing_is_fetched(fold
     assert blocks(path) == []
 
 
-def test_no_fetch_supplied_is_unavailable_rather_than_a_silent_skip(folder, silence):
-    path = place(folder, silence, "track")
-
-    result = tag.tag_one(
-        path, searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)})
-    )
-
-    assert result.genre_written == SPECIFIC
-    assert result.art_fetch == tag.ART_UNAVAILABLE
-    assert "no image fetch" in result.art_fetch_detail
-
-
 def test_a_tagged_file_nobody_carries_is_still_has_genre_and_art_unavailable(folder, silence):
     path = place(folder, silence, "track", SPECIFIC)
     fetch = fetching()
 
-    result = tag.tag_one(path, searcher=answering({}), fetch_image=fetch)
+    result = one_file(path, fetch_image=fetch)
 
     assert result.skipped == tag.HAS_GENRE
     assert result.art_fetch == tag.ART_UNAVAILABLE
@@ -924,11 +857,7 @@ def test_an_unmapped_genre_on_the_matched_row_still_brings_its_picture(folder, s
     """The row passed the artist and title gate, and only its WORD was unmapped."""
     path = place(folder, silence, "track")
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(source_genre="gqom", art_url=ART_URL)}),
-        fetch_image=fetching(),
-    )
+    result = one_file(path, SearchHit(source_genre="gqom", art_url=ART_URL), fetch_image=fetching())
 
     assert result.skipped == tag.UNMAPPED_GENRE
     assert result.art_fetch == tag.ART_EMBEDDED
@@ -960,11 +889,7 @@ def test_a_picture_the_file_will_not_take_is_an_error_and_the_genre_stands(
     path = place(folder, silence, "track")
     monkeypatch.setattr(art, "write_front_cover", lambda _path, _jpeg: False)
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetching(),
-    )
+    result = one_file(path, ART_HIT, fetch_image=fetching())
 
     assert result.genre_written == SPECIFIC
     assert result.art_fetch == tag.ART_ERROR
@@ -974,11 +899,7 @@ def test_an_mp3_with_no_picture_gets_an_id3_front_cover(tmp_path):
     """Not only FLAC: the write goes through the per container writer."""
     path = synth_container(tmp_path, ".mp3")
 
-    result = tag.tag_one(
-        path,
-        searcher=answering({path.stem: SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
-        fetch_image=fetching(),
-    )
+    result = one_file(path, ART_HIT, fetch_image=fetching())
 
     assert result.art_fetch == tag.ART_EMBEDDED
     (picture,) = art.read_pictures(path)

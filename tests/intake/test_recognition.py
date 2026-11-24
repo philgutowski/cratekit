@@ -202,8 +202,7 @@ def test_the_grid_is_a_function_of_the_duration_alone_and_counted_without_buildi
 
 
 def test_a_nonsense_duration_is_refused_by_the_bound_before_any_grid_exists(ledger):
-    """A broken header answering two billion seconds must not allocate two
-    billion offsets on the way to the refusal that exists for it."""
+    """A broken header answering two billion seconds must not allocate two billion offsets."""
     for duration in (2_147_483_647.0, float("inf"), 1e18):
         transport = FakeTransport()
         cause = refused(transport, duration_s=duration, ledger=ledger)
@@ -348,8 +347,7 @@ def test_identification_returns_the_folded_rows_and_counts_every_call(ledger):
 
 
 def test_a_set_nobody_recognised_is_zero_rows_and_neither_spend_refusal_is_a_miss(ledger):
-    """The run's own bound and the provider's quota are two refusals, and a
-    set nobody recognised is neither: zero rows, the misses counted."""
+    """The run's own bound and the provider's quota are two refusals; an empty set is neither."""
     result = run(FakeTransport(miss(), miss()), duration_s=40.0, ledger=ledger)
     assert result.rows == ()
     assert (result.calls, result.misses, result.parts) == (2, 2, 1)
@@ -401,24 +399,35 @@ def test_a_hand_built_budget_bounds_the_run_and_the_shipped_one_bounds_the_month
     assert Budget.from_config(config.RecognitionConfig(monthly_calls=7)).monthly == 7
 
 
-def test_a_provider_quota_answer_is_a_spend_refusal_and_never_a_miss(ledger):
-    quota = coded(3003, "requests limit exceeded")
-    transport = FakeTransport(hit("Aurora Bloom", "Sun Path", isrc="X1"), quota, miss())
+@pytest.mark.parametrize(
+    "answers, reason, detail, remedy",
+    [
+        (
+            [hit("Aurora Bloom", "Sun Path", isrc="X1"), coded(3003, "requests limit exceeded"), miss()],
+            "intake-recognition-spend-bound",
+            {"kind": "provider-quota", "code": 3003, "calls": 2},
+            Remedy.RETRY_LATER,
+        ),
+        ([coded(3001, "invalid access key"), miss()], "auth-failed", {"code": 3001}, Remedy.SET_CREDENTIAL),
+        (
+            [hit("Aurora Bloom", "Sun Path"), coded(3005, "something new"), miss()],
+            "intake-recognition-failed",
+            {"code": 3005, "calls": 2},
+            None,
+        ),
+    ],
+    ids=["quota-is-a-spend-refusal-never-a-miss", "credential-is-auth-failed", "unclassified-names-the-code"],
+)
+def test_an_answer_that_ends_the_run_stops_it_at_that_call(ledger, answers, reason, detail, remedy):
+    transport = FakeTransport(*answers)
     cause = refused(transport, duration_s=60.0, ledger=ledger)
-    assert cause.reason == "intake-recognition-spend-bound"
-    assert (cause.detail["kind"], cause.detail["code"], cause.detail["calls"]) == ("provider-quota", 3003, 2)
-    assert cause.remediation.remedy == Remedy.RETRY_LATER
-    assert len(transport.requests) == 2, "a call was made after the quota answer"
-    assert ledger.used("2026-09") == 2, "the calls made before the refusal were not counted"
-
-
-def test_a_credential_answer_ends_the_run_as_auth_failed(ledger):
-    transport = FakeTransport(coded(3001, "invalid access key"), miss())
-    cause = refused(transport, duration_s=60.0, ledger=ledger)
-    assert cause.reason == "auth-failed"
-    assert cause.detail["code"] == 3001
-    assert cause.remediation.remedy == Remedy.SET_CREDENTIAL
-    assert len(transport.requests) == 1
+    assert cause.reason == reason
+    assert {key: cause.detail[key] for key in detail} == detail
+    if remedy is not None:
+        assert cause.remediation.remedy == remedy
+    assert len(transport.requests) == len(answers) - 1, "a call was made after the answer that ends the run"
+    if "calls" in detail:
+        assert ledger.used("2026-09") == 2, "the calls made before the refusal were not counted"
 
 
 def test_a_transient_answer_or_a_transport_that_raised_skips_the_chunk_and_is_counted(ledger):
@@ -441,14 +450,6 @@ def test_a_run_where_no_call_got_an_answer_is_a_failure_and_not_an_empty_set(led
     assert cause.retryable is True
     assert cause.detail["calls"] == 2
     assert ledger.used("2026-09") == 2
-
-
-def test_an_answer_this_build_cannot_classify_stops_the_run_naming_the_code(ledger):
-    transport = FakeTransport(hit("Aurora Bloom", "Sun Path"), coded(3005, "something new"), miss())
-    cause = refused(transport, duration_s=60.0, ledger=ledger)
-    assert cause.reason == "intake-recognition-failed"
-    assert (cause.detail["code"], cause.detail["calls"]) == (3005, 2)
-    assert len(transport.requests) == 2
 
 
 def test_a_recording_that_cannot_be_measured_or_carved_fails_without_a_call(ledger):
@@ -727,8 +728,7 @@ def test_a_second_pass_over_an_unchanged_recording_spends_nothing(tmp_path, cach
     ],
 )
 def test_a_changed_file_plan_or_host_misses_the_cache(tmp_path, cache, ledger, change, owed):
-    """The same bytes measured to a different length are a different grid,
-    and another regional host is another bucket."""
+    """Another length is a different grid, and another regional host is another bucket."""
     source = real_recording(tmp_path)
     cached_run(FakeTransport(*three_answers()), source, cache, ledger)
     if "content" in change:
@@ -941,8 +941,7 @@ def test_partition_cuts_the_grid_into_the_fewest_even_parts_under_the_bound(coun
 
 
 def test_a_five_hour_mix_is_identified_in_two_even_parts_as_one_set():
-    """The eleventh sitting's shape: 732 chunks, two halves of 366. One pass,
-    one result, and a record playing across the cut is one row and not two."""
+    """The eleventh sitting's shape: a record playing across the cut is one row and not two."""
     five_hours_five = 5 * 3600.0 + 5 * 60
     grid = acrcloud.sample_offsets(five_hours_five)
     assert len(grid) == 732
@@ -978,9 +977,7 @@ def test_a_recording_over_the_parts_ceiling_is_refused_before_any_carve_call_or_
 
 
 def test_the_month_is_asked_once_over_the_whole_set_before_the_first_part(ledger):
-    """A 100 second recording is four chunks, two parts of two under a run
-    bound of two. Two calls already spent and a month of five cannot afford
-    the four, and a check per part would have let the first part through."""
+    """Two spent and a month of five cannot afford four chunks; a check per part passes the first."""
     ledger.record(2, "2026-09")
     transport, budget = FakeTransport(), Budget(per_run=2, monthly=5)
     cause = refused(transport, duration_s=100.0, budget=budget, ledger=ledger)
@@ -1002,9 +999,7 @@ def test_the_month_is_asked_once_over_the_whole_set_before_the_first_part(ledger
     ids=["one-oversize-part", "oversize-second-part"],
 )
 def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call(ledger, monkeypatch, cut):
-    """The run bound is a property of the spend, not of the cut. A partition
-    that returned an oversize part, first or LAST, meets the guard before the
-    transport, so the parts before it are not paid for either."""
+    """The run bound is a property of the spend, not of the cut, so the parts before are unpaid."""
     monkeypatch.setattr(acrcloud, "partition", lambda offsets, *, per_run: cut(offsets))
     transport, carver = FakeTransport(), FakeCarver(100.0)
     cause = refused(transport, carver=carver, budget=Budget(per_run=2), ledger=ledger)
@@ -1018,9 +1013,7 @@ def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call
 
 
 def test_a_split_set_is_one_cached_plan_and_a_gap_meets_the_bound_on_what_is_owed(tmp_path, cache, ledger):
-    """One chunk plan for the whole grid: a pass over a split set that owes
-    only a gap meets the run bound on the gap, and a pass that owes nothing
-    pays for nothing and still says how many parts it is."""
+    """One chunk plan for the whole grid, so a pass owing only a gap meets the run bound on it."""
     source, split = real_recording(tmp_path), {"duration_s": 100.0, "budget": Budget(per_run=2)}
     gap = FakeTransport(miss(), ConnectionError("down"), ConnectionError("down"), miss())
     first = cached_run(gap, source, cache, ledger, **split)

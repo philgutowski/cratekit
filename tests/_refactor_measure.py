@@ -1,7 +1,6 @@
 """``scripts/refactor_measure.py``, loaded once by path for the suites that read through it (U296).
 
 So the suite and the refactor's audit measure with the same functions.
-Not a test module: pytest does not collect it, and it defines no tests.
 """
 
 from __future__ import annotations

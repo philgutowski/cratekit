@@ -1,11 +1,9 @@
 """Fake tag readings for a derivation, served per field at ``tags.read_tags`` (U250).
 
-The routing suites compose per field fakes keyed on each file's NAME, served
-at :func:`cratekit.core.tags.read_tags`, so the production ``read_truth``
-still runs with its one open, field keys and number conversion. A served
-field answers stored text (numbers as digits) or None; an unserved field
-reads the real file. :func:`read_tag` and the single field readers see the
-fake; the strict readers (``read_tags_checked``, the energy reader) do not.
+Keyed on each file's NAME and served there, so the production ``read_truth``
+still runs with its one open, field keys and number conversion; an unserved
+field reads the real file. The strict readers (``read_tags_checked``, the
+energy reader) do not see the fake.
 """
 
 from __future__ import annotations

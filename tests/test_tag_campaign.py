@@ -9,13 +9,16 @@ planning what is left. Catalogue answers are recorded. D1 applies.
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
+import mutagen
 import pytest
 
+from cratekit.cli import registry
 from cratekit.cli.verbs import tag_campaign
 from cratekit.core import active_taxonomy, config, rb_writer, tags
 from cratekit.core.cause import refuse
@@ -27,6 +30,7 @@ from tests import test_tag_backlog as _backlog_suite
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive, drive_human
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
+from tests.test_tag_rows import moved_columns, opened
 
 machine = _backlog_suite.machine
 acknowledged = _suggest_suite.acknowledged
@@ -74,11 +78,36 @@ def _decide(run_id: str, answer: str = "apply") -> None:
     assert decided == int(ExitCode.OK), envelope
 
 
+def _approved(argv: list[str] = ()) -> str:
+    """The campaign's first act and ``apply`` recorded: the run."""
+    run_id, _refused = _first_act(list(argv))
+    _decide(run_id)
+    return run_id
+
+
 def _two_acts(argv: list[str] = ()) -> tuple[int, dict, dict]:
     run_id, refused = _first_act(list(argv))
     _decide(run_id)
     code, acted = drive(["--run", run_id, *VERB, *argv])
     return code, acted, refused
+
+
+def _rekordbox_running_at_the_write(monkeypatch) -> None:
+    """Every open to write refusing as rekordbox running does; reads still open."""
+    real = rb_writer.open_db
+
+    def running(path, *args, require_closed=False, **kwargs):
+        if require_closed:
+            raise refuse("rekordbox-running", "rekordbox is running", origin=("test",))
+        return real(path, *args, require_closed=require_closed, **kwargs)
+
+    monkeypatch.setattr(rb_writer, "open_db", running)
+
+
+def _words_items(refused: dict, *words: str) -> list[dict]:
+    """The words step's items at the gate for ``words``."""
+    shown = refused["cause"]["detail"]["shown"]["items"]
+    return [item for item in shown if item["kind"] == "words" and item["word"] in words]
 
 
 def _steps(envelope: dict) -> dict[str, dict]:
@@ -87,8 +116,6 @@ def _steps(envelope: dict) -> dict[str, dict]:
 
 def _tempo(cfg: config.Config, paths) -> dict[str, object]:
     """Every BPM column and every file's tags but genre: a written file moved its genre alone."""
-    import mutagen
-
     connection = sqlite3.connect(cfg.library.db_path)
     try:
         found: dict[str, object] = {
@@ -184,19 +211,10 @@ def test_a_suggest_plan_narrowed_writes_a_row_only_with_the_genre_approved():
 
 def _word(spelling: str, *, options=True, settled: str = "", unanswerable=None) -> backlog.Word:
     return backlog.Word(
-        word=spelling,
-        rows=2,
-        spellings=((spelling, 2),),
-        files_carry=2,
-        several=0,
-        elsewhere=0,
-        on_row=0,
-        neighbours=(),
-        options=(
-            (backlog.Option(backlog.LEAVE, "Leave it", "", "", 0),) if options else ()
-        ),
-        settled=settled,
-        unanswerable=unanswerable,
+        word=spelling, rows=2, spellings=((spelling, 2),), files_carry=2, several=0, elsewhere=0,
+        on_row=0, neighbours=(),
+        options=(backlog.Option(backlog.LEAVE, "Leave it", "", "", 0),) if options else (),
+        settled=settled, unanswerable=unanswerable,
     )
 
 
@@ -210,8 +228,7 @@ def test_an_answer_names_its_word_in_any_case_and_carries_the_plans_spelling():
         plan, alias=[f"indie tech={MELODIC}"], folder=[GRIME], leave_word=[]
     )
     assert [(answer.word, answer.answer, answer.genre) for answer in found] == [
-        (INDIE, backlog.ALIAS, MELODIC),
-        (GRIME, backlog.FOLDER, ""),
+        (INDIE, backlog.ALIAS, MELODIC), (GRIME, backlog.FOLDER, ""),
     ]
 
 
@@ -340,15 +357,8 @@ def test_only_the_genre_column_moves_on_a_written_row(acknowledged, silence):
     before = _content(cfg)
     code, acted, _refused = _two_acts(["--alias", INDIE_ALIAS])
     assert code == int(ExitCode.OK), acted
-    after = _content(cfg)
-    written = {"10", "12", "41", "15", "16"}
-    for content_id, was in before.items():
-        moved = {
-            column
-            for column, value in after[content_id].items()
-            if value != was[column] and column not in rb_writer.BOOKKEEPING_COLUMNS
-        }
-        assert moved == ({"GenreID"} if content_id in written else set()), content_id
+    written = ("10", "12", "41", "15", "16")
+    assert moved_columns(before, _content(cfg)) == dict.fromkeys(written, {"GenreID"})
 
 
 def test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files(acknowledged, silence):
@@ -391,13 +401,8 @@ def test_rows_joining_needs_genre_and_any_other_routed_row_are_never_written(
 ):
     """R-1734: the campaign writes only the backlog's rows, never row 70's or routed row 72's."""
     cfg = acknowledged
-    build(
-        cfg,
-        silence,
-        Track("70", MELODIC, INDIE),
-        Track("72", DEEP, MELODIC),
-        Track("71", "", MELODIC),
-    )
+    build(cfg, silence, Track("70", MELODIC, INDIE), Track("72", DEEP, MELODIC),
+          Track("71", "", MELODIC))
     code, acted, _refused = _two_acts()
     assert code == int(ExitCode.OK), acted
     assert _genre_of(cfg, "71") == MELODIC
@@ -412,9 +417,7 @@ def test_a_proposal_that_appears_after_the_first_step_is_left_for_the_next_run(
     """R-1732: a proposal the first step made was never shown, so it is left and named."""
     cfg = acknowledged
     build(
-        cfg,
-        silence,
-        Track("30", "", "", artist="The Artist", folder="one"),
+        cfg, silence, Track("30", "", "", artist="The Artist", folder="one"),
         *[Track(str(31 + n), INDIE, DEEP, artist="The Artist", folder="one") for n in range(9)],
         Track("40", MELODIC, MELODIC, artist="The Artist", folder="one"),
     )
@@ -463,8 +466,7 @@ def test_a_row_that_changes_after_the_gate_refuses_as_stale_with_nothing_written
 ):
     cfg = acknowledged
     paths = build(cfg, silence, *_library())
-    run_id, _refused = _first_act([])
-    _decide(run_id)
+    run_id = _approved()
     assert tags.write_tags(paths["13"], {"genre": DEEP})
     before = _tree(cfg)
     code, stale = drive(["--run", run_id, *VERB])
@@ -475,8 +477,7 @@ def test_a_row_that_changes_after_the_gate_refuses_as_stale_with_nothing_written
 def test_an_answer_that_changes_after_the_gate_refuses_as_stale(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
+    run_id = _approved(["--alias", INDIE_ALIAS])
     before = _tree(cfg)
     code, stale = drive(["--run", run_id, *VERB, "--folder", INDIE])
     assert code == int(ExitCode.DECISION_STALE), stale
@@ -527,15 +528,9 @@ def test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named(
 ):
     cfg = acknowledged
     paths = build(cfg, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
-
+    run_id = _approved(["--alias", INDIE_ALIAS])
     real = tags.write_genre
-
-    def stuck(path, genre):
-        return False
-
-    monkeypatch.setattr(tags, "write_genre", stuck)
+    monkeypatch.setattr(tags, "write_genre", lambda path, genre: False)
     code, stopped = drive(["--run", run_id, *VERB, "--alias", INDIE_ALIAS])
     assert code != int(ExitCode.OK), stopped
     cause = stopped["cause"]
@@ -568,17 +563,9 @@ def test_a_first_step_that_refuses_writes_nothing_and_runs_nothing_after(
 ):
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
+    run_id = _approved(["--alias", INDIE_ALIAS])
     before = _tree(cfg)
-    real = rb_writer.open_db
-
-    def running(path, *args, require_closed=False, **kwargs):
-        if require_closed:
-            raise refuse("rekordbox-running", "rekordbox is running", origin=("test",))
-        return real(path, *args, require_closed=require_closed, **kwargs)
-
-    monkeypatch.setattr(rb_writer, "open_db", running)
+    _rekordbox_running_at_the_write(monkeypatch)
     code, stopped = drive(["--run", run_id, *VERB, "--alias", INDIE_ALIAS])
     assert code != int(ExitCode.OK) and stopped["cause"]["reason"] == "rekordbox-running"
     assert "no step landed" in stopped["cause"]["message"]
@@ -591,18 +578,15 @@ def test_a_first_step_that_refuses_writes_nothing_and_runs_nothing_after(
 def test_a_recorded_catalogue_proposal_is_written_and_asked_once_across_the_acts(
     acknowledged, silence, monkeypatch
 ):
-    from cratekit.tagging import published, searchers
-
     cfg = acknowledged
-    paths = build(cfg, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    paths = _backlog_suite._nobodys(cfg, silence)
     asked: list[tuple[str, str]] = []
 
     def search(artist, title):
         asked.append((artist, title))
         return SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")
 
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _backlog_suite._catalogue(monkeypatch, search)
     code, acted, refused = _two_acts(["--catalogue"])
     assert code == int(ExitCode.OK), acted
     assert _genre_of(cfg, "60") == DEEP and tags.read_genre_from_file(paths["60"]) == DEEP
@@ -615,9 +599,7 @@ def test_no_proposal_below_the_floor_is_shown_or_written(acknowledged, silence):
     """Two artist neighbours make a medium suggestion, below the floor."""
     cfg = acknowledged
     build(
-        cfg,
-        silence,
-        Track("80", "", "", artist="Pair", folder="p"),
+        cfg, silence, Track("80", "", "", artist="Pair", folder="p"),
         Track("81", MELODIC, MELODIC, artist="Pair", folder="q"),
         Track("82", MELODIC, MELODIC, artist="Pair", folder="r"),
     )
@@ -644,8 +626,7 @@ def test_a_rehearsed_digest_is_set_beside_the_live_one_at_the_gate(acknowledged,
 
 def test_a_person_reads_the_campaign_and_the_resort_it_leaves(acknowledged, silence):
     build(acknowledged, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
+    run_id = _approved(["--alias", INDIE_ALIAS])
     code, text = drive_human(["--run", run_id, *VERB, "--alias", INDIE_ALIAS])
     assert code == int(ExitCode.OK), text
     assert "needs genre 11 before the campaign and 6 after" in text
@@ -653,8 +634,6 @@ def test_a_person_reads_the_campaign_and_the_resort_it_leaves(acknowledged, sile
 
 
 def test_the_verb_declares_one_explicit_gate_and_the_surfaces_it_writes():
-    from cratekit.cli import registry
-
     entry = registry.entry("tag.campaign")
     gate = next(spec for spec in entry.gates if spec.name == GATE)
     assert gate.explicit and gate.digest_source == "plan" and gate.options == ("apply", "abort")
@@ -666,8 +645,6 @@ def test_the_verb_declares_one_explicit_gate_and_the_surfaces_it_writes():
 
 def _stray(cfg: config.Config, silence: Path, name: str, genre: str) -> Path:
     """An audio file under the library root that no row names."""
-    import shutil
-
     path = Path(cfg.library.root) / "Music" / "stray" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(silence, path)
@@ -699,8 +676,7 @@ def test_a_file_that_comes_to_carry_the_word_after_the_gate_stops_the_words_as_s
     """F1: the walk at the apply finds a file the gate never listed."""
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
+    run_id = _approved(["--alias", INDIE_ALIAS])
     real = tag_campaign.taxonomy_word.plan_alias
     late: list[Path] = []
 
@@ -742,15 +718,8 @@ def test_the_gate_and_the_report_say_what_the_verbs_could_not_read(acknowledged,
 
 
 def test_a_catalogue_nobody_could_read_is_said_at_the_gate(acknowledged, silence, monkeypatch):
-    from cratekit.tagging import published, searchers
-
-    build(acknowledged, silence, Track("60", "", "", artist="Nobody", folder="x"))
-
-    def blocked(artist, title):
-        raise refuse("catalogue-unreachable", "blocked", origin=("test",))
-
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _backlog_suite._nobodys(acknowledged, silence)
+    _backlog_suite._catalogue(monkeypatch, _backlog_suite._blocked)
     _run, refused = _first_act(["--catalogue"])
     assert any("could not be read for 1 row(s)" in note for note in refused["cause"]["detail"]["shown"]["notes"])
 
@@ -762,10 +731,7 @@ def test_a_follower_whose_file_carries_another_spelling_is_held_out(
     monkeypatch.setattr(_suggest_suite, "LOOKUPS", (*_suggest_suite.LOOKUPS, "indie tech"))
     cfg = acknowledged
     build(
-        cfg,
-        silence,
-        *_backlog_suite._eight(),
-        Track("15", "", INDIE, artist="X", folder="w"),
+        cfg, silence, *_backlog_suite._eight(), Track("15", "", INDIE, artist="X", folder="w"),
         Track("91", INDIE, "indie tech", artist="X", folder="w"),
     )
     code, acted, _refused = _two_acts(["--folder", INDIE])
@@ -783,14 +749,12 @@ def test_a_step_that_refuses_after_part_of_it_landed_reports_what_the_census_rea
     """F4: row 12's file and row land; row 96's file will not take its genre."""
     cfg = acknowledged
     build(cfg, silence, *_library(), Track("96", "", "", artist="Solo", folder="one"))
-    run_id, _refused = _first_act([])
-    _decide(run_id)
+    run_id = _approved()
     real = tags.write_genre
-
-    def one_stuck(path, genre):
-        return False if Path(path).name == "track-96.flac" else real(path, genre)
-
-    monkeypatch.setattr(tags, "write_genre", one_stuck)
+    monkeypatch.setattr(
+        tags, "write_genre",
+        lambda path, genre: False if Path(path).name == "track-96.flac" else real(path, genre),
+    )
     code, stopped = drive(["--run", run_id, *VERB])
     assert code != int(ExitCode.OK) and stopped["cause"]["reason"] == "tag-suggest-unwritten"
     campaign = stopped["cause"]["detail"]["campaign"]
@@ -823,10 +787,7 @@ def test_a_folder_answer_shows_the_bucket_it_copies(acknowledged, silence):
     """F10: the folder's family, tempo window and rating come from its like bucket."""
     build(acknowledged, silence, *_library())
     _run, refused = _first_act(["--folder", INDIE])
-    (item,) = [
-        item for item in refused["cause"]["detail"]["shown"]["items"]
-        if item["kind"] == "words" and item["word"] == INDIE
-    ]
+    (item,) = _words_items(refused, INDIE)
     assert item["answer"] == backlog.FOLDER and item["like"] and item["bucket"]
 
 
@@ -836,14 +797,11 @@ def test_the_words_step_refusing_stops_the_campaign_with_what_landed_named(
     """F8: the third step's own refusal."""
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
+    run_id = _approved(["--alias", INDIE_ALIAS])
     real = tags.write_genre
-
-    def alias_stuck(path, genre):
-        return False if genre == RNB else real(path, genre)
-
-    monkeypatch.setattr(tags, "write_genre", alias_stuck)
+    monkeypatch.setattr(
+        tags, "write_genre", lambda path, genre: False if genre == RNB else real(path, genre)
+    )
     code, stopped = drive(["--run", run_id, *VERB, "--alias", INDIE_ALIAS])
     assert code != int(ExitCode.OK) and stopped["cause"]["reason"] == "taxonomy-word-unwritten"
     message = stopped["cause"]["message"]
@@ -857,21 +815,10 @@ def test_the_fourth_step_refusing_stops_the_campaign_after_the_words(
     """F8: only the follow step opens the database to write in this library."""
     cfg = acknowledged
     paths = build(
-        cfg,
-        silence,
-        *_backlog_suite._eight(),
-        Track("15", "", INDIE, artist="X", folder="w"),
+        cfg, silence, *_backlog_suite._eight(), Track("15", "", INDIE, artist="X", folder="w")
     )
-    run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
-    _decide(run_id)
-    real = rb_writer.open_db
-
-    def running(path, *args, require_closed=False, **kwargs):
-        if require_closed:
-            raise refuse("rekordbox-running", "rekordbox is running", origin=("test",))
-        return real(path, *args, require_closed=require_closed, **kwargs)
-
-    monkeypatch.setattr(rb_writer, "open_db", running)
+    run_id = _approved(["--alias", INDIE_ALIAS])
+    _rekordbox_running_at_the_write(monkeypatch)
     code, stopped = drive(["--run", run_id, *VERB, "--alias", INDIE_ALIAS])
     assert code != int(ExitCode.OK) and stopped["cause"]["reason"] == "rekordbox-running"
     assert "the words landed, 1 word(s) and 1 file(s)" in stopped["cause"]["message"]
@@ -883,8 +830,7 @@ def test_an_unexpected_failure_in_a_step_is_this_builds_defect_with_what_landed(
 ):
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act([])
-    _decide(run_id)
+    run_id = _approved()
 
     def broken(*args, **kwargs):
         raise RuntimeError("boom")
@@ -900,8 +846,7 @@ def test_an_unexpected_failure_in_a_step_is_this_builds_defect_with_what_landed(
 def test_the_suggest_step_plans_at_the_backlogs_floor(acknowledged, silence, monkeypatch):
     """F7: the second plan is weighed at the floor, never wider."""
     build(acknowledged, silence, *_library())
-    run_id, _refused = _first_act([])
-    _decide(run_id)
+    run_id = _approved()
     real = tag_campaign.suggest_cli.read_plan
     bands: list[str] = []
 
@@ -919,15 +864,11 @@ def test_a_row_that_does_not_read_back_refuses_the_rows_step(acknowledged, silen
     """F7: the campaign's rows go through tag rows' own read back."""
     cfg = acknowledged
     build(cfg, silence, *_library())
-    run_id, _refused = _first_act([])
-    _decide(run_id)
+    run_id = _approved()
     real = rows.apply_rows
-
-    def wrong(*args, **kwargs):
-        written = real(*args, **kwargs)
-        return replace(written, wrong=("10",))
-
-    monkeypatch.setattr(rows, "apply_rows", wrong)
+    monkeypatch.setattr(
+        rows, "apply_rows", lambda *args, **kwargs: replace(real(*args, **kwargs), wrong=("10",))
+    )
     code, stopped = drive(["--run", run_id, *VERB])
     assert code != int(ExitCode.OK), stopped
     assert "The campaign stopped at crate tag rows" in stopped["cause"]["message"]
@@ -936,19 +877,12 @@ def test_a_row_that_does_not_read_back_refuses_the_rows_step(acknowledged, silen
 def test_needing_counts_only_live_rows_with_a_readable_file(machine, silence):
     """F7: the census after a step leaves out a tombstone and a missing file."""
     paths = build(
-        machine,
-        silence,
-        Track("51", "", ""),
-        Track("52", "", "", deleted=True),
-        Track("53", "", ""),
-        *_backlog_suite._eight(),
+        machine, silence, Track("51", "", ""), Track("52", "", "", deleted=True),
+        Track("53", "", ""), *_backlog_suite._eight(),
     )
     paths["53"].unlink()
-    db = rb_writer.open_db(machine.library.db_path, unlock=False, cfg=machine)
-    try:
+    with opened(machine) as db:
         found = backlog.needing(machine, db, active_taxonomy.load(machine))
-    finally:
-        rb_writer.close_db(db)
     assert found == {"51"}
     assert len(_planned(machine).rows) == 1
 
@@ -991,11 +925,7 @@ def test_an_alias_to_the_folder_another_answer_makes_is_planned_on_that_folder(
     paths = build(cfg, silence, *_library(), Track("97", ZOUK, ZOUK, artist="Z", folder="z"))
     argv = ["--folder", INDIE, "--alias", f"{ZOUK}={INDIE}"]
     run_id, refused = _first_act(argv)
-    words = [
-        (item["word"], item["answer"])
-        for item in refused["cause"]["detail"]["shown"]["items"]
-        if item["kind"] == "words" and item["word"] in {INDIE, ZOUK}
-    ]
+    words = [(item["word"], item["answer"]) for item in _words_items(refused, INDIE, ZOUK)]
     assert words == [(INDIE, backlog.FOLDER), (ZOUK, backlog.ALIAS)]
     _decide(run_id)
     code, acted = drive(["--run", run_id, *VERB, *argv])
@@ -1011,10 +941,7 @@ def test_a_folder_that_would_copy_another_bucket_after_the_gate_stops_the_words_
     cfg = acknowledged
     build(cfg, silence, *_library())
     run_id, refused = _first_act(["--folder", INDIE])
-    (shown,) = [
-        item for item in refused["cause"]["detail"]["shown"]["items"]
-        if item["kind"] == "words" and item["word"] == INDIE
-    ]
+    (shown,) = _words_items(refused, INDIE)
     _decide(run_id)
     real = tag_campaign.taxonomy_word.plan_folder
     other = next(

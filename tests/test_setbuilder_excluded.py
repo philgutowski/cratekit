@@ -6,7 +6,6 @@ location, never by name, in the engine (a fake reader) and the verb (real FLAC).
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import shutil
@@ -14,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
-from cratekit import cli
-from cratekit.cli import output
 from cratekit.core import config, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.modules.tools import setbuilder
 from cratekit.setbuilder import cli as setbuild_cli
-from tests._containers import synth_container
 from tests._sync_builders import exited
+from tests.test_setbuilder_cli import envelope_of
+from tests.test_setbuilder_cli import library as library  # noqa: PLC0414
+from tests.test_setbuilder_cli import silence as silence  # noqa: PLC0414
 
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[LQ]"),))
 GENRE = "Deep House"
@@ -190,29 +189,13 @@ def test_an_earlier_cache_entry_under_an_excluded_folder_is_not_served(tmp_path)
 # ── The verb ────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture(scope="module")
-def silence(tmp_path_factory) -> Path:
-    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch) -> Path:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    return root
-
-
 @pytest.fixture
 def configure(library):
     """Save a configuration; setup's default puts staging at ``<root>/Downloads``."""
 
     def save(*, state_dirname: str | None = None, staging: Path | None = None) -> config.Config:
-        section = {
-            "root": str(library), "volume_id": "F1E2-D3C4",
-            "db_path": str(library / "db" / "master.db"),
-        }
+        db_path = str(library / "db" / "master.db")
+        section = {"root": str(library), "volume_id": "F1E2-D3C4", "db_path": db_path}
         if state_dirname is not None:
             section["state_dirname"] = state_dirname
         cfg = config.from_dict({
@@ -242,15 +225,6 @@ def place(library, silence):
         return path
 
     return put
-
-
-def envelope_of(argv: list[str]) -> tuple[int, dict]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
-    assert out.getvalue().strip(), f"the verb printed nothing: {err.getvalue()}"
-    document = json.loads(out.getvalue())
-    assert output.envelope_problems(document) == [], document
-    return code, document
 
 
 def named_paths(document: dict) -> list[str]:

@@ -132,7 +132,7 @@ def _scan_accept(cfg, folder: Path, *paths: Path) -> None:
 
 
 def _one_accepted(cfg, body: bytes = b"fLaC") -> tuple[Path, Path]:
-    """One file named LONG, scanned, its proposal accepted. Answers (folder, file)."""
+    """One file named LONG, scanned, its proposal accepted."""
     folder = _folder(cfg)
     path = _audio(folder, LONG, body)
     _scan_accept(cfg, folder, path)
@@ -211,10 +211,8 @@ def test_an_accepted_proposal_is_shown_asked_renamed_and_then_converges(configur
 
 
 def test_a_dark_row_under_a_proposal_name_refuses_the_repair_and_its_plan(collected):
-    """R-500's guard, through this verb: a row no rule resolves, whose file is
-    absent and whose name is one this pass would rename, refuses before any
-    rename, in name apply's words, and the plan's own read carries it, so the
-    abort answer sees it too. The candidates are this verb's own (R-675)."""
+    """R-500's guard, through this verb, in name apply's words; the plan's own read
+    carries it, so the abort answer sees it too. The candidates are this verb's own (R-675)."""
     folder, held = _one_accepted(collected)
     _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
     code, envelope = _answer("abort")
@@ -233,9 +231,7 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair_and_its_plan(collec
 def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename(
     collected, monkeypatch
 ):
-    """The apply's own read, with its own candidates: the plan saw a collection
-    every row of which resolved, and the read after the gate finds a dark row
-    under the name of the file about to be renamed."""
+    """The apply's own read, with its own candidates: the plan saw every row resolve."""
     folder, held = _one_accepted(collected)
     reads = iter([(), (f"/mnt/volume/Music/{LONG}",)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))

@@ -97,23 +97,6 @@ def test_chunked_inference_matches_unchunked_on_a_fixture():
     assert reduce_frames(*whole) == reduce_frames(*parts)
 
 
-def test_chunked_inference_walks_the_signal_in_pieces():
-    from cratekit.analysis.vocal import infer_frames
-
-    class _Counting(_FakeModel):
-        def __init__(self) -> None:
-            self.widths: list[int] = []
-
-        def inference(self, wav):
-            self.widths.append(int(np.asarray(wav).shape[-1]))
-            return super().inference(wav)
-
-    wav = np.full(16000, 0.2, dtype=np.float32)
-    model = _Counting()
-    infer_frames(model, wav, chunk_samples=3200)
-    assert model.widths == [3200, 3200, 3200, 3200, 3200]
-
-
 def test_a_killed_batch_resumes_skipping_completed_tracks(tmp_path):
     from cratekit.analysis.run import run_batch
 
@@ -378,24 +361,29 @@ class _NeedsWidth(_FakeModel):
         return super().inference(wav)
 
 
-def test_a_short_tail_is_folded_into_the_chunk_before_it():
+@pytest.mark.parametrize(
+    ("length", "minimum", "floor", "widths", "frames"),
+    [
+        pytest.param(16000, 0, None, [3200] * 5, None, id="walks-the-signal-in-pieces"),
+        pytest.param(3200 * 2 + 100, 1000, None, [3200, 3300], 2, id="a-short-tail-is-folded"),
+        pytest.param(100, 1000, 1000, [1000], None, id="a-lone-short-clip-is-padded-to-the-floor"),
+        pytest.param(3200 * 3, 1000, None, [3200] * 3, None, id="an-exact-multiple-is-equal-pieces"),
+    ],
+)
+def test_chunked_inference_walks_the_signal_in_pieces(
+    monkeypatch, length, minimum, floor, widths, frames
+):
+    """A tail shorter than the network can pool is folded into the chunk before it."""
     from cratekit.analysis import vocal
 
-    wav = np.full(3200 * 2 + 100, 0.2, dtype=np.float32)
-    model = _NeedsWidth(minimum=1000)
+    if floor is not None:
+        monkeypatch.setattr(vocal, "MIN_CHUNK_SAMPLES", floor)
+    model = _NeedsWidth(minimum=minimum)
+    wav = np.full(length, 0.2, dtype=np.float32)
     vocals, _, _ = vocal.infer_frames(model, wav, chunk_samples=3200)
-    assert model.widths == [3200, 3300]
-    assert vocals.size == 2
-
-
-def test_a_lone_short_clip_is_padded_to_the_floor(monkeypatch):
-    from cratekit.analysis import vocal
-
-    monkeypatch.setattr(vocal, "MIN_CHUNK_SAMPLES", 1000)
-    wav = np.full(100, 0.2, dtype=np.float32)
-    model = _NeedsWidth(minimum=1000)
-    vocal.infer_frames(model, wav, chunk_samples=3200)
-    assert model.widths == [1000]
+    assert model.widths == widths
+    if frames is not None:
+        assert vocals.size == frames
 
 
 def test_the_unchunked_path_pads_a_short_signal_too():
@@ -434,12 +422,3 @@ def test_at_the_real_chunk_size_only_a_tail_under_the_floor_is_folded():
     short_tail = np.full(chunk + 8000, 0.2, dtype=np.float32)
     vocal.infer_frames(model, short_tail)
     assert model.widths == [chunk + 8000]
-
-
-def test_an_exact_multiple_still_walks_in_equal_pieces():
-    from cratekit.analysis import vocal
-
-    wav = np.full(3200 * 3, 0.2, dtype=np.float32)
-    model = _NeedsWidth(minimum=1000)
-    vocal.infer_frames(model, wav, chunk_samples=3200)
-    assert model.widths == [3200, 3200, 3200]

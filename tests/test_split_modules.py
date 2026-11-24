@@ -44,10 +44,8 @@ def _imports_by_module() -> dict[str, set[str]]:
 
 @functools.cache
 def _exclusive_parts() -> dict[str, set[str]]:
-    """Each split module's imports that nothing outside it and its parts imports.
-
-    Grown to a fixed point, so a part only its siblings import (``rb_tables``) joins.
-    """
+    """Each split module's imports that nothing outside it and its parts imports, grown to a
+    fixed point, so a part only its siblings import (``rb_tables``) joins."""
     imports = _imports_by_module()
     found: dict[str, set[str]] = {}
     for module in SPLIT_MODULES:
@@ -81,12 +79,8 @@ def _documented_parts() -> dict[str, set[str]]:
 
 
 def _accessor_parts() -> dict[str, set[str]]:
-    """Each core module holding an accessor to a split module, defined or imported.
-
-    Defined: a function that imports the split module and returns it. Imported:
-    ``from cratekit.core.<home> import <accessor>`` of such a function, the
-    spelling every part uses since U329 gave each family's accessor one home.
-    """
+    """Each core module holding an accessor to a split module: a function that imports it and
+    returns it, or ``from cratekit.core.<home> import <accessor>`` of one, as since U329."""
     found: dict[str, set[str]] = {module: set() for module in SPLIT_MODULES}
     short = {module.rsplit(".", 1)[-1]: module for module in SPLIT_MODULES}
     trees = {
@@ -141,11 +135,8 @@ def test_the_glob_reads_every_part_only_its_module_imports():
 
 
 def test_a_module_holding_an_accessor_is_read_with_the_module_it_reaches():
-    """Read with the module it reaches back to, or proved another module's part.
-
-    A session part may use the writer's accessor to break a cycle; it passes
-    only when the import graph proves it the session's, never by its name.
-    """
+    """Read with the module it reaches back to, or proved another module's part: a session
+    part using the writer's accessor passes only when the import graph proves it the session's."""
     accessors = _accessor_parts()
     assert all(accessors.values()), f"no accessor found for some module: {accessors}"
     globbed, exclusive = _glob_matched(), _exclusive_parts()

@@ -4,14 +4,12 @@ From the 2026-10-26 research note: a ``DEADCA7`` folder at the top of the
 tree, its playlists and memberships, ``rb_local_usn`` bumped, hot cues
 (``djmdCue`` rows of ``Kind`` above zero) with ``CueUpdated``, and analysis
 files with ``AnalysisUpdated``. Written straight through SQLite, never this
-product's writer, and read back whole. The content row update is a superset
-of what the note found, which can only widen the proof.
+product's writer. The content row update is a superset of what the note
+found, which can only widen the proof.
 
-The zero date is DEADCA7 0.2.3's own value (U285): :data:`ZERO_STAMP`, read
-on a real push, on its folder, playlists, memberships and cues. The binding
-reads it in local time, failing only west of UTC, which :func:`west_of_utc`
-sets. The folder sits past the root's row count, where rekordbox's
-renumbering would move it.
+The binding reads DEADCA7 0.2.3's zero date (U285) in local time, failing only
+west of UTC, which :func:`west_of_utc` sets. The folder sits past the root's
+row count, where rekordbox's renumbering would move it.
 """
 
 from __future__ import annotations
@@ -44,8 +42,6 @@ EASTERN = "EST5EDT,M3.2.0,M11.1.0"
 
 @dataclass(frozen=True)
 class Pushed:
-    """What one push wrote, by identifier."""
-
     folder_id: str
     playlist_ids: tuple[str, ...]
     content_ids: tuple[str, ...]
@@ -55,7 +51,7 @@ class Pushed:
 
 @contextmanager
 def west_of_utc(zone: str = EASTERN) -> Iterator[None]:
-    """The process's local time zone set west of UTC, and put back after, so the zero date bites."""
+    """The local time zone set west of UTC, and put back after, so the zero date bites."""
     before = os.environ.get("TZ")
     os.environ["TZ"] = zone
     time.tzset()
@@ -74,21 +70,21 @@ def push(db_path: Path | str, content_ids: tuple[str, ...], *, stamp: str = STAM
 
     ``stamp`` is the date on every row; :data:`ZERO_STAMP` is the real app's.
     """
+    nodes = [(FOLDER_ID, FOLDER_SEQ, FOLDER, 1, "root", "dc7-folder")]
+    nodes += [
+        (playlist_id, seq, name, 0, FOLDER_ID, f"dc7-{playlist_id}")
+        for seq, (playlist_id, name) in enumerate(PLAYLISTS.items(), start=1)
+    ]
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
-            "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, UUID, "
-            "rb_local_deleted, rb_local_usn, created_at, updated_at) "
-            "VALUES (?, ?, ?, 1, 'root', ?, 0, ?, ?, ?)",
-            (FOLDER_ID, FOLDER_SEQ, FOLDER, "dc7-folder", USN, stamp, stamp),
-        )
-        for seq, (playlist_id, name) in enumerate(PLAYLISTS.items(), start=1):
+        for node in nodes:
             conn.execute(
                 "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, UUID, "
                 "rb_local_deleted, rb_local_usn, created_at, updated_at) "
-                "VALUES (?, ?, ?, 0, ?, ?, 0, ?, ?, ?)",
-                (playlist_id, seq, name, FOLDER_ID, f"dc7-{playlist_id}", USN, stamp, stamp),
+                "VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                (*node, USN, stamp, stamp),
             )
+        for playlist_id in PLAYLISTS:
             for number, content_id in enumerate(content_ids, start=1):
                 conn.execute(
                     "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, UUID, "

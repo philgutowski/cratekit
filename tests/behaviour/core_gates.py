@@ -1,8 +1,6 @@
-"""Two refusals a gated database verb meets after its gate (U300).
+"""Two refusals a gated database verb meets after its gate (U300), each writing nothing.
 
-On the native landing suite's library: `crate intake land --rehearse` refuses
-on a digest moved by a second staged container, and `crate favorites order`
-refuses on an application off its recorded pin, each writing nothing.
+A digest moved by a second staged container, and an application off its recorded pin.
 """
 
 from __future__ import annotations

@@ -18,17 +18,14 @@ from cratekit.core import taxonomy_word as word_edit
 from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
 from tests.test_active_taxonomy import write_active
-from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
+from tests.test_taxonomy_upgrade import _asked, _backups, _decided, _shipped
+from tests.test_taxonomy_upgrade import configured as configured  # noqa: PLC0414
 
 WORD = "Latin Electronic"
 AFRO = "Afro House"
 BREAKS = "Breaks / D&B / Dubstep"
 BREAKS_LOWER = "breaks / d&b / dubstep"
-
-
-def _shipped() -> str:
-    return taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
 
 
 def _parsed_without(text: str, bucket_id: str, key: str) -> dict:
@@ -338,17 +335,6 @@ ALIAS = ["taxonomy", "alias", WORD, AFRO]
 FOLDER = ["taxonomy", "folder", WORD]
 
 
-@pytest.fixture
-def configured(tmp_path, monkeypatch) -> config.Config:
-    root = tmp_path / "library"
-    root.mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    cfg = config.from_dict(valid_data(root))
-    config.save(cfg)
-    config.reset_cache()
-    return config.load()
-
-
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
     from tests._containers import synth_container
@@ -375,26 +361,9 @@ def _genres(path: Path) -> tuple[str, ...]:
     return tags.read_tag_values_checked(path, "genre") or ()
 
 
-def _backups(path: Path) -> list[Path]:
-    return sorted(p for p in path.parent.iterdir() if p.name.endswith(".bak"))
-
-
-def _asked(argv: list[str], gate: str) -> tuple[str, dict]:
-    code, refused = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == gate and detail["explicit"] is True
-    return refused["run_id"], refused
-
-
-def _decided(run_id: str, gate: str, option: str) -> None:
-    code, envelope = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), envelope
-
-
 def _approved(argv: list[str], gate: str) -> str:
     run_id, _ = _asked(argv, gate)
-    _decided(run_id, gate, "approve")
+    _decided(run_id, "approve", gate)
     return run_id
 
 
@@ -417,7 +386,7 @@ def test_the_alias_is_saved_and_the_file_retagged(configured, silence):
     }
     assert copy.read_text(encoding="utf-8") == _shipped() and _genres(latin) == (WORD,)
 
-    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    _decided(run_id, "approve", word_cli.ALIAS_GATE)
     code, acted = drive(["--run", run_id, *ALIAS])
 
     assert code == int(ExitCode.OK), acted
@@ -444,7 +413,7 @@ def test_a_file_with_two_genres_is_left_and_named(configured, silence):
     items = refused["cause"]["detail"]["shown"]["items"]
     assert {"kind": "file", "path": "both.flac", "change": "left", "current": f"{WORD} | {AFRO}",
             "reason": word_cli.SEVERAL_GENRES} in items
-    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    _decided(run_id, "approve", word_cli.ALIAS_GATE)
     code, acted = drive(["--run", run_id, *ALIAS])
     assert code == int(ExitCode.OK), acted
     assert _codes(acted) == [word_cli.FILES_LEFT, word_cli.ALIAS_SAVED]
@@ -500,7 +469,7 @@ def test_a_folders_own_name_in_another_case_is_retagged_to_the_exact_name(config
     assert [(i["kind"], i.get("path"), i["change"]) for i in shown["items"]] == [("file", "lower.flac", "write")]
     assert not any(i["kind"] == "tag_alias" for i in shown["items"])
 
-    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    _decided(run_id, "approve", word_cli.ALIAS_GATE)
     code, acted = drive(["--run", run_id, *argv])
 
     assert code == int(ExitCode.OK), acted
@@ -593,7 +562,7 @@ def test_an_abort_writes_nothing(configured, silence):
     latin = _track(configured, silence, "latin.flac", WORD)
     for argv, gate in ((ALIAS, word_cli.ALIAS_GATE), (FOLDER, word_cli.FOLDER_GATE)):
         run_id, _ = _asked(argv, gate)
-        _decided(run_id, gate, "abort")
+        _decided(run_id, "abort", gate)
         code, acted = drive(["--run", run_id, *argv])
         assert acted["outcome"] == "no_op", acted
     assert copy.read_text(encoding="utf-8") == _shipped() and _genres(latin) == (WORD,)
@@ -644,7 +613,7 @@ def test_a_file_that_will_not_take_the_genre_is_named_and_the_rerun_finishes(con
     monkeypatch.setattr(tags, "write_genre", real)
     run_id, refused = _asked(ALIAS, word_cli.ALIAS_GATE)
     assert [i["change"] for i in refused["cause"]["detail"]["shown"]["items"]] == ["write"]
-    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    _decided(run_id, "approve", word_cli.ALIAS_GATE)
     code, acted = drive(["--run", run_id, *ALIAS])
     assert code == int(ExitCode.OK), acted
     assert _codes(acted) == [word_cli.FILES_RETAGGED]
@@ -658,7 +627,7 @@ def test_the_genre_folder_is_made_and_the_files_route_into_it(configured, silenc
     (item,) = refused["cause"]["detail"]["shown"]["items"]
     assert item == {"kind": "bucket", "id": "latin_electronic", "display": WORD,
                     "like": "electronica_other", "change": "add"}
-    _decided(run_id, word_cli.FOLDER_GATE, "approve")
+    _decided(run_id, "approve", word_cli.FOLDER_GATE)
     code, acted = drive(["--run", run_id, *FOLDER])
     assert code == int(ExitCode.OK), acted
     assert _codes(acted) == [word_cli.FOLDER_MADE]
@@ -696,7 +665,7 @@ def test_a_file_whose_genre_cannot_be_read_is_named_and_never_called_clean(confi
     run_id, refused = _asked(ALIAS, word_cli.ALIAS_GATE)
     items = refused["cause"]["detail"]["shown"]["items"]
     assert {"kind": "file", "path": "broken.aac", "change": "unread", "current": ""} in items
-    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    _decided(run_id, "approve", word_cli.ALIAS_GATE)
     code, acted = drive(["--run", run_id, *ALIAS])
     assert code == int(ExitCode.OK), acted
     assert _codes(acted) == [word_cli.FILES_NOT_READ, word_cli.ALIAS_SAVED, word_cli.FILES_RETAGGED]

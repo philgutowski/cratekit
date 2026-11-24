@@ -1,11 +1,8 @@
 """Analysis's check scenarios: `crate analyze check` reading rekordbox's result (U306).
 
-On a disposable database from the binding's schema, rows are left as rekordbox
-leaves them before and after a visit. The check waits, names a missing row, is
-suspect of a missing or escaping analysis file, falls back when the intake tree
-is not cut over, ends with nothing in scope, and refuses an unrecorded pass or
-session and a running rekordbox. No scenario writes an analysis file, since one
-carries a beat grid. Self contained, so the suites beside it can be trimmed.
+On a disposable database from the binding's schema, rows left as rekordbox
+leaves them before and after a visit. No scenario writes an analysis file,
+since one carries a beat grid. Self contained, so the suites beside it can be trimmed.
 """
 
 from __future__ import annotations
@@ -88,25 +85,18 @@ def build(cfg: config.Config, *rows: Row, inbox: bool = True) -> None:
         db_session.add(_row(tables.DjmdProperty, DBID="1", DBVersion=rb_writer.pinned_db_version()))
         for index, scale in enumerate(keys):
             db_session.add(_row(tables.DjmdKey, ID=f"k-{scale}", ScaleName=scale, Seq=index + 1))
-        if inbox:
+        for playlist_id, name, attribute, parent in (
+            ((ROOT_ID, DECLARED.intake.display, 1, "root"), (ANALYZE_ID, "Analyze", 0, ROOT_ID))
+            if inbox
+            else ()
+        ):
             db_session.add(
                 _row(
                     tables.DjmdPlaylist,
-                    ID=ROOT_ID,
-                    Name=DECLARED.intake.display,
-                    Attribute=1,
-                    ParentID="root",
-                    Seq=1,
-                    rb_local_deleted=0,
-                )
-            )
-            db_session.add(
-                _row(
-                    tables.DjmdPlaylist,
-                    ID=ANALYZE_ID,
-                    Name="Analyze",
-                    Attribute=0,
-                    ParentID=ROOT_ID,
+                    ID=playlist_id,
+                    Name=name,
+                    Attribute=attribute,
+                    ParentID=parent,
                     Seq=1,
                     rb_local_deleted=0,
                 )

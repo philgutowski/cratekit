@@ -8,19 +8,13 @@ from __future__ import annotations
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
+from tests._sync_builders import exited, failed
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.test_sync_pair_discover import (
-    VERB,
-    Listed,
-    LivePlaylist,
-    _codes,
-    _said,
-    sync,
-)
+from tests.test_sync_pair_discover import VERB, Listed, LivePlaylist, _codes, _said, sync
 from tests.test_sync_pair_discover import db as db  # noqa: PLC0414
 from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
@@ -51,9 +45,14 @@ def _two_pairs(world):
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
     second = world.playlist("Second", "4", "5", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     return opener, second
+
+
+def _account_held(cfg, account_id: str, order: tuple[str, ...]) -> None:
+    """The account holds ``order`` and the pair's snapshot is it."""
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == order
 
 
 def test_a_window_that_serves_an_old_order_plans_no_rekordbox_order(world, monkeypatch, cfg):
@@ -61,12 +60,10 @@ def test_a_window_that_serves_an_old_order_plans_no_rekordbox_order(world, monke
     opener, _second = _two_pairs(world)
     account_id = world.titled("GIG READY Opener")
     _lagging_window(world, monkeypatch, {account_id: ["t3", "t1", "t2"]}, whole=True)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.held(opener) == ["1", "2", "3"], "rekordbox took an order nobody holds"
     assert world.account.playlists[account_id] == ["t1", "t2", "t3"]
-    held = pairs.PairStore(cfg).get(account_id)
-    assert held is not None and held.account == ("t1", "t2", "t3")
+    _account_held(cfg, account_id, ("t1", "t2", "t3"))
 
 
 def test_a_window_that_lags_an_order_past_the_unpaged_reads_first_page_plans_no_order(
@@ -75,31 +72,33 @@ def test_a_window_that_lags_an_order_past_the_unpaged_reads_first_page_plans_no_
     """R-1360: the unpaged read is walked past a first page matching a lagging window."""
     gig = world.folder("GIG READY")
     long = world.playlist("Long", "1", "2", "3", "4", "5", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     account_id = world.titled("GIG READY Long")
     monkeypatch.setattr(LivePlaylist, "page_size", 2)
     _lagging_window(world, monkeypatch, {account_id: ["t1", "t2", "t5", "t3", "t4"]}, whole=True)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    exited(sync())
     assert world.held(long) == ["1", "2", "3", "4", "5"], "rekordbox took an order nobody holds"
     assert world.account.playlists[account_id] == ["t1", "t2", "t3", "t4", "t5"]
-    held = pairs.PairStore(cfg).get(account_id)
-    assert held is not None and held.account == ("t1", "t2", "t3", "t4", "t5")
+    _account_held(cfg, account_id, ("t1", "t2", "t3", "t4", "t5"))
+
+
+def _paged_lag(world, monkeypatch) -> tuple[str, str, str]:
+    """Two pairs, the Opener's unpaged read a first page of two and its window an older order."""
+    opener, second = _two_pairs(world)
+    account_id = world.titled("GIG READY Opener")
+    monkeypatch.setattr(LivePlaylist, "page_size", 2)
+    _lagging_window(world, monkeypatch, {account_id: ["t3", "t1", "t2"]}, whole=False)
+    return opener, second, account_id
 
 
 def test_a_window_that_lags_beside_a_partial_unpaged_read_holds_the_pair_and_says_why(
     world, monkeypatch, cfg
 ):
-    opener, second = _two_pairs(world)
-    account_id = world.titled("GIG READY Opener")
+    # The unpaged read is a first page of two, the window an older order of three.
+    opener, second, account_id = _paged_lag(world, monkeypatch)
     second_id = world.titled("GIG READY Second")
     world.rekordbox_add(second, "6")
-    # The unpaged read is a first page of two, the window an older order of three.
-    monkeypatch.setattr(LivePlaylist, "page_size", 2)
-    _lagging_window(world, monkeypatch, {account_id: ["t3", "t1", "t2"]}, whole=False)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert pair_cli.LEFT_OUT in _codes(envelope), envelope
     said = _said(envelope, pair_cli.LEFT_OUT)
     assert account_id in said and "unpaged" in said
@@ -110,48 +109,40 @@ def test_a_window_that_lags_beside_a_partial_unpaged_read_holds_the_pair_and_say
 
 
 def test_a_named_pair_whose_window_lags_refuses_as_itself(world, monkeypatch):
-    opener, _second = _two_pairs(world)
-    account_id = world.titled("GIG READY Opener")
-    monkeypatch.setattr(LivePlaylist, "page_size", 2)
-    _lagging_window(world, monkeypatch, {account_id: ["t3", "t1", "t2"]}, whole=False)
-    code, envelope = sync([*VERB, account_id])
-    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    opener, _second, account_id = _paged_lag(world, monkeypatch)
+    envelope = exited(sync([*VERB, account_id]), ExitCode.UPSTREAM_UNAVAILABLE)
     assert envelope["cause"]["reason"] == "sync-pair-account-lagging"
     assert world.held(opener) == ["1", "2", "3"]
 
 
-def test_the_check_before_the_write_reads_the_playlist_as_it_stands(world, monkeypatch):
-    """A window that starts lagging between the plan and the write is not read as a move."""
-    opener, second = _two_pairs(world)
+def _lagging_at_the_check(world, monkeypatch, *, page_size: int | None, whole: bool) -> str:
+    """Second gains a track, and its window starts lagging between the plan and the write."""
+    _opener, second = _two_pairs(world)
     second_id = world.titled("GIG READY Second")
     world.rekordbox_add(second, "6")
     real = pair_cli.check
 
     def check(*args, **kwargs):
-        _lagging_window(world, monkeypatch, {second_id: ["t5", "t4"]}, whole=True)
+        if page_size is not None:
+            monkeypatch.setattr(LivePlaylist, "page_size", page_size)
+        _lagging_window(world, monkeypatch, {second_id: ["t5", "t4"]}, whole=whole)
         return real(*args, **kwargs)
 
     monkeypatch.setattr(pair_cli, "check", check)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    return second_id
+
+
+def test_the_check_before_the_write_reads_the_playlist_as_it_stands(world, monkeypatch):
+    """A window that starts lagging between the plan and the write is not read as a move."""
+    second_id = _lagging_at_the_check(world, monkeypatch, page_size=None, whole=True)
+    exited(sync())
     assert world.account.playlists[second_id] == ["t4", "t5", "t6"]
 
 
 def test_a_window_that_starts_lagging_after_the_plan_stops_the_write_as_moved(world, monkeypatch):
     """The check reads a partial unpaged read's lag as a move, and names it."""
-    opener, second = _two_pairs(world)
-    second_id = world.titled("GIG READY Second")
-    world.rekordbox_add(second, "6")
-    real = pair_cli.check
-
-    def check(*args, **kwargs):
-        monkeypatch.setattr(LivePlaylist, "page_size", 1)
-        _lagging_window(world, monkeypatch, {second_id: ["t5", "t4"]}, whole=False)
-        return real(*args, **kwargs)
-
-    monkeypatch.setattr(pair_cli, "check", check)
-    code, envelope = sync()
-    assert code != int(ExitCode.OK), envelope
+    second_id = _lagging_at_the_check(world, monkeypatch, page_size=1, whole=False)
+    envelope = failed(sync())
     moved = envelope["cause"]["detail"]["moved"]
     assert [one["playlist_id"] for one in moved] == [second_id]
     assert "unpaged" in moved[0]["why"]
@@ -181,7 +172,6 @@ def test_the_runs_totals_carry_each_read_backs_readings_and_wait(world, monkeypa
         return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync())
     assert world.account.playlists[account_id] == ["t3", "t1", "t2"]
     assert envelope["data"]["totals"]["read_backs"] == [record]

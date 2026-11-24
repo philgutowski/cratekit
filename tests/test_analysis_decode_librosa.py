@@ -64,6 +64,11 @@ def keyed(tmp_path_factory):
     return made
 
 
+def _librosas(path, **window):
+    """The reference: ``librosa.load``'s own mono read of ``path`` at the measure rate."""
+    return librosa.load(str(path), sr=energy.MEASURE_RATE, mono=True, **window)
+
+
 @pytest.mark.parametrize("fallback", ["installed", "none"])
 @pytest.mark.parametrize("codec", ["aac", "alac"])
 def test_an_m4a_gets_the_tempo_the_flac_gets(keyed, codec, fallback, request):
@@ -109,9 +114,7 @@ def test_a_format_libsndfile_reads_decodes_exactly_as_librosa_load(keyed, name, 
 def test_the_energy_segment_and_duration_are_librosas_for_those_formats(keyed, name, monkeypatch):
     monkeypatch.setattr(decode, "_ffmpeg_samples", _never)
     assert decode.duration(keyed[name]) == float(librosa.get_duration(path=str(keyed[name])))
-    expected, _ = librosa.load(
-        str(keyed[name]), sr=energy.MEASURE_RATE, mono=True, offset=7.3, duration=11.1
-    )
+    expected, _ = _librosas(keyed[name], offset=7.3, duration=11.1)
     samples, _ = decode.load(keyed[name], energy.MEASURE_RATE, offset=7.3, duration=11.1)
     assert np.array_equal(samples, expected)
 
@@ -119,9 +122,7 @@ def test_the_energy_segment_and_duration_are_librosas_for_those_formats(keyed, n
 def test_the_energy_segment_of_an_alac_m4a_is_its_wavs(keyed):
     """The offset and duration are cut in native frames as the soundfile read cuts them."""
     assert decode.duration(keyed["alac"]) == float(librosa.get_duration(path=str(keyed["wav"])))
-    expected, _ = librosa.load(
-        str(keyed["wav"]), sr=energy.MEASURE_RATE, mono=True, offset=7.3, duration=11.1
-    )
+    expected, _ = _librosas(keyed["wav"], offset=7.3, duration=11.1)
     samples, _ = decode.load(keyed["alac"], energy.MEASURE_RATE, offset=7.3, duration=11.1)
     assert np.array_equal(samples, expected)
     assert energy.features_from_path(keyed["alac"]) == energy.features_from_path(keyed["wav"])
@@ -134,9 +135,7 @@ def test_an_offset_and_a_duration_between_frames_cut_as_libsndfile_cuts(keyed):
     duration = 11.1 + 0.7 / NATIVE_RATE
     assert round(offset * NATIVE_RATE) != int(offset * NATIVE_RATE)
     assert round(duration * NATIVE_RATE) != int(duration * NATIVE_RATE)
-    expected, _ = librosa.load(
-        str(keyed["wav"]), sr=energy.MEASURE_RATE, mono=True, offset=offset, duration=duration
-    )
+    expected, _ = _librosas(keyed["wav"], offset=offset, duration=duration)
     samples, _ = decode.load(keyed["alac"], energy.MEASURE_RATE, offset=offset, duration=duration)
     assert np.array_equal(samples, expected)
 
@@ -146,9 +145,7 @@ def test_the_energy_measure_takes_the_centre_of_an_m4a(keyed, monkeypatch, no_fa
     only ffmpeg gives; shortened under the 30 second fixture."""
     monkeypatch.setattr(energy, "SEGMENT_SECONDS", 10.0)
     # The middle ten seconds, chosen without the code under test.
-    middle, rate = librosa.load(
-        str(keyed["wav"]), sr=energy.MEASURE_RATE, mono=True, offset=10.0, duration=10.0
-    )
+    middle, rate = _librosas(keyed["wav"], offset=10.0, duration=10.0)
     centred = energy.features_from_samples(middle, int(rate))
     assert centred is not None
     assert energy.features_from_path(keyed["alac"]) == centred
@@ -341,9 +338,7 @@ def test_a_file_decodes_to_the_bits_librosa_load_gives(awkward, name, rate, monk
 
 @pytest.mark.parametrize("name", ["float", "pcm", "mp3"])
 def test_an_offset_and_a_duration_decode_to_librosas_bits(awkward, name):
-    expected, _ = librosa.load(
-        str(awkward[name]), sr=energy.MEASURE_RATE, mono=True, offset=1.3, duration=3.7
-    )
+    expected, _ = _librosas(awkward[name], offset=1.3, duration=3.7)
     samples, _ = decode.load(awkward[name], energy.MEASURE_RATE, offset=1.3, duration=3.7)
     assert _same_bits(samples, expected)
 

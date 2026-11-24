@@ -16,8 +16,7 @@ from typing import Any, Callable
 
 from cratekit.label.catalogue import TRACK_SEARCH_PAGE, ListingShortfall, ReleaseUnresolvable
 
-#: Every method the ``Catalogue`` protocol declares. Derived once here rather
-#: than remembered at each assertion site.
+#: Every method the ``Catalogue`` protocol declares, named once here.
 PROTOCOL_METHODS = frozenset(
     {
         "artist_for",
@@ -55,7 +54,6 @@ class FakeArtistLookup:
 
 
 class FakeRelease:
-    """A provider release the listing wrappers can page."""
 
     def __init__(
         self,
@@ -94,11 +92,8 @@ class FakePagedArtist:
 
 
 class FakeTrack:
-    """One playlist track, with or without the copyright string harvest reads.
-
-    A track with neither ``copyright`` nor ``label`` yields no candidate name,
-    which a suite must tell apart from "the catalogue said no".
-    """
+    """A playlist track. With neither ``copyright`` nor ``label`` it yields no candidate
+    name, which a suite must tell apart from "the catalogue said no"."""
 
     def __init__(
         self,
@@ -132,13 +127,8 @@ class FakePagedPlaylist:
 
 
 class UnlistablePlaylist:
-    """A playlist object the pagination wrapper cannot list at all.
-
-    It has no ``tracks``, so ``listing._paged_caller`` raises
-    ``ListingNotPaginated`` before the retry ladder, and the test never sleeps
-    through five real retries. Resolved but unlistable is the second half of the
-    unreadable surface, proven to become the same refusal.
-    """
+    """No ``tracks``, so ``listing._paged_caller`` raises ``ListingNotPaginated`` before
+    the retry ladder and the test never sleeps through five real retries."""
 
 
 class FakeCatalogue:
@@ -217,21 +207,19 @@ class FakeCatalogue:
         except KeyError as exc:
             raise LookupError(f"no catalogue playlist for {reference!r}") from exc
 
-    def search_release(self, claimed: str, release: Any) -> dict:
-        release_id = str(getattr(release, "id", "") or "")
-        if self.confirmed is not None and release_id not in self.confirmed:
+    @staticmethod
+    def _verdict(known: frozenset[str] | None, asked: str, label: str) -> dict:
+        if known is not None and asked not in known:
             return {
                 "verdict": "unconfirmed",
                 "resolved_label": "",
                 "source": "fake-catalogue",
                 "notes": "no catalogue match",
             }
-        return {
-            "verdict": "confirmed",
-            "resolved_label": claimed,
-            "source": "fake-catalogue",
-            "notes": "",
-        }
+        return {"verdict": "confirmed", "resolved_label": label, "source": "fake-catalogue", "notes": ""}
+
+    def search_release(self, claimed: str, release: Any) -> dict:
+        return self._verdict(self.confirmed, str(getattr(release, "id", "") or ""), claimed)
 
     def reread_release(self, claimed: str, release: Any) -> dict:
         """The forced read (R-1634), answered as :meth:`search_release` answers."""
@@ -282,19 +270,7 @@ class FakeCatalogue:
         return hits[offset : offset + TRACK_SEARCH_PAGE]
 
     def check_label(self, name: str) -> dict:
-        if self.known_labels is not None and name not in self.known_labels:
-            return {
-                "verdict": "unconfirmed",
-                "resolved_label": "",
-                "source": "fake-catalogue",
-                "notes": "no catalogue match",
-            }
-        return {
-            "verdict": "confirmed",
-            "resolved_label": name,
-            "source": "fake-catalogue",
-            "notes": "",
-        }
+        return self._verdict(self.known_labels, name, name)
 
 
 class StrictCatalogue(FakeCatalogue):
@@ -308,12 +284,8 @@ class StrictCatalogue(FakeCatalogue):
 
 
 class UnreadableCatalogue(FakeCatalogue):
-    """A catalogue whose lookups all fail, for driving the refusal paths.
-
-    Bound and credentialled yet unable to answer, the only condition for
-    ``label-playlist-unreadable``, and different from the unbound build
-    :func:`cratekit.label.catalogue.resolve` refuses.
-    """
+    """Bound and credentialled yet unable to answer, the only condition for
+    ``label-playlist-unreadable``, unlike the unbound build ``catalogue.resolve`` refuses."""
 
     def artist_for(self, entry: Any) -> Any:
         label_id = str(getattr(entry, "label_id", entry))
@@ -348,11 +320,9 @@ class UnreadableCatalogue(FakeCatalogue):
 class VerificationOutage(FakeCatalogue):
     """A catalogue whose LISTINGS answer and whose VERIFICATION stops answering.
 
-    Different from :class:`UnreadableCatalogue`, and never the same refusal.
-    ``answers`` is a count, since the interesting case is partial: a harvest
-    whose second track raises has already committed the first track's label, and
-    the refusal must name those rows. One counter serves ``search_release`` and
-    ``check_label``, one capability asked two ways.
+    ``answers`` is a count, since the interesting case is partial: a harvest whose
+    second track raises has already committed the first track's label. One counter
+    serves ``search_release`` and ``check_label``, one capability asked two ways.
     """
 
     def __init__(self, *args: Any, answers: int = 0, **kwargs: Any) -> None:

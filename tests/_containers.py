@@ -1,8 +1,7 @@
 """One synthesizer for a real audio container, shared by every suite that needs one.
 
-One opinion about what a valid file is, the one the tag reader is proven
-against, held in a helper module so no suite imports another test module's
-private name and runs its top level.
+The one the tag reader is proven against, held here so no suite imports
+another test module's private name and runs its top level.
 """
 
 from __future__ import annotations
