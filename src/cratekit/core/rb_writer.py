@@ -19,6 +19,8 @@ link here is load-bearing. In firing order:
    proven from SQL to reach nothing but the renumbered ``TrackNo`` after it,
    stamped with the removal's update count and time as rekordbox stamps it
    (U288, R-1830, U955, :data:`DELETABLE_TABLES`, :func:`renumbered_positions`).
+   Every playlist a membership removal touched has its live rows numbered 1 to N
+   at the commit, its marked rows at 0, proven from SQL (U958, :func:`close_gaps`).
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 Every path is a late-bound accessor, an unset application pin refuses (S2),
@@ -88,6 +90,16 @@ from cratekit.core.rb_nodes import node_tables as node_tables
 from cratekit.core.rb_nodes import remove_memberships as remove_memberships
 from cratekit.core.rb_nodes import remove_playlist_node as remove_playlist_node
 from cratekit.core.rb_nodes import top_level_folders as top_level_folders
+from cratekit.core.rb_positions import MARKED_PLACE as MARKED_PLACE
+from cratekit.core.rb_positions import Numbering as Numbering
+from cratekit.core.rb_positions import close_gaps as close_gaps
+from cratekit.core.rb_positions import contiguous_positions as contiguous_positions
+from cratekit.core.rb_positions import gap_violations as gap_violations
+from cratekit.core.rb_positions import membership_rows as membership_rows
+from cratekit.core.rb_positions import numbering as numbering
+from cratekit.core.rb_positions import record_touched as record_touched
+from cratekit.core.rb_positions import touched as touched
+from cratekit.core.rb_positions import unplaceable as unplaceable
 from cratekit.core.rb_probes import _PROCESS_PROBES as _PROCESS_PROBES
 from cratekit.core.rb_probes import LIBRARY_SYNC_SETTING as LIBRARY_SYNC_SETTING
 from cratekit.core.rb_probes import SETTINGS_APP_DIRNAME as SETTINGS_APP_DIRNAME
@@ -1131,8 +1143,9 @@ def commit_guarded(
     and to their callers by source guards. RE-CHECKED AT COMMIT, UNCONDITIONALLY:
     rekordbox can launch mid-run, and the open-time refusal sits behind a flag. A
     GUARD FAILURE ROLLS THE SESSION BACK, so a refused write never lands later
-    under another name. The binding's reconciliation logger is quietened for the
-    commit only, restored in a finally.
+    under another name. Then every playlist a membership removal touched is
+    closed up, 1 to N, from SQL (U958, :func:`close_gaps`). The binding's
+    reconciliation logger is quietened for the commit only, restored in a finally.
     """
     assert_rekordbox_closed("committing")
 
@@ -1157,6 +1170,10 @@ def commit_guarded(
         except RekordboxUnavailable:
             db.rollback()
             raise
+
+    # AFTER THE WHITELIST, BEFORE THE BINDING'S COMMIT (U958): every playlist a
+    # removal touched reads 1 to N, proven from SQL; a refusal rolls back.
+    close_gaps(db)
 
     reconciliation_logger = logging.getLogger("pyrekordbox.db6.database")
     previous = reconciliation_logger.level

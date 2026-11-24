@@ -276,7 +276,7 @@ parts.
 
 | Module | Its parts |
 |---|---|
-| `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_call_time` (the one call time accessor the other parts share), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof) |
+| `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_call_time` (the one call time accessor the other parts share), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof), `rb_positions` (the closing up of a playlist a removal touched, U958) |
 | `core.session` | `session_call_time` (the one call time accessor the other parts share), `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
 | `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery`, `restore_tags` |
 

@@ -380,6 +380,8 @@ KEBAB_LITERALS = {
     'core/rb_copies.py': ['canary-read-failed'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_nodes.py': ['mytag-category-template-missing', 'utf-8', 'whitelist-violation'],
+    # 2026-11-24, U958: the closing up of a playlist a removal touched.
+    'core/rb_positions.py': ['soft-delete-marker-unreadable', 'whitelist-violation'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_removal.py': ['soft-delete-marker-unreadable', 'utf-8', 'whitelist-violation'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
@@ -720,6 +722,8 @@ LITERAL_HOLDERS = {
     'core/rb_copies.py': ['canary-read-failed'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_nodes.py': ['mytag-category-template-missing', 'whitelist-violation'],
+    # 2026-11-24, U958: the closing up of a playlist a removal touched.
+    'core/rb_positions.py': ['soft-delete-marker-unreadable', 'whitelist-violation'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_removal.py': ['soft-delete-marker-unreadable', 'whitelist-violation'],
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
@@ -832,6 +836,8 @@ LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'core/exit_codes.py',
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_nodes.py',
+    # 2026-11-24, U958: the closing up of a playlist a removal touched.
+    'core/rb_positions.py',
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_removal.py',
     'core/reconcile.py',

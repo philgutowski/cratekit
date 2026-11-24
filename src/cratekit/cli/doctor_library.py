@@ -639,6 +639,138 @@ def _check_rekordbox_pins(inputs: _Inputs) -> Finding:
     )
 
 
+def _copy_withheld(inputs: _Inputs, key: str, title: str, question: str) -> Finding | None:
+    """Why no copy of the database may be taken for ``question`` now, or None when one may.
+
+    Rekordbox is asked about first, since a copy taken under it is torn, then the
+    volume, so a stale mount point is not surveyed. An unconfirmed absence is a
+    note (U211); a running rekordbox FAIL with the act that unblocks it.
+    """
+    try:
+        running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    except processes.AbsenceUnconfirmed as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{question} was not established: {exc.cause.message}, so no copy of "
+                f"the database was taken. The answer is unknown rather than good"
+            ),
+        )
+    if running:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{question} could not be established: {', '.join(running)} running, "
+                f"and a copy of the database taken under a live application is "
+                f"incomplete, so none was taken. The answer is unknown rather than good"
+            ),
+            remedy=Remedy.QUIT_REKORDBOX,
+        )
+    unreadable = _library_state_unreadable(inputs, "the database")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    return None
+
+
+def _copy_unopened(key: str, title: str, question: str, exc: CratekitError) -> Finding:
+    """FAIL with the open's own cause: a copy of the database would not open."""
+    cause = exc.cause
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.FAIL,
+        detail=(
+            f"{question} could not be established: a copy of the database could not "
+            f"be opened, {cause.message}. The answer is unknown rather than good, and "
+            f"the live file was not touched"
+        ),
+        remedy=cause.remediation.remedy,
+        cause=cause,
+    )
+
+
+def _check_playlist_numbers(inputs: _Inputs) -> Finding:
+    """How many of the product's playlists hold live rows not numbered 1 to N (U958).
+
+    rekordbox's Remove from Playlist takes out the row numbered as the shown
+    position, so such a playlist loses the wrong track to a removal by hand.
+    Read off a disposable copy once rekordbox is known closed, the scope the
+    repair's own: ``crate repair numbers`` plans the same playlists. INFO with
+    the count and the repair when any, OK when none.
+    """
+    key, title = "library.playlist_numbers", "the product's playlists are numbered 1 to N"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    question = "whether the product's playlists are numbered 1 to N"
+    withheld = _copy_withheld(inputs, key, title, question)
+    if withheld is not None:
+        return withheld
+    from cratekit.core import active_taxonomy  # lazy: doctor's help loads none of it
+
+    try:
+        declared = active_taxonomy.load(inputs.cfg)
+    except CratekitError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{question} was not established: the taxonomy that names the product's "
+                f"nodes could not be read, {exc.cause.message}. The answer is unknown "
+                f"rather than good"
+            ),
+        )
+    try:
+        planned = inputs.probes.numbers_survey(inputs.cfg, declared)
+    except CratekitError as exc:
+        return _copy_unopened(key, title, question, exc)
+    if planned is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"no database file at {inputs.cfg.library.db_path}, so no playlist was "
+                f"read and nothing was asserted about their numbers"
+            ),
+        )
+    readable = planned.scanned - len(planned.held)
+    held = (
+        f"; {len(planned.held)} more hold a row whose removal marker or place cannot "
+        f"be read, so their order cannot be said and the repair leaves them"
+        if planned.held
+        else ""
+    )
+    if planned.items:
+        shown = ", ".join(repr(one.path) for one in planned.items[:3])
+        more = f" and {len(planned.items) - 3} more" if len(planned.items) > 3 else ""
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{len(planned.items)} of {readable} playlists under this product's "
+                f"nodes hold live rows not numbered 1 to N ({shown}{more}), so a removal "
+                f"by hand in rekordbox there may take out the wrong track; crate repair "
+                f"numbers numbers them 1 to N{held}"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO if planned.held else Status.OK,
+        detail=(
+            f"all {readable} playlists under this product's nodes that could be read "
+            f"number their live rows 1 to N, read off a disposable copy of the "
+            f"database{held}"
+        ),
+    )
+
+
 def _check_paths_resolved(inputs: _Inputs) -> Finding:
     """Whether the collection's recorded paths can be read from this machine.
 
@@ -656,55 +788,14 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
     if inputs.cfg is None:
         return _unchecked(key, title)
     cfg = inputs.cfg
-    try:
-        running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
-    except processes.AbsenceUnconfirmed as exc:
-        # No copy over an unconfirmed absence (U211), a note as in rekordbox.closed.
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.INFO,
-            detail=(
-                f"whether the collection's rows resolve was not established: "
-                f"{exc.cause.message}, so no copy of the database was taken. The "
-                f"answer is unknown rather than good"
-            ),
-        )
-    if running:
-        # FAIL with the act that unblocks it: this question stays unanswered
-        # until rekordbox quits.
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.FAIL,
-            detail=(
-                f"whether the collection's rows resolve could not be established: "
-                f"{', '.join(running)} running, and a copy of the database taken "
-                f"under a live application is incomplete, so none was taken. The "
-                f"answer is unknown rather than good"
-            ),
-            remedy=Remedy.QUIT_REKORDBOX,
-        )
-    unreadable = _library_state_unreadable(inputs, "the database")
-    if unreadable is not None:
-        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    question = "whether the collection's rows resolve"
+    withheld = _copy_withheld(inputs, key, title, question)
+    if withheld is not None:
+        return withheld
     try:
         totals = inputs.probes.path_survey(cfg)
     except CratekitError as exc:
-        cause = exc.cause
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.FAIL,
-            detail=(
-                f"whether the collection's rows resolve could not be established: "
-                f"a copy of the database could not be opened, {cause.message}. The "
-                f"answer is unknown rather than good, and the live file was not "
-                f"touched"
-            ),
-            remedy=cause.remediation.remedy,
-            cause=cause,
-        )
+        return _copy_unopened(key, title, question, exc)
     if totals is None:
         return Finding(
             key=key,

@@ -114,6 +114,9 @@ KEBAB_LITERALS = {
         'routing-outstanding',
         'utf-8',
     ],
+    # 2026-11-24, U958: the repair that numbers the product's playlists 1 to N.
+    'write/numbers.py': ['decision-stale', 'repair-numbers', 'session-committed-unverified'],
+    'write/numbers_cli.py': ['numbers-held', 'numbers-nothing-to-write', 'numbers-written'],
     'write/row_defaults.py': [
         'decision-stale',
         'internal-error',
@@ -238,6 +241,8 @@ LITERAL_HOLDERS = {
         'routing-ledger-unusable',
         'routing-outstanding',
     ],
+    # 2026-11-24, U958: the repair that numbers the product's playlists 1 to N.
+    'write/numbers.py': ['decision-stale', 'session-committed-unverified'],
     'write/row_defaults.py': [
         'decision-stale',
         'internal-error',

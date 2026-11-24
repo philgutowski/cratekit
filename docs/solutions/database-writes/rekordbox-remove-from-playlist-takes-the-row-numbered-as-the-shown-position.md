@@ -9,7 +9,7 @@ severity: high
 resolution_type: workflow_change
 applies_when:
   - "A track is removed from a playlist by hand in rekordbox, by an attended session or by Phillip"
-  - "The playlist's live rows are not numbered 1 to N, a gap left by a product removal (the soft delete keeps TrackNo) or by anything else"
+  - "The playlist's live rows are not numbered 1 to N, a gap left by a product removal before U958 (the soft delete kept TrackNo) or by anything else"
 tags: [rekordbox, TrackNo, djmdSongPlaylist, remove-from-playlist, renumber, r-1853, u958, a218, sitting-107]
 ---
 
@@ -31,13 +31,18 @@ positions were held by a row this product marked removed
 (`rb_nodes.remove_memberships` keeps `TrackNo`, R-758 and R-1853), 184 by
 no row.
 
-## What to do until U958 lands
+## What U958 changed
 
-- Before removing a track by hand, read the playlist's live `TrackNo`s on a
-  read only handle. If they are not 1 to N, the hand removal may hit another
-  row: read the playlist again after, against a copy taken before.
-- To put a wrongly removed track back, use the row menu's Add To Playlist; it
-  appends at the end. If the track sat elsewhere, its old position is lost
-  until a renumbering puts it back.
-- U958 (#1058) makes every product removal leave 1 to N and adds a repair for
-  the playlists that already hold gaps.
+- Every removal and every add this product makes closes its playlist up at
+  the commit (an add too, since the binding numbers an append past every row,
+  marked ones included):
+  the live rows 1 to N in the order rekordbox shows them, the removed rows at
+  0, proven from SQL (`rb_positions.close_gaps`, run by `commit_guarded`).
+- `crate repair numbers` numbers the playlists older versions left gapped,
+  and `crate doctor`'s `library.playlist_numbers` line counts them.
+- Until the repair has run on a library, a hand removal in a playlist the
+  doctor line names may still take the wrong row: read the playlist again
+  after, against a copy taken before. To put a wrongly removed track back,
+  use the row menu's Add To Playlist; it appends at the end.
+- What rekordbox does with a removed row at `TrackNo` 0 is unmeasured; the
+  attended card reads it.

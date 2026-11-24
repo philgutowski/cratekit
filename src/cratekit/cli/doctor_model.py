@@ -31,6 +31,7 @@ from cratekit.core import (
     provider_gate,
     rb_writer,
     secrets,
+    taxonomy,
 )
 from cratekit.core.cause import (
     Cause,
@@ -45,6 +46,7 @@ from cratekit.write import metadata_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.deletion.trash import TrashStatus
+    from cratekit.write.numbers import NumbersPlan
 
 
 class Status(StrEnum):
@@ -295,6 +297,21 @@ def _survey_paths(cfg: config.Config) -> metadata_cli.ResolutionTotals | None:
         return metadata_cli.resolution_totals(cfg, db)
 
 
+def _survey_numbers(cfg: config.Config, declared: taxonomy.Taxonomy) -> NumbersPlan | None:
+    """The repair's plan over a copy of the database: the product's playlists not 1 to N (U958).
+
+    Off a copy, never the live path, as :func:`_survey_paths` reads. None when
+    there is no database file; one that cannot be opened raises its own refusal.
+    """
+    from cratekit.write import numbers  # lazy: doctor's help loads none of the repair
+
+    source = rb_writer.live_db_path(cfg)
+    if not source.is_file():
+        return None
+    with rb_writer.read_only_copy(source, cfg=cfg) as db:
+        return numbers.plan(db, declared)
+
+
 def _probe_trash(path: Path) -> TrashStatus:
     """Whether a file at ``path`` could be trashed, without making it possible.
 
@@ -520,6 +537,11 @@ class Probes:
     #: and is asked only once rekordbox is known closed, so the copy is whole.
     path_survey: Callable[[config.Config], metadata_cli.ResolutionTotals | None] = (
         _survey_paths
+    )
+    #: The product's playlists whose live rows are not 1 to N, off a copy, or None
+    #: when there is no database file (U958). Asked as ``path_survey`` is.
+    numbers_survey: Callable[[config.Config, taxonomy.Taxonomy], NumbersPlan | None] = (
+        _survey_numbers
     )
     #: How this copy was installed, read off its PEP 610 record (U159).
     install_origin: Callable[[], InstallOrigin] = _install_origin
