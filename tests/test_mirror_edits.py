@@ -1,7 +1,5 @@
-"""U201: an account edit to a mirrored genre playlist, told apart and decided.
-
-The pure rule, :func:`mirror_edits.decide`, over each playlist read three ways. D1 applies.
-"""
+"""U201: an account edit to a mirrored genre playlist, told apart and decided by the pure rule
+:func:`mirror_edits.decide` over each playlist read three ways. D1 applies."""
 
 from __future__ import annotations
 

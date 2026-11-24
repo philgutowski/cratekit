@@ -1,7 +1,5 @@
-"""U147: the genre tree and the Favorites folder mirrored onto the account.
-
-At :func:`account_mirror.add_steps` over the recording fake account. D1 applies.
-"""
+"""U147: the genre tree and the Favorites folder mirrored onto the account, at
+:func:`account_mirror.add_steps` over the recording fake account. D1 applies."""
 
 from __future__ import annotations
 

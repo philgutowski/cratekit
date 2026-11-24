@@ -1,7 +1,5 @@
-"""U112: ``crate organize`` tidies both sides by the product's own rules.
-
-Through the real dispatcher on a disposable database, a catalogue from memory and a strict
-recording account. D1 applies.
+"""U112: ``crate organize`` tidies both sides by the product's own rules, through the real
+dispatcher on a disposable database, a catalogue from memory and a strict account. D1 applies.
 """
 
 from __future__ import annotations
@@ -393,13 +391,11 @@ def test_one_step_of_each_kind_is_planned_in_its_own_area(world):
     assert held.created == created and held.folders_created == [] and held.moves == []
     database = _steps(envelope, rekordbox.AREA)
     remote = _steps(envelope, account_area.AREA)
-    assert database[rekordbox.ADOPT]["state"] == "planned"
-    assert database[rekordbox.ADOPT]["counts"]["to file"] == 2
-    assert database[rekordbox.ROTATE]["state"] == "planned"
-    assert database[rekordbox.ROTATE]["counts"]["move"] == 1
+    adopt, rotate = database[rekordbox.ADOPT], database[rekordbox.ROTATE]
+    assert (adopt["state"], adopt["counts"]["to file"]) == ("planned", 2)
+    assert (rotate["state"], rotate["counts"]["move"]) == ("planned", 1)
     assert database[rekordbox.RECORD_LABELS]["state"] == "listed"
-    assert remote[f"label:{LABEL_ID}"]["state"] == "planned"
-    assert remote[ARCHIVE]["state"] == "planned"
+    assert remote[f"label:{LABEL_ID}"]["state"] == remote[ARCHIVE]["state"] == "planned"
     # Nothing of one area's leaks into the other.
     assert not {key for key in database if key.startswith(("label:", "archive:", "mark:"))}
     assert not {rekordbox.ADOPT, rekordbox.ROTATE} & set(remote)
@@ -470,9 +466,7 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
         pushed.folder_id, RUN_NAMED, DATED,
     )
     assert {"r-one", "r-two"} <= {str(content) for (content,) in filed_outside}
-    again = _areas(_report())[rekordbox.AREA]
-    assert deadca7_fixtures.FOLDER not in {one["name"] for one in again["yours"]}
-    assert rekordbox.FOREIGN_FACT in again["facts"]
+    _foreign_named_once(_areas(_report())[rekordbox.AREA])
 
 
 @pytest.fixture
@@ -524,9 +518,7 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
         assert name not in str(area)
     _applied()
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == written
-    again = _areas(_report())[rekordbox.AREA]
-    assert deadca7_fixtures.FOLDER not in {one["name"] for one in again["yours"]}
-    assert rekordbox.FOREIGN_FACT in again["facts"]
+    _foreign_named_once(_areas(_report())[rekordbox.AREA])
 
 
 def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(world):
@@ -561,16 +553,15 @@ def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
     remote = _steps(envelope, account_area.AREA)
     refused = [key for key, step in remote.items() if step["state"] == "refused"]
     assert refused == ["label:ostgut-ton"], remote
-    assert remote[f"label:{LABEL_ID}"]["state"] == "planned"
-    assert remote[ARCHIVE]["state"] == "planned"
+    assert remote[f"label:{LABEL_ID}"]["state"] == remote[ARCHIVE]["state"] == "planned"
     assert _steps(envelope, rekordbox.AREA)[rekordbox.ADOPT]["state"] == "planned"
     assert "organize-step-refused" in _warned(envelope)
 
 
 def test_a_second_run_after_a_full_apply_plans_nothing(world):
     _applied()
-    # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, so a playlist
-    # the adoption made is mirrored by the next run, and that is all it plans.
+    # U147: the mirror reads the tree before the database area writes it, so the next run
+    # mirrors the adoption's playlist and plans nothing else.
     lagging = [
         step["step"]
         for area in _areas(_report()).values()
@@ -719,8 +710,8 @@ def test_an_unreadable_label_registry_refuses_the_label_step_alone(world):
     _registry_unread()
     envelope = _report()
     remote = _steps(envelope, account_area.AREA)
-    assert remote[account_area.LABELS]["state"] == "refused"
-    assert remote[account_area.LABELS]["reason"] == "label-intent-unusable"
+    labels_step = remote[account_area.LABELS]
+    assert (labels_step["state"], labels_step["reason"]) == ("refused", "label-intent-unusable")
     assert remote[ARCHIVE]["state"] == "planned"
     assert _steps(envelope, rekordbox.AREA)[rekordbox.ROTATE]["state"] == "planned"
 
@@ -884,8 +875,7 @@ def test_a_label_playlist_is_the_label_steps_and_a_set_the_archives(world):
     # Marked as well, so only the label rule can be what leaves it.
     _marked(cfg, fake, held, "label-1", f"{LABEL} 2026")
     rows = _file_rows(_report())
-    assert rows["label-1"]["action"] == filing.LEFT
-    assert rows["label-1"]["why"] == filing.LABEL_STEP
+    assert (rows["label-1"]["action"], rows["label-1"]["why"]) == (filing.LEFT, filing.LABEL_STEP)
     assert rows[ledger.set_playlist(cfg, SET_NAME).remote_id]["why"] == filing.SET_STEP
 
 
@@ -1265,8 +1255,8 @@ def test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other(world
     areas = _areas(_ok([*VERB, "--report", "--only", account_area.FILE, "--only", rekordbox.ROTATE]))
     assert [step["step"] for step in areas[rekordbox.AREA]["steps"]] == [rekordbox.ROTATE]
     assert [step["step"] for step in areas[account_area.AREA]["steps"]] == [account_area.FILE]
-    assert areas[rekordbox.AREA]["facts"]["only these steps"] == rekordbox.ROTATE
-    assert areas[account_area.AREA]["facts"]["only these steps"] == account_area.FILE
+    only = {name: area["facts"]["only these steps"] for name, area in areas.items()}
+    assert only == {rekordbox.AREA: rekordbox.ROTATE, account_area.AREA: account_area.FILE}
 
 
 def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, monkeypatch):
@@ -1405,10 +1395,11 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     assert held.placed[recorded.remote_id] == by_hand
     assert held.placed[MARKED_ID] == plain
     assert not {year, f"Downloaded Sets {year}"} & set(held.folders_created[made_by_hand:])
-    assert held.folder_names[by_hand] == f"Downloaded Sets {year}"
-    assert held.folder_names[plain] == year
-    assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == by_hand
-    assert ledger.set_folder(cfg, year) == plain
+    names = held.folder_names
+    assert (names[by_hand], names[plain]) == (f"Downloaded Sets {year}", year)
+    assert (ledger.set_folder(cfg, f"Downloaded Sets {year}"), ledger.set_folder(cfg, year)) == (
+        by_hand, plain,
+    )
 
 
 def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings(world):
@@ -1600,10 +1591,10 @@ def test_the_full_verb_lists_the_working_custom_and_never_the_root_steps_removal
     assert "tech_house_hits - Phil" in yours
     assert not {"Untitled Playlist", DEBRIS_NAME} & yours
     assert _steps(envelope, account_area.AREA)[account_area.ROOT]["state"] == "planned"
-    file_rows = _file_rows(envelope)
-    assert file_rows["custom-1"]["why"] == filing.WORKING_CUSTOM
-    assert file_rows["empty-1"]["why"] == filing.EMPTY
-    assert file_rows["debris-1"]["why"] == filing.DEBRIS
+    whys = {key: row["why"] for key, row in _file_rows(envelope).items()}
+    assert (whys["custom-1"], whys["empty-1"], whys["debris-1"]) == (
+        filing.WORKING_CUSTOM, filing.EMPTY, filing.DEBRIS,
+    )
 
 
 def test_an_unread_label_registry_refuses_the_root_step_as_it_refuses_the_filing(world):
@@ -1733,11 +1724,9 @@ def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothi
     code, early = _decide(run_id, ACCOUNT_GATE)
     assert code == int(ExitCode.PRECONDITION), early
     cause = early["cause"]
-    assert cause["reason"] == "gate-not-reached"
-    assert cause["remediation"]["remedy"] is None
-    assert cause["detail"]["gate"] == ACCOUNT_GATE
-    assert cause["detail"]["open_gate"] == DB_GATE
-    assert cause["detail"]["run_id"] == run_id
+    assert (cause["reason"], cause["remediation"]["remedy"]) == ("gate-not-reached", None)
+    shown = cause["detail"]
+    assert (shown["gate"], shown["open_gate"], shown["run_id"]) == (ACCOUNT_GATE, DB_GATE, run_id)
     steps = cause["remediation"]["steps"]
     assert f"crate run decide {run_id} {DB_GATE} <option>" in steps[0]
     assert f"crate --run {run_id} organize --as-of {TODAY.isoformat()}" in steps[1]
@@ -1788,9 +1777,8 @@ def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached
     run_id = _refused(VERB)["run_id"]
     _decided(run_id, cloud.name, "abort")
     state = gates.load(run_id)
-    assert state.decisions[cloud.name].option == "abort"
-    assert state.decisions[cloud.name].digest is None
-    assert state.open_gate == DB_GATE
+    decision = state.decisions[cloud.name]
+    assert (decision.option, decision.digest, state.open_gate) == ("abort", None, DB_GATE)
 
 
 def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_there(world):
