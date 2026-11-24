@@ -1090,9 +1090,7 @@ def test_the_network_guard_bites_and_stays_quiet_on_correct_code():
 
 def test_no_module_in_the_deletion_package_can_reach_a_streaming_service():
     """R36. A deletion is a fact about this disk and about nothing else."""
-    reached = {
-        path.name: _reaches_the_network(path.read_text()) for path in PACKAGE_ROOT.rglob("*.py")
-    }
+    reached = {p.name: _reaches_the_network(p.read_text()) for p in PACKAGE_ROOT.rglob("*.py")}
     offenders = {name: found for name, found in sorted(reached.items()) if found}
     assert not offenders, f"the deletion package can reach a service: {offenders}"
 
@@ -1276,9 +1274,7 @@ def test_the_reference_set_it_built_is_reported_on_every_run(cfg, gates_pass, ca
     db = FakeDb([_content(cfg, ONE, "1", deleted=False, usn=44), missing], usn=50)
     with caplog.at_level(logging.INFO, logger="cratekit.deletion.run"):
         run.plan(cfg, db, actor="cli")
-    said = [
-        record.getMessage() for record in caplog.records if "reference set" in record.getMessage()
-    ]
+    said = [message for message in caplog.messages if "reference set" in message]
     assert said, "the pass no longer reports the reference set it built"
     assert "'indexed': 1" in said[0] and "'missing': 1" in said[0]
 
@@ -2455,9 +2451,8 @@ def _mapped_volume(cfg, *, active=50, removed=20, volume_id=None):
     live = _elsewhere(active)
     gone = _removed_elsewhere(removed)
     _populate(volume, [*(row.recorded for row in live), *(row.FolderPath for row in gone)])
-    rule = [
-        locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), volume_id or cfg.library.volume_id)
-    ]
+    identity = volume_id or cfg.library.volume_id
+    rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), identity)]
     _baseline(cfg)
     active_rows = [_at(row.recorded, row.content_id, usn=10) for row in live]
     return volume, rule, FakeDb([*active_rows, *gone], usn=100), gone, _home(_beside(cfg))

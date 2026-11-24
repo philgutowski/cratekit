@@ -428,9 +428,8 @@ def test_a_landed_row_sync_removed_recorded_is_one_candidate_at_its_recorded_num
     key = deletion_library.RECORDED_REMOVALS_KEY
     _edit_record(cfg, landing.session_id, lambda detail: detail.update({key: removals}))
     found = _plan(cfg)
-    assert [(one.row.content_id, one.row.sequence) for one in found.candidates] == [
-        (gone, recorded_at)
-    ]
+    numbered = [(one.row.content_id, one.row.sequence) for one in found.candidates]
+    assert numbered == [(gone, recorded_at)]
 
 
 def test_a_row_restored_live_is_forgotten_and_its_second_removal_is_offered(ready):

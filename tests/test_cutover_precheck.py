@@ -160,9 +160,8 @@ def test_a_hand_curated_tree_still_cannot_flip(cfg):
 def test_the_report_names_every_check_in_the_order_the_assertion_refuses(cfg):
     export = _ready(cfg)
     results = tree_registry.cutover_precheck(cfg, export=export)
-    assert [result.check for result in results] == [
-        "no-open-run", "no-pending-intake-xml", "fresh-export", "verified-snapshot"
-    ]
+    checks = [result.check for result in results]
+    assert checks == ["no-open-run", "no-pending-intake-xml", "fresh-export", "verified-snapshot"]
     assert all(result.passed for result in results)
 
 
