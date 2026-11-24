@@ -1,7 +1,4 @@
-"""U227: a download an account edit queued is filed where the edit put it, once it lands.
-
-Sitting 85: the landing's own filing is never read as rekordbox's change. D1 applies.
-"""
+"""U227: a queued download is filed where the edit put it; its landing is not rekordbox's. D1."""
 
 from __future__ import annotations
 

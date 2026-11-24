@@ -1,8 +1,4 @@
-"""U143: organize keeps the account root to working custom playlists.
-
-The root step's plan and apply over the recording fake account, then the adapter's
-two root removals over a stand in client, each refusal sending no removal. D1 applies.
-"""
+"""U143: organize keeps the account root to working custom playlists. D1 applies."""
 
 from __future__ import annotations
 

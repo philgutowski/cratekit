@@ -1,9 +1,4 @@
-"""U255. Adding a track to an account playlist costs one write and one read.
-
-Driven on the REAL client over a transport that keeps versioned playlists,
-answers a stale tag 412 (Sitting 62), and counts every request. The request
-count is the assertion, never a clock.
-"""
+"""U255: an add to an account playlist costs one write and one read, counted, never timed."""
 
 from __future__ import annotations
 

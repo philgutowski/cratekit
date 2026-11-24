@@ -1,9 +1,4 @@
-"""U226: an account playlist read after a write reads it as it stands, not the window that lags it.
-
-Sitting 84 saw the unpaged read show a move at once while the window lagged for
-minutes. On the U220 stand in with ``window_only``: a whole unpaged read is judged,
-a disagreeing first page is a lag, and R-1360 walks past a capped first page. D1.
-"""
+"""U226: a playlist read after a write reads it as it stands, not the window lagging it. D1."""
 
 from __future__ import annotations
 
@@ -264,8 +259,7 @@ def test_the_pause_after_a_412_is_counted_in_the_moves_record(installed):
     assert account.read_backs()[1]["stale"] == 1
 
 
-# R-1360: past the unpaged read's first page, likely capped at a hundred; a first
-# part read beside a whole window is a lag.
+# R-1360: the walk past an unpaged first page capped near a hundred.
 
 CAP = listing.PAGE_SIZES["playlist_tracks"]
 
@@ -287,6 +281,34 @@ class Capped:
 
     def served(self, offset: int) -> list[str]:
         return self.members
+
+
+class Shifted(Capped):
+    """A track the account cannot play, or a change between requests, shifts later positions."""
+
+    def served(self, offset):
+        return self.members if not offset else self.members[1:]
+
+
+class StaleTag(Capped):
+    """A later page served from before a write carries the tag it had then."""
+
+    def tracks(self, **kwargs):
+        if kwargs.get("offset"):
+            self._etag = 6
+        return super().tracks(**kwargs)
+
+
+class Growing(Capped):
+    def tracks(self, **kwargs):
+        if kwargs.get("offset"):
+            self.cap = CAP + 1
+        return super().tracks(**kwargs)
+
+
+class Ends(Capped):
+    def served(self, offset):
+        return self.members if not offset else []
 
 
 def _long(count: int) -> list[str]:
@@ -323,57 +345,21 @@ def test_a_cap_of_one_track_is_read_once_rather_than_walked_forever():
     assert playlist.asked == [{}]
 
 
-def test_a_page_that_does_not_start_where_the_last_ended_ends_the_walk_before_it():
-    """A track the account cannot play, or a change between requests, shifts later positions."""
-
-    class Shifted(Capped):
-        def served(self, offset):
-            return self.members if not offset else self.members[1:]
-
-    playlist = Shifted(_long(250))
-    assert _unpaged(playlist) == _long(CAP)
-    assert len(playlist.asked) == 2
-
-
-def test_a_page_carrying_another_version_tag_ends_the_walk_before_it():
-    """A later page served from before a write carries the tag it had then."""
-
-    class Stale(Capped):
-        def tracks(self, **kwargs):
-            if kwargs.get("offset"):
-                self._etag = 6
-            return super().tracks(**kwargs)
-
-    playlist = Stale(_long(250))
-    assert _unpaged(playlist) == _long(CAP)
-    assert len(playlist.asked) == 2
-
-
-def test_a_page_longer_than_the_first_ends_the_walk_before_it():
-    class Growing(Capped):
-        def tracks(self, **kwargs):
-            if kwargs.get("offset"):
-                self.cap = CAP + 1
-            return super().tracks(**kwargs)
-
-    assert _unpaged(Growing(_long(250))) == _long(CAP)
-
-
-def test_an_empty_later_page_ends_the_walk():
-    class Ends(Capped):
-        def served(self, offset):
-            return self.members if not offset else []
-
-    playlist = Ends(_long(250))
-    assert _unpaged(playlist) == _long(CAP)
-    assert len(playlist.asked) == 2
-
-
-def test_a_short_later_page_is_the_last_one_asked_for():
-    """A count that declares more than the provider serves stops at the first short page."""
-    playlist = Capped(_long(150), declared=400)
-    assert _unpaged(playlist) == _long(150)
-    assert len(playlist.asked) == 2
+@pytest.mark.parametrize(
+    ("playlist", "read"),
+    [
+        pytest.param(lambda: Shifted(_long(250)), CAP, id="a-page-not-starting-where-the-last-ended"),
+        pytest.param(lambda: StaleTag(_long(250)), CAP, id="a-page-carrying-another-version-tag"),
+        pytest.param(lambda: Growing(_long(250)), CAP, id="a-page-longer-than-the-first"),
+        pytest.param(lambda: Ends(_long(250)), CAP, id="an-empty-later-page"),
+        # A count declaring more than the provider serves stops at the first short page.
+        pytest.param(lambda: Capped(_long(150), declared=400), 150, id="a-short-later-page"),
+    ],
+)
+def test_the_walk_ends_at_the_page_that_cannot_follow_the_last(playlist, read):
+    walked = playlist()
+    assert _unpaged(walked) == _long(read)
+    assert len(walked.asked) == 2
 
 
 def test_the_walk_stops_once_it_holds_the_declared_count():
