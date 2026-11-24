@@ -21,7 +21,7 @@ from tests.test_tree_registry import (
     _sub_lines,
     _tree_doc,
 )
-from tests.xml_fixtures import _no_bare_lf, _xml_doc
+from tests.xml_fixtures import _EMPTY_COLLECTION, _no_bare_lf, _xml_doc
 
 CUTOVER_ON = date(2026, 8, 1)
 OTHER_ID = "second_shelf"
@@ -31,30 +31,24 @@ DERIVATION = tree_registry.DerivationSource.TAXONOMY
 
 def _two_tree_doc() -> bytes:
     """One document carrying two governed trees with the same folder shape."""
-    return _xml_doc(
-        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Name="{_esc(TREE_DISPLAY)}" Type="0" Count="1">',
+    children = [
+        line
+        for display in (TREE_DISPLAY, OTHER_DISPLAY)
+        for line in (
+            f'      <NODE Name="{_esc(display)}" Type="0" Count="1">',
             f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
             *_sub_lines(),
             "        </NODE>",
             "      </NODE>",
-            f'      <NODE Name="{_esc(OTHER_DISPLAY)}" Type="0" Count="1">',
-            f'        <NODE Name="{_esc(FOLDER_DISPLAY)}" Type="0" Count="1">',
-            *_sub_lines(),
-            "        </NODE>",
-            "      </NODE>",
-        ],
-    )
+        )
+    ]
+    return _xml_doc(collection=_EMPTY_COLLECTION, root_children=children)
 
 
 def _mixed_registry() -> tree_registry.Registry:
     flipped = tree_registry.TreeRecord(
-        tree_id=TREE_ID,
-        mode=tree_registry.Mode.DATABASE,
-        cutover_on=CUTOVER_ON,
-        root_id="root-row-7788",
-        source=DERIVATION,
+        tree_id=TREE_ID, mode=tree_registry.Mode.DATABASE, cutover_on=CUTOVER_ON,
+        root_id="root-row-7788", source=DERIVATION,
     )
     still = tree_registry.TreeRecord(tree_id=OTHER_ID, mode=tree_registry.Mode.XML)
     return tree_registry.Registry((flipped, still)).with_record(flipped).with_record(still)
@@ -76,18 +70,15 @@ def _tree(tree_id: str, display: str, registry: tree_registry.Registry) -> rbxml
 def test_a_flipped_tree_refuses_the_bridge_while_its_sibling_still_accepts(emitter):
     """One document, two trees, one flip. The unflipped write has to change bytes."""
     registry = _mixed_registry()
-    flipped = _tree(TREE_ID, TREE_DISPLAY, registry)
-    sibling = _tree(OTHER_ID, OTHER_DISPLAY, registry)
-
     blocked = bytearray(_two_tree_doc())
     before = bytes(blocked)
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
-        _invoke(emitter, blocked, flipped)
+        _invoke(emitter, blocked, _tree(TREE_ID, TREE_DISPLAY, registry))
     assert excinfo.value.tree_id == TREE_ID
     assert bytes(blocked) == before
 
     allowed = bytearray(_two_tree_doc())
-    _invoke(emitter, allowed, sibling)
+    _invoke(emitter, allowed, _tree(OTHER_ID, OTHER_DISPLAY, registry))
     assert bytes(allowed) != before
     assert _no_bare_lf(bytes(allowed))
 
