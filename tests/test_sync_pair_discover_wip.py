@@ -59,3 +59,28 @@ def test_the_titles_are_read_off_the_ledger(monkeypatch, cfg):
     assert pair_discover.mirrored_wip(cfg) == frozenset({f"Phil {SET}", "WIP warmup"})
     monkeypatch.setattr(ledger, "mirror_folders", lambda _cfg: {})
     assert pair_discover.mirrored_wip(cfg) == frozenset()
+
+
+def test_a_wip_set_the_mirror_copies_after_the_plan_is_never_paired_at_the_answer(world, monkeypatch):
+    """The pair check discovers again before it writes: a set the mirror copied since the plan stops the run."""
+    from cratekit.core.exit_codes import ExitCode
+    from tests.cli_drive import drive
+    from tests.test_sync_pair import VERB
+
+    phil = world.folder("Phil", under=world.folder("WIP "))
+    world.playlist(SET, "1", under=phil)
+    monkeypatch.setattr(ledger, "mirror_folders", lambda _cfg: {})
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    run_id = envelope["run_id"]
+    # The mirror ran between the plan and the answer, and copied the set.
+    _mirrored(monkeypatch, f"Phil {SET}")
+    for _ in range(2):
+        gate = envelope["cause"]["detail"]["gate"]
+        exited(drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"]))
+        code, envelope = drive(["--run", run_id, *VERB])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            break
+    assert (envelope.get("cause") or {}).get("reason") == "decision-stale", envelope
+    assert world.account.created == []
+    assert not any(SET in title for title in world.account.titles.values())
