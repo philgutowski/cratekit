@@ -18,25 +18,22 @@ from cratekit.label import cli as label_cli
 from cratekit.label import marks as label_marks
 from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
-from tests.label_fakes import PROTOCOL_METHODS, FakeTrack, StrictCatalogue, UnreadableCatalogue
+from tests.label_fakes import (
+    PROTOCOL_METHODS,
+    FakePagedArtist,
+    FakeRelease,
+    FakeTrack,
+    StrictCatalogue,
+    UnreadableCatalogue,
+)
+from tests.modules import library_config
 
 LABEL_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "cratekit" / "label"
 
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (tmp_path / "install").mkdir()
-    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "install"))
-    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(tmp_path / "cfgdir"))
-    built = config.from_dict({
-        "schema_version": config.CURRENT_SCHEMA_VERSION,
-        "library": {"root": str(root), "volume_id": "F1E2-D3C4",
-                    "db_path": str(root / "db" / "master.db")},
-        "paths": {"download_staging": str(tmp_path / "staging")},
-        "profile": {"name": "full"},
-    })
+    built = library_config(tmp_path, monkeypatch)
     config.save(built)
     config.reset_cache()
     return built
@@ -52,45 +49,17 @@ class ProviderArtist:
         return f"<tidalapi.artist.Artist object at {hex(id(self))}>"
 
 
-class Album:
-    """A provider release the listing wrappers can page."""
-
-    def __init__(self, album_id: str, *, year: str, artist: object, title: str, copyright: str = ""):
-        self.id = album_id
-        self.year = year
-        self.artist = artist
-        self.title = title
-        self.copyright = copyright
-        self.tracks = [{"artists": [artist], "title": title}]
-
-
-class PagedArtist:
-    """A provider listing that truncates to one page when not given a limit."""
-
-    page_size = 100
-
-    def __init__(self, albums: list[Album]) -> None:
-        self._albums = list(albums)
-
-    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
-        size = self.page_size if limit is None else limit
-        return self._albums[offset : offset + size]
-
-    def get_ep_singles(self, limit: int | None = None, offset: int = 0) -> list[Album]:
-        return []
-
-
-def _paged(artist: object, *releases: tuple[str, str, str]) -> PagedArtist:
+def _paged(artist: object, *releases: tuple[str, str, str]) -> FakePagedArtist:
     """A paged artist of (identifier, year, title) releases all credited to ``artist``."""
-    return PagedArtist([Album(i, year=y, artist=artist, title=t) for i, y, t in releases])
+    return FakePagedArtist([FakeRelease(i, year=y, artist=artist, title=t) for i, y, t in releases])
 
 
-def _always_confirm(claimed: str, album: Album) -> dict:
+def _always_confirm(claimed: str, album: FakeRelease) -> dict:
     return {"verdict": "confirmed", "resolved_label": claimed, "source": "fixture", "notes": ""}
 
 
 def _confirm_named(allowed: set[str]):
-    def search(claimed: str, album: Album) -> dict:
+    def search(claimed: str, album: FakeRelease) -> dict:
         if album.id in allowed:
             return _always_confirm(claimed, album)
         return {"verdict": "unconfirmed", "resolved_label": "", "source": "fixture",
@@ -99,7 +68,6 @@ def _confirm_named(allowed: set[str]):
 
 
 def _listed(cfg, name: str, match: str, artist: object, **kwargs):
-    """Register ``name`` and list it over ``artist``, confirming everything by default."""
     store = labels.RegistryStore()
     label_id = store.add(name, match=match)
     kwargs.setdefault("verify", _always_confirm)
@@ -156,8 +124,8 @@ def test_a_crawl_outside_a_naive_date_floor_still_returns_those_items(cfg):
 
 
 def test_an_unverified_catalogue_match_is_dropped_and_reported_never_acquired(cfg):
-    artist = PagedArtist([Album("keep", year="2026", artist="Lee Burridge", title="Keep"),
-                          Album("guess", year="2026", artist="Someone Else", title="Guess")])
+    artist = FakePagedArtist([FakeRelease("keep", artist="Lee Burridge", title="Keep"),
+                              FakeRelease("guess", artist="Someone Else", title="Guess")])
     found = _listed(cfg, "All Day I Dream", "all day i dream", artist,
                     verify=_confirm_named({"keep"}))
     assert [item.identity for item in found.candidates] == ["keep"]
@@ -373,7 +341,7 @@ def test_harvest_with_no_provider_session_refuses_the_credential_instead(cfg):
 
 def test_import_one_label_returns_the_unowned_confirmed_set(cfg):
     artist = _paged("WhoMadeWho", ("owned", "2026", "Owned"), ("fresh", "2025", "Fresh"))
-    found = _listed(cfg, "Kompakt", "kompakt", PagedArtist(artist._albums), owned={"owned"})
+    found = _listed(cfg, "Kompakt", "kompakt", FakePagedArtist(artist._releases), owned={"owned"})
     assert [item.identity for item in found.candidates] == ["fresh"]
 
 
@@ -439,7 +407,7 @@ class UnpageableArtist:
 class RaisingArtist:
     """A listing method that pages correctly and fails at the provider."""
 
-    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[FakeRelease]:
         raise RuntimeError("provider 503")
 
 
@@ -459,12 +427,11 @@ class SilentArtist:
 class AlbumsOnlyArtist:
     """ONE working listing method over a catalogue that really has nothing."""
 
-    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[FakeRelease]:
         return []
 
 
 def _label_source(cfg, name: str, **kwargs):
-    """One registered favourite label and a ``LabelSource`` over it."""
     store = labels.RegistryStore()
     label_id = store.add(name, match=name.lower())
     return label_id, sweep.LabelSource(cfg, registry=store.load(), **kwargs)
@@ -550,14 +517,8 @@ def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
     assert unreadable.asked_for == [label_id]
 
 
-def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(cfg):
-    with pytest.raises(CratekitError) as excinfo:
-        _increment(cfg, _bare(cfg))
-    assert excinfo.value.cause.reason == "sync-source-lookups-failed"
-
-
 def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg):
-    """Remove each guard layer alone: this is the layer the test above cannot see."""
+    """Remove each guard layer alone: the increment's refusal below cannot see this one."""
     with pytest.raises(run.LookupFailure) as excinfo:
         _bare(cfg).list_recent(10)
     said = str(excinfo.value)
@@ -582,30 +543,34 @@ def test_a_source_over_an_empty_registry_lists_nothing_rather_than_refusing_its_
 
 
 class ProxyThatFetchesOnAttributeAccess:
-    """An artist object whose every attribute read goes to a provider that is down."""
-
     def __getattr__(self, name: str):
         raise ConnectionError(f"the provider did not answer for {name!r}")
 
 
-def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_defect(cfg):
-    """The listing probe sits inside the boundary, as the listing itself does."""
-    with pytest.raises(CratekitError) as excinfo:
-        _increment(cfg, _bare(cfg, ProxyThatFetchesOnAttributeAccess()))
-    assert excinfo.value.cause.reason == "sync-source-lookups-failed"
-    assert "ConnectionError" in excinfo.value.cause.message
+class RefusingArtist:
+    def get_albums(self, limit=None, offset=0):
+        raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
+
+    def get_ep_singles(self, limit=None, offset=0):
+        return []
 
 
-def test_a_refusal_raised_mid_crawl_passes_through_the_listing_boundary_unchanged(cfg):
-    """The crawl's boundary keeps the rule the verifier's states."""
-    class RefusingArtist:
-        def get_albums(self, limit=None, offset=0):
-            raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
-        def get_ep_singles(self, limit=None, offset=0):
-            return []
+@pytest.mark.parametrize(
+    "made, reason, said",
+    [
+        (None, "sync-source-lookups-failed", ""),
+        # The listing probe sits inside the boundary, as the listing itself does.
+        (ProxyThatFetchesOnAttributeAccess, "sync-source-lookups-failed", "ConnectionError"),
+        # The crawl's boundary keeps the rule the verifier's states.
+        (RefusingArtist, "credential-missing", ""),
+    ],
+    ids=["no-artist-object-refuses-not-skips", "raises-on-inspection", "refusal-mid-crawl-unchanged"],
+)
+def test_a_label_whose_artist_is_absent_or_fails_stops_the_increment(cfg, made, reason, said):
     with pytest.raises(CratekitError) as excinfo:
-        _increment(cfg, _bare(cfg, RefusingArtist()))
-    assert excinfo.value.cause.reason == "credential-missing"
+        _increment(cfg, _bare(cfg, None if made is None else made()))
+    assert excinfo.value.cause.reason == reason
+    assert said in excinfo.value.cause.message
 
 
 def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
