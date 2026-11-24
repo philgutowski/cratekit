@@ -446,3 +446,99 @@ assembly, so the head it merged reads 193,489, 489 over. None to a person using 
 **Closes when:** the audit card of #847, #987 (U338), measures point 2 again
 and files a further card for the total, or Phillip moves the bar for the
 features added since. Ledger only: a maintainer facing count.
+
+---
+
+## R-2038. A name a listed module re-exports is bound twice, so a test that patches its origin does not reach a caller reading the listed module
+
+**Found:** at review round one of #980, U331, 2026-11-23.
+
+**The mechanism.** U331 routes each feature package's reach into an unlisted core module through a listed module that re-exports the names, `from cratekit.core.snapshot import assert_room_for_check as assert_room_for_check` in `core/session.py` among them (`session` for `preflight`, `processes` and `snapshot`, `config` for `profiles`, `jobs` for `discovery`, `pool` for the cores' ceiling, `active_taxonomy` for `foreign_tree`). Each is a second binding of the same object. A caller in a feature package now reads `session.assert_room_for_check`, so a test that monkeypatches `snapshot.assert_room_for_check` changes nothing that caller sees.
+
+**Measured cost.** Maintainer facing. Round one found the room test patched the name it was meant to hold, and it now takes the room away below both bindings. `tests/test_import_rules.py` asserts every re-exported name is its origin's object, which holds the bindings equal at import and not under a patch. No user facing cost was driven.
+
+**Closes when:** a test of a re-exported guard patches what both bindings call, or the rules name each re-export a patch must reach. Ledger only.
+
+---
+
+## R-2039. The doctor's help sits two modules under its ceiling, and a top level import of active_taxonomy on its path costs both
+
+**Found:** at the merge of main into #980, U331, 2026-11-24.
+
+**The mechanism.** `tests/test_cli_lazy.py` holds `crate doctor --help` under a ceiling of cratekit modules, 90 when this card measured it and 95 since U328 put the registry's table in five parts that load at every start. Round one put the foreign tree's names on `core.active_taxonomy`, so every module importing `active_taxonomy` at its top loads `core.foreign_tree` too. With U343 merged the help reached 90 and the test failed. `cli/doctor_state.py` and `core/taxonomy_upgrade.py` now import the loader in the one function that reads it, and the help loaded 88; with U328 merged it loads 93 of 95.
+
+**Measured cost.** Maintainer facing. Two more modules on the doctor's import path, or a top level import of `active_taxonomy` put back in either file, which costs two, fail the test again. The mutation table holds both imports (rows S13 and S14).
+
+**Closes when:** the doctor's help is measured with a margin a unit can spend, or its imports are cut further. Ledger only.
+
+---
+
+## R-2040. modules.outbound is no toggle's home, so the rules for a toggleable package no longer read it
+
+**Found:** at the build of #980, U331, decided by 980-toggle-homes-1 on 2026-11-24.
+
+**The mechanism.** `TOGGLE_HOMES` in `tests/test_import_rules.py` named `cratekit.modules.outbound` as one of `export`'s homes, and the whole `cratekit.favorites` package as `favorites`'. The registry gates one verb with `favorites`, `sync favorites` in `favorites/cli.py`, and the four export verbs with `export`. The rest of the favorites package builds four verbs no toggle gates and part of the landing, and `modules.outbound` is called by organize, sync, label, intake and the favourites sweep. With either toggle off, five ungated verbs could not build: five of the seven dangling lines main allowed. Phillip's decision, option 1, narrowed the table to what the registry gates: `favorites` owns `cratekit.favorites.cli` and `export` owns `cratekit.export`. No source file moved.
+
+**Measured cost.** Maintainer facing. An always on package could import `modules.outbound` at its top level and no test of the import rules would fail, since it is no toggle's package any more. No verb's output changes.
+
+**Closes when:** `modules.outbound` is split into what `export` owns and what every caller uses, and the ungated parts of `cratekit.favorites` move out of it, so each package belongs to one toggle (the decision's option 2, a restructuring card of its own with its own replay). Ledger only.
+
+---
+
+## R-2041. Three refusal origins name the package their module left
+
+**Found:** at review round one of #980, U331, 2026-11-23.
+
+**The mechanism.** U331 moved `analysis/check_cli.py` and `analysis/rekordbox_check.py` to `intake/`, and `core/rehearsal.py` to `intake/`. Their `_ORIGIN` tuples were kept as they were, `("analysis.check_cli",)`, `("analysis.rekordbox_check",)` and `("core", "rehearsal")`, since the card freezes what every verb prints, and the envelope prints the origin. Tests pin each one.
+
+**Measured cost.** A refusal from `analyze check` or `intake land`'s rehearsal names a module path that no longer exists. A maintainer reading `cause.origin` looks in the wrong package. No user facing cost: the origin is a diagnostic field, and its text is what it always was.
+
+**Closes when:** a card allowed to change printed output renames the three origins with their pinning tests. Ledger only.
+
+---
+
+## R-2042. analyze check and analyze vocals build without the analysis package and cannot run without it
+
+**Found:** at review round one of #980, U331, 2026-11-23.
+
+**The mechanism.** U331 made both verbs build with the `analysis` toggle's homes blocked by importing their analysis helpers at call time: `intake/rekordbox_check.py` takes `cratekit.analysis.agreement` inside the two functions that read it, and `vocals/cli.py` takes `cratekit.analysis.cli` and the loader's module inside the functions that call them. So rule four and the drive of each toggle off read both verbs as built. A run that reaches those functions still imports the package.
+
+**Measured cost.** Not driven against a real install: no profile removes the analysis package's source, which every install ships, so no producer of a missing package was found. A toggle off hides the package from the import rules' drive, not from the interpreter.
+
+**Closes when:** the helpers both verbs borrow move to a package no toggle owns, or the rules read a call time import of a toggle's home as a dependency of the verb. Ledger only.
+
+---
+
+## R-2043. A module handed over other than by a top level import is not followed by the import measure
+
+**Found:** at review round one of #980, U331, 2026-11-23.
+
+**The mechanism.** `scripts/refactor_measure.py` follows a name that is a module into that module, so `tags.art.read` and `from cratekit.core.tags import art` read as uses of `cratekit.core.art`. It follows only what a top level import hands over, through as many modules as pass it on by import. A module bound by an assignment, a star import, `getattr`, a function that returns it, a conditional import or an import inside a `try` is not followed, so a feature package could reach an unlisted module through a listed one under a single counted name.
+
+**Measured cost.** Maintainer facing. Round two scanned the 25 listed modules at runtime and found none holding a module bound any way other than a top level import, so nothing in the tree uses an unfollowed spelling today.
+
+**Closes when:** the measure reads the listed modules' runtime bindings beside their source, or the rules refuse a module attribute on a listed module that is not a top level import. Ledger only.
+
+---
+
+## R-2044. The toggle drive test drives four hand listed toggles of sixteen
+
+**Found:** at review round two of #980, U331, 2026-11-24.
+
+**The mechanism.** `tests/test_import_rules.py::test_with_a_toggle_off_every_remaining_verb_builds_and_formats_its_help` blocks the homes of four toggles it lists by hand, builds every remaining verb and formats its help, in a fresh interpreter. The other twelve toggles are read by the static rule alone, which follows top level imports. An import only a run makes, `importlib.import_module("cratekit.label.cli")` at the top of `sync/cli.py`, leaves the test green with `labels` off; the same line naming `cratekit.vocals.cli` fails it.
+
+**Measured cost.** Maintainer facing. A verb left dangling by a dynamic import under one of the twelve toggles passes the suite. Round two found no producer in the tree: the static reading and a drive of every toggle both read 0. Driving all sixteen takes 25.8 s against about 8 s for the four, over METHOD's ten second bar for a test.
+
+**Closes when:** every toggle is driven in a time under that bar, or `refactor_measure.py imports --drive` runs in the battery. Ledger only.
+
+---
+
+## R-2045. Three guards of the import measure kill nothing, a plain import inside a function, a chain past a second handed module, and the drive formatting help
+
+**Found:** at the mutation table of #980, U331, 2026-11-24.
+
+**The mechanism.** Three rows of `docs/mutation/u331.md`, each on `scripts/refactor_measure.py` and each promoted to the full suite, read zero. M02 lets a plain `import cratekit.x` inside a function hand its module over, as if it were a top level import; the tests hold the same rule for a `from` import inside a function (M03, killed) and not for this spelling. M08 stops `Tree._reached` at the first module handed on, so a chain read past it is not followed further; no fixture reaches a module through two handed modules in one chain. M09 drops `parser.format_help()` from the script's `imports --drive`, which no test runs: the battery's own drive test in `tests/test_import_rules.py` formats help itself.
+
+**Measured cost.** Maintainer facing. A regression in any of the three would let the measure read a reach off the list, or a dangling verb, as clean, while the battery's own rules, which share the reading, stay green over the same fixtures. Not driven against the tree: the measure reads 0 reaches off the list and 0 dangling verbs on the branch either way.
+
+**Closes when:** a fixture test in `tests/test_refactor_measure.py` holds each reading, a lazy plain import, a chain through two handed modules, and a drive whose builder succeeds and whose help fails. Ledger only.
