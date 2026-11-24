@@ -1196,7 +1196,7 @@ source = { table = "u135.json", id = "A8_job_key_not_stamped" }
 description = "A set landing's batch playlist record carries no job key"
 file = "src/cratekit/intake/native.py"
 surface = "user"
-tests = ["tests/test_u135_set_inbox_join.py::test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set"]
+tests = ["tests/test_u135_set_inbox_join.py"]
 old = '''
         if plan.set_job_id:
             kept[INBOX_JOB_KEY] = plan.set_job_id
@@ -1833,7 +1833,7 @@ source = { table = "u135.json", id = "A12_inspiration_join_broken" }
 description = "Second landing of a set remakes the INSPIRATION playlist instead of adding"
 file = "src/cratekit/intake/set_playlist.py"
 surface = "user"
-tests = ["tests/test_u135_set_inbox_join.py::test_inspiration_join_stays_pinned_beside_the_inbox_join"]
+tests = ["tests/test_u135_set_inbox_join.py"]
 old = '''
         if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
             raise refuse(
