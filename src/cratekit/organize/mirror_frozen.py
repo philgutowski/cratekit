@@ -101,6 +101,7 @@ def _library_json(library: Any) -> dict[str, Any]:
         "refused": {name: cause.to_json() for name, cause in sorted(library.refused.items())},
         "favorites": library.favorites,
         "inbox": library.inbox,
+        "wip": library.wip,
     }
 
 
@@ -132,6 +133,8 @@ def _library_of(data: Mapping[str, Any]) -> Any:
         refused={str(name): Cause.from_json(cause) for name, cause in data["refused"].items()},
         favorites=str(data["favorites"]),
         inbox=str(data["inbox"]),
+        # A PLAN FROZEN BEFORE U959 carries no WIP reason, which reads as none.
+        wip=str(data.get("wip", "")),
     )
 
 

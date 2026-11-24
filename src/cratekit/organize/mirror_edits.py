@@ -87,6 +87,8 @@ def places(declared: Any, folders: Iterable[Any]) -> dict[str, edits.Place]:
             found.update(_favourite_places(declared, folder))
         elif folder.edits == edits.INBOX:
             found.update(_inbox_places(folder))
+        elif folder.edits == edits.WIP:
+            found.update(_wip_places(folder))
         elif folder.edits == edits.GENRE:
             bucket_id = declared.bucket_for_display(folder.name)
             if bucket_id is None:
@@ -129,6 +131,13 @@ def _inbox_places(folder: Any) -> dict[str, edits.Place]:
         one.name: edits.Place(one.name, folder.name, batch, True, edits.INBOX)
         for one, batch in _named(folder)
     }
+
+
+def _wip_places(folder: Any) -> dict[str, edits.Place]:
+    """Every WIP playlist the mirror copies, each a place of its own, by its title (U959)."""
+    from cratekit.modules.outbound import mirror_edits as edits
+
+    return {one.name: edits.Place(one.name, folder.name, one.name, True, edits.WIP) for one in folder.playlists}
 
 
 def _energies(current: int | None, top: int) -> list[int | None]:

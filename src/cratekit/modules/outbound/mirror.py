@@ -130,8 +130,8 @@ class Folder:
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
-    #: The edit rule reading it, ``mirror_edits.GENRE``, ``FAVORITES`` or
-    #: ``INBOX``, or ``""`` for a folder mirrored one way.
+    #: The edit rule reading it, ``mirror_edits.GENRE``, ``FAVORITES``,
+    #: ``INBOX`` or ``WIP``, or ``""`` for a folder mirrored one way.
     edits: str = ""
     #: Each node of the folder that is not mirrored, ``(label, reason)`` (U214).
     unmirrored: tuple[tuple[str, str], ...] = ()
