@@ -22,7 +22,14 @@ cp .scan-identity.example .scan-identity
   `pre-commit install` never installs.
 - List your own drive, account and machine names in `.scan-identity`
   (gitignored). The scan catches path-shaped personal literals without it;
-  bare names need it.
+  bare names need it. Off the cloud it also detects this machine's login, home
+  directory, short hostname and mounted volumes and catches each bare, except
+  one that is an ordinary English word (`scripts/scan_ordinary_words.txt`),
+  which it catches only in a home or volume path, unless the name is a stand
+  in such as `Music`, or as a host (`<name>.local` and the other local
+  suffixes, `user@<name>`, `smb://<name>`, `<name>:/path`).
+  Declare such a name to have it caught bare too. Under `CLAUDE_CODE_REMOTE`
+  only the declared names are read.
 - In an editable install `crate doctor` fails `repo.commit_hook` until the
   hooks are installed. Never install the copy you run against a library with
   `--editable`.

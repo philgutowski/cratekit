@@ -3,7 +3,10 @@
 Cratekit ships one component it did not write: the acquisition downloader,
 upstream `tidal-dl-ng` 0.33.0, as a source tree under
 `src/cratekit/_vendor/downloader/`. Its upstream was removed from GitHub and
-PyPI in December 2025, so no index can install it.
+PyPI in December 2025, so no index can install it. (The repository also holds
+one third party data file that does not ship in the package: the scan's word
+list, `scripts/scan_ordinary_words.txt`, drawn from SCOWL under the
+permission notice in its header.)
 
 - **Provenance** is data: the `DOWNLOADER` record in
   `src/cratekit/_vendor/__init__.py` (project, version, licence, date).

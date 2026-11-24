@@ -105,7 +105,9 @@ running Cratekit with an AI assistant. `crate --help` lists every verb.
 ## Licensing
 
 Authored code is MIT (`LICENSE`). The vendored downloader is AGPL-3.0-only and
-ships with its licence; see [`docs/vendoring.md`](docs/vendoring.md).
+ships with its licence; see [`docs/vendoring.md`](docs/vendoring.md). The
+repository scan's word list, `scripts/scan_ordinary_words.txt`, is drawn from
+SCOWL and carries SCOWL's permission notice in its header.
 
 ## Developing
 
