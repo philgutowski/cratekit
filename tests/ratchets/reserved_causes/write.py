@@ -57,6 +57,7 @@ KEBAB_LITERALS = {
     'write/rbxml.py': ['utf-8'],
     'write/rebuild.py': [
         'membership-left-behind',
+        'playlist-not-compared',  # 2026-11-24, R-2020
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
         'rebuild-tree-not-derivable',  # 2026-11-05, U219

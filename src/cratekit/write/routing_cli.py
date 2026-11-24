@@ -16,7 +16,7 @@ Layer: write.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import metadata_cli, rebuild, routing_pass, trees
 from cratekit.write.routing_export import (
@@ -613,54 +613,39 @@ def _resume(ctx, store, job_id: str) -> Envelope:
     if option != "apply":
         return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP)
     warnings: tuple[dict[str, str], ...] = ()
-    frozen: config.Config | None = None
-    try:
-        if job.is_open():
-            if not jobs.items(store, job.job_id):
-                raise refuse(
-                    "internal-error",
-                    f"job {job.job_id} has no tree to resort, so driving it would "
-                    f"report a resort that swept a library nothing read. It was queued "
-                    f"by a build that did not record its items",
-                    remedy=Remedy.REPORT_DEFECT,
-                    steps=(
-                        "cancel this job, then queue the resort again, which records "
-                        "one item per governed tree",
-                    ),
-                    origin=("routing_cli",),
-                    detail={"job_id": job.job_id},
-                )
-            # THE CUT THE WORKER WILL READ, read first (U89), so a corrupt
-            # calibration refuses before any item is claimed.
-            threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
-            declared = active_taxonomy.load(jobs.frozen_config(job))
-            # FROM HERE THIS RUN DROVE, so from here a refusal owes the leftovers.
-            frozen = jobs.frozen_config(job)
-            # THE TREES THIS RUN DRIVES, read before the drive.
-            driven = [
-                i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE
-            ]
+    if job.is_open():
+        if not jobs.items(store, job.job_id):
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} has no tree to resort, so driving it would "
+                f"report a resort that swept a library nothing read. It was queued "
+                f"by a build that did not record its items",
+                remedy=Remedy.REPORT_DEFECT,
+                steps=(
+                    "cancel this job, then queue the resort again, which records "
+                    "one item per governed tree",
+                ),
+                origin=("routing_cli",),
+                detail={"job_id": job.job_id},
+            )
+        # THE CUT THE WORKER WILL READ, read first (U89), so a corrupt
+        # calibration refuses before any item is claimed.
+        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
+        declared = active_taxonomy.load(jobs.frozen_config(job))
+        # THE SAME ENGINE AS THE REBUILD, SO THE SAME DRIVE: the gap (R-316),
+        # the skipped step (U132), the leftovers (R-312) and the playlists not
+        # compared (R-2020), only on the branch that drove, on BOTH its exits.
+        drive = rebuild.ReportedDrive.of(store, job, RESORT_ARTIFACTS)
+        with drive.owing():
             _, warnings = ctx.run_job(store, job)
             job = jobs.get(store, job.job_id)
-            # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316), and the
-            # leftovers (R-312), only on the branch that drove.
-            records, listed_in = _left_behind(frozen, job.job_id)
-            warnings = (
-                *warnings,
-                *rebuild.not_compared_warnings(
-                    rebuild.governed_not_compared(threshold, declared)
-                ),
-                # The rebuild's engine, so the rebuild's skipped step (U132).
-                *rebuild.favorites_skipped_warnings(declared, driven),
-                *rebuild.left_behind_warnings(records, listed_in=listed_in),
-                *_due_again_warnings(frozen, job.job_id),
-            )
-        jobs.raise_for_state(job)
-    except CratekitError as failed:
-        # BOTH EXITS carry the leftovers, once this run drove.
-        if frozen is None:
-            raise
-        raise _with_left_behind(failed, frozen, job.job_id) from failed
+            jobs.raise_for_state(job)
+        warnings = (
+            *warnings,
+            *drive.found(threshold, declared),
+            *_due_again_warnings(drive.frozen, job.job_id),
+        )
+    jobs.raise_for_state(job)
     return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
 
 
@@ -689,16 +674,33 @@ def _resort_pin(payload: dict[str, Any]) -> dict[str, str] | None:
     return {RESORT_DATABASE_KEY: str(opened)} if opened else None
 
 
+#: What the resume's gate shows of a plan frozen by a build that did not record
+#: the playlists its check could not compare (R-2020), never an empty list.
+UNRECORDED_UNREAD = (
+    "the plan this job was queued from did not record the playlists its check "
+    "could not compare, so the left behind count may leave some out; the drive "
+    "names any it finds, and a new resort's gate names them before it is queued"
+)
+
+
 def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str, Any]:
     """What the gate shows in front of the adds, counted off them (R-691's rule).
 
-    The trees, the count, and the memberships the additive resort leaves where
-    they are.
+    The trees, the count, the memberships the additive resort leaves where
+    they are, and every playlist the check could not compare, which that count
+    cannot include (R-2020). Facts frozen by a build before R-2020 carry no
+    such list, and say so rather than show an empty one.
     """
+    if "unidentified" in facts:
+        unread = rebuild.unidentified_message(facts["unidentified"] or ())
+        playlists = [] if unread is None else [unread]
+    else:
+        playlists = [UNRECORDED_UNREAD]
     return {
         "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
         "adds": len(adds),
         "left behind": int(facts.get("left_behind") or 0),
+        "playlists not compared": playlists,
         "not derived": list(facts.get("not_derived") or ()),
         "left alone": list(facts.get("left_alone") or ()),
     }
@@ -721,7 +723,9 @@ def route_resort(ctx) -> Envelope:
     routed = _routed_trees(entries, declared)
     warnings = _passed_over(entries, declared)
     adds: list[dict[str, str]] = []
-    facts: dict[str, Any] = {"trees": list(routed)}
+    # The list is recorded even when empty, since a job without it is one an
+    # older build froze, which the resume's gate says (R-2020).
+    facts: dict[str, Any] = {"trees": list(routed), "unidentified": []}
     opened: str | None = None
     if routed:
         threshold = metadata_cli.load_vocal_threshold(cfg)
@@ -734,7 +738,13 @@ def route_resort(ctx) -> Envelope:
         facts["not_derived"] = sorted(
             {gap for report in reports for gap in report.not_compared}
         )
+        # NOT A DIFFERENCE, SO NOT IN THE COUNT ABOVE, SO NAMED (R-2020).
+        facts["unidentified"] = sorted(
+            entry for report in reports for entry in report.unidentified
+        )
     facts["left_alone"] = [row["message"] for row in warnings]
+    # And on every envelope after the gate, since each reads as the whole answer.
+    warnings = [*warnings, *rebuild.unidentified_warnings(facts.get("unidentified") or ())]
     payload: dict[str, Any] = {RESORT_DATABASE_KEY: opened} if opened else {}
     option = ctx.gate.require(
         _resort_gate(ctx),
@@ -800,32 +810,17 @@ def handle_resort(job, item, cfg) -> None:
             if row.get("tree") == tree_id
         ],
     )
-    left = rebuild.left_behind(report.after, active_taxonomy.load(cfg))
     return RESORT_ARTIFACTS.produced(
         cfg,
         job,
         item,
         {
-            "tree_id": str(item.item_id),
-            "left_behind": [rebuild.left_behind_record(entry) for entry in left],
+            # What it left (R-312) and could not compare (R-2020).
+            **rebuild.after_report(tree_id, report.after, active_taxonomy.load(cfg)),
             # WHAT CAME DUE ONLY FROM THIS RESORT'S OWN WRITES (U219).
             "due_again": len(report.after.missing),
         },
     )
-
-
-def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]], str]:
-    """Every leftover this job's committed reports name, and where they are kept.
-
-    Read back rather than accumulated, so a job continued by a second process
-    names what the first one's trees left.
-    """
-    records = [
-        entry
-        for report in RESORT_ARTIFACTS.committed(cfg, job_id)
-        for entry in report.get("left_behind") or ()
-    ]
-    return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)
 
 
 #: The warning a resort carries when its own writes made adds due that its
@@ -860,28 +855,6 @@ def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]
             f". Until then {', '.join(held)} stays unconverged and its writes refuse"
         )
     return [{"code": DUE_AGAIN, "message": message}]
-
-
-def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:
-    """The same refusal, carrying what the trees that DID finish left behind.
-
-    A partial failure leaves with no warnings, so the step is appended, through
-    ``rebuilt`` so the cause keeps its type.
-    """
-    records, listed_in = _left_behind(cfg, job_id)
-    message = rebuild.left_behind_message(records, listed_in=listed_in)
-    if message is None:
-        return error
-    cause = error.cause
-    return rebuilt(
-        error,
-        replace(
-            cause,
-            remediation=replace(
-                cause.remediation, steps=(*cause.remediation.steps, message)
-            ),
-        ),
-    )
 
 
 def route_pending(ctx) -> Envelope:

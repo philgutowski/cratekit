@@ -32,6 +32,7 @@ from cratekit.core import (
     analysis_store,
     config,
     convergence,
+    jobs,
     locations,
     rb_writer,
     routing,
@@ -40,7 +41,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import genre_favorites, routing_pass, trees
 from cratekit.write.convergence_check import (
@@ -80,6 +81,22 @@ LEFT_BEHIND = "membership-left-behind"
 #: How many leftovers one warning names before it counts the rest. A back
 #: catalogue can leave thousands behind, and an envelope is read by a person.
 LEFT_BEHIND_NAMED = 20
+
+#: The envelope warning code a write carries for a playlist its after check
+#: could not tie to one destination (R-2020), so no count it shows reads whole.
+UNIDENTIFIED_PLAYLISTS = "playlist-not-compared"
+
+#: What a person reads after the playlists a check could not tie to a genre
+#: (R-1991), one wording for the convergence verb, the resort and the rebuild
+#: (R-2020). It follows the playlists' names.
+UNIDENTIFIED = (
+    ": each bears a name a genre files into, holds a track this tree files, "
+    "and could not be tied to one destination (its folder was renamed, or a "
+    "write made a folder of its genre's name again beside it), so a track left "
+    "in it is not named; look in each in rekordbox for a track its genre no "
+    "longer files, or give a renamed folder back its genre's name, where no "
+    "other folder bears that name, and converge compares it"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +347,146 @@ def left_behind_warnings(
     """The envelope warning over :func:`left_behind_message`, or nothing."""
     message = left_behind_message(records, listed_in=listed_in)
     return () if message is None else ({"code": LEFT_BEHIND, "message": message},)
+
+
+def unidentified_message(playlists: Iterable[str]) -> str | None:
+    """The sentence naming every playlist a write's check did not compare, or None.
+
+    R-2020. Not a difference (see ``ConvergenceReport.unidentified``), so no
+    left behind count includes a track in one; each is named, none capped,
+    since a cut list would read as the whole set. Sorted.
+    """
+    found = sorted(playlists)
+    if not found:
+        return None
+    return (
+        f"{len(found)} playlist(s) under the tree were not compared, so no count of "
+        f"what this write left behind includes a track in them: "
+        f"{'; '.join(found)}{UNIDENTIFIED}"
+    )
+
+
+def unidentified_warnings(playlists: Iterable[str]) -> tuple[dict[str, str], ...]:
+    """The envelope warning over :func:`unidentified_message`, or nothing."""
+    message = unidentified_message(playlists)
+    return () if message is None else ({"code": UNIDENTIFIED_PLAYLISTS, "message": message},)
+
+
+def after_report(
+    tree_id: str, after: "ConvergenceReport", declared: taxonomy.Taxonomy
+) -> dict[str, Any]:
+    """One item's report of the check after its write, as a worker stages it.
+
+    What it left behind (R-312, R-635) and what it could not compare (R-2020),
+    the only way back from a worker to its resume (R-443).
+    """
+    return {
+        "tree_id": tree_id,
+        "left_behind": [left_behind_record(entry) for entry in left_behind(after, declared)],
+        "unidentified": list(after.unidentified),
+    }
+
+
+def after_messages(
+    reports: Iterable[Mapping[str, Any]], *, listed_in: str
+) -> tuple[tuple[dict[str, str], ...], tuple[str, ...]]:
+    """What a job's committed item reports say, as envelope warnings and as steps.
+
+    Read back rather than accumulated, so a job continued by a second process
+    names what the first one's trees left and could not read. The steps are
+    the same sentences, for the exit a refusal takes, which has no warnings.
+    """
+    reports = tuple(reports)
+    records = [entry for report in reports for entry in report.get("left_behind") or ()]
+    unread = [str(entry) for report in reports for entry in report.get("unidentified") or ()]
+    warnings = (
+        *left_behind_warnings(records, listed_in=listed_in),
+        *unidentified_warnings(unread),
+    )
+    return warnings, tuple(warning["message"] for warning in warnings)
+
+
+@dataclass(frozen=True, slots=True)
+class ReportedDrive:
+    """What one drive of this engine's workers owes on both its exits (R-2020).
+
+    The rebuild's resume and the resort's each drive their open job inside
+    :meth:`owing`, so a job that did not end well raises its refusal with what
+    the finished trees left and could not compare as steps, since a refusal
+    carries no warnings; on success :meth:`found` gives the same as warnings.
+    Both read the committed item reports in ``artifacts`` back rather than
+    anything held in memory, so a job a second process continued names what
+    the first one's trees found (R-312, R-635).
+    """
+
+    store: Any
+    job_id: str
+    frozen: config.Config
+    artifacts: jobs.Artifacts
+    #: The trees this run drives; an item already done is an earlier run's.
+    driven: tuple[str, ...]
+
+    @classmethod
+    def of(cls, store: Any, job: jobs.Job, artifacts: jobs.Artifacts) -> "ReportedDrive":
+        """Read before the drive, so ``driven`` is this run's trees and no other's."""
+        return cls(
+            store=store,
+            job_id=job.job_id,
+            frozen=jobs.frozen_config(job),
+            artifacts=artifacts,
+            driven=tuple(
+                item.item_id
+                for item in jobs.items(store, job.job_id)
+                if item.state != jobs.ItemState.DONE
+            ),
+        )
+
+    def _messages(self) -> tuple[tuple[dict[str, str], ...], tuple[str, ...]]:
+        return after_messages(
+            self.artifacts.committed(self.frozen, self.job_id),
+            listed_in=str(self.artifacts.final_dir(self.frozen, self.job_id)),
+        )
+
+    @contextmanager
+    def owing(self) -> Iterator[None]:
+        """Re-raise a refusal from the drive with what the finished trees found as steps."""
+        try:
+            yield
+        except CratekitError as failed:
+            raise with_steps(failed, self._messages()[1]) from failed
+
+    def found(
+        self, threshold: float | None, declared: taxonomy.Taxonomy
+    ) -> tuple[dict[str, str], ...]:
+        """The warnings this drive owes on success, after the driver's own.
+
+        The dimension not derived (R-316) and the favorites step skipped (U132),
+        from the cut and the declaration the workers derived with, then what each
+        tree's check after its write left and could not compare.
+        """
+        return (
+            *not_compared_warnings(governed_not_compared(threshold, declared)),
+            *favorites_skipped_warnings(declared, list(self.driven)),
+            *self._messages()[0],
+        )
+
+
+def with_steps(error: CratekitError, steps: Sequence[str]) -> CratekitError:
+    """The same refusal with ``steps`` appended to its remedy, or ``error`` when none.
+
+    A job that fails part way leaves with no warnings, so what its finished
+    items said rides on the cause, through ``rebuilt`` so it keeps its type.
+    """
+    if not steps:
+        return error
+    cause = error.cause
+    return rebuilt(
+        error,
+        replace(
+            cause,
+            remediation=replace(cause.remediation, steps=(*cause.remediation.steps, *steps)),
+        ),
+    )
 
 
 #: One derivation per source a tree may cut over on; its key set is asserted to
@@ -1140,6 +1297,8 @@ __all__ = [
     "DERIVATIONS",
     "accept_as_it_stands",
     "additions",
+    "after_messages",
+    "after_report",
     "detect_restore",
     "assert_as_approved",
     "assert_derivable",
@@ -1152,6 +1311,8 @@ __all__ = [
     "REBUILD_ANSWERS_KIND",
     "REBUILD_WORKFLOW",
     "VOCAL_DIMENSION",
+    "UNIDENTIFIED",
+    "UNIDENTIFIED_PLAYLISTS",
     "VOCAL_NOT_COMPARED",
     "ConvergenceReport",
     "DeclaredPlacement",
@@ -1159,6 +1320,7 @@ __all__ = [
     "Difference",
     "Direction",
     "RebuildReport",
+    "ReportedDrive",
     "TreeNode",
     "Truth",
     "assert_addressable",
@@ -1185,5 +1347,8 @@ __all__ = [
     "report_convergence",
     "resolve_destinations",
     "undeclared_destinations",
+    "unidentified_message",
+    "unidentified_warnings",
     "with_favorites",
+    "with_steps",
 ]
