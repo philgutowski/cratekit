@@ -2987,6 +2987,38 @@ About 2,800 calls this sitting, and the account near 4,700 in its hour at
 2,600 calls when the held reads are cold, which no default ceiling lets one
 run finish.
 
+## Sitting 106, 2026-11-24, the first standing macOS battery and a grooming of the attended cards, no live library and no account
+
+Phillip asked why the attended cards kept growing and to fix it. Every cloud
+landing had filed a card for the macOS battery, 78 of the 124 attended cards
+filed since 2026-11-09, though one Mac run settles every merge before it.
+#1055 (`476696f9`) makes the battery a standing line in this record and stops
+the cloud filing a card for it, for a Mac only measurement, or for what the
+next ordinary pass shows. This sitting ran that battery once and groomed the
+open cards by those rules. Nothing touched the library or the account.
+
+macOS battery green at 500222747962312d7f87b2ec4c3a655919be384b: 23401 passed, 1 skipped, ruff and scan clean
+
+| Card | Decision | Why |
+|---|---|---|
+| A203 (#934) | closed, met | battery and board reads at sitting 104; step 3 met by the v0.19.0 cut |
+| A219 (#1006) | closed, met | battery above; `board.py next` ranked 4 ready units, `audit` read "352 units: 345 done, 4 ready, 3 blocked. The board matches the repository.", `sync` changed nothing |
+| A221 (#1012) | closed, met | battery above; `refactor_measure.py table` reads 0 allowance lines and 0 beyond them |
+| A223 (#1016), A230 (#1033) | closed, met | battery above, their only step |
+| A233 (#1040) | closed, met | scan clean on the Mac under its own name, battery above, v0.19.0 cut |
+| A235 (#1044), A236 (#1046) | closed, met | battery above; `crate --help`, `crate label --help`, `crate analyze check --help` and `crate analyze vocals --help` print and exit 0 |
+| A237 (#1049), A238 (#1051), A239 (#1053) | closed, met | battery above, so no test newly failing and no conditional replay owed; the Mac only mutation rows (A237's 99 replay rows, A239's `H1_pinned_version`) dropped under #1055's rule, since nothing under `src/` changed |
+| A227 (#1027) | closed, folded into A220 (#1009) | battery above; its live read already runs inside A220's `adopt move`, now carried on A220 |
+| A231 (#1037) | closed, folded into A226 (#1023) | battery above; one live `crate converge` reads both R-1949's and R-1991's lines, now carried on A226 |
+| A157 (#782) | closed, folded into A160 (#789) | the same tag run over headed titles; its Beatport half is A160's too |
+| A141 (#744) | closed, not planned | battery met long ago; the live case cannot arise (every streaming download carries art, Beatport refuses this machine), and the one request per album is proven by U260's tests |
+| A217, A218, A224, A225, A232, A234 | battery half met, live half left open | each card says so |
+| A228 (#1029) | step 1 met, left open | sitting 105 ran `sync removed` to its end on held reads, nothing offered; steps 2 and 3 are owed |
+
+Left as they were: A5 (#178), A129 (#711), A183 (#879), A202 (#929), A220
+(#1009), A222 (#1013), A226 (#1023), U29 (#29), and A72 (#446) and A160
+(#789) waiting on U282 (#797).
+
 ## Next sitting
 
 **Later the same night, on `d6e7597f`, after U320, R-1037 and U324 landed.** **Met and closed:** A201 (#924), A194 (#906), A179 (#842), A197 (#912), A200 (#922). **Filed:** R-1830's card (#925), R-1844's card (#926). **Progress only, left open:** A190 (#897), Auto Analysis on, the visit waiting for a landing; A129 (#711), a removal of a track landed after `f3dc078`, so the next landing's; A183 (#879), the night. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: `--retire` answered at its gate rather than waiting a day for the second sighting, since it writes only Cratekit's record; the first offer of two tracks aborted so A197 takes one; the budget's hour waited out rather than raised; `delete review` run from the session and its offered set read through the planner before `trash`; Cotonete, Parribean Disco left in the Trash and off its TIDAL playlist, since trashing it was the card's proof (put back from the volume's Trash and re-added on TIDAL if wanted); Auto Analysis turned on at this visit, last, so the throwaways were not analysed.
