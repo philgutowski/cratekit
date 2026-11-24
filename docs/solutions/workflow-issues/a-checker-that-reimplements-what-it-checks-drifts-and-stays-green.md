@@ -606,7 +606,7 @@ real parser would not recognise.
 THE SIBLING APPLICATION, in the same commit, from a different finding. Two skills
 described a profile disabled verb as refusing with an explanation when it is in
 fact absent from the parser. The correction was not only to the prose. The
-behaviour was pinned against the parser, `tests/test_skills_lint.py:530`, and the
+behaviour was pinned against the parser, `tests/test_skills_lint.py:508`, and the
 docstring names the property:
 
 ```python

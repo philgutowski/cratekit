@@ -790,7 +790,7 @@ def test_a_path_is_under_a_folder_only_past_a_separator_and_in_one_unicode_form(
     assert removed._under("/music/2026/Batch/a.flac", ["/music/2026/Batch/"])
     assert not removed._under("/music/2026/Batch 2/a.flac", ["/music/2026/Batch"])
     assert not removed._under("/music/2026/Batch/a.flac", [""])
-    assert removed._under("/music/Café/a.flac", ["/music/Café"])
+    assert removed._under("/music/Cafe\u0301/a.flac", ["/music/Café"])
 
 
 def test_a_routing_tree_on_the_bridge_names_no_playlist_of_the_pass(native_library):

@@ -300,7 +300,7 @@ def test_a_path_with_an_empty_name_is_not_a_playlist_path(machine, silence, path
 
 def test_the_rows_file_skips_blank_lines_comments_and_a_byte_order_mark(tmp_path):
     listed = tmp_path / "rows.txt"
-    listed.write_text("﻿# the set\n10  # the first\n\n  11  \n#12\n", encoding="utf-8")
+    listed.write_text("\ufeff# the set\n10  # the first\n\n  11  \n#12\n", encoding="utf-8")
     args = SimpleNamespace(rows=["9"], rows_from=str(listed), playlist=None)
     assert genre_set_cli.named_rows(args) == (["9", "10", "11"], "")
 
