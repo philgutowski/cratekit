@@ -1,9 +1,7 @@
 """Counting the taxonomy module's parses by their text (U247).
 
-One counter for every suite, replacing the ``tomllib`` the taxonomy module
-reads at call time, and only that module's. The memo lives for the process,
-so count a text the test made unique: :func:`unique` appends a comment no
-other test writes.
+Replaces the ``tomllib`` the taxonomy module reads at call time, and only that
+module's. The memo lives for the process, so count a text made :func:`unique`.
 """
 
 from __future__ import annotations

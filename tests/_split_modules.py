@@ -1,17 +1,11 @@
 """The three modules U300 split into parts, so a scan of one reads all of it.
 
-U300 split ``core/rb_writer.py``, ``core/session.py`` and ``core/restore.py``
-into parts each re-exports (``docs/DEVELOPING.md``, "The guarded writer, the
-session and the restore, in parts"). A guard reading a module's own file, its
-``inspect.getsource`` or its exact dotted name missed a forbidden shape in a
-part (R-1890), so every such guard reads through here.
+A guard reading a module's own file, its source or its exact dotted name
+missed a forbidden shape in a part (R-1890), so every such guard reads here.
 
-Parts are found by the glob of the module's file name, U300's convention.
-``tests/test_split_modules.py`` derives them three other ways, from the table
-in ``docs/DEVELOPING.md``, the import graph and the call time accessor; a part
-off the convention that escapes all three is a recorded residual. The glob
-also matches ``rb_dates.py``, the writer's too, so it is read: stricter,
-never weaker.
+Parts are found by the glob of the module's file name, U300's convention,
+which ``tests/test_split_modules.py`` checks three other ways. The glob also
+matches ``rb_dates.py``, so it is read: stricter, never weaker.
 """
 
 from __future__ import annotations

@@ -1,12 +1,8 @@
 """One harness for "this lookup imports nothing", shared by the suites that claim it.
 
-A clean interpreter, since in this process every feature module is cached and
-a ``sys.modules`` difference is empty whatever the code does: a real
-``importlib.import_module`` in ``registry.by_handler_key`` once killed zero
-tests that way. Shared by the ``registry.by_handler_key`` and
-``handlers.is_known`` claims, whose probe bodies differ by three lines.
-
-Not a test module: pytest does not collect it, and it defines no tests of its own.
+A clean interpreter, since in this process every feature module is cached:
+a real ``importlib.import_module`` in ``registry.by_handler_key`` once killed
+zero tests that way.
 """
 
 from __future__ import annotations
@@ -23,9 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def run_probe(body: str) -> dict:
     """Run ``body`` in a fresh interpreter and return the ``{walked, leaked}`` it printed.
 
-    ``body`` imports what the supervisor would, walks a population, snapshots
-    ``sys.modules`` around EACH lookup (not the loop, which would count the
-    package initializer), and prints one JSON object.
+    ``body`` snapshots ``sys.modules`` around EACH lookup, not the loop, which
+    would count the package initializer.
     """
     finished = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(body)],
