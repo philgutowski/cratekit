@@ -944,8 +944,9 @@ unexpected. The removal is offered, never instructed.
 A membership in a bucket's vocal sub whose file clears the vocal cut and whose
 row carries no `vox` My Tag (R-2056). The tag files the vocal sub (U127), so
 the declaration does not place it, yet it is not left behind: `converge` names
-it `untagged:` and counts it a difference, and `metadata mytags-vocals` tags it
-as well as a person taking it out settles it.
+it `untagged:` and counts it a difference. Tagging it settles it, by `metadata
+mytags-vocals` for a row that never carried the tag or in rekordbox for one
+whose tag was taken off, as taking it out of the playlist does.
 
 ### Driver
 The job driver: claims items, runs the handler, takes the driver lock, releases

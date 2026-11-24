@@ -781,7 +781,8 @@ def test_converge_counts_the_untagged_ahead_of_a_cut_list_of_leftovers(monkeypat
 
 
 def test_a_declaration_with_no_vocal_sub_never_reads_the_tag(rig, monkeypatch):
-    """The tag table, and its marker refusal, is opened only where it could file something."""
+    """The tag table, and its marker refusal, is opened only where it could file something:
+    a declaration with a vocal sub, on a calibrated library."""
     cfg, db, adopted_root, declared = rig
     trimmed = replace(declared, sub_classes=tuple(s for s in declared.sub_classes if not s.additive))
 
@@ -791,6 +792,9 @@ def test_a_declaration_with_no_vocal_sub_never_reads_the_tag(rig, monkeypatch):
     monkeypatch.setattr(vox_tag, "vox_tagged", unreadable)
     report = _rebuild(cfg, db, adopted_root, trimmed, [PLAIN], vocal_threshold=5.0)
     assert report.after.converged
+    # Nor on a library never calibrated, where it could file nothing either.
+    uncalibrated = _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=None)
+    assert rebuild.VOCAL_DIMENSION in uncalibrated.after.not_compared
     with pytest.raises(AssertionError):
         _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=5.0)
 

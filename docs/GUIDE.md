@@ -1488,7 +1488,8 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-entries, at most five `not-compared` ones first), and `route resort` and
+entries: a count of the `untagged` vocal memberships first when there are
+any, then at most five `not-compared` ones), and `route resort` and
 `rebuild` list it as left behind. Under a folder
 renamed in rekordbox it is listed the same way when a write recorded that
 playlist, or recorded the folder and nothing else is filed into that band:
