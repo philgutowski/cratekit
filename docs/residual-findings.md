@@ -116,3 +116,86 @@ is written or skipped wrongly.
 head, a no answer word for `skipped-no-key`) and the summary key renamed, with
 every reader of each moved in the same change, or a decision records keeping
 them. Ledger only: a wording in a report, no file or row at risk.
+
+---
+
+## R-2025. A machine named by a plain word is caught only in the host forms the scan lists, not a tailnet name, an unlisted suffix or a host typed in a shell prompt
+
+**Found:** at the review of #1025, U957, 2026-11-23.
+
+**The mechanism.** `_host_forms` in `scripts/scan_repo.py` lists the shapes
+in which a detected ordinary word names the machine: `<t>.local`, `.lan`,
+`.localdomain`, `.home.arpa`, `user@<t>`, `//<t>/` or `//<t>:port`, a UNC
+`\\<t>\`, and `<t>:/path` or `<t>:~`. The base matched the bare word anywhere,
+so every other form it used to catch now passes: a tailnet or router suffix
+(`.ts.net`, `.fritz.box`), `.home` and `.internal`, which were tried and
+removed because `Path.home()` and attribute access read as hosts, a default
+shell prompt (`<user>@<t> ~ %` is caught by the `@` form, `<t>:~ <user>$` by
+the scp form, but `[<t> ~]` is not), and a UNC path inside a source literal
+with doubled backslashes.
+
+**Measured cost.** Round one drove thirteen such forms: the base flagged all,
+the first head none; the fix round restored the listed ones. The tree writes
+none of the remaining forms today (grepped), so no producer was driven. The
+other way, the `user@<t>` form reads `someone@somewhere` and `line@hours`
+in two test files as hosts, so a machine named `somewhere` or `hours` is red
+there (round two, through `scan_tree`); a URL host such as `https://host/x`
+is red by design.
+
+**Closes when:** a form that names the machine and not ordinary prose is
+added to `_host_forms` with a test, after driving it over the tree for the
+words the tree writes. Ledger only: maintainer facing.
+
+---
+
+## R-2026. A detected login or home name that is also a common word, such as a given name, passes the scan in prose
+
+**Found:** at the review of #1025, U957, 2026-11-23.
+
+**The mechanism.** `machine_identity_tokens` relaxes every detected token
+whose lower case form is on `scripts/scan_ordinary_words.txt` to the path and
+host shapes, the login and the home directory name as well as the hostname
+and the volumes. SCOWL size 35 carries many given names in lower case as
+common nouns or verbs (mark, frank, grace, rose, amber, heather among the
+thirteen the review probed), so a contributor whose login is one of them is
+caught at `/Users/<name>` and `<name>.local` but no longer in prose such as
+"curated by <Name>".
+
+**Measured cost.** Driven with the login and home patched to a probed given
+name: the base flagged the bare name once, the branch not at all. No real
+producer was driven; it is the price the brief sets on purpose, since the
+same rule is what lets a machine named by a plain word pass.
+
+A login or home name that is both on the list and a stand in segment
+(account, example, library, music, name, somebody, someone, volume) is not
+caught in its own home path either, since a stand in segment does not count
+as naming the machine; round two drove `USER=music` over `/Users/music/...`:
+round one's head reported it, the fix round's does not. The home directory
+class already treats those segments as anonymous, so the cost is marginal,
+the trade for `/Volumes/Music` in the docs.
+
+**Closes when:** the login and home tiers are kept bare unless declared
+otherwise, or the contributor declares the name in `.scan-identity`, which
+the docs already advise. Ledger only: maintainer facing, nothing a DJ pays.
+
+---
+
+## R-2027. A Python attribute named local reads as a host form, so a machine named by a word the code uses as a variable stays red
+
+**Found:** at U957, #1025, 2026-11-23, driving the words the brief's ten files share.
+
+**The mechanism.** The `<t>.local` host form cannot tell `first.local !=
+second.local` or `str(self.local / "config")` in code from a host name in
+prose. A machine named by one of the words the tree writes as a variable
+with a `local` attribute (first, second, other, self, area, among the words
+driven) still fails the scan on those files.
+
+**Measured cost.** Driven with the hostname patched to each word: the files
+`tests/test_intake_land_rehearse.py` and `src/cratekit/core/rehearsal.py`,
+and three mutation records quoting the latter, are red for those words. The
+base was red for them too, bare, so nothing regressed; the brief's goal is
+unmet for a machine named by one of them.
+
+**Closes when:** the `.local` form refuses an attribute shape it can tell
+apart (a following operator, method or path join) without missing a host in
+prose, or the variables are renamed. Ledger only: maintainer facing.
