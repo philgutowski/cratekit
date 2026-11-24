@@ -238,29 +238,37 @@ def machine_identity_tokens(root: Path | None = None) -> IdentityTokens:
     return IdentityTokens(declared | detected, shape_only)
 
 
-def _host_forms(token: str) -> str:
+@functools.lru_cache(maxsize=64)
+def _host_forms(token: str) -> re.Pattern[str]:
     """Where a token is a host: ``<t>.local`` and the like, ``user@<t>``,
     ``//<t>/`` or ``//<t>:port`` in a URL or share, ``\\\\<t>\\`` in a UNC path, and
     ``<t>:/path`` or ``<t>:~/path`` as scp and rsync write it. Never a method call
-    (``<t>.local()``) or a URL scheme (``<t>://``)."""
+    (``<t>.local()``), a URL scheme (``<t>://``), a ``file:///`` path or an
+    escaped drive path (``C:\\\\<t>\\\\``). Every form opens at the token, so
+    ``_names_the_machine`` tries it only where the token is written."""
     name = re.escape(token)
-    return "|".join((
-        rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_(-])",
-        rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
-        rf"(?<=//){name}(?=[:/]|\s|$)",
-        rf"(?<=\\\\){name}(?=\\)",
-        rf"(?<![^\s\"'`(\[]){name}:(?:~|/(?!/))",
-    ))
+    return re.compile(
+        "|".join((
+            rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_(-])",
+            rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
+            rf"(?:(?<=[^/]//)|(?<=^//)){name}(?=[:/]|\s|$)",
+            rf"(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}(?=\\)",
+            rf"(?<![^\s\"'`(\[]){name}:(?:~|/(?!/))",
+        )),
+        re.IGNORECASE,
+    )
 
 
 def _names_the_machine(token: str, text: str, segments: set[str]) -> bool:
     """True when ``token`` is a home or mount path segment in ``text``, or a host."""
     if token.lower() in segments:
         return True
-    # The token alone, under the same case rule, first: most files never write it.
-    if re.search(re.escape(token), text, re.IGNORECASE) is None:
-        return False
-    return re.search(_host_forms(token), text, re.IGNORECASE) is not None
+    host = _host_forms(token)
+    # Each place the token is written, under the host forms' own case rule.
+    return any(
+        host.match(text, written.start())
+        for written in re.finditer(re.escape(token), text, re.IGNORECASE)
+    )
 
 
 def portability_violations(text: str, *, identity_tokens: set[str] | None = None) -> list[str]:

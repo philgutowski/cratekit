@@ -550,7 +550,7 @@ def _identity_problems(text: str, tokens) -> list[str]:
 
 def test_a_detected_ordinary_word_passes_in_prose(detected):
     """A machine named by a plain word does not fail a file using the word plainly."""
-    tokens = detected("Garden.local", volume="Meadow")
+    tokens = detected(_W.capitalize() + ".local", volume="Meadow")
     assert {"Garden", "Meadow"} <= tokens
     assert {"Garden", "Meadow"} <= tokens.shape_only
     for prose in ("water the garden daily", "GARDEN and MEADOW", "a Meadow, a garden."):
@@ -578,6 +578,8 @@ def test_a_detected_ordinary_word_passes_in_prose(detected):
         "http://" + _W + ":8080/",
         "//" + _W + "/",
         "\\\\" + _W + "\\share",
+        "open \\\\" + _W + "\\share",
+        "//" + _W,
     ],
 )
 def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected, written):
@@ -607,6 +609,8 @@ def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected,
         "a " + _W + "://location",
         "return " + _W + ".local()",
         _W + ".home()",
+        "file:///" + _W + "/x",
+        "C:\\\\" + _W + "\\\\Track.flac",
     ],
 )
 def test_a_host_form_needs_the_whole_name_and_a_whole_suffix(detected, written):
@@ -620,7 +624,7 @@ def test_a_stand_in_path_segment_is_not_the_machine(detected):
     tokens = detected("Music")
     assert "Music" in tokens.shape_only
     assert _identity_problems("/" + "Volumes" + "/Music/Processed", tokens) == []
-    assert _identity_problems("music.local", tokens)
+    assert _identity_problems("mu" + "sic.local", tokens)
 
 
 def test_the_login_and_home_name_are_relaxed_like_the_hostname(detected):

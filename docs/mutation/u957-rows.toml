@@ -31,8 +31,8 @@ surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
 old = '''    if token.lower() in segments:
         return True
-    # The token alone'''
-new = '''    # The token alone'''
+    host = _host_forms(token)'''
+new = '''    host = _host_forms(token)'''
 
 [[rows]]
 id = "M4_segment_case_exact"
@@ -128,7 +128,7 @@ description = "_host_forms: drop the user@host form"
 file = "scripts/scan_repo.py"
 surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
-old = '''        rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
+old = '''            rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
 '''
 new = ''''''
 
@@ -191,13 +191,31 @@ old = '''(?![A-Za-z0-9_(-])",'''
 new = '''(?![A-Za-z0-9_-])",'''
 
 [[rows]]
-id = "M19_prefilter_skips_everything"
-description = "_names_the_machine: the token search answers absent for every file, so no host form is ever read"
+id = "M19_occurrences_case_exact"
+description = "_names_the_machine: look for the token's occurrences case exact, so a host written in another case is missed"
 file = "scripts/scan_repo.py"
 surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
-old = '''    if re.search(re.escape(token), text, re.IGNORECASE) is None:'''
-new = '''    if True:'''
+old = '''        for written in re.finditer(re.escape(token), text, re.IGNORECASE)'''
+new = '''        for written in re.finditer(re.escape(token), text)'''
+
+[[rows]]
+id = "M20_file_url_read_as_host"
+description = "_host_forms: take any two slashes before the name, so a file:/// path reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''(?:(?<=[^/]//)|(?<=^//)){name}'''
+new = '''(?<=//){name}'''
+
+[[rows]]
+id = "M21_drive_path_read_as_unc"
+description = "_host_forms: take any two backslashes before the name, so an escaped drive path reads as a UNC host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}'''
+new = '''(?<=\\\\){name}'''
 
 [[rows]]
 id = "M16_cloud_relaxes_declared"
