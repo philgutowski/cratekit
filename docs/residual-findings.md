@@ -715,3 +715,101 @@ lines another way. Ledger only: maintainer facing.
 **Measured cost.** On a copy of the live database (sha256 head 2b7393041132680c) with every file's `voxlevel` read, cut 3.0: 1,759 rows tagged `vox`; **2 tagged rows read under the cut**, one of them Sworn Virgins, Fifty Dollar Bills, which A229's live `adopt apply` put into Nu Disco / Indie Dance / with vox on 2026-11-23 and which `crate converge` on 2026-11-24 lists as `unexpected:nu_disco_indie_dance/with_vox`; **607 rows read over the cut with no tag**, every one already in a with vox playlist, which converge reads as correct and the tag's rule does not place. So the product's own check calls a membership its own adoption wrote, by the rule the author chose, a leftover. Driven end to end on live data.
 
 **Closes when:** one signal places the vocal sub on every path: the derivation reads the tag as U127 decided, or the check accepts a with vox membership the tag places, and the 607 untagged rows are either tagged or named. Earns an issue under the board bar's (b): a report says something false about a membership the product itself wrote.
+
+---
+
+## R-2057. A playlist whose live rows read 1 to N while a row marked removed holds one of those places is never planned by the repair
+
+**Found:** at the review of #1058, U958, round two, 2026-11-24.
+
+**The mechanism.** `crate repair numbers` plans only a playlist whose live rows
+are not 1 to N, as the card asks ("a contiguous playlist is never written").
+A row marked removed that shares a live place (rekordbox's own renumbering
+after a hand removal leaves one, sitting 107: a marked row at 55 under live
+rows renumbered 1 to 555) is moved to 0 only when a product add or removal
+next touches the playlist; until then the doctor row reads OK. `read_back` and
+`gap_violations` would call the same state a failure, since they judge a
+playlist the repair or a removal wrote.
+
+**Measured cost.** Driven on the repair suite's fixture: a playlist 1, 2, 3 with
+a marked row at 3 plans nothing and the doctor reads OK. Whether rekordbox's
+Remove from Playlist can take a marked row that shares the shown position's
+number is unmeasured.
+
+**Closes when:** the attended card's hand removal reads such a playlist, or the
+repair plans a playlist with a marked row on a place. Ledger only.
+
+---
+
+## R-2058. The closing up counts a live membership of a track marked removed from the collection as a place, and whether rekordbox shows that row is unmeasured
+
+**Found:** at the review of #1058, U958, round one, 2026-11-24.
+
+**The mechanism.** `rb_positions.contiguous_positions` and `numbering` read a
+membership row as live from its own `rb_local_deleted` alone. A live membership
+whose content row is marked removed (a cloud sync tombstone, R-675's shape) is
+numbered as a place. `playlist_pair.members` leaves such a row out of what it
+says rekordbox shows. If rekordbox does not show it, the shown positions skip
+it, and the closing up leaves the numbers one off from the positions after it,
+the defect U958 closes.
+
+**Measured cost.** Driven by the round one review on a disposable library with
+member 2's content row marked removed: the numbering read the playlist 1 to 4
+as contiguous and the doctor row read OK, while `playlist_pair.members` showed
+three rows. What rekordbox shows for such a row was not measured; no product
+code marks a content row removed while keeping its memberships.
+
+**Closes when:** an attended sitting reads whether rekordbox shows a live
+membership of a track marked removed from the collection, and the rule counts
+or skips it to match. Ledger only.
+
+---
+
+## R-2059. A membership row this product marks removed is put at TrackNo 0, and what rekordbox does with a marked row at 0 is unmeasured
+
+**Found:** at the build of #1058, U958, 2026-11-24.
+
+**The mechanism.** `rb_positions.close_gaps`, run by `commit_guarded`, numbers
+the live rows of every playlist a membership removal touched 1 to N and moves
+every row marked `rb_local_deleted` 1 in that playlist to `TrackNo` 0, its
+`TrackNo` alone, so no marked row shares a place with a live one. `crate
+repair numbers` does the same over the playlists it plans. Sitting 107 (A218)
+showed rekordbox leaving a marked row at 55 out of the shown positions, so a
+marked row is not counted as a place; nothing measured rekordbox reading,
+syncing or removing around a marked row at 0. A row at 0 was chosen because
+rekordbox's Remove from Playlist takes the row numbered as the shown position,
+which is never 0, and a marked row left on its old number would share a place
+with the live row closed up onto it.
+
+**Measured cost.** Not driven against rekordbox, which no cloud session may
+open. On fixtures every reader in src skips a marked row, and `add_memberships`
+appends past the highest number over every row, so 0 changes no append.
+
+**Closes when:** the attended card's hand removal reads a playlist the repair
+closed up, holding a marked row at 0, before and after, and rekordbox removes
+the selected track and leaves the marked row as it was. Ledger only: it closes
+only at an attended sitting.
+
+---
+
+## R-2060. With two live playlists of the favourites source's name, the repair and the doctor row leave the Favorites folder out and still read clean
+
+**Found:** at the review of #1058, U958, round two, 2026-11-24.
+
+**The mechanism.** `write/numbers.scope` takes the folder holding the
+favourites class's source playlist into scope only when exactly one live
+ordinary playlist outside another app's folder carries the name, as the
+favourites verbs require (U119), so a namesake in a person's own folder never
+pulls that folder in. With two, neither folder is read, and the doctor's
+`library.playlist_numbers` line counts only what is left: round two drove a
+gapped `Favorites / 2026-10` reading INFO with one `All Favorites` and OK,
+"all 0 playlists", after a second was made under another folder.
+
+**Measured cost.** Driven on the repair suite's fixture. The producer, a
+person making a second playlist of the source's name in rekordbox, was not
+driven; the favourites verbs refuse loudly in that state, so the person is
+told there, not here.
+
+**Closes when:** the scope holds both candidate folders back and the plan and
+the doctor line name them, as a playlist whose marker cannot be read is held.
+Ledger only.
