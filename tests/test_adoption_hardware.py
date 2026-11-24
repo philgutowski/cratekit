@@ -16,9 +16,9 @@ import pytest
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import revert as adopt_revert
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import config, tags, taxonomy
+from cratekit.core import tags
 from tests import _hardware
-from tests.test_config import valid_data
+from tests.test_adoption import _bucket_and_genre, cfg, declared, library  # noqa: F401
 from tests.test_tags import _synth
 
 TREE_ID = "adoption"
@@ -52,43 +52,21 @@ def fat(tmp_path):
 
 
 @pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    """A config whose ledgers live on the default filesystem."""
-    root = tmp_path / "library"
-    (root / "db").mkdir(parents=True)
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    resolved = config.from_dict(valid_data(root))
-    monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
-    return resolved
-
-
-@pytest.fixture
-def declared():
-    return taxonomy.default_taxonomy()
-
-
-def _genre_of(declared_taxonomy) -> str:
-    """A genre the shipped template really routes, derived rather than spelled."""
-    for bucket in declared_taxonomy.buckets:
-        if bucket.id == declared_taxonomy.fallback.bucket:
-            continue
-        resolution = adopt_scan.routing.resolve_bucket(declared_taxonomy, bucket.display)
-        if resolution.bucket_id == bucket.id and resolution.match is not (
-            adopt_scan.routing.Match.FALLBACK
-        ):
-            return bucket.display
-    raise AssertionError("the shipped template declares no routable bucket")
+def music(fat):
+    """The library's music folder, on the removable volume."""
+    folder = fat / "Music"
+    folder.mkdir()
+    return folder
 
 
 # The census, over a library that is actually on the removable volume
 
 
-def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(fat, cfg, declared):
+def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(
+    fat, music, cfg, declared  # noqa: F811
+):
     """AE12's second half: the named category has to reach the DISPOSITION."""
-    music = fat / "Music"
-    music.mkdir()
-    genre = _genre_of(declared)
+    _routable, genre = _bucket_and_genre(declared)
 
     present = _synth(music, ".mp3")
     evicted = music / "Evicted.mp3"
@@ -121,10 +99,8 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(f
 # The revert ledger, over files on the removable volume
 
 
-def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
+def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(music, cfg):  # noqa: F811
     """Scenario 5, "reverted exactly", including the absence, on real msdos."""
-    music = fat / "Music"
-    music.mkdir()
     path = _synth(music, ".mp3")
     assert tags.read_tag_values(path, "genre") is None
 
@@ -138,10 +114,8 @@ def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
     assert tags.read_tag_values(path, "genre") is None, "an absence came back as a value"
 
 
-def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cfg):
+def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(music, cfg):  # noqa: F811
     """The half of round 8's vacancy guard that must still say YES."""
-    music = fat / "Music"
-    music.mkdir()
     path = _synth(music, ".mp3")
     tags.write_tag_values(path, "genre", ("Original Genre",))
 
@@ -165,10 +139,10 @@ def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cf
     assert Path(snapshots[0].path) == moved
 
 
-def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, cfg):
+def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(
+    fat, music, cfg  # noqa: F811
+):
     """Round 8's fix, driven on real msdos: absence of a path is not evidence."""
-    music = fat / "Music"
-    music.mkdir()
     backup_dir = fat / "Backup"
     backup_dir.mkdir()
 
