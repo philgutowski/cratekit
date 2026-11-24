@@ -49,7 +49,6 @@ def package_sources() -> list[tuple[Path, str]]:
     ]
 
 
-# Fixtures
 @pytest.fixture
 def library(tmp_path, monkeypatch):
     root = tmp_path / "library"
@@ -947,8 +946,7 @@ def test_a_handler_key_resolves_without_importing_the_module():
         import json, sys
         from cratekit.cli import registry
 
-        leaked = {}
-        walked = 0
+        leaked, walked = {}, 0
         for entry in registry.entries():
             if not entry.landed:
                 continue
@@ -1943,14 +1941,11 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
 _SHIPPED = taxonomy.default_taxonomy()
 _TREES = (_SHIPPED.tree, _SHIPPED.intake, _SHIPPED.intake_old, _SHIPPED.inspiration)
 TAXONOMY_IDS = frozenset(
-    {tree.id for tree in _TREES}
-    | set(_SHIPPED.bucket_ids())
-    | {band.id for band in _SHIPPED.energy.bands}
-    | {sub.id for sub in _SHIPPED.sub_classes}
+    {tree.id for tree in _TREES} | set(_SHIPPED.bucket_ids())
+    | {band.id for band in _SHIPPED.energy.bands} | {sub.id for sub in _SHIPPED.sub_classes}
 )
 TAXONOMY_DISPLAY_NAMES = frozenset(
-    {tree.display for tree in _TREES}
-    | {bucket.display for bucket in _SHIPPED.buckets}
+    {tree.display for tree in _TREES} | {bucket.display for bucket in _SHIPPED.buckets}
     | {band.display for band in _SHIPPED.energy.bands}
 )
 
@@ -2375,14 +2370,12 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
 
 
 #: Exact membership: adding a gate is a red suite, as with ``EXPECTED_PENDING``.
-EXPECTED_UNREACHABLE_GATES = frozenset(
-    {
-        "write.cloudsync.unreadable", "intake.land.native", "intake.file.native",
-        "export.set.rename", "favorites.split.approve", "favorites.order.approve",
-        "intake.shelve.native", "label.playlists.crawl", "sync.twins.approve", "rebuild.accept",
-        "sync.removed.confirm", "sync.removed.retire",
-    }
-)
+EXPECTED_UNREACHABLE_GATES = frozenset({
+    "write.cloudsync.unreadable", "intake.land.native", "intake.file.native", "export.set.rename",
+    "favorites.split.approve", "favorites.order.approve", "intake.shelve.native",
+    "label.playlists.crawl", "sync.twins.approve", "rebuild.accept", "sync.removed.confirm",
+    "sync.removed.retire",
+})
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():

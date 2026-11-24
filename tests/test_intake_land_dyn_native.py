@@ -59,8 +59,9 @@ def _marked(cfg: config.Config) -> frozenset[str]:
 
 
 @pytest.fixture
-def writable(cfg):
+def writable(native_library):
     """The landing library, holding one category of the person's and no dyn tag."""
+    cfg = native_library[0]
     _add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
     return cfg
 

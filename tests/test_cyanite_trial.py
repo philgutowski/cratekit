@@ -181,6 +181,12 @@ def declared():
     return taxonomy.default_taxonomy()
 
 
+@pytest.fixture
+def out(tmp_path) -> Path:
+    """Where a run writes its table, beside which it writes its summary."""
+    return tmp_path / "t.tsv"
+
+
 def _settings(root, out, **given):
     return cyanite.Settings(paths=(root,), output=out, **given)
 
@@ -391,9 +397,8 @@ def test_a_failed_create_and_a_failed_analysis_are_scrubbed_of_the_key():
     assert KEY not in analysis.note
 
 
-def test_an_echoed_key_in_a_state_or_a_track_never_reaches_the_table(chosen, tmp_path, declared, keyed):
+def test_an_echoed_key_in_a_state_or_a_track_never_reaches_the_table(chosen, out, declared, keyed):
     fake = Recorded(echo=f"Weird{KEY}")
-    out = tmp_path / "t.tsv"
     events: list = []
     _run(_settings(chosen, out, **SEND), declared, fake, events)
     text = out.read_text() + cyanite.summary_path(out).read_text()
@@ -444,8 +449,7 @@ def test_a_reply_carrying_a_tempo_and_a_key_has_them_left_unread():
     assert words == cyanite.Words(("electronicDance",), ("deepHouse",), ("chilled", "sexy"), "medium")
 
 
-def test_the_table_carries_no_tempo_or_key_a_reply_held(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_the_table_carries_no_tempo_or_key_a_reply_held(chosen, out, declared, keyed):
     _run(_settings(chosen, out, **SEND), declared, Recorded())
     text = out.read_text() + cyanite.summary_path(out).read_text()
     assert "124" not in text and "aMinor" not in text and "4/4" not in text
@@ -475,8 +479,7 @@ def test_the_trial_writes_its_table_and_summary_and_nothing_else(chosen, tmp_pat
 # The table, the folders and the agreement
 
 
-def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen, out, declared, keyed):
     fake = Recorded()
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
     assert ran.uploaded == 4 and not ran.stopped and not ran.dry
@@ -532,9 +535,8 @@ def _with_cyanite_table(rows: str) -> taxonomy.Taxonomy:
     return taxonomy.load_taxonomy(f"{text}\n[vocabulary.cyanite]\nwords = [\n{rows}\n]\n")
 
 
-def test_a_declared_cyanite_vocabulary_answers_before_the_aliases(chosen, tmp_path, keyed):
+def test_a_declared_cyanite_vocabulary_answers_before_the_aliases(chosen, out, keyed):
     declared = _with_cyanite_table('  { word = "deep house", tag = "Tech House" },')
-    out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded())
     deep = _rows(out)["deep.mp3"]
     assert deep["cyanite_word"] == "deep house"
@@ -588,9 +590,8 @@ def test_an_identifier_is_read_as_the_words_it_spells(identifier, words):
 # What stops a run and what is one file's
 
 
-def test_a_full_library_stops_the_run_and_keeps_the_rows_written(chosen, tmp_path, declared, keyed):
+def test_a_full_library_stops_the_run_and_keeps_the_rows_written(chosen, out, declared, keyed):
     fake = Recorded(create_errors={"jazzy": (cyanite.LIBRARY_FULL, "basic tier limit")})
-    out = tmp_path / "t.tsv"
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
     assert "library is full" in ran.stopped
     rows = _rows(out)
@@ -606,9 +607,8 @@ def test_an_analysis_never_started_stops_the_run(chosen, tmp_path, declared, key
     assert len(fake.uploaded()) == 1
 
 
-def test_one_upload_refused_is_that_files_row_and_the_run_goes_on(chosen, tmp_path, declared, keyed):
+def test_one_upload_refused_is_that_files_row_and_the_run_goes_on(chosen, out, declared, keyed):
     fake = Recorded(upload_status=403)
-    out = tmp_path / "t.tsv"
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
     assert not ran.stopped and ran.uploaded == 4
     rows = _rows(out)
@@ -618,9 +618,8 @@ def test_one_upload_refused_is_that_files_row_and_the_run_goes_on(chosen, tmp_pa
     assert fake.tracks == {}
 
 
-def test_an_analysis_that_does_not_finish_in_the_window_is_kept_for_a_resume(chosen, tmp_path, declared, keyed):
+def test_an_analysis_that_does_not_finish_in_the_window_is_kept_for_a_resume(chosen, out, declared, keyed):
     fake = Recorded(processing=1000)
-    out = tmp_path / "t.tsv"
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
     assert not ran.stopped
     rows = _rows(out)
@@ -632,8 +631,7 @@ def test_an_analysis_that_does_not_finish_in_the_window_is_kept_for_a_resume(cho
 
 
 @pytest.mark.parametrize("which", ["table", "summary"])
-def test_an_output_already_there_refuses_without_resume(chosen, tmp_path, declared, keyed, which):
-    out = tmp_path / "t.tsv"
+def test_an_output_already_there_refuses_without_resume(chosen, out, declared, keyed, which):
     taken = out if which == "table" else cyanite.summary_path(out)
     taken.write_text("someone's\n")
     with pytest.raises(cyanite.TrialRefused, match="never overwritten"):
@@ -650,8 +648,7 @@ def test_resume_refuses_a_table_this_trial_did_not_write(chosen, tmp_path, decla
         _unsent(_settings(chosen, tmp_path / "none.tsv", resume=True, **SEND), declared)
 
 
-def test_resume_uploads_only_the_files_with_no_answer(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_resume_uploads_only_the_files_with_no_answer(chosen, out, declared, keyed):
     first = Recorded(create_errors={"tech": (cyanite.LIBRARY_FULL, "full")})
     _run(_settings(chosen, out, **SEND), declared, first)
     assert set(_rows(out)) == {"deep.mp3", "jazzy.mp3"}
@@ -668,8 +665,7 @@ def test_resume_uploads_only_the_files_with_no_answer(chosen, tmp_path, declared
     assert {line["filed_folder"]: line for line in _summary(out)}["(all folders)"]["tracks"] == "4"
 
 
-def test_resume_asks_again_about_an_unfinished_analysis_without_uploading(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_resume_asks_again_about_an_unfinished_analysis_without_uploading(chosen, out, declared, keyed):
     slow = Recorded(processing=1000)
     _run(_settings(chosen, out, **SEND), declared, slow)
     later = Recorded(processing=0)
@@ -791,8 +787,7 @@ def test_an_interrupt_while_waiting_keeps_the_track_and_the_resume_does_not_uplo
     assert _rows(out)["jazzy.mp3"]["agreement"] == cyanite.DIFFERENT
 
 
-def test_a_stop_after_a_track_was_made_keeps_the_track(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_a_stop_after_a_track_was_made_keeps_the_track(chosen, out, declared, keyed):
     fake = Recorded(never_start=True)
     ran = _run(_settings(chosen, out, **SEND), declared, fake)
     assert "analysis limit" in ran.stopped
@@ -807,9 +802,8 @@ def test_an_upload_address_that_is_not_https_stops_before_the_upload(chosen, tmp
     assert fake.uploaded() == []
 
 
-def test_a_tab_or_a_line_break_in_an_answer_stays_in_its_cell(chosen, tmp_path, declared, keyed):
+def test_a_tab_or_a_line_break_in_an_answer_stays_in_its_cell(chosen, out, declared, keyed):
     said = {**SAID, "deep": {**SAID["deep"], "moodTags": ["dark\tand\nbroody"]}}
-    out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
     assert _rows(out)["deep.mp3"]["cyanite_moods"] == "dark and broody"
     # The header, a row written ahead of each wait and the answered row after it.
@@ -821,7 +815,7 @@ def test_an_output_folder_that_is_not_there_refuses_before_any_request(chosen, t
         _unsent(_settings(chosen, tmp_path / "missing" / "t.tsv", **SEND), declared)
 
 
-def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, tmp_path, declared, keyed, monkeypatch):
+def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, out, declared, keyed, monkeypatch):
     real = tags.read_tags_checked
 
     def damaged(path, fields):
@@ -830,7 +824,6 @@ def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, tmp_p
         return real(path, fields)
 
     monkeypatch.setattr(tags, "read_tags_checked", damaged)
-    out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded())
     tech = _rows(out)["tech.mp3"]
     assert tech["filed_folder"] == "(tag unreadable)" and tech["agreement"] == cyanite.NOT_FILED
@@ -848,8 +841,7 @@ def test_a_finished_analysis_with_no_genre_words_says_so(tmp_path, probe_mp3, de
     assert "Cyanite answered no genre or sub genre words" in deep["note"]
 
 
-def test_resume_refuses_a_table_that_is_not_text(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_resume_refuses_a_table_that_is_not_text(chosen, out, declared, keyed):
     out.write_bytes(b"\xff\xfe\x00binary")
     with pytest.raises(cyanite.TrialRefused, match="could not be read as a table"):
         _unsent(_settings(chosen, out, resume=True, **SEND), declared)
@@ -869,9 +861,8 @@ def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, te
     assert not (tmp_path / "t.tsv").exists()
 
 
-def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, tmp_path, declared, keyed):
+def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, out, declared, keyed):
     """A signal runs no handler, so the row and its track are on disk before the wait."""
-    out = tmp_path / "t.tsv"
     seen: list[dict[str, dict[str, str]]] = []
 
     class Watching(Recorded):
@@ -887,8 +878,7 @@ def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(ch
     assert first["library_track"] == "lt-1" and first["agreement"] == cyanite.NOT_READ
 
 
-def test_a_file_retagged_between_two_runs_is_not_paid_for_again(chosen, tmp_path, declared, keyed):
-    out = tmp_path / "t.tsv"
+def test_a_file_retagged_between_two_runs_is_not_paid_for_again(chosen, out, declared, keyed):
     _run(_settings(chosen, out, **SEND), declared, Recorded())
     assert tags.write_genre(chosen / "deep.mp3", "Tech House")
     assert tags.write_tags(chosen / "tech.mp3", {"title": "a new title", "artist": "someone"})
@@ -909,7 +899,7 @@ def test_the_audio_span_leaves_out_every_id3_tag():
     assert cyanite._audio_span(audio) == (0, len(audio))
 
 
-def test_an_echoed_key_in_a_track_id_alone_never_reaches_the_table(chosen, tmp_path, declared, keyed):
+def test_an_echoed_key_in_a_track_id_alone_never_reaches_the_table(chosen, out, declared, keyed):
     class Echoing(Recorded):
         def __call__(self, request):
             reply = super().__call__(request)
@@ -919,24 +909,21 @@ def test_an_echoed_key_in_a_track_id_alone_never_reaches_the_table(chosen, tmp_p
                 return cyanite.Reply(200, json.dumps(body))
             return reply
 
-    out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Echoing())
     text = out.read_text()
     assert KEY not in text and "lt[key]" in text
 
 
-def test_a_cell_opening_with_a_quote_reads_back_whole(chosen, tmp_path, declared, keyed):
+def test_a_cell_opening_with_a_quote_reads_back_whole(chosen, out, declared, keyed):
     said = {**SAID, "deep": {**SAID["deep"], "moodTags": ['"quoted', "dark"]}}
-    out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
     rows = _rows(out)
     assert set(rows) == {"deep.mp3", "tech.mp3", "jazzy.mp3", "vague.mp3"}
     assert rows["deep.mp3"]["cyanite_moods"] == '"quoted, dark'
 
 
-def test_a_cell_the_encoding_cannot_carry_keeps_its_row(chosen, tmp_path, declared, keyed):
+def test_a_cell_the_encoding_cannot_carry_keeps_its_row(chosen, out, declared, keyed):
     said = {**SAID, "deep": {**SAID["deep"], "moodTags": ["dark\udc80"]}}
-    out = tmp_path / "t.tsv"
     ran = _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
     assert not ran.stopped
     rows = _rows(out)

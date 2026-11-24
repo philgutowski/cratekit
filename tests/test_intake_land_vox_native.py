@@ -122,8 +122,9 @@ def _refused_at_the_commit(cfg: config.Config, monkeypatch) -> None:
 
 
 @pytest.fixture
-def calibrated(cfg):
+def calibrated(native_library):
     """The cut over library, calibrated, holding the Vocals category and nothing tagged."""
+    cfg = native_library[0]
     _calibrate(cfg)
     _seed_vocals(cfg)
     return cfg

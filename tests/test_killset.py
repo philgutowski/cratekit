@@ -470,7 +470,7 @@ def _replayed(row_id: str, old: str, **extra) -> dict:
 
 
 def _rows_after(tree: Path, before: Path, name: str = "after.toml") -> Path:
-    """``rows --after`` over ``before``, which must succeed. The row file it wrote."""
+    """The rows command run after a refactor over ``before``, which must succeed. Its file."""
     out = tree / name
     assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
     return out

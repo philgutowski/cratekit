@@ -129,11 +129,16 @@ def _revert(tree: str = TREE) -> list[str]:
     return ["tree", "revert", tree]
 
 
+def _driven(argv: list[str], expected: ExitCode = ExitCode.OK) -> dict:
+    """``argv`` driven and its exit code asserted; the envelope."""
+    code, envelope = drive(argv)
+    assert code == int(expected), envelope
+    return envelope
+
+
 def _offered(verb: list[str]) -> dict:
     """The first act: ``verb`` refused at its gate; the refusal."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    return refused
+    return _driven(verb, ExitCode.DECISION_REQUIRED)
 
 
 def _decide(run_id: str, gate: str, option: str) -> None:
@@ -150,10 +155,15 @@ def _two_acts(verb: list[str], gate: str, option: str) -> tuple[int, dict, dict]
     return code, acted, refused
 
 
-def _cut_over(export: Path) -> dict:
-    code, acted, _refused = _two_acts(_cutover(export), CUTOVER_GATE, "approve")
+def _acted(verb: list[str], gate: str, option: str) -> tuple[dict, dict]:
+    """R34's two acts, the acting drive asserted OK; its envelope and the offer."""
+    code, acted, refused = _two_acts(verb, gate, option)
     assert code == int(ExitCode.OK), acted
-    return acted
+    return acted, refused
+
+
+def _cut_over(export: Path) -> dict:
+    return _acted(_cutover(export), CUTOVER_GATE, "approve")[0]
 
 
 # ═══ The cutover ════════════════════════════════════════════════════════════
@@ -161,8 +171,7 @@ def _cut_over(export: Path) -> dict:
 
 def test_the_plan_names_the_root_and_approval_records_that_tree_alone(ready):
     cfg, export, root_id = ready
-    code, acted, refused = _two_acts(_cutover(export), CUTOVER_GATE, "approve")
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted(_cutover(export), CUTOVER_GATE, "approve")
     shown = refused["cause"]["detail"]["shown"]
     (item,) = shown["items"]
     assert item == {
@@ -213,15 +222,13 @@ def test_nothing_is_recorded_until_the_person_approves(ready):
 
 def test_an_abort_records_nothing(ready):
     cfg, export, _root_id = ready
-    code, acted, _refused = _two_acts(_cutover(export), CUTOVER_GATE, "abort")
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _acted(_cutover(export), CUTOVER_GATE, "abort")
     assert acted["outcome"] == "no_op"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
 
 
 def test_a_library_with_no_root_is_refused_and_no_root_is_created(machine):
-    code, refused = drive(_cutover(_exported(machine)))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(_exported(machine)), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "cutover-root-unresolved"
     assert refused["cause"]["detail"]["found"] == 0
     assert tree_registry.read(machine).is_on_the_bridge(TREE)
@@ -234,8 +241,7 @@ def test_a_library_with_no_root_is_refused_and_no_root_is_created(machine):
 def test_two_roots_of_one_name_are_refused(ready):
     cfg, export, root_id = ready
     twin = _add_folder(cfg, DISPLAY)
-    code, refused = drive(_cutover(export))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "cutover-root-unresolved"
     assert refused["cause"]["detail"]["found"] == 2
     assert sorted(refused["cause"]["detail"]["roots"]) == sorted([root_id, twin])
@@ -254,8 +260,7 @@ def test_a_nested_namesake_alone_is_no_root_at_all(machine):
     export = _exported(machine)
     elsewhere = _add_folder(machine, "somewhere else")
     _add_folder(machine, DISPLAY, under=elsewhere)
-    code, refused = drive(_cutover(export))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export), ExitCode.PRECONDITION)
     assert refused["cause"]["detail"]["found"] == 0
 
 
@@ -264,8 +269,7 @@ def test_a_playlist_of_the_trees_name_is_not_a_root(machine):
     with _opened(machine) as handle:
         handle.create_playlist(DISPLAY)
         handle.session.commit()
-    code, refused = drive(_cutover(export))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export), ExitCode.PRECONDITION)
     assert refused["cause"]["detail"]["found"] == 0
 
 
@@ -309,8 +313,7 @@ def _remove_the_snapshot(cfg: config.Config, export: Path) -> None:
 def test_each_precheck_failure_refuses_before_anything_is_recorded(ready, spoil, reason, check):
     cfg, export, _root_id = ready
     spoil(cfg, export)
-    code, refused = drive(_cutover(export))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == reason
     failed = [row["check"] for row in refused["cause"]["detail"]["precheck"] if not row["passed"]]
     assert failed == [check], "the refusal did not carry each precheck's own result"
@@ -335,8 +338,7 @@ def test_a_precheck_that_fails_after_the_approval_still_refuses(ready):
     run_id = _offered(_cutover(export))["run_id"]
     _decide(run_id, CUTOVER_GATE, "approve")
     _leave_intake_xml(cfg, export)
-    code, acted = drive(["--run", run_id, *_cutover(export)])
-    assert code == int(ExitCode.PRECONDITION), acted
+    acted = _driven(["--run", run_id, *_cutover(export)], ExitCode.PRECONDITION)
     assert acted["cause"]["reason"] == "cutover-xml-pending"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
 
@@ -359,8 +361,7 @@ def test_a_root_that_changed_after_the_offer_makes_the_approval_stale(ready):
 
 def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
     cfg, export, _root_id = ready
-    code, refused = drive(_cutover(export, tree="no_such_tree"))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export, tree="no_such_tree"), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "cutover-tree-undeclared"
     named = sorted({TREE, DECLARED.intake.id})
     assert refused["cause"]["detail"]["cutover_trees"] == named
@@ -374,8 +375,7 @@ def test_the_intake_tree_cuts_over_on_the_same_answer_as_the_routing_tree(ready)
     cfg, export, routing_root = ready
     intake_root = _add_folder(cfg, DECLARED.intake.display)
     verb = _cutover(export, tree=DECLARED.intake.id)
-    code, acted, _refused = _two_acts(verb, CUTOVER_GATE, "approve")
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _acted(verb, CUTOVER_GATE, "approve")
     recorded = tree_registry.read(cfg)
     assert recorded.is_database_native(DECLARED.intake.id)
     assert recorded.record(DECLARED.intake.id).root_id == intake_root
@@ -388,8 +388,7 @@ def test_a_tree_already_native_records_nothing_and_asks_nothing(ready):
     _cut_over(export)
     before = tree_registry.path_for(cfg).read_bytes()
     _add_folder(cfg, DISPLAY)
-    code, again = drive(_cutover(export))
-    assert code == int(ExitCode.OK), again
+    again = _driven(_cutover(export))
     assert again["outcome"] == "no_op"
     assert [w["code"] for w in again["warnings"]] == ["cutover-already-recorded"]
     assert root_id in again["warnings"][0]["message"]
@@ -473,8 +472,7 @@ def test_after_the_cutover_adoption_writes_membership_under_the_adopted_root(rea
 def test_a_revert_before_any_native_write_puts_the_tree_back_on_the_bridge(ready):
     cfg, export, root_id = ready
     _cut_over(export)
-    code, acted, refused = _two_acts(_revert(), REVERT_GATE, "revert")
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted(_revert(), REVERT_GATE, "revert")
     (item,) = refused["cause"]["detail"]["shown"]["items"]
     assert item["tree"] == TREE
     assert item["root"] == root_id
@@ -489,8 +487,7 @@ def test_a_revert_is_not_performed_until_it_is_approved(ready):
     _cut_over(export)
     _offered(_revert())
     assert tree_registry.read(cfg).is_database_native(TREE)
-    code, acted, _ = _two_acts(_revert(), REVERT_GATE, "abort")
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _acted(_revert(), REVERT_GATE, "abort")
     assert acted["outcome"] == "no_op"
     assert tree_registry.read(cfg).is_database_native(TREE)
 
@@ -500,8 +497,7 @@ def test_a_revert_after_a_native_write_refuses_and_the_tree_stays_native(ready):
     _cut_over(export)
     code, resumed = _adopt()
     assert code == int(ExitCode.OK), resumed
-    code, refused = drive(_revert())
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_revert(), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "cutover-native-write-taken"
     assert refused["cause"]["detail"]["tree_id"] == TREE
     assert len(refused["cause"]["detail"]["sessions"]) == 1
@@ -518,15 +514,13 @@ def test_a_native_write_taken_after_the_approval_still_refuses_the_revert(ready)
     _decide(run_id, REVERT_GATE, "revert")
     code, resumed = _adopt()
     assert code == int(ExitCode.OK), resumed
-    code, acted = drive(["--run", run_id, *_revert()])
-    assert code == int(ExitCode.PRECONDITION), acted
+    acted = _driven(["--run", run_id, *_revert()], ExitCode.PRECONDITION)
     assert acted["cause"]["reason"] == "cutover-native-write-taken"
     assert tree_registry.read(cfg).is_database_native(TREE)
 
 
 def test_a_revert_of_a_tree_on_the_bridge_writes_nothing_and_asks_nothing(machine):
-    code, acted = drive(_revert())
-    assert code == int(ExitCode.OK), acted
+    acted = _driven(_revert())
     assert acted["outcome"] == "no_op"
     assert [w["code"] for w in acted["warnings"]] == ["revert-nothing-recorded"]
     assert not tree_registry.path_for(machine).exists()
@@ -551,8 +545,7 @@ def test_a_write_to_another_tree_does_not_close_this_trees_door(ready):
         cfg,
     )
     assert tree_registry.native_writes(cfg, TREE) == ()
-    code, acted, _ = _two_acts(_revert(), REVERT_GATE, "revert")
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _acted(_revert(), REVERT_GATE, "revert")
     assert tree_registry.read(cfg).is_on_the_bridge(TREE)
 
 
@@ -630,11 +623,9 @@ def test_two_cutovers_offered_before_either_was_approved_record_one(ready):
     first, second = _offered(_cutover(export)), _offered(_cutover(export))
     for offered in (first, second):
         _decide(offered["run_id"], CUTOVER_GATE, "approve")
-    code, acted = drive(["--run", first["run_id"], *_cutover(export)])
-    assert code == int(ExitCode.OK), acted
+    _driven(["--run", first["run_id"], *_cutover(export)])
     recorded = tree_registry.path_for(cfg).read_bytes()
-    code, again = drive(["--run", second["run_id"], *_cutover(export)])
-    assert code == int(ExitCode.OK), again
+    again = _driven(["--run", second["run_id"], *_cutover(export)])
     assert again["outcome"] == "no_op"
     assert tree_registry.path_for(cfg).read_bytes() == recorded
     assert tree_registry.read(cfg).record(TREE).root_id == root_id
@@ -667,8 +658,7 @@ def test_doctor_reads_an_inbox_the_verb_cut_over_as_ok(ready):
     cfg, export, _routing_root = ready
     intake_root = _add_folder(cfg, DECLARED.intake.display)
     verb = _cutover(export, tree=DECLARED.intake.id)
-    code, acted, _refused = _two_acts(verb, CUTOVER_GATE, "approve")
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _acted(verb, CUTOVER_GATE, "approve")
     finding = _tree_finding(cfg)
     assert finding.status is doctor.Status.OK, finding.detail
     assert (
@@ -730,7 +720,6 @@ def test_the_catalogue_tree_is_refused_as_not_rebuildable(ready):
 def test_an_empty_export_is_no_export(ready):
     cfg, export, _root_id = ready
     export.write_bytes(b"")
-    code, refused = drive(_cutover(export))
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _driven(_cutover(export), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "cutover-export-missing"
     assert not tree_registry.path_for(cfg).exists()

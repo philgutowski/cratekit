@@ -104,13 +104,13 @@ def _mark_removed(cfg: config.Config, content_id: str) -> None:
     _sql(cfg, _moved_on(1), (marked, (content_id,)))
 
 
-def _deletion_on(cfg: config.Config, monkeypatch, tmp_path: Path) -> Path:
-    """The full profile, rekordbox closed, a Trash of the test's own. Returns the home."""
+def _deletion_on(cfg: config.Config, monkeypatch) -> Path:
+    """The full profile, rekordbox closed, a Trash beside the library's own. Returns the home."""
     config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
     config.reset_cache()
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    home = tmp_path / "home"
+    home = Path(cfg.library.root).parent / "home"
     (home / ".Trash").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
     monkeypatch.setenv("XDG_DATA_HOME", str(home / "share"))
@@ -149,21 +149,21 @@ def _baseline(cfg: config.Config) -> None:
     assert watermark.WatermarkStore(cfg).read() is not None
 
 
-def _ready(native_library, silence, monkeypatch, tmp_path, *titles, name="landed batch"):
+def _ready(native_library, silence, monkeypatch, *titles, name="landed batch"):
     """Land ``titles``, switch deletion on and take the pass's first position."""
     cfg, _root = native_library
     _land(cfg, silence, *titles, name=name)
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     _baseline(cfg)
     return cfg
 
 
 @pytest.fixture
-def ready(native_library, silence, monkeypatch, tmp_path):
+def ready(native_library, silence, monkeypatch):
     """``_ready`` over this test's own library, given the titles and the batch's name."""
 
     def land(*titles, name="landed batch"):
-        return _ready(native_library, silence, monkeypatch, tmp_path, *titles, name=name)
+        return _ready(native_library, silence, monkeypatch, *titles, name=name)
 
     return land
 
@@ -339,15 +339,13 @@ def test_an_unreadable_landing_record_offers_nothing_and_says_so(ready, caplog):
     assert music.exists()
 
 
-def test_rows_no_record_names_removed_outright_offer_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_rows_no_record_names_removed_outright_offer_nothing(native_library, silence, monkeypatch):
     """A landing from before this card names no row, and neither does a hand import."""
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
     for landing in session.records(cfg):
         _edit_record(cfg, landing.session_id, lambda raw: raw.pop(native.LANDED_ROWS_KEY, None))
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     _baseline(cfg)
     for title in ("One", "Two"):
         _remove_outright(cfg, _row(cfg, title)[0])
@@ -356,12 +354,12 @@ def test_rows_no_record_names_removed_outright_offer_nothing(
 
 
 def test_a_first_run_takes_absent_landed_rows_as_history_and_offers_the_next_removal(
-    native_library, silence, monkeypatch, tmp_path
+    native_library, silence, monkeypatch
 ):
     """R35: a library's first review baselines, the outright removals before it included."""
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two", "Three")
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     old_one, _ = _row(cfg, "One")
     old_two, _ = _row(cfg, "Two")
     _remove_outright(cfg, old_one)
@@ -912,14 +910,14 @@ def test_a_landing_whose_rows_are_all_held_is_not_counted_whatever_its_playlist(
 
 
 def test_the_first_review_counts_a_landing_already_rolled_back(
-    native_library, silence, monkeypatch, tmp_path
+    native_library, silence, monkeypatch
 ):
     """The run that baselines says it too: a landing rolled back before any review is counted."""
     cfg, _root = native_library
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", "Two")
     Path(cfg.library.db_path).write_bytes(before)
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     refused = _gated()
     assert _shown(refused)["baselined"] is True, _shown(refused)
     assert _shown(refused)["landings read as rolled back"] == 1, _shown(refused)

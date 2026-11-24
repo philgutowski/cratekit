@@ -978,24 +978,27 @@ def test_a_removed_row_broken_twice_reports_the_fault_the_base_order_reaches_fir
         library.read_collection([_SizeUnreadable(ID="9", rb_local_deleted=1, rb_local_usn=5)])
 
 
-@pytest.mark.parametrize("identity", ["", None], ids=["empty", "absent"])
-def test_a_database_that_names_no_identity_of_its_own_refuses(cfg, identity):
-    """An unbound watermark is the state where a rebuild reports nothing forever."""
-    cause = _refusal(library.database_identity, FakeDb([], identity=identity))
+class _CounterUnreadable(FakeDb):
+    def get_local_usn(self):
+        raise RuntimeError("the counter could not be read")
+
+
+@pytest.mark.parametrize(
+    ("read", "db", "column"),
+    [
+        # An unbound watermark is the state where a rebuild reports nothing forever.
+        pytest.param(library.database_identity, FakeDb([], identity=""), "DBID", id="empty"),
+        pytest.param(library.database_identity, FakeDb([], identity=None), "DBID", id="absent"),
+        # The baseline's own input. Read as zero it re-offers a whole library's history.
+        pytest.param(
+            library.current_sequence, _CounterUnreadable([]), "localUpdateCount", id="no-counter"
+        ),
+    ],
+)
+def test_a_database_that_cannot_say_which_it_is_or_how_far_it_has_moved_refuses(read, db, column):
+    cause = _refusal(read, db)
     assert cause.reason == "canary-read-failed"
-    assert cause.detail["column"] == "DBID"
-
-
-def test_a_database_that_cannot_report_its_update_counter_refuses(cfg):
-    """The baseline's own input. Read as zero it re-offers a whole library's history."""
-
-    class Mute(FakeDb):
-        def get_local_usn(self):
-            raise RuntimeError("the counter could not be read")
-
-    cause = _refusal(library.current_sequence, Mute([]))
-    assert cause.reason == "canary-read-failed"
-    assert cause.detail["column"] == "localUpdateCount"
+    assert cause.detail["column"] == column
 
 
 def test_the_apply_refuses_without_the_backup_acknowledgment(cfg, monkeypatch, tmp_path):
@@ -2544,27 +2547,33 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass)
     )
 
 
-def test_a_membership_count_that_is_short_refuses_as_readily_as_a_short_walk(cfg):
-    """Either side of the comparison being wrong is the same fault."""
-    with pytest.raises(CratekitError) as excinfo:
-        library.playlist_referenced(UndercountQuery([_membership("1"), _membership("2")], 1))
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
-    assert excinfo.value.cause.detail == {"declared": 1, "walked": 2}
-
-
-def test_a_membership_walk_that_raises_is_a_refusal_rather_than_a_traceback(cfg):
-    """S4: an unstructured exception reaches the command line as an internal defect."""
-    cause = _refusal(library.playlist_referenced, FailingWalk([_membership("1")], 5))
+@pytest.mark.parametrize(
+    ("walked", "detail", "said"),
+    [
+        # Either side of the comparison being wrong is the same fault.
+        pytest.param(
+            UndercountQuery([_membership("1"), _membership("2")], 1), {"declared": 1, "walked": 2},
+            None, id="a-count-that-is-short",
+        ),
+        # S4: an unstructured exception reaches the command line as an internal defect.
+        pytest.param(
+            FailingWalk([_membership("1")], 5), {"walked": 1}, "cursor was closed",
+            id="a-walk-that-raises",
+        ),
+        # A reference this pass cannot address would read as no reference at all.
+        pytest.param(
+            FakeQuery([FakeRow(ID="m1", ContentID=None, rb_local_deleted=0)]), None, None,
+            id="a-live-membership-naming-no-row",
+        ),
+    ],
+)
+def test_a_membership_walk_that_proves_less_than_it_claims_refuses(walked, detail, said):
+    cause = _refusal(library.playlist_referenced, walked)
     assert cause.reason == "deletion-evidence-incomplete"
-    assert cause.detail == {"walked": 1}
-    assert "cursor was closed" in cause.message
-
-
-def test_a_live_membership_that_names_no_row_refuses_rather_than_freeing_the_file(cfg):
-    """A reference this pass cannot address would read as no reference at all."""
-    unaddressed = FakeQuery([FakeRow(ID="m1", ContentID=None, rb_local_deleted=0)])
-    cause = _refusal(library.playlist_referenced, unaddressed)
-    assert cause.reason == "deletion-evidence-incomplete"
+    if detail is not None:
+        assert cause.detail == detail
+    if said is not None:
+        assert said in cause.message
 
 
 def test_a_trash_directory_this_account_cannot_write_to_is_not_usable(tmp_path):

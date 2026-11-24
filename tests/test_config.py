@@ -397,21 +397,14 @@ _COUPLED = config.SnapshotRole.COUPLED
 @pytest.mark.parametrize(
     "key, role",
     [
-        ("snapshots", _SURVIVES),
-        ("session_log", _SURVIVES),
+        ("snapshots", _SURVIVES), ("session_log", _SURVIVES),
         # The undo logs hold the only copy of a value overwritten on disk.
-        ("energy_undo_log", _NEVER),
-        ("genre_tag_undo_log", _NEVER),
+        ("energy_undo_log", _NEVER), ("genre_tag_undo_log", _NEVER),
         # R30 names the coupled state by name.
-        ("tree_registry", _COUPLED),
-        ("label_watermarks", _COUPLED),
-        ("source_watermarks", _COUPLED),
-        ("deletion_watermark", _COUPLED),
-        ("tombstones", _COUPLED),
-        ("declines", _COUPLED),
-        ("taxonomy_active", _COUPLED),
-        ("favorites_state", _COUPLED),
-        ("rekordbox_db", _COUPLED),
+        ("tree_registry", _COUPLED), ("label_watermarks", _COUPLED),
+        ("source_watermarks", _COUPLED), ("deletion_watermark", _COUPLED),
+        ("tombstones", _COUPLED), ("declines", _COUPLED),
+        ("taxonomy_active", _COUPLED), ("favorites_state", _COUPLED), ("rekordbox_db", _COUPLED),
     ],
     ids=lambda value: value if isinstance(value, str) else value.name.lower(),
 )
@@ -781,10 +774,8 @@ def test_analysis_worker_count_defaults_to_probing(cfg):
 
 
 def test_no_backup_destination_ships_with_a_default(cfg):
-    assert cfg.backup.remote is None
-    assert cfg.backup.dest is None
-    assert cfg.backup.archive_root is None
-    assert cfg.backup.db_dest_root is None
+    for field in ("remote", "dest", "archive_root", "db_dest_root"):
+        assert getattr(cfg.backup, field) is None, field
 
 
 # Backup destinations name an rclone remote (R-345).
@@ -941,19 +932,13 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
 @pytest.mark.parametrize(
     "section, key, value",
     [
-        ("library", "music_dir", "Audio"),
-        ("paths", "download_staging", "staging-elsewhere"),
-        ("modules", "analysis", True),
-        ("naming", "lossy_marker", "[LOSSY]"),
+        ("library", "music_dir", "Audio"), ("paths", "download_staging", "staging-elsewhere"),
+        ("modules", "analysis", True), ("naming", "lossy_marker", "[LOSSY]"),
         ("naming", "path_budget_bytes", 240),
-        ("acquisition", "lossless_policy", "allow_lossy_marked"),
-        ("analysis", "jobs", 2),
-        ("taxonomy", "template", "other"),
-        ("rekordbox", "pinned_app_version", "7.2.17.0000"),
-        ("backup", "remote", "somewhere"),
-        ("profile", "name", "full"),
-        ("reports", "intake_stale_days", 45),
-        ("outbound", "export_stale_days", 14),
+        ("acquisition", "lossless_policy", "allow_lossy_marked"), ("analysis", "jobs", 2),
+        ("taxonomy", "template", "other"), ("rekordbox", "pinned_app_version", "7.2.17.0000"),
+        ("backup", "remote", "somewhere"), ("profile", "name", "full"),
+        ("reports", "intake_stale_days", 45), ("outbound", "export_stale_days", 14),
         ("recognition", "host", "identify-eu-west-1.acrcloud.com"),
         ("recognition", "monthly_calls", 250),
     ],
@@ -1010,12 +995,10 @@ def test_config_exposes_no_module_level_location_constant():
 _CONFIG_MODULE_ALIASES = frozenset({"config", "cfg", "_config"})
 
 #: Functions that resolve a location; calling one at import freezes the answer.
-_CONFIG_RESOLVERS = frozenset(
-    {
-        "load", "config_dir", "config_path", "installation_state_dir", "library_state_dir",
-        "library_coupled_dir", "library_history_dir", "library_local_dir", "state_path",
-    }
-)
+_CONFIG_RESOLVERS = frozenset({
+    "load", "config_dir", "config_path", "installation_state_dir", "library_state_dir",
+    "library_coupled_dir", "library_history_dir", "library_local_dir", "state_path",
+})
 
 
 def _called_name(func: ast.expr) -> str | None:
@@ -1669,12 +1652,9 @@ def test_a_backend_that_fails_with_an_unexpected_type_still_refuses_typed(monkey
     dead = _raises(RuntimeError("Unable to initialize SecretService: no session bus"))
     for name in ("get_password", "set_password", "delete_password"):
         monkeypatch.setattr(keyring, name, dead)
-    with pytest.raises(secrets.CredentialBackendUnavailable):
-        secrets.get(_KEY)
-    with pytest.raises(secrets.CredentialBackendUnavailable):
-        secrets.set(_KEY, _VALUE)
-    with pytest.raises(secrets.CredentialBackendUnavailable):
-        secrets.delete(_KEY)
+    for act in (secrets.get, lambda key: secrets.set(key, _VALUE), secrets.delete):
+        with pytest.raises(secrets.CredentialBackendUnavailable):
+            act(_KEY)
 
 
 def test_the_doctor_probe_reports_false_rather_than_raising(monkeypatch):

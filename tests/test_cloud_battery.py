@@ -285,7 +285,6 @@ def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkey
 # Every failing id is read and compared whole, U268
 #: Ids differing only after a space or a summary's ` - `; which fail is read from the environment.
 SPACED_SUITE = '''import os
-
 import pytest
 FAILING = set(filter(None, os.environ.get("BATTERY_FIXTURE_FAILING", "").split("|")))
 @pytest.mark.parametrize("case", ["one two", "one three", "x - y", "x - z"])
@@ -545,7 +544,6 @@ def test_collection_errors_the_report_does_not_list_as_errors_are_unknown():
 
 
 SKIPPING_SUITE = '''import pytest
-
 @pytest.fixture
 def broken():
     raise RuntimeError("cannot be set up")
@@ -670,7 +668,6 @@ def test_a_memory_run_whose_disk_rerun_cannot_be_given_is_refused_before_it_runs
 PLACED_SUITE = '''import os
 import tempfile
 from pathlib import Path
-
 import pytest
 def _note(name):
     with open(os.environ["PLACED_LOG"], "a", encoding="utf-8") as log:

@@ -50,11 +50,8 @@ def _probe(argv: list[str]) -> dict:
             code = cli.run({argv!r}, stdout=out, stderr=err)
         loaded = set(sys.modules)
         print(json.dumps({{
-            "code": code,
-            "printed": out.getvalue(),
-            "verbs": sorted(verbs & loaded),
-            "cratekit": sum(name.startswith("cratekit") for name in loaded),
-            "walked": len(verbs),
+            "code": code, "printed": out.getvalue(), "verbs": sorted(verbs & loaded),
+            "cratekit": sum(name.startswith("cratekit") for name in loaded), "walked": len(verbs),
             "leaked": sorted(verbs & (loaded - before)),
         }}))
         """
@@ -152,19 +149,10 @@ def test_every_help_screen_reads_the_same_as_the_eager_parsers(preset, monkeypat
 @pytest.mark.parametrize(
     "argv",
     [
-        ["bogus"],
-        ["analyze", "bogus"],
-        ["doctor", "--bogus"],
-        ["--output", "xml", "status"],
-        ["--calls", "0", "status"],
-        ["--out", "json", "status"],
-        ["--outp=json", "--calls=3", "job", "list"],
-        ["-d", "a=b", "--run", "R", "status"],
-        ["status", "--he"],
-        ["--", "doctor"],
-        ["-d"],
-        ["job", "list", "extra"],
-        ["intake", "land"],
+        ["bogus"], ["analyze", "bogus"], ["doctor", "--bogus"], ["--output", "xml", "status"],
+        ["--calls", "0", "status"], ["--out", "json", "status"],
+        ["--outp=json", "--calls=3", "job", "list"], ["-d", "a=b", "--run", "R", "status"],
+        ["status", "--he"], ["--", "doctor"], ["-d"], ["job", "list", "extra"], ["intake", "land"],
         ["analyze", "run", "--bogus"],
     ],
 )

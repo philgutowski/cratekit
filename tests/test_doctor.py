@@ -5279,6 +5279,10 @@ def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
 # ═══ U185: DEADCA7 beside the library ═══════════════════════════════════════
 
 
+#: The green machine's clock, which every DEADCA7 push below is dated against.
+GREEN_NOW = doctor_machines.green().now
+
+
 def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
     """DEADCA7's support folder, and one backup entry written at ``pushed_at``."""
     support = tmp_path / "deadca7"
@@ -5318,25 +5322,22 @@ def test_installed_with_no_push_says_so(configured, tmp_path):
 def test_a_push_newer_than_the_last_database_backup_warns_and_names_the_backup(
     configured, tmp_path
 ):
-    now = doctor_machines.green().now
-    backed_up(configured, DATABASE, now - timedelta(days=3))
-    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    backed_up(configured, DATABASE, GREEN_NOW - timedelta(days=3))
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=1)))
     assert finding.detail.startswith("warning: DEADCA7 last pushed")
     assert "after this product's last database backup" in finding.detail
     assert "crate backup run" in finding.detail
 
 
 def test_a_push_older_than_the_last_database_backup_is_held_by_it(configured, tmp_path):
-    now = doctor_machines.green().now
-    backed_up(configured, DATABASE, now - timedelta(days=1))
-    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=3)))
+    backed_up(configured, DATABASE, GREEN_NOW - timedelta(days=1))
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=3)))
     assert "before this product's last database backup, which holds it" in finding.detail
     assert "warning" not in finding.detail
 
 
 def test_a_push_with_no_database_backup_recorded_warns(configured, tmp_path):
-    now = doctor_machines.green().now
-    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=1)))
     assert finding.detail.startswith("warning:")
     assert "no database backup is recorded here" in finding.detail
 
@@ -5421,8 +5422,7 @@ def test_a_file_where_the_bundle_would_be_is_not_an_install(configured, tmp_path
 
 
 def test_a_push_is_read_as_today_whatever_the_install_signals_say(configured, tmp_path):
-    now = doctor_machines.green().now
-    support = _deadca7(tmp_path, pushed_at=now - timedelta(days=1))
+    support = _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=1))
     finding = _installed_check(configured, support, _installed_places(tmp_path, "system"))
     assert finding.detail.startswith("warning: DEADCA7 last pushed into rekordbox's database at")
     assert "unconfirmed" not in finding.detail
@@ -5598,9 +5598,8 @@ def _refuse_stat_under(monkeypatch, under: Path) -> None:
 
 
 def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
-    now = doctor_machines.green().now
-    backed_up(configured, DATABASE, now + timedelta(days=10))
-    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    backed_up(configured, DATABASE, GREEN_NOW + timedelta(days=10))
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=1)))
     assert "cannot be said, since that backup is recorded ahead of now" in finding.detail
     assert "which holds it" not in finding.detail
 
