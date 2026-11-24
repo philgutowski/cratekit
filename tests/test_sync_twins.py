@@ -6,21 +6,23 @@ next listing serves. The landing's twins are in tests/test_intake_land_twins.py.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from cratekit.core import jobs, rb_writer, session, taxonomy
-from cratekit.core.cause import refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import catalogue, harvest
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
-from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli, twins, twins_cli
+from cratekit.modules.outbound import ledger, pairs
+from cratekit.sync import pair_cli, pair_model, twins, twins_cli
 from cratekit.write import playlist_pair
 from tests import outbound_fakes
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
@@ -40,6 +42,8 @@ ROWS = tuple(str(index) for index in range(1, 10))
 #: The waits of one reading of an unlistable playlist, rung by rung, before the
 #: listing's retry ladder re-raises the provider's failure (U252).
 LADDER = [1, 2, 4, 8, 16]
+#: The plan's line for Phil's twin: three owned tracks and one the library lacks.
+PHIL_PLANNED = "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
 
 
 def isrc(index: str) -> str:
@@ -53,14 +57,8 @@ def remote(index: str) -> str:
 class Listed:
     """A provider track in the shape the playlist reader reads."""
 
-    def __init__(
-        self,
-        track_id: str,
-        code: str,
-        name: str | None = None,
-        artist: str | None = None,
-        added: str | None = None,
-    ) -> None:
+    def __init__(self, track_id: str, code: str, name: str | None = None,
+                 artist: str | None = None, added: str | None = None) -> None:
         self.id = track_id
         self.name = f"Title {track_id}" if name is None else name
         self.artist = {"name": f"Artist {track_id}" if artist is None else artist}
@@ -89,14 +87,10 @@ class LivePlaylist:
             raise self.world.broken[self.playlist_id]
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id]
+        w = self.world
         return [
-            Listed(
-                one,
-                self.world.codes.get(one, ""),
-                self.world.names.get(one),
-                self.world.artists.get(one),
-                self.world.dates.get(one),
-            )
+            Listed(one, w.codes.get(one, ""), w.names.get(one), w.artists.get(one),
+                   w.dates.get(one))
             for one in members[offset : offset + size]
         ]
 
@@ -144,10 +138,28 @@ class World:
     def open(self):
         return rb_writer.open_db(Path(self.cfg.library.db_path), unlock=False, cfg=self.cfg)
 
+    @contextlib.contextmanager
+    def opened(self):
+        """The writer's handle, closed however the block ends."""
+        handle = self.open()
+        try:
+            yield handle
+        finally:
+            rb_writer.close_db(handle)
+
     def sql(self, statement: str, *args) -> list[tuple]:
         conn = sqlite3.connect(self.cfg.library.db_path)
         try:
             return list(conn.execute(statement, args).fetchall())
+        finally:
+            conn.close()
+
+    def write(self, statement: str, *args) -> None:
+        """One statement run on the database and committed, as rekordbox or a person might."""
+        conn = sqlite3.connect(self.cfg.library.db_path)
+        try:
+            conn.execute(statement, args)
+            conn.commit()
         finally:
             conn.close()
 
@@ -185,8 +197,7 @@ class World:
         ]
 
     def make(self, name: str, *, parent: str = "", folder: bool = False) -> str:
-        handle = self.open()
-        try:
+        with self.opened() as handle:
             above = handle.get_playlist(ID=parent) if parent else None
             made = (
                 handle.create_playlist_folder(name, parent=above)
@@ -195,31 +206,22 @@ class World:
             )
             handle.session.commit()
             return str(made.ID)
-        finally:
-            rb_writer.close_db(handle)
 
     def rekordbox_add(self, playlist_id: str, *content_ids: str) -> None:
-        handle = self.open()
-        try:
+        with self.opened() as handle:
             row = handle.get_playlist(ID=playlist_id)
             for content_id in content_ids:
                 handle.add_to_playlist(row, content_id)
             handle.session.commit()
-        finally:
-            rb_writer.close_db(handle)
 
     def rekordbox_remove(self, playlist_id: str, *content_ids: str) -> None:
-        conn = sqlite3.connect(self.cfg.library.db_path)
-        try:
-            for content_id in content_ids:
-                conn.execute(
-                    "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? "
-                    "AND ContentID = ?",
-                    (playlist_id, content_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        for content_id in content_ids:
+            self.write(
+                "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? "
+                "AND ContentID = ?",
+                playlist_id,
+                content_id,
+            )
 
 
 def backfill(answer: str = "approve"):
@@ -230,8 +232,7 @@ def backfill(answer: str = "approve"):
     run_id = envelope["run_id"]
     gate = envelope["cause"]["detail"]["gate"]
     assert gate == twins_cli.APPROVE_GATE, envelope
-    decided, said = drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), said
+    exited(drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"]))
     return drive(["--run", run_id, *VERB])
 
 
@@ -245,8 +246,7 @@ def sync_pair(*args: str):
             return code, envelope
         run_id = envelope["run_id"]
         gate = envelope["cause"]["detail"]["gate"]
-        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"]))
     raise AssertionError("sync pair kept asking after both gates were answered")
 
 
@@ -308,30 +308,37 @@ def _phil(w: World) -> None:
     w.playlist(PHIL, PHIL_NAME, ["t3", "t1", "t20", "t2"])
 
 
+def _shown() -> dict:
+    """What the backfill's gate shows, the verb asking before anything is written."""
+    return exited(drive(VERB), ExitCode.DECISION_REQUIRED)["cause"]["detail"]["shown"]
+
+
+def _rows(envelope, action: str) -> list[dict]:
+    return [one for one in envelope["data"]["items"] if one["action"] == action]
+
+
+def _phils_twin(world) -> list[str]:
+    return world.held(world.twin("Phil 9-30-26"))
+
+
 # The brief's scenarios
 
 
 def test_a_downloaded_playlist_plans_its_twin_with_the_owned_rows_and_names_the_rest(world):
     _phil(world)
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["twins"] == "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
-    rows = envelope["data"]["items"]
-    made = [one for one in rows if one["action"] == twins.CREATE]
+    assert _shown()["twins"] == PHIL_PLANNED
+    envelope = exited(backfill("abort"))
+    made = _rows(envelope, twins.CREATE)
     assert [(one["folder"], one["playlist"], one["tracks"]) for one in made] == [
         ("Custom Playlists 2026", "Phil 9-30-26", 3)
     ]
-    missing = [one for one in rows if one["action"] == "missing"]
+    missing = _rows(envelope, "missing")
     assert [(one["remote_id"], one["why"]) for one in missing] == [("t20", twins.NOT_OWNED)]
 
 
 def test_the_backfill_makes_the_folder_and_twin_in_the_accounts_order_and_pairs_it(world, cfg):
     _phil(world)
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(backfill())
     assert len(world.folder()) == 1
     twin_id = world.twin("Phil 9-30-26")
     assert world.held(twin_id) == ["3", "1", "2"]
@@ -346,9 +353,8 @@ def test_the_backfill_makes_the_folder_and_twin_in_the_accounts_order_and_pairs_
 
 def test_a_second_backfill_plans_nothing_and_asks_nothing(world):
     _phil(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK), envelope
+    exited(backfill())
+    envelope = exited(drive(VERB))
     assert envelope["outcome"] == "no_op" or twins_cli.NOTHING in _codes(envelope)
     assert twins_cli.NOTHING in _codes(envelope)
     assert len(world.folder()) == 1
@@ -356,21 +362,18 @@ def test_a_second_backfill_plans_nothing_and_asks_nothing(world):
 
 def test_an_abort_writes_nothing_and_pairs_nothing(world, cfg):
     _phil(world)
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
+    exited(backfill("abort"))
     assert world.folder() == []
     assert pairs.PairStore(cfg).all() == {}
 
 
 def test_a_backfilled_pair_merges_both_ways_and_queues_the_added_track_once(world, cfg):
     _phil(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    exited(backfill())
     twin_id = world.twin("Phil 9-30-26")
-    world.account.playlists[PHIL].append("t4")
-    world.account.playlists[PHIL].append("t21")
+    world.account.playlists[PHIL].extend(["t4", "t21"])
     world.rekordbox_remove(twin_id, "1")
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert world.held(twin_id) == ["3", "2", "4"]
     assert world.account.playlists[PHIL] == ["t3", "t20", "t2", "t4", "t21"]
     queued = envelope["data"]["totals"]["queued_jobs"]
@@ -381,18 +384,15 @@ def test_a_backfilled_pair_merges_both_ways_and_queues_the_added_track_once(worl
     # to the account after, is queued.
     assert sorted((job.payload or {}).get("tracks") or {}) == ["t21"]
     assert envelope["data"]["totals"]["on_hold"] == 1
-    code, again = sync_pair()
-    assert code == int(ExitCode.OK), again
-    assert again["data"]["totals"]["queued_jobs"] == []
+    assert exited(sync_pair())["data"]["totals"]["queued_jobs"] == []
 
 
 def test_a_twin_whose_account_playlist_is_deleted_is_unpaired_and_left_named(world, cfg):
     _phil(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    exited(backfill())
     twin_id = world.twin("Phil 9-30-26")
     world.delete(PHIL)
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert pairs.PairStore(cfg).get(PHIL) is None
     assert world.held(twin_id) == ["3", "1", "2"], "the twin lost a track"
     assert pair_cli.UNPAIRED in _codes(envelope)
@@ -415,31 +415,25 @@ def test_a_name_the_folder_already_holds_is_refused_by_name_never_counted(world,
     _phil(world)
     folder = world.make(twins.folder_name("2026"), folder=True)
     world.make("Phil 9-30-26", parent=folder)
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(drive(VERB))
     assert twins_cli.LEFT in _codes(envelope)
-    left = [one for one in envelope["data"]["items"] if one["action"] == twins.LEFT]
+    left = _rows(envelope, twins.LEFT)
     assert [one["playlist"] for one in left] == ["Phil 9-30-26"]
     assert "already holds a playlist named 'Phil 9-30-26'" in left[0]["why"]
     assert pairs.PairStore(cfg).all() == {}
-    names = [
-        row[0]
-        for row in world.sql("SELECT Name FROM djmdPlaylist WHERE ParentID = ?", folder)
-    ]
+    names = [row[0] for row in world.sql("SELECT Name FROM djmdPlaylist WHERE ParentID = ?",
+                                          folder)]
     assert names == ["Phil 9-30-26"], "a counted second twin was made"
 
 
 def test_an_existing_folder_is_reused_and_two_of_one_year_place_nothing(world, cfg):
     _phil(world)
     first = world.make(twins.folder_name("2026"), folder=True)
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    exited(backfill())
     assert world.folder() == [first]
     world.playlist("acc-two", "DOWNLOADED Two", ["t5"])
     world.make(twins.folder_name("2026"), folder=True)
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK), envelope
-    left = [one for one in envelope["data"]["items"] if one["action"] == twins.LEFT]
+    left = _rows(exited(drive(VERB)), twins.LEFT)
     assert [one["account_id"] for one in left] == ["acc-two"]
     assert "2 top level folders" in left[0]["why"]
 
@@ -450,64 +444,48 @@ def test_only_downloaded_own_playlists_in_a_year_folder_are_read(world, cfg):
     world.playlist("acc-root", "DOWNLOADED At The Root", ["t3"], folder="")
     world.account.folder_names["fold-exports"] = "Exports"
     world.playlist("acc-exported", "DOWNLOADED Exported", ["t4"], folder="fold-exports")
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
-    rows = envelope["data"]["items"]
-    assert [one["account_id"] for one in rows if one["action"] == twins.CREATE] == [PHIL]
+    made = _rows(exited(backfill("abort")), twins.CREATE)
+    assert [one["account_id"] for one in made] == [PHIL]
 
 
 def test_a_set_playlist_in_a_year_folder_gets_no_twin(world, cfg):
     """A set's playlist is the set's own record on the account, never a custom playlist."""
-    from cratekit.modules.outbound import ledger
-
     world.playlist(PHIL, PHIL_NAME, ["t1"])
     world.playlist("acc-set", "DOWNLOADED A Set", ["t2"])
     ledger.reserve_set_playlist(cfg, "A Set", "2026", lambda: "acc-set")
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
-    rows = envelope["data"]["items"]
-    assert [one["account_id"] for one in rows if one["action"] == twins.CREATE] == [PHIL]
+    made = _rows(exited(backfill("abort")), twins.CREATE)
+    assert [one["account_id"] for one in made] == [PHIL]
 
 
 def test_a_removed_year_folder_is_not_reused_and_a_live_one_is_made(world, cfg):
     _phil(world)
     removed = world.make(twins.folder_name("2026"), folder=True)
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (removed,))
-    conn.close()
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    world.write("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", removed)
+    exited(backfill())
     (live,) = world.folder()
     assert live != removed
-    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    assert _phils_twin(world) == ["3", "1", "2"]
 
 
 def test_an_account_track_two_library_rows_carry_is_named_and_neither_is_guessed(world, cfg):
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "INSERT INTO djmdContent (ID, Title, FolderPath, ISRC, rb_local_deleted, "
-            "created_at, updated_at) VALUES ('77', 'A Second Copy', ?, ?, 0, "
-            "'2026-01-01', '2026-01-01')",
-            (f"{cfg.library.root}/Music/77.flac", isrc("1")),
-        )
-    conn.close()
+    world.write(
+        "INSERT INTO djmdContent (ID, Title, FolderPath, ISRC, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('77', 'A Second Copy', ?, ?, 0, "
+        "'2026-01-01', '2026-01-01')",
+        f"{cfg.library.root}/Music/77.flac",
+        isrc("1"),
+    )
     world.playlist(PHIL, PHIL_NAME, ["t1", "t2"])
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
-    rows = envelope["data"]["items"]
-    made = [one for one in rows if one["action"] == twins.CREATE]
-    assert [one["tracks"] for one in made] == [1]
-    missing = [one for one in rows if one["action"] == "missing"]
+    envelope = exited(backfill("abort"))
+    assert [one["tracks"] for one in _rows(envelope, twins.CREATE)] == [1]
+    missing = _rows(envelope, "missing")
     assert [(one["remote_id"], one["why"]) for one in missing] == [("t1", twins.AMBIGUOUS)]
 
 
 def test_a_short_listing_pairs_the_twin_with_no_snapshot(world, cfg):
     _phil(world)
     world.short.add(PHIL)
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(backfill())
     held = pairs.PairStore(cfg).get(PHIL)
     assert held is not None and held.first and held.twin
     assert twins_cli.SHORT in _codes(envelope)
@@ -520,8 +498,7 @@ def test_a_folder_made_after_the_approval_refuses_as_stale(world, cfg):
     run_id = envelope["run_id"]
     drive(["run", "decide", run_id, twins_cli.APPROVE_GATE, "approve", "--actor", "a-person"])
     world.make(twins.folder_name("2026"), folder=True)
-    code, refused = drive(["--run", run_id, *VERB])
-    assert code != int(ExitCode.OK)
+    refused = failed(drive(["--run", run_id, *VERB]))
     assert refused["cause"]["reason"] == "decision-stale", refused
     assert pairs.PairStore(cfg).all() == {}
 
@@ -529,64 +506,46 @@ def test_a_folder_made_after_the_approval_refuses_as_stale(world, cfg):
 def test_two_account_tracks_of_one_isrc_make_one_row_and_the_twin_reads_back(world, cfg):
     world.codes["t10"] = isrc("1")
     world.playlist(PHIL, PHIL_NAME, ["t1", "t10", "t2"])
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    assert world.held(world.twin("Phil 9-30-26")) == ["1", "2"]
+    exited(backfill())
+    assert _phils_twin(world) == ["1", "2"]
 
 
 def test_the_mirrors_link_to_a_track_wins_and_a_link_to_a_removed_row_falls_through(world, cfg):
-    from cratekit.modules.outbound import ledger
-
     ledger.record_mirror_links(cfg, {"4": ("t1", ""), "99": ("t2", "")})
     world.playlist(PHIL, PHIL_NAME, ["t1", "t2"])
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    assert world.held(world.twin("Phil 9-30-26")) == ["4", "2"]
+    exited(backfill())
+    assert _phils_twin(world) == ["4", "2"]
 
 
 def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, monkeypatch):
     """Every landed playlist's source is kept, not only the first a spent generator gave."""
     from cratekit.sync import pair_read
-    monkeypatch.setattr(
-        pair_read,
-        "landed_inbox_playlists",
-        lambda _cfg: (
-            {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})},
-            (),
-        ),
-    )
+
+    landed = {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})}
+    monkeypatch.setattr(pair_read, "landed_inbox_playlists", lambda _cfg: (landed, ()))
     monkeypatch.setattr(
         pair_read, "landed_isrcs", lambda _cfg, _db, ids: {"USZZZ2600099": tuple(sorted(ids))}
     )
-    handle = world.open()
-    try:
+    with world.opened() as handle:
         found = twins.read_library(cfg, handle, (one for one in ["A", "B"]))
-    finally:
-        rb_writer.close_db(handle)
     assert sorted(found.landed) == ["A", "B"]
     assert found.find("B", "tx", "USZZZ2600099") == ("pb",)
 
 
 def test_the_confinement_refuses_an_unplanned_playlist_read_from_sql(world, cfg):
-    from cratekit.core.cause import CratekitError
-
-    handle = world.open()
-    try:
+    with world.opened() as handle:
         before = rb_writer.node_tables(handle)
         handle.create_playlist("Stray")
         with pytest.raises(CratekitError) as refused:
             twins.assert_confined(handle, before, folders={}, playlists={})
         assert refused.value.cause.reason == "whitelist-violation"
-    finally:
-        rb_writer.close_db(handle)
     assert not world.sql("SELECT ID FROM djmdPlaylist WHERE Name = 'Stray'")
 
 
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     _phil(world)
     session.ack_path(cfg).unlink()
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.ACK_REQUIRED), refused
+    refused = exited(drive(VERB), ExitCode.ACK_REQUIRED)
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
 
 
@@ -600,24 +559,18 @@ def test_a_title_written_wholly_in_brackets_reads_and_its_twin_is_made(world, cf
     """A title written wholly in brackets, as one refused the whole verb live, reads."""
     _phil(world)
     world.names["t1"] = "[Premade Sandwiches]"
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
-    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
-    assert [one["remote_id"] for one in missing] == ["t20"]
+    envelope = exited(backfill())
+    assert _phils_twin(world) == ["3", "1", "2"]
+    assert [one["remote_id"] for one in _rows(envelope, "missing")] == ["t20"]
 
 
 def test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_planned(world, cfg):
     _phil(world)
     world.names["t20"] = ""
     world.names["t3"] = "()"
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["twins"] == "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
+    assert _shown()["twins"] == PHIL_PLANNED
+    envelope = exited(backfill())
+    missing = _rows(envelope, "missing")
     assert [(one["remote_id"], one["position"], one["artist"], one["title"]) for one in missing] == [
         ("t20", 3, "Artist t20", "")
     ]
@@ -637,19 +590,12 @@ def test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_plan
 def test_an_untitled_track_two_library_rows_carry_is_ambiguous_not_unreadable(world, cfg):
     _phil(world)
     world.names["t3"] = ""
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute(
-            "INSERT INTO djmdContent (ID, Title, ISRC, rb_local_deleted, created_at, updated_at) "
-            "VALUES ('30', 'Twin of three', ?, 0, '2026-01-01', '2026-01-01')",
-            (isrc("3"),),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    code, envelope = backfill("abort")
-    assert code == int(ExitCode.OK), envelope
-    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
+    world.write(
+        "INSERT INTO djmdContent (ID, Title, ISRC, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('30', 'Twin of three', ?, 0, '2026-01-01', '2026-01-01')",
+        isrc("3"),
+    )
+    missing = _rows(exited(backfill("abort")), "missing")
     assert [(one["remote_id"], one["why"]) for one in missing] == [
         ("t3", twins.AMBIGUOUS),
         ("t20", twins.NOT_OWNED),
@@ -662,16 +608,13 @@ def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = RuntimeError("the provider timed out")
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    left = _shown()["left"]
     # A timeout may answer next time, so the plan's one reading climbs the ladder.
     assert ladder_waits == LADDER, ladder_waits
-    left = refused["cause"]["detail"]["shown"]["left"]
     assert left.startswith(f"{BROKEN_NAME}: the account playlist could not be read: "), left
     assert "the provider timed out" in left
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    envelope = exited(backfill())
+    assert _phils_twin(world) == ["3", "1", "2"]
     items = {one["account_id"]: one for one in envelope["data"]["items"] if "folder" in one}
     assert items[BROKEN]["action"] == twins.LEFT
     assert items[PHIL]["action"] == twins.CREATE
@@ -681,8 +624,7 @@ def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made
     assert ladder_waits == LADDER * 3, ladder_waits
     # THE NEXT RUN READS IT AGAIN, and makes its twin once it lists.
     del world.broken[BROKEN]
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    exited(backfill())
     assert world.held(world.twin("Broken 10-1-26")) == ["4", "5"]
     assert ladder_waits == LADDER * 3, ladder_waits
 
@@ -706,10 +648,9 @@ def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = Flaky()
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(backfill())
     assert ladder_waits == LADDER * 2, ladder_waits
-    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    assert _phils_twin(world) == ["3", "1", "2"]
     (left,) = [one for one in envelope["data"]["items"] if one.get("account_id") == BROKEN]
     assert left["action"] == twins.LEFT and "request" in left["why"]
 
@@ -717,18 +658,15 @@ def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(
 def test_a_playlist_whose_row_carries_no_id_is_left_and_the_other_is_planned(world, cfg):
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", ""])
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["twins"] == "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
+    shown = _shown()
+    assert shown["twins"] == PHIL_PLANNED
     assert "carry no provider identifier" in shown["left"], shown
 
 
 def test_every_playlist_left_writes_nothing_and_opens_no_gate(world, cfg, ladder_waits):
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = RuntimeError("the provider timed out")
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(drive(VERB))
     assert ladder_waits == LADDER, ladder_waits
     assert envelope["outcome"] == "no_op", envelope
     assert {twins_cli.LEFT, twins_cli.NOTHING} <= _codes(envelope)
@@ -750,39 +688,31 @@ def test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run(world, cfg
 # The pair rule, the name, and the confinement
 
 
-def _registry_free():
+def _tops():
     class Empty:
         trees = ()
 
-    return Empty()
+    return pair_cli.generated_tops(taxonomy.default_taxonomy(), Empty())
+
+
+def _found(name: str, top: str) -> playlist_pair.Playlist:
+    return playlist_pair.Playlist(
+        playlist_id="p1", name=name, attribute=0, removed=False, ancestors=(("f1", top),)
+    )
 
 
 @pytest.mark.parametrize("top", ["BY GENRE + ENERGY", "INBOX", "INSPIRATION"])
 def test_the_pair_rule_still_refuses_a_playlist_under_cratekits_own_trees(top):
-    from cratekit.core.cause import CratekitError
-    from cratekit.sync import pair_model
-
-    tops = pair_cli.generated_tops(taxonomy.default_taxonomy(), _registry_free())
+    tops = _tops()
     assert top in tops[1]
-    found = playlist_pair.Playlist(
-        playlist_id="p1", name="x", attribute=0, removed=False, ancestors=(("f1", top),)
-    )
     with pytest.raises(CratekitError) as refused:
-        pair_model._scope_rekordbox("p1", found, tops)
+        pair_model._scope_rekordbox("p1", _found("x", top), tops)
     assert refused.value.cause.reason == "sync-pair-out-of-scope"
 
 
 def test_the_pair_rule_lets_a_twin_pair():
-    from cratekit.sync import pair_model
-    tops = pair_cli.generated_tops(taxonomy.default_taxonomy(), _registry_free())
-    found = playlist_pair.Playlist(
-        playlist_id="p1",
-        name="Phil 9-30-26",
-        attribute=0,
-        removed=False,
-        ancestors=(("f1", twins.folder_name("2026")),),
-    )
-    assert pair_model._scope_rekordbox("p1", found, tops) is found
+    found = _found("Phil 9-30-26", twins.folder_name("2026"))
+    assert pair_model._scope_rekordbox("p1", found, _tops()) is found
 
 
 @pytest.mark.parametrize(
