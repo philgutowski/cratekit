@@ -37,7 +37,6 @@ class Launchd:
         self.calls: list[tuple[str, ...]] = []
         self.fail: dict[str, schedule.Answer] = {}
         self.stuck = False
-        self.stuck_absent = False
 
     def __call__(self, *args: str) -> schedule.Answer:
         self.calls.append(args)
@@ -61,8 +60,6 @@ class Launchd:
             return schedule.Answer(0, "")
         if verb == "bootout":
             label = args[1].rsplit("/", 1)[-1]
-            if label not in self.loaded and self.stuck_absent:
-                return schedule.Answer(3, "Boot-out failed: 3: No such process")
             if label not in self.loaded:
                 return schedule.Answer(3, "Boot-out failed: 3: No such process")
             if not self.stuck:
@@ -102,6 +99,18 @@ def mac(monkeypatch, crate, agents) -> Launchd:
 
 def _plist(agents: Path) -> dict[str, Any]:
     return plistlib.loads((agents / schedule.PLIST_NAME).read_bytes())
+
+
+def _write_plist(agents: Path, document: dict[str, Any]) -> None:
+    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+
+
+def _installed_and_edited(agents: Path, edit) -> None:
+    """Install the night, then hand edit its plist with ``edit``."""
+    drive(["schedule", "install"])
+    document = _plist(agents)
+    edit(document)
+    _write_plist(agents, document)
 
 
 def _tree(*roots: Path) -> dict[str, bytes]:
@@ -180,16 +189,13 @@ def test_only_the_one_seam_starts_a_process():
     assert imported <= ALLOWED_IMPORTS, f"the schedule imports {sorted(imported - ALLOWED_IMPORTS)}"
     for node in rest:
         for child in ast.walk(node):
-            # No name imported from os, and os under no other name (review
-            # round two, finding 8): ``from os import system``, ``import os as
-            # _os``.
+            # Review round two, finding 8: no ``from os import system``, no ``import os as _os``.
             if isinstance(child, ast.ImportFrom):
                 assert child.module != "os", "the schedule imports a name from os"
             if isinstance(child, ast.Import):
                 for alias in child.names:
                     assert alias.asname is None, f"the schedule imports {alias.name} as {alias.asname}"
-            # No launcher reached through any module, ``config.os.system``
-            # included.
+            # No launcher through any module, ``config.os.system`` included.
             if isinstance(child, ast.Attribute):
                 assert child.attr not in LAUNCHER_ATTRS, f"the schedule names .{child.attr}"
             if isinstance(child, ast.Name):
@@ -204,8 +210,7 @@ def test_only_the_one_seam_starts_a_process():
 
 
 def _shipped_seam(monkeypatch):
-    """The module's own launchctl, from a fresh copy: the suite's guard has
-    replaced the one on the imported module."""
+    """The module's own launchctl, from a fresh copy, since the suite's guard replaced it."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("schedule_shipped_copy", SOURCE)
@@ -261,8 +266,7 @@ def test_install_writes_one_agent_that_runs_the_night_alone_and_loads_it(mac, ag
     assert sorted(p.name for p in agents.iterdir()) == [schedule.PLIST_NAME]
     document = _plist(agents)
     log = config.state_path(schedule.LOG_KEY)
-    # WRITTEN OUT BY HAND, never read off the module (review round one): a key
-    # added to the template and its key set together is still caught here.
+    # WRITTEN OUT BY HAND (review round one), so a key added to the template and its set is caught.
     assert document == {
         "Label": "cratekit.sync-night",
         "ProgramArguments": [str(crate), "sync", "night"],
@@ -345,9 +349,7 @@ def test_a_plist_left_without_launchd_holding_it_is_replaced(mac, agents):
     assert envelope["data"]["summary"]["schedule"]["replaced"] is True
 
 
-@pytest.mark.parametrize(
-    ("text", "at"), [("4:05", (4, 5)), ("00:00", (0, 0)), ("23:59", (23, 59))]
-)
+@pytest.mark.parametrize(("text", "at"), [("4:05", (4, 5)), ("00:00", (0, 0)), ("23:59", (23, 59))])
 def test_at_sets_the_time(mac, agents, text, at):
     exited(drive(["schedule", "install", "--at", text]))
     assert _plist(agents)["StartCalendarInterval"] == {"Hour": at[0], "Minute": at[1]}
@@ -403,8 +405,7 @@ def test_the_agent_carries_a_fixed_path_the_resolved_directories_and_nothing_els
 def test_an_installation_found_through_xdg_alone_is_the_one_the_agent_reads(
     mac, agents, monkeypatch, tmp_path
 ):
-    """Review round one, finding 1: with no Cratekit override set, the night
-    must still resolve the configuration and state the install resolved."""
+    """Review round one, finding 1: with no override, the night resolves what the install did."""
     for name in schedule.carried_names():
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
@@ -418,8 +419,7 @@ def test_an_installation_found_through_xdg_alone_is_the_one_the_agent_reads(
     assert env[config.ENV_CONFIG_DIR] == str(conf)
     assert env[config.ENV_PROVIDER_GATE_DIR] == str(gate)
     assert Path(document["StandardOutPath"]).is_relative_to(state)
-    # The agent's own environment, with no XDG variable and another HOME,
-    # resolves to the same directories.
+    # The agent's own environment, no XDG variable and another HOME, resolves the same.
     for name in ("XDG_STATE_HOME", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(name)
     monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
@@ -498,8 +498,7 @@ def test_an_agent_launchd_will_not_let_go_of_is_not_replaced(mac, agents):
 
 
 def _roots(tmp_path: Path) -> tuple[Path, ...]:
-    """Every root a verb could write under: the test's own directory, and the
-    installation's state and configuration, which the suite puts beside it."""
+    """Every root a verb could write under: the test's own, the state and the configuration."""
     return (tmp_path, config.installation_state_dir(), config.config_dir())
 
 
@@ -518,8 +517,7 @@ def test_install_writes_only_the_plist_and_the_logs_directory(mac, agents, tmp_p
         if path == plist:
             continue
         relative = Path(path).relative_to(state)
-        # The staging lock, held around the bootout, and the dispatcher's own
-        # record of the run, which every verb leaves.
+        # The staging lock, held around the bootout, and the run record every verb leaves.
         assert relative == Path("staging.lock") or (
             relative.parent == Path("runs") and relative.suffix == ".json"
         ), path
@@ -596,7 +594,7 @@ def test_show_says_an_agent_that_runs_anything_but_the_night(mac, agents, crate)
     agents.mkdir(parents=True)
     tampered = schedule.agent(crate, (3, 17), Path("/tmp/x.log"), {"PATH": "/usr/bin"})
     tampered["ProgramArguments"] = [str(crate), "sync", "land", "-d", "intake.land.apply=go"]
-    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(tampered))
+    _write_plist(agents, tampered)
 
     envelope = _show(FAILED_SHOW)
 
@@ -610,7 +608,7 @@ def test_show_says_an_agent_with_a_key_the_template_does_not_hold(mac, agents, c
     agents.mkdir(parents=True)
     widened = schedule.agent(crate, (3, 17), Path("/tmp/x.log"), {"PATH": "/usr/bin"})
     widened["KeepAlive"] = True
-    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(widened))
+    _write_plist(agents, widened)
 
     assert _show(FAILED_SHOW)["data"]["summary"]["schedule"]["runs_the_night"] is False
 
@@ -619,9 +617,7 @@ def test_show_carries_the_last_nights_line(mac):
     firing = sync_night._Firing(night="2026-11-21", started=sync_night._clock(), run_id="r1")
     assert sync_night._write_status(firing.record(sync_night.NOTHING, "nothing new tonight")) is None
 
-    envelope = _show()
-
-    assert envelope["data"]["summary"]["schedule"]["last"] == "nothing new tonight"
+    assert _show()["data"]["summary"]["schedule"]["last"] == "nothing new tonight"
 
 
 def test_show_says_a_night_record_it_cannot_read(mac):
@@ -629,9 +625,7 @@ def test_show_says_a_night_record_it_cannot_read(mac):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
 
-    envelope = _show()
-
-    rows = {row["key"]: row for row in envelope["data"]["checks"]}
+    rows = {row["key"]: row for row in _show()["data"]["checks"]}
     assert rows["schedule.last"]["status"] == "warn"
     assert "cannot be read" in rows["schedule.last"]["detail"]
 
@@ -671,23 +665,22 @@ def test_remove_over_nothing_installed_is_a_no_op(mac, agents):
     assert not agents.exists()
 
 
-def test_remove_deletes_a_plist_launchd_does_not_hold(mac, agents):
+@pytest.mark.parametrize(
+    "lose",
+    [
+        pytest.param(lambda mac, agents: mac.loaded.clear(), id="launchd-does-not-hold"),
+        pytest.param(lambda mac, agents: (agents / schedule.PLIST_NAME).unlink(), id="plist-gone"),
+    ],
+)
+def test_remove_finishes_an_agent_half_gone(mac, agents, lose):
+    """A plist launchd does not hold is deleted; an agent whose plist is gone is booted out."""
     drive(["schedule", "install"])
-    mac.loaded.clear()
+    lose(mac, agents)
 
     code, envelope = drive(["schedule", "remove"])
 
     assert code == 0 and envelope["outcome"] == "ok"
     assert not (agents / schedule.PLIST_NAME).exists()
-
-
-def test_remove_boots_out_an_agent_whose_plist_is_gone(mac, agents):
-    drive(["schedule", "install"])
-    (agents / schedule.PLIST_NAME).unlink()
-
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == 0 and envelope["outcome"] == "ok"
     assert schedule.LABEL not in mac.loaded
 
 
@@ -749,8 +742,7 @@ def test_root_is_refused_and_launchd_is_never_asked(mac, agents, monkeypatch, ve
 
 @pytest.mark.parametrize("verb", ["install", "remove"])
 def test_a_night_in_progress_is_never_booted_out(mac, agents, verb, tmp_path):
-    """Finding 6: a night pass holds the staging lock for its whole run, and
-    launchd's bootout would end it."""
+    """Finding 6: a night pass holds the staging lock for its run, and a bootout would end it."""
     import subprocess
 
     drive(["schedule", "install"])
@@ -824,8 +816,7 @@ def test_a_bootout_launchd_ignores_is_said_in_words_a_person_reads(mac):
 
 
 def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agents, monkeypatch):
-    """Finding 8: the first print unreadable, the bootout refused, the second
-    print absent, with nothing installed: nothing was removed."""
+    """Finding 8: unreadable, refused, then absent, with nothing installed: none removed."""
     answers = iter([schedule.Answer(1, "launchctl: no such domain")])
 
     def flaky(*args):
@@ -867,14 +858,24 @@ def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agen
             id="a raised limit",
         ),
         pytest.param(lambda d: d.update(StandardErrorPath="/tmp/elsewhere.log"), id="split log"),
+        pytest.param(lambda d: d["ProgramArguments"].extend(["-d", "intake.land.native=go"]), id="an answer"),
+        pytest.param(lambda d: d["ProgramArguments"].append(""), id="an empty word"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_STATE_DIR), id="no state"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_CONFIG_DIR), id="no config"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop("PATH"), id="no path"),
+        pytest.param(lambda d: d["EnvironmentVariables"].update({config.ENV_STATE_DIR: "state"}), id="relative state"),
+        pytest.param(
+            lambda d: d.update(StandardOutPath="/tmp/elsewhere.log", StandardErrorPath="/tmp/elsewhere.log"),
+            id="log outside its state",
+        ),
+        pytest.param(lambda d: d.update(StandardOutPath="x.log", StandardErrorPath="x.log"), id="relative log"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": 3, "Minute": 99}), id="minute 99"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": True, "Minute": 0}), id="a true hour"),
     ],
 )
 def test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights(mac, agents, edit):
-    """Finding 7: show judges what launchd will do, not only the arguments."""
-    drive(["schedule", "install"])
-    document = _plist(agents)
-    edit(document)
-    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+    """Finding 7 and round two: show judges what launchd will do, not only the arguments."""
+    _installed_and_edited(agents, edit)
 
     envelope = _show(FAILED_SHOW)
 
@@ -890,9 +891,7 @@ def test_show_reads_the_night_line_from_the_state_the_agent_carries(mac, monkeyp
     assert sync_night._write_status(firing.record(sync_night.NOTHING, "the agent's own night")) is None
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "another-state"))
 
-    envelope = _show()
-
-    assert envelope["data"]["summary"]["schedule"]["last"] == "the agent's own night"
+    assert _show()["data"]["summary"]["schedule"]["last"] == "the agent's own night"
 
 
 def test_show_fails_over_an_agent_launchd_holds_with_no_plist(mac, agents):
@@ -926,41 +925,10 @@ def test_a_binary_the_install_finds_on_its_path_alone_is_on_the_agents_path(
     assert str(own) in path
 
 
-@pytest.mark.parametrize(
-    "edit",
-    [
-        pytest.param(lambda d: d["ProgramArguments"].extend(["-d", "intake.land.native=go"]), id="an answer"),
-        pytest.param(lambda d: d["ProgramArguments"].append(""), id="an empty word"),
-        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_STATE_DIR), id="no state"),
-        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_CONFIG_DIR), id="no config"),
-        pytest.param(lambda d: d["EnvironmentVariables"].pop("PATH"), id="no path"),
-        pytest.param(lambda d: d["EnvironmentVariables"].update({config.ENV_STATE_DIR: "state"}), id="relative state"),
-        pytest.param(
-            lambda d: d.update(StandardOutPath="/tmp/elsewhere.log", StandardErrorPath="/tmp/elsewhere.log"),
-            id="log outside its state",
-        ),
-        pytest.param(lambda d: d.update(StandardOutPath="x.log", StandardErrorPath="x.log"), id="relative log"),
-        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": 3, "Minute": 99}), id="minute 99"),
-        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": True, "Minute": 0}), id="a true hour"),
-    ],
-)
-def test_show_fails_over_an_agent_that_reads_another_installation_or_more_words(mac, agents, edit):
-    drive(["schedule", "install"])
-    document = _plist(agents)
-    edit(document)
-    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
-
-    envelope = _show(FAILED_SHOW)
-
-    assert envelope["data"]["summary"]["schedule"]["problems"]
-
-
 def test_show_never_prints_a_value_this_build_would_not_carry(mac, agents):
     """Finding 10: the name is a problem; its value is not echoed."""
-    drive(["schedule", "install"])
-    document = _plist(agents)
-    document["EnvironmentVariables"]["CRATEKIT_CREDENTIAL_PROVIDER_SESSION"] = "a-session-secret"
-    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+    secret = {"CRATEKIT_CREDENTIAL_PROVIDER_SESSION": "a-session-secret"}
+    _installed_and_edited(agents, lambda d: d["EnvironmentVariables"].update(secret))
 
     code, envelope = drive(["schedule", "show"])
 
