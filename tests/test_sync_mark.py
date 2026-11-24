@@ -17,15 +17,8 @@ import pytest
 
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import (
-    active_taxonomy,
-    config,
-    jobs,
-    locations,
-    session,
-    tree_registry,
-)
-from cratekit.core.cause import Cause, CratekitError, Remediation
+from cratekit.core import active_taxonomy, config, jobs, locations, session, tree_registry
+from cratekit.core.cause import Cause, CratekitError, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli, native
@@ -56,9 +49,7 @@ def fresh_cache():
 
 def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[object, str]:
     """``sync all`` over ``listed``, every job finished, the pass listed: (catalogue, name).
-
-    A playlist in ``failing`` has its job FAILED and the pass is listed with ``--skip-failed``.
-    """
+    A playlist in ``failing`` has its job FAILED and the pass is listed with ``--skip-failed``."""
     fake = bind_playlists(monkeypatch, *listed)
     passed = exited(drive(["sync", "all"]))
     run_id = passed["run_id"]
@@ -84,14 +75,11 @@ def _land(
     cfg: config.Config, name: str, *track_ids: str, named: bool = True, spelled: Path | None = None
 ) -> Path:
     """Put each track's file where a landing puts it, and write the intake file.
-
-    ``named=False`` leaves the files out of it; ``spelled`` is a link to the root it spells them by.
-    """
+    ``named=False`` leaves the files out; ``spelled`` is a link to the root it spells them by."""
     batch = Path(cfg.library.root) / cfg.library.music_dir / name
     batch.mkdir(parents=True, exist_ok=True)
     collection = ['  <COLLECTION Entries="0">'.replace("0", str(len(track_ids) + 1))]
-    # One track that is nobody's, so an intake file naming no wanted file is
-    # still one and the verb reaches its comparison.
+    # One track that is nobody's, so a file naming no wanted file still reaches the comparison.
     elsewhere = batch / "Somebody Else - Another Tune.flac"
     elsewhere.write_bytes(b"")
     paths = [elsewhere]
@@ -131,8 +119,37 @@ def _answered(xml: Path, option: str = "apply") -> tuple[int, dict]:
     return drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
 
 
+def _decided(result: tuple[int, dict], option: str = "apply") -> str:
+    """The gate refusal ``result``, answered ``option`` by a separate act: its run."""
+    run_id = exited(result, ExitCode.DECISION_REQUIRED)["run_id"]
+    return _decide(run_id, option)
+
+
+def _decide(run_id: str, option: str = "apply") -> str:
+    exited(drive(["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"]))
+    return run_id
+
+
 def _by_id(envelope: dict) -> dict[str, dict]:
     return {item["id"]: item for item in envelope["data"]["items"]}
+
+
+def _skip(envelope: dict, playlist_id: str) -> tuple[str, str]:
+    """The action and reason the mark gave ``playlist_id``."""
+    item = _by_id(envelope)[playlist_id]
+    return item["action"], item.get("reason")
+
+
+def _bare(monkeypatch) -> outbound_fakes.FakeAccount:
+    """A fake account bound in place of the real one."""
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    return account
+
+
+def _shown(xml: Path, *extra: str) -> dict:
+    """What the mark's gate shows over ``xml``."""
+    return exited(_mark(xml, *extra), ExitCode.DECISION_REQUIRED)["cause"]["detail"]["shown"]
 
 
 TWO = (
@@ -144,9 +161,7 @@ TWO = (
 def _bound(monkeypatch) -> tuple[object, str, object]:
     """``TWO`` swept and a fake account bound: (catalogue, pass name, account)."""
     fake, name = _swept_pass(monkeypatch, *TWO)
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    return fake, name, account
+    return fake, name, _bare(monkeypatch)
 
 
 def _landed(cfg: config.Config, monkeypatch, *track_ids: str) -> tuple[object, str, object, Path]:
@@ -203,8 +218,7 @@ def test_the_file_check_makes_one_stat_and_refuses_whatever_it_raises(tmp_path, 
     assert unreadable.value.cause.reason == "sync-marks-blocked"
     assert "Input/output error" in unreadable.value.cause.message
 
-    # A PERMISSION IS STILL A DECLARED REFUSAL, under the ``core.cause`` slug
-    # whose remedy works, never a bare OSError.
+    # A PERMISSION IS STILL A DECLARED REFUSAL, under the ``core.cause`` slug, never a bare OSError.
     def denied(path, *args, **kwargs):
         raise PermissionError(errno.EACCES, "Permission denied", str(path))
 
@@ -218,14 +232,12 @@ def test_a_folder_and_an_empty_file_are_not_an_importable_file(tmp_path):
     folder = tmp_path / "pass_inboxed.xml"
     folder.mkdir()
     assert stat_module.S_ISDIR(folder.stat().st_mode)
-    with pytest.raises(CratekitError) as not_a_file:
-        marks.require_output(folder)
-    assert not_a_file.value.cause.reason == "sync-marks-blocked"
     empty = tmp_path / "empty_inboxed.xml"
     empty.write_bytes(b"")
-    with pytest.raises(CratekitError) as nothing:
-        marks.require_output(empty)
-    assert nothing.value.cause.reason == "sync-marks-blocked"
+    for output in (folder, empty):
+        with pytest.raises(CratekitError) as not_a_file:
+            marks.require_output(output)
+        assert not_a_file.value.cause.reason == "sync-marks-blocked"
 
 
 def test_a_missing_intake_file_refuses_the_verb_before_anything_is_listed(slim, monkeypatch):
@@ -245,16 +257,13 @@ def test_a_missing_intake_file_refuses_the_verb_before_anything_is_listed(slim, 
 
 def test_a_landed_pass_marks_its_playlists_only_after_the_answer(slim, monkeypatch):
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-
     exited(_mark(xml), ExitCode.DECISION_REQUIRED)
     assert _took(slim, account) == [], "a rename landed before the gate was answered"
-
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-a", "pl-b"]
     items = _by_id(done)
     assert {key: item["action"] for key, item in items.items()} == {
-        "pl-a": "marked",
-        "pl-b": "marked",
+        "pl-a": "marked", "pl-b": "marked"
     }
     assert items["pl-a"]["landed"] == 2 and items["pl-a"]["owned"] == 0
     assert done["data"]["totals"] == {"count": 2, "marked": 2, "skip": 0}
@@ -263,11 +272,10 @@ def test_a_landed_pass_marks_its_playlists_only_after_the_answer(slim, monkeypat
 def test_a_playlist_with_one_row_not_landed_is_not_marked(slim, monkeypatch):
     """``102`` never arrived, so ``pl-a`` is left with the track named, and whole ``pl-b`` is marked."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "201")
-
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-b"]
+    assert _skip(done, "pl-a") == ("skip", "rows-outstanding")
     held_back = _by_id(done)["pl-a"]
-    assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
     assert [row["id"] for row in held_back["outstanding"]] == ["102"]
     assert "Artist 102 - Title 102" in held_back["why"]
 
@@ -275,13 +283,10 @@ def test_a_playlist_with_one_row_not_landed_is_not_marked(slim, monkeypatch):
 def test_a_row_the_library_holds_and_the_file_does_not_name_is_owned(slim, monkeypatch):
     """Owned counts as finished, and is said apart from landed."""
     _fake, name = _swept_pass(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    _bare(monkeypatch)
     xml = _land(slim, name, "101")
     (Path(slim.library.root) / slim.library.music_dir / "Artist 102 - Title 102.flac").write_bytes(b"")
-
-    done = exited(_answered(xml))
-    item = _by_id(done)["pl-a"]
+    item = _by_id(exited(_answered(xml)))["pl-a"]
     assert (item["action"], item["landed"], item["owned"]) == ("marked", 1, 1)
 
 
@@ -295,9 +300,7 @@ def test_a_library_reached_through_a_link_still_reads_its_files_as_landed(
     link.symlink_to(slim.library.root, target_is_directory=True)
     xml = _land(slim, name, "101", "102", "201", spelled=link)
     assert str(link) in xml.read_text(encoding="utf-8")
-
-    done = exited(_answered(xml))
-    item = _by_id(done)["pl-a"]
+    item = _by_id(exited(_answered(xml)))["pl-a"]
     assert (item["landed"], item["owned"]) == (2, 0)
 
 
@@ -308,12 +311,8 @@ def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkey
         (_playlist("pl-a", "Warmup"), _tracks("101", "900")),
         (_playlist("pl-b", "Peak"), _tracks("201", "900")),
     )
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    xml = _land(slim, name, "101", "201")
-
-    shown = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    context = shown["cause"]["detail"]["shown"]
+    account = _bare(monkeypatch)
+    context = _shown(_land(slim, name, "101", "201"))
     assert context["recorded as taken"] == []
     assert len(context["left alone"]) == 2
     assert _took(slim, account) == []
@@ -323,18 +322,14 @@ def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
     """The account renamed it between the pass and the mark, as the source system's sweep does."""
     fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
     fake.account = [_playlist("pl-a", "DOWNLOADED Warmup"), _playlist("pl-b", "Peak")]
-
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-b"]
-    skipped = _by_id(done)["pl-a"]
-    assert (skipped["action"], skipped["reason"]) == ("skip", "already-marked")
+    assert _skip(done, "pl-a") == ("skip", "already-marked")
 
 
 def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
-    """R-361: the mark leaves a ` LIBRARY` throwaway alone, with the pass's reason.
-
-    Its job is queued by lifting the rule for this pass alone, as before the rule existed.
-    """
+    """R-361: the mark leaves a ` LIBRARY` throwaway alone, with the pass's reason; its job is
+    queued by lifting the rule for this pass alone, as before the rule existed."""
     with pytest.MonkeyPatch.context() as before_the_rule:
         before_the_rule.setattr(playlists, "is_library_debris", lambda name: False)
         fake, name = _swept_pass(
@@ -344,61 +339,41 @@ def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
         )
     assert playlists.is_library_debris("Sol Selectas LIBRARY"), "the rule did not come back"
     assert {playlists.playlist_of(job) for job in _playlist_jobs()} == {"pl-a", "pl-b"}
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    account = _bare(monkeypatch)
     xml = _land(slim, name, "101", "102", "201")
-
-    shown = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    context = shown["cause"]["detail"]["shown"]
-    assert context["recorded as taken"] == ["Peak"]
+    assert _shown(xml)["recorded as taken"] == ["Peak"]
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-b"]
-    debris = _by_id(done)["pl-a"]
-    assert (debris["action"], debris["reason"]) == ("skip", "label-debris")
-    assert "label run debris" in debris["why"]
-    assert "pl-a" not in [mark.target_id for mark in playlists.pending_marks(
-        playlists.Sweep(listed=tuple(fake.account), recorded=frozenset({"pl-a", "pl-b"}))
-    )]
+    assert _skip(done, "pl-a") == ("skip", "label-debris")
+    assert "label run debris" in _by_id(done)["pl-a"]["why"]
+    sweep = playlists.Sweep(listed=tuple(fake.account), recorded=frozenset({"pl-a", "pl-b"}))
+    assert "pl-a" not in [mark.target_id for mark in playlists.pending_marks(sweep)]
 
 
 def test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned(slim, monkeypatch):
     """Nothing could rename it, so planning a rename would declare a write never performed."""
     fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
     fake.account = [_playlist("pl-b", "Peak")]
-
-    shown = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    context = shown["cause"]["detail"]["shown"]
-    assert context["recorded as taken"] == ["Peak"]
-    done = exited(_answered(xml))
-    gone = _by_id(done)["pl-a"]
-    assert (gone["action"], gone["reason"]) == ("skip", "not-listed")
+    assert _shown(xml)["recorded as taken"] == ["Peak"]
+    assert _skip(exited(_answered(xml)), "pl-a") == ("skip", "not-listed")
     assert _took(slim, account) == ["pl-b"]
 
 
 def test_a_playlist_whose_job_failed_is_said_and_not_planned(slim, monkeypatch):
     _fake, name = _swept_pass(monkeypatch, *TWO, failing=("pl-a",))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    account = _bare(monkeypatch)
     xml = _land(slim, name, "101", "102", "201")
-    done = exited(_answered(xml))
-    failed = _by_id(done)["pl-a"]
-    assert (failed["action"], failed["reason"]) == ("skip", "job-unfinished")
+    assert _skip(exited(_answered(xml)), "pl-a") == ("skip", "job-unfinished")
     assert _took(slim, account) == ["pl-b"]
 
 
 def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
-    """A rename nobody was shown must not ride in on the answer to a smaller plan.
-
-    ``102`` arrives after the answer, so ``pl-a`` becomes whole and the plan's marks move.
-    """
+    """A rename nobody was shown must not ride in on the answer to a smaller plan: ``102``
+    arrives after the answer, so ``pl-a`` becomes whole and the plan's marks move."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "201")
     refused = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    assert refused["cause"]["detail"]["shown"]["recorded as taken"] == [
-        "Peak"
-    ]
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
-
+    assert refused["cause"]["detail"]["shown"]["recorded as taken"] == ["Peak"]
+    run_id = _decide(refused["run_id"])
     music = Path(slim.library.root) / slim.library.music_dir
     (music / "Artist 102 - Title 102.flac").write_bytes(b"")
     failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
@@ -430,10 +405,9 @@ def test_a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said(slim, m
 def test_only_narrows_the_pending_set_and_an_empty_set_is_nothing(slim, monkeypatch):
     fake, name = _swept_pass(monkeypatch, *TWO)
     xml = _land(slim, name, "101", "102", "201")
+    key = registry.entry("intake.playlist").handler_key
     with jobs.open_store() as store:
-        sweep = playlists.marking_sweep(
-            store, slim, fake, handler_key=registry.entry("intake.playlist").handler_key
-        )
+        sweep = playlists.marking_sweep(store, slim, fake, handler_key=key)
     every = [mark.target_id for mark in playlists.pending_marks(sweep)]
     assert every == ["pl-a", "pl-b"]
     only_a = playlists.pending_marks(sweep, only=frozenset({"pl-a", "pl-never-recorded"}))
@@ -441,12 +415,10 @@ def test_only_narrows_the_pending_set_and_an_empty_set_is_nothing(slim, monkeypa
     assert playlists.pending_marks(sweep, only=frozenset()) == ()
     account = outbound_fakes.FakeAccount()
     took: list[str] = []
-    assert (
-        playlists.mark_swept(
-            sweep, fake, lambda identity, _n: took.append(identity), local_output=xml, only=frozenset()
-        )
-        == ()
+    marked = playlists.mark_swept(
+        sweep, fake, lambda identity, _n: took.append(identity), local_output=xml, only=frozenset()
     )
+    assert marked == ()
     assert took == [] and _took(slim, account) == []
 
 
@@ -494,15 +466,11 @@ def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
     assert _took(slim, account) == ["pl-a", "pl-b"]
 
 
-def test_a_refusal_the_record_raised_keeps_its_reason_and_names_what_was_marked(
-    slim, monkeypatch
-):
+def test_a_refusal_the_record_raised_keeps_its_reason_and_names_what_was_marked(slim, monkeypatch):
     """What the real record raises: its own refusal, already a cause."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
     with monkeypatch.context() as broken:
-        _record_refusing(
-            broken, "pl-b", mark_record.MarkRecord(slim)._unusable("the disk filled")
-        )
+        _record_refusing(broken, "pl-b", mark_record.MarkRecord(slim)._unusable("the disk filled"))
         code, failed = _answered(xml)
     assert code != int(ExitCode.OK), failed
     cause = failed["cause"]
@@ -538,7 +506,6 @@ def test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing(slim, monkeypatch)
     stranger = xml.with_name(f"2020-01-01T000000Z-zzzz_synced{land_cli.INTAKE_SUFFIX}")
     xml.rename(stranger)
     listings = fake.account_listings
-
     done = exited(_answered(stranger))
     assert done["outcome"] == "no_op"
     assert done["data"]["items"] == []
@@ -554,12 +521,10 @@ def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monke
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "201")
     manifest = Path(slim.paths.download_staging) / missing_cli.LISTS_DIR / f"{name}.manifest.json"
     assert '"102"' not in manifest.read_text(encoding="utf-8"), "the offered track was listed"
-
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-b"]
-    held_back = _by_id(done)["pl-a"]
-    assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
-    assert [row["id"] for row in held_back["outstanding"]] == ["102"]
+    assert _skip(done, "pl-a") == ("skip", "rows-outstanding")
+    assert [row["id"] for row in _by_id(done)["pl-a"]["outstanding"]] == ["102"]
 
 
 def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
@@ -573,19 +538,15 @@ def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
 
 def test_a_track_deleted_on_purpose_since_the_pass_is_not_owed(slim, monkeypatch):
     """A tombstone recorded after the pass is the same decision later, so it holds no playlist for ever."""
-    # A TRACK THAT RESEMBLES NOTHING ELSE HERE. Tombstones are asked last,
-    # before a track is called missing, so a near title never reaches them.
+    # A TRACK THAT RESEMBLES NOTHING ELSE: tombstones are asked last, so a near title never is.
     _fake, name = _swept_pass(
         monkeypatch,
         (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("102", "Nova Reef", "Tide")]),
         (_playlist("pl-b", "Peak"), _tracks("201")),
     )
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    _bare(monkeypatch)
     xml = _land(slim, name, "101", "201")
-    held = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    assert len(held["cause"]["detail"]["shown"]["left alone"]) == 1, "it was never owed"
-
+    assert len(_shown(xml)["left alone"]) == 1, "it was never owed"
     tombstone(slim, "Nova Reef", "Tide")
     done = exited(_answered(xml))
     item = _by_id(done)["pl-a"]
@@ -596,13 +557,7 @@ def test_a_track_deleted_on_purpose_since_the_pass_is_not_owed(slim, monkeypatch
 def test_a_playlist_whose_reports_cannot_be_read_is_left_alone(slim, monkeypatch):
     """Unread is not nothing owed."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-    (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
-    with jobs.open_store() as store:
-        item = jobs.items(store, job.job_id)[0]
-    intake_cli.ARTIFACTS.final_path(
-        jobs.frozen_config(job), job.job_id, item.ordinal
-    ).write_text("{", encoding="utf-8")
-
+    _spoil_a_report()
     done = exited(_answered(xml))
     assert _took(slim, account) == ["pl-b"]
     assert _by_id(done)["pl-a"]["reason"] == "reports-unreadable"
@@ -637,10 +592,7 @@ def test_a_location_on_another_host_is_passed_over_and_never_a_traceback(slim, m
 def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, monkeypatch):
     """The account moves between the plan's listing and the recheck's, and the recheck catches it."""
     fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-    refused = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
-
+    run_id = _decided(_mark(xml))
     planned_at = fake.account_listings + 1
     listing = type(fake).account_playlists
 
@@ -653,8 +605,7 @@ def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, m
     monkeypatch.setattr(type(fake), "account_playlists", moving)
     done = exited(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == ["pl-b"]
-    skipped = _by_id(done)["pl-a"]
-    assert (skipped["action"], skipped["reason"]) == ("skip", "changed-since-plan")
+    assert _skip(done, "pl-a") == ("skip", "changed-since-plan")
     assert [w["code"] for w in done["warnings"]] == ["sync-mark-changed-since-plan"]
     assert done["data"]["totals"] == {"count": 2, "marked": 1, "skip": 1}
 
@@ -668,9 +619,7 @@ def test_an_abort_renames_nothing(slim, monkeypatch):
 
 def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch):
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-    refused = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
+    run_id = _decided(_mark(xml))
     xml.write_bytes(xml.read_bytes() + b"\r\n<!-- landed again -->\r\n")
     failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == []
@@ -682,18 +631,14 @@ def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch)
 def _cut_over_intake(cfg: config.Config) -> str:
     """Record the intake tree database native. Only the mode is read here."""
     intake = active_taxonomy.load(cfg).intake.id
-    tree_registry.write(
-        cfg,
-        tree_registry.Registry().with_record(
-            tree_registry.TreeRecord(
-                tree_id=intake,
-                mode=tree_registry.Mode.DATABASE,
-                cutover_on=date(2026, 10, 7),
-                root_id="900",
-                source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
+    record = tree_registry.TreeRecord(
+        tree_id=intake,
+        mode=tree_registry.Mode.DATABASE,
+        cutover_on=date(2026, 10, 7),
+        root_id="900",
+        source=tree_registry.DerivationSource.TAXONOMY,
     )
+    tree_registry.write(cfg, tree_registry.Registry().with_record(record))
     return intake
 
 
@@ -728,31 +673,50 @@ def _hold(cfg: config.Config, *track_ids: str) -> None:
         (batch / f"Artist {track_id} - Title {track_id}.flac").write_bytes(b"")
 
 
+def _native(cfg: config.Config, monkeypatch, *held: str) -> tuple[str, object]:
+    """``_bound``, the intake tree cut over, ``held`` on disk and the pass's landing recorded."""
+    _fake, name, account = _bound(monkeypatch)
+    _cut_over_intake(cfg)
+    _hold(cfg, *held)
+    _record_landing(cfg, name)
+    return name, account
+
+
+def _unreachable(monkeypatch) -> None:
+    """The intake medium can be read from no declared root."""
+    monkeypatch.setattr(
+        mark_cli.ingest,
+        "intake_medium",
+        lambda cfg: mark_cli.ingest.IntakeMedium(declared=None, registry=None),
+    )
+
+
+def _spoil_a_report() -> None:
+    """``pl-a``'s job's first item report, made unreadable."""
+    (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
+    with jobs.open_store() as store:
+        item = jobs.items(store, job.job_id)[0]
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job.job_id, item.ordinal)
+    path.write_text("{", encoding="utf-8")
+
+
 def _mark_pass(name: str, *extra: str) -> tuple[int, dict]:
     return drive(["sync", "mark", "--pass", name, *extra])
 
 
 def _answered_pass(name: str, option: str = "apply") -> tuple[int, dict]:
-    refused = exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"]))
+    run_id = _decided(_mark_pass(name), option)
     return drive(["--run", run_id, "sync", "mark", "--pass", name])
 
 
-def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer(
-    slim, monkeypatch
-):
-    _fake, name, account = _bound(monkeypatch)
-    tree = _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
-
+def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer(slim, monkeypatch):
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
+    tree = active_taxonomy.load(slim).intake.id
     refused = exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
     assert _took(slim, account) == [], "a rename landed before the gate was answered"
     shown = refused["cause"]["detail"]["shown"]
     assert shown["pass"] == f"{name}, landed on the database native {tree!r} tree"
     assert "intake file" not in shown
-
     done = exited(_answered_pass(name))
     assert _took(slim, account) == ["pl-a", "pl-b"]
     item = _by_id(done)["pl-a"]
@@ -761,24 +725,16 @@ def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer
 
 
 def test_a_native_pass_with_one_track_not_held_leaves_that_playlist_alone(slim, monkeypatch):
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "201")
-    _record_landing(slim, name)
-
+    name, account = _native(slim, monkeypatch, "101", "201")
     done = exited(_answered_pass(name))
     assert _took(slim, account) == ["pl-b"]
-    held_back = _by_id(done)["pl-a"]
-    assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
-    assert [row["id"] for row in held_back["outstanding"]] == ["102"]
+    assert _skip(done, "pl-a") == ("skip", "rows-outstanding")
+    assert [row["id"] for row in _by_id(done)["pl-a"]["outstanding"]] == ["102"]
 
 
-def test_a_pass_named_on_a_tree_still_on_the_bridge_is_refused_naming_the_file(
-    slim, monkeypatch
-):
+def test_a_pass_named_on_a_tree_still_on_the_bridge_is_refused_naming_the_file(slim, monkeypatch):
     _fake, name, account = _bound(monkeypatch)
     _hold(slim, "101", "102", "201")
-
     refused = exited(_mark_pass(name), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert "--xml" in " ".join(refused["cause"]["remediation"]["steps"])
@@ -796,14 +752,12 @@ def test_a_pass_name_no_landing_could_have_been_given_is_refused(slim, monkeypat
     _cut_over_intake(slim)
     refused = exited(_mark_pass("../elsewhere"), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "sync-marks-blocked"
-    # SAID AS A NAME NO LANDING COULD HAVE BEEN GIVEN, before any record is
-    # read, not as a pass that never landed.
+    # SAID AS A NAME NO LANDING COULD HAVE BEEN GIVEN, before any record is read.
     assert "not a pass name a landing could have been given" in refused["cause"]["message"]
 
 
 def test_a_native_pass_of_no_jobs_is_a_gated_plan_of_nothing(slim, monkeypatch):
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    _bare(monkeypatch)
     _cut_over_intake(slim)
     _record_landing(slim, "nobody_synced")
     done = exited(_answered_pass("nobody_synced"))
@@ -813,14 +767,8 @@ def test_a_native_pass_of_no_jobs_is_a_gated_plan_of_nothing(slim, monkeypatch):
 
 
 def test_a_tree_put_back_on_the_bridge_after_the_plan_renames_nothing(slim, monkeypatch):
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
-    refused = exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
-
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
+    _decided(_mark_pass(name))
     planned = mark_cli.plan_pass(slim, pass_name=name, listing=lambda: mark_cli.listed(slim))
     tree_registry.write(slim, tree_registry.Registry())
     with pytest.raises(CratekitError) as refused_late:
@@ -830,13 +778,8 @@ def test_a_tree_put_back_on_the_bridge_after_the_plan_renames_nothing(slim, monk
 
 
 def test_a_native_answer_is_stale_once_another_playlist_becomes_whole(slim, monkeypatch):
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "201")
-    _record_landing(slim, name)
-    refused = exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
+    name, account = _native(slim, monkeypatch, "101", "201")
+    run_id = _decided(_mark_pass(name))
     _hold(slim, "102")
     exited(drive(["--run", run_id, "sync", "mark", "--pass", name]), ExitCode.DECISION_STALE)
     assert _took(slim, account) == []
@@ -856,15 +799,12 @@ def test_the_engine_refuses_a_mark_with_neither_proof():
                 (), local_output=empty, recheck=lambda _: True, apply=lambda _: None
             )
         assert unnamed.value.cause.reason == "sync-marks-blocked"
-    assert (
-        marks.apply_deferred(
-            (marks.PendingMark("pl-a", "rename"),),
-            local_output=marks.NativeLanding(tree_id="inbox", pass_name="p", landings=("s",)),
-            recheck=lambda _: True,
-            apply=lambda _: None,
-        )
-        == ("pl-a",)
+    landing = marks.NativeLanding(tree_id="inbox", pass_name="p", landings=("s",))
+    pending = (marks.PendingMark("pl-a", "rename"),)
+    applied = marks.apply_deferred(
+        pending, local_output=landing, recheck=lambda _: True, apply=lambda _: None
     )
+    assert applied == ("pl-a",)
 
 
 @pytest.mark.parametrize(
@@ -877,9 +817,7 @@ def test_the_engine_refuses_a_mark_with_neither_proof():
     ],
     ids=["no-landing", "abandoned", "never-committed", "another-pass"],
 )
-def test_a_native_pass_no_closed_committed_landing_names_is_refused(
-    slim, monkeypatch, landing
-):
+def test_a_native_pass_no_closed_committed_landing_names_is_refused(slim, monkeypatch, landing):
     """Files on disk are not a landing: one refused after its moves leaves no committed record."""
     _fake, name, account = _bound(monkeypatch)
     _cut_over_intake(slim)
@@ -895,15 +833,10 @@ def test_a_native_pass_no_closed_committed_landing_names_is_refused(
 
 def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, monkeypatch):
     """R-1255: a log this account cannot list refuses naming the listing, not as no landing."""
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
     exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
     _refuse_listing(monkeypatch, Path(session.log_dir(slim)))
-
     code, refused = _mark_pass(name)
-
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "no landing" not in refused["cause"]["message"]
@@ -912,26 +845,15 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, m
 
 def test_an_unreachable_library_is_named_and_never_called_the_bridge(slim, monkeypatch):
     _cut_over_intake(slim)
-    monkeypatch.setattr(
-        mark_cli.ingest,
-        "intake_medium",
-        lambda cfg: mark_cli.ingest.IntakeMedium(declared=None, registry=None),
-    )
+    _unreachable(monkeypatch)
     refused = exited(_mark_pass("RUN_synced"), ExitCode.PRECONDITION)
     assert "could not be reached" in refused["cause"]["message"]
     assert "bridge" not in refused["cause"]["message"]
 
 
-def test_a_second_landing_of_the_pass_since_the_plan_makes_the_answer_stale(
-    slim, monkeypatch
-):
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
-    refused = exited(_mark_pass(name), ExitCode.DECISION_REQUIRED)
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
+def test_a_second_landing_of_the_pass_since_the_plan_makes_the_answer_stale(slim, monkeypatch):
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
+    run_id = _decided(_mark_pass(name))
     _record_landing(slim, name, stamp="130000")
     exited(drive(["--run", run_id, "sync", "mark", "--pass", name]), ExitCode.DECISION_STALE)
     assert _took(slim, account) == []
@@ -939,10 +861,7 @@ def test_a_second_landing_of_the_pass_since_the_plan_makes_the_answer_stale(
 
 def test_a_landing_recorded_between_the_plan_and_the_apply_renames_nothing(slim, monkeypatch):
     """The apply's reread compares the proof, not only the medium."""
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
     planned = mark_cli.plan_pass(slim, pass_name=name, listing=lambda: mark_cli.listed(slim))
     _record_landing(slim, name, stamp="130000")
     with pytest.raises(CratekitError) as refused:
@@ -964,14 +883,12 @@ def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
 def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(slim, monkeypatch):
     """One playlist of a pass marked, its sibling left as it was."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-
     refused = exited(_mark(xml, "--playlist", "pl-b"), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["recorded as taken"] == ["Peak"]
     assert shown["left alone"] == []
     assert shown[mark_cli.ONLY_SAID] == ["pl-b"]
-    run_id = refused["run_id"]
-    exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
+    run_id = _decide(refused["run_id"])
     done = exited(drive(["--run", run_id, "sync", "mark", "--xml", str(xml), "--playlist", "pl-b"]))
     assert _took(slim, account) == ["pl-b"]
     assert list(_by_id(done)) == ["pl-b"]
@@ -981,11 +898,7 @@ def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(sli
 def test_an_answer_to_the_narrowed_plan_does_not_carry_out_the_whole_pass(slim, monkeypatch):
     """The narrowing is in the digest, so a rerun without ``--playlist`` is asked again."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
-    code, refused = _mark(xml, "--playlist", "pl-a", "--playlist", "pl-b")
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    assert drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])[0] == 0
-
+    run_id = _decided(_mark(xml, "--playlist", "pl-a", "--playlist", "pl-b"))
     failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == []
 
@@ -1008,7 +921,6 @@ def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_lis
 ):
     fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
     listings = fake.account_listings
-
     refused = failed(_mark(xml, "--playlist", "pl-b", "--playlist", "pl-elsewhere"))
     cause = refused["cause"]
     assert cause["reason"] == "sync-marks-blocked"
@@ -1021,7 +933,6 @@ def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_lis
 def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, monkeypatch):
     """``102`` never arrived, so naming ``pl-a`` is refused with the track, not planned as a skip."""
     _fake, name, account, xml = _landed(slim, monkeypatch, "101", "201")
-
     refused = failed(_mark(xml, "--playlist", "pl-a"))
     cause = refused["cause"]
     assert cause["reason"] == "sync-marks-blocked"
@@ -1030,10 +941,7 @@ def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, mon
     assert "Warmup" in cause["message"] and "Artist 102 - Title 102" in cause["message"]
     assert _took(slim, account) == []
     # The whole pass still plans its finished playlist, and leaves pl-a as a skip.
-    whole = exited(_mark(xml), ExitCode.DECISION_REQUIRED)
-    assert whole["cause"]["detail"]["shown"]["recorded as taken"] == [
-        "Peak"
-    ]
+    assert _shown(xml)["recorded as taken"] == ["Peak"]
 
 
 def test_a_named_playlist_whose_job_failed_is_refused_by_name(slim, monkeypatch):
@@ -1048,16 +956,11 @@ def test_a_named_playlist_already_marked_is_a_skip_and_not_a_refusal(slim, monke
     """Already marked is complete: the plan says so and renames nothing."""
     fake, name, account, xml = _landed(slim, monkeypatch, "101", "102", "201")
     fake.account = [_playlist("pl-a", "DOWNLOADED Warmup"), _playlist("pl-b", "Peak")]
-
     planned = mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
-
     assert planned.planned == []
     (item,) = planned.payload["items"]
-    assert (item["id"], item["action"], item["reason"]) == (
-        "pl-a",
-        mark_cli.SKIP,
-        mark_cli.ALREADY_MARKED,
-    )
+    expected = ("pl-a", mark_cli.SKIP, mark_cli.ALREADY_MARKED)
+    assert (item["id"], item["action"], item["reason"]) == expected
     assert _took(slim, account) == []
 
 
@@ -1079,11 +982,7 @@ def test_the_library_is_walked_only_for_the_named_playlist(slim, monkeypatch):
 
 
 def test_a_native_pass_takes_playlist_as_the_file_does(slim, monkeypatch):
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
-
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
     planned = mark_cli.plan_pass(slim, pass_name=name, playlists_named=["pl-a"])
     assert planned.planned == ["pl-a"]
     data, _warnings, landed = mark_cli.apply_pass(slim, planned)
@@ -1106,22 +1005,16 @@ def _mark_steps(cfg: config.Config):
 
 def test_organize_plans_every_native_pass_not_only_the_latest(slim, monkeypatch):
     """An earlier pass's playlist is marked too, not only the latest pass's."""
-    fake, earlier = _swept_pass(monkeypatch, (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")))
-    # A later second pass over the same account, both playlists listed, so the
-    # earlier name is still on the account.
-    _fake, later = _swept_pass(
-        monkeypatch,
-        (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")),
-        *TWO,
-    )
+    old = (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301"))
+    fake, earlier = _swept_pass(monkeypatch, old)
+    # A later second pass over the same account still lists the earlier playlist.
+    _fake, later = _swept_pass(monkeypatch, old, *TWO)
     assert earlier != later
     _cut_over_intake(slim)
     _hold(slim, "101", "102", "201", "301")
     _record_landing(slim, earlier, stamp="100000")
     _record_landing(slim, later, stamp="120000")
-
     area = _mark_steps(slim)
-
     steps = {step.key: step for step in area.steps}
     assert set(steps) == {f"mark:{earlier}", f"mark:{later}"}
     assert [item["id"] for item in steps[f"mark:{earlier}"].items] == ["pl-old"]
@@ -1133,15 +1026,10 @@ def test_organize_plans_every_native_pass_not_only_the_latest(slim, monkeypatch)
 
 def test_organize_marks_a_native_pass_through_its_gate(slim, monkeypatch):
     """Driven through the step's own apply, the rename lands and is recorded."""
-    _fake, name, account = _bound(monkeypatch)
-    _cut_over_intake(slim)
-    _hold(slim, "101", "102", "201")
-    _record_landing(slim, name)
-
+    name, account = _native(slim, monkeypatch, "101", "102", "201")
     (step,) = _mark_steps(slim).steps
     assert step.counts == {"mark": 2, "skip": 0}
     applied = step.apply()
-
     assert applied["marked"] == 2
     assert _took(slim, account) == ["pl-a", "pl-b"]
 
@@ -1202,11 +1090,7 @@ def test_an_unreachable_root_is_a_refused_step_and_never_no_pass(slim, monkeypat
     """The landings' records live under the root, so an unmounted volume must not read as no pass."""
     _cut_over_intake(slim)
     _record_landing(slim, "a pass")
-    monkeypatch.setattr(
-        mark_cli.ingest,
-        "intake_medium",
-        lambda cfg: mark_cli.ingest.IntakeMedium(declared=None, registry=None),
-    )
+    _unreachable(monkeypatch)
     with pytest.raises(CratekitError) as refused:
         mark_cli.native_passes(slim)
     assert "could not be reached" in refused.value.cause.message
@@ -1216,15 +1100,11 @@ def test_an_unreachable_root_is_a_refused_step_and_never_no_pass(slim, monkeypat
 
 def test_an_unreadable_tree_registry_refuses_the_native_step_alone(slim, monkeypatch):
     """The passes found by their intake files are still planned beside it."""
-    from cratekit.core import tree_registry as registry_module
-
     _fake, name = _swept_pass(monkeypatch, *TWO)
     _land(slim, name, "101", "102", "201")
     _cut_over_intake(slim)
-    registry_module.path_for(slim).write_text("{not json", encoding="utf-8")
-
+    tree_registry.path_for(slim).write_text("{not json", encoding="utf-8")
     steps = {step.key: step for step in _mark_steps(slim).steps}
-
     assert steps["mark:native"].state == "refused"
     assert steps[f"mark:{name}"].state == "planned"
 
@@ -1235,9 +1115,7 @@ def test_playlist_on_a_file_of_no_pass_is_refused_and_asks_no_gate(slim, monkeyp
     stranger = xml.with_name(f"2020-01-01T000000Z-zzzz_synced{land_cli.INTAKE_SUFFIX}")
     xml.rename(stranger)
     listings = fake.account_listings
-
     code, refused = _mark(stranger, "--playlist", "pl-a")
-
     assert code != int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["not_of_pass"] == ["pl-a"]
     assert fake.account_listings == listings
@@ -1246,23 +1124,14 @@ def test_playlist_on_a_file_of_no_pass_is_refused_and_asks_no_gate(slim, monkeyp
 def test_a_named_playlist_whose_reports_cannot_be_read_is_refused_by_name(slim, monkeypatch):
     _fake, name = _swept_pass(monkeypatch, *TWO)
     xml = _land(slim, name, "101", "102", "201")
-    (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
-    with jobs.open_store() as store:
-        item = jobs.items(store, job.job_id)[0]
-    intake_cli.ARTIFACTS.final_path(
-        jobs.frozen_config(job), job.job_id, item.ordinal
-    ).write_text("{", encoding="utf-8")
-
+    _spoil_a_report()
     with pytest.raises(CratekitError) as refused:
         mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
-
     assert refused.value.cause.detail["reasons"] == {"pl-a": mark_cli.REPORTS_UNREADABLE}
 
 
 def test_a_native_pass_whose_plan_refuses_is_a_refused_step_and_not_dropped(slim, monkeypatch):
     """The account refusing its listing is that pass's refusal, shown on the gate."""
-    from cratekit.core.cause import refuse
-
     _fake, name = _swept_pass(monkeypatch, *TWO)
     _cut_over_intake(slim)
     _hold(slim, "101", "102", "201")
@@ -1272,7 +1141,6 @@ def test_a_native_pass_whose_plan_refuses_is_a_refused_step_and_not_dropped(slim
         raise refuse("credential-missing", "no session is stored for the account", origin=("test",))
 
     monkeypatch.setattr(mark_cli, "listed", refused_listing)
-
     (step,) = _mark_steps(slim).steps
     assert (step.key, step.state) == (f"mark:{name}", "refused")
     assert step.cause.reason == "credential-missing"
