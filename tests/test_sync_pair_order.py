@@ -64,6 +64,49 @@ def _refusing(world, monkeypatch, refused_on: set[str], *, reason: str = "outbou
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
 
 
+def _stopped_once(world, monkeypatch, account_id: str, stop: str) -> None:
+    """The next order of ``account_id`` stops before any move, ``stop`` saying how."""
+    from cratekit.core import jobs
+
+    real = world.account.order_tracks
+    stopping = [True]
+
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if playlist_id == account_id and stopping:
+            stopping.clear()
+            if stop == "parked":
+                raise jobs.Parked(
+                    refuse(
+                        "provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")
+                    ).cause
+                )
+            if stop == "refused":
+                raise refuse(
+                    "outbound-remove-refused",
+                    "the reading may lag a write and no track was moved",
+                    scope=Scope.RUN,
+                    origin=("test", "order"),
+                    detail={"playlist_id": playlist_id, "problem": "read-differs"},
+                )
+            raise refuse(
+                "credential-missing",
+                "the streaming provider rejected the session",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                scope=Scope.ITEM,
+                origin=("test", "order"),
+            )
+        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+
+
+def _kept(cfg, account_id: str) -> pairs.Pair:
+    """The pair's record, which must be there."""
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None
+    return held
+
+
 @pytest.fixture
 def owed(world):
     """Two pairs in GIG READY owing an order and an addition, and a new account playlist."""
@@ -94,8 +137,7 @@ def test_a_refused_order_stops_its_pair_alone_and_every_other_write_lands(
     assert world.account.playlists[opener_account] == ["t1", "t2", "t3"]
     assert world.held(opener) == ["3", "1", "2"]
     # Its snapshot did not move, so the next sync still reads the order as owed.
-    held = pairs.PairStore(cfg).get(opener_account)
-    assert held is not None and held.account == ("t1", "t2", "t3")
+    assert _kept(cfg, opener_account).account == ("t1", "t2", "t3")
     # The stop says which pair did not finish, how far the run got, and how to go on.
     cause = stopped["cause"]
     assert cause["reason"] == "outbound-remove-refused"
@@ -125,8 +167,7 @@ def test_a_continue_of_the_run_puts_the_refused_pair_in_order_and_moves_nothing_
     # The run saw the order refused, so the adapter is handed the check's listing.
     assert world.account.expected[-1] == (opener_account, ("t1", "t2", "t3"))
     assert done["data"]["totals"]["finished_before"] == 2
-    held = pairs.PairStore(cfg).get(opener_account)
-    assert held is not None and held.account == ("t3", "t1", "t2")
+    assert _kept(cfg, opener_account).account == ("t3", "t1", "t2")
 
 
 def test_a_first_order_is_asked_with_nothing_to_agree_with_but_what_the_adapter_wrote(
@@ -207,21 +248,28 @@ def test_the_stop_carries_every_unfinished_pairs_steps_once():
 # R-1420: a continue of a refused order writes nothing over a person's reorder
 
 
+REORDERED = "was reordered since the plan"
+
+
 def _ids(*content_ids: str) -> list[str]:
     return [f"t{one}" for one in content_ids]
+
+
+def _four_reordered(world) -> tuple[str, str]:
+    """GIG READY Opener on rows 1 to 4, synced, then reordered 4, 3, 1, 2 in rekordbox.
+    Answers rekordbox's playlist and the account's."""
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    exited(sync())
+    _reordered(world, opener, "4", "3", "1", "2")
+    return opener, world.titled("GIG READY Opener")
 
 
 @pytest.fixture
 def refused_once(world, monkeypatch):
     """One pair reordered in rekordbox to 4, 3, 1, 2, its account order refused before any move.
-
-    Answers rekordbox's playlist, the account's, and the refused run.
-    """
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    _reordered(world, opener, "4", "3", "1", "2")
-    account_id = world.titled("GIG READY Opener")
+    Answers rekordbox's playlist, the account's, and the refused run."""
+    opener, account_id = _four_reordered(world)
     refused_on = {account_id}
     _refusing(world, monkeypatch, refused_on)
     stopped = failed(sync())
@@ -254,8 +302,7 @@ def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since
     )
     assert world.account.ordered == ordered, "the continue asked the account an order"
     assert world.held(opener) == ["4", "3", "1", "2"], "rekordbox was written"
-    held = pairs.PairStore(cfg).get(account_id)
-    assert held is not None and held.account == tuple(_ids("1", "2", "3", "4"))
+    assert _kept(cfg, account_id).account == tuple(_ids("1", "2", "3", "4"))
 
     # A fresh sync merges the person's order as a fresh sync does.
     exited(sync())
@@ -265,11 +312,7 @@ def test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since
 
 def test_a_fresh_sync_over_the_same_two_reorders_takes_the_accounts_order(world, cfg):
     """What the continue leaves to: a fresh sync's merge of both reorders."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    account_id = world.titled("GIG READY Opener")
-    _reordered(world, opener, "4", "3", "1", "2")
+    opener, account_id = _four_reordered(world)
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
     exited(sync())
     assert world.account.playlists[account_id] == _ids("2", "4", "1", "3")
@@ -284,18 +327,13 @@ def test_a_continue_of_a_refused_order_the_account_still_stands_in_finishes_it(
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"]
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
-    held = pairs.PairStore(cfg).get(account_id)
-    assert held is not None and held.account == tuple(_ids("4", "3", "1", "2"))
+    assert _kept(cfg, account_id).account == tuple(_ids("4", "3", "1", "2"))
 
 
 def _refused_with_an_addition(world, monkeypatch):
     """The 4, 3, 1, 2 reorder and track 5 added in rekordbox, the addition landed, the order refused."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    _reordered(world, opener, "4", "3", "1", "2")
+    opener, account_id = _four_reordered(world)
     world.rekordbox_add(opener, "5")
-    account_id = world.titled("GIG READY Opener")
     refused_on = {account_id}
     _refusing(world, monkeypatch, refused_on)
     stopped = failed(sync())
@@ -320,9 +358,7 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_sinc
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3", "5")
     ordered = list(world.account.ordered)
     refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
-        "was reordered since the plan"
-    ]
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [REORDERED]
     assert world.account.playlists[account_id] == _ids("2", "4", "1", "3", "5")
     assert world.account.ordered == ordered
     assert world.held(opener) == ["4", "3", "1", "2", "5"]
@@ -333,37 +369,9 @@ def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_sin
     world, cfg, monkeypatch, stop
 ):
     """R-1420: an order stopped before ``begun`` by no order refusal still holds a reorder."""
-    from cratekit.core import jobs
-
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    _reordered(world, opener, "4", "3", "1", "2")
-    account_id = world.titled("GIG READY Opener")
-    real = world.account.order_tracks
-    stopping = [True]
-
-    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
-        if playlist_id == account_id and stopping:
-            stopping.clear()
-            if stop == "parked":
-                raise jobs.Parked(
-                    refuse(
-                        "provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")
-                    ).cause
-                )
-            raise refuse(
-                "credential-missing",
-                "the streaming provider rejected the session",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
-                scope=Scope.ITEM,
-                origin=("test", "order"),
-            )
-        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
-
-    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    opener, account_id = _four_reordered(world)
+    _stopped_once(world, monkeypatch, account_id, stop)
+    stopped = failed(sync())
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
     world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
     code, refused = drive(["--run", stopped["run_id"], *VERB])
@@ -379,43 +387,8 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
     world, cfg, monkeypatch, stop
 ):
     """Whatever stopped the order before any move, the continue agrees (``expect``) first."""
-    from cratekit.core import jobs
-
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    _reordered(world, opener, "4", "3", "1", "2")
-    account_id = world.titled("GIG READY Opener")
-    real = world.account.order_tracks
-    stopping = [True]
-
-    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
-        if playlist_id == account_id and stopping:
-            stopping.clear()
-            if stop == "parked":
-                raise jobs.Parked(
-                    refuse(
-                        "provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")
-                    ).cause
-                )
-            if stop == "refused":
-                raise refuse(
-                    "outbound-remove-refused",
-                    "the reading may lag a write and no track was moved",
-                    scope=Scope.RUN,
-                    origin=("test", "order"),
-                    detail={"playlist_id": playlist_id, "problem": "read-differs"},
-                )
-            raise refuse(
-                "credential-missing",
-                "the streaming provider rejected the session",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
-                scope=Scope.ITEM,
-                origin=("test", "order"),
-            )
-        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
-
-    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    opener, account_id = _four_reordered(world)
+    _stopped_once(world, monkeypatch, account_id, stop)
     stopped = failed(sync())
     exited(drive(["--run", stopped["run_id"], *VERB]))
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
@@ -428,26 +401,10 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
     world, cfg, monkeypatch, damage
 ):
     """With the steps file lost, the carried record still says the order began."""
-    from cratekit.core import jobs
     from cratekit.sync import held_plan
 
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
-    exited(sync())
-    _reordered(world, opener, "4", "3", "1", "2")
-    account_id = world.titled("GIG READY Opener")
-    real = world.account.order_tracks
-    stopping = [True]
-
-    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
-        if playlist_id == account_id and stopping:
-            stopping.clear()
-            raise jobs.Parked(
-                refuse("provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")).cause
-            )
-        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
-
-    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    _opener, account_id = _four_reordered(world)
+    _stopped_once(world, monkeypatch, account_id, "parked")
     stopped = failed(sync())
     run_id = stopped["run_id"]
     where = held_plan.steps_path(run_id)
@@ -468,9 +425,7 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_the_added_track_mov
     world.account.playlists[account_id][:] = _ids("1", "2", "5", "3", "4")
     ordered = list(world.account.ordered)
     refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
-        "was reordered since the plan"
-    ]
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [REORDERED]
     assert world.account.playlists[account_id] == _ids("1", "2", "5", "3", "4")
     assert world.account.ordered == ordered
     assert world.held(opener) == ["4", "3", "1", "2", "5"]
