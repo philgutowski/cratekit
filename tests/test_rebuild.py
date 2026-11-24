@@ -183,6 +183,12 @@ def adopted_root(db):
     return folder
 
 
+@pytest.fixture
+def rig(cfg, gates_pass, db, adopted_root, declared):
+    """What most tests start from: the gates met, the database open, the root adopted."""
+    return cfg, db, adopted_root, declared
+
+
 def _registry(root_id: str, *others, source=tree_registry.DerivationSource.TAXONOMY):
     """TREE_ID native under ``root_id``, and each ``(tree, root)`` of ``others`` beside it."""
     return tree_registry.Registry(
@@ -354,10 +360,9 @@ def test_every_rebuildable_source_has_a_derivation_and_no_other_source_does():
     assert not (tree_registry.REBUILDABLE & tree_registry.NOT_REBUILDABLE)
 
 
-def test_a_rebuild_of_a_tree_with_a_non_derivable_source_refuses(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_of_a_tree_with_a_non_derivable_source_refuses(rig):
     """Asked again at the rebuild, because a registry can be edited by hand."""
+    cfg, db, adopted_root, declared = rig
     registry = _registry(str(adopted_root.ID), source=tree_registry.DerivationSource.CURATED)
     with pytest.raises(tree_registry.TreeModeRefused):
         _rebuild(cfg, db, adopted_root, declared, [PLAIN], registry=registry)
@@ -427,10 +432,9 @@ def test_the_walk_is_sorted_so_two_runs_over_one_library_agree(cfg):
     assert first == second == sorted(first)
 
 
-def test_the_check_reports_a_difference_in_both_directions(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_check_reports_a_difference_in_both_directions(rig):
     """R39: one track placed and not held, one held and not placed there."""
+    cfg, db, adopted_root, declared = rig
     both = _placements(cfg, declared, COMPOSED, PLAIN)
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
 
@@ -450,20 +454,18 @@ def test_the_check_reports_a_difference_in_both_directions(
     assert [entry.content_id for entry in widened.missing] == ["3"]
 
 
-def test_a_declared_file_the_library_has_no_row_for_is_surfaced_and_is_not_a_difference(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_declared_file_the_library_has_no_row_for_is_surfaced_and_is_not_a_difference(rig):
     """Counting a row the library lacks would make convergence unreachable before an import."""
+    cfg, db, adopted_root, declared = rig
     absent = rebuild.DeclaredPlacement(_music(cfg, "Never Imported.flac"), *_destination(declared))
     report = _check(cfg, db, adopted_root, declared, [absent])
     assert report.converged
     assert [match.outcome for match in report.unmatched] == [trees.MatchOutcome.ABSENT]
 
 
-def test_a_membership_pointing_at_a_soft_deleted_row_is_not_a_difference_either(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_membership_pointing_at_a_soft_deleted_row_is_not_a_difference_either(rig):
     """A membership on a deleted track is a leftover nobody can act on; counting it latches forever."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
 
     tombstoned = [
@@ -476,10 +478,9 @@ def test_a_membership_pointing_at_a_soft_deleted_row_is_not_a_difference_either(
     assert report.converged, "a tombstone's leftover membership was called a difference"
 
 
-def test_a_playlist_nobody_declared_is_reported_and_is_not_a_difference(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_playlist_nobody_declared_is_reported_and_is_not_a_difference(rig):
     """P7: a person's own playlist under a governed tree is theirs, not damage."""
+    cfg, db, adopted_root, declared = rig
     folder = rb_writer.ensure_folder(db, RENAMED_FOLDER, parent=adopted_root)
     playlist = rb_writer.ensure_playlist(db, CURATED_PLAYLIST, folder)
     rb_writer.add_membership(db, playlist, "1")
@@ -490,10 +491,9 @@ def test_a_playlist_nobody_declared_is_reported_and_is_not_a_difference(
     assert all(entry.content_id != "1" for entry in report.unexpected)
 
 
-def test_the_check_walks_down_from_the_adopted_root_and_ignores_a_namesake(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_check_walks_down_from_the_adopted_root_and_ignores_a_namesake(rig):
     """A walk by display name would read a namesake and call a short tree complete."""
+    cfg, db, adopted_root, declared = rig
     elsewhere = rb_writer.ensure_folder(db, TREE_DISPLAY + " Copy")
     folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
     decoy_folder = rb_writer.ensure_folder(db, folder_display, parent=elsewhere)
@@ -506,10 +506,9 @@ def test_the_check_walks_down_from_the_adopted_root_and_ignores_a_namesake(
     assert not report.converged
 
 
-def test_a_tree_stripped_of_its_membership_rebuilds_to_match_the_control(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_tree_stripped_of_its_membership_rebuilds_to_match_the_control(rig):
     """The plan's first scenario, asserted against a CONTROL set rather than a count."""
+    cfg, db, adopted_root, declared = rig
     names = [COMPOSED, PLAIN]
     _rebuild(cfg, db, adopted_root, declared, names)
 
@@ -528,10 +527,9 @@ def test_a_tree_stripped_of_its_membership_rebuilds_to_match_the_control(
     assert _membership_ids(db, nodes[0].playlist_id) == control[nodes[0].playlist_id]
 
 
-def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(rig):
     """No ``placements`` parameter: the seam is the tag READINGS, never the answer."""
+    cfg, db, adopted_root, declared = rig
     accepted = set(inspect.signature(rebuild.rebuild_tree).parameters)
     assert "placements" not in accepted
     assert {"truth", "vocal_threshold"} <= accepted
@@ -542,10 +540,9 @@ def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(
     assert (node.folder_display, node.playlist_display) == (folder_display, sub_display)
 
 
-def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(rig):
     """The additive dimension end to end: the vocal sub is a destination a rebuild creates."""
+    cfg, db, adopted_root, declared = rig
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
     landed = {node.playlist_display for node in rebuild.read_tree(db, str(adopted_root.ID))}
@@ -553,10 +550,9 @@ def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(
     assert len(landed) == 2
 
 
-def test_a_genre_sub_is_created_once_beside_the_band_and_a_second_rebuild_plans_nothing(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_genre_sub_is_created_once_beside_the_band_and_a_second_rebuild_plans_nothing(rig):
     """U155: a Rominimal track lands in its band and genre sub, a Minimal one in the band alone."""
+    cfg, db, adopted_root, declared = rig
     truth = [
         rebuild.Truth(location=_music(cfg, COMPOSED), genre="Rominimal", energy=3, voxlevel=None),
         rebuild.Truth(location=_music(cfg, PLAIN), genre="Minimal", energy=3, voxlevel=None),
@@ -577,19 +573,17 @@ def test_a_genre_sub_is_created_once_beside_the_band_and_a_second_rebuild_plans_
     assert second.after.converged
 
 
-def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(rig):
     """None is a real threshold (D7); naming the dimension keeps "converged" honest."""
+    cfg, db, adopted_root, declared = rig
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=None)
     assert report.after.converged
     assert rebuild.VOCAL_DIMENSION in report.after.not_compared
 
 
-def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(rig):
     """"I could not observe" must not reach a person as "take this out" (R-312)."""
+    cfg, db, adopted_root, declared = rig
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=None)
@@ -604,18 +598,18 @@ def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(
     ]
 
 
-def test_the_read_only_report_derives_through_the_registrys_recorded_source(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_read_only_report_derives_through_the_registrys_recorded_source(rig):
     """The diagnostic and the repair derive the same way, or they disagree."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
     report = _report(cfg, db, adopted_root, declared, _truth(cfg, declared, COMPOSED, PLAIN))
     assert report.converged
     assert report.root_id == str(adopted_root.ID)
 
 
-def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, declared):
+def test_a_second_rebuild_writes_nothing(rig):
     """Re-running is the recovery procedure."""
+    cfg, db, adopted_root, declared = rig
     names = [COMPOSED, PLAIN]
     first = _rebuild(cfg, db, adopted_root, declared, names)
     second = _rebuild(cfg, db, adopted_root, declared, names)
@@ -664,10 +658,9 @@ def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_d
     assert deadca7_fixtures.analysis_files_now(files) == files
 
 
-def test_a_rebuild_after_a_rename_converges_rather_than_doubling_the_tree(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_after_a_rename_converges_rather_than_doubling_the_tree(rig):
     """The one that doubles a library, so node identifiers persist; counted, since a name lookup hides it."""
+    cfg, db, adopted_root, declared = rig
     names = [COMPOSED, PLAIN]
     _rebuild(cfg, db, adopted_root, declared, names)
     before = rebuild.read_tree(db, str(adopted_root.ID))
@@ -689,10 +682,9 @@ def test_a_rebuild_after_a_rename_converges_rather_than_doubling_the_tree(
     assert report.after.renamed != (), "the rename is reported rather than silent"
 
 
-def test_a_destination_with_no_recorded_node_falls_back_to_the_declared_name(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_destination_with_no_recorded_node_falls_back_to_the_declared_name(rig):
     """The first rebuild after a cutover has nothing recorded, and must adopt."""
+    cfg, db, adopted_root, declared = rig
     folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
     folder = rb_writer.ensure_folder(db, folder_display, parent=adopted_root)
     existing = rb_writer.ensure_playlist(db, sub_display, folder)
@@ -708,10 +700,9 @@ def test_a_destination_with_no_recorded_node_falls_back_to_the_declared_name(
     assert recorded.node(*_destination(declared)).playlist_id == str(existing.ID)
 
 
-def test_a_recorded_node_that_no_longer_exists_falls_back_rather_than_refusing(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_recorded_node_that_no_longer_exists_falls_back_rather_than_refusing(rig):
     """The operation that repairs a damaged tree must not be broken by the damage."""
+    cfg, db, adopted_root, declared = rig
     bucket_id, sub_id = _destination(declared)
     gone = convergence.DestinationNode(
         bucket=bucket_id, sub=sub_id, folder_id="gone-1", playlist_id="gone-2"
@@ -722,10 +713,9 @@ def test_a_recorded_node_that_no_longer_exists_falls_back_rather_than_refusing(
     assert rebuild.read_tree(db, str(adopted_root.ID))[0].content_ids == frozenset({"2"})
 
 
-def test_a_rebuild_never_removes_a_membership_the_declaration_does_not_place(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_never_removes_a_membership_the_declaration_does_not_place(rig):
     """Additive on purpose: a membership made by hand is somebody's data."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
     report = _rebuild(cfg, db, adopted_root, declared, [COMPOSED])
 
@@ -750,10 +740,9 @@ def test_a_rebuild_refuses_without_the_acknowledgment(
     assert _state_fingerprint(*roots) == before
 
 
-def test_a_rebuild_refuses_while_the_lock_is_held_elsewhere(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_refuses_while_the_lock_is_held_elsewhere(rig):
     """The lock looks exactly like another process holding it, because it is."""
+    cfg, db, adopted_root, declared = rig
     lock = session.lock_path(cfg)
     lock.parent.mkdir(parents=True, exist_ok=True)
     contender = open(lock, "a+")
@@ -835,10 +824,9 @@ def test_a_database_that_cannot_answer_refuses_with_a_structured_cause(cfg, db):
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
-def test_a_governed_write_records_the_fingerprint_at_its_close(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_governed_write_records_the_fingerprint_at_its_close(rig):
     """Taken AFTER the commit, through the one writer every membership write uses."""
+    cfg, db, adopted_root, declared = rig
     assert convergence.read(cfg).fingerprint is None
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     recorded = convergence.read(cfg).fingerprint
@@ -847,10 +835,9 @@ def test_a_governed_write_records_the_fingerprint_at_its_close(
     assert recorded.taken
 
 
-def test_an_out_of_band_restore_marks_every_native_tree_and_refuses_the_next_write(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_an_out_of_band_restore_marks_every_native_tree_and_refuses_the_next_write(rig):
     """The case atomic snapshots cannot see: only the number inside the database."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     recorded = convergence.read(cfg).fingerprint
     assert recorded is not None
@@ -877,10 +864,9 @@ def test_a_library_with_nothing_flipped_never_probes_at_all(cfg, declared):
     convergence.assert_no_out_of_band_restore(cfg, _Exploding(), tree_registry.EMPTY)
 
 
-def test_a_rebuild_is_not_refused_by_the_flag_it_exists_to_clear(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_is_not_refused_by_the_flag_it_exists_to_clear(rig):
     """A latch that condemned its own remedy would leave a library with no exit."""
+    cfg, db, adopted_root, declared = rig
     convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
     assert convergence.read(cfg).tree(TREE_ID).blocking
 
@@ -1114,10 +1100,9 @@ def test_the_two_new_reasons_are_declared_in_the_one_vocabulary():
     assert REASONS["library-fingerprint-unreadable"] is ExitCode.LIBRARY_UNREADABLE
 
 
-def test_the_two_composition_forms_of_one_filename_are_one_track(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_two_composition_forms_of_one_filename_are_one_track(rig):
     """The 144-file loss at the check: macOS decomposes, rekordbox precomposes."""
+    cfg, db, adopted_root, declared = rig
     bucket_id, sub_id = _destination(declared)
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED])
     decomposed = rebuild.DeclaredPlacement(_music(cfg, DECOMPOSED), bucket_id, sub_id)
@@ -1140,10 +1125,9 @@ def _two_destinations(declared_taxonomy):
     return bucket_id, low.id, high.id
 
 
-def test_a_rebuild_that_derived_nothing_refuses_instead_of_reporting_converged(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_that_derived_nothing_refuses_instead_of_reporting_converged(rig):
     """An empty music directory once gave zero placements, CONVERGED and a cleared flag."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
     convergence.mark_unconverged(cfg, [TREE_ID], reason=str(convergence.Regression.SEQUENCE_WENT_BACKWARD))
     assert convergence.read(cfg).tree(TREE_ID).blocking
@@ -1181,10 +1165,9 @@ def test_a_report_over_a_derivation_that_placed_nothing_is_never_converged():
     assert replace(empty, derived=1).converged
 
 
-def test_a_music_directory_that_is_not_there_refuses_rather_than_walking_nothing(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_music_directory_that_is_not_there_refuses_rather_than_walking_nothing(rig):
     """An unmounted volume is not an empty library."""
+    cfg, db, adopted_root, declared = rig
     music = Path(cfg.library.root) / cfg.library.music_dir
     for entry in sorted(music.rglob("*"), reverse=True):
         entry.unlink() if entry.is_file() else entry.rmdir()
@@ -1198,10 +1181,9 @@ def test_a_music_directory_that_is_not_there_refuses_rather_than_walking_nothing
         _rebuild(cfg, db, adopted_root, declared, [], truth=None)
 
 
-def test_a_destination_that_lost_every_track_is_still_compared(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_destination_that_lost_every_track_is_still_compared(rig):
     """A destination that lost every placement once fell into ``foreign`` and read converged."""
+    cfg, db, adopted_root, declared = rig
     bucket_id, low_id, high_id = _two_destinations(declared)
     both = _energy_truth(cfg, declared, [(COMPOSED, 1), (PLAIN, declared.energy.scale_max)])
     first = _rebuild(cfg, db, adopted_root, declared, [], truth=both)
@@ -1222,10 +1204,9 @@ def test_a_destination_that_lost_every_track_is_still_compared(
     assert f"{bucket_id}/{low_id}" not in " ".join(report.after.foreign)
 
 
-def test_two_declared_destinations_on_one_display_pair_refuse(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_two_declared_destinations_on_one_display_pair_refuse(rig):
     """Two destinations on one display pair are refused, by the rebuild and the check (U18)."""
+    cfg, db, adopted_root, declared = rig
     both = _energy_truth(cfg, declared, [(COMPOSED, 1), (PLAIN, declared.energy.scale_max)])
     _rebuild(cfg, db, adopted_root, declared, [], truth=both)
     nodes = rebuild.read_tree(db, str(adopted_root.ID))
@@ -1250,10 +1231,9 @@ def test_two_declared_destinations_on_one_display_pair_refuse(
         _report(cfg, db, adopted_root, declared, both)
 
 
-def test_two_nodes_under_one_display_pair_refuse_the_way_the_xml_half_does(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_two_nodes_under_one_display_pair_refuse_the_way_the_xml_half_does(rig):
     """A writer targeting by name would write the first twice and the second never."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     node = rebuild.read_tree(db, str(adopted_root.ID))[0]
     twin_folder = rb_writer.ensure_folder(db, RENAMED_FOLDER, parent=adopted_root)
@@ -1267,10 +1247,9 @@ def test_two_nodes_under_one_display_pair_refuse_the_way_the_xml_half_does(
     assert "cannot tell them apart" in excinfo.value.cause.message
 
 
-def test_a_node_map_naming_one_playlist_for_two_destinations_is_refused(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_node_map_naming_one_playlist_for_two_destinations_is_refused(rig):
     """Injectivity in both directions: the map is read first on every rebuild."""
+    cfg, db, adopted_root, declared = rig
     bucket_id, low_id, high_id = _two_destinations(declared)
 
     def node(sub, folder_id, playlist_id):
@@ -1288,10 +1267,9 @@ def test_a_node_map_naming_one_playlist_for_two_destinations_is_refused(
         )
 
 
-def test_the_recorded_node_is_the_one_the_destination_resolved_to(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_recorded_node_is_the_one_the_destination_resolved_to(rig):
     """The resolved identifier is never re-derived by name, asserted through a rename."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     before = rebuild.read_tree(db, str(adopted_root.ID))[0]
     folder = db.get_playlist(ID=before.folder_id)
@@ -1304,10 +1282,9 @@ def test_the_recorded_node_is_the_one_the_destination_resolved_to(
     assert recorded.playlist_id == before.playlist_id
 
 
-def test_a_track_held_twice_in_one_playlist_is_a_difference_the_flag_stays_shut_on(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_track_held_twice_in_one_playlist_is_a_difference_the_flag_stays_shut_on(rig):
     """A doubled row is invisible to set comparison and beyond an additive repair."""
+    cfg, db, adopted_root, declared = rig
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     node = rebuild.read_tree(db, str(adopted_root.ID))[0]
 
@@ -1340,10 +1317,9 @@ def test_a_track_held_twice_in_one_playlist_is_a_difference_the_flag_stays_shut_
     assert not report.cleared
 
 
-def test_a_rebuild_runs_the_restore_detection_it_is_merely_not_refused_by(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_rebuild_runs_the_restore_detection_it_is_merely_not_refused_by(rig):
     """A fingerprint recorded without the detection would bless a recovered database."""
+    cfg, db, adopted_root, declared = rig
     second_tree = "second_shelf"
     registry = _registry(str(adopted_root.ID), (second_tree, "root-row-other"))
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], registry=registry)
@@ -1362,10 +1338,9 @@ def test_a_rebuild_runs_the_restore_detection_it_is_merely_not_refused_by(
     )
 
 
-def test_the_detection_marks_every_native_tree_on_disk_not_only_the_argument(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_detection_marks_every_native_tree_on_disk_not_only_the_argument(rig):
     """Every native tree on disk is marked, whatever registry the caller passes."""
+    cfg, db, adopted_root, declared = rig
     on_disk = _registry(str(adopted_root.ID), ("third_shelf", "root-row-third"))
     tree_registry.write(cfg, on_disk)
     convergence.record_fingerprint(cfg, db)
@@ -1377,10 +1352,9 @@ def test_the_detection_marks_every_native_tree_on_disk_not_only_the_argument(
     assert set(convergence.read(cfg).blocking_trees()) == {TREE_ID, "third_shelf"}
 
 
-def test_the_rebuild_reports_that_the_other_record_was_not_reached(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_rebuild_reports_that_the_other_record_was_not_reached(rig):
     """None where ``cratekit.core.reconcile`` is absent, False where nothing was marked to close."""
+    cfg, db, adopted_root, declared = rig
     present = importlib.util.find_spec("cratekit.core.reconcile") is not None
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     assert report.cleared
@@ -1532,10 +1506,9 @@ def test_a_bridge_record_carrying_a_cutover_contradicts_itself_and_is_refused():
         )
 
 
-def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(rig):
     """An ordinary taxonomy edit is not a one-way door: the rebuild and its check still answer."""
+    cfg, db, adopted_root, declared = rig
     bucket_id = _destination(declared)[0]
     dropped = convergence.DestinationNode(
         bucket=bucket_id, sub="a_sub_this_taxonomy_never_declared", folder_id="f", playlist_id="p"
@@ -1553,10 +1526,9 @@ def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(
     assert kept.node(bucket_id, "a_sub_this_taxonomy_never_declared") is not None
 
 
-def test_dropping_the_additive_sub_class_leaves_both_verbs_working(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_dropping_the_additive_sub_class_leaves_both_verbs_working(rig):
     """Removing a recorded additive sub-class is curation; both verbs still answer."""
+    cfg, db, adopted_root, declared = rig
     def vocal(declared_taxonomy):
         return _truth(cfg, declared_taxonomy, PLAIN, voxlevel=90)
 
