@@ -58,8 +58,7 @@ def cfg(tmp_path, monkeypatch):
             },
         }
     )
-    config.save(built)
-    config.reset_cache()
+    _saved(built)
     config.state_path("rekordbox_db", built).write_bytes(b"database, generation one")
     return built
 
@@ -156,9 +155,34 @@ def _queued_and_resumed(argv=("backup", "run")) -> tuple[dict, dict]:
     """Queue a backup and resume it, both through the dispatcher and both OK."""
     code, queued = _drive(list(argv))
     assert code == int(ExitCode.OK), queued
-    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
-    assert code == int(ExitCode.OK), resumed
+    resumed = _driven_ok(["backup", "run", "--job", queued["data"]["job_id"]])
     return queued, resumed
+
+
+def _driven_ok(argv: list[str]) -> dict:
+    """The envelope of a drive that must end OK."""
+    code, envelope = _drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def _driven_refused(argv: list[str]) -> dict:
+    """The envelope of a drive that must not end OK."""
+    code, envelope = _drive(argv)
+    assert code != int(ExitCode.OK), envelope
+    return envelope
+
+
+def _saved(cfg_value) -> None:
+    """Save a configuration and drop the cached one, so the next read is of the file."""
+    config.save(cfg_value)
+    config.reset_cache()
+
+
+def _queued_id(*flags: str) -> str:
+    """Queue ``backup run`` with ``flags`` and answer the job it names."""
+    _, queued = _drive(["backup", "run", *flags])
+    return queued["data"]["job_id"]
 
 
 def _ages(cfg) -> dict[str, backup_facts.PortionAge]:
@@ -195,10 +219,8 @@ def test_the_verb_is_offered_on_the_full_profile_and_withheld_on_the_slim_one():
 
 def test_queueing_needs_no_rclone_no_remote_and_no_volume(cfg, no_rclone, monkeypatch):
     """The handler files a job and resolves nothing, which is the whole split."""
-    config.save(_without_destinations(cfg))
-    config.reset_cache()
-    code, envelope = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), envelope
+    _saved(_without_destinations(cfg))
+    envelope = _driven_ok(["backup", "run"])
     assert envelope["data"]["job_id"], envelope
     assert envelope["schema"] == "job_state/1", envelope
 
@@ -253,8 +275,7 @@ def test_the_frozen_payload_and_the_parser_agree_about_the_flag(cfg):
 
 def test_the_emptied_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
     """R-1761's flag through the real parser, and a second ask told the open job lacks it."""
-    code, envelope = _drive(["backup", "run", "--dry-run", "--library-emptied"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _driven_ok(["backup", "run", "--dry-run", "--library-emptied"])
     with jobs.open_store() as store:
         job = jobs.get(store, envelope["data"]["job_id"])
     assert job.payload[backup_cli.EMPTIED] is True, job.payload
@@ -262,8 +283,7 @@ def test_the_emptied_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg)
         "backup", "run", "--dry-run", "--library-emptied", "--job", job.job_id,
     ]
 
-    code, envelope = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _driven_ok(["backup", "run"])
     code, envelope = _drive(["backup", "run", "--library-emptied"])
     (twin,) = [w for w in envelope["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
     assert "--library-emptied" in twin["message"], twin["message"]
@@ -480,8 +500,7 @@ def test_two_portions_refused_for_different_reasons_name_both(cfg, rclone, tmp_p
 
 def test_an_unconfigured_remote_refuses_in_the_backup_vocabulary(cfg, rclone):
     """``BackupRefused`` is not a ``CratekitError``, so escaping it means internal-error."""
-    config.save(_without_destinations(cfg))
-    config.reset_cache()
+    _saved(_without_destinations(cfg))
 
     with pytest.raises(CratekitError) as excinfo:
         backup_cli.perform_backup({}, now=MOMENT)
@@ -630,12 +649,10 @@ def test_the_report_carries_the_age_number_and_not_only_the_state(cfg, rclone):
 
 def test_a_resume_reports_the_queued_job_rather_than_filing_a_second(cfg, rclone):
     """The ``--job`` branch, which round one found undriven."""
-    code, first = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), first
+    first = _driven_ok(["backup", "run"])
     job_id = first["data"]["job_id"]
 
-    code, second = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), second
+    second = _driven_ok(["backup", "run", "--job", job_id])
     assert second["data"]["job_id"] == job_id, (
         "the resume filed a second backup rather than reporting the one queued"
     )
@@ -806,8 +823,7 @@ def test_an_item_naming_something_that_is_not_a_portion_refuses_by_name(cfg):
 def test_the_handler_uses_the_configuration_it_was_handed(cfg, tmp_path, rclone):
     """KTD9 through the handler: the frozen destination, not the one on disk."""
     frozen = replace(cfg, backup=replace(cfg.backup, dest="remote:the-frozen-one"))
-    config.save(replace(cfg, backup=replace(cfg.backup, dest="remote:the-later-one")))
-    config.reset_cache()
+    _saved(replace(cfg, backup=replace(cfg.backup, dest="remote:the-later-one")))
 
     job, item = _claimed("J2", "files")
     produced = backup_cli.handle(job, item, frozen)
@@ -834,8 +850,7 @@ def _item_states(job_id: str) -> dict[str, str]:
 
 def test_a_backup_job_carries_one_item_per_declared_portion_and_a_bound_worker(cfg):
     """The zero item rule, and ``job show`` reporting the job can run (R14)."""
-    code, envelope = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _driven_ok(["backup", "run"])
     states = _item_states(envelope["data"]["job_id"])
     assert states, (
         "the backup was queued with no items at all, so driving it would report "
@@ -846,8 +861,7 @@ def test_a_backup_job_carries_one_item_per_declared_portion_and_a_bound_worker(c
         f"{[str(p) for p in backup_facts.Portion]} a backup is made of"
     )
 
-    code, shown = _drive(["job", "show", envelope["data"]["job_id"]])
-    assert code == int(ExitCode.OK), shown
+    shown = _driven_ok(["job", "show", envelope["data"]["job_id"]])
     reported = shown["data"]["progress"]
     assert reported["worker"] == "bound", (
         f"a queued backup still reports {reported.get('worker')!r}, so the "
@@ -859,8 +873,7 @@ def test_a_backup_job_carries_one_item_per_declared_portion_and_a_bound_worker(c
 def test_queueing_still_needs_nothing_from_the_machine(cfg, no_rclone, monkeypatch):
     """The items come from the enum, so the property queueing had before survives."""
     monkeypatch.setattr(Path, "is_dir", lambda self: False)
-    code, envelope = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _driven_ok(["backup", "run"])
     assert len(_item_states(envelope["data"]["job_id"])) == len(backup_facts.Portion)
 
 
@@ -882,8 +895,7 @@ def _outside(cfg, tmp_path) -> Path:
             db_outside_root_acknowledged_on="2026-09-11",
         ),
     )
-    config.save(outside)
-    config.reset_cache()
+    _saved(outside)
     (home / "master.db").write_bytes(b"database, generation one")
     return home
 
@@ -932,8 +944,7 @@ def _identity_warnings(envelope: dict) -> list[dict]:
 def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
     """At queue and at resume, for the reason the share warning above is."""
     # A value with a space passes validation and cannot be a marker's filename.
-    config.save(replace(cfg, library=replace(cfg.library, volume_id="not a plain name")))
-    config.reset_cache()
+    _saved(replace(cfg, library=replace(cfg.library, volume_id="not a plain name")))
 
     queued, resumed = _queued_and_resumed()
     assert len(_identity_warnings(queued)) == 1, queued
@@ -943,14 +954,12 @@ def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
 def test_a_queued_real_backup_runs_every_portion_and_reports_what_it_did(cfg, rclone):
     """One queued real backup through the real resume (R-198): every age published
     (R9, R15), ``job show`` names the argv (R-349), and no warning word appears."""
-    code, queued = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), queued
+    queued = _driven_ok(["backup", "run"])
     job_id = queued["data"]["job_id"]
     assert set(_item_states(job_id).values()) == {"pending"}
     assert queued["data"]["progress"]["dry_run"] is False, queued["data"]
 
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    resumed = _driven_ok(["backup", "run", "--job", job_id])
     assert resumed["data"]["state"] == "succeeded", resumed["data"]
     assert _item_states(job_id) == {"files": "done", "database": "done"}
     assert resumed["data"]["progress"]["dry_run"] is False, resumed["data"]
@@ -1002,11 +1011,9 @@ def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
         return backup.CommandResult(returncode=0)
 
     monkeypatch.setattr(backup, "subprocess_runner", only_the_database_fails)
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id()
 
-    code, failed = _drive(["backup", "run", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    _driven_refused(["backup", "run", "--job", job_id])
     assert _item_states(job_id) == {"files": "done", "database": "failed"}, (
         _item_states(job_id)
     )
@@ -1021,8 +1028,7 @@ def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
     with jobs.open_store() as store:
         jobs.retry(store, job_id)
 
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    _driven_ok(["backup", "run", "--job", job_id])
     assert _item_states(job_id) == {"files": "done", "database": "done"}
     assert backup.MIRROR not in seen, (
         f"the retry ran {seen}, so it redid the mirror that had already completed "
@@ -1032,11 +1038,9 @@ def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
 
 def test_a_job_in_which_nothing_ran_never_reports_success(cfg, no_rclone):
     """R13, driven through the dispatcher rather than at the work body."""
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id()
 
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code != int(ExitCode.OK), resumed
+    _driven_refused(["backup", "run", "--job", job_id])
     assert set(_item_states(job_id).values()) == {"failed"}, _item_states(job_id)
     with jobs.open_store() as store:
         assert str(jobs.get(store, job_id).state) == "failed"
@@ -1047,11 +1051,9 @@ def test_the_configuration_the_worker_runs_against_is_the_frozen_one(cfg, rclone
     _, queued = _drive(["backup", "run"])
     job_id = queued["data"]["job_id"]
 
-    config.save(replace(cfg, backup=replace(cfg.backup, dest="remote:somewhere-else")))
-    config.reset_cache()
+    _saved(replace(cfg, backup=replace(cfg.backup, dest="remote:somewhere-else")))
 
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    resumed = _driven_ok(["backup", "run", "--job", job_id])
     invoked = rclone.read_text()
     assert "remote:mirror" in invoked, invoked
     assert "remote:somewhere-else" not in invoked, (
@@ -1103,8 +1105,7 @@ def test_asking_twice_about_a_half_failed_backup_answers_the_same_way_twice(
 ):
     """The check has to sit OUTSIDE the ``is_open`` branch, and this is why."""
     monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id()
 
     first, _ = _drive(["backup", "run", "--job", job_id])
     assert first != int(ExitCode.OK)
@@ -1174,17 +1175,15 @@ def test_the_ages_reported_are_the_ones_this_job_published(
     cfg, rclone, tmp_path, monkeypatch
 ):
     """The envelope describes THIS job, so it reads the job's own configuration."""
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    job_id = _queued_id()
+    _driven_ok(["backup", "run", "--job", job_id])
 
     elsewhere = tmp_path / "another-library"
     (elsewhere / "Music").mkdir(parents=True)
     (elsewhere / "db").mkdir(parents=True)
     monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
     # The database moves with the root, since KTD21b refuses to save it outside.
-    config.save(
+    _saved(
         replace(
             cfg,
             library=replace(
@@ -1192,7 +1191,6 @@ def test_the_ages_reported_are_the_ones_this_job_published(
             ),
         )
     )
-    config.reset_cache()
     assert config.load().library.root == elsewhere, (
         "the live configuration still names the original library, so the two "
         "readings cannot differ and this test would pass either way"
@@ -1202,8 +1200,7 @@ def test_the_ages_reported_are_the_ones_this_job_published(
         "find ages there and the test would not distinguish the two sources"
     )
 
-    code, again = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), again
+    again = _driven_ok(["backup", "run", "--job", job_id])
     reported = {entry["portion"]: entry for entry in again["data"]["ages"]}
     for portion in backup_facts.Portion:
         assert reported[str(portion)]["state"] == str(backup_facts.AgeState.KNOWN), (
@@ -1268,18 +1265,15 @@ def test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote(
     remote.fail_mirror = True
     monkeypatch.setattr(backup, "subprocess_runner", remote)
 
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, failed = _drive(["backup", "run", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    job_id = _queued_id()
+    _driven_refused(["backup", "run", "--job", job_id])
     first_attempt = remote.folders - {"2026-08-01T000000Z"}
     assert len(first_attempt) == 1, remote.folders
 
     remote.fail_mirror = False
     with jobs.open_store() as store:
         jobs.retry(store, job_id)
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    _driven_ok(["backup", "run", "--job", job_id])
 
     assert first_attempt <= remote.folders, (
         f"the retry left {sorted(remote.folders)}, so it purged the failed "
@@ -1307,12 +1301,10 @@ def _job_count() -> int:
 
 def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg):
     """R-223: the second ask is handed the open job; a real twin is not told it copies nothing."""
-    code, first = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), first
+    first = _driven_ok(["backup", "run"])
     assert backup_cli.ALREADY_QUEUED not in _codes(first), first
 
-    code, second = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), second
+    second = _driven_ok(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert _job_count() == 1
     assert _codes(second).count(backup_cli.ALREADY_QUEUED) == 1, second
@@ -1335,7 +1327,7 @@ def test_a_backup_to_a_destination_nobody_is_backing_up_to_is_its_own_job(cfg):
     """The open job is read by its frozen destinations; another mirror and archive
     cannot interleave with it."""
     _, first = _drive(["backup", "run"])
-    config.save(
+    _saved(
         replace(
             cfg,
             backup=replace(
@@ -1343,7 +1335,6 @@ def test_a_backup_to_a_destination_nobody_is_backing_up_to_is_its_own_job(cfg):
             ),
         )
     )
-    config.reset_cache()
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] != first["data"]["job_id"]
     assert _job_count() == 2
@@ -1355,8 +1346,7 @@ def test_either_shared_destination_is_the_same_backup(cfg, shared):
     _, first = _drive(["backup", "run"])
     moved = {"dest": "remote:second-mirror", "archive_root": "remote:second-archive"}
     del moved[shared]
-    config.save(replace(cfg, backup=replace(cfg.backup, **moved)))
-    config.reset_cache()
+    _saved(replace(cfg, backup=replace(cfg.backup, **moved)))
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert _job_count() == 1
@@ -1430,8 +1420,7 @@ def test_a_defect_in_rebuilding_a_configuration_is_not_reported_as_a_queued_back
         raise AttributeError("a defect, not an unreadable configuration")
 
     monkeypatch.setattr(jobs, "frozen_config", broken)
-    code, second = _drive(["backup", "run"])
-    assert code != int(ExitCode.OK), second
+    _driven_refused(["backup", "run"])
     assert _job_count() == 1
 
 
@@ -1452,24 +1441,11 @@ def test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger(cfg):
 
 def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
     """The envelope describes the open job's frozen analysis share, not the current one."""
-    home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    config.save(
-        replace(
-            cfg,
-            library=replace(
-                cfg.library,
-                db_path=home / "master.db",
-                db_outside_root_acknowledged_on="2026-09-11",
-            ),
-        )
-    )
-    config.reset_cache()
+    _outside(cfg, tmp_path)
     _, first = _drive(["backup", "run"])
     assert len(_share_warnings(first)) == 1, first
 
-    config.save(cfg)
-    config.reset_cache()
+    _saved(cfg)
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert len(_share_warnings(second)) == 1, second
@@ -1484,8 +1460,7 @@ def _rehearsal_said(envelope: dict) -> list[dict]:
 
 def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg, rclone):
     """R-221's named cost on both exits, on the declared surface, and in its record (R-349)."""
-    code, queued = _drive(["backup", "run", "--dry-run"])
-    assert code == int(ExitCode.OK), queued
+    queued = _driven_ok(["backup", "run", "--dry-run"])
     job_id = queued["data"]["job_id"]
     assert output.envelope_problems(queued) == [], queued
     assert "dry_run" not in queued["data"], (
@@ -1493,8 +1468,7 @@ def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg
         "the committed schema rejects this envelope"
     )
 
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    resumed = _driven_ok(["backup", "run", "--job", job_id])
     assert resumed["data"]["state"] == "succeeded", resumed["data"]
     assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
     assert output.envelope_problems(resumed) == ["undeclared field 'ages'"], (
@@ -1518,12 +1492,10 @@ def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg
 
 def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(cfg):
     """Every branch that hands back an identifier says what it will do."""
-    code, first = _drive(["backup", "run", "--dry-run"])
-    assert code == int(ExitCode.OK), first
+    first = _driven_ok(["backup", "run", "--dry-run"])
     assert len(_rehearsal_said(first)) == 1, first
 
-    code, second = _drive(["backup", "run", "--dry-run"])
-    assert code == int(ExitCode.OK), second
+    second = _driven_ok(["backup", "run", "--dry-run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert backup_cli.ALREADY_QUEUED in _codes(second), second
     assert len(_rehearsal_said(second)) == 1, second
@@ -1535,14 +1507,12 @@ def test_the_ages_a_rehearsal_reports_are_the_previous_real_runs_and_it_says_so(
 ):
     """A real backup first, so the fact file holds true ages, then a rehearsal over it."""
     _, real = _drive(["backup", "run"])
-    code, _ = _drive(["backup", "run", "--job", real["data"]["job_id"]])
-    assert code == int(ExitCode.OK)
+    _driven_ok(["backup", "run", "--job", real["data"]["job_id"]])
     published = {name: entry.completed_at for name, entry in _ages(cfg).items()}
     assert all(stamp is not None for stamp in published.values()), published
 
     _, rehearsal = _drive(["backup", "run", "--dry-run"])
-    code, resumed = _drive(["backup", "run", "--job", rehearsal["data"]["job_id"]])
-    assert code == int(ExitCode.OK), resumed
+    resumed = _driven_ok(["backup", "run", "--job", rehearsal["data"]["job_id"]])
 
     assert {name: entry.completed_at for name, entry in _ages(cfg).items()} == published, (
         "the rehearsal published an age, which is a different defect from the one "
@@ -1595,8 +1565,7 @@ def test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal(cfg, monkeyp
     monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
     _, queued = _drive(["backup", "run", "--dry-run"])
     code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
-    _, control_job = _drive(["backup", "run"])
-    _, control = _drive(["backup", "run", "--job", control_job["data"]["job_id"]])
+    _, control = _drive(["backup", "run", "--job", _queued_id()])
 
     assert code != int(ExitCode.OK), refused
     cause = refused["cause"]
@@ -1611,12 +1580,10 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     monkeypatch.setattr(
         backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE)
     )
-    _, queued = _drive(["backup", "run", "--dry-run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id("--dry-run")
 
     code, refused = _drive(["backup", "run", "--job", job_id])
-    _, control_job = _drive(["backup", "run"])
-    _, control = _drive(["backup", "run", "--job", control_job["data"]["job_id"]])
+    _, control = _drive(["backup", "run", "--job", _queued_id()])
 
     assert code != int(ExitCode.OK), refused
     assert _item_states(job_id) == {"files": "done", "database": "failed"}, (
@@ -1649,8 +1616,7 @@ def test_a_parked_rehearsal_is_still_blocked_after_the_rehearsal_word_is_added(
             ).cause
         )
 
-    _, queued = _drive(["backup", "run", "--dry-run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id("--dry-run")
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
 
     code, refused = _drive(["backup", "run", "--job", job_id])
@@ -1664,41 +1630,27 @@ def test_a_parked_rehearsal_is_still_blocked_after_the_rehearsal_word_is_added(
     assert any("copies nothing" in step for step in steps), refused
 
 
-def test_an_unreadable_fact_file_under_a_rehearsal_says_which_kind_of_run_it_was(
-    cfg, rclone
-):
-    """THE THIRD REFUSING EXIT, which the first cut of this unit left uncovered."""
-    _, queued = _drive(["backup", "run", "--dry-run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+@pytest.mark.parametrize(
+    ("flags", "rehearsal"),
+    [
+        pytest.param(("--dry-run",), True, id="under-a-rehearsal-says-so"),
+        pytest.param((), False, id="under-a-real-run-gains-no-rehearsal-step"),
+    ],
+)
+def test_an_unreadable_fact_file_says_which_kind_of_run_it_was(cfg, rclone, flags, rehearsal):
+    """THE THIRD REFUSING EXIT, which the first cut of this unit left uncovered, and its
+    companion, so the step cannot ride every refusal."""
+    job_id = _queued_id(*flags)
+    _driven_ok(["backup", "run", "--job", job_id])
     assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
 
     backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
     backup_facts.path_for(cfg).write_bytes(b"{not json at all")
-    code, refused = _drive(["backup", "run", "--job", job_id])
+    refused = _driven_refused(["backup", "run", "--job", job_id])
 
-    assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "backup-facts-unreadable", refused
     steps = refused["cause"]["remediation"]["steps"]
-    assert any("copies nothing" in step for step in steps), refused
-
-
-def test_an_unreadable_fact_file_under_a_real_run_gains_no_rehearsal_step(cfg, rclone):
-    """The companion for the third exit, so the step cannot ride every refusal."""
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-
-    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
-    backup_facts.path_for(cfg).write_bytes(b"{not json at all")
-    code, refused = _drive(["backup", "run", "--job", job_id])
-
-    assert code != int(ExitCode.OK), refused
-    assert refused["cause"]["reason"] == "backup-facts-unreadable", refused
-    steps = refused["cause"]["remediation"]["steps"]
-    assert not any("copies nothing" in step for step in steps), refused
+    assert any("copies nothing" in step for step in steps) is rehearsal, refused
 
 
 def test_a_refusal_this_verb_re_raises_is_never_its_own_cause(cfg):
@@ -1747,9 +1699,8 @@ def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch
     """A failed real run attempted transfers, so it is never told nothing was copied."""
     monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
     _, queued = _drive(["backup", "run"])
-    code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    refused = _driven_refused(["backup", "run", "--job", queued["data"]["job_id"]])
 
-    assert code != int(ExitCode.OK), refused
     steps = refused["cause"]["remediation"]["steps"]
     assert not any("copies nothing" in step for step in steps), refused
 
@@ -1775,8 +1726,7 @@ def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
 
 def _shown_outcomes(job_id: str) -> dict | None:
     """What ``crate job show`` says each item ran, through the real dispatcher."""
-    code, shown = _drive(["job", "show", job_id])
-    assert code == int(ExitCode.OK), shown
+    shown = _driven_ok(["job", "show", job_id])
     return shown["data"]["progress"].get(backup_facts.OUTCOMES_FIELD)
 
 
@@ -1794,10 +1744,8 @@ def test_a_failed_transfer_leaves_the_item_failed_and_job_show_names_its_argv(
 ):
     """R-349's third scenario, the one the residual was filed for."""
     monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, failed = _drive(["backup", "run", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    job_id = _queued_id()
+    _driven_refused(["backup", "run", "--job", job_id])
     assert _item_states(job_id) == {"files": "done", "database": "failed"}
     with jobs.open_store() as store:
         database = next(i for i in jobs.items(store, job_id) if i.item_id == "database")
@@ -1822,8 +1770,7 @@ def test_a_job_of_another_verb_grows_no_outcomes_field(cfg):
         job = jobs.enqueue(
             store, handler_key="tag.retag", payload={}, cfg=cfg, item_ids=("one",)
         )
-    code, shown = _drive(["job", "show", job.job_id])
-    assert code == int(ExitCode.OK), shown
+    shown = _driven_ok(["job", "show", job.job_id])
     assert backup_facts.OUTCOMES_FIELD not in shown["data"]["progress"], shown
 
 
@@ -1832,8 +1779,7 @@ def test_a_failed_backup_item_is_re_armed_and_its_record_replaced(
 ):
     """R-349's fifth scenario: the failure channel never completes the item."""
     monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
+    job_id = _queued_id()
     _drive(["backup", "run", "--job", job_id])
 
     with jobs.open_store() as store:
@@ -1841,8 +1787,7 @@ def test_a_failed_backup_item_is_re_armed_and_its_record_replaced(
     assert _item_states(job_id)["database"] == "pending", _item_states(job_id)
 
     monkeypatch.setattr(backup, "subprocess_runner", _answering(0))
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    _driven_ok(["backup", "run", "--job", job_id])
     shown = _shown_outcomes(job_id)
     assert all(
         command["returncode"] == 0
@@ -1864,8 +1809,7 @@ def test_the_outcome_record_is_private_under_a_permissive_umask(cfg, rclone):
 
     previous = os.umask(0)
     try:
-        _, queued = _drive(["backup", "run"])
-        job_id = queued["data"]["job_id"]
+        job_id = _queued_id()
         backup.subprocess_runner, saved = mirror_fails, backup.subprocess_runner
         try:
             _drive(["backup", "run", "--job", job_id])
