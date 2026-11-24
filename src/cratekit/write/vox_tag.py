@@ -9,7 +9,9 @@ rebuild cannot import adoption; adoption reads it through
 its commit.
 
 The names are the ones ``metadata mytags-vocals`` and the landing write the
-tag under, a value inside a category, defined here and read there.
+tag under, a value inside a category, defined in :mod:`metadata_cli` and read
+here: this module imports that one and not the other way, so the doctor's
+help, which loads that module, loads no module more for this one.
 
 Layer: write. It reads one open handle and writes nothing.
 """
@@ -19,11 +21,8 @@ from __future__ import annotations
 from typing import Any
 
 from cratekit.core import rb_writer
-
-#: The My Tag category the vocal values sit in, a display name a person can rename.
-CATEGORY = "Vocals"
-#: The value that says a track has vocals, and so belongs in its bucket's vocal sub.
-VALUE_VOX = "vox"
+from cratekit.write.metadata_cli import CATEGORY as CATEGORY
+from cratekit.write.metadata_cli import VALUE_VOX as VALUE_VOX
 
 _ORIGIN = ("write", "vox_tag")
 
