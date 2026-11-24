@@ -72,8 +72,10 @@ is made by what the module costs, not by what is least typing:
 1. **The module is on the list and is imported itself.** For a module that is
    heavy to import (`pool`), that a guard is keyed on (`pool`), or that imports
    the module that would have to answer for it (`art` imports `tags`,
-   `taxonomy_word` imports the upgrade that imports `active_taxonomy`,
-   `restore` imports `session`). A module joins only as another leaves.
+   `restore` imports `session`), or whose own imports would load with every
+   importer of the module answering for it (`taxonomy_word` imports the
+   upgrade and `routing`; before the upgrade read `active_taxonomy` where it
+   calls it, answering for it there was also a cycle). A module joins only as another leaves.
 2. **A listed module re-exports the names, eagerly.** Only where the listed
    module imported the other already, or the reports audit already admits it
    beside it and the cost was measured: `session` for `preflight`, `processes`
@@ -95,7 +97,11 @@ to import on the base, 110.6 ms on the branch, and 5 MB a worker. And
 that module had kept under `TYPE_CHECKING`. Ask who imports the listed module
 for the new name alone, and what else that module loads: the ceiling went to
 `pool`, which the worker imports already, and the foreign tree's names to
-`active_taxonomy`, which loads the taxonomy anyway.
+`active_taxonomy`, which loads the taxonomy anyway. That home has a price of
+its own: every module importing `active_taxonomy` at its top now loads
+`foreign_tree` too, and once U343 merged, `crate doctor --help` reached its
+module ceiling for it, so the doctor's two readers (`cli/doctor_state.py` and
+`core/taxonomy_upgrade.py`) import the loader in the function that calls it.
 
 ## What to check before re-exporting
 

@@ -703,11 +703,14 @@ def test_a_bound_loader_is_asked_for_before_the_models_module_is_imported(monkey
     never imported, so a machine where it cannot load still scores through the bound one."""
     import sys
 
+    import cratekit.analysis
     from cratekit.analysis import vocals as scoring
     from cratekit.vocals import cli as vocals_cli
 
     monkeypatch.setattr(scoring, "loader_bound", lambda: True)
-    # None in ``sys.modules`` makes the import raise, as a module that cannot load would.
+    # None in ``sys.modules`` makes the import raise, as a module that cannot load would;
+    # the package attribute an earlier test's import left goes too, or the import reads it.
+    monkeypatch.delattr(cratekit.analysis, "vocal", raising=False)
     monkeypatch.setitem(sys.modules, "cratekit.analysis.vocal", None)
     vocals_cli._bind_defaults()
 

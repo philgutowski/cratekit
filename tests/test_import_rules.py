@@ -56,12 +56,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: itself: ``art`` needs ``tags`` at import and borrows the two private
 #: container helpers the beat grid rule depends on; ``pool`` is the module the
 #: sizing guards of ``tests/test_pool_sizing.py`` are keyed on, and loads the
-#: process pool's machinery; ``restore`` and ``taxonomy_word`` import the
-#: modules that would have to answer for them. The four that left are each
+#: process pool's machinery; ``restore`` imports ``session``, the module that
+#: would have to answer for it, and ``taxonomy_word`` imports the upgrade and
+#: ``routing``, which ``active_taxonomy`` answering for it would load with
+#: every importer (a cycle, until the upgrade read the loader where it calls
+#: it). The four that left are each
 #: re-exported by a listed module that loads what it needs already:
 #: ``profiles`` by ``config``, ``preflight`` and ``snapshot`` by ``session``,
 #: and ``foreign_tree`` by ``active_taxonomy``, which has the taxonomy loaded
-#: where ``tree_registry`` would load it for the restore. ``session`` answers
+#: where ``tree_registry`` would load it for the restore; so every module
+#: importing ``active_taxonomy`` at its top loads the foreign tree too, which
+#: is why the doctor's two readers import it where they call it (U331's merge
+#: of U343 put the doctor's help at its ceiling). ``session`` answers
 #: for ``processes`` the same way, ``jobs`` for ``discovery``, and ``pool`` for
 #: the cores' ceiling, so a spawned worker loads nothing more for it.
 #:
@@ -164,12 +170,12 @@ TOGGLE_HOMES = {
 #: in a feature package would undo what the refactor is for. U331 (#980) counts
 #: it as an interface name.
 #:
-#: U331 lowered it from 453 to 434, the count measured once every reach went
+#: U331 lowered it from 453 to 432, the count measured once every reach went
 #: through the list: a name re-exported by a listed module replaced the one it
 #: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
 #: names of the modules that moved to the feature that used them (``held_plan``
 #: to sync, ``rehearsal`` and ``drift`` to intake) are core names no longer.
-CORE_NAMES_CEILING = 434
+CORE_NAMES_CEILING = 432
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────
