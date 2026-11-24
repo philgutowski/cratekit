@@ -633,16 +633,22 @@ def test_a_track_deleted_on_purpose_is_suppressed_and_not_listed(cfg, library, m
     assert ids(summary) == ["205"]
 
 
-def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
-        cfg, library, monkeypatch):
-    """R-431: a deletion whose row kept a featured credit still suppresses the heart."""
+@pytest.mark.parametrize(
+    ("track_id", "version", "listed"),
+    [("201", "Nightwave Remix", False), ("202", "Daybreak Remix", True)],
+    ids=["the-deleted-version-is-suppressed", "another-remix-is-never-withheld"])
+def test_a_deleted_row_that_kept_a_credit_suppresses_its_version_alone(
+        cfg, library, monkeypatch, track_id, version, listed):
+    """R-431: a deletion whose row kept a featured credit still suppresses the heart; the
+    companion names one VERSION, and another remix was deleted by nobody."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
-    job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")])
+    job_id = finished(monkeypatch, [Track(track_id, "Aurora Bloom", "Sun Path", version=version)])
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
-    assert (summary["written"], summary["suppressed"]) == (0, 1)
-    assert summary["list"] is None
-    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
+    assert (summary["written"], summary["suppressed"]) == ((1, 0) if listed else (0, 1))
+    if not listed:
+        assert summary["list"] is None
+        assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
 
 
 def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
@@ -660,15 +666,6 @@ def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
     older = {k: v for k, v in intake_cli.frozen(solo).items() if k != "several_artists"}
     assert intake_cli.thawed(older).uncredited_spellings == ()
 
-
-def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
-        cfg, library, monkeypatch):
-    """The companion names one VERSION; another remix was deleted by nobody."""
-    tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
-    job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
-    _code, envelope = missing(job_id)
-    summary = envelope["data"]["summary"]
-    assert (summary["written"], summary["suppressed"]) == (1, 0)
 
 
 # One sync pass, one list (U73), queued through the pass's own ``queue_playlist``;
@@ -737,8 +734,7 @@ def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, l
     assert "source_refs" not in rows["205"] and "source_refs" not in rows["206"]
     text = told(["intake", "missing", "--run", RUN])
     assert f"next: crate acquire download {lists_dir(library) / RUN_LIST}" in text
-    # R-770: the hint names the batch and which medium wants the export. ``--pass``,
-    # never ``--name`` (U110): the run names the intake file sync mark reads.
+    # R-770: the hint names the batch, the export's medium, and ``--pass``, never ``--name`` (U110).
     assert "crate intake land --pass 2026-09-18T100000Z-ab12_synced" in text
     assert "--name" not in text
     assert "adding --export XML" in text and "while the intake tree is on the xml bridge" in text
@@ -804,8 +800,7 @@ def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
     (skipped,) = [c for c in envelope["data"]["checks"] if c["title"] == "skipped"]
     assert skipped["status"] == "fail"
     assert broken in skipped["detail"] and "pl-b" in skipped["detail"]
-    # JOBS NO RUN OF THIS LIBRARY OWNS are left OPEN, so a selection that took one refuses:
-    # another library's job in the run, another verb's, and one queued by hand.
+    # JOBS NO RUN OF THIS LIBRARY OWNS stay OPEN: another library's, another verb's, by hand.
     lib = dataclasses.replace(cfg.library, volume_id="0000-0000")
     elsewhere = dataclasses.replace(cfg, library=lib)
     in_run(elsewhere, "pl-c", [Track("206", "Sable Cove", "Quiet Pier")])

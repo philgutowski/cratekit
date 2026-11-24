@@ -22,9 +22,7 @@ from tests import test_intake_land_native as land
 from tests.cli_drive import drive
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
@@ -156,8 +154,7 @@ def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_un
     assert sorted((i["playlist"], i["count"], i["created"]) for i in years) == [
         ("Kompakt 2024", 1, True), ("Kompakt 2025", 2, True),
     ]
-    # The record names each year filed, what a later ``label mark`` of a
-    # native batch reads in place of an intake file (R-916).
+    # The record names each year filed, which ``label mark`` reads for a native batch (R-916).
     (record,) = session.records(cfg)
     assert [
         {k: filed[k] for k in ("name", "label", "year", "tracks")}
@@ -492,8 +489,7 @@ def test_a_year_playlist_made_after_the_answer_makes_the_answer_stale(cfg, silen
 
 @pytest.mark.parametrize("again", ["2021", "2020"])
 def test_a_file_the_move_refused_is_named_and_its_year_holds_the_rest(cfg, silence, again):
-    """One.flac staged again onto its landed target is refused by the move, and Two.flac
-    lands; a year whose every file the move refused makes no playlist."""
+    """One.flac again onto its landed target is refused, Two.flac lands; an empty year makes none"""
     _dated(cfg, silence, "One.flac", "2021")
     land._lands("--label", "PULS")
     _dated(cfg, silence, "One.flac", again)
@@ -632,7 +628,8 @@ def test_a_batch_of_two_labels_and_an_unregistered_seller_files_each_under_its_o
     }
     (unfiled,) = _shown(refused)["filed under no label"]
     assert "Other.flac" in unfiled and "no label tag" in unfiled
-    assert sorted(p.name for p in land._music(cfg).iterdir()) == ["Kompakt.flac", "Other.flac", "Puls.flac"]
+    landed = sorted(p.name for p in land._music(cfg).iterdir())
+    assert landed == ["Kompakt.flac", "Other.flac", "Puls.flac"]
     (warned,) = [w for w in acted["warnings"] if w["code"] == landing.NO_LABEL]
     assert "Other.flac" in warned["message"]
 

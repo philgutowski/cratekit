@@ -292,8 +292,7 @@ def _landed_ok(verb: list[str] | None = None) -> dict:
 
 
 def _lands(*extra: str, verb: list[str] | None = None) -> tuple[dict, dict]:
-    """Both acts of the batch's landing with ``extra``, or of ``verb``, which must succeed:
-    (acted, refused)."""
+    """Both acts of the landing with ``extra``, or of ``verb``, which must succeed."""
     code, acted, refused = _two_acts(_land(*extra) if verb is None else verb)
     assert code == int(ExitCode.OK), acted
     return acted, refused
@@ -544,8 +543,7 @@ def _set_links(cfg: config.Config, links: dict[str, int | str | None]) -> None:
 
 
 def test_an_approval_at_one_link_is_not_applied_at_another_and_no_majority_refuses(one_staged):
-    """Rows moved after the approval change the digest; then with no value on more than half
-    the live rows there is none of rekordbox's to give, so it refuses before the gate."""
+    """Rows moved after the approval change the digest; with no majority value it refuses early."""
     cfg = one_staged
     _refused, run_id = _answered(_land())
     _set_links(cfg, {"1": LIBRARY_LINK + 1, "2": LIBRARY_LINK + 1})

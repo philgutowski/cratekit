@@ -78,6 +78,13 @@ def _imported(export: Path | None = None, *extra: str) -> tuple[int, dict]:
     return _drive(["intake", "imported", *(["--export", str(export)] if export else []), *extra])
 
 
+def _imported_as(expected: ExitCode, *args) -> dict:
+    """``_imported``, its exit held to ``expected``."""
+    code, result = _imported(*args)
+    assert code == int(expected), result
+    return result
+
+
 def _in_music(cfg: config.Config, silence: Path, name: str = "One.flac", **fields) -> Path:
     """A copy of ``silence`` in the library's music folder, tagged with ``fields`` if any."""
     music = Path(cfg.library.root) / cfg.library.music_dir
@@ -137,8 +144,7 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     assert "Fresh Export" in pending["steps"][3]
     assert "crate intake imported --export" in pending["steps"][4]
     # AN EXPORT TAKEN BEFORE THE IMPORT names none of the landed files: nothing changes.
-    code, result = _imported(export)
-    assert code == int(ExitCode.PENDING_HUMAN), result
+    result = _imported_as(ExitCode.PENDING_HUMAN, export)
     (item,) = result["data"]["items"]
     assert item["action"] == imported_cli.NOT_IMPORTED
     assert (item["count"], item["missing"]) == (2, 2)
@@ -155,15 +161,13 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     assert b"One.flac" in without_two
     partial = tmp_path / "partial.xml"
     partial.write_bytes(without_two)
-    code, result = _imported(partial)
-    assert code == int(ExitCode.PENDING_HUMAN), result
+    result = _imported_as(ExitCode.PENDING_HUMAN, partial)
     (item,) = result["data"]["items"]
     assert (item["action"], item["missing"]) == (imported_cli.NOT_IMPORTED, 1)
     assert "Two.flac" in item["missing_locations"][0]
     assert intake_file.is_file()
     after = _export_after_import(tmp_path, intake_file)
-    code, result = _imported(after)
-    assert code == int(ExitCode.OK), result
+    result = _imported_as(ExitCode.OK, after)
     (item,) = result["data"]["items"]
     assert item["action"] == imported_cli.IMPORTED
     assert item["count"] == 2
@@ -256,8 +260,7 @@ def test_a_run_the_ledger_names_no_file_for_is_left_alone(cfg, silence, export, 
     _land(cfg, silence, export)
     after = _export_after_import(tmp_path, _intake_file(cfg))
     routing_pass.write(cfg, routing_pass.EMPTY)
-    code, result = _imported(after)
-    assert code == int(ExitCode.PENDING_HUMAN), result
+    result = _imported_as(ExitCode.PENDING_HUMAN, after)
     assert result["data"]["items"][0]["action"] == imported_cli.UNVERIFIABLE
     assert _intake_file(cfg).is_file()
     (record,) = session.records(cfg)
@@ -269,8 +272,7 @@ def test_a_run_the_ledger_names_no_file_for_is_left_alone(cfg, silence, export, 
 
 def test_nothing_waiting_is_a_no_op_with_or_without_an_export(cfg, export):
     for named in (None, export):
-        code, result = _imported(named)
-        assert code == int(ExitCode.OK), result
+        result = _imported_as(ExitCode.OK, named)
         assert result["outcome"] == "no_op"
         assert result["data"]["items"] == []
     # AND PRINTS NO PROOF LINES to a person.
@@ -292,8 +294,7 @@ def test_two_waiting_runs_are_settled_independently(cfg, silence, export, tmp_pa
     _land(cfg, silence, export, "One.flac", batch="first")
     after_first = _export_after_import(tmp_path, _intake_file(cfg, "first"))
     _land(cfg, silence, export, "Two.flac", batch="second")
-    code, result = _imported(after_first)
-    assert code == int(ExitCode.PENDING_HUMAN), result
+    result = _imported_as(ExitCode.PENDING_HUMAN, after_first)
     actions = {Path(item["intake_file"]).name: item["action"] for item in result["data"]["items"]}
     assert actions == {"first_inboxed.xml": imported_cli.IMPORTED, "second_inboxed.xml": imported_cli.NOT_IMPORTED}
     assert not _intake_file(cfg, "first").exists()
@@ -427,8 +428,7 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
     assert closed.detail[session.IMPORT_VERIFIED_KEY]["evidence"] == routing_cli.PLACED_EVIDENCE
     # The run is over and its file is still here. The verb retires it, with no
     # export to read because no run is waiting on one.
-    code, result = _imported()
-    assert code == int(ExitCode.OK), result
+    result = _imported_as(ExitCode.OK)
     (item,) = result["data"]["items"]
     assert item["action"] == imported_cli.RETIRED
     assert not _intake_file(cfg).exists()
@@ -499,8 +499,7 @@ def test_intake_file_ends_pending_and_is_settled_the_same_way(cfg, silence, expo
     assert record.state is session.SessionState.AWAITING_IMPORT
     assert _refusal(cfg, export).cause.reason == "cutover-open-run"
     after = _export_after_import(tmp_path, intake_file)
-    code, result = _imported(after)
-    assert code == int(ExitCode.OK), result
+    _imported_as(ExitCode.OK, after)
     assert not intake_file.exists()
     tree_registry.assert_cutover_ready(cfg, export=after)
 
@@ -569,12 +568,10 @@ def test_a_run_landed_before_the_fix_is_settled_too(cfg, silence, export, tmp_pa
     record.snapshot_path = None
     session.write_record(record, cfg)
     assert _refusal(cfg, export).cause.reason == "cutover-open-run"
-    code, not_yet = _imported(export)
-    assert code == int(ExitCode.PENDING_HUMAN), not_yet
+    not_yet = _imported_as(ExitCode.PENDING_HUMAN, export)
     assert not_yet["data"]["items"][0]["action"] == imported_cli.NOT_IMPORTED
     assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
-    code, result = _imported(after)
-    assert code == int(ExitCode.OK), result
+    result = _imported_as(ExitCode.OK, after)
     (item,) = result["data"]["items"]
     assert (item["action"], item["retired_to"]) == (imported_cli.IMPORTED, None)
     assert session.owes_only_deferred_routing(session.read_record(record.session_id, cfg))
@@ -602,8 +599,7 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
     after = _export_after_import(tmp_path, _intake_file(cfg))
     _mark_routed(cfg, record)
     # A temporary folder is not the recorded volume, so the gated close refuses.
-    code, result = _imported(after)
-    assert code == int(ExitCode.OK), result
+    result = _imported_as(ExitCode.OK, after)
     (item,) = result["data"]["items"]
     assert (item["action"], item["closed"]) == (imported_cli.IMPORTED, False)
     assert item["close_refused"]
@@ -611,8 +607,7 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
     assert not _intake_file(cfg).exists()
     assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
     _volume_is_the_librarys(cfg, monkeypatch)
-    code, again = _imported()
-    assert code == int(ExitCode.OK), again
+    again = _imported_as(ExitCode.OK)
     (item,) = again["data"]["items"]
     assert (item["action"], item["closed"]) == (imported_cli.RETIRED, True)
     assert session.read_record(record.session_id, cfg).state is session.SessionState.CLOSED

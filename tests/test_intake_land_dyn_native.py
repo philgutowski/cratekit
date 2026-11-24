@@ -17,14 +17,13 @@ from tests import test_intake_land_vox_native as vox_suite
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import _asked, _execute, _land, _lands, _query, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_vox_native import _added, _my_tag, _plan
 
 #: A category of the person's own, which the writer copies the Analysis category's shape from.
 MOOD_ID = "8000"
@@ -55,7 +54,7 @@ def _marked(cfg: config.Config) -> frozenset[str]:
 def writable(native_library):
     """The landing library, holding one category of the person's and no dyn tag."""
     cfg = native_library[0]
-    vox_suite._add_rows(cfg, vox_suite._my_tag(MOOD_ID, "Mood", "root", "mood"))
+    vox_suite._add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
     return cfg
 
 
@@ -134,14 +133,12 @@ def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_eac
                "as the Normal run's")
     normal = f"then last on the 3 row(s) without it with {drift.NORMAL_SETTINGS}"
     assert dynamic in message and normal in message, message
-    # U954: the Dynamic run first and the Normal run last, so the mode the
-    # next launch's Auto Analysis dialog reads is Normal.
+    # U954: Dynamic first and Normal last, so the next launch's Auto Analysis reads Normal.
     assert message.index(dynamic) < message.index(normal), message
     assert f"{normal}, so the mode the next launch reads is Normal" in message, message
     assert "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on" in message
     assert "Analysis Mode Dynamic" in message
-    # U319: both paths, the selections with Auto Analysis off and then the
-    # one dialog with it on, before the clear that follows either.
+    # U319: the selections with Auto Analysis off, then its dialog on, before either's clear.
     off = "rekordbox analyses nothing on its own with Auto Analysis off; open rekordbox, select the"
     assert off in message, message
     selections = message.index(normal)
@@ -233,8 +230,8 @@ def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(cfg, 
 def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(cfg, silence):
     """Over a removed dyn value the check's own read back counts no tag and names the row."""
     vox_suite._add_rows(
-        cfg, vox_suite._my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
-        vox_suite._my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1))
+        cfg, _my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
+        _my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1))
     _read(cfg, silence, "One.flac", "5.0", drift.VARIABLE)
     acted = _lands()[0]
     assert "dyn tagged" not in acted["data"]["totals"]
@@ -272,7 +269,7 @@ def test_the_engine_digest_covers_each_rows_drift_verdict_and_answer():
     """At the engine, where the file's own fingerprint is not in the digest."""
     variable = {"drift": 4.0, "drift_verdict": drift.VARIABLE}
     every = [
-        native.identity(vox_suite._plan((vox_suite._added("One.flac", **row),), drift_cut=cut, **blocked))
+        native.identity(_plan((_added("One.flac", **row),), drift_cut=cut, **blocked))
         for row, cut, blocked in (
             ({**variable, "dyn": True}, 1.5, {}), ({**variable, "dyn": False}, 1.5, {}),
             ({**variable, "drift": 4.1, "dyn": True}, 1.5, {}),
@@ -287,13 +284,13 @@ def test_the_engine_digest_covers_each_rows_drift_verdict_and_answer():
 
 def test_the_plan_counts_each_kind_of_row():
     rows = (
-        vox_suite._added("A.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=True),
-        vox_suite._added("B.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=False),
-        vox_suite._added("C.flac", drift=0.1, drift_verdict=drift.STEADY),
-        vox_suite._added("D.flac", drift_verdict=drift.UNKNOWN),
-        vox_suite._added("E.flac", drift_verdict=drift.UNSCORED),
+        _added("A.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=True),
+        _added("B.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=False),
+        _added("C.flac", drift=0.1, drift_verdict=drift.STEADY),
+        _added("D.flac", drift_verdict=drift.UNKNOWN),
+        _added("E.flac", drift_verdict=drift.UNSCORED),
     )
-    plan = vox_suite._plan(rows, drift_cut=1.5)
+    plan = _plan(rows, drift_cut=1.5)
     assert [row.file_name for row in plan.dyn_tagged()] == ["A.flac"]
     assert [row.file_name for row in plan.drift_variable()] == ["A.flac", "B.flac"]
     assert [row.file_name for row in plan.drift_unscored()] == ["E.flac"]

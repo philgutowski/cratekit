@@ -34,6 +34,21 @@ def cfg(tmp_path):
     return built
 
 
+@pytest.fixture
+def store(cfg) -> watermarks.WatermarkStore:
+    return watermarks.WatermarkStore(cfg)
+
+
+@pytest.fixture
+def staging(cfg) -> Path:
+    return Path(cfg.paths.download_staging)
+
+
+@pytest.fixture
+def registry(cfg) -> artifacts.ArtifactRegistry:
+    return artifacts.ArtifactRegistry(cfg)
+
+
 def _candidate(identity: str, recency: str) -> run.Candidate:
     return run.Candidate(identity=identity, recency=recency)
 
@@ -81,11 +96,8 @@ class OfferingSource(FakeSource):
     acquires = False
 
 
-def test_an_offering_source_writes_no_intake_file(cfg):
+def test_an_offering_source_writes_no_intake_file(cfg, store, staging, registry):
     """R-140. A completed offer is not an acquisition and must not claim one."""
-    store = watermarks.WatermarkStore(cfg)
-    staging = Path(cfg.paths.download_staging)
-    registry = artifacts.ArtifactRegistry(cfg)
     listed = [_candidate("r1", "3"), _candidate("r2", "2"), _candidate("r3", "1")]
     source = OfferingSource("labels", listed)
     parts = {"watermarks": store, "artifacts": registry, "staging": staging}
@@ -98,18 +110,15 @@ def test_an_offering_source_writes_no_intake_file(cfg):
     assert registry.intake_eligible([target]) == []
 
 
-def test_an_offering_run_leaves_the_source_watermark_unset(cfg):
+def test_an_offering_run_leaves_the_source_watermark_unset(cfg, store):
     """Read back from the store, because an unadvanced cursor is the claim."""
-    store = watermarks.WatermarkStore(cfg)
     source = OfferingSource("labels", [_candidate("r1", "3")])
     _increment(cfg, source, "run-offer-2", watermarks=store)
     assert store.read("labels") is None
 
 
-def test_an_acquiring_source_still_writes_the_intake_file_and_advances(cfg):
+def test_an_acquiring_source_still_writes_the_intake_file_and_advances(cfg, store, staging):
     """The default is pinned beside the new branch, so it cannot drift silently."""
-    store = watermarks.WatermarkStore(cfg)
-    staging = Path(cfg.paths.download_staging)
     source = FakeSource("playlists", [_candidate("p1", "3"), _candidate("p2", "2")])
     assert not hasattr(source, "acquires"), "the double must not declare the attribute"
     result = _increment(cfg, source, "run-acquire-1", watermarks=store, staging=staging)
@@ -120,10 +129,8 @@ def test_an_acquiring_source_still_writes_the_intake_file_and_advances(cfg):
     assert store.read("playlists").cursor == "p1"
 
 
-def test_one_run_records_only_the_acquiring_source_of_a_mixed_pair(cfg):
+def test_one_run_records_only_the_acquiring_source_of_a_mixed_pair(cfg, store, staging):
     """One intake file, and an offer does not get to put its identities in it."""
-    store = watermarks.WatermarkStore(cfg)
-    staging = Path(cfg.paths.download_staging)
     staging.mkdir(parents=True, exist_ok=True)
     acquiring = FakeSource("playlists", [_candidate("p1", "1")])
     offering = OfferingSource("labels", [_candidate("l1", "1")])
@@ -147,8 +154,7 @@ def test_the_label_source_declares_that_it_does_not_acquire():
     assert sweep.LabelSource.acquires is False
 
 
-def test_errors_leave_the_watermark_unchanged_and_report_the_shortfall(cfg):
-    store = watermarks.WatermarkStore(cfg)
+def test_errors_leave_the_watermark_unchanged_and_report_the_shortfall(cfg, store):
     listed = [_candidate("a", "3"), _candidate("b", "2")]
     source = FakeSource("labels", listed, process_errors={"b": RuntimeError("provider 429")})
     result = _increment(cfg, source, "run-1", watermarks=store)
@@ -158,8 +164,7 @@ def test_errors_leave_the_watermark_unchanged_and_report_the_shortfall(cfg):
     assert "b" in result.shortfall or result.errors
 
 
-def test_every_lookup_failing_raises_and_does_not_advance(cfg):
-    store = watermarks.WatermarkStore(cfg)
+def test_every_lookup_failing_raises_and_does_not_advance(cfg, store):
     source = FakeSource("favorites", lookup_error=run.LookupFailure("every listing call failed"))
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source, "run-2", watermarks=store)
@@ -193,9 +198,7 @@ def test_a_lookup_failure_is_permanent_unless_the_source_says_rate_limited(cfg):
     assert watermarks.WatermarkStore(cfg).read("labels") is None
 
 
-def test_one_source_failing_does_not_block_the_other(cfg):
-    store = watermarks.WatermarkStore(cfg)
-    staging = Path(cfg.paths.download_staging)
+def test_one_source_failing_does_not_block_the_other(cfg, store, staging):
     failing = FakeSource("labels", lookup_error=run.LookupFailure("labels down"))
     ok = FakeSource("playlists", [_candidate("p1", "9")])
     results = _increment(
@@ -207,10 +210,7 @@ def test_one_source_failing_does_not_block_the_other(cfg):
     assert store.read("playlists").cursor == "p1"
 
 
-def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg):
-    store = watermarks.WatermarkStore(cfg)
-    staging = Path(cfg.paths.download_staging)
-    registry = artifacts.ArtifactRegistry(cfg)
+def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg, store, staging, registry):
     first = FakeSource("playlists", [_candidate("old", "1"), _candidate("mid", "2")])
     parts = {"watermarks": store, "artifacts": registry, "staging": staging}
     first_result = _increment(cfg, first, "run-4a", **parts)
@@ -224,9 +224,8 @@ def test_a_rerun_after_a_clean_sync_processes_only_unowned_items(cfg):
     assert second_result.processed == ("new",)
 
 
-def test_a_watermark_does_not_empty_the_scope_of_unowned_items(cfg):
+def test_a_watermark_does_not_empty_the_scope_of_unowned_items(cfg, store):
     """KTD11. The silent zero-scope failure used the watermark as a date floor."""
-    store = watermarks.WatermarkStore(cfg)
     store.advance("playlists", cursor="zzz", items=99, library_id=cfg.library.volume_id)
     listed = [_candidate("still-unowned", "1"), _candidate("also-unowned", "2")]
     taken = scope.scoped(listed, owned=set(), limit=10)
@@ -238,14 +237,12 @@ def test_a_watermark_does_not_empty_the_scope_of_unowned_items(cfg):
     assert store.read("playlists").cursor == "also-unowned"
 
 
-def test_crash_debris_is_not_next_run_intake(cfg, tmp_path):
-    staging = Path(cfg.paths.download_staging)
+def test_crash_debris_is_not_next_run_intake(cfg, staging, registry, tmp_path):
     staging.mkdir(parents=True, exist_ok=True)
     debris = staging / "aborted-download.flac"
     debris.write_bytes(b"partial")
     kept = staging / "finished-download.flac"
     kept.write_bytes(b"complete")
-    registry = artifacts.ArtifactRegistry(cfg)
     registry.register(kept, run_id="run-5", source_id="labels", complete=True)
     eligible = registry.intake_eligible(staging.iterdir())
     leftover = registry.debris(staging.iterdir())
@@ -254,11 +251,8 @@ def test_crash_debris_is_not_next_run_intake(cfg, tmp_path):
     assert debris not in eligible
 
 
-def test_two_sources_in_one_run_share_one_importable_file(cfg):
-    staging = Path(cfg.paths.download_staging)
+def test_two_sources_in_one_run_share_one_importable_file(cfg, store, staging, registry):
     staging.mkdir(parents=True, exist_ok=True)
-    store = watermarks.WatermarkStore(cfg)
-    registry = artifacts.ArtifactRegistry(cfg)
     labels = FakeSource("labels", [_candidate("l1", "1")])
     playlists = FakeSource("playlists", [_candidate("p1", "1")])
     parts = {"watermarks": store, "artifacts": registry, "staging": staging}
@@ -327,8 +321,7 @@ def test_declared_sources_are_stable_ids_not_display_names():
 # U64: the playlists cursor is a set of identifiers
 
 
-def test_recording_swept_ids_unions_them_in_first_seen_order(cfg):
-    store = watermarks.WatermarkStore(cfg)
+def test_recording_swept_ids_unions_them_in_first_seen_order(cfg, store):
     lib = cfg.library.volume_id
     store.record_swept("playlists", ["pl-a", "pl-b"], library_id=lib)
     mark = store.record_swept("playlists", ["pl-b", "pl-c"], library_id=lib)
@@ -338,9 +331,8 @@ def test_recording_swept_ids_unions_them_in_first_seen_order(cfg):
     assert store.read("playlists").swept == ("pl-a", "pl-b", "pl-c")
 
 
-def test_recording_nothing_swept_records_nothing(cfg):
+def test_recording_nothing_swept_records_nothing(cfg, store):
     """R-135. A pass that completed no playlist is not a clean completion."""
-    store = watermarks.WatermarkStore(cfg)
     assert store.record_swept("playlists", [], library_id=cfg.library.volume_id) is None
     assert not store.path.exists()
     store.record_swept("playlists", ["pl-a"], library_id=cfg.library.volume_id, now="t1")
@@ -348,18 +340,16 @@ def test_recording_nothing_swept_records_nothing(cfg):
     assert kept is not None and kept.recorded == "t1"
 
 
-def test_a_record_with_no_swept_list_writes_none_and_reads_as_empty(cfg):
+def test_a_record_with_no_swept_list_writes_none_and_reads_as_empty(cfg, store):
     """The other sources' records are unchanged by the new field."""
-    store = watermarks.WatermarkStore(cfg)
     store.advance("labels", cursor="r1", items=1, library_id=cfg.library.volume_id)
     assert "swept" not in store.path.read_text(encoding="utf-8")
     assert store.read("labels").swept == ()
 
 
 @pytest.mark.parametrize("swept", ["pl-a", ["pl-a", ""], ["pl-a", 7]])
-def test_a_swept_list_that_is_not_identifiers_is_unusable(cfg, swept):
+def test_a_swept_list_that_is_not_identifiers_is_unusable(cfg, store, swept):
     import json
-    store = watermarks.WatermarkStore(cfg)
     store.record_swept("playlists", ["pl-a"], library_id=cfg.library.volume_id)
     document = json.loads(store.path.read_text(encoding="utf-8"))
     document["sources"]["playlists"]["swept"] = swept

@@ -19,9 +19,7 @@ from tests import test_intake_land_native as land
 from tests.cli_drive import drive
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
@@ -258,7 +256,8 @@ def test_a_hand_placed_tag_on_a_row_already_present_survives(calibrated, silence
     _seed_vocals(cfg, "held-2")
     land._lands()
     assert _vox_tagged(cfg) == {"held-2", _content_id(cfg, "One.flac")}
-    assert land._query(cfg, "SELECT COUNT(*) FROM djmdSongMyTag WHERE ContentID = 'held-2'") == [(1,)]
+    held = "SELECT COUNT(*) FROM djmdSongMyTag WHERE ContentID = 'held-2'"
+    assert land._query(cfg, held) == [(1,)]
 
 
 def test_a_refused_commit_leaves_no_tag(calibrated, silence, monkeypatch):

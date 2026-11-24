@@ -47,8 +47,7 @@ ANALYSIS_PATH = "/PIONEER/USBANLZ/a1b/0000-1111/ANLZ0000.DAT"
 def _land(cfg: config.Config, silence: Path, batch: str, names: tuple[str, ...]) -> dict:
     for name in names:
         _stage(cfg, silence, f"{name}.flac")
-    code, acted, _refused = _land_acts(["intake", "land", "--name", batch])
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _landed_acts(["intake", "land", "--name", batch])
     return acted
 
 
@@ -91,6 +90,18 @@ def _clear_acts() -> tuple[int, dict, dict]:
     return _gated(VERB, gate=GATE, answer="apply")
 
 
+def _cleared() -> tuple[dict, dict]:
+    code, acted, refused = _clear_acts()
+    assert code == int(ExitCode.OK), acted
+    return acted, refused
+
+
+def _landed_acts(verb: list[str]) -> tuple[dict, dict]:
+    code, acted, refused = _land_acts(verb)
+    assert code == int(ExitCode.OK), acted
+    return acted, refused
+
+
 def _screen(refused: dict) -> dict:
     """The facts the landing's gate screen shows."""
     return refused["cause"]["detail"]["shown"]
@@ -118,8 +129,7 @@ def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_
         f"{DECLARED.intake.display} / {native.ANALYZE}, every added row, made"
     )
     assert _analyze_nodes(cfg, root_id) == []
-    code, acted, _refused = _land_acts(verb)
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _landed_acts(verb)
     assert _titles(cfg, _analyze_id(cfg, root_id)) == list(FIVE)
     # THE WARNING NAMES THE ONE PLAYLIST, and no batch playlist.
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.AWAITING_ANALYSIS]
@@ -133,8 +143,7 @@ def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_
     first = _analyze_id(cfg, root_id)
     for name in TWO:
         _stage(cfg, silence, f"{name}.flac")
-    code, acted, refused = _land_acts(["intake", "land", "--name", "2026-10-28_two"])
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _landed_acts(["intake", "land", "--name", "2026-10-28_two"])
     assert _analyze_id(cfg, root_id) == first
     assert _titles(cfg, first) == [*FIVE, *TWO]
     assert _screen(refused)["analyze"].endswith(f"found (row {first})")
@@ -156,8 +165,7 @@ def test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_r
     # filed folder, where the collection holds a row for one of the files.
     verb = ["intake", "land", "--name", "2026-10-28_held"]
     _stage(cfg, silence, "Zero.flac")
-    code, first, _refused = _land_acts(verb)
-    assert code == int(ExitCode.OK), first
+    first, _refused = _landed_acts(verb)
     _stage(cfg, silence, "Alpha.flac")
     _stage(cfg, silence, "Bravo.flac")
     held = str(_music(cfg, "2026-10-28_held") / "Bravo.flac")
@@ -167,8 +175,7 @@ def test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_r
             "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
             (held,))
         _advance_usn(conn)
-    code, acted, _refused = _land_acts(verb)
-    assert code == int(ExitCode.OK), acted
+    acted, _refused = _landed_acts(verb)
     assert acted["data"]["totals"]["already present"] == 1
     assert _titles(cfg, _analyze_id(cfg, root_id)) == ["Zero", "Alpha"]
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.AWAITING_ANALYSIS]
@@ -221,8 +228,7 @@ def test_after_an_analysis_of_three_the_clear_removes_exactly_three_and_no_track
     _analysed(cfg, "Alpha", "Charlie", "Echo")
     before = _query(cfg, "SELECT ID FROM djmdContent WHERE rb_local_deleted = 0 ORDER BY ID")
     batch = _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-10-28_five'")[0][0]
-    code, acted, refused = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _cleared()
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     assert _titles(cfg, analyze_id) == ["Bravo", "Delta"]
     assert acted["data"]["totals"]["clear"] == 3
@@ -255,8 +261,7 @@ def test_a_row_with_no_analysis_path_or_analysed_unset_stays(native_library, sil
     sql = "UPDATE djmdContent SET Analysed = 0, AnalysisDataPath = ? WHERE ID = ?"
     with contextlib.closing(sqlite3.connect(cfg.library.db_path)) as conn, conn:
         conn.execute(sql, (ANALYSIS_PATH, _content_id(cfg, "Echo")))
-    code, acted, _ = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _cleared()
     assert _titles(cfg, analyze_id) == ["Charlie", "Delta", "Echo"]
     why = {item["title"].rsplit(" - ", 1)[-1]: item["why"] for item in acted["data"]["items"]}
     assert why["Charlie"] == analyzed.NO_ANALYSIS_PATH
@@ -284,8 +289,7 @@ def test_a_row_removed_from_the_collection_or_missing_from_it_stays_and_is_named
             "'2026-10-28')",
             (analyze_id,))
         conn.execute(bump)
-    code, acted, _ = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _cleared()
     assert _titles(cfg, analyze_id) == ["Golf"]
     (item,) = [one for one in acted["data"]["items"] if one["content_id"] == gone]
     assert item["action"] == analyzed.WAIT and item["why"] == analyzed.ROW_REMOVED
@@ -302,8 +306,7 @@ def test_nothing_analysed_asks_a_late_analysis_is_stale_a_track_held_twice_clear
     _land(cfg, silence, "2026-10-28_two", TWO)
     analyze_id = _analyze_id(cfg, root_id)
     # NOTHING ANALYSED STILL ASKS and ends no_op.
-    code, acted, _ = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _cleared()
     assert acted["outcome"] == "no_op"
     assert analyzed_cli.NOTHING in [w["code"] for w in acted["warnings"]]
     assert _titles(cfg, analyze_id) == list(TWO)
@@ -323,24 +326,21 @@ def test_nothing_analysed_asks_a_late_analysis_is_stale_a_track_held_twice_clear
         # A second membership of the same track, the way the binding adds one.
         handle.add_to_playlist(handle.get_playlist(ID=analyze_id), _content_id(cfg, "Foxtrot"))
         handle.session.commit()
-    code, acted, _ = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _cleared()
     totals = acted["data"]["totals"]
     assert (totals["count"], totals["clear"], totals["removed"]) == (2, 2, 2)
     assert _titles(cfg, analyze_id) == []
     (record,) = [r for r in session.records(cfg) if r.workflow == analyzed.WORKFLOW]
     assert {c.tree: c.updated for c in record.change.trees} == {DECLARED.intake.id: 2}
     # A SECOND CLEAR PLANS NOTHING.
-    code, again, _ = _clear_acts()
-    assert code == int(ExitCode.OK), again
+    again, _ = _cleared()
     assert again["outcome"] == "no_op"
     assert again["data"]["totals"]["count"] == 0
 
 
 def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(native_library, silence):
     cfg, root_id = native_library
-    code, acted, _ = _clear_acts()
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _cleared()
     assert acted["outcome"] == "no_op"
     assert _analyze_nodes(cfg, root_id) == []
     # A BATCH NAMED ANALYZE is refused before the gate and nothing moves.

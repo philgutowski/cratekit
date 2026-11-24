@@ -59,6 +59,13 @@ def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
     return _gated(verb, gate=GATE, answer="apply")
 
 
+def _acted() -> tuple[dict, dict]:
+    """The refill's two acts and the acting drive, which must succeed."""
+    code, acted, refused = _two_acts(_refill())
+    assert code == int(ExitCode.OK), acted
+    return acted, refused
+
+
 def _playlist_id(cfg: config.Config, name: str) -> str:
     """The landing's INBOX playlist of this name, never its custom playlist twin (U149)."""
     sql = (
@@ -146,8 +153,7 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_in_account_order_and_o
     cfg, root_id = native_library
     playlist_id = _five_landed_and_emptied(cfg, silence)
     rows_before = _query(cfg, "SELECT COUNT(*) FROM djmdContent")
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
     # The rows are the library's new ones, and no content row was made.
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent") == rows_before
@@ -161,8 +167,7 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_in_account_order_and_o
     playlists = [{"id": playlist_id, "name": INBOX_NAME, "added": 5}]
     assert record.detail[refill.RECORD_KEY] == {"pass": PASS, "playlists": playlists}
     # A SECOND RUN PLANS NOTHING and ends no_op, writing no second record.
-    code, again, _ = _two_acts(_refill())
-    assert code == int(ExitCode.OK), again
+    again, _ = _acted()
     assert again["outcome"] == "no_op", again
     assert again["data"]["totals"]["add"] == 0
     assert [w for w in again["warnings"] if w["code"] == refill_cli.NOTHING]
@@ -193,8 +198,7 @@ def test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_then_a_lost_
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, playlist_id)
     ((folder,),) = _query(cfg, f"SELECT FolderPath {LIVE_TITLED}", "New2")
     Path(folder).unlink()
-    code, acted, _ = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _acted()
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "Held3"]
     (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.LEFT_OUT]
     assert f"{INBOX_NAME} 4. Probe - New2" in warning["message"]
@@ -208,8 +212,7 @@ def test_two_playlists_of_the_accounts_name_are_neither_filled_and_one_is_found_
     _named_before_u175(cfg, playlist_id)
     _rewrite_entries(cfg, lambda entries: [])
     second_id = _new_playlist(cfg, ACCOUNT, root_id)
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     assert acted["outcome"] == "no_op", acted
     (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.UNFOUND]
     assert refill.TWO_FOUND in warning["message"]
@@ -220,8 +223,7 @@ def test_two_playlists_of_the_accounts_name_are_neither_filled_and_one_is_found_
     old = cutover_fixtures.add_folder(cfg, "Old")
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, old)
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", old, playlist_id)
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
     shown = refused["cause"]["detail"]["shown"]["playlists"]
     assert shown == [f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
@@ -252,8 +254,7 @@ def test_a_playlist_changed_after_the_approval_is_refused_then_gets_only_what_it
     assert acted["cause"]["reason"] in ("decision-stale", "decision-digest-mismatch"), acted
     assert _live_members(cfg, playlist_id) == ["Held3"]
     # THE PLAYLIST NOW HOLDS SOME, and a fresh run plans only what it lacks.
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     actions = [(item["title"], item["action"]) for item in refused["cause"]["detail"]["shown"]["items"]]
     assert actions == [
         ("Held1", refill.ADD), ("New1", refill.ADD), ("Held2", refill.ADD), ("New2", refill.ADD),
@@ -293,8 +294,7 @@ def test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror(
     twin_id = _playlist_id(cfg, f"{INBOX_NAME} 2")
     assert _live_members(cfg, twin_id) == ["Late"]
     playlist_id = _emptied(cfg)
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Late"]
     assert _live_members(cfg, twin_id) == ["Late"]
     assert refused["cause"]["detail"]["shown"]["playlists"] == [
@@ -310,8 +310,7 @@ def test_a_recorded_playlist_that_is_gone_is_listed_and_no_name_is_guessed(
     _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", playlist_id)
     # A live playlist of the account's name, which the record does not name.
     other_id = _new_playlist(cfg, ACCOUNT, root_id)
-    code, acted, _ = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _acted()
     assert acted["outcome"] == "no_op", acted
     (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.UNFOUND]
     assert refill.GONE in warning["message"]
@@ -330,8 +329,7 @@ def test_a_track_the_account_lists_twice_is_one_membership_and_counted_once(
     real = set_playlist.reports_of
     twice = lambda store, job: (*real(store, job), real(store, job)[0])
     monkeypatch.setattr(set_playlist, "reports_of", twice)
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     actions = [(i["title"], i["action"]) for i in refused["cause"]["detail"]["shown"]["items"]]
     assert actions == [("Held1", refill.ADD), ("New1", refill.ADD), ("Held1", refill.AGAIN)]
     totals = acted["data"]["totals"]
@@ -439,8 +437,7 @@ def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that
     _rewrite_entries(cfg, lambda entries: [
         {**{k: v for k, v in one.items() if k != "id"}, "batch": batch} for one in entries
     ])
-    code, acted, refused = _two_acts(_refill())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _acted()
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
     shown = refused["cause"]["detail"]["shown"]["playlists"]
     assert shown == [

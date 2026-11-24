@@ -14,6 +14,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import landing
 from tests import test_intake_missing as miss
 from tests._containers import tagged_container
+from tests.test_intake_missing import cfg, fresh_cache, library  # noqa: F401 - used by name
 
 SALT = "GBAAA2600001"
 SIGNAL = "GBAAA2600002"
@@ -52,9 +53,7 @@ def check(envelope: dict, key: str) -> dict:
 
 def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_listed(
         cfg, library, tmp_path, monkeypatch):
-    """One job asked of a staging folder as it fills: absent, unrelated files, files with no
-    readable ISRC, its own earlier download, a wanted track, an unreadable folder, and every
-    missing track staged."""
+    """One job asked of a staging folder as it fills, from absent to every missing track staged."""
     job_id = miss.finished(monkeypatch, rows())
     first = miss.ok(job_id)[0]
     # REVIEW ROUND ONE, F4: no staging folder yet is nothing staged, said.
@@ -73,8 +72,7 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     assert (summary["staged"], summary["staged_tracks"]) == (0, [])
     said = f"no missing track is staged already in {staging(library)}"
     assert check(envelope, "staged")["detail"] == said
-    # ABSENCE OF A READ IS NOT A MATCH: the same artist and title with no ISRC tag, and a
-    # container no reader opens under the provider id's name, are both not the track.
+    # ABSENCE OF A READ IS NOT A MATCH: no ISRC tag, or a container no reader opens, is not it.
     staged(tmp_path, library, "Lumen Drift - Salt Road (1).flac", artist="Lumen Drift",
            title="Salt Road")
     staging(library).joinpath("205.flac").write_bytes(b"not a container")

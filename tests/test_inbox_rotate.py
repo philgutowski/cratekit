@@ -204,6 +204,13 @@ def _two_acts(verb: list[str], *, gate: str = GATE, answer: str = "approve") -> 
     return code, acted, refused
 
 
+def _rotated(verb: list[str], **asked) -> tuple[dict, dict]:
+    """``_two_acts``, its acting drive held to success."""
+    code, acted, refused = _two_acts(verb, **asked)
+    assert code == int(ExitCode.OK), acted
+    return acted, refused
+
+
 def _by_action(envelope: dict) -> dict[str, list[str]]:
     found: dict[str, list[str]] = collections.defaultdict(list)
     for item in envelope["data"]["items"]:
@@ -238,8 +245,7 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
         four_batches):
     cfg, root_id, old_id, genre, ids = four_batches
     # EACH BATCH SAYS HOW IT WAS RECOGNISED AND WHAT IT WAS AGED FROM, on an abort.
-    code, envelope, _ = _two_acts(VERB, answer="abort")
-    assert code == int(ExitCode.OK), envelope
+    envelope, _ = _rotated(VERB, answer="abort")
     assert envelope["outcome"] == "no_op"
     shown = {item["playlist"]: item for item in envelope["data"]["items"]}
     assert shown["a batch named by hand"]["recognised by"] == rotate.BY_RECORD
@@ -256,8 +262,7 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     content_before = _content(cfg)
     others_before = _memberships(cfg, outside=(ids["120"],))
     genre_before = _live_members(cfg, genre)
-    code, acted, refused = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _rotated(VERB)
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     actions = _by_action(acted)
     assert actions["move"] == ["2026-06-25T101010Z-1_inboxed", "2026-08-24 Favorites"]
@@ -293,12 +298,10 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     assert record.snapshot_path
     # THE TWO STAGES: a batch past expiry still in INBOX moved first, and the
     # next run removes it, and the one after does nothing.
-    code, acted, _ = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _rotated(VERB)
     assert _by_action(acted)["remove"] == ["2026-06-25T101010Z-1_inboxed"]
     assert int(_node_row(cfg, ids["100"])[2]) == 1
-    code, acted, _ = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _rotated(VERB)
     assert acted["outcome"] == "no_op"
     assert "move" not in _by_action(acted) and "remove" not in _by_action(acted)
     assert rotate_cli.NOTHING_TO_ROTATE in [w["code"] for w in acted["warnings"]]
@@ -309,16 +312,14 @@ def test_old_is_created_once_a_second_run_plans_nothing_and_still_asks_and_old_i
     cfg, root_id = native_library
     first = _stale_set(cfg, root_id)
     assert _olds(cfg, root_id) == []
-    code, acted, _ = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _rotated(VERB)
     assert acted["data"]["totals"]["old created"] is True
     (old_id,) = _olds(cfg, root_id)
     assert str(_node_row(cfg, first)[1]) == old_id
     assert int(_node_row(cfg, old_id)[3]) == 1
     # A SECOND RUN PLANS NOTHING AND STILL ASKS.
     content, members, nodes = _content(cfg), _memberships(cfg), _nodes(cfg)
-    code, acted, refused = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _rotated(VERB)
     assert acted["outcome"] == "no_op"
     assert refused["cause"]["detail"]["gate"] == GATE
     # The keep, and Old, which the first run made, named left (U214).
@@ -329,8 +330,7 @@ def test_old_is_created_once_a_second_run_plans_nothing_and_still_asks_and_old_i
     assert _nodes(cfg) == nodes
     # THE NEXT STALE BATCH reuses Old.
     second = _node(cfg, "2026-08-21 Set", under=root_id, age=43, tracks=("t2",), batch_folder=True)
-    code, acted, _ = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, _ = _rotated(VERB)
     assert acted["data"]["totals"]["old created"] is False
     assert _olds(cfg, root_id) == [old_id]
     assert str(_node_row(cfg, second)[1]) == old_id
@@ -354,8 +354,7 @@ def test_an_empty_inbox_still_asks_then_no_old_declared_or_two_olds_are_refused_
 
     from cratekit.core import active_taxonomy
     cfg, root_id = native_library
-    code, acted, refused = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _rotated(VERB)
     assert acted["outcome"] == "no_op"
     assert refused["cause"]["detail"]["shown"]["items"] == []
     assert _olds(cfg, root_id) == []

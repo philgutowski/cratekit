@@ -50,8 +50,7 @@ _BUILT: dict[str, tuple[bytes, str | None]] = {}
 
 
 def _templated(key: str, cfg: config.Config, build) -> str | None:
-    """Build ``cfg``'s database once and copy its bytes in after, unless the build left a
-    sidecar, since the file alone would not be the whole database."""
+    """Build ``cfg``'s database once and copy its bytes after, unless a sidecar makes it more."""
     db = Path(cfg.library.db_path)
     if key in _BUILT:
         data, answer = _BUILT[key]
@@ -85,8 +84,8 @@ def _cut_over(cfg: config.Config) -> tuple[config.Config, str]:
     made = lambda: cutover_fixtures.add_folder(cfg, land.DECLARED.intake.display)
     root_id = str(_templated(f"native {cfg.profile.name}", cfg, made))
     record = tree_registry.TreeRecord(
-        tree_id=land.INTAKE, mode=tree_registry.Mode.DATABASE, cutover_on=land.TODAY, root_id=root_id,
-        source=tree_registry.DerivationSource.TAXONOMY)
+        tree_id=land.INTAKE, mode=tree_registry.Mode.DATABASE, cutover_on=land.TODAY,
+        root_id=root_id, source=tree_registry.DerivationSource.TAXONOMY)
     tree_registry.write(cfg, tree_registry.Registry().with_record(record))
     return cfg, root_id
 
@@ -143,7 +142,8 @@ def _inbox(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
     """Every live playlist under the intake root and its titles, but INBOX / Analyze (U166)."""
     rows = land._query(cfg, "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND "
                   "rb_local_deleted = 0 AND Name != ? ORDER BY Seq", root_id, native.ANALYZE)
-    titles = {str(i): str(title) for i, title in land._query(cfg, "SELECT ID, Title FROM djmdContent")}
+    held = land._query(cfg, "SELECT ID, Title FROM djmdContent")
+    titles = {str(i): str(title) for i, title in held}
     return {str(name): [titles[m] for m in land._members(cfg, str(playlist_id))]
             for playlist_id, name in rows}
 
@@ -245,8 +245,7 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(native_l
     batch = "2026-10-03 Tidal playlists and Favorites"
     assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = [w for w in acted["warnings"] if w["code"] == "rows-await-analysis"]
-    # U166: the warning names the one playlist the visit selects, every row
-    # either playlist holds being in it, and neither of the two.
+    # U166: the warning names the one playlist the visit selects, holding every row, not the two.
     assert f"the {land.DECLARED.intake.display} / {native.ANALYZE} playlist" in warning["message"]
     assert batch not in warning["message"] and "Sunset Warmup" not in warning["message"]
 
@@ -265,8 +264,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-    # A playlist of that name sits under INBOX, so only the engine's own check
-    # stands between the plan and a second playlist of one name.
+    # That name sits under INBOX, so only the engine's check stops a second playlist of it.
     _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     chosen = account_playlists.named
     monkeypatch.setattr(
@@ -365,8 +363,7 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(nativ
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
     _landed(cfg)
-    # A removed node holds no name, so the exact name is free, and the new
-    # playlist is a new live row: the removed one gains nothing.
+    # A removed node holds no name, so the new live row takes it and the removed gains nothing.
     assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["One"]}
     assert land._members(cfg, gone_id) == []
 
@@ -403,8 +400,7 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
 
 def test_an_owned_track_whose_row_cannot_be_found_by_path_is_warned(native_library, silence):
     cfg, root_id = native_library
-    # On disk under the music folder, so the sweep calls it owned, and never
-    # landed, so the collection holds no row for its file.
+    # Under the music folder, so the sweep calls it owned, and never landed, so it has no row.
     loose = Path(cfg.library.root) / cfg.library.music_dir / "by hand"
     loose.mkdir(parents=True)
     _stage(cfg, silence, "Held1").rename(loose / "Held1.flac")

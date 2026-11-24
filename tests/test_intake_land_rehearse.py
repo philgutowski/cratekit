@@ -19,9 +19,7 @@ from cratekit.intake import batch_name, land_cli, landing, native, rehearsal
 from tests import test_intake_land_native as land
 from tests.cli_drive import drive
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
@@ -156,8 +154,7 @@ def test_a_scratch_plan_not_the_live_plan_applies_nothing(cfg, monkeypatch):
     assert refused["cause"]["reason"] == "decision-stale", refused
     assert "nothing was applied" in refused["cause"]["message"]
     differs = refused["cause"]["detail"]["differs"]
-    # The area's lines are marked - and the live plan's +, as the gate screen
-    # marks the rehearsal's and the live plan's (U188).
+    # The area's lines are marked - and the live plan's +, as the gate screen marks them (U188).
     assert any(line.startswith("- ") and "rehearsals" in line for line in differs)
     assert not any(line.startswith("+ ") and "rehearsals" in line for line in differs)
     (volume, local) = refused["cause"]["detail"]["rehearsal_area"]
@@ -294,8 +291,7 @@ def test_a_clone_is_never_a_hard_link_and_the_plan_lines_name_every_leaf(tmp_pat
 def test_a_name_the_live_folder_holds_is_refused_at_the_area(native_library, silence):
     """The area holds the live folder's names, so it refuses what the live landing will."""
     cfg, _root = native_library
-    # A batch landed into again by its own name goes back to its filed folder
-    # (U164), so an earlier landing makes it, and a name in it is then held.
+    # A batch landed again by name goes back to its filed folder (U164), so a name in it is held.
     land._land_first(cfg, silence)
     (land._music(cfg) / "One.flac").write_bytes(b"left by an earlier landing")
     land._stage(cfg, silence, "One.flac")
@@ -377,8 +373,7 @@ def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) 
 
 
 def test_a_base_drive_not_the_mount_rehearses_equal(cfg, silence, tmp_path):
-    """FolderPaths differ only by the area's prefix under the base drive, and the
-    accented batch name is escaped in JSON, which no mapped pair holds."""
+    """FolderPaths differ only by the area's prefix, and the accented name is escaped in JSON."""
     base = _renamed_drive(cfg, tmp_path)
     name = "2026-09-29_café"
     rehearsed = _rehearse_two_untouched(cfg, silence, name)
@@ -503,8 +498,7 @@ def test_no_room_for_the_check_refuses_before_its_copy(cfg, monkeypatch):
     real_measure, real_free = snapshot.assert_room_for_check, snapshot._free_bytes
 
     def the_captures_measure(database, **kwargs):
-        # The rehearsal's capture measures the same database for its own check,
-        # naming its store; the capture reads the name in ``snapshot``.
+        # The capture measures the same database for its own check, naming its store.
         done = real_measure(database, **kwargs)
         if _is_the_area_database(database):
             captured.append(kwargs.get("store"))

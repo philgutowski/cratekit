@@ -22,9 +22,7 @@ from tests.test_inbox_rotate import _two_acts as _gated
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import BATCH, _answered, _execute, _query, _stage, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
@@ -136,8 +134,7 @@ def test_a_path_write_is_refused_unless_the_shelve_policy_owning_only_it_is_regi
         ("2026-09-29_favourites", (date(2026, 9, 29), "favourites")),
         ("2026-09-29", (date(2026, 9, 29), "")),
         ("2026-09-23T222241Z-4773", (date(2026, 9, 23), "")),
-        # U235: a run's tail is four hex characters before it and sixteen
-        # since, so a width between the two is no run of either era.
+        # U235: a run's tail is four hex before it and sixteen since; a width between is neither.
         ("2026-11-07T164826Z-ce458ab7cceccb0b", (date(2026, 11, 7), "")),
         ("2026-11-07T164826Z-ce458ab7", None),
         ("rekordbox_djoid", None),
@@ -292,8 +289,7 @@ def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_ove
     code, envelope = drive(_shelve("--report", "--all"))
     assert code == int(ExitCode.OK), envelope
     targets = {item["batch"]: item["to"] for item in envelope["data"]["items"]}
-    # In listing order: a space sorts before an underscore, so the second
-    # landing is planned first and takes the first free suffix.
+    # A space sorts before an underscore, so the second landing takes the first free suffix.
     assert targets == {
         second: str(_processed(cfg) / "2026" / f"{FILED} 2"),
         BATCH: str(_processed(cfg) / "2026" / f"{FILED} 3"),
@@ -305,8 +301,7 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
     before = _land_three(cfg, silence)
     assert all(Path(row[1]).parent == _music(cfg) / BATCH for row in before)
     assert batch_name.taken(cfg, BATCH)
-    # NOTHING UNDER THE PROCESSED TREE IS TOUCHED, and a row under a folder
-    # differing only in case is not this plan's business.
+    # NOTHING UNDER THE PROCESSED TREE IS TOUCHED, nor a row under a folder differing in case.
     kept = _processed(cfg) / "2025" / "10_10_25"
     kept.mkdir(parents=True)
     (kept / "old.flac").write_bytes(b"")

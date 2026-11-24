@@ -119,8 +119,7 @@ def test_a_plan_after_the_commit_that_differs_files_nothing_and_says_so(cfg, sil
     real = apply_cli.current_plan
 
     def moved(cfg, declared, **kwargs):
-        # THE TREE MOVED BETWEEN THE ANSWER AND THE FILING: every sub reads
-        # another, which is what a retagged energy or a redeclared band does.
+        # THE TREE MOVED after the answer: every sub reads another, as a retag or new band does.
         plan = real(cfg, declared, **kwargs)
         entries = tuple(replace(entry, sub="elsewhere") for entry in plan.entries)
         return replace(plan, entries=entries)
