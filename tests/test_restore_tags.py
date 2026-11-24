@@ -130,7 +130,9 @@ def test_a_restore_puts_the_row_the_title_tag_and_the_key_tag_back(keyed):
     cfg, before, adopted = keyed
     assert _surfaces(cfg, "Golf")[:3] == ("09A - 98 - Golf", "09A - 98 - Golf", "09A")
     assert _surfaces(cfg, "Alpha")[2] == "07B"
+
     envelope = _restore(adopted)
+
     assert envelope["outcome"] == "ok"
     assert _all(cfg) == before
     # A KEY TAG THE FILE CARRIED IS PUT BACK AS IT WAS, and one it never had is absent.
@@ -150,7 +152,9 @@ def test_a_restore_puts_a_stamped_row_and_its_file_back_with_no_head(native_libr
     before = {stem: _surfaces(cfg, stem)[:3] for stem in stems}
     _adopt()
     assert _surfaces(cfg, "Tango")[:3] == (STAMPED["Tango"], STAMPED["Tango"], "09A")
+
     envelope = _restore(_adopted(cfg).session_id)
+
     assert {stem: _surfaces(cfg, stem)[:3] for stem in stems} == before
     assert _surfaces(cfg, "Tango")[:3] == ("[MP3] Tango", "[MP3] Tango", None)
     assert _surfaces(cfg, "Tango")[3] == "Tango.flac"
@@ -162,7 +166,9 @@ def test_a_blank_key_tag_is_put_back_absent_never_an_empty_tag(keyed):
     import mutagen
 
     cfg, _before, adopted = keyed
+
     _restore(adopted)
+
     handle = mutagen.File(_file(cfg, "Golf"))
     assert "initialkey" not in {str(key).lower() for key in (handle.tags or {}).keys()}
 
@@ -178,7 +184,9 @@ def test_a_file_that_cannot_be_written_is_named_and_the_run_is_not_ok(
         return False if Path(path) == golf else real(path, fields)
 
     monkeypatch.setattr(tags, "write_tags", refuses_golf)
+
     envelope = _restore(adopted, expect=ExitCode.PRECONDITION)
+
     cause = envelope["cause"]
     assert cause["reason"] == "restore-tags-unwritten"
     assert str(golf) in cause["message"]
@@ -205,7 +213,9 @@ def test_a_file_that_does_not_read_back_is_named(keyed, monkeypatch):
         return True if Path(path) == golf else real(path, fields)
 
     monkeypatch.setattr(tags, "write_tags", says_it_wrote_golf)
+
     envelope = _restore(adopted, expect=ExitCode.PRECONDITION)
+
     assert envelope["cause"]["reason"] == "restore-tags-unwritten"
     assert envelope["cause"]["detail"]["wrong"] == [str(golf)]
     assert "do not read back" in envelope["cause"]["message"]
@@ -215,7 +225,9 @@ def test_a_file_gone_since_the_adopt_is_named(keyed):
     cfg, _before, adopted = keyed
     golf = _file(cfg, "Golf")
     golf.unlink()
+
     envelope = _restore(adopted, expect=ExitCode.PRECONDITION)
+
     assert envelope["cause"]["detail"]["failed"] == [str(golf)]
 
 
@@ -226,7 +238,9 @@ def test_a_session_with_no_kept_tags_restores_as_before(native_library, silence)
     tagged = tags.read_tags(kilo, ("title", "initialkey"))
     (landing,) = [r for r in session.records(cfg) if r.snapshot_path]
     assert restore_tags.RECORD_KEY not in landing.detail
+
     envelope = _restore(landing.session_id)
+
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["totals"]["file_tags"] == {
         "planned": 0, "read_back": 0, "failed": [], "wrong": [],
@@ -237,7 +251,9 @@ def test_a_session_with_no_kept_tags_restores_as_before(native_library, silence)
 def test_a_dry_run_puts_no_file_back(keyed):
     cfg, _before, adopted = keyed
     adopted_now = _all(cfg)
+
     envelope = _restore(adopted, "--dry-run")
+
     assert _all(cfg) == adopted_now
     assert envelope["data"]["totals"]["file_tags"]["planned"] == 5
     assert envelope["data"]["totals"]["file_tags"]["read_back"] == 0
@@ -251,7 +267,9 @@ def test_a_record_it_cannot_read_refuses_before_the_database_is_replaced(
     record.detail[restore_tags.RECORD_KEY] = {"not": "a list"}
     session.write_record(record, cfg)
     adopted_now = _all(cfg)
+
     envelope = _restore(adopted, expect=None)
+
     assert envelope["cause"]["reason"] == "restore-record-unusable"
     assert restore_tags.RECORD_KEY in envelope["cause"]["message"]
     assert _all(cfg) == adopted_now
@@ -269,7 +287,9 @@ def test_a_later_adopt_the_restore_discards_puts_its_files_back_too(keyed):
     second = _the_other_adopt(cfg, first)
     assert _surfaces(cfg, "Alpha")[1:3] == ("04A - 124 - Alpha", "04A")
     assert _surfaces(cfg, "Charlie")[1:3] == ("03A - 124 - Charlie", "03A")
+
     envelope = _restore(first, "--discard", second)
+
     assert _all(cfg) == before
     assert envelope["data"]["totals"]["file_tags"]["planned"] == 6
 
@@ -334,7 +354,9 @@ def test_the_first_record_to_name_a_file_wins_and_each_path_is_rebased():
         detail={restore_tags.RECORD_KEY: [entry("/old/a.flac", "A1", "07B"),
                                           entry("/old/c.flac", "C1", "")]},
     )
+
     found = restore_tags.befores((earlier, later), rebased=lambda path: Path("/new") / path.name)
+
     assert [(str(f.path), f.title, f.initialkey, f.session_id) for f in found] == [
         ("/new/a.flac", "A0", "", "s-1"),
         ("/new/b.flac", "B0", "02A", "s-1"),
@@ -351,7 +373,9 @@ def test_a_file_already_as_it_was_writes_nothing_and_reads_back(silence, tmp_pat
     writes: list = []
     monkeypatch.setattr(tags, "write_tags", lambda *a: writes.append(a) or True)
     monkeypatch.setattr(tags, "clear_tags", lambda *a: writes.append(a) or True)
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "01A")])
+
     assert writes == []
     assert done.read_back == (str(path),) and not done.unwritten
 
@@ -366,7 +390,9 @@ def test_only_the_tag_that_differs_is_written(silence, tmp_path, monkeypatch):
         return real(where, fields)
 
     monkeypatch.setattr(tags, "write_tags", noting)
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "01A")])
+
     assert asked == [{"title": "01A - 124 - A"}]
     assert done.read_back == (str(path),)
 
@@ -374,14 +400,18 @@ def test_only_the_tag_that_differs_is_written(silence, tmp_path, monkeypatch):
 def test_an_unknown_container_is_one_failed_file(tmp_path):
     odd = tmp_path / "a.xyz"
     odd.write_bytes(b"not audio")
+
     done = restore_tags.put_back([_before(odd, "01A - 124 - A", "")])
+
     assert done.failed == (str(odd),) and done.unwritten == (str(odd),)
 
 
 def test_a_clear_that_fails_is_a_failed_file(silence, tmp_path, monkeypatch):
     path = _tagged_copy(silence, tmp_path, "01A - 124 - A", "09A")
     monkeypatch.setattr(tags, "clear_tags", lambda *a: False)
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")])
+
     assert done.failed == (str(path),)
 
 
@@ -463,7 +493,9 @@ def test_a_later_adopt_that_wrote_files_and_no_rows_has_its_files_put_back(
         session.write_record(record, cfg)
     assert _surfaces(cfg, "Golf")[1:3] == ("09A - 98 - Golf", "09A")
     assert _surfaces(cfg, "Golf")[0] == "01A - 124 - Golf"
+
     envelope = _restore(landing)
+
     assert envelope["data"]["totals"]["file_tags"] == {
         "planned": 5, "read_back": 5, "failed": [], "wrong": [],
     }
@@ -484,7 +516,9 @@ def test_the_files_go_back_with_the_latch_still_held(keyed, monkeypatch):
         return real(planned, dry_run=dry_run)
 
     monkeypatch.setattr(restore_tags, "put_back", noting)
+
     _restore(adopted)
+
     ((latched, row_title),) = seen
     assert reconcile.Kind.IN_FLIGHT_RESTORE in latched
     assert row_title == "01A - 124 - Golf"
@@ -494,7 +528,9 @@ def test_the_files_go_back_with_the_latch_still_held(keyed, monkeypatch):
 def test_a_key_tag_that_does_not_come_back_is_named(silence, tmp_path, monkeypatch):
     path = _tagged_copy(silence, tmp_path, "01A - 124 - A", "09A")
     monkeypatch.setattr(tags, "clear_tags", lambda *a: True)
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")])
+
     assert done.wrong == (str(path),) and not done.read_back
 
 
@@ -510,7 +546,9 @@ def test_a_file_that_cannot_be_read_back_is_named(silence, tmp_path, monkeypatch
         return real(where, fields)
 
     monkeypatch.setattr(tags, "read_tags_checked", fails_the_second)
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "01A")])
+
     assert done.wrong == (str(path),)
 
 
@@ -520,7 +558,9 @@ def test_a_dry_run_finds_a_file_gone_and_refuses_as_the_run_would(keyed):
     golf = _file(cfg, "Golf")
     golf.unlink()
     rows = _surfaces(cfg, "Alpha")[0]
+
     envelope = _restore(adopted, "--dry-run", expect=ExitCode.PRECONDITION)
+
     cause = envelope["cause"]
     assert cause["reason"] == "restore-tags-unwritten"
     assert "a dry run" in cause["message"] and str(golf) in cause["message"]
@@ -533,7 +573,9 @@ def test_a_dry_run_writes_no_file(silence, tmp_path, monkeypatch):
     path = _tagged_copy(silence, tmp_path, "09A - 98 - A", "09A")
     monkeypatch.setattr(tags, "write_tags", lambda *a: pytest.fail("a dry run wrote"))
     monkeypatch.setattr(tags, "clear_tags", lambda *a: pytest.fail("a dry run cleared"))
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
+
     assert done == restore_tags.TagsPutBack(1)
 
 
@@ -548,7 +590,9 @@ def test_a_restore_of_the_later_adopt_leaves_the_earlier_one_s_files(keyed):
     _visit(cfg, "Alpha", scale="4A", bpm=12400)
     _adopt()
     second = _the_other_adopt(cfg, first)
+
     envelope = _restore(second)
+
     assert envelope["data"]["totals"]["file_tags"]["planned"] == 1
     assert _all(cfg) == adopted
 
@@ -566,14 +610,18 @@ def test_two_later_adopts_put_a_file_back_to_before_the_earlier(native_library, 
     _adopt()
     adopts = [r.session_id for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
     assert len(adopts) == 2
+
     _restore(landing, *[f for one in adopts for f in ("--discard", one)])
+
     assert _tagged(paths) == before
 
 
 def test_a_dry_run_counts_a_file_it_cannot_read_as_failed(tmp_path):
     path = tmp_path / "a.flac"
     path.write_bytes(b"not audio at all")
+
     done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
+
     assert done.failed == (str(path),) and not done.read_back
 
 
@@ -589,5 +637,7 @@ def test_the_title_tag_goes_back_to_the_file_s_own_value_not_the_row_s(
     assert tags.write_tags(golf, {"title": "05A - 124 - Golf"})
     _adopt()
     assert _surfaces(cfg, "Golf")[:2] == ("09A - 98 - Golf", "09A - 98 - Golf")
+
     _restore(_adopted(cfg).session_id)
+
     assert _surfaces(cfg, "Golf")[:3] == ("01A - 124 - Golf", "05A - 124 - Golf", None)

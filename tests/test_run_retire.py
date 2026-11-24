@@ -88,7 +88,9 @@ def _retire(*argv: str) -> tuple[int, dict]:
 def test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before(configured):
     old = [_open(ORDINARY, idle_days=20), _open(EXPLICIT, idle_days=10)]
     new = _open(ORDINARY, idle_days=2)
+
     data = _status()
+
     keys = [check["key"] for check in data["checks"]]
     assert f"run.{new}" in keys
     assert not {f"run.{one}" for one in old} & set(keys), "an old gate was listed one by one"
@@ -104,6 +106,7 @@ def test_the_collapsed_line_names_the_dates_it_spans_and_reaches_a_person(config
     _open(ORDINARY, idle_days=10)
     _code, out, err = drive(["status"])
     said = out + err
+
     first, last = _days_ago(20).date().isoformat(), _days_ago(10).date().isoformat()
     assert f"from {first} to {last}" in said
     assert "crate run retire --older-than 7d" in said
@@ -120,7 +123,9 @@ def test_status_reads_the_threshold_from_the_file(library):
     _threshold(library, 3)
     four = _open(ORDINARY, idle_days=4)
     two = _open(ORDINARY, idle_days=2)
+
     data = _status()
+
     assert f"run.{two}" in _keys(data) and f"run.{four}" not in _keys(data)
     (line,) = [check for check in data["checks"] if check["key"] == "runs.old"]
     assert "1 open gate idle for more than 3 days" in line["detail"]
@@ -151,6 +156,7 @@ def test_a_run_started_recently_is_not_old_whatever_its_file_says(configured):
 def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured):
     old = sorted([_open(ORDINARY, idle_days=20), _open(EXPLICIT, idle_days=9)])
     new = _open(ORDINARY, idle_days=3)
+
     asked = exited(_json(["run", "retire", "--older-than", "7d"]), ExitCode.DECISION_REQUIRED)
     shown = asked["cause"]["detail"]
     assert shown["gate"] == CONFIRM
@@ -169,6 +175,7 @@ def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured)
 
 def test_an_explicit_gate_is_retired_with_abort_and_never_apply(configured):
     run_id = _open(EXPLICIT, idle_days=12)
+
     exited(_retire())
     decision = gates.load(run_id).decisions[EXPLICIT[1]]
     assert decision.option == "abort" != "apply"
@@ -178,6 +185,7 @@ def test_an_explicit_gate_is_retired_with_abort_and_never_apply(configured):
 def test_retire_lists_what_it_retired_and_what_it_kept(configured):
     retired = _open(ORDINARY, idle_days=10)
     kept = _open(NO_ABORT, idle_days=10)
+
     done = exited(_retire())
     checks = {check["key"]: check for check in done["data"]["checks"]}
     assert checks[f"gate.{retired}.{ORDINARY[1]}"]["status"] == "retired"
@@ -189,6 +197,7 @@ def test_retire_lists_what_it_retired_and_what_it_kept(configured):
 
 def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
     run_id = _open(ORDINARY, idle_days=2)
+
     envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1]
@@ -196,6 +205,7 @@ def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
 
 def test_a_declined_retirement_answers_nothing(configured):
     run_id = _open(ORDINARY, idle_days=9)
+
     envelope = exited(_json(["-d", f"{CONFIRM}=abort", "run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1] and not gates.load(run_id).decisions
@@ -204,6 +214,7 @@ def test_a_declined_retirement_answers_nothing(configured):
 def test_a_wider_threshold_retires_fewer(configured):
     twenty = _open(ORDINARY, idle_days=20)
     ten = _open(ORDINARY, idle_days=10)
+
     exited(_retire("--older-than", "14d"))
     assert gates.load(twenty).open_gate is None
     assert gates.load(ten).open_gate == ORDINARY[1]
@@ -215,6 +226,7 @@ def test_an_answer_given_over_one_plan_is_stale_once_another_gate_ages_in(config
     run_id = asked["run_id"]
     code, _out, err = drive(["run", "decide", run_id, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
+
     later = _open(ORDINARY, idle_days=8)
     exited(_json(["--run", run_id, "run", "retire"]), ExitCode.DECISION_STALE)
     assert gates.load(later).open_gate == ORDINARY[1]
@@ -229,8 +241,10 @@ def test_retire_never_retires_its_own_run(configured):
     state.created = output.timestamp(_days_ago(9))
     _saved_aged(state, 9)
     now = datetime.now(timezone.utc)
+
     found, _ = runs.old_gates(older_than=timedelta(days=7), now=now, skip=own)
     assert own not in {one.run_id for one in found}
+
     done = exited(_json(["-d", f"{CONFIRM}=apply", "--run", own, "run", "retire"]))
     assert done["data"]["summary"]["retired"] == 1
 
@@ -239,6 +253,7 @@ def test_a_record_retire_cannot_read_is_said_and_not_dropped(configured):
     gates.run_dir().mkdir(parents=True, exist_ok=True)
     (gates.run_dir() / "2026-09-01T00:00:00Z-dead.json").write_text("{not json")
     _open(ORDINARY, idle_days=10)
+
     done = exited(_retire())
     assert done["data"]["summary"]["unreadable"] == 1
     statuses = {check["key"]: check["status"] for check in done["data"]["checks"]}
@@ -249,7 +264,9 @@ def test_a_record_retire_cannot_read_is_said_and_not_dropped(configured):
 def test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error(configured, capsys, given):
     """The argument parser's refusal, on its own channel, naming the flag and the form."""
     run_id = _open(ORDINARY, idle_days=10)
+
     code, _out, _err = drive(["run", "retire", f"--older-than={given}"])
+
     assert code == int(ExitCode.USAGE)
     said = capsys.readouterr().err
     assert "--older-than" in said and "such as 7d" in said
@@ -272,6 +289,7 @@ def test_a_gate_exactly_at_the_threshold_is_not_yet_old(configured):
     path = gates.save(state)
     at = (now - timedelta(days=7)).timestamp()
     os.utime(path, (at, at))
+
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=now) is None
     later = now + timedelta(seconds=1)
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=later) is not None
@@ -282,7 +300,9 @@ def test_a_gate_whose_verb_is_gone_is_old_and_kept(configured):
     state = gates.load(run_id)
     state.verb = "no.such.verb"
     path = _saved_aged(state, 10)
+
     old = gates.old_gate(state, path, older_than=timedelta(days=7), now=datetime.now(timezone.utc))
+
     assert old is not None and not old.retirable
     assert "not a verb in this build" in old.kept
 
@@ -301,6 +321,7 @@ def test_retire_says_nothing_about_an_old_run_already_answered(configured):
     state = gates.load(run_id)
     gates.record(state, registry.entry(ORDINARY[0]).gates[0], "apply", actor="a-person")
     _saved_aged(state, 30)
+
     envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["checks"] == []
@@ -334,6 +355,7 @@ def test_retire_reads_its_default_threshold_from_the_file(library):
     _threshold(library, 3)
     four = _open(ORDINARY, idle_days=4)
     two = _open(ORDINARY, idle_days=2)
+
     done = exited(_retire())
     assert done["data"]["summary"]["older_than"] == "3d"
     assert gates.load(four).open_gate is None
@@ -347,6 +369,7 @@ def test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again(
     (planned,) = found
     code, _out, err = drive(["run", "decide", run_id, ORDINARY[1], "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK), err
+
     assert runs._retire_one(planned) is False
     decision = gates.load(run_id).decisions[ORDINARY[1]]
     assert (decision.option, decision.actor) == ("apply", "a-person")
@@ -360,6 +383,7 @@ def test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old(c
     retire_run = asked["run_id"]
     code, _out, err = drive(["run", "decide", retire_run, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
+
     touched = _days_ago(12).timestamp()
     os.utime(gates.run_path(run_id), (touched, touched))
     exited(_json(["--run", retire_run, "run", "retire"]), ExitCode.DECISION_STALE)
@@ -371,7 +395,9 @@ def test_a_hand_edited_start_stamp_is_aged_by_the_records_last_write(configured)
     state = gates.load(run_id)
     state.created = "yesterday"
     _saved_aged(state, 10)
+
     data = _status()
+
     assert f"run.{run_id}" not in _keys(data)
     assert data["summary"]["old_gates"] == 1
 

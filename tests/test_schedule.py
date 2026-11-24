@@ -130,6 +130,7 @@ def _tree(*roots: Path) -> dict[str, bytes]:
 @pytest.mark.parametrize("name", ["schedule.install", "schedule.show", "schedule.remove"])
 def test_each_verb_declares_no_library_write_and_no_gate(name):
     entry = registry.entry(name)
+
     assert entry.landed and entry.module == "cratekit.cli.schedule"
     assert entry.writes == frozenset() and not entry.destructive
     assert entry.gates == () and not entry.long_running
@@ -225,7 +226,9 @@ def test_the_seam_runs_launchctl_by_its_path_and_answers_its_words(tmp_path, mon
     fake.write_text("#!/bin/sh\necho \"said $*\"\necho oops >&2\nexit 7\n")
     fake.chmod(0o755)
     copy.LAUNCHCTL = str(fake)
+
     answer = copy.launchctl("print", SERVICE)
+
     assert answer.code == 7
     assert answer.words == f"oops said print {SERVICE}"
 
@@ -234,6 +237,7 @@ def test_the_seam_answers_a_launchctl_it_cannot_run_or_that_hangs(tmp_path, monk
     copy = _shipped_seam(monkeypatch)
     copy.LAUNCHCTL = str(tmp_path / "absent")
     assert copy.launchctl("print", SERVICE).code == -1
+
     sleeper = tmp_path / "sleeper"
     sleeper.write_text("#!/bin/sh\nsleep 5\n")
     sleeper.chmod(0o755)
@@ -283,6 +287,7 @@ def test_install_writes_one_agent_that_runs_the_night_alone_and_loads_it(mac, ag
 
 def test_the_agent_names_an_absolute_crate(mac, agents):
     drive(["schedule", "install"])
+
     program = _plist(agents)["ProgramArguments"]
     assert Path(program[0]).is_absolute() and Path(program[0]).name == "crate"
 
@@ -303,6 +308,7 @@ def test_a_crate_that_cannot_run_is_refused_and_nothing_is_written(
         crate.chmod(0o644)
         found = crate
     monkeypatch.setattr(schedule, "crate_path", lambda: found)
+
     envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-crate-unresolved"
     assert not agents.exists() or not any(agents.iterdir())
@@ -313,9 +319,11 @@ def test_the_crate_is_the_one_this_process_was_started_as(monkeypatch, tmp_path)
     started = tmp_path / "bin" / "crate"
     monkeypatch.setattr(sys, "argv", [str(started), "schedule", "install"])
     assert schedule.crate_path() == started
+
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", [os.path.join("bin", "crate")])
     assert schedule.crate_path() == started, "a relative argv is made absolute"
+
     monkeypatch.setattr(sys, "argv", ["/somewhere/python", "-m", "cratekit"])
     assert schedule.crate_path() == Path(sys.executable).parent.absolute() / "crate"
 
@@ -334,6 +342,7 @@ def test_install_twice_replaces_the_agent_and_never_duplicates_it(mac, agents):
 def test_a_plist_left_without_launchd_holding_it_is_replaced(mac, agents):
     agents.mkdir(parents=True)
     (agents / schedule.PLIST_NAME).write_bytes(b"left by hand")
+
     envelope = exited(drive(["schedule", "install"]))
     assert _plist(agents)["Label"] == schedule.LABEL
     assert "bootout" not in mac.verbs()
@@ -365,7 +374,9 @@ def test_the_agent_carries_a_fixed_path_the_resolved_directories_and_nothing_els
     monkeypatch.setenv("A_PERSONAL_SETTING", "kept-at-home")
     monkeypatch.setenv("PATH", "/a/persons/own/path")
     monkeypatch.setenv(config.ENV_DOWNLOAD_STAGING, "")
+
     drive(["schedule", "install"])
+
     env = _plist(agents)["EnvironmentVariables"]
     set_here = {name for name in schedule.override_names() if os.environ.get(name)}
     assert set(env) == {
@@ -438,6 +449,7 @@ def test_a_relative_override_is_carried_absolute(mac, agents, monkeypatch, tmp_p
 
 def test_a_bootstrap_that_fails_is_refused_in_its_words_and_leaves_nothing(mac, agents):
     mac.fail["bootstrap"] = schedule.Answer(5, "Bootstrap failed: 5: Input/output error")
+
     envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     cause = envelope["cause"]
     assert cause["reason"] == "schedule-launchctl-failed"
@@ -457,6 +469,7 @@ def test_a_bootstrap_launchd_does_not_then_hold_is_refused_and_leaves_nothing(
         return answer
 
     monkeypatch.setattr(schedule, "launchctl", forgetful)
+
     envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-launchctl-failed"
     assert not (agents / schedule.PLIST_NAME).exists()
@@ -465,6 +478,7 @@ def test_a_bootstrap_launchd_does_not_then_hold_is_refused_and_leaves_nothing(
 def test_a_failed_replace_says_the_earlier_schedule_is_gone_too(mac, agents):
     drive(["schedule", "install"])
     mac.fail["bootstrap"] = schedule.Answer(5, "Bootstrap failed: 5: Input/output error")
+
     envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert "installed before it was removed too" in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["replaced"] is True
@@ -476,6 +490,7 @@ def test_an_agent_launchd_will_not_let_go_of_is_not_replaced(mac, agents):
     drive(["schedule", "install"])
     before = (agents / schedule.PLIST_NAME).read_bytes()
     mac.stuck = True
+
     envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-launchctl-failed"
     assert (agents / schedule.PLIST_NAME).read_bytes() == before
@@ -490,7 +505,9 @@ def _roots(tmp_path: Path) -> tuple[Path, ...]:
 def test_install_writes_only_the_plist_and_the_logs_directory(mac, agents, tmp_path):
     state = config.installation_state_dir()
     before = _tree(*_roots(tmp_path))
+
     drive(["schedule", "install"])
+
     after = _tree(*_roots(tmp_path))
     added = sorted(set(after) - set(before))
     plist = str(agents / schedule.PLIST_NAME)
@@ -521,7 +538,9 @@ FAILED_SHOW = int(ExitCode.PRECONDITION)
 
 def test_show_reads_an_installed_loaded_agent(mac, crate):
     drive(["schedule", "install", "--at", "02:45"])
+
     summary = _show()["data"]["summary"]["schedule"]
+
     assert summary["installed"] is True and summary["loaded"] == schedule.LOADED
     assert summary["at"] == "02:45" and summary["crate"] == str(crate)
     assert summary["runs_the_night"] is True
@@ -531,7 +550,9 @@ def test_show_reads_an_installed_loaded_agent(mac, crate):
 def test_show_reads_an_installed_agent_launchd_does_not_hold(mac):
     drive(["schedule", "install"])
     mac.loaded.clear()
+
     envelope = _show()
+
     assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.NOT_LOADED
     rows = {row["key"]: row for row in envelope["data"]["checks"]}
     assert rows["schedule.loaded"]["status"] == "warn"
@@ -539,6 +560,7 @@ def test_show_reads_an_installed_agent_launchd_does_not_hold(mac):
 
 def test_show_over_nothing_installed(mac, agents):
     summary = _show()["data"]["summary"]["schedule"]
+
     assert summary["installed"] is False and summary["loaded"] == schedule.NOT_LOADED
     assert summary["at"] is None and summary["crate"] is None
     assert not agents.exists()
@@ -547,7 +569,9 @@ def test_show_over_nothing_installed(mac, agents):
 def test_show_never_reads_launchd_it_cannot_read_as_not_loaded(mac):
     drive(["schedule", "install"])
     mac.fail["print"] = schedule.Answer(1, "launchctl: no such domain")
+
     envelope = _show()
+
     assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.UNKNOWN
     rows = {row["key"]: row for row in envelope["data"]["checks"]}
     assert "no such domain" in rows["schedule.loaded"]["detail"]
@@ -556,7 +580,9 @@ def test_show_never_reads_launchd_it_cannot_read_as_not_loaded(mac):
 def test_show_says_a_plist_it_cannot_read_never_reads_it_as_absent(mac, agents):
     agents.mkdir(parents=True)
     (agents / schedule.PLIST_NAME).write_bytes(b"\x00 not a plist")
+
     envelope = _show(FAILED_SHOW)
+
     assert envelope["cause"]["reason"] == "schedule-agent-unusable"
     summary = envelope["data"]["summary"]["schedule"]
     assert summary["installed"] is False and summary["unreadable"]
@@ -569,7 +595,9 @@ def test_show_says_an_agent_that_runs_anything_but_the_night(mac, agents, crate)
     tampered = schedule.agent(crate, (3, 17), Path("/tmp/x.log"), {"PATH": "/usr/bin"})
     tampered["ProgramArguments"] = [str(crate), "sync", "land", "-d", "intake.land.apply=go"]
     _write_plist(agents, tampered)
+
     envelope = _show(FAILED_SHOW)
+
     assert envelope["cause"]["reason"] == "schedule-agent-unusable"
     assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
     rows = {row["key"]: row for row in envelope["data"]["checks"]}
@@ -581,12 +609,14 @@ def test_show_says_an_agent_with_a_key_the_template_does_not_hold(mac, agents, c
     widened = schedule.agent(crate, (3, 17), Path("/tmp/x.log"), {"PATH": "/usr/bin"})
     widened["KeepAlive"] = True
     _write_plist(agents, widened)
+
     assert _show(FAILED_SHOW)["data"]["summary"]["schedule"]["runs_the_night"] is False
 
 
 def test_show_carries_the_last_nights_line(mac):
     firing = sync_night._Firing(night="2026-11-21", started=sync_night._clock(), run_id="r1")
     assert sync_night._write_status(firing.record(sync_night.NOTHING, "nothing new tonight")) is None
+
     assert _show()["data"]["summary"]["schedule"]["last"] == "nothing new tonight"
 
 
@@ -594,6 +624,7 @@ def test_show_says_a_night_record_it_cannot_read(mac):
     path = sync_night.status_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
+
     rows = {row["key"]: row for row in _show()["data"]["checks"]}
     assert rows["schedule.last"]["status"] == "warn"
     assert "cannot be read" in rows["schedule.last"]["detail"]
@@ -605,7 +636,9 @@ def test_show_writes_nothing_and_asks_launchd_only_to_print(mac, tmp_path):
     lock.unlink(missing_ok=True)
     before = {k: v for k, v in _tree(*_roots(tmp_path)).items() if "/runs/" not in k}
     mac.calls.clear()
+
     _show()
+
     after = {k: v for k, v in _tree(*_roots(tmp_path)).items() if "/runs/" not in k}
     assert after == before
     assert not lock.exists(), "show took the staging lock"
@@ -617,6 +650,7 @@ def test_show_writes_nothing_and_asks_launchd_only_to_print(mac, tmp_path):
 
 def test_remove_boots_the_agent_out_and_deletes_its_plist(mac, agents):
     drive(["schedule", "install"])
+
     envelope = exited(drive(["schedule", "remove"]))
     assert envelope["outcome"] == "ok"
     assert not (agents / schedule.PLIST_NAME).exists()
@@ -642,7 +676,9 @@ def test_remove_finishes_an_agent_half_gone(mac, agents, lose):
     """A plist launchd does not hold is deleted; an agent whose plist is gone is booted out."""
     drive(["schedule", "install"])
     lose(mac, agents)
+
     code, envelope = drive(["schedule", "remove"])
+
     assert code == 0 and envelope["outcome"] == "ok"
     assert not (agents / schedule.PLIST_NAME).exists()
     assert schedule.LABEL not in mac.loaded
@@ -670,6 +706,7 @@ def test_a_remove_launchd_does_not_confirm_keeps_the_plist(mac, agents, how):
 @pytest.mark.parametrize("running", ["linux", "win32"])
 def test_any_platform_but_macos_refuses_naming_it(mac, agents, monkeypatch, verb, running):
     monkeypatch.setattr(schedule, "platform", lambda: running)
+
     envelope = exited(drive(["schedule", verb]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-platform-unsupported"
     assert running in envelope["cause"]["message"]
@@ -684,7 +721,9 @@ def test_show_fails_over_an_agent_whose_crate_is_gone(mac, crate):
     """Finding 2: launchd cannot start a program that is not there."""
     drive(["schedule", "install"])
     crate.unlink()
+
     envelope = _show(FAILED_SHOW)
+
     assert envelope["cause"]["reason"] == "schedule-agent-unusable"
     assert "is not an executable file" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
@@ -694,6 +733,7 @@ def test_show_fails_over_an_agent_whose_crate_is_gone(mac, crate):
 def test_root_is_refused_and_launchd_is_never_asked(mac, agents, monkeypatch, verb):
     """Finding 5: ``gui/0`` is nobody's login."""
     monkeypatch.setattr(schedule, "uid", lambda: 0)
+
     envelope = exited(drive(["schedule", verb]), ExitCode.REFUSED_BY_POLICY)
     assert "never as root" in envelope["cause"]["message"]
     assert mac.calls == []
@@ -721,6 +761,7 @@ def test_a_night_in_progress_is_never_booted_out(mac, agents, verb, tmp_path):
     finally:
         holder.kill()
         holder.wait()
+
     assert code == int(ExitCode.LIBRARY_BUSY), envelope
     assert envelope["cause"]["reason"] == "staging-held"
     assert "bootout" not in mac.verbs()
@@ -736,6 +777,7 @@ def test_a_replace_whose_write_fails_says_the_earlier_schedule_is_off(mac, agent
         raise PermissionError(13, "Permission denied", str(path))
 
     monkeypatch.setattr(config, "atomic_write_bytes", refused)
+
     envelope = exited(drive(["schedule", "install", "--at", "01:00"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "schedule-agent-unwritten"
     assert "booted out and its plist kept" in envelope["cause"]["message"]
@@ -755,6 +797,7 @@ def test_a_failed_load_launchd_may_still_hold_keeps_its_plist(mac, agents, monke
         return mac(*args)
 
     monkeypatch.setattr(schedule, "launchctl", half)
+
     envelope = exited(drive(["schedule", "install"]), ExitCode.PRECONDITION)
     assert "launchd may still hold it, so its plist is kept" in envelope["cause"]["message"]
     assert (agents / schedule.PLIST_NAME).exists()
@@ -765,6 +808,7 @@ def test_a_bootout_launchd_ignores_is_said_in_words_a_person_reads(mac):
     """Finding 8: never "launchctl answered 0" followed by the print dump."""
     drive(["schedule", "install"])
     mac.stuck = True
+
     envelope = exited(drive(["schedule", "remove"]), ExitCode.PRECONDITION)
     message = envelope["cause"]["message"]
     assert "launchd still holds the agent after launchctl answered its bootout" in message
@@ -784,6 +828,7 @@ def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agen
         return mac(*args)
 
     monkeypatch.setattr(schedule, "launchctl", flaky)
+
     envelope = exited(drive(["schedule", "remove"]))
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"]["schedule"]["removed"] is False
@@ -831,7 +876,9 @@ def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agen
 def test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights(mac, agents, edit):
     """Finding 7 and round two: show judges what launchd will do, not only the arguments."""
     _installed_and_edited(agents, edit)
+
     envelope = _show(FAILED_SHOW)
+
     assert envelope["cause"]["reason"] == "schedule-agent-unusable"
     assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
     assert envelope["data"]["summary"]["schedule"]["problems"]
@@ -843,13 +890,16 @@ def test_show_reads_the_night_line_from_the_state_the_agent_carries(mac, monkeyp
     firing = sync_night._Firing(night="2026-11-21", started=sync_night._clock(), run_id="r1")
     assert sync_night._write_status(firing.record(sync_night.NOTHING, "the agent's own night")) is None
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "another-state"))
+
     assert _show()["data"]["summary"]["schedule"]["last"] == "the agent's own night"
 
 
 def test_show_fails_over_an_agent_launchd_holds_with_no_plist(mac, agents):
     drive(["schedule", "install"])
     (agents / schedule.PLIST_NAME).unlink()
+
     envelope = _show(FAILED_SHOW)
+
     assert "no plist is at" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.LOADED
 
@@ -868,7 +918,9 @@ def test_a_binary_the_install_finds_on_its_path_alone_is_on_the_agents_path(
     tool.chmod(0o755)
     monkeypatch.setenv("PATH", f"{own}{os.pathsep}/usr/bin{os.pathsep}/bin")
     monkeypatch.delenv(binaries.env_var("keyfinder-cli"), raising=False)
+
     drive(["schedule", "install"])
+
     path = _plist(agents)["EnvironmentVariables"]["PATH"].split(os.pathsep)
     assert str(own) in path
 
@@ -877,7 +929,9 @@ def test_show_never_prints_a_value_this_build_would_not_carry(mac, agents):
     """Finding 10: the name is a problem; its value is not echoed."""
     secret = {"CRATEKIT_CREDENTIAL_PROVIDER_SESSION": "a-session-secret"}
     _installed_and_edited(agents, lambda d: d["EnvironmentVariables"].update(secret))
+
     code, envelope = drive(["schedule", "show"])
+
     assert code == FAILED_SHOW
     assert "a-session-secret" not in str(envelope)
     assert any("CRATEKIT_CREDENTIAL_PROVIDER_SESSION" in p for p in envelope["data"]["summary"]["schedule"]["problems"])
@@ -886,6 +940,7 @@ def test_show_never_prints_a_value_this_build_would_not_carry(mac, agents):
 def test_install_and_show_agree_on_the_environment_shape(mac):
     _code, installed = drive(["schedule", "install"])
     shown = _show()
+
     assert installed["data"]["summary"]["schedule"]["environment"] == (
         shown["data"]["summary"]["schedule"]["environment"]
     )

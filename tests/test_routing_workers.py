@@ -328,6 +328,7 @@ def test_a_queued_job_runs_its_item_and_the_tree_holds_the_track(
     job_id = queued["data"]["job_id"]
     assert [item.item_id for item in _items(job_id)] == [TREE_ID]
     assert all(item.state == jobs.ItemState.PENDING for item in _items(job_id))
+
     exited(_drive([*argv, "--job", job_id]))
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
     assert _membership(acknowledged, native) == {"1"}
@@ -390,6 +391,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
         (routing_cli.RESORT_ARTIFACTS, frozen, driven, item, {**found, "due_again": 0}),
     ]
     assert rebuild_verb.REBUILD_ARTIFACTS.final != routing_cli.RESORT_ARTIFACTS.final
+
     assert cuts == [7.5, 7.5]
     assert [tree for tree, _ in seen] == [TREE_ID, TREE_ID]
     workflows = [workflow for _, workflow in seen]
@@ -426,6 +428,7 @@ def test_the_confirmed_inbox_applies_and_the_declined_one_does_not(acknowledged,
     assert declined["outcome"] == str(Outcome.NO_OP)
     assert declined["data"]["totals"]["applied"] is False
     assert _membership(acknowledged, native) == set(), "the declined branch wrote membership"
+
     applied = exited(_apply_inbox())
     assert applied["outcome"] == str(Outcome.OK)
     assert applied["data"]["totals"]["applied"] is True
@@ -440,6 +443,7 @@ def test_a_confirmed_inbox_over_an_empty_folder_opens_nothing(acknowledged, nati
     for path in _intake_dir(acknowledged).iterdir():
         path.unlink()
     before = len(session.records(acknowledged))
+
     envelope = exited(_apply_inbox())
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "inbox-empty"
@@ -474,6 +478,7 @@ def _skipped_warnings(envelope: dict) -> list[str]:
 def test_a_confirmed_inbox_names_the_file_it_could_not_file_and_why(acknowledged, native):
     """R-318: twenty unimported files once read as ``skipped: 20`` and no name."""
     (_intake_dir(acknowledged) / UNIMPORTED).write_bytes(b"")
+
     applied = exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     totals = applied["data"]["totals"]
@@ -504,6 +509,7 @@ def test_the_human_output_names_the_skipped_file(acknowledged, native):
 def test_a_row_rekordbox_removed_is_reported_withdrawn_not_unimported(acknowledged, native):
     """``WITHDRAWN`` against ``NOT_IMPORTED`` is the pair the vocabulary exists for."""
     _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
+
     applied = exited(_apply_inbox())
     (entry,) = applied["data"]["totals"]["skipped_files"]
     assert entry["reason"] == str(routing_pass.Placement.WITHDRAWN)
@@ -517,6 +523,7 @@ def test_a_file_two_rows_claim_is_reported_ambiguous_with_both_rows(acknowledged
     """Both rows are named, because a person has to see both to pick the mistake."""
     sql = "UPDATE djmdContent SET FolderPath = ? WHERE ID = ?"
     _set_row(acknowledged, sql, str(_intake_dir(acknowledged) / ARRIVED), "1")
+
     applied = exited(_apply_inbox())
     (entry,) = applied["data"]["totals"]["skipped_files"]
     assert entry["reason"] == str(routing_pass.Placement.AMBIGUOUS)
@@ -623,6 +630,7 @@ def test_unplaced_over_a_fully_placed_library_reports_none(acknowledged, native)
     _queue_and_resume()
     _apply_inbox()
     assert _membership(config.load(), native) == {"1", "2"}
+
     envelope = exited(_drive(["route", "unplaced"]))
     assert envelope["data"]["totals"]["compared"] is True
     assert envelope["data"]["items"] == []
@@ -641,6 +649,7 @@ def test_unplaced_says_when_it_could_not_compare(configured):
 def test_unplaced_does_not_report_a_row_rekordbox_removed(acknowledged, native):
     """A tombstone is not a track waiting to be filed."""
     _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
+
     envelope = exited(_drive(["route", "unplaced"]))
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1"}
     assert envelope["data"]["totals"]["collection"] == 1
@@ -671,6 +680,7 @@ def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(configured, nat
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
     database = Path(configured.library.db_path)
     before = database.read_bytes()
+
     envelope = exited(_drive(["route", "unplaced"]))
     assert envelope["data"]["totals"]["compared"] is True
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1", "2"}
@@ -773,6 +783,7 @@ def test_neither_resume_drives_another_verbs_job(acknowledged, native, argv):
         foreign = jobs.enqueue(
             store, handler_key="master", payload={}, cfg=config.load(), item_ids=("one",)
         )
+
     envelope = _fails(_drive([*argv, "--job", foreign.job_id]))
     assert envelope["cause"]["reason"] == "job-unknown", envelope
     assert [item.state for item in _items(foreign.job_id)] == [jobs.ItemState.PENDING]
@@ -793,6 +804,7 @@ def test_neither_resume_drives_a_job_an_older_build_queued_with_no_items(
     """The zero item rule on the resume side, which is the door that predates the fix (U53)."""
     with jobs.open_store() as store:
         stale = jobs.enqueue(store, handler_key=key, payload={}, cfg=config.load())
+
     _fails(_drive([*argv, "--job", stale.job_id]))
     with jobs.open_store() as store:
         assert jobs.get(store, stale.job_id).state != jobs.JobState.SUCCEEDED
@@ -812,7 +824,9 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
+
     _fail_other_trees(monkeypatch)
+
     _fails(_drive([*argv, "--job", job.job_id]))
     states = {item.item_id: item.state for item in _items(job.job_id)}
     assert states[TREE_ID] == jobs.ItemState.DONE
@@ -824,6 +838,7 @@ def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
     """Everything a queued job needs was frozen when it was queued."""
     job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
     tree_registry.path_for(acknowledged).write_text("{ this is not a registry")
+
     _fails(_drive(["rebuild", "--actor", "a-person", "--job", job_id]))
     assert _items(job_id)[0].state == jobs.ItemState.FAILED, (
         "the unreadable registry blocked a job whose items were already frozen"
@@ -873,9 +888,11 @@ def test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift(
     queued = exited(_drive(argv))
     assert _vocal_warnings(queued) == [], "the queue-only answer claimed a comparison"
     job_id = queued["data"]["job_id"]
+
     root = Path(acknowledged.library.root)
     staging = {"download_staging": str(root.parent / "moved")}
     _saved(config.from_dict(_full_data(root, paths=staging)))
+
     done = exited(_drive([*argv, "--job", job_id]))
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
     assert _membership(acknowledged, native) == {"1"}
@@ -972,6 +989,7 @@ def test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface(
     applied = exited(_apply_inbox())
     assert applied["data"]["totals"]["applied"] is True
     assert _vocal_warnings(applied) == [], applied["warnings"]
+
     job_id, code, done = _queue_and_resume()
     assert code == int(ExitCode.OK), done
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
@@ -1242,8 +1260,10 @@ def test_a_rebuild_of_one_named_tree_queues_that_tree_alone(acknowledged, native
     entries = tree_registry.read(acknowledged)
     second = _database_tree("second_shelf", entries.record(TREE_ID).root_id)
     tree_registry.write(acknowledged, tree_registry.Registry((*entries.trees, second)))
+
     envelope = exited(_drive(["rebuild", "--actor", "a-person", "--tree", TREE_ID]))
     assert [item.item_id for item in _items(envelope["data"]["job_id"])] == [TREE_ID]
+
     both = exited(_drive(["rebuild", "--actor", "a-person"]))
     assert [item.item_id for item in _items(both["data"]["job_id"])] == ["second_shelf", TREE_ID], (
         "the unscoped rebuild is what proves the scoped one was scoped"
@@ -1478,12 +1498,14 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
     assert totals["inserted"] == 3
     assert totals["created"] == []
     assert totals["output"] == str(_routed(export))
+
     written = _routed(export).read_bytes()
     for tid, (_name, _genre, _energy, (folder, sub)) in EXPORT_TRACKS.items():
         assert _sub_keys(written, folder, sub) == (tid,), f"{tid} is not alone in {folder}/{sub}"
     assert {
         item["track_id"]: item["destination"] for item in envelope["data"]["items"]
     } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
+
     # R-694: nested membership the bridge never lands (R-687) is a review and owes no import.
     assert envelope["pending_human_action"] is None
     assert _not_landable(envelope) == [
@@ -1518,6 +1540,7 @@ def test_a_second_export_run_over_its_own_output_inserts_nothing(configured, tag
     _apply_export(export)
     first = _routed(export)
     before = sorted(path.name for path in first.parent.iterdir())
+
     envelope = exited(_apply_export(first))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["inserted"] == 0
@@ -1621,6 +1644,7 @@ def test_an_export_location_under_a_retired_volume_name_resolves_through_the_pre
     old = locations.location_url("/retired-volume/lib").encode()
     export.write_bytes(export.read_bytes().replace(live, old))
     assert live not in export.read_bytes()
+
     envelope = exited(_apply_export(export))
     assert envelope["data"]["totals"]["inserted"] == 3
     assert _others(envelope) == []
@@ -1801,6 +1825,7 @@ def test_a_second_run_still_owing_ratings_is_nothing_to_route(configured, tagged
     _apply_export(export)
     first = _routed(export)
     before = sorted(path.name for path in first.parent.iterdir())
+
     envelope = exited(_apply_export(first))
     totals = envelope["data"]["totals"]
     assert totals["inserted"] == 0
@@ -1953,6 +1978,7 @@ def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_p
     first = _routed(export)
     before = first.read_bytes()
     listing = sorted(path.name for path in first.parent.iterdir())
+
     envelope = exited(_apply_export(first))
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (0, 0)
@@ -2082,6 +2108,7 @@ def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(configured,
     node = _root_child(written, LONG_PLAYLIST)
     assert node.get("Type") == "0"
     assert [t.get("Key") for t in node.find("NODE").findall("TRACK")] == ["99"]
+
     again = exited(_apply_export(_routed(export)))
     assert again["data"]["totals"]["reason"] == "route-blocked"
 
@@ -2130,10 +2157,12 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     assert shipped.count(line) == 1
     write_active(configured, shipped.replace(line, 'display = "Long Sets By Hand"'))
     export = _long_export(configured, tmp_path / "exports")
+
     planned = routing_export.plan_export(configured, export)
     long_plan, items = planned.long_plan, planned.items
     assert long_plan.keys
     assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
+
     envelope = exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     offered = {item["long_track"] for item in envelope["data"]["items"]} - {""}
     assert offered == {"Long Sets By Hand"}
@@ -2300,6 +2329,7 @@ def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, v
     _calibrated(acknowledged)
     _drive(["rebuild", "--actor", "a-person", "--job", job_id])
     assert _vox_members(acknowledged, native) == {"1"}
+
     after = exited(_drive(["converge"]))
     (check,) = [c for c in after["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
     assert check["status"] == converge.MATCHING, check
@@ -2534,6 +2564,7 @@ def test_the_database_apply_files_the_track_where_the_gate_said(acknowledged, na
     assert item["vocal"] == f"Electronica / Other/{vox}"
     assert (shown["routed"], shown["vocal"]) == (1, 1)
     assert shown["not derived"] == []
+
     applied = exited(_apply_inbox())
     assert applied["data"]["digest"] == shown["digest"]
     assert _filed_under(acknowledged, native, "2") == {item["destination"], item["vocal"]}
@@ -2581,6 +2612,7 @@ def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_a
     assert (shown["tracks"], shown["routed"], shown["trees"]) == (1, 0, [])
     assert shown["warnings"] == [INBOX_REMEDY]
     assert not Path(stocked.library.db_path).exists(), "the plan opened a database"
+
     declined = exited(_decline_inbox())
     assert declined["data"]["totals"]["applied"] is False
     assert [w["message"] for w in declined["warnings"]] == [INBOX_REMEDY]
@@ -2646,6 +2678,7 @@ def test_the_export_vocal_subs_are_created_once(configured, voiced, tmp_path):
     first = _routed(export)
     written = first.read_bytes()
     assert written.count(f'Name="{_vox_display()}"'.encode()) == 2
+
     again = exited(_apply_export(first))
     totals = again["data"]["totals"]
     assert totals["vox_created"] == []
@@ -2782,12 +2815,14 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
     assert totals["inserted"] == 3
     assert totals["created"] == ["Tech House/High"]
     assert totals["output"] == str(_placed(export))
+
     written = _placed(export).read_bytes()
     for tid, (_name, _genre, _energy, (folder, sub)) in EXPORT_TRACKS.items():
         assert _sub_keys(written, folder, sub) == (tid,), f"{tid} is not alone in {folder}/{sub}"
     assert {
         item["track_id"]: item["destination"] for item in envelope["data"]["items"]
     } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
+
     # R-694: nested membership the bridge never lands (R-687) owes no import, only a review.
     assert envelope["pending_human_action"] is None
     assert _not_landable(envelope) == [
@@ -3025,6 +3060,7 @@ def test_a_bare_lf_before_a_folder_close_is_a_skipped_create_and_the_file_parses
     assert document.count(last_sub) == 2, "the fixture no longer has the shape this bends"
     at = document.rindex(last_sub)
     export.write_bytes(document[:at] + last_sub.replace(b"\r\n", b"\n") + document[at + len(last_sub):])
+
     envelope = exited(_sweep(export))
     assert envelope["data"]["totals"]["created"] == []
     messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
@@ -3072,6 +3108,7 @@ def test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing(
     document = export.read_bytes()
     assert document.count(opening) == 1, "the fixture no longer has the shape this bends"
     export.write_bytes(document.replace(opening, opening + namesake))
+
     envelope = exited(_sweep(export))
     assert envelope["data"]["totals"]["created"] == ["Tech House/High"]
     written = _placed(export).read_bytes()

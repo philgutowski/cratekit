@@ -19,6 +19,7 @@ import pytest
 from cratekit import cli
 from cratekit.cli import output
 from cratekit.core import config, review
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import _pending
 from tests import _source_guards as _guards
@@ -30,7 +31,6 @@ from tests._source_guards import (
     offers_into,
     package_modules,
 )
-from tests.test_restore import _refusal
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -202,7 +202,9 @@ def test_an_item_identifier_is_derived_from_stable_facts_rather_than_a_display_n
 
 def test_an_identity_with_nothing_in_it_is_refused():
     """An empty identity hashes to one value, so every item would collide."""
-    assert _refusal(_version_id, {}).reason == "review-selection-invalid"
+    with pytest.raises(CratekitError) as excinfo:
+        _version_id({})
+    assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
 # The identity is NORMALIZED before hashing, so producers that mean one candidate agree.
@@ -275,7 +277,9 @@ def test_two_different_candidates_that_hash_alike_are_refused_rather_than_merged
         )
 
     offer("a")
-    assert _refusal(offer, "b").reason == "review-selection-invalid"
+    with pytest.raises(CratekitError) as excinfo:
+        offer("b")
+    assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
 def test_the_queue_lives_where_the_state_inventory_says_and_is_owner_only(cfg, store):
@@ -319,9 +323,10 @@ def test_an_item_survives_the_handle_that_created_it(cfg, store):
 
 def test_an_unknown_identifier_refuses_by_name_rather_than_returning_nothing(store):
     """Returning None would make a typo indistinguishable from an empty queue."""
-    cause = _refusal(review.get, store, "rv_not_a_real_item")
-    assert cause.reason == "review-item-unknown"
-    assert cause.detail["item_id"] == "rv_not_a_real_item"
+    with pytest.raises(CratekitError) as excinfo:
+        review.get(store, "rv_not_a_real_item")
+    assert excinfo.value.cause.reason == "review-item-unknown"
+    assert excinfo.value.cause.detail["item_id"] == "rv_not_a_real_item"
 
 
 def test_offering_the_same_candidate_twice_produces_one_item(store):
@@ -332,7 +337,9 @@ def test_offering_the_same_candidate_twice_produces_one_item(store):
 
 
 def test_a_queue_nothing_declares_is_refused_and_the_refusal_names_the_declared_ones(store):
-    cause = _refusal(_offer_one, store, queue="not-a-declared-queue")
+    with pytest.raises(CratekitError) as excinfo:
+        _offer_one(store, queue="not-a-declared-queue")
+    cause = excinfo.value.cause
     assert cause.reason == "review-queue-undeclared"
     assert "not-a-declared-queue" in cause.message
 
@@ -374,7 +381,9 @@ def test_several_legacy_files_may_fold_into_one_queue_and_that_is_the_point():
 def test_a_plain_output_cannot_be_smuggled_into_the_queue(store):
     """The split has teeth only if the queue refuses the other side of it."""
     output = next(s for s in review.SURFACES if not s.adjudicated)
-    assert _refusal(_offer_one, store, queue=output.legacy_file).reason == "review-queue-undeclared"
+    with pytest.raises(CratekitError) as excinfo:
+        _offer_one(store, queue=output.legacy_file)
+    assert excinfo.value.cause.reason == "review-queue-undeclared"
 
 
 # Part 3: a different process, which is the requirement R12 actually states
@@ -436,19 +445,20 @@ def test_a_second_verdict_on_a_settled_item_refuses_rather_than_overwriting(stor
     """Last writer wins is not the same property as a decision being recorded."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="first")
-    cause = _refusal(review.resolve, store, item.item_id, review.Verdict.ACCEPTED, actor="second")
-    assert cause.reason == "review-already-resolved"
+    with pytest.raises(CratekitError) as excinfo:
+        review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="second")
+    assert excinfo.value.cause.reason == "review-already-resolved"
     assert review.get(store, item.item_id).verdict is review.Verdict.REJECTED
     assert review.get(store, item.item_id).actor == "first"
 
 
 def test_a_verdict_naming_a_candidate_the_item_never_offered_refuses(store):
     item = _offer_one(store)
-    accepted = review.Verdict.ACCEPTED
-    cause = _refusal(
-        review.resolve, store, item.item_id, accepted, option="opt-nowhere", actor="tester"
-    )
-    assert cause.reason == "review-option-unknown"
+    with pytest.raises(CratekitError) as excinfo:
+        review.resolve(
+            store, item.item_id, review.Verdict.ACCEPTED, option="opt-nowhere", actor="tester"
+        )
+    assert excinfo.value.cause.reason == "review-option-unknown"
     assert review.get(store, item.item_id).verdict is None
 
 
@@ -576,10 +586,9 @@ def test_an_absent_payload_field_is_not_matched_by_the_text_none(store):
 
 def test_a_batch_predicate_that_selects_everything_is_refused(store):
     _mixed_queue(store)
-    everything = (store, review.Predicate(), review.Verdict.ACCEPTED)
-    assert _refusal(review.resolve_where, *everything, actor="tester").reason == (
-        "review-selection-invalid"
-    )
+    with pytest.raises(CratekitError) as excinfo:
+        review.resolve_where(store, review.Predicate(), review.Verdict.ACCEPTED, actor="tester")
+    assert excinfo.value.cause.reason == "review-selection-invalid"
     assert review.count_unresolved(store) == 7
 
 
@@ -683,7 +692,9 @@ def test_the_walk_used_by_batch_work_holds_one_page_at_a_time(store, monkeypatch
 def test_a_page_size_that_is_not_a_positive_number_is_refused(store, limit):
     """Zero and minus one crashed; minus two is UNBOUNDED in SQLite and read the whole queue."""
     _offer_one(store)
-    assert _refusal(review.list_items, store, limit=limit).reason == "review-selection-invalid"
+    with pytest.raises(CratekitError) as excinfo:
+        review.list_items(store, limit=limit)
+    assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
 def test_a_page_size_that_is_not_a_positive_number_is_refused_at_the_command_line(cfg, store):
@@ -725,8 +736,9 @@ def test_an_import_never_overwrites_a_local_verdict_and_reports_the_conflict(
 
 
 def test_an_export_written_by_another_version_refuses(store):
-    cause = _refusal(review.import_document, store, {"export": 99, "items": []}, actor="importer")
-    assert cause.reason == "review-file-unusable"
+    with pytest.raises(CratekitError) as excinfo:
+        review.import_document(store, {"export": 99, "items": []}, actor="importer")
+    assert excinfo.value.cause.reason == "review-file-unusable"
 
 
 def test_one_unapplicable_item_does_not_abort_the_import(tmp_path, cfg, store):
@@ -865,20 +877,25 @@ def test_supersede_reports_nothing_for_an_item_nobody_filed(store):
 
 def test_supersede_refuses_an_empty_rule(store):
     item = _offer_one(store)
-    assert _refusal(review.supersede, store, [item.item_id], rule="").reason == (
-        "review-selection-invalid"
-    )
+    with pytest.raises(CratekitError) as caught:
+        review.supersede(store, [item.item_id], rule="")
+    assert caught.value.cause.reason == "review-selection-invalid"
     assert review.get(store, item.item_id).verdict is None
 
 
 def test_resolve_and_the_batch_refuse_the_machines_verdict(store):
     """The third verdict has one writer; ``resolve``, the batch and the import ride on a person's path."""
     item = _offer_one(store)
-    superseded = review.Verdict.SUPERSEDED
-    cause = _refusal(review.resolve, store, item.item_id, superseded, actor="phillip")
-    assert cause.reason == "review-selection-invalid"
-    every_version_match = review.Predicate(queue=review.Queue.VERSION_MATCH)
-    _refusal(review.resolve_where, store, every_version_match, superseded, actor="phillip")
+    with pytest.raises(CratekitError) as caught:
+        review.resolve(store, item.item_id, review.Verdict.SUPERSEDED, actor="phillip")
+    assert caught.value.cause.reason == "review-selection-invalid"
+    with pytest.raises(CratekitError):
+        review.resolve_where(
+            store,
+            review.Predicate(queue=review.Queue.VERSION_MATCH),
+            review.Verdict.SUPERSEDED,
+            actor="phillip",
+        )
     assert review.get(store, item.item_id).verdict is None
 
 
@@ -1044,8 +1061,9 @@ def test_an_unreadable_decision_store_refuses_rather_than_reading_as_empty(cfg):
     declines = review.DecisionStore("declines", cfg)
     declines.record(kind="removed-file", identity={"inode": 1}, actor="tester")
     declines.path.write_text("{not json at all")
-    cause = _refusal(declines.suppresses, "removed-file", {"inode": 1})
-    assert cause.reason == "review-file-unusable"
+    with pytest.raises(CratekitError) as excinfo:
+        declines.suppresses("removed-file", {"inode": 1})
+    assert excinfo.value.cause.reason == "review-file-unusable"
 
 
 def _declines_holding(cfg, text: str):
@@ -1086,10 +1104,14 @@ def test_a_store_this_build_cannot_recognize_refuses_and_is_never_overwritten(cf
     """Refusal is the only alternative to a correct read, and no later write may replace the file."""
     declines = _declines_holding(cfg, STRUCTURALLY_WRONG_STORES[shape])
     before = declines.path.read_text()
-    assert _refusal(declines.suppressions).reason == "review-file-unusable"
-    _refusal(declines.record, kind="removed-file", identity={"inode": 1}, actor="tester")
+    with pytest.raises(CratekitError) as excinfo:
+        declines.suppressions()
+    assert excinfo.value.cause.reason == "review-file-unusable"
+    with pytest.raises(CratekitError):
+        declines.record(kind="removed-file", identity={"inode": 1}, actor="tester")
     assert declines.path.read_text() == before
-    _refusal(declines.revoke, "dc_one", actor="tester")
+    with pytest.raises(CratekitError):
+        declines.revoke("dc_one", actor="tester")
     assert declines.path.read_text() == before
 
 
@@ -1098,8 +1120,9 @@ def test_a_record_whose_payload_is_not_a_mapping_refuses_rather_than_raising(cfg
     declines = _declines_holding(
         cfg, _declines_document(decisions=[{"id": "dc_one", "payload": [1, 2, 3]}])
     )
-    cause = _refusal(declines.suppresses, "removed-file", {"inode": 1})
-    assert cause.reason == "review-file-unusable"
+    with pytest.raises(CratekitError) as excinfo:
+        declines.suppresses("removed-file", {"inode": 1})
+    assert excinfo.value.cause.reason == "review-file-unusable"
 
 
 # Two processes, which is the case a document store has to survive
@@ -1162,7 +1185,9 @@ def test_a_mode_the_filesystem_refuses_is_reported_rather_than_swallowed(cfg, mo
         return real_chmod(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(os, "chmod", refusing)
-    assert _refusal(review.open_store, cfg).reason == "review-file-unusable"
+    with pytest.raises(CratekitError) as excinfo:
+        review.open_store(cfg)
+    assert excinfo.value.cause.reason == "review-file-unusable"
 
 
 @pytest.fixture
@@ -1208,7 +1233,9 @@ def test_a_decision_store_lands_owner_only_whatever_the_umask(cfg):
 
 
 def test_a_store_the_inventory_does_not_declare_is_refused(cfg):
-    assert _refusal(review.DecisionStore, "whatever", cfg).reason == "review-queue-undeclared"
+    with pytest.raises(CratekitError) as excinfo:
+        review.DecisionStore("whatever", cfg)
+    assert excinfo.value.cause.reason == "review-queue-undeclared"
 
 
 # Part 9: the unit's verification
@@ -1228,7 +1255,8 @@ def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg
     assert review.count_unresolved(store) == len(needs_review)
     # By identity rather than by count, so an item under another kind is caught.
     for row in matched + missing:
-        _refusal(review.get, store, _version_id({"source": "list-9", "row": row["row"]}))
+        with pytest.raises(CratekitError):
+            review.get(store, _version_id({"source": "list-9", "row": row["row"]}))
     accepted = review.Verdict.ACCEPTED
     review.resolve(store, offered[0].item_id, accepted, option="opt-same", actor="person")
     store.close()
