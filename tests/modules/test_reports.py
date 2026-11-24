@@ -3090,69 +3090,11 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     )
 
 
-#: An admitted module whose writer is spelled through ``getattr`` with a literal
-#: name. Unnamed by the audit, a report reaches it by name with both structural
-#: guards green and a private ignore ledger written.
-ADMITTED_REFLECTIVE_WRITER = """
-def stash(path, data):
-    getattr(path, "write_text")(data)
-"""
-
-#: The same helper one token longer, three ways: a concatenation, a module
-#: constant and an f-string, each once invisible to the audit.
-ADMITTED_REFLECTIVE_WRITER_BY_CONCATENATION = """
-def stash(path, data):
-    getattr(path, "write_" + "text")(data)
-"""
-
-ADMITTED_REFLECTIVE_WRITER_BY_CONSTANT = """
-VERB = "write_text"
-
-
-def stash(path, data):
-    getattr(path, VERB)(data)
-"""
-
-ADMITTED_REFLECTIVE_WRITER_BY_FORMAT = """
-def stash(path, data):
-    getattr(path, f"write_text")(data)
-"""
-
-#: And the spelling that reaches the function object without a reflective read at
-#: all, which no rule in the guard could name before round four.
-ADMITTED_SUBSCRIPTED_WRITER = """
-from pathlib import Path
-
-
-def stash(path, data):
-    Path.__dict__["write_text"](path, data)
-"""
-
 #: The helpers the reflection switch was turned off for, in their real shape: a
 #: computed attribute read off a dataclass.
 ADMITTED_REFLECTIVE_READER = """
 def _field_value(name, spec):
     return getattr(spec, name)
-"""
-
-#: An admitted module reaching another admitted module's writer: a one-line
-#: helper in ``naming`` writing the configuration file through ``config``.
-ADMITTED_MODULE_REACHING_ANOTHER_MODULES_WRITER = """
-from cratekit.core import config
-
-
-def refresh(cfg):
-    config.save(cfg)
-"""
-
-#: And the same writer imported by name rather than reached through its module,
-#: which is the other half of the binding table the audit now reads.
-ADMITTED_MODULE_IMPORTING_ANOTHER_MODULES_WRITER = """
-from cratekit.core.config import save as persist
-
-
-def refresh(cfg):
-    persist(cfg)
 """
 
 #: An admitted module that writes when it is IMPORTED, so there is no name for
@@ -3182,19 +3124,42 @@ def refresh(cfg):
 """
 
 
-def test_the_audit_names_a_writer_spelled_through_a_literal_getattr():
-    """The door the reflection switch opened, driven end to end."""
-    assert _unnamed_writers("cratekit.core.naming", ADMITTED_REFLECTIVE_WRITER) == ["stash"]
-
-
 @pytest.mark.parametrize(
     "source",
     [
-        ADMITTED_REFLECTIVE_WRITER,
-        ADMITTED_REFLECTIVE_WRITER_BY_CONCATENATION,
-        ADMITTED_REFLECTIVE_WRITER_BY_CONSTANT,
-        ADMITTED_REFLECTIVE_WRITER_BY_FORMAT,
-        ADMITTED_SUBSCRIPTED_WRITER,
+        # An admitted module whose writer is spelled through ``getattr`` with a literal
+        # name. Unnamed by the audit, a report reaches it by name with both structural
+        # guards green and a private ignore ledger written.
+        """
+def stash(path, data):
+    getattr(path, "write_text")(data)
+""",
+        # The same helper one token longer, three ways: a concatenation, a module
+        # constant and an f-string, each once invisible to the audit.
+        """
+def stash(path, data):
+    getattr(path, "write_" + "text")(data)
+""",
+        """
+VERB = "write_text"
+
+
+def stash(path, data):
+    getattr(path, VERB)(data)
+""",
+        """
+def stash(path, data):
+    getattr(path, f"write_text")(data)
+""",
+        # And the spelling that reaches the function object without a reflective read at
+        # all, which no rule in the guard could name before round four.
+        """
+from pathlib import Path
+
+
+def stash(path, data):
+    Path.__dict__["write_text"](path, data)
+""",
     ],
 )
 def test_the_audit_names_a_writer_however_the_method_name_was_spelled(source):
@@ -3205,8 +3170,24 @@ def test_the_audit_names_a_writer_however_the_method_name_was_spelled(source):
 @pytest.mark.parametrize(
     "source",
     [
-        ADMITTED_MODULE_REACHING_ANOTHER_MODULES_WRITER,
-        ADMITTED_MODULE_IMPORTING_ANOTHER_MODULES_WRITER,
+        # An admitted module reaching another admitted module's writer: a one-line
+        # helper in ``naming`` writing the configuration file through ``config``.
+        """
+from cratekit.core import config
+
+
+def refresh(cfg):
+    config.save(cfg)
+""",
+        # And the same writer imported by name rather than reached through its module,
+        # which is the other half of the binding table the audit now reads.
+        """
+from cratekit.core.config import save as persist
+
+
+def refresh(cfg):
+    persist(cfg)
+""",
     ],
 )
 def test_the_audit_reads_the_imports_of_the_module_it_is_auditing(source):
@@ -4873,108 +4854,6 @@ def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, snippet):
     assert filesystem_mutations(snippet), shape
 
 
-#: A module that hides its writer behind an alias, which is the shape that
-#: defeated the armed copy of U11's comma-separated-file guard.
-EVASIVE_IMPORT = """
-import shutil as tidy
-from os import replace as swap
-
-
-def clean(a, b):
-    tidy.rmtree(a)
-    swap(a, b)
-"""
-
-#: The same evasion one layer further out, through the package.
-EVASIVE_PACKAGE_IMPORT = """
-from cratekit.core import rb_writer
-
-
-def snapshot(cfg):
-    return rb_writer.open_db(cfg)
-"""
-
-#: And through a relative import, which nothing in the package uses today.
-EVASIVE_RELATIVE_IMPORT = """
-from ...core import rb_writer
-
-
-def snapshot(cfg):
-    return rb_writer.open_db(cfg)
-"""
-
-#: The same writer reached through a lazy import inside a function body.
-EVASIVE_LAZY_IMPORT = """
-def snapshot(cfg):
-    import sqlite3
-
-    return sqlite3.connect(str(cfg.library.db_path))
-"""
-
-#: A module that writes a private ignore file, which is the exact defect the
-#: countdown against this unit forbids by name.
-EVASIVE_PRIVATE_LEDGER = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    Path(path).write_text(decided)
-"""
-
-#: The same thing through a handle, so the mutating method never appears.
-EVASIVE_WRITE_HANDLE = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    with open(Path(path), "w") as handle:
-        handle.write(decided)
-"""
-
-#: The same handle through the bound method, whose mode is its first argument
-#: because its receiver is already the file.
-EVASIVE_BOUND_OPEN_HANDLE = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    handle = Path(path).open("w")
-    handle.write(decided)
-    handle.close()
-"""
-
-#: And with a mode this guard cannot read, which is how a literal check is walked
-#: past without ever writing the letter w.
-EVASIVE_COMPUTED_MODE = """
-from pathlib import Path
-
-MODE = "".join(["w"])
-
-
-def remember(path, decided):
-    with open(Path(path), MODE) as handle:
-        handle.write(decided)
-"""
-
-#: ``Path.replace`` overwrites its destination, how a private ledger is swapped
-#: into place atomically.
-EVASIVE_PATH_REPLACE = """
-from pathlib import Path
-
-
-def remember(scratch, ledger):
-    Path(scratch).replace(ledger)
-"""
-
-#: The writer loaded with no import statement at all: a database, a process and
-#: a file, all through the builtin.
-EVASIVE_DYNAMIC_IMPORT = """
-def remember(path, argv, db):
-    __import__("os").truncate(path, 0)
-    __import__("subprocess").run(argv)
-    return __import__("sqlite3").connect(db)
-"""
-
 #: The same builtin with a name this guard cannot read, which is the computed
 #: mode's trick applied to the import instead of to the handle.
 EVASIVE_COMPUTED_DYNAMIC_IMPORT = """
@@ -4985,377 +4864,62 @@ def remember(path):
     __import__(NAME).truncate(path, 0)
 """
 
-#: The mutating method reached through a computed attribute name, so the method
-#: never appears as text and the outer call's ``func`` is itself a Call.
-EVASIVE_COMPUTED_ATTRIBUTE = """
-from pathlib import Path
 
-
-def remember(path, decided):
-    getattr(Path(path), "write_" + "text")(decided)
-"""
-
-#: The mutating method bound and not called, then called through its local.
-EVASIVE_CAPTURED_BOUND_METHOD = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    keep = Path(path).write_text
-    keep(decided)
-"""
-
-#: The writer reached through an admitted module with no forbidden import:
-#: ``config.load_from_path`` writes the file back too.
-EVASIVE_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg, path):
-    config.save(cfg)
-    return config.load_from_path(path)
-"""
-
-#: And through ``naming``, which ``duplicates`` already imports.
-EVASIVE_ALLOWLISTED_CLAIM = """
-from cratekit.core import naming
-
-
-def remember(target):
-    return naming.claim_target(target)
-"""
-
-#: The admitted writer reached through an aliased module, which the receiver
-#: check must survive.
-EVASIVE_ALIASED_ALLOWLISTED_WRITER = """
-from cratekit.core import config as settings
-
-
-def remember(cfg):
-    settings.save(cfg)
-"""
-
-#: The admitted writer imported straight off its module and renamed, with no
-#: receiver: the bare local is tracked back to what it was bound to.
-EVASIVE_IMPORTED_ALLOWLISTED_WRITER = """
-from cratekit.core.naming import claim_target as reserve
-
-
-def remember(target):
-    return reserve(target)
-"""
-
-#: The mutating name reached as a bare call: the only fixture driving the
-#: bare-name branch. The import guard catches it too, independently.
-EVASIVE_BARE_NAME_WRITER = """
-from shutil import rmtree
-from os import truncate
-
-
-def clean(a, path):
-    rmtree(a)
-    truncate(path, 0)
-"""
-
-#: The mutating method named as a literal string inside ``getattr``, which only
-#: the literal half of rule 4 catches.
-EVASIVE_LITERAL_GETATTR = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    getattr(Path(path), "write_text")(decided)
-"""
-
-#: The same trick pointed at a writer the ALLOWLIST admits, so the receiver has
-#: to be read inside ``getattr`` as well as outside it.
-EVASIVE_LITERAL_GETATTR_ON_AN_ADMITTED_MODULE = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    getattr(config, "save")(cfg)
-"""
-
-#: THE NINE SHAPES A RECEIVER CHECK READ OFF THE IMPORT TABLE ALONE LOST.
-EVASIVE_REBOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    alias = config
-    alias.save(cfg)
-"""
-
-#: The module reached through its own dotted path after a plain ``import``, the
-#: one receiver shape naming no local, resolved as a binding.
-EVASIVE_DOTTED_IMPORT_ALLOWLISTED_WRITER = """
-import cratekit.core.config
-
-
-def remember(cfg):
-    cratekit.core.config.save(cfg)
-"""
-
-#: The module parked in a LIST and reached by index.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_LIST = """
-from cratekit.core import config
-
-MODS = [config]
-
-
-def remember(cfg):
-    MODS[0].save(cfg)
-"""
-
-#: The module parked in a DICT, reaching the writer whose name reads as a load.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_DICT = """
-from cratekit.core import config
-
-MODS = {"c": config}
-
-
-def remember(path):
-    return MODS["c"].load_from_path(path)
-"""
-
-#: The module HANDED BACK by a function, so the receiver is a call result.
-EVASIVE_ALLOWLISTED_WRITER_FROM_A_CALL = """
-from cratekit.core import config
-
-
-def _mod():
-    return config
-
-
-def remember(cfg):
-    _mod().save(cfg)
-"""
-
-#: The module reached through a LOOP VARIABLE.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_LOOP = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    for mod in (config,):
-        mod.save(cfg)
-"""
-
-#: The module injected as a DEFAULT ARGUMENT, which is how a module gets swapped
-#: out for a test and is the one shape where a parameter name is not a shadow.
-EVASIVE_ALLOWLISTED_WRITER_AS_A_DEFAULT = """
-from cratekit.core import config
-
-
-def remember(cfg, mod=config):
-    mod.save(cfg)
-"""
-
-#: The module STORED ON AN INSTANCE in one method and used in another, which is
-#: an ordinary constructor and is why a parameter shadows its own name only.
-EVASIVE_ALLOWLISTED_WRITER_ON_AN_ATTRIBUTE = """
-from cratekit.core import config
-
-
-class Keeper:
-    def __init__(self):
-        self.mod = config
-
-    def remember(self, cfg):
-        self.mod.save(cfg)
-"""
-
-#: The module bound by a WALRUS, which is a rebinding written inside the
-#: expression that uses it and has no assignment statement to read.
-EVASIVE_WALRUS_BOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    if (alias := config) is not None:
-        alias.save(cfg)
-"""
-
-#: And bound by a COMPREHENSION, which is a loop with no ``for`` statement.
-EVASIVE_COMPREHENSION_BOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    return [mod.save(cfg) for mod in (config,)]
-"""
-
-#: The rebound module reached through ``getattr``, so the receiver has to be
-#: resolved by binding inside rule 4 as well as outside it.
-EVASIVE_REBOUND_WRITER_THROUGH_GETATTR = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    alias = config
-    getattr(alias, "save")(cfg)
-"""
-
-#: A STAR import, which binds every writer the module exposes with no name in the
-#: file for a check to read. Both halves of the import are permitted.
-EVASIVE_STAR_IMPORTED_ALLOWLISTED_WRITER = """
-from cratekit.core.config import *
-
-
-def remember(cfg):
-    save(cfg)
-"""
-
-#: THE FOUR SPELLINGS THAT REACH A METHOD WITHOUT NAMING IT AS AN ATTRIBUTE.
-EVASIVE_TYPE_DICT_SUBSCRIPT = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    Path.__dict__["write_text"](path, decided)
-"""
-
-#: The same function object through ``vars``, so even ``__dict__`` is gone.
-EVASIVE_VARS_SUBSCRIPT = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    vars(Path)["write_text"](path, decided)
-"""
-
-#: The UNBOUND dunder ``getattr`` itself calls, which takes the receiver first.
-EVASIVE_UNBOUND_GETATTRIBUTE = """
-def remember(path, decided):
-    object.__getattribute__(path, "write_text")(decided)
-"""
-
-#: And the bound one, whose single argument is the method name: arity separates
-#: the two.
-EVASIVE_BOUND_GETATTRIBUTE = """
-def remember(path, decided):
-    path.__getattribute__("write_text")(decided)
-"""
-
-#: A private ledger in a sibling module whose name merely starts with this
-#: package's, outside what ``_report_modules`` scans.
-EVASIVE_SIBLING_PACKAGE = """
+@pytest.mark.parametrize(
+    "source",
+    [
+        # A module that hides its writer behind an alias, which is the shape that
+        # defeated the armed copy of U11's comma-separated-file guard.
+        """
+import shutil as tidy
+from os import replace as swap
+
+
+def clean(a, b):
+    tidy.rmtree(a)
+    swap(a, b)
+""",
+        # The same evasion one layer further out, through the package.
+        """
+from cratekit.core import rb_writer
+
+
+def snapshot(cfg):
+    return rb_writer.open_db(cfg)
+""",
+        # And through a relative import, which nothing in the package uses today.
+        """
+from ...core import rb_writer
+
+
+def snapshot(cfg):
+    return rb_writer.open_db(cfg)
+""",
+        # The same writer reached through a lazy import inside a function body.
+        """
+def snapshot(cfg):
+    import sqlite3
+
+    return sqlite3.connect(str(cfg.library.db_path))
+""",
+        # The writer loaded with no import statement at all: a database, a process and
+        # a file, all through the builtin.
+        """
+def remember(path, argv, db):
+    __import__("os").truncate(path, 0)
+    __import__("subprocess").run(argv)
+    return __import__("sqlite3").connect(db)
+""",
+        EVASIVE_COMPUTED_DYNAMIC_IMPORT,
+        # A private ledger in a sibling module whose name merely starts with this
+        # package's, outside what ``_report_modules`` scans.
+        """
 from cratekit.modules import reports_ledger
 
 
 def remember(path, decided):
     reports_ledger.remember(path, decided)
-"""
-
-#: Correct code: the one persistence allowed, every read primitive including a
-#: bound read method, and methods named like filesystem verbs, where only the
-#: keywords keep the arity rule off ``dataclasses.replace``.
-CORRECT_MODULE = """
-import dataclasses
-from pathlib import Path
-
-from cratekit.core import review
-from cratekit.core.review import Option
-
-
-def run(store, path, name, today, option):
-    content = Path(path).read_bytes()
-    bound = Path(path).open("rb")
-    bound.close()
-    builtin = open(path, "rb")
-    builtin.close()
-    reader = Path(path).read_text
-    reader()
-    tidied = name.replace("_", " ").casefold()
-    first_of_month = today.replace(day=1)
-    renamed = dataclasses.replace(option, summary=tidied)
-    queue = getattr(review, "Queue")
-    assert renamed is not None
-    return review.offer(
-        store,
-        queue=queue.DUPLICATES,
-        kind="duplicate-recording",
-        identity={"title": tidied},
-        payload={"bytes": len(content), "month": str(first_of_month)},
-        options=(Option(option_id="1", summary=tidied),),
-    )
-"""
-
-#: Correct code that imports a sibling module of this package, which the dot
-#: boundary must keep legal (P7).
-CORRECT_IN_PACKAGE_IMPORT = """
-from cratekit.modules.reports import aging
-from cratekit.modules.reports.export import LibraryView
-
-
-def run(view: LibraryView, intake, today):
-    return aging.intake_groupings(view, intake=intake, today=today)
-"""
-
-#: Correct code whose attribute names collide with the generic writers, which
-#: the receiver check exists for (P7).
-CORRECT_GENERIC_ATTRIBUTE_NAMES = """
-from cratekit.core import taxonomy
-
-
-def describe(view, spec):
-    saved = view.save
-    loaded = taxonomy.default_taxonomy().load
-    return saved, loaded, spec.load
-"""
-
-#: THE FIVE FALSE POSITIVES THE RECEIVER CHECK WAS FIRING TODAY, and they are
-#: the same P7 shape as the one above moved one level along.
-CORRECT_UNBOUND_RECEIVERS_NAMED_LIKE_MODULES = """
-def describe(config, naming, row, view, target):
-    first = config.load
-    second = row.config.load_from_path(target)
-    third = view.naming.claim_target(target)
-    return first, second, third, naming.claim_target(target)
-"""
-
-#: The harder half: a module importing ``config`` and taking a parameter of that
-#: name, which shadows it.
-CORRECT_PARAMETER_SHADOWING_AN_IMPORTED_MODULE = """
-from cratekit.core import config
-
-
-def describe(config, spec):
-    return config.load, config.save, spec.load
-
-
-def elsewhere(cfg):
-    return config.state_path("x", cfg)
-"""
-
-#: A method reading an attribute of ``self`` named after an admitted module; a
-#: shadow must not take the whole chain.
-CORRECT_ATTRIBUTE_NAMED_LIKE_A_MODULE = """
-class View:
-    def describe(self):
-        return self.config.load, self.naming.claim_target
-"""
-
-#: A lambda whose parameter is named after an imported admitted module, the one
-#: scope with no statement body.
-CORRECT_LAMBDA_PARAMETER_SHADOWING_A_MODULE = """
-from cratekit.core import config
-
-describe = lambda config: config.load
-"""
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        EVASIVE_IMPORT,
-        EVASIVE_PACKAGE_IMPORT,
-        EVASIVE_RELATIVE_IMPORT,
-        EVASIVE_LAZY_IMPORT,
-        EVASIVE_DYNAMIC_IMPORT,
-        EVASIVE_COMPUTED_DYNAMIC_IMPORT,
-        EVASIVE_SIBLING_PACKAGE,
+""",
     ],
 )
 def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
@@ -5366,36 +4930,284 @@ def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
 @pytest.mark.parametrize(
     "source",
     [
-        EVASIVE_PRIVATE_LEDGER,
-        EVASIVE_WRITE_HANDLE,
-        EVASIVE_BOUND_OPEN_HANDLE,
-        EVASIVE_COMPUTED_MODE,
-        EVASIVE_PATH_REPLACE,
-        EVASIVE_COMPUTED_ATTRIBUTE,
-        EVASIVE_CAPTURED_BOUND_METHOD,
-        EVASIVE_ALLOWLISTED_WRITER,
-        EVASIVE_ALLOWLISTED_CLAIM,
-        EVASIVE_ALIASED_ALLOWLISTED_WRITER,
-        EVASIVE_IMPORTED_ALLOWLISTED_WRITER,
-        EVASIVE_BARE_NAME_WRITER,
-        EVASIVE_LITERAL_GETATTR,
-        EVASIVE_LITERAL_GETATTR_ON_AN_ADMITTED_MODULE,
-        EVASIVE_REBOUND_ALLOWLISTED_WRITER,
-        EVASIVE_DOTTED_IMPORT_ALLOWLISTED_WRITER,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_LIST,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_DICT,
-        EVASIVE_ALLOWLISTED_WRITER_FROM_A_CALL,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_LOOP,
-        EVASIVE_ALLOWLISTED_WRITER_AS_A_DEFAULT,
-        EVASIVE_ALLOWLISTED_WRITER_ON_AN_ATTRIBUTE,
-        EVASIVE_WALRUS_BOUND_ALLOWLISTED_WRITER,
-        EVASIVE_COMPREHENSION_BOUND_ALLOWLISTED_WRITER,
-        EVASIVE_REBOUND_WRITER_THROUGH_GETATTR,
-        EVASIVE_STAR_IMPORTED_ALLOWLISTED_WRITER,
-        EVASIVE_TYPE_DICT_SUBSCRIPT,
-        EVASIVE_VARS_SUBSCRIPT,
-        EVASIVE_UNBOUND_GETATTRIBUTE,
-        EVASIVE_BOUND_GETATTRIBUTE,
+        # A module that writes a private ignore file, which is the exact defect the
+        # countdown against this unit forbids by name.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    Path(path).write_text(decided)
+""",
+        # The same thing through a handle, so the mutating method never appears.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    with open(Path(path), "w") as handle:
+        handle.write(decided)
+""",
+        # The same handle through the bound method, whose mode is its first argument
+        # because its receiver is already the file.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    handle = Path(path).open("w")
+    handle.write(decided)
+    handle.close()
+""",
+        # And with a mode this guard cannot read, which is how a literal check is walked
+        # past without ever writing the letter w.
+        """
+from pathlib import Path
+
+MODE = "".join(["w"])
+
+
+def remember(path, decided):
+    with open(Path(path), MODE) as handle:
+        handle.write(decided)
+""",
+        # ``Path.replace`` overwrites its destination, how a private ledger is swapped
+        # into place atomically.
+        """
+from pathlib import Path
+
+
+def remember(scratch, ledger):
+    Path(scratch).replace(ledger)
+""",
+        # The mutating method reached through a computed attribute name, so the method
+        # never appears as text and the outer call's ``func`` is itself a Call.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    getattr(Path(path), "write_" + "text")(decided)
+""",
+        # The mutating method bound and not called, then called through its local.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    keep = Path(path).write_text
+    keep(decided)
+""",
+        # The writer reached through an admitted module with no forbidden import:
+        # ``config.load_from_path`` writes the file back too.
+        """
+from cratekit.core import config
+
+
+def remember(cfg, path):
+    config.save(cfg)
+    return config.load_from_path(path)
+""",
+        # And through ``naming``, which ``duplicates`` already imports.
+        """
+from cratekit.core import naming
+
+
+def remember(target):
+    return naming.claim_target(target)
+""",
+        # The admitted writer reached through an aliased module, which the receiver
+        # check must survive.
+        """
+from cratekit.core import config as settings
+
+
+def remember(cfg):
+    settings.save(cfg)
+""",
+        # The admitted writer imported straight off its module and renamed, with no
+        # receiver: the bare local is tracked back to what it was bound to.
+        """
+from cratekit.core.naming import claim_target as reserve
+
+
+def remember(target):
+    return reserve(target)
+""",
+        # The mutating name reached as a bare call: the only fixture driving the
+        # bare-name branch. The import guard catches it too, independently.
+        """
+from shutil import rmtree
+from os import truncate
+
+
+def clean(a, path):
+    rmtree(a)
+    truncate(path, 0)
+""",
+        # The mutating method named as a literal string inside ``getattr``, which only
+        # the literal half of rule 4 catches.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    getattr(Path(path), "write_text")(decided)
+""",
+        # The same trick pointed at a writer the ALLOWLIST admits, so the receiver has
+        # to be read inside ``getattr`` as well as outside it.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    getattr(config, "save")(cfg)
+""",
+        # THE NINE SHAPES A RECEIVER CHECK READ OFF THE IMPORT TABLE ALONE LOST.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    alias = config
+    alias.save(cfg)
+""",
+        # The module reached through its own dotted path after a plain ``import``, the
+        # one receiver shape naming no local, resolved as a binding.
+        """
+import cratekit.core.config
+
+
+def remember(cfg):
+    cratekit.core.config.save(cfg)
+""",
+        # The module parked in a LIST and reached by index.
+        """
+from cratekit.core import config
+
+MODS = [config]
+
+
+def remember(cfg):
+    MODS[0].save(cfg)
+""",
+        # The module parked in a DICT, reaching the writer whose name reads as a load.
+        """
+from cratekit.core import config
+
+MODS = {"c": config}
+
+
+def remember(path):
+    return MODS["c"].load_from_path(path)
+""",
+        # The module HANDED BACK by a function, so the receiver is a call result.
+        """
+from cratekit.core import config
+
+
+def _mod():
+    return config
+
+
+def remember(cfg):
+    _mod().save(cfg)
+""",
+        # The module reached through a LOOP VARIABLE.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    for mod in (config,):
+        mod.save(cfg)
+""",
+        # The module injected as a DEFAULT ARGUMENT, which is how a module gets swapped
+        # out for a test and is the one shape where a parameter name is not a shadow.
+        """
+from cratekit.core import config
+
+
+def remember(cfg, mod=config):
+    mod.save(cfg)
+""",
+        # The module STORED ON AN INSTANCE in one method and used in another, which is
+        # an ordinary constructor and is why a parameter shadows its own name only.
+        """
+from cratekit.core import config
+
+
+class Keeper:
+    def __init__(self):
+        self.mod = config
+
+    def remember(self, cfg):
+        self.mod.save(cfg)
+""",
+        # The module bound by a WALRUS, which is a rebinding written inside the
+        # expression that uses it and has no assignment statement to read.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    if (alias := config) is not None:
+        alias.save(cfg)
+""",
+        # And bound by a COMPREHENSION, which is a loop with no ``for`` statement.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    return [mod.save(cfg) for mod in (config,)]
+""",
+        # The rebound module reached through ``getattr``, so the receiver has to be
+        # resolved by binding inside rule 4 as well as outside it.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    alias = config
+    getattr(alias, "save")(cfg)
+""",
+        # A STAR import, which binds every writer the module exposes with no name in the
+        # file for a check to read. Both halves of the import are permitted.
+        """
+from cratekit.core.config import *
+
+
+def remember(cfg):
+    save(cfg)
+""",
+        # THE FOUR SPELLINGS THAT REACH A METHOD WITHOUT NAMING IT AS AN ATTRIBUTE.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    Path.__dict__["write_text"](path, decided)
+""",
+        # The same function object through ``vars``, so even ``__dict__`` is gone.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    vars(Path)["write_text"](path, decided)
+""",
+        # The UNBOUND dunder ``getattr`` itself calls, which takes the receiver first.
+        """
+def remember(path, decided):
+    object.__getattribute__(path, "write_text")(decided)
+""",
+        # And the bound one, whose single argument is the method name: arity separates
+        # the two.
+        """
+def remember(path, decided):
+    path.__getattribute__("write_text")(decided)
+""",
     ],
 )
 def test_the_mutation_guard_bites_the_private_ledger_in_every_shape(source):
@@ -5472,13 +5284,96 @@ def test_a_dynamic_import_this_cannot_read_is_reported_as_unnameable():
 @pytest.mark.parametrize(
     "source",
     [
-        CORRECT_MODULE,
-        CORRECT_IN_PACKAGE_IMPORT,
-        CORRECT_GENERIC_ATTRIBUTE_NAMES,
-        CORRECT_UNBOUND_RECEIVERS_NAMED_LIKE_MODULES,
-        CORRECT_PARAMETER_SHADOWING_AN_IMPORTED_MODULE,
-        CORRECT_ATTRIBUTE_NAMED_LIKE_A_MODULE,
-        CORRECT_LAMBDA_PARAMETER_SHADOWING_A_MODULE,
+        # Correct code: the one persistence allowed, every read primitive including a
+        # bound read method, and methods named like filesystem verbs, where only the
+        # keywords keep the arity rule off ``dataclasses.replace``.
+        """
+import dataclasses
+from pathlib import Path
+
+from cratekit.core import review
+from cratekit.core.review import Option
+
+
+def run(store, path, name, today, option):
+    content = Path(path).read_bytes()
+    bound = Path(path).open("rb")
+    bound.close()
+    builtin = open(path, "rb")
+    builtin.close()
+    reader = Path(path).read_text
+    reader()
+    tidied = name.replace("_", " ").casefold()
+    first_of_month = today.replace(day=1)
+    renamed = dataclasses.replace(option, summary=tidied)
+    queue = getattr(review, "Queue")
+    assert renamed is not None
+    return review.offer(
+        store,
+        queue=queue.DUPLICATES,
+        kind="duplicate-recording",
+        identity={"title": tidied},
+        payload={"bytes": len(content), "month": str(first_of_month)},
+        options=(Option(option_id="1", summary=tidied),),
+    )
+""",
+        # Correct code that imports a sibling module of this package, which the dot
+        # boundary must keep legal (P7).
+        """
+from cratekit.modules.reports import aging
+from cratekit.modules.reports.export import LibraryView
+
+
+def run(view: LibraryView, intake, today):
+    return aging.intake_groupings(view, intake=intake, today=today)
+""",
+        # Correct code whose attribute names collide with the generic writers, which
+        # the receiver check exists for (P7).
+        """
+from cratekit.core import taxonomy
+
+
+def describe(view, spec):
+    saved = view.save
+    loaded = taxonomy.default_taxonomy().load
+    return saved, loaded, spec.load
+""",
+        # THE FIVE FALSE POSITIVES THE RECEIVER CHECK WAS FIRING TODAY, and they are
+        # the same P7 shape as the one above moved one level along.
+        """
+def describe(config, naming, row, view, target):
+    first = config.load
+    second = row.config.load_from_path(target)
+    third = view.naming.claim_target(target)
+    return first, second, third, naming.claim_target(target)
+""",
+        # The harder half: a module importing ``config`` and taking a parameter of that
+        # name, which shadows it.
+        """
+from cratekit.core import config
+
+
+def describe(config, spec):
+    return config.load, config.save, spec.load
+
+
+def elsewhere(cfg):
+    return config.state_path("x", cfg)
+""",
+        # A method reading an attribute of ``self`` named after an admitted module; a
+        # shadow must not take the whole chain.
+        """
+class View:
+    def describe(self):
+        return self.config.load, self.naming.claim_target
+""",
+        # A lambda whose parameter is named after an imported admitted module, the one
+        # scope with no statement body.
+        """
+from cratekit.core import config
+
+describe = lambda config: config.load
+""",
     ],
 )
 def test_the_guards_stay_quiet_on_correct_code(source):
