@@ -1,9 +1,7 @@
 """The write layer's probe scenarios: chosen values written into chosen rows (U302).
 
 `crate repair link` plans ``--set row:column=value`` triples on the two probe
-columns with how many rows share each value, then writes and reads them back
-behind its gate. Its own file because ``write_rows.py`` names ``VERB`` and
-``GATE`` for another verb.
+columns. Its own file because ``write_rows.py`` names ``VERB`` and ``GATE``.
 """
 
 from __future__ import annotations

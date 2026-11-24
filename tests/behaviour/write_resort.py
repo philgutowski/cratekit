@@ -1,9 +1,7 @@
 """The write layer's resort scenarios: the routing tree resorted behind its gate (U302).
 
-`crate route resort` shows each add behind its gate and its job writes them in
-one guarded session. Its refusal: an approval recorded over a copy does not
-approve the live file, though both plan the same adds. Its own file because
-both suites name ``configured`` and ``tagged``.
+An approval recorded over a copy does not approve the live file, though both plan
+the same adds. Its own file because both suites name ``configured`` and ``tagged``.
 """
 
 from __future__ import annotations

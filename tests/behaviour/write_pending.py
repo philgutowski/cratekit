@@ -1,10 +1,8 @@
 """The write layer's deferred routing scenario: the pass after a native landing (U302).
 
-`crate route pending` over a real landed run finds nothing deferred, since the
-native landing files its own track, and the answer and the absence of any write
-are recorded. Its own file for the landing suite's ``machine`` and
-``acknowledged``; the import suite makes its own library folder, which the
-stage has already made.
+Nothing is deferred, since the native landing files its own track. Its own file for
+the landing suite's ``machine`` and ``acknowledged``; the import suite makes its own
+library folder, which the stage has already made.
 """
 
 from __future__ import annotations

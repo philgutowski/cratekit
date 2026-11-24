@@ -55,7 +55,6 @@ def _configure(library: Path, **recognition) -> config.Config:
 
 
 def _recognition(library: Path, **section) -> config.Config:
-    """A configured machine whose ``[recognition]`` section says ``section``."""
     return _configure(library, recognition=section)
 
 
@@ -76,8 +75,7 @@ def cfg(library) -> config.Config:
 
 @pytest.fixture
 def recognised(monkeypatch, tmp_path):
-    """Recognition READY through fakes, with a ledger of this test's own.
-    Returns the transport, to script and to read what was asked."""
+    """Recognition READY through fakes, with a ledger of this test's own. Returns the transport."""
     secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
     secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
     monkeypatch.setattr(recognize.binaries, "find", lambda name: f"/usr/bin/{name}")
@@ -127,19 +125,16 @@ def identify(path: Path, *extra: str) -> tuple[int, dict]:
 
 
 def fresh(library: Path, verb: str = "set") -> tuple[int, dict]:
-    """``verb`` driven over a fresh recording in ``library``."""
     return drive(["intake", verb, str(recording(library))])
 
 
 def ok(driven: tuple[int, dict]) -> dict:
-    """The envelope of a drive that must exit OK."""
     code, envelope = driven
     assert code == OK, envelope
     return envelope
 
 
 def refused(driven: tuple[int, dict], exit_code: ExitCode, reason: str) -> dict:
-    """The envelope of a drive that must refuse with ``exit_code`` and ``reason``."""
     code, envelope = driven
     assert code == int(exit_code), envelope
     assert envelope["cause"]["reason"] == reason
@@ -163,6 +158,11 @@ def states(job_id: str) -> dict[str, jobs.ItemState]:
 def job_of(job_id: str) -> jobs.Job:
     with jobs.open_store() as store:
         return jobs.get(store, job_id)
+
+
+def enqueue(cfg: config.Config, key: str, payload: dict, item_ids: tuple[str, ...] = ()) -> jobs.Job:
+    with jobs.open_store() as store:
+        return jobs.enqueue(store, handler_key=key, payload=payload, cfg=cfg, item_ids=item_ids)
 
 
 def no_jobs() -> bool:
@@ -385,8 +385,7 @@ def test_a_tracklist_that_cannot_be_written_refuses_and_says_the_answers_were_ke
 
 
 def test_a_second_identify_over_the_same_recording_makes_zero_transport_calls(cfg, library, recognised):
-    """Asserted on the fake transport, the ledger and the tracklist, which the
-    second pass still writes from kept answers."""
+    """The tracklist is still written, from kept answers."""
     three_tracks(recognised)
     path = recording(library)
     first_code, first = identify(path)
@@ -411,8 +410,7 @@ def test_a_second_identify_over_the_same_recording_makes_zero_transport_calls(cf
 def test_identify_then_set_pays_for_recognition_once_and_the_job_says_it_cost_nothing(
     cfg, library, recognised
 ):
-    """The ordinary two step use. ``intake set`` reads the cache identify wrote,
-    and an identify with nothing to ask a person is an OK exit."""
+    """The ordinary two step use; an identify with nothing to ask a person is an OK exit."""
     three_tracks(recognised)
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = recording(library)
@@ -486,8 +484,7 @@ def test_a_job_of_another_handler_lists_no_tracks_and_is_not_driven_under_this_e
     """The payload carries a ``tracks`` key on purpose, so only the handler
     gate stands between it and the listing."""
     payload = {"source": "x", "tracks": {"x": {"artist": "Aurora Bloom", "title": "Sun Path"}}}
-    with jobs.open_store() as store:
-        job = jobs.enqueue(store, handler_key="master", payload=payload, cfg=cfg, item_ids=("x",))
+    job = enqueue(cfg, "master", payload, ("x",))
     envelope = ok(drive(["job", "show", job.job_id]))
     assert cli_jobs.TRACKS_FIELD not in envelope["data"]["progress"]
     code, text = drive_human(["job", "show", job.job_id])
@@ -651,8 +648,7 @@ def test_a_spend_refusal_at_the_queue_is_reported_as_policy_and_queues_nothing(c
 
 
 def test_identify_and_a_set_job_report_owned_offered_and_missing(cfg, library, recognised):
-    """The whole point of the unit, read from the store, not the exit code.
-    R-422: identify asks the library too, under its own key."""
+    """Read from the store, not the exit code. R-422: identify asks the library too."""
     three_tracks(recognised)
     held = owned(library, "Aurora Bloom - Sun Path.flac")
     owned(library, "Nova Reef - Tide (Someone Remix).flac")
@@ -708,8 +704,7 @@ def test_identify_and_a_set_job_report_owned_offered_and_missing(cfg, library, r
 
 
 def test_an_offered_track_is_a_review_item_asked_once_however_often_it_is_redone(cfg, library, recognised):
-    """R-140, one layer down: an offer is a question, not an acquisition, and
-    no intake file is written."""
+    """R-140, one layer down: an offer is a question, not an acquisition."""
     recognised.answers[:] = [hit("Nova Reef", "Tide", isrc="X2"), miss(), miss()]
     owned(library, "Nova Reef - Tide (Someone Remix).flac")
     job_id, _ = queued_set(recording(library))
@@ -782,11 +777,9 @@ def test_a_failure_mid_set_fails_that_item_leaves_the_job_resumable_and_the_resu
 def test_the_frozen_library_reaches_the_worker_not_the_live_one(
     cfg, library, recognised, tmp_path, monkeypatch
 ):
-    """KTD9. The root moves after the queue and the worker resolves against the one
-    the job froze; the divergence must come from the file, since a still set root
-    variable relocates both readings (docs/solutions/workflow-issues/
-    a-frozen-config-is-frozen-against-the-file-not-against-an-env-override.md).
-    """
+    """KTD9. The divergence must come from the file, since a still set root variable
+    relocates both readings (docs/solutions/workflow-issues/
+    a-frozen-config-is-frozen-against-the-file-not-against-an-env-override.md)."""
     three_tracks(recognised)
     owned(library, "Aurora Bloom - Sun Path.flac")
     job_id, _ = queued_set(recording(library))
@@ -824,9 +817,7 @@ def test_the_library_is_indexed_once_per_drive_not_once_per_item(cfg, library, r
 
 def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, library):
     """A job queued by a build before this unit. The zero item rule."""
-    payload = {intake_cli.SOURCE: str(library / "old.mp3")}
-    with jobs.open_store() as store:
-        job = jobs.enqueue(store, handler_key=SET_KEY, payload=payload, cfg=cfg)
+    job = enqueue(cfg, SET_KEY, {intake_cli.SOURCE: str(library / "old.mp3")})
     code, envelope = drive(["intake", "set", str(library / "old.mp3"), "--job", job.job_id])
     assert envelope["cause"]["reason"] == "internal-error", envelope
     assert "did not record what its items were" in envelope["cause"]["message"]
@@ -834,12 +825,9 @@ def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, li
 
 
 def test_an_item_the_payload_does_not_carry_fails_by_name_rather_than_resolving_nothing(cfg, library):
-    payload = {intake_cli.SOURCE: "x", intake_cli.TRACKS: {}}
-    with jobs.open_store() as store:
-        job = jobs.enqueue(store, handler_key=SET_KEY, payload=payload, cfg=cfg, item_ids=("rc_orphan",))
-        item = jobs.items(store, job.job_id)[0]
+    job = enqueue(cfg, SET_KEY, {intake_cli.SOURCE: "x", intake_cli.TRACKS: {}}, ("rc_orphan",))
     with pytest.raises(CratekitError) as excinfo:
-        intake_cli.handle(job, item, cfg)
+        intake_cli.handle(job, items_of(job.job_id)[0], cfg)
     assert excinfo.value.cause.reason == "internal-error"
     assert excinfo.value.cause.detail["item_id"] == "rc_orphan"
 
@@ -853,9 +841,8 @@ def test_an_intake_job_that_owns_a_row_by_isrc_retires_the_question_an_earlier_j
     owned(library, "04A - 126 - Malive - Burning (Radio Edit).flac")
     said = {"id": "301", "artist": {"name": "Malive"}, "title": "Burning (Extended Mix)", "isrc": "USNRS2644532"}
     line = match.read_row(said, origin=match.TIDAL, position=1)
-    with jobs.open_store() as store:
-        earlier = jobs.enqueue(store, handler_key=PLAYLIST_KEY, payload={intake_cli.SOURCE: "x"}, cfg=cfg)
-        later = jobs.enqueue(store, handler_key=PLAYLIST_KEY, payload={intake_cli.SOURCE: "y"}, cfg=cfg)
+    earlier = enqueue(cfg, PLAYLIST_KEY, {intake_cli.SOURCE: "x"})
+    later = enqueue(cfg, PLAYLIST_KEY, {intake_cli.SOURCE: "y"})
     asked = intake_cli.resolve_track(line, earlier, cfg)
     assert (asked.state, asked.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
     with review.open_store(cfg) as items:
@@ -931,13 +918,18 @@ def test_no_provider_session_and_a_playlist_the_catalogue_cannot_list_refuse_and
     assert no_jobs()
 
 
-def test_an_empty_playlist_queues_nothing_and_says_so(cfg, monkeypatch):
-    bind_playlist(monkeypatch, "pl-1", [])
-    envelope = ok(drive(["intake", "playlist", "pl-1"]))
+@pytest.mark.parametrize("reference", ["pl-1", "favorites"], ids=["playlist", "account-with-no-hearts"])
+def test_an_empty_listing_queues_nothing_and_says_so(cfg, monkeypatch, reference):
+    if reference == "favorites":
+        bind_hearts(monkeypatch, [])
+    else:
+        bind_playlist(monkeypatch, "pl-1", [])
+    envelope = ok(drive(["intake", "playlist", reference]))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["state"] == "no-tracks"
     assert envelope["data"]["job_id"] == ""
-    code, text = drive_human(["intake", "playlist", "pl-1"])
+    assert envelope["data"]["progress"]["source"] == reference
+    code, text = drive_human(["intake", "playlist", reference])
     assert code == OK, text
     assert text.splitlines()[0] == "intake.playlist: no_op", text
     assert "  job:" not in text, text
@@ -1077,10 +1069,8 @@ def queued_hearts(cfg, library, monkeypatch, spelled: str = "favorites") -> tupl
 def test_favorites_lists_the_hearts_resolves_each_and_rereads_the_reasons_on_every_resume(
     cfg, library, monkeypatch
 ):
-    """The reserved reference never asks for a playlist; missing hearts carry the
-    provider id ``intake missing --job`` asks for. Reasons come from the committed
-    artifacts, so a second resume counts the same, and a rerun after acquiring
-    reports the heart owned. Every human case is a tripwire on the json."""
+    """Missing hearts carry the provider id ``intake missing --job`` asks for, and reasons
+    come from the committed artifacts. Every human case is a tripwire on the json."""
     from cratekit import cli
     from cratekit.cli import render
 
@@ -1172,14 +1162,6 @@ def test_a_hearts_listing_that_fails_refuses_and_queues_nothing(cfg, monkeypatch
     assert no_jobs()
 
 
-def test_an_account_with_no_hearts_queues_nothing_and_says_so(cfg, monkeypatch):
-    bind_hearts(monkeypatch, [])
-    envelope = ok(drive(["intake", "playlist", "favorites"]))
-    assert envelope["outcome"] == str(Outcome.NO_OP)
-    assert envelope["data"]["state"] == "no-tracks"
-    assert envelope["data"]["progress"]["source"] == "favorites"
-
-
 def test_a_playlist_reference_still_reaches_the_playlist_and_not_the_hearts(cfg, monkeypatch):
     fake = StrictCatalogue(
         playlists={"pl-1": FakePagedPlaylist([Track("101", "Aurora Bloom", "Sun Path")])},
@@ -1254,9 +1236,7 @@ def test_a_titles_other_reading_survives_the_freeze():
 
 @pytest.mark.parametrize("verb", ["identify", "set"])
 def test_an_unconfigured_machine_meets_a_monthly_bound_before_the_first_call(cfg, library, recognised, verb):
-    """THE COST R-301 NAMED: with nothing configured the per run cap was the
-    only bound. The default section bounds the month, and the refusal names
-    the key to raise."""
+    """THE COST R-301 NAMED: with nothing configured the per run cap was the only bound."""
     recognised.ledger.record(config.DEFAULT_RECOGNITION_MONTHLY_CALLS - 1)
     three_tracks(recognised)
     envelope = refused(fresh(library, verb), ExitCode.REFUSED_BY_POLICY, "intake-recognition-spend-bound")
@@ -1271,9 +1251,7 @@ def test_an_unconfigured_machine_meets_a_monthly_bound_before_the_first_call(cfg
 
 @pytest.mark.parametrize("verb", ["identify", "set"])
 def test_the_configured_host_and_month_are_the_ones_every_paid_call_meets(library, recognised, verb):
-    """The configured bound is the one the verb meets; a month within it is
-    paid for, every call goes to the configured host, and a queued set freezes
-    the section it was identified under."""
+    """A month within the bound is paid for, and a queued set freezes the section."""
     _recognition(library, monthly_calls=2)
     three_tracks(recognised)
     code, envelope = fresh(library, verb)
@@ -1300,8 +1278,7 @@ def test_the_configured_host_and_month_are_the_ones_every_paid_call_meets(librar
 def test_queueing_and_resolving_favorites_name_the_job_each_count_its_reasons_and_the_next_command(
     cfg, library, monkeypatch
 ):
-    """The sittings read the identifier from ``job list --output json`` every time
-    (R-678, R-682): each count's reasons sit under it, and an empty state prints none."""
+    """The sittings read the identifier from ``job list --output json`` every time (R-678, R-682)."""
     hearts_library(library, monkeypatch)
     code, text = drive_human(["intake", "playlist", "favorites"])
     assert code == OK, text
@@ -1328,9 +1305,7 @@ def test_queueing_and_resolving_favorites_name_the_job_each_count_its_reasons_an
 
 
 def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, monkeypatch):
-    """Reports no worker writes today, read the way ``_summary`` reads any: a missing
-    ``why`` is not given one, and a state word the counts do not know is not counted
-    under any state, reason or no reason."""
+    """Reports no worker writes today: a state word the counts do not know is counted nowhere."""
     reports = [{"state": "owned", "why": why} for why in ("exact", "isrc-exact", "", 3)]
     reports += [{"state": "owned"}, {"state": "misplaced", "why": "exact"}]
     monkeypatch.setattr(intake_cli.jobs.Artifacts, "committed", lambda *args: reports)
@@ -1364,9 +1339,7 @@ def test_a_resolution_with_nothing_missing_names_no_next_command(cfg, library, m
 def test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said(
     cfg, library, recognised, monkeypatch
 ):
-    """Three chunks under a run bound of two is two parts. One job, one item
-    per track in set order, and the note says the split was the spend's and
-    not the set's."""
+    """Three chunks under a run bound of two is two parts, the spend's split and not the set's."""
     monkeypatch.setattr(acrcloud, "MAX_CALLS_PER_RUN", 2)
     three_tracks(recognised)
     path = recording(library)
@@ -1399,8 +1372,7 @@ def test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said(
 def test_a_recording_over_the_parts_ceiling_is_refused_at_the_queue_and_queues_nothing(
     cfg, library, recognised, monkeypatch
 ):
-    """Four chunks under a run bound of one is four parts, one over the
-    ceiling of three, so it is refused as not one set before any call."""
+    """Four chunks under a run bound of one is four parts, one over the ceiling of three."""
     monkeypatch.setattr(acrcloud, "MAX_CALLS_PER_RUN", 1)
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(100.0))
     three_tracks(recognised)
