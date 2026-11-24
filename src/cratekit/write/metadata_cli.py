@@ -41,7 +41,9 @@ _NAMED_PREFIXES = 3
 #: stable, unlike ``CATEGORY``, a display name a person can rename (R19).
 CHANGE_KEY = "my-tags.vocals"
 
+#: The My Tag category the vocal values sit in, a display name a person can rename.
 CATEGORY = "Vocals"
+#: The value that says a track has vocals, and so belongs in its bucket's vocal sub.
 VALUE_VOX = "vox"
 VALUE_MALE = "male vox"
 VALUE_FEMALE = "female vox"

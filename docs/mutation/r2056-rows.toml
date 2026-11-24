@@ -1,0 +1,259 @@
+name = "r2056"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_categories_marker"
+description = "vox_tagged: read a category rekordbox removed as live, so a tag under a removed category still files"
+file = "src/cratekit/write/vox_tag.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_intake_land_vox_native.py", "tests/test_adopt_placements.py"]
+old = '''        for tag in db.get_my_tag(Name=CATEGORY)
+        if not _removed(tag, "My Tag")'''
+new = '''        for tag in db.get_my_tag(Name=CATEGORY)'''
+
+[[rows]]
+id = "T2_value_parent"
+description = "vox_tagged: take a vox value under any category, so another category's vox files the vocal sub"
+file = "src/cratekit/write/vox_tag.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_intake_land_vox_native.py", "tests/test_adopt_placements.py"]
+old = '''        if str(getattr(tag, "ParentID", "") or "") in categories and not _removed(tag, "My Tag")'''
+new = '''        if not _removed(tag, "My Tag")'''
+
+[[rows]]
+id = "T3_value_marker"
+description = "vox_tagged: read a removed vox value as live"
+file = "src/cratekit/write/vox_tag.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_intake_land_vox_native.py", "tests/test_adopt_placements.py"]
+old = '''        if str(getattr(tag, "ParentID", "") or "") in categories and not _removed(tag, "My Tag")'''
+new = '''        if str(getattr(tag, "ParentID", "") or "") in categories'''
+
+[[rows]]
+id = "T4_association_marker"
+description = "vox_tagged: read an association rekordbox removed as a tag (R-758)"
+file = "src/cratekit/write/vox_tag.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_intake_land_vox_native.py", "tests/test_adopt_placements.py"]
+old = '''        if not _removed(song, "My Tag association")'''
+new = '''        if True'''
+
+[[rows]]
+id = "T5_no_value_is_none"
+description = "vox_tagged: answer the empty set where the library has no vox tag, losing None"
+file = "src/cratekit/write/vox_tag.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_intake_land_vox_native.py", "tests/test_adopt_placements.py"]
+old = '''    if not values:
+        return None'''
+new = '''    if not values:
+        return frozenset()'''
+
+[[rows]]
+id = "D1_tag_ignored"
+description = "derive_from_taxonomy: the score files the vocal sub even when the tag was read (the pre R-2056 rule)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''                carries_vox(entry.location)
+                if carries_vox is not None
+                else routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+new = '''                routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+
+[[rows]]
+id = "D2_tag_or_score"
+description = "derive_from_taxonomy: file by the tag OR the score"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''                carries_vox(entry.location)
+                if carries_vox is not None
+                else routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+new = '''                (carries_vox is not None and carries_vox(entry.location))
+                or routing.routes_with_vox(entry.voxlevel, vocal_threshold)'''
+
+[[rows]]
+id = "D3_uncalibrated_files"
+description = "derive_from_taxonomy: file a tagged track on a library with no calibration"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''            if vocal_threshold is not None and (
+                carries_vox(entry.location)'''
+new = '''            if (
+                carries_vox(entry.location)'''
+
+[[rows]]
+id = "C1_outcome"
+description = "vox_carrier: answer for a file whose row did not match, if a tagged id is named"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        return match.outcome is trees.MatchOutcome.MATCHED and match.content_id in tagged'''
+new = '''        return match.content_id in tagged'''
+
+[[rows]]
+id = "C2_tagged_set"
+description = "vox_carrier: every matched file carries the tag"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        return match.outcome is trees.MatchOutcome.MATCHED and match.content_id in tagged'''
+new = '''        return match.outcome is trees.MatchOutcome.MATCHED'''
+
+[[rows]]
+id = "C3_untagged_library"
+description = "vox_carrier: a library with no tag carries it on every file"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        return lambda _location: False'''
+new = '''        return lambda _location: True'''
+
+[[rows]]
+id = "M1_never_reads_tag"
+description = "_Tree.membership: never read the tag, so the database paths keep the score"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''                vox_carrier(self.cfg, self.db, self.rows, self.prefix_map) if reads_tag else None'''
+new = '''                None'''
+
+[[rows]]
+id = "M2_reads_without_sub"
+description = "_Tree.membership: read the tag whenever calibrated, even with no vocal sub declared"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        reads_tag = vocal_threshold is not None and bool(
+            _additive_ids(self.declared, taxonomy.SIGNAL_VOX)
+        )'''
+new = '''        reads_tag = vocal_threshold is not None'''
+
+[[rows]]
+id = "U1_untagged_empty"
+description = "_untagged: never name the score's placements the tag does not make"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return tuple(entry for entry in scored if entry.sub in vocal and entry not in placed)'''
+new = '''    return ()'''
+
+[[rows]]
+id = "U2_untagged_any_sub"
+description = "_untagged: name every score placement, band subs too, not the vocal ones only"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    return tuple(entry for entry in scored if entry.sub in vocal and entry not in placed)'''
+new = '''    return tuple(entry for entry in scored if entry not in placed)'''
+
+[[rows]]
+id = "K1_untagged_is_unexpected"
+description = "check: report a score placed untagged membership as unexpected, a leftover"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''            if (destination.bucket, destination.sub, content_id) in scored:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "K2_untagged_any_bucket"
+description = "check: name a vocal membership untagged in any bucket, hiding a wrong bucket leftover"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''            if (destination.bucket, destination.sub, content_id) in scored:'''
+new = '''            if any(content_id == entry[2] for entry in scored):'''
+
+[[rows]]
+id = "K3_untagged_not_a_difference"
+description = "ConvergenceReport.differences: leave the untagged out, so converged clears over them"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        return self.missing + self.unexpected + self.untagged'''
+new = '''        return self.missing + self.unexpected'''
+
+[[rows]]
+id = "K4_untagged_unlocated"
+description = "check: leave an untagged row without its file, so the report names a row id"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        untagged_found = [
+            replace(entry, location=located_at.get(entry.content_id or ""))
+            for entry in untagged_found
+        ]'''
+new = '''        untagged_found = list(untagged_found)'''
+
+[[rows]]
+id = "R1_before_untagged"
+description = "rebuild_tree: the before check is handed no untagged"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    before = tree.compare(placements, not_compared, untagged)'''
+new = '''    before = tree.compare(placements, not_compared)'''
+
+[[rows]]
+id = "R2_after_untagged"
+description = "rebuild_tree: the after check is handed no untagged, so they read as leftovers"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_adopt_vocals.py", "tests/test_unread_playlist_warnings.py"]
+old = '''    after = tree.compare(placements, not_compared, untagged)'''
+new = '''    after = tree.compare(placements, not_compared)'''
+
+[[rows]]
+id = "R3_report_untagged"
+description = "report_convergence: converge's check is handed no untagged"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        *tree.favorites(derived.placements, derived.not_compared), derived.untagged
+    )'''
+new = '''        *tree.favorites(derived.placements, derived.not_compared)
+    )'''
+
+[[rows]]
+id = "W1_after_report"
+description = "after_report: stage no untagged, so a resume never names them"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        "untagged": [left_behind_record(entry) for entry in after.untagged],'''
+new = '''        "untagged": [],'''
+
+[[rows]]
+id = "W2_converge_count"
+description = "converge: drop the untagged count line, so a cut list hides them"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        counted = (UNTAGGED_COUNT.format(len(report.untagged)),) if report.untagged else ()'''
+new = '''        counted = ()'''
+
+[[rows]]
+id = "W3_gate_count"
+description = "route resort: count no untagged on the gate"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py", "tests/test_unread_playlist_warnings.py"]
+old = '''        facts["untagged"] = sum(len(report.untagged) for report in reports)'''
+new = '''        facts["untagged"] = 0'''
+
+[[dropped]]
+id = "C4_tombstones"
+description = "vox_carrier: index tombstoned rows too, so a tag on a removed row files the live file"
+reason = "at the cap; the index is trees.index_active_rows, whose tombstone rule its own suite holds, and the round one review killed this shape (its G10)"
+
+[[dropped]]
+id = "W4_untagged_message_step"
+description = "untagged_message: drop the mytags-vocals step from the warning"
+reason = "at the cap; a wording row, held by the after report test asserting the step"
+
+[[dropped]]
+id = "W5_unrecorded_untagged"
+description = "_resort_facts: read a plan frozen without the count as zero"
+reason = "at the cap; a resume of an older build's job, held by its own test"

@@ -160,10 +160,9 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     elif files:
         threshold = metadata_cli.load_vocal_threshold(cfg)
         readings = [rebuild.read_truth(path) for path in files]
-        derived: dict[
-            tree_registry.DerivationSource | None,
-            tuple[tuple[rebuild.DeclaredPlacement, ...], tuple[str, ...]],
-        ] = {}
+        # NO DATABASE IS READ BEFORE THIS GATE, so the score stands in for the
+        # vox My Tag the landing wrote from it (R-2056).
+        derived: dict[tree_registry.DerivationSource | None, rebuild.Membership] = {}
         for tree_id in native:
             source = entries.derivation_source(tree_id)
             if source not in derived:
@@ -171,8 +170,8 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
                     cfg, declared, tree_id=tree_id, source=source, vocal_threshold=threshold,
                     truth=readings,
                 )
-            placements[tree_id], not_derived = derived[source]
-            gaps.update(not_derived)
+            placements[tree_id] = derived[source].placements
+            gaps.update(derived[source].not_compared)
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
     genre: dict[str, str] = {}
@@ -683,6 +682,14 @@ UNRECORDED_UNREAD = (
 )
 
 
+#: What the resume's gate shows of a plan frozen by a build that did not count
+#: the vocal memberships the vox My Tag does not place (R-2056), never a zero.
+UNRECORDED_UNTAGGED = (
+    "not counted by the build this plan was queued from; the drive names any "
+    "it finds"
+)
+
+
 def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str, Any]:
     """What the gate shows in front of the adds, counted off them (R-691's rule).
 
@@ -700,6 +707,10 @@ def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str
         "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
         "adds": len(adds),
         "left behind": int(facts.get("left_behind") or 0),
+        # A plan frozen before R-2056 never counted them, which is not zero.
+        "vocal untagged": (
+            int(facts.get("untagged") or 0) if "untagged" in facts else UNRECORDED_UNTAGGED
+        ),
         "playlists not compared": playlists,
         "not derived": list(facts.get("not_derived") or ()),
         "left alone": list(facts.get("left_alone") or ()),
@@ -725,7 +736,7 @@ def route_resort(ctx) -> Envelope:
     adds: list[dict[str, str]] = []
     # The list is recorded even when empty, since a job without it is one an
     # older build froze, which the resume's gate says (R-2020).
-    facts: dict[str, Any] = {"trees": list(routed), "unidentified": []}
+    facts: dict[str, Any] = {"trees": list(routed), "unidentified": [], "untagged": 0}
     opened: str | None = None
     if routed:
         threshold = metadata_cli.load_vocal_threshold(cfg)
@@ -735,6 +746,8 @@ def route_resort(ctx) -> Envelope:
         for report in reports:
             adds.extend(rebuild.additions(report))
         facts["left_behind"] = sum(len(report.unexpected) for report in reports)
+        # In a vocal sub by the score and not the tag (R-2056), not left behind.
+        facts["untagged"] = sum(len(report.untagged) for report in reports)
         facts["not_derived"] = sorted(
             {gap for report in reports for gap in report.not_compared}
         )

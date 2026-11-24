@@ -813,3 +813,39 @@ told there, not here.
 **Closes when:** the scope holds both candidate folders back and the plan and
 the doctor line name them, as a playlist whose marker cannot be read is held.
 Ledger only.
+
+---
+
+## R-2061. A flagged routing tree whose only differences are untagged keeps its flag, and its refusal still says to run the rebuild
+
+**Found:** at the review of #1061, R-2056, 2026-11-24.
+
+**The mechanism.** A rebuild clears a tree's unconverged flag only when its after check converges, and an `untagged` vocal membership is a difference the additive rebuild cannot remove. `assert_converged`'s refusal (`tree-unconverged`) gives the step "run the rebuild for this tree", and `accept_as_it_stands` refuses a derivable tree. So a tree flagged by a restore whose remaining differences are untagged vocal memberships stays flagged until each is tagged or taken out, and the refusal does not say so.
+
+**Measured cost.** Driven by the review on a disposable database: tagged, rebuilt, the association marked removed, the tree marked unconverged; the rebuild job exits 0 with the `vocal-membership-untagged` warning, the flag stays, and `route inbox` refuses with the rebuild step. The same holds before this branch for any `unexpected` leftover, the 484 on the live library among them, so R-2056 does not change whether the live tree clears today. The out of band restore detection that sets the flag was not driven.
+
+**Closes when:** the unconverged refusal names, beside the rebuild, what a rebuild cannot settle (the leftovers and the untagged, taken out or tagged) when the last check found them. Ledger only: maintainer wording over a state that already existed.
+
+---
+
+## R-2062. The mirror edits, route inbox and the export bridge still file the vocal sub by the file's score, so a tagged track the account moves leaves its with vox and the resort puts it back
+
+**Found:** at the review of #1061, R-2056, 2026-11-24.
+
+**The mechanism.** R-2056 made the convergence check, `tree rebuild` and `route resort` file the vocal sub by the `vox` My Tag (U127), through `rebuild.derive_from_taxonomy`'s `carries_vox`. Three callers pass none and keep the score: `organize.mirror_edits._plan_genre`, which holds the database handle and the row's content id and REMOVES the held routed playlists its derivation does not want; `route inbox`'s plan, `routing_cli.plan_inbox`, which reads no database before its gate; and the export bridge, `routing_export._decide`. `mirror_edits.py` was left alone because #1058 (U958) was editing its removal path beside this card.
+
+**Measured cost.** Driven by the review on the organize harness: a track tagged `vox` with no score, held in `Deep House / with vox`, moved on the account from Low to High; the mirror's change leaves `Deep House / with vox` and the track ends in High alone. After R-2056 the next `route resort` or `rebuild` adds it back, so the membership flips between verbs. In reverse, an untagged track over the cut that the account moves joins the new folder's `with vox` by the score, and `converge` then names it `untagged`. On the live library 2 tagged rows read under the cut and 607 untagged rows over it (R-2056), so the population is small but every one of them flips. `route inbox` files rows a landing has just tagged from the same score, so it disagrees only where the tag write failed or a person changed it; not measured.
+
+**Closes when:** `mirror_edits._plan_genre` passes the tag's answer for its one row (`decision.content_id` in `write.vox_tag.vox_tagged(db) or frozenset()`, since the reader answers None for a library with no vox tag), with a test that a tagged track under the cut keeps or joins its `with vox` and an untagged one over the cut does not; and `route inbox` reads the tag for the rows it routes, or the GUIDE keeps saying it files by the score. Earns an issue under the board bar's (a): a verb removes a membership the product's own adoption wrote.
+
+---
+
+## R-2063. metadata mytags-vocals counts a vox association marked removed as already present, so it never tags that row again
+
+**Found:** at the review of #1061, R-2056, 2026-11-24.
+
+**The mechanism.** `rb_nodes.add_my_tag` asks `get_my_tag_songs(MyTagID, ContentID).first()` and reads no soft delete marker, so an association marked `rb_local_deleted` counts as present and `apply_mytags` reports the row `already`. `write.vox_tag.vox_tagged`, the reader every vocal filing path now asks, reads the marker and calls that row untagged (R-758). So a row whose file clears the cut and whose association is marked removed is named `untagged` by `converge` and is never tagged by the write that settles the rest.
+
+**Measured cost.** Driven by the review on a disposable database: a row tagged, its association marked removed, then `apply_mytags` over it wrote 0, already 1, and the next rebuild still read `untagged`. R-2056's remedy text was reworded to send such a row to rekordbox. Whether rekordbox itself leaves a removed association as a soft delete is unmeasured (as R-843 says for the category), so whether a live row reaches this is not known.
+
+**Closes when:** an attended read says whether rekordbox soft deletes a My Tag association it takes off; if it does, the writer reads the marker as the reader does. Ledger only: it closes at an attended sitting, and the product's text no longer claims the write settles it.
