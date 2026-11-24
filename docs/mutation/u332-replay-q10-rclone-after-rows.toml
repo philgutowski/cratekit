@@ -1,0 +1,12 @@
+name = "u332-replay-q10-rclone-after"
+pass_kind = "replay"
+
+[[rows]]
+id = "u317.Q10_token_not_struck"
+source = { table = "u317.json", id = "Q10_token_not_struck" }
+description = "run_backup: the record's token stays in the library's fact while a run sends, so a failed run of another installation leaves its record trusted (round two's finding)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py", "tests/test_jobs.py"]
+old = '                    _strike_token(cfg)'
+new = '                    pass'
