@@ -20,6 +20,7 @@ from cratekit.cli.doctor import InstallOrigin as _InstallOrigin
 from cratekit.cli.doctor import Probes as _Probes
 from cratekit.deletion.trash import TrashLayout, TrashStatus
 from cratekit.write.metadata_cli import ResolutionTotals
+from cratekit.write.numbers import Item, NumbersPlan
 
 #: A synthetic volume identity. Shaped like a real one and belonging to nobody,
 #: because R1 forbids a shipped artifact from carrying a real library string.
@@ -74,6 +75,8 @@ def green(**overrides) -> _Probes:
         trash_probe=_usable_trash,
         # A collection whose every row resolves, described rather than built.
         path_survey=lambda _cfg: ResolutionTotals(active=10, unresolved=0, unmapped=0),
+        # U958. Every playlist of the product's numbered 1 to N, described rather than built.
+        numbers_survey=lambda _cfg, _declared: NumbersPlan(items=(), scanned=12),
         # A release install that is current, so no green run reaches the
         # network and none depends on how the suite's own copy was installed.
         install_origin=lambda: _InstallOrigin(
@@ -118,6 +121,16 @@ def hostile(**overrides) -> _Probes:
         # The library R-372 was found on: every row under a drive name no rule maps.
         path_survey=lambda _cfg: ResolutionTotals(
             active=10, unresolved=10, unmapped=10, prefixes={"/renamed/DRIVE": 10}
+        ),
+        # U958. Sitting 107's playlist: 556 live rows numbered 1 to 557, 548 missing.
+        numbers_survey=lambda _cfg, _declared: NumbersPlan(
+            items=(
+                Item(
+                    playlist_id="1", path="BY GENRE + ENERGY / Tech House / High", rows=556,
+                    lowest=1, highest=557, marked=1, moves=(("m", 557, 556),),
+                ),
+            ),
+            scanned=12,
         ),
         # U181. The copy sitting 51 landed from: no vocals extra.
         vocal_requirement=lambda: ("extra", "the 'vocals' extra is not installed here"),

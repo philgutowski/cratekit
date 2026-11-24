@@ -141,6 +141,31 @@ STATE_VERBS: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── Playlists numbered 1 to N again (U958) ──────────────────────────────
+    Entry(
+        name="repair.numbers",
+        summary=(
+            "number the live rows of every playlist under this product's nodes, and "
+            "any named, 1 to N in the order rekordbox shows them, so a removal by "
+            "hand takes out the track it was asked to"
+        ),
+        module="cratekit.write.numbers_cli", builder="build", handler_key="repair.numbers",
+        # No feature row or source script: the source never removed a membership.
+        # Core, not the ``repair`` module: the gaps it closes were left by core writes.
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        #: The tree only: each membership row's ``TrackNo`` and its two stamps.
+        writes=frozenset({"db_tree"}), destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        gates=(
+            GateSpec(
+                name="repair.numbers.confirm", options=("apply", "abort"),
+                prompt="Number these playlists' live rows 1 to N?",
+                #: Explicit (R34): a write to the playlists of a live library.
+                explicit=True, digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     Entry(
         name="status", summary="per-source sync state, open runs, and unconverged trees",
         module="cratekit.cli.doctor", builder="build_status", handler_key="status",

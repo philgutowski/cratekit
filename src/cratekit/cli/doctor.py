@@ -58,6 +58,7 @@ from cratekit.cli.doctor_library import (
     _check_library_identity,
     _check_library_mounted,
     _check_paths_resolved,
+    _check_playlist_numbers,
     _check_rekordbox_closed,
     _check_rekordbox_pins,
     _check_taxonomy_schema,
@@ -245,6 +246,8 @@ CHECKS: tuple[Check, ...] = (
     Check("rekordbox.pins", _check_rekordbox_pins),
     # After the pins, since its answer comes off an open the binding pin governs.
     Check("library.paths_resolved", _check_paths_resolved),
+    # Off the same kind of copy, after the paths (U958).
+    Check("library.playlist_numbers", _check_playlist_numbers),
     Check("keychain.reachable", _check_keychain),
     *(_bound(key, _check_credential) for key in sorted(CREDENTIALS_BY_CHECK)),
     *(_bound(f"binary.{name}", _check_binary) for name in BINARY_NAMES),

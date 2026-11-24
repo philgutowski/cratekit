@@ -20,7 +20,7 @@ row in on the write handle's session (:func:`record_touched`), and
 :func:`commit_guarded` closes their gaps just before the binding's commit
 (:func:`close_gaps`), from SQL, stamped as U955 stamps a renumbered row, proven
 from SQL before the commit. So every verb that removes a membership inherits it,
-and the repair (``crate playlists renumber``) is the same rule over playlists it
+and the repair verb (``write.numbers``) is the same rule over playlists it
 records itself, with nothing removed.
 """
 

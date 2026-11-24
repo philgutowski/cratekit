@@ -1096,6 +1096,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "tag.rows": [],  # Stale row genres: it reads the configured collection.
         "repair.rows": lambda: _rows_whole(),  # R-923. Rows made whole first: an empty plan.
         "repair.link": lambda: _link_rows(),  # A32. ContentLink given first: nothing written.
+        "repair.numbers": [],  # U958. No playlist out of 1 to N: an empty plan, asked anyway.
         "taxonomy.upgrade": lambda: _taxonomy_behind(),  # U132. The plan adds Favorites back.
         # U194. The template as the copy and a word answered; tests/test_taxonomy_word.py.
         "taxonomy.alias": lambda: _shipped_copy(["Latin Electronic", "Afro House"]),
@@ -1582,7 +1583,8 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     for name in (
         "inbox.analyzed", "inbox.refill", "adopt.move", "inbox.rotate", "tag.rows",
-        "analyze.adopt", "repair.rows", "repair.link", "favorites.refresh", "favorites.backfill",
+        "analyze.adopt", "repair.rows", "repair.link", "repair.numbers", "favorites.refresh",
+        "favorites.backfill",
         "favorites.split", "favorites.order", "tag.suggest", "tag.set", "tag.campaign",
         "intake.inspiration",
         # U112. Only its database area is refused without one; its own suite drives the rest.
