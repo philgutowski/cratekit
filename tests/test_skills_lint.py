@@ -304,6 +304,11 @@ def _mk_skill(root: Path, name: str, body: str, frontmatter: str | None = None) 
     (directory / "SKILL.md").write_text(header + body)
 
 
+# Rule (d). Assembled at runtime so this file does not trip the guard it tests.
+_A_HOME_LITERAL = "/" + "Users" + "/" + "jdoe" + "/Documents/Cratekit/"
+_A_VOLUME_LITERAL = "/" + "Volumes" + "/" + "BigAudioDrive"
+
+
 @pytest.mark.parametrize(
     ("body", "scripts", "expected"),
     [
@@ -318,8 +323,11 @@ def _mk_skill(root: Path, name: str, body: str, frontmatter: str | None = None) 
             "missing module 'cratekit.nope.gone'",
         ),
         ("Deep reference: `src/cratekit/nope/NOTES.md`\n", set(), "deep reference does not exist"),
+        (f"while working in {_A_HOME_LITERAL}.\n", set(), "hardcoded home directory"),
+        # Rule (g): a flag renamed underneath the skill.
+        ("```bash\ncrate sync --no-such-flag\n```\n", {"crate"}, "--no-such-flag"),
     ],
-    ids=["unknown script", "missing module", "dead deep reference"],
+    ids=["unknown script", "missing module", "dead deep reference", "home literal", "unknown flag"],
 )
 def test_a_rule_reports_what_it_finds(tmp_path, body, scripts, expected):
     _mk_skill(tmp_path, "crate-x", body)
@@ -375,27 +383,13 @@ def test_module_path_invocation_fails_even_when_the_module_exists(tmp_path):
     assert any("not on the no-script allowlist" in p for p in problems)
 
 
-# Rule (d). Assembled at runtime so this file does not trip the guard it tests.
-_A_HOME_LITERAL = "/" + "Users" + "/" + "jdoe" + "/Documents/Cratekit/"
-_A_VOLUME_LITERAL = "/" + "Volumes" + "/" + "BigAudioDrive"
-
-
 def test_a_volume_literal_in_any_skill_fails(tmp_path):
     """No skill has a sanctioned home for a personal literal."""
     _mk_skill(tmp_path, "crate-x", f"the volume is {_A_VOLUME_LITERAL} today\n")
     _mk_skill(tmp_path, "crate-backup", f"mirror {_A_VOLUME_LITERAL} nightly\n")
     problems = _lint(tmp_path, set())
     assert any(p.startswith("crate-x: personal literal") for p in problems)
-    assert any(p.startswith("crate-backup: personal literal") for p in problems), (
-        "no skill is exempt; the source rule's two carve-outs are exactly where "
-        "its live violations went unnoticed"
-    )
-
-
-def test_a_home_directory_literal_in_a_skill_fails(tmp_path):
-    _mk_skill(tmp_path, "crate-x", f"while working in {_A_HOME_LITERAL}.\n")
-    problems = _lint(tmp_path, set())
-    assert any("hardcoded home directory" in p for p in problems)
+    assert any(p.startswith("crate-backup: personal literal") for p in problems), "an exemption"
 
 
 def test_a_bare_volume_name_in_a_skill_fails(tmp_path):
@@ -412,17 +406,11 @@ def test_a_bare_volume_name_in_a_skill_fails(tmp_path):
 
 
 def test_year_literal_in_fenced_block_fails_prose_passes(tmp_path):
-    _mk_skill(
-        tmp_path,
-        "crate-x",
-        "Written 2026-08-01.\n```bash\nmv f Processed_Tracks/2026/x/\n```\n",
-    )
+    _mk_skill(tmp_path, "crate-x",
+              "Written 2026-08-01.\n```bash\nmv f Processed_Tracks/2026/x/\n```\n")
     assert any("year-literal path segment" in p for p in _lint(tmp_path, set()))
-    _mk_skill(
-        tmp_path / "b",
-        "crate-y",
-        'Written 2026-08-01.\n```bash\nmv f "Processed_Tracks/{year}/x/"\n```\n',
-    )
+    _mk_skill(tmp_path / "b", "crate-y",
+              'Written 2026-08-01.\n```bash\nmv f "Processed_Tracks/{year}/x/"\n```\n')
     assert _lint(tmp_path / "b", set()) == []
 
 
@@ -443,11 +431,8 @@ def test_missing_description_fails(tmp_path):
 
 def test_info_string_fence_is_not_a_blind_spot(tmp_path):
     """A fence with an info string tail, ```` ```bash title=x ````, is still linted."""
-    _mk_skill(
-        tmp_path,
-        "crate-x",
-        "```bash title=x\ncrate-nonexistent --run\nmv f Processed_Tracks/2026/\n```\n",
-    )
+    _mk_skill(tmp_path, "crate-x",
+              "```bash title=x\ncrate-nonexistent --run\nmv f Processed_Tracks/2026/\n```\n")
     problems = _lint(tmp_path, set())
     assert any("unknown script 'crate-nonexistent'" in p for p in problems)
     assert any("year-literal path segment" in p for p in problems)
@@ -464,13 +449,6 @@ def test_a_command_naming_no_real_verb_fails(tmp_path):
     problems = _lint(tmp_path, {"crate"})
     assert any("does not parse" in p for p in problems), problems
     assert any("invalid choice" in p for p in problems), problems
-
-
-def test_a_command_naming_a_flag_the_verb_does_not_declare_fails(tmp_path):
-    """Rule (g): a flag renamed underneath the skill."""
-    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --no-such-flag\n```\n")
-    problems = _lint(tmp_path, {"crate"})
-    assert any("--no-such-flag" in p for p in problems), problems
 
 
 @pytest.mark.parametrize(
@@ -547,42 +525,23 @@ def test_a_profile_disabled_verb_is_absent_rather_than_refusing():
     absent = sorted(hidden)[0]
     with pytest.raises(SystemExit) as exit_code:
         slim.parse_args([absent])
-    assert exit_code.value.code == 2, (
-        f"a verb the slim preset excludes, {absent!r}, no longer produces an "
-        f"argument error; if it now REFUSES with a cause, the skills that "
-        f"describe this behaviour have to be rewritten, not this test"
-    )
+    assert exit_code.value.code == 2, f"{absent!r} refuses now, so the skills need rewriting"
 
 
 # The real tree
 
 #: What ships, written out because the count is a decision that belongs in a diff.
-EXPECTED_SKILLS: frozenset[str] = frozenset(
-    {
-        "adopt-a-library",
-        "analyze-audio",
-        "first-run",
-        "intake-and-name",
-        "label-catalogues",
-        "library-reports",
-        "library-status",
-        "remove-tracks",
-        "restore-and-converge",
-        "review-queue",
-        "route-the-library",
-        "sync-and-publish",
-    }
-)
+EXPECTED_SKILLS: frozenset[str] = frozenset({
+    "adopt-a-library", "analyze-audio", "first-run", "intake-and-name", "label-catalogues",
+    "library-reports", "library-status", "remove-tracks", "restore-and-converge", "review-queue",
+    "route-the-library", "sync-and-publish",
+})
 
 
 def test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship():
     """ANTI-VACUITY: a lint over an empty root is also an empty problem list."""
     found = {d.name for d in SKILLS_ROOT.iterdir() if d.is_dir()}
-    assert found == EXPECTED_SKILLS, (
-        f"the shipped skill set moved. Added: {sorted(found - EXPECTED_SKILLS)}. "
-        f"Removed: {sorted(EXPECTED_SKILLS - found)}. Update EXPECTED_SKILLS in "
-        f"the same commit, so the change is one a reviewer sees."
-    )
+    assert found == EXPECTED_SKILLS, "the shipped skill set moved: update EXPECTED_SKILLS with it"
 
 
 def test_real_skills_pass_lint():

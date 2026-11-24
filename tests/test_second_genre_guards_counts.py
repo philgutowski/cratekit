@@ -1,11 +1,9 @@
 """R-1950: the guards on U340's second genre paths that no test killed.
 
-A track with a second genre has two plan entries, so a per track count reads
-``AdoptionPlan.firsts()`` and never ``entries``; the second bucket files by the
-second genre's own word; and a gate's column names both places a track is
-filed into. Each test here fails when its one guard is undone. Expected values
-are literals or the shipped taxonomy's own words, never asked of the code
-under test. Fixtures and stubs only: no real library, no rekordbox.
+A per track count reads ``AdoptionPlan.firsts()``, never ``entries``; the second
+bucket files by the second genre's word; a gate's column names both places. Each
+test fails when its one guard is undone; expected values are literals or shipped
+taxonomy words. Fixtures and stubs only: no real library, no rekordbox.
 """
 
 from __future__ import annotations
@@ -75,16 +73,13 @@ def test_a_landed_two_genre_track_files_as_its_first_folder_predicts(monkeypatch
 
     monkeypatch.setattr(apply_cli, "file_plan", file_plan)
     target = Path("/nowhere/One.flac")
+    added = (native.AddedRow(target=target, content_id="t", title="t", folder_path="f", empty={}),)
     landed = native.NativeLanded(
         tree_id="t", playlist="p", playlist_id="", present=(), memberships_added=0,
-        session_id="s",
-        added=(native.AddedRow(target=target, content_id="t", title="t", folder_path="f", empty={}),),
+        session_id="s", added=added,
     )
-    predicted = (
-        filing.Prediction(
-            target=target, place=plan_engine.Predicted(Disposition.ROUTE, "deep_house", "high")
-        ),
-    )
+    place = plan_engine.Predicted(Disposition.ROUTE, "deep_house", "high")
+    predicted = (filing.Prediction(target=target, place=place),)
     found = filing.file_landed(None, DECLARED, predicted, landed, actor="session")
     assert (found.state, found.differing) == ("filed", ())
     assert (found.filed, found.memberships) == (2, 2)
@@ -112,18 +107,13 @@ def test_the_adopt_steps_tracks_read_is_the_number_of_tracks(monkeypatch):
 
 
 def test_the_second_bucket_files_by_the_second_genres_own_word():
-    """The shipped Minimal / Deep Tech bucket declares a genre sub fed by the
-    word Rominimal alone, so only the second genre's word reaches it."""
+    """Minimal / Deep Tech's genre sub is fed by Rominimal alone, reached by the second word."""
     truth = rebuild.Truth(location="/m/t.flac", genre=DEEP, energy=8, second_genre=ROMINIMAL)
-    assert rebuild.filed_genres(DECLARED, truth) == (
-        ("deep_house", DEEP),
-        ("minimal_deep_tech", ROMINIMAL),
-    )
+    filed = (("deep_house", DEEP), ("minimal_deep_tech", ROMINIMAL))
+    assert rebuild.filed_genres(DECLARED, truth) == filed
     placements, _gaps = rebuild.derive_from_taxonomy(DECLARED, [truth], vocal_threshold=None)
     assert {(one.bucket, one.sub) for one in placements} == {
-        ("deep_house", "high"),
-        ("minimal_deep_tech", "high"),
-        ("minimal_deep_tech", "rominimal"),
+        ("deep_house", "high"), ("minimal_deep_tech", "high"), ("minimal_deep_tech", "rominimal"),
     }
 
 
