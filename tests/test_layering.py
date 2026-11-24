@@ -1,18 +1,9 @@
 """KTD23 layering and R19 stable identifiers, enforced as tests rather than as review.
 
-**Import direction (KTD23).** Layers depend downward only: foundation,
-domain, infrastructure, write, modules, CLI. The whole syntax tree is walked,
-since both of the source system's violations hid behind a LAZY import (a
-router reaching an optional analysis module, a shared helper importing a
-feature module in a real cycle).
-
-**No persisted display name (R19).** A taxonomy entry has a stable identifier
-and a display name; records key on the identifier, because in the source
-system renaming one genre touched six places and orphaned state keyed on the
-old name.
-
-Each checker is a pure function over source text, proved to bite on
-synthetic sources before it runs over the real package.
+Layers depend downward only, the whole syntax tree walked, since both of the source system's
+violations hid behind a LAZY import. Records key on a taxonomy entry's stable identifier, never
+its display name, since renaming one genre once orphaned state keyed on the old name. Each
+checker is a pure function over source text, proved to bite before it reads the package.
 """
 
 from __future__ import annotations
@@ -31,14 +22,8 @@ SRC_ROOT = REPO_ROOT / "src"
 LAYERS = ("foundation", "domain", "infrastructure", "write", "modules", "cli")
 RANK = {name: index for index, name in enumerate(LAYERS)}
 
-# Module-to-layer assignment. A module placed BY NAME is looked up first, so a
-# directory never silently overrules a role; every other module takes its
-# directory's layer from the patterns below. One line per placed module,
-# sorted (U296), so a part split from a placed module adds its own line.
-#
-# The output envelope and the exit-code vocabulary live under cli/ but are
-# foundation concepts every layer must use (KTD25); the tree registry lives
-# under core/ but is a WRITE concern.
+# A module placed BY NAME is looked up first, so a directory never overrules a role; one
+# sorted line each (U296). The envelope and exit codes are foundation under cli/ (KTD25).
 _PLACED: dict[str, str] = {
     "cratekit.cli.envelope": "foundation",
     "cratekit.cli.exit_codes": "foundation",
@@ -53,8 +38,7 @@ _PLACED: dict[str, str] = {
     "cratekit.core.config_base": "foundation",
     "cratekit.core.config_schema": "foundation",
     "cratekit.core.config_validate": "foundation",
-    #     * the convergence record is a WRITE concern under core/, so the
-    #       assertion every tree writer makes ships below the writers.
+    # The convergence record is a WRITE concern under core/, shipped below the writers.
     "cratekit.core.convergence": "write",
     "cratekit.core.exit_codes": "foundation",
     "cratekit.core.identity": "domain",
@@ -86,9 +70,8 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
     (r"^cratekit\.core\.", "infrastructure"),
     (r"^cratekit\.write\.", "write"),
     (r"^cratekit\.cli\.", "cli"),
-    # Package __init__ files rank at the TOP of the layers they contain, since an
-    # initializer re-exports its members; the root package ranks at the bottom, so
-    # ``import cratekit`` and ``crate --help`` stay cheap.
+    # A package initializer re-exports its members, so it ranks at the TOP of its layer;
+    # the root ranks at the bottom, so ``import cratekit`` and ``crate --help`` stay cheap.
     (r"^cratekit\.core$", "infrastructure"),
     (r"^cratekit\.write$", "write"),
     (r"^cratekit\.cli$", "cli"),
@@ -97,9 +80,7 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
     (r"^cratekit$", "foundation"),
 )
 
-# Dotted paths that are PACKAGES rather than modules, so ``from cratekit.core
-# import taxonomy`` is read as a module and ``from cratekit.core.config import
-# load`` as a symbol.
+# Dotted paths this deep are PACKAGES, so a name imported from one is read as a module.
 _PACKAGE_DEPTH = 2  # "cratekit" and "cratekit.<subpackage>"
 
 # Toggleable feature-module package names. A lower layer must not name one,
@@ -151,18 +132,14 @@ def verb_names() -> frozenset[str]:
     return _FALLBACK_VERBS
 
 
-# The text a user types: a package-manager install line or Cratekit's own
-# entry point. D2 says only the CLI renders a remediation token into a command,
-# since the command depends on platform, package manager and interface. Matched
-# anywhere in a constant, since a docstring is one.
+# An install line a user types: only the CLI renders a remediation token into a command (D2).
+# Matched anywhere in a constant, since a docstring is one.
 _SHELL_COMMAND = re.compile(
     r"\b(?:brew|apt|apt-get|pipx|pip|sudo|port|winget|choco|dnf|yum|npm)\s+install\b"
 )
 
-# The entry point followed by a SUBCOMMAND, IN A COMMAND CONTEXT: quoted as
-# code, after a shell prompt, or after an imperative. Bare flags are the entry
-# point's own identity, and "crate" as an ordinary noun ("the crate registry")
-# is correct prose a guard must not fail, or it gets worked around.
+# The entry point and a SUBCOMMAND in a command context: quoted, after a prompt or an
+# imperative. Bare flags and "crate" as an ordinary noun are correct prose and pass.
 _CLI_INVOCATION = re.compile(
     r"(?:[`$]\s*|\b(?:run|runs|running|type|typing|invoke|invoking|execute|executing)\s+)"
     r"crate\s+(?!-)[a-z][a-z0-9]*(?:-[a-z0-9]+)*\b"
@@ -198,15 +175,12 @@ def import_direction_violations(source: str, module: str) -> list[str]:
             targets = [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
             if node.level:
-                # A relative import needs package context this pure checker lacks; the real
-                # tree scan reports absolute paths and covers it there.
+                # Needs package context this checker lacks; the tree scan covers it.
                 continue
             if node.module:
-                # Expand imported names into module paths ONLY when the source is a package,
-                # so a symbol is never read as a module.
+                # Names become module paths ONLY from a package, so a symbol stays a symbol.
                 if len(node.module.split(".")) <= _PACKAGE_DEPTH:
-                    # Even from a package, dunders and CapWords are symbols, so
-                    # ``from cratekit import __version__`` is not placed as a module.
+                    # Even from a package, dunders and CapWords are symbols.
                     targets = [
                         f"{node.module}.{a.name}"
                         for a in node.names
@@ -244,11 +218,7 @@ def _is_nested(tree: ast.AST, node: ast.AST) -> bool:
 
 
 def higher_concept_violations(source: str, module: str) -> list[str]:
-    """One message per higher-layer name appearing as a string literal.
-
-    This is Rule 1 written as data, ``importlib.import_module("cratekit.analysis.vocal")``,
-    plus R19's half: no taxonomy display name below the modules layer.
-    """
+    """One message per higher-layer name, verb, display name or command in a string literal."""
     if RANK[layer_of(module)] >= RANK["modules"]:
         return []
 
@@ -305,12 +275,7 @@ def _names_a_display_name(node: ast.AST) -> bool:
 
 
 def persisted_display_name_violations(source: str, module: str) -> list[str]:
-    """One message per record keyed by a display name.
-
-    Structural: a display name may be read, printed and messaged, never placed
-    in a key position, a dict literal key, a subscript, or a mapping lookup's
-    first argument.
-    """
+    """One message per display name in a key position: dict key, subscript, lookup, membership."""
     problems: list[str] = []
 
     def report(what: str, where: str) -> None:
@@ -410,51 +375,142 @@ def test_the_placement_table_is_sorted_and_names_only_layers_of_the_ladder():
         assert by_directory != layer, f"{module} is placed where its directory already puts it"
 
 
-def test_downward_and_same_layer_imports_pass():
-    source = (
-        "from cratekit.core.config import load\n"
-        "from cratekit.core.naming import build\n"
-    )
-    assert import_direction_violations(source, "cratekit.core.routing") == []
+IMPORTS, NAMES, KEYS = (
+    import_direction_violations, higher_concept_violations, persisted_display_name_violations,
+)
 
-
-def test_upward_import_from_a_lower_layer_fails():
-    """The planted violation is the exact shape of the live one in the source."""
-    source = "from cratekit.analysis.vocal_calibrate import load_threshold\n"
-    problems = import_direction_violations(source, "cratekit.core.routing")
-    assert len(problems) == 1
-    assert "domain" in problems[0] and "modules" in problems[0]
-
-
-def test_a_lazy_upward_import_is_still_a_violation():
-    """A deferred import is a hidden dependency, the source system's slim install ImportError."""
-    source = (
+#: (rule, planted source, the module it sits in, words its one problem names). Each is the
+#: exact shape of a mistake: deferred, written as data or prose, or a display name as a key.
+PLANTED_VIOLATIONS = (
+    pytest.param(
+        IMPORTS, "from cratekit.analysis.vocal_calibrate import load_threshold\n",
+        "cratekit.core.routing", ("domain", "modules"), id="upward-import-from-a-lower-layer",
+    ),
+    pytest.param(
+        IMPORTS,
         "def clears_vocal_cut(level):\n"
         "    from cratekit.analysis.vocal_calibrate import load_threshold\n"
-        "    return level >= load_threshold()\n"
-    )
-    problems = import_direction_violations(source, "cratekit.core.routing")
-    assert len(problems) == 1
-    assert "lazy import inside a function" in problems[0]
-
-
-def test_a_cycle_masked_by_a_lazy_import_is_a_violation():
-    """A shared helper importing a feature module is a real cycle, hidden by deferral."""
-    source = (
+        "    return level >= load_threshold()\n",
+        "cratekit.core.routing", ("lazy import inside a function",),
+        id="a-lazy-upward-import-is-still-a-violation",
+    ),
+    pytest.param(
+        IMPORTS,
         "def prepare(playlist):\n"
         "    from cratekit.intake import collection_xml\n"
-        "    return collection_xml.prepare(playlist)\n"
-    )
-    problems = import_direction_violations(source, "cratekit.core.sweep_prep")
+        "    return collection_xml.prepare(playlist)\n",
+        "cratekit.core.sweep_prep", ("infrastructure",),
+        id="a-cycle-masked-by-a-lazy-import-is-a-violation",
+    ),
+    pytest.param(
+        NAMES, 'MODULE = "cratekit.analysis.vocal_calibrate"\n', "cratekit.core.routing",
+        ("as a string",), id="a-core-module-naming-a-feature-operation",
+    ),
+    pytest.param(
+        NAMES, 'ROOT_FOLDER = "BY GENRE + ENERGY"\n', "cratekit.core.routing",
+        ("taxonomy display name",), id="a-core-module-hardcoding-a-taxonomy-literal",
+    ),
+    pytest.param(
+        NAMES, 'HINTS = {"ffmpeg": "brew install ffmpeg"}\n', "cratekit.core.binaries",
+        ("brew install",), id="a-foundation-module-spelling-an-install-command",
+    ),
+    pytest.param(
+        NAMES, 'MESSAGE = "no configuration found; run crate setup to create it"\n',
+        "cratekit.core.config", ("invocation of a CLI subcommand",),
+        id="a-foundation-module-spelling-a-cli-invocation",
+    ),
+    *(
+        pytest.param(
+            NAMES, source, "cratekit.core.config", ("invocation of a CLI subcommand",),
+            id=f"an-invocation-in-a-command-context-{context}",
+        )
+        for context, source in (
+            ("after-an-imperative", 'MESSAGE = "run crate setup first"\n'),
+            ("quoted-as-code", 'DOC = "Fix it with `crate doctor --repair`."\n'),
+            ("after-a-prompt", 'HELP = "$ crate label-sweep"\n'),
+        )
+    ),
+    pytest.param(
+        NAMES, '"""Resolve binaries.\n\n    Missing ones need pipx install yt-dlp first.\n'
+        '    """\n', "cratekit.core.binaries", ("pipx install",),
+        id="a-command-buried-in-a-docstring",
+    ),
+    pytest.param(
+        KEYS, "def save(entry, state):\n    state[entry.display_name] = {'done': True}\n",
+        "cratekit.core.session", ("subscript key",), id="a-state-record-keyed-by-a-display-name",
+    ),
+    pytest.param(
+        KEYS, "record = {entry.display_name: entry.count}\n", "cratekit.write.trees",
+        ("dict key",), id="a-dict-literal-keyed-by-a-display-name",
+    ),
+    pytest.param(
+        KEYS, "seen = state.get(entry.display_name)\n", "cratekit.core.session", (".get()",),
+        id="a-lookup-keyed-by-a-display-name",
+    ),
+    pytest.param(
+        KEYS, "if entry.display_name in watermarks:\n    pass\n", "cratekit.core.session",
+        ("membership key",), id="a-membership-test-on-a-display-name",
+    ),
+    pytest.param(
+        KEYS, 'state["Deep House"] = {"last_synced": 0}\n', "cratekit.core.session",
+        ("taxonomy display literal",), id="a-taxonomy-display-literal-as-a-state-key",
+    ),
+)
+
+
+@pytest.mark.parametrize(("rule", "source", "module", "named"), PLANTED_VIOLATIONS)
+def test_a_planted_violation_is_one_problem_naming_what_it_is(rule, source, module, named):
+    """Running each rule against the evasion is what proves it a guard."""
+    problems = rule(source, module)
     assert len(problems) == 1
-    assert "infrastructure" in problems[0]
+    assert all(word in problems[0] for word in named), problems[0]
 
 
-def test_a_core_module_naming_a_feature_operation_fails():
-    """Rule 1 written as data still has to fail. Otherwise the fix is one line."""
-    source = 'MODULE = "cratekit.analysis.vocal_calibrate"\n'
-    problems = higher_concept_violations(source, "cratekit.core.routing")
-    assert len(problems) == 1 and "as a string" in problems[0]
+#: (rule, correct source, the module it sits in). A guard that fails correct code is muted.
+CORRECT_CODE = (
+    pytest.param(
+        IMPORTS, "from cratekit.core.config import load\nfrom cratekit.core.naming import build\n",
+        "cratekit.core.routing", id="downward-and-same-layer-imports",
+    ),
+    *(
+        pytest.param(NAMES, source, "cratekit.core.config", id=f"crate-as-an-ordinary-noun-{n}")
+        for n, source in enumerate((
+            '"""The crate registry lives here."""\n',
+            '"""crate state is per install, and each crate module declares its own."""\n',
+            'NOTE = "one crate directory per library, one crate lock beside it"\n',
+        ))
+    ),
+    pytest.param(
+        NAMES, '"""Cheap enough that crate --help runs before setup."""\n', "cratekit.core.config",
+        id="a-foundation-module-may-name-the-entry-point-by-its-own-flags",
+    ),
+    pytest.param(
+        NAMES,
+        'PLATFORM = "provided by the operating system; there is nothing to install"\n'
+        'REMEDY = "install-keychain-backend"\n',
+        "cratekit.core.secrets", id="prose-about-installing-without-a-command",
+    ),
+    pytest.param(
+        NAMES, 'HELP = "brew install ffmpeg"\n', "cratekit.cli.doctor",
+        id="a-module-layer-file-may-spell-its-own-remediation",
+    ),
+    pytest.param(
+        KEYS,
+        "def save(entry, state):\n"
+        "    state[entry.id] = {'display': entry.display_name, 'done': True}\n",
+        "cratekit.core.session", id="keying-on-the-stable-identifier",
+    ),
+    pytest.param(
+        KEYS, 'print(f"routed into {entry.display_name}")\nlabel = entry.display_name\n',
+        "cratekit.write.trees", id="displaying-a-display-name",
+    ),
+)
+
+
+@pytest.mark.parametrize(("rule", "source", "module"), CORRECT_CODE)
+def test_correct_code_passes_every_rule_that_could_misread_it(rule, source, module):
+    """Every rule is directional: the CLI may spell a command and a module its own verb."""
+    assert rule(source, module) == []
 
 
 def test_a_core_module_naming_a_verb_fails():
@@ -465,137 +521,11 @@ def test_a_core_module_naming_a_verb_fails():
     assert len(problems) == 1 and "names the verb" in problems[0]
 
 
-def test_a_core_module_hardcoding_a_taxonomy_literal_fails():
-    source = 'ROOT_FOLDER = "BY GENRE + ENERGY"\n'
-    problems = higher_concept_violations(source, "cratekit.core.routing")
-    assert len(problems) == 1 and "taxonomy display name" in problems[0]
-
-
 def test_a_module_layer_file_may_name_its_own_concepts():
     """The rule is directional. A feature module naming its own verb is normal."""
     planted = sorted(verb_names())[0]
     source = f'WORKFLOW = "{planted}"\nFOLDER = "BY GENRE + ENERGY"\n'
     assert higher_concept_violations(source, "cratekit.label.sweep") == []
-
-
-# ── D2: remediation below the CLI is a token, never a command line ───────────
-
-
-def test_a_foundation_module_spelling_an_install_command_fails():
-    """"brew install ffmpeg" below the CLI is an upward dependency written as English (D2)."""
-    source = 'HINTS = {"ffmpeg": "brew install ffmpeg"}\n'
-    problems = higher_concept_violations(source, "cratekit.core.binaries")
-    assert len(problems) == 1 and "brew install" in problems[0]
-
-
-def test_a_foundation_module_spelling_a_cli_invocation_fails():
-    source = 'MESSAGE = "no configuration found; run crate setup to create it"\n'
-    problems = higher_concept_violations(source, "cratekit.core.config")
-    assert len(problems) == 1 and "invocation of a CLI subcommand" in problems[0]
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        '"""The crate registry lives here."""\n',
-        '"""crate state is per install, and each crate module declares its own."""\n',
-        'NOTE = "one crate directory per library, one crate lock beside it"\n',
-    ],
-)
-def test_prose_using_crate_as_an_ordinary_noun_passes(source):
-    """"crate" as an ordinary noun passes, or the guard gets muted."""
-    assert higher_concept_violations(source, "cratekit.core.config") == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        'MESSAGE = "run crate setup first"\n',
-        'DOC = "Fix it with `crate doctor --repair`."\n',
-        'HELP = "$ crate label-sweep"\n',
-    ],
-)
-def test_an_invocation_in_a_command_context_still_fails(source):
-    """An invocation after an imperative, quoted as code, or after a prompt still fails."""
-    problems = higher_concept_violations(source, "cratekit.core.config")
-    assert len(problems) == 1 and "invocation of a CLI subcommand" in problems[0]
-
-
-def test_a_foundation_module_may_name_the_entry_point_by_its_own_flags():
-    """``crate --help`` is the entry point describing itself; a remediation names a subcommand."""
-    source = '"""Cheap enough that crate --help runs before setup."""\n'
-    assert higher_concept_violations(source, "cratekit.core.config") == []
-
-
-def test_a_command_buried_in_a_docstring_still_fails():
-    """A docstring is one string constant, so a check on its first words is not a check."""
-    source = '"""Resolve binaries.\n\n    Missing ones need pipx install yt-dlp first.\n    """\n'
-    problems = higher_concept_violations(source, "cratekit.core.binaries")
-    assert len(problems) == 1 and "pipx install" in problems[0]
-
-
-def test_prose_about_installing_without_a_command_passes():
-    """Saying something must be installed, without a command, is this layer's own knowledge."""
-    source = (
-        'PLATFORM = "provided by the operating system; there is nothing to install"\n'
-        'REMEDY = "install-keychain-backend"\n'
-    )
-    assert higher_concept_violations(source, "cratekit.core.secrets") == []
-
-
-def test_a_module_layer_file_may_spell_its_own_remediation():
-    """Directional, like every other rule here. The CLI is allowed to say it."""
-    source = 'HELP = "brew install ffmpeg"\n'
-    assert higher_concept_violations(source, "cratekit.cli.doctor") == []
-
-
-# ── R19: display names are never keys ────────────────────────────────────────
-
-
-def test_a_state_record_keyed_by_a_display_name_fails():
-    source = "def save(entry, state):\n    state[entry.display_name] = {'done': True}\n"
-    problems = persisted_display_name_violations(source, "cratekit.core.session")
-    assert len(problems) == 1 and "subscript key" in problems[0]
-
-
-def test_a_dict_literal_keyed_by_a_display_name_fails():
-    source = "record = {entry.display_name: entry.count}\n"
-    problems = persisted_display_name_violations(source, "cratekit.write.trees")
-    assert len(problems) == 1 and "dict key" in problems[0]
-
-
-def test_a_lookup_keyed_by_a_display_name_fails():
-    source = "seen = state.get(entry.display_name)\n"
-    problems = persisted_display_name_violations(source, "cratekit.core.session")
-    assert len(problems) == 1 and ".get()" in problems[0]
-
-
-def test_a_membership_test_on_a_display_name_fails():
-    source = "if entry.display_name in watermarks:\n    pass\n"
-    problems = persisted_display_name_violations(source, "cratekit.core.session")
-    assert len(problems) == 1 and "membership key" in problems[0]
-
-
-def test_a_taxonomy_display_literal_as_a_state_key_fails():
-    """The literal form of the same mistake, and the more common one."""
-    source = 'state["Deep House"] = {"last_synced": 0}\n'
-    problems = persisted_display_name_violations(source, "cratekit.core.session")
-    assert len(problems) == 1 and "taxonomy display literal" in problems[0]
-
-
-def test_keying_on_the_stable_identifier_passes():
-    """What correct code looks like, asserted so the guard cannot forbid it."""
-    source = (
-        "def save(entry, state):\n"
-        "    state[entry.id] = {'display': entry.display_name, 'done': True}\n"
-    )
-    assert persisted_display_name_violations(source, "cratekit.core.session") == []
-
-
-def test_displaying_a_display_name_passes():
-    """A display name is for display. Reading and printing it is the whole point."""
-    source = 'print(f"routed into {entry.display_name}")\nlabel = entry.display_name\n'
-    assert persisted_display_name_violations(source, "cratekit.write.trees") == []
 
 
 # ── The real package ─────────────────────────────────────────────────────────
@@ -613,25 +543,17 @@ def _package_modules() -> list[tuple[str, str]]:
     return out
 
 
-def test_the_package_imports_downward_only():
-    problems: list[str] = []
-    for module, source in _package_modules():
-        problems += import_direction_violations(source, module)
-    assert not problems, "KTD23 import-direction violations:\n" + "\n".join(problems)
-
-
-def test_no_lower_layer_names_a_higher_layer_concept():
-    problems: list[str] = []
-    for module, source in _package_modules():
-        problems += higher_concept_violations(source, module)
-    assert not problems, "KTD23 naming violations:\n" + "\n".join(problems)
-
-
-def test_no_persisted_record_is_keyed_by_a_display_name():
-    problems: list[str] = []
-    for module, source in _package_modules():
-        problems += persisted_display_name_violations(source, module)
-    assert not problems, "R19 violations:\n" + "\n".join(problems)
+@pytest.mark.parametrize(
+    ("rule", "named"),
+    [
+        pytest.param(IMPORTS, "KTD23 import-direction", id="the-package-imports-downward-only"),
+        pytest.param(NAMES, "KTD23 naming", id="no-lower-layer-names-a-higher-layer-concept"),
+        pytest.param(KEYS, "R19", id="no-persisted-record-is-keyed-by-a-display-name"),
+    ],
+)
+def test_the_real_package_breaks_no_rule(rule, named):
+    problems = [found for module, source in _package_modules() for found in rule(source, module)]
+    assert not problems, f"{named} violations:\n" + "\n".join(problems)
 
 
 def test_every_package_module_is_placed_in_the_ladder():
@@ -652,12 +574,7 @@ _WRITE_RANKED_CORE_MODULES: dict[str, frozenset[str]] = {
 
 
 def test_a_write_ranked_core_module_imports_no_write_layer_module():
-    """A write-ranked core module imports no ``cratekit.write`` module, though its rank allows it.
-
-    Ranking ``core.restore`` as write lets it read the tree registry, and also
-    licenses the whole write layer; spending that licence must be a decision in
-    this file.
-    """
+    """Its rank licenses the whole write layer, so spending that is a decision made here."""
     offenders: dict[str, list[str]] = {}
     for module, source in _package_modules():
         allowed = _WRITE_RANKED_CORE_MODULES.get(module)
