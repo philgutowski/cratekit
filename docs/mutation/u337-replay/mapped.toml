@@ -1,0 +1,8 @@
+# Survey rows held by a killed row of a unit's own table rather than by a replay.
+
+[[mapped]]
+table = "u59.json"
+id = "G2_local_names_targets"
+to_table = "u326.json"
+to_id = "W3_u59_g2_local_names_targets"
+reason = "U326 (perf(u326) 76f82246) rewrote the source guards to walk each module once, which removed u59 G2's text; its own table measured the same substitution, a bare Name target only so the four shadowing routes reopen, at the new walk as W3, killed by 3 tests as G2 was at the survey"

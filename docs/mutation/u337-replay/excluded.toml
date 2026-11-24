@@ -1,0 +1,305 @@
+[[excluded]]
+table = "u173.json"
+id = "M11_gate_actor"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 6dbe79ef docs(u327): the guide, both visit skills and the concepts name analyze adopt, so the refactor owes it nothing; ambiguous on main"
+
+[[excluded]]
+table = "u173.json"
+id = "M16_batch_counts_rows"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 12a48300 feat(u319): the rekordbox visit takes the Auto Analysis path first, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u173.json"
+id = "M17_count_every_anlz"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 12a48300 feat(u319): the rekordbox visit takes the Auto Analysis path first, so the refactor owes it nothing; ambiguous on main"
+
+[[excluded]]
+table = "u173.json"
+id = "M18_marker_not_handed"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 080addf3 docs(u954): the rekordbox visit ends on Normal, Dynamic run first, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r758-b.json"
+id = "M4_verdict_withheld_is_moved"
+reason = "never killed under U290: every replay of it read no death (u310-replay-before-b.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u90-d.json"
+id = "D1_fit_refuses_over_its_energy_write"
+reason = "never killed under U290: every replay of it read no death (u298-replay-before-d.json, u306-replay-before-a.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u94-b.json"
+id = "W2_unreadable_not_counted"
+reason = "never killed under U290: every replay of it read no death (u298-replay-before-d.json, u306-replay-before-d.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u241-dsp.json"
+id = "D3_windows_method_reads_the_whole_track"
+reason = "never killed under U290: every replay of it read no death (u331-before-05-checked.json, u331-before-05.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K4_plain_separates"
+reason = "never killed under U290: every replay of it read no death (u306-replay-before-b.json, u331-before-05-checked.json, u331-before-05.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u263.json"
+id = "D19_energy_duration"
+reason = "never killed under U290: every replay of it read no death (u298-replay-before-d.json, u306-replay-before-d.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u263.json"
+id = "D20_energy_load"
+reason = "not killed under U290: its only deaths, in u298-replay-before-d.json, are all in tests/test_config_test_root.py, the r926 folder a mutant left outside the test roots, and every other replay of it read none (u306-replay-before-d.json, u325-after-l-24-rest.json, u325-before-clean-promoted.json, u325-replay-after.json, u325-replay-before.json); its text is now stale on main"
+
+[[excluded]]
+table = "u167.json"
+id = "M20_session_state"
+reason = "never killed under U290: every replay of it read no death (u306-replay-before-b.json, u312-replay-after-5.json, u312-replay-before-5.json, u331-before-03-checked.json, u331-before-03.json), and its text is now gone on main"
+
+[[excluded]]
+table = "r757-c1.json"
+id = "S2_payload_freezes_fast"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u50-review-fixes.json"
+id = "R3_fact_file_failure_untranslated"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 3ffc3639 fix(u317): round two, a failed run strikes the record's token and every quick command asks for the volume walked, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r-1.json"
+id = "T11_unreadable_config_falls_back"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r-1.json"
+id = "T14_unreadable_other_hook"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u27-round-8-independent.json"
+id = "D1_finding_no_classification"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u27-round-8-independent.json"
+id = "D2_finding_no_remedy_override"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u27-round-8-independent.json"
+id = "D4_composite_reason"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u40-author-round-2.json"
+id = "R8_not_long_running"
+reason = "never killed under U290: every replay of it read no death (u303-replay-before-a.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u194.json"
+id = "W15_alias_stale_digest"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 214e2fc5 refactor(u294): each verb the campaign composes exposes its own plan and apply, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u194.json"
+id = "W17_alias_nothing_to_do"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 214e2fc5 refactor(u294): each verb the campaign composes exposes its own plan and apply, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r757-b2.json"
+id = "F4_damaged_entry_accepted"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r1372.json"
+id = "K25_name_filter_gone"
+reason = "never killed under U290: every replay of it read no death (u300-replay-before-d.json, u331-before-06-checked.json, u331-before-06.json, u953-replay-before-a.json), and its text is now gone on main"
+
+[[excluded]]
+table = "u209.json"
+id = "H7_hold_equality_unchecked"
+reason = "never killed under U290: every replay of it read no death (u300-replay-before-d.json, u312-replay-after-7.json, u312-replay-before-7.json, u331-before-06-checked.json, u331-before-06.json, u953-replay-before-a.json), and its text is now gone on main"
+
+[[excluded]]
+table = "r758-a.json"
+id = "W6_removed_row_counts_as_present"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, d7347a75 fix(u288): a row an unmeasured table names is kept, the first delete review offers the removal, and an append after one goes past the highest position, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r647-a.json"
+id = "B16_serial_recorded_in_the_clear"
+reason = "never killed under U290: every replay of it read no death (u300-replay-before-b.json, u325-after-l-28.json, u325-before-l-18.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r647-a.json"
+id = "B17_macos_probe_reads_nothing"
+reason = "never killed under U290: every replay of it read no death (u300-replay-before-b.json, u325-after-l-28.json, u325-before-l-18.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r799-a.json"
+id = "L3_a_buckets_own_name_names_its_folder"
+reason = "never killed under U290: every replay of it read no death (u299-replay-before-10.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u142.json"
+id = "S11_read_handle_requires_closed"
+reason = "never killed under U290: every replay of it read no death (u309-replay-before-a.json, u325-after-l-30.json, u325-before-l-20.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u129-author.json"
+id = "A7_with_archive_omits_digest"
+reason = "never killed under U290: every replay of it read no death (u307-replay-before-b.json, u325-after-l-28.json, u325-before-l-18.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u108-a.json"
+id = "G05_digest_covers_resume"
+reason = "never killed under U290: every replay of it read no death (u308-replay-after-d.json, u308-replay-before-d.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r356-a.json"
+id = "A13_reason_never_stored"
+reason = "never killed under U290: every replay of it read no death (u309-replay-before-f.json, u325-after-l-07.json, u325-before-l-04.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r572.json"
+id = "A1_album_rule_gone"
+reason = "never killed under U290: every replay of it read no death (u309-replay-before-a.json, u325-after-l-07.json, u325-before-l-04.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r572.json"
+id = "A3_album_over_two_hearts"
+reason = "never killed under U290: every replay of it read no death (u309-replay-before-e.json, u325-after-l-07.json, u325-before-l-04.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r572.json"
+id = "A6_album_despite_unreadable"
+reason = "never killed under U290: every replay of it read no death (u309-replay-before-f.json, u325-after-l-07.json, u325-before-l-04.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r222-a.json"
+id = "A11_floor_from_the_wrong_portion"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 214cb855 fix(u317): round one, a record another writer passed and a folder gone mid walk send the run full, so the refactor owes it nothing; ambiguous on main"
+
+[[excluded]]
+table = "r338-a.json"
+id = "B1_share_never_carried"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r338-a.json"
+id = "B2_absent_share_synced"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r757-a.json"
+id = "E3_planner_ignores_the_mode"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 491f09e4 fix(r1761): round two, a root of none of the library's files always deletes nothing from the mirror, so the refactor owes it nothing; ambiguous on main"
+
+[[excluded]]
+table = "r757-a.json"
+id = "E4_compare_by_size_alone"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, c8fc8b7d feat(r1761): a backup refuses a library root it cannot prove is the library, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u27-restore-cli-author.json"
+id = "L3_the_listing_drops_the_per_tree_counts"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 5009b133 feat(u288): crate sync removed takes the offered rows out of the collection behind its gate, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u27-restore-cli-author.json"
+id = "O1_the_change_summary_leaves_the_digest"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 5009b133 feat(u288): crate sync removed takes the offered rows out of the collection behind its gate, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r1372.json"
+id = "K16_no_let_go_at_done"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1372.json"
+id = "K18_let_go_on_any_record"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1376.json"
+id = "F15_null"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1376.json"
+id = "F2_first_stop_empty_id"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1376.json"
+id = "F8_fold_on_first_sync"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1411.json"
+id = "E3_refused_order_passes_no_expect"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1411.json"
+id = "W5_agreed_at_every_order"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p1.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "r1446.json"
+id = "M10_kept_order_with_unread"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p2.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u130-b.json"
+id = "B3_account_isrc_not_first"
+reason = "never killed under U290: every replay of it read no death (u304-replay-before-p2.json, u304-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u287.json"
+id = "M12_hearts_read"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, adc3f339 feat(u320): sync removed offers again past withheld hearts and playlists the account answered not found for, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u287.json"
+id = "M15_job_playlists_are_synced"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, adc3f339 feat(u320): sync removed offers again past withheld hearts and playlists the account answered not found for, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "r796-b.json"
+id = "O4_beatport_must_have_answered"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, c73ae48a feat(u322): a row one catalogue answered no longer stops the suggest walk, and Deezer is asked past a refusing Beatport, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u244.json"
+id = "M14_track_artist_checked"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 9e10a10b feat(u318): a named mix takes a Discogs release only when the release writes it, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u289.json"
+id = "S3_match_on_question"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 9e10a10b feat(u318): a named mix takes a Discogs release only when the release writes it, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u244.json"
+id = "M22_suggest_stop_ignores_passed_over"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, c73ae48a feat(u322): a row one catalogue answered no longer stops the suggest walk, and Deezer is asked past a refusing Beatport, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u289.json"
+id = "N1_unheaded_name_split"
+reason = "its text was removed, or now occurs twice, after a feature card outside U290, 474d682f feat(r1724): a name is read past the _PN tail the older naming wrote, so the refactor owes it nothing; stale on main"
+
+[[excluded]]
+table = "u86.json"
+id = "E3_mount_guard"
+reason = "never killed under U290: every replay of it read no death (u302-replay-before-a.json, u325-after-l-01.json, u325-before-01.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+
+[[excluded]]
+table = "u91.json"
+id = "U10_unmounted_refusal"
+reason = "never killed under U290: every replay of it read no death (u302-replay-before-a.json, u325-after-l-01.json, u325-before-01.json, u325-replay-after.json, u325-replay-before.json), and its text is now stale on main"
+

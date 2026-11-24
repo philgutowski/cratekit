@@ -242,6 +242,16 @@ def read_excluded() -> dict[tuple[str, str], str]:
     return found
 
 
+#: Survey rows held by a killed row of a unit's own table rather than a replay,
+#: each with the row that holds it and why, kept beside this script.
+MAPPED = HERE / "mapped.toml"
+
+
+def read_mapped() -> dict[tuple[str, str], dict]:
+    data = tomllib.loads(MAPPED.read_text(encoding="utf-8")) if MAPPED.exists() else {}
+    return {(one["table"], one["id"]): one for one in data.get("mapped", [])}
+
+
 def text_of(row: dict) -> tuple:
     return (row.get("file"), row.get("old"), row.get("new"))
 
@@ -319,6 +329,7 @@ def cmd_join(args) -> int:
     seen = Measurements()
     survey = survey_rows(args.survey_root)
     excluded = read_excluded()
+    by_hand = read_mapped()
     known = {row.source for row in survey}
     stray = sorted(set(excluded) - known)
     if stray:
@@ -353,6 +364,20 @@ def cmd_join(args) -> int:
                 if reason:
                     pick["moved"] = reason
             after_rows[row.source] = pick
+        curated = by_hand.get(row.source)
+        if curated is not None and not (after and K.killed(after[-1][3])):
+            target = copy.deepcopy(recorded_row((curated["to_table"], curated["to_id"])))
+            target["id"] = K.row_id((curated["to_table"], curated["to_id"]))
+            target["measured_in"] = f"docs/mutation/{curated['to_table']}"
+            after_rows[("", target["id"])] = target
+            mapped.append(
+                {
+                    "source": {"table": row.table, "id": row.id},
+                    "to": target["id"],
+                    "reason": curated["reason"],
+                }
+            )
+            continue
         held_by_map = seen.mapped.get(row.source)
         if held_by_map and not (after and K.killed(after[-1][3])):
             path, table, entry = held_by_map[-1]
