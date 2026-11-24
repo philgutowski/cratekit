@@ -35,16 +35,25 @@ EXPLICIT = ("tag.remap", "tag.remap.confirm")
 NO_ABORT = ("sync.pair", "sync.pair.rekordbox")
 
 
+def _days_ago(days: float) -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def _saved_aged(state, days: float):
+    """Save ``state`` and date its record's last write ``days`` ago; answer the path."""
+    path = gates.save(state)
+    written = _days_ago(days).timestamp()
+    os.utime(path, (written, written))
+    return path
+
+
 def _open(verb_gate: tuple[str, str], *, idle_days: float, started_days: float | None = None) -> str:
     """A run of ``verb`` stopped at ``gate``, started and last written that many days ago."""
     verb, gate = verb_gate
-    now = datetime.now(timezone.utc)
     state = gates.new_run(registry.entry(verb))
-    state.created = output.timestamp(now - timedelta(days=started_days or idle_days))
+    state.created = output.timestamp(_days_ago(started_days or idle_days))
     state.open_gate = gate
-    path = gates.save(state)
-    written = (now - timedelta(days=idle_days)).timestamp()
-    os.utime(path, (written, written))
+    _saved_aged(state, idle_days)
     return state.run_id
 
 
@@ -55,8 +64,18 @@ def _json(argv: list[str]) -> tuple[int, dict]:
 
 
 def _status() -> dict:
-    envelope = exited(_json(["status"]))
-    return envelope["data"]
+    return exited(_json(["status"]))["data"]
+
+
+def _keys(data: dict) -> set[str]:
+    return {check["key"] for check in data["checks"]}
+
+
+def _threshold(library, days: int) -> None:
+    """Save the library's configuration with ``reports.open_gate_stale_days`` set to ``days``."""
+    reports = {"open_gate_stale_days": days}
+    config.save(config.from_dict({**document_for(library), "reports": reports}))
+    config.reset_cache()
 
 
 def _retire(*argv: str) -> tuple[int, dict]:
@@ -69,9 +88,7 @@ def _retire(*argv: str) -> tuple[int, dict]:
 def test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before(configured):
     old = [_open(ORDINARY, idle_days=20), _open(EXPLICIT, idle_days=10)]
     new = _open(ORDINARY, idle_days=2)
-
     data = _status()
-
     keys = [check["key"] for check in data["checks"]]
     assert f"run.{new}" in keys
     assert not {f"run.{one}" for one in old} & set(keys), "an old gate was listed one by one"
@@ -85,13 +102,9 @@ def test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before(c
 def test_the_collapsed_line_names_the_dates_it_spans_and_reaches_a_person(configured):
     _open(ORDINARY, idle_days=20)
     _open(ORDINARY, idle_days=10)
-    now = datetime.now(timezone.utc)
-
     _code, out, err = drive(["status"])
     said = out + err
-
-    first = (now - timedelta(days=20)).date().isoformat()
-    last = (now - timedelta(days=10)).date().isoformat()
+    first, last = _days_ago(20).date().isoformat(), _days_ago(10).date().isoformat()
     assert f"from {first} to {last}" in said
     assert "crate run retire --older-than 7d" in said
 
@@ -99,20 +112,16 @@ def test_the_collapsed_line_names_the_dates_it_spans_and_reaches_a_person(config
 def test_status_with_no_old_gate_prints_no_collapsed_line(configured):
     _open(ORDINARY, idle_days=1)
     data = _status()
-    assert "runs.old" not in {check["key"] for check in data["checks"]}
+    assert "runs.old" not in _keys(data)
     assert data["summary"]["old_gates"] == 0
 
 
 def test_status_reads_the_threshold_from_the_file(library):
-    config.save(config.from_dict({**document_for(library), "reports": {"open_gate_stale_days": 3}}))
-    config.reset_cache()
+    _threshold(library, 3)
     four = _open(ORDINARY, idle_days=4)
     two = _open(ORDINARY, idle_days=2)
-
     data = _status()
-
-    keys = {check["key"] for check in data["checks"]}
-    assert f"run.{two}" in keys and f"run.{four}" not in keys
+    assert f"run.{two}" in _keys(data) and f"run.{four}" not in _keys(data)
     (line,) = [check for check in data["checks"] if check["key"] == "runs.old"]
     assert "1 open gate idle for more than 3 days" in line["detail"]
     assert "crate run retire --older-than 3d" in line["detail"]
@@ -121,19 +130,19 @@ def test_status_reads_the_threshold_from_the_file(library):
 def test_an_old_gate_the_command_would_keep_is_listed_and_never_collapsed(configured):
     kept = _open(NO_ABORT, idle_days=30)
     data = _status()
-    assert f"run.{kept}" in {check["key"] for check in data["checks"]}
-    assert "runs.old" not in {check["key"] for check in data["checks"]}
+    assert f"run.{kept}" in _keys(data)
+    assert "runs.old" not in _keys(data)
 
 
 def test_a_run_resumed_recently_is_not_old_however_long_ago_it_started(configured):
     resumed = _open(ORDINARY, idle_days=1, started_days=40)
-    assert f"run.{resumed}" in {check["key"] for check in _status()["checks"]}
+    assert f"run.{resumed}" in _keys(_status())
 
 
 def test_a_run_started_recently_is_not_old_whatever_its_file_says(configured):
     """The later of the two times wins, so a record copied with an old date is still new."""
     run_id = _open(ORDINARY, idle_days=30, started_days=1)
-    assert f"run.{run_id}" in {check["key"] for check in _status()["checks"]}
+    assert f"run.{run_id}" in _keys(_status())
 
 
 # crate run retire
@@ -142,7 +151,6 @@ def test_a_run_started_recently_is_not_old_whatever_its_file_says(configured):
 def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured):
     old = sorted([_open(ORDINARY, idle_days=20), _open(EXPLICIT, idle_days=9)])
     new = _open(ORDINARY, idle_days=3)
-
     asked = exited(_json(["run", "retire", "--older-than", "7d"]), ExitCode.DECISION_REQUIRED)
     shown = asked["cause"]["detail"]
     assert shown["gate"] == CONFIRM
@@ -156,12 +164,11 @@ def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured)
         (decision,) = state.decisions.values()
         assert (decision.option, decision.actor) == ("abort", "session")
     assert gates.load(new).open_gate == ORDINARY[1] and not gates.load(new).decisions
-    assert "runs.old" not in {check["key"] for check in _status()["checks"]}
+    assert "runs.old" not in _keys(_status())
 
 
 def test_an_explicit_gate_is_retired_with_abort_and_never_apply(configured):
     run_id = _open(EXPLICIT, idle_days=12)
-
     exited(_retire())
     decision = gates.load(run_id).decisions[EXPLICIT[1]]
     assert decision.option == "abort" != "apply"
@@ -171,24 +178,17 @@ def test_an_explicit_gate_is_retired_with_abort_and_never_apply(configured):
 def test_retire_lists_what_it_retired_and_what_it_kept(configured):
     retired = _open(ORDINARY, idle_days=10)
     kept = _open(NO_ABORT, idle_days=10)
-
     done = exited(_retire())
     checks = {check["key"]: check for check in done["data"]["checks"]}
     assert checks[f"gate.{retired}.{ORDINARY[1]}"]["status"] == "retired"
     assert checks[f"gate.{kept}.{NO_ABORT[1]}"]["status"] == "kept"
     assert "no abort" in checks[f"gate.{kept}.{NO_ABORT[1]}"]["detail"]
     assert gates.load(kept).open_gate == NO_ABORT[1]
-    assert done["data"]["summary"] == {
-        "older_than": "7d",
-        "retired": 1,
-        "kept": 1,
-        "unreadable": 0,
-    }
+    assert done["data"]["summary"] == {"older_than": "7d", "retired": 1, "kept": 1, "unreadable": 0}
 
 
 def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
     run_id = _open(ORDINARY, idle_days=2)
-
     envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1]
@@ -196,7 +196,6 @@ def test_retire_with_nothing_old_asks_nothing_and_changes_nothing(configured):
 
 def test_a_declined_retirement_answers_nothing(configured):
     run_id = _open(ORDINARY, idle_days=9)
-
     envelope = exited(_json(["-d", f"{CONFIRM}=abort", "run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert gates.load(run_id).open_gate == ORDINARY[1] and not gates.load(run_id).decisions
@@ -205,7 +204,6 @@ def test_a_declined_retirement_answers_nothing(configured):
 def test_a_wider_threshold_retires_fewer(configured):
     twenty = _open(ORDINARY, idle_days=20)
     ten = _open(ORDINARY, idle_days=10)
-
     exited(_retire("--older-than", "14d"))
     assert gates.load(twenty).open_gate is None
     assert gates.load(ten).open_gate == ORDINARY[1]
@@ -217,7 +215,6 @@ def test_an_answer_given_over_one_plan_is_stale_once_another_gate_ages_in(config
     run_id = asked["run_id"]
     code, _out, err = drive(["run", "decide", run_id, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
-
     later = _open(ORDINARY, idle_days=8)
     exited(_json(["--run", run_id, "run", "retire"]), ExitCode.DECISION_STALE)
     assert gates.load(later).open_gate == ORDINARY[1]
@@ -228,16 +225,12 @@ def test_retire_never_retires_its_own_run(configured):
     _open(ORDINARY, idle_days=10)
     asked = exited(_json(["run", "retire"]), ExitCode.DECISION_REQUIRED)
     own = asked["run_id"]
-    written = (datetime.now(timezone.utc) - timedelta(days=9)).timestamp()
     state = gates.load(own)
-    state.created = output.timestamp(datetime.now(timezone.utc) - timedelta(days=9))
-    os.utime(gates.save(state), (written, written))
-
-    found, _ = runs.old_gates(
-        older_than=timedelta(days=7), now=datetime.now(timezone.utc), skip=own
-    )
+    state.created = output.timestamp(_days_ago(9))
+    _saved_aged(state, 9)
+    now = datetime.now(timezone.utc)
+    found, _ = runs.old_gates(older_than=timedelta(days=7), now=now, skip=own)
     assert own not in {one.run_id for one in found}
-
     done = exited(_json(["-d", f"{CONFIRM}=apply", "--run", own, "run", "retire"]))
     assert done["data"]["summary"]["retired"] == 1
 
@@ -246,7 +239,6 @@ def test_a_record_retire_cannot_read_is_said_and_not_dropped(configured):
     gates.run_dir().mkdir(parents=True, exist_ok=True)
     (gates.run_dir() / "2026-09-01T00:00:00Z-dead.json").write_text("{not json")
     _open(ORDINARY, idle_days=10)
-
     done = exited(_retire())
     assert done["data"]["summary"]["unreadable"] == 1
     statuses = {check["key"]: check["status"] for check in done["data"]["checks"]}
@@ -257,9 +249,7 @@ def test_a_record_retire_cannot_read_is_said_and_not_dropped(configured):
 def test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error(configured, capsys, given):
     """The argument parser's refusal, on its own channel, naming the flag and the form."""
     run_id = _open(ORDINARY, idle_days=10)
-
     code, _out, _err = drive(["run", "retire", f"--older-than={given}"])
-
     assert code == int(ExitCode.USAGE)
     said = capsys.readouterr().err
     assert "--older-than" in said and "such as 7d" in said
@@ -282,7 +272,6 @@ def test_a_gate_exactly_at_the_threshold_is_not_yet_old(configured):
     path = gates.save(state)
     at = (now - timedelta(days=7)).timestamp()
     os.utime(path, (at, at))
-
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=now) is None
     later = now + timedelta(seconds=1)
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=later) is not None
@@ -292,23 +281,17 @@ def test_a_gate_whose_verb_is_gone_is_old_and_kept(configured):
     run_id = _open(ORDINARY, idle_days=10)
     state = gates.load(run_id)
     state.verb = "no.such.verb"
-    path = gates.save(state)
-    written = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
-    os.utime(path, (written, written))
-
+    path = _saved_aged(state, 10)
     old = gates.old_gate(state, path, older_than=timedelta(days=7), now=datetime.now(timezone.utc))
-
     assert old is not None and not old.retirable
     assert "not a verb in this build" in old.kept
 
 
 def test_a_run_with_no_open_gate_is_never_old_however_long_it_sat(configured):
     """Aged by both clocks, so only the open gate check can keep it out (the table's G7)."""
-    then = datetime.now(timezone.utc) - timedelta(days=40)
     state = gates.new_run(registry.entry(ORDINARY[0]))
-    state.created = output.timestamp(then)
-    path = gates.save(state)
-    os.utime(path, (then.timestamp(), then.timestamp()))
+    state.created = output.timestamp(_days_ago(40))
+    path = _saved_aged(state, 40)
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=datetime.now(timezone.utc)) is None
 
 
@@ -317,10 +300,7 @@ def test_retire_says_nothing_about_an_old_run_already_answered(configured):
     run_id = _open(ORDINARY, idle_days=30)
     state = gates.load(run_id)
     gates.record(state, registry.entry(ORDINARY[0]).gates[0], "apply", actor="a-person")
-    path = gates.save(state)
-    then = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
-    os.utime(path, (then, then))
-
+    _saved_aged(state, 30)
     envelope = exited(_json(["run", "retire"]))
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["checks"] == []
@@ -351,11 +331,9 @@ def test_the_ceiling_itself_is_a_threshold(library):
 
 
 def test_retire_reads_its_default_threshold_from_the_file(library):
-    config.save(config.from_dict({**document_for(library), "reports": {"open_gate_stale_days": 3}}))
-    config.reset_cache()
+    _threshold(library, 3)
     four = _open(ORDINARY, idle_days=4)
     two = _open(ORDINARY, idle_days=2)
-
     done = exited(_retire())
     assert done["data"]["summary"]["older_than"] == "3d"
     assert gates.load(four).open_gate is None
@@ -369,7 +347,6 @@ def test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again(
     (planned,) = found
     code, _out, err = drive(["run", "decide", run_id, ORDINARY[1], "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK), err
-
     assert runs._retire_one(planned) is False
     decision = gates.load(run_id).decisions[ORDINARY[1]]
     assert (decision.option, decision.actor) == ("apply", "a-person")
@@ -383,10 +360,8 @@ def test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old(c
     retire_run = asked["run_id"]
     code, _out, err = drive(["run", "decide", retire_run, CONFIRM, "apply"])
     assert code == int(ExitCode.OK), err
-
-    path = gates.run_path(run_id)
-    touched = (datetime.now(timezone.utc) - timedelta(days=12)).timestamp()
-    os.utime(path, (touched, touched))
+    touched = _days_ago(12).timestamp()
+    os.utime(gates.run_path(run_id), (touched, touched))
     exited(_json(["--run", retire_run, "run", "retire"]), ExitCode.DECISION_STALE)
     assert gates.load(run_id).open_gate == ORDINARY[1]
 
@@ -395,13 +370,9 @@ def test_a_hand_edited_start_stamp_is_aged_by_the_records_last_write(configured)
     run_id = _open(ORDINARY, idle_days=10)
     state = gates.load(run_id)
     state.created = "yesterday"
-    path = gates.save(state)
-    written = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
-    os.utime(path, (written, written))
-
+    _saved_aged(state, 10)
     data = _status()
-
-    assert f"run.{run_id}" not in {check["key"] for check in data["checks"]}
+    assert f"run.{run_id}" not in _keys(data)
     assert data["summary"]["old_gates"] == 1
 
 

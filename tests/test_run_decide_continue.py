@@ -40,8 +40,11 @@ def nobody_at_a_terminal(installed, monkeypatch):  # noqa: F811
 
 
 def _asked() -> str:
-    refused = exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)
-    return refused["run_id"]
+    return exited(_drive(["session", "ack"]), ExitCode.DECISION_REQUIRED)["run_id"]
+
+
+def _decide(run_id: str, *extra: str) -> tuple[int, dict]:
+    return _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", *extra])
 
 
 # One command per gate
@@ -52,8 +55,7 @@ def test_a_session_answers_and_mints_in_one_command_with_no_actor_given(nobody_a
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
     run_id = _asked()
-
-    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"]))
+    envelope = exited(_decide(run_id, "--continue"))
     assert envelope["verb"] == "session.ack" and envelope["run_id"] == run_id
     summary = envelope["data"]["summary"]
     assert summary["recorded"] is True
@@ -71,8 +73,7 @@ def test_a_continuation_that_refuses_answers_with_its_refusal_and_keeps_the_answ
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=6))
     run_id = _asked()
-
-    envelope = failed(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"]))
+    envelope = failed(_decide(run_id, "--continue"))
     assert envelope["verb"] == "session.ack"
     assert session.read_acknowledgment(cfg) is None
     assert gates.load(run_id).decisions[ACK_GATE].actor == "session"
@@ -82,11 +83,7 @@ def test_the_continuation_is_given_the_arguments_its_first_invocation_recorded(
     nobody_at_a_terminal,
 ):
     """The global options are the dispatcher's, not the verb's, and are not kept."""
-    run_id = _asked()
-
-    state = gates.load(run_id)
-
-    assert state.argv == ("session", "ack")
+    assert gates.load(_asked()).argv == ("session", "ack")
 
 
 def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
@@ -97,9 +94,7 @@ def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
     state = gates.load(run_id)
     state.argv = None
     gates.save(state)
-
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"])
-
+    code, envelope = _decide(run_id, "--continue")
     # NOT A GATE: the answer is recorded, so nothing offers to answer it again.
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "run-not-continuable"
@@ -113,8 +108,7 @@ def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
 
 def test_with_no_terminal_and_no_actor_the_answer_is_the_sessions(nobody_at_a_terminal):
     run_id = _asked()
-
-    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged"]))
+    envelope = exited(_decide(run_id))
     assert envelope["data"]["summary"]["actor"] == "session"
     assert "no controlling terminal" in envelope["data"]["summary"]["actor_because"]
     assert gates.load(run_id).decisions[ACK_GATE].actor == "session"
@@ -122,17 +116,14 @@ def test_with_no_terminal_and_no_actor_the_answer_is_the_sessions(nobody_at_a_te
 
 def test_at_a_terminal_and_no_actor_the_answer_is_the_command_lines(installed):  # noqa: F811
     run_id = _asked()
-
-    envelope = exited(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged"]))
+    envelope = exited(_decide(run_id))
     assert envelope["data"]["summary"]["actor"] == "cli"
     assert gates.load(run_id).decisions[ACK_GATE].actor == "cli"
 
 
 def test_an_actor_given_is_recorded_whatever_the_terminal(nobody_at_a_terminal):
     run_id = _asked()
-
-    _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--actor", "a-person"])
-
+    _decide(run_id, "--actor", "a-person")
     assert gates.load(run_id).decisions[ACK_GATE].actor == "a-person"
 
 
@@ -143,6 +134,5 @@ def test_an_explicit_gate_still_refuses_an_inline_answer_on_the_verb(nobody_at_a
     """--continue belongs to the separate run decide call, never to the verb's own."""
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
-
     failed(_drive(["-d", f"{ACK_GATE}=acknowledged", "session", "ack"]))
     assert session.read_acknowledgment(cfg) is None
