@@ -76,15 +76,12 @@ def test_with_no_allowance_the_machines_count_is_read_and_a_non_count_is_unknown
 
 @pytest.mark.parametrize(
     "count,reserved,expected",
-    [(11, 2, 9), (4, 2, 2), (3, 2, 1), (2, 2, 1), (1, 2, 1), (8, 0, 8), (8, 1, 7)])
+    [(11, 2, 9), (4, 2, 2), (3, 2, 1), (2, 2, 1), (1, 2, 1), (8, 0, 8), (8, 1, 7)]
+    # Not knowing the cores is a ceiling of one.
+    + [(answer, 0, 1) for answer in (None, 0, -1, True, 2.0, "4")])
 def test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one(
     count, reserved, expected):
     assert cores.worker_ceiling(reserved=reserved, read=lambda: count) == expected
-
-
-@pytest.mark.parametrize("answer", [None, 0, -1, True, 2.0, "4"])
-def test_not_knowing_the_cores_is_a_ceiling_of_one(answer):
-    assert cores.worker_ceiling(reserved=0, read=lambda: answer) == 1
 
 
 def test_a_reading_that_raises_is_a_ceiling_of_one():

@@ -1,7 +1,6 @@
 """U322: a refusing catalogue no longer stops tag suggest and tag backlog asking the ones that answer.
 
-At sitting 102 a backlog stopped after 10 of 675 rows, since Beatport challenged every lookup and a
-row only it refused read as unread. The shipped searcher walks recorded pages; no network.
+At sitting 102 a backlog stopped after 10 of 675 rows: a row only Beatport refused read as unread.
 """
 
 from __future__ import annotations
@@ -164,14 +163,11 @@ def _run(machine, *answers, walk: str = "w"):
     return kept, table, said
 
 
-def test_a_partly_read_row_resets_the_run_of_refusals(machine):
-    two_refusals = (REFUSED_ROW, REFUSED_ROW)
-    kept, table, _said = _run(machine, *two_refusals, PARTLY, *two_refusals, PARTLY)
-    assert not kept.stopped and table.asked == 6
-
-
-def test_partly_read_rows_never_count_toward_the_stop(machine):
-    kept, table, _said = _run(machine, *[PARTLY] * 6)
+@pytest.mark.parametrize(
+    "answers", [(REFUSED_ROW, REFUSED_ROW, PARTLY) * 2, (PARTLY,) * 6],
+    ids=["a-partly-read-row-resets-the-run-of-refusals", "partly-read-rows-never-count"])
+def test_a_partly_read_row_never_lets_a_run_of_refusals_stop_the_walk(machine, answers):
+    kept, table, _said = _run(machine, *answers)
     assert not kept.stopped and table.asked == 6
 
 

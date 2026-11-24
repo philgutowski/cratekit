@@ -1,8 +1,5 @@
-"""U2: forward-only config migrations, and the property that makes them safe.
-
-Steps run in memory over a deep copy, validated before a byte is written, so a migration that
-raises leaves the original byte-identical. The shipped ladder is empty (schema version 1), so the
-engine takes its ladder as a parameter, driven here by a synthetic three-version ladder."""
+"""U2: forward-only config migrations, run over a deep copy and validated before a byte is
+written, driven by a synthetic three-version ladder since the shipped one is empty."""
 
 from __future__ import annotations
 

@@ -1,10 +1,6 @@
-"""R-1917: a broken test root guard leaves nothing behind it.
-
-``tests/test_config_test_root.py`` once aimed refused writes at a fixed name at the filesystem
-root, so a mutant of ``core/config.py``'s guard left a folder there and eight of its tests failed
-on that machine in every later run. The file runs in a child pytest twice: with the guard broken
-by a plugin it must fail, leaving its system temporary folder empty and the root as found; then
-intact, on the same machine, it must pass."""
+"""R-1917: a broken test root guard leaves nothing behind it. ``tests/test_config_test_root.py``
+runs in a child pytest with the guard broken, failing and leaving its temporary folder and the
+filesystem root as found, then intact, passing, on the same machine."""
 
 from __future__ import annotations
 

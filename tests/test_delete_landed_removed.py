@@ -363,9 +363,8 @@ def test_a_landing_a_restore_rolled_back_offers_nothing(ready, silence):
 
 
 def test_a_landing_into_a_playlist_already_there_put_back_by_hand_is_never_offered(ready, silence):
-    """Round two's B1: a hand restore writes no record, and a landing that made no
-    playlist cannot be told from its rollback, so nothing is offered.
-    """
+    """Round two's B1: a hand restore writes no record, so a landing that made no playlist
+    cannot be told from its rollback and nothing is offered."""
     cfg = ready("Zero", name="same batch")
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="same batch")
@@ -710,19 +709,6 @@ def test_a_restore_to_before_the_landing_offers_nothing_and_the_screen_counts_it
     assert stores.list_tombstones(cfg) == ()
 
 
-def test_a_row_held_under_the_landed_id_but_another_uuid_proves_nothing(ready):
-    """A later import can draw a rolled back row's random id; only the id and UUID together prove it."""
-    cfg = ready("One", "Two")
-    gone, music = _row(cfg, "One")
-    two, _other = _row(cfg, "Two")
-    _sql(cfg, ("UPDATE djmdContent SET UUID = ? WHERE ID = ?", ("another-row", two)))
-    _delete_playlist_outright(cfg, _batch(cfg, gone))
-    _remove_outright(cfg, gone)
-    assert gone not in _candidates(cfg)
-    assert _rolled_back() == 1
-    assert music.exists()
-
-
 def test_a_landed_row_marked_soft_deleted_still_proves_its_landing(ready):
     """Held means live or marked: a marked row of the landing is still the landing's own row."""
     cfg = ready("One", "Two")
@@ -759,12 +745,24 @@ def test_every_row_gone_and_the_playlist_deleted_by_hand_is_kept_and_counted(rea
     assert music.exists() and other.exists()
 
 
-def test_a_record_written_before_rows_named_their_uuid_keeps_the_playlist_proof_alone(ready):
-    """A record R-1037 wrote names no UUID: its playlist gone, it offers nothing, counted."""
+def _another_uuid_on_two(cfg: config.Config, gone: str) -> None:
+    _sql(cfg, ("UPDATE djmdContent SET UUID = ? WHERE ID = ?", ("another-row", _row(cfg, "Two")[0])))
+
+
+@pytest.mark.parametrize(
+    "unproved", [
+        # A later import can draw a rolled back row's random id; only the id and UUID prove it.
+        pytest.param(_another_uuid_on_two, id="a-row-held-under-the-landed-id-but-another-uuid"),
+        # A record R-1037 wrote names no UUID: its playlist gone, it offers nothing, counted.
+        pytest.param(lambda cfg, gone: _edit_landing(cfg, gone, _without_uuids),
+                     id="a-record-written-before-rows-named-their-uuid"),
+    ])
+def test_a_landing_its_other_rows_cannot_prove_is_kept_and_counted_once_its_playlist_goes(
+        ready, unproved):
     cfg = ready("One", "Two")
     gone, music = _row(cfg, "One")
     batch = _batch(cfg, gone)
-    _edit_landing(cfg, gone, _without_uuids)
+    unproved(cfg, gone)
     _delete_playlist_outright(cfg, batch)
     _remove_outright(cfg, gone)
     assert gone not in _candidates(cfg)

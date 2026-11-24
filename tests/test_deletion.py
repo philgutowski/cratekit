@@ -730,17 +730,12 @@ def _all_confirmed(cfg, **prepared):
     return home, db
 
 
-def _baseline(cfg) -> None:
-    """The watermark a first run over ``FakeDb([], usn=40)`` leaves, written directly."""
-    store = watermark.WatermarkStore(cfg)
-    store.baseline(database_identity="db-identity-1", sequence=40, actor="cli")
-
-
 def _baselined(cfg, *names) -> None:
-    """``names`` on disk, and the watermark a first run leaves."""
+    """``names`` on disk, and the watermark a first run over ``FakeDb([], usn=40)`` leaves."""
     for name in names:
         _music(cfg, name)
-    _baseline(cfg)
+    store = watermark.WatermarkStore(cfg)
+    store.baseline(database_identity="db-identity-1", sequence=40, actor="cli")
 
 
 def _prepared(cfg, *, names=(ONE,), usn=50):
@@ -844,7 +839,7 @@ def test_a_run_interrupted_after_trashing_resumes_without_re_offering(cfg, gates
 def test_only_deletable_candidates_are_ever_offered(cfg, gates_pass):
     """Nobody can answer "this file is also an active row's file" with a decision."""
     _music(cfg, ONE, body=b"a different length entirely")
-    _baseline(cfg)
+    _baselined(cfg)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50, size=11)], usn=50)
     found = run.plan(cfg, db, actor="cli")
     assert found.candidates[0].category is candidates.Category.SIZE_MISMATCH
@@ -2436,7 +2431,7 @@ def _mapped_volume(cfg, *, active=50, removed=20, volume_id=None):
     _populate(volume, [*(row.recorded for row in live), *(row.FolderPath for row in gone)])
     identity = volume_id or cfg.library.volume_id
     rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), identity)]
-    _baseline(cfg)
+    _baselined(cfg)
     active_rows = [_at(row.recorded, row.content_id, usn=10) for row in live]
     return volume, rule, FakeDb([*active_rows, *gone], usn=100), gone, _home(_beside(cfg))
 
@@ -3102,26 +3097,28 @@ def test_delete_review_refuses_an_inline_answer_and_does_not_record_it(review_cl
     assert "delete.review.confirm" not in gates.load(run_id).decisions
 
 
+def _answered(answer: str) -> dict:
+    """``delete review`` to its gate, answered, and resumed; the resumed envelope."""
+    run_id = _gated()["run_id"]
+    _answer(run_id, answer)
+    return _resumed(run_id)
+
+
 def test_delete_review_exits_ok_after_the_recorded_decision(review_cli):
     """The two-act path: refuse, record with an actor, resume, emit a review set."""
-    run_id = _gated()["run_id"]
-    _answer(run_id, "trash")
-    envelope = _resumed(run_id)
+    envelope = _answered("trash")
     assert envelope["data"]["queue"] == "deletion"
     assert envelope["data"]["items"] == []
     assert envelope["data"]["unresolved"] == 0
 
 
 def test_delete_review_abort_moves_nothing(review_cli):
-    run_id = _gated()["run_id"]
-    _answer(run_id, "abort")
-    assert _resumed(run_id)["outcome"] == "no_op"
+    assert _answered("abort")["outcome"] == "no_op"
 
 
 def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatch):
     """The gate is the confirmation: a deletable file lands in the Trash."""
-    home = _home(tmp_path)
-    monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
+    home = _fake_trash(tmp_path, monkeypatch).parent
     music = _music(review_cli, ONE)
     _baseline_the_database(review_cli)
     other = Path(review_cli.library.root) / "Music" / TWO
@@ -3132,9 +3129,7 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
             ("2", str(other), False, 20, 11, Path(TWO).stem),
         ])
     _music(review_cli, TWO)
-    run_id = _gated()["run_id"]
-    _answer(run_id, "trash")
-    _resumed(run_id)
+    _answered("trash")
     assert not music.exists()
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
     # U60: what the inline pass owes, through the shipped verb.
@@ -3207,9 +3202,7 @@ def test_delete_review_first_run_confirmed_reports_ok_and_trashes_nothing(
     """Conformance 3's other half: the gate fires on a baseline and a trash answer is OK."""
     trash = _fake_trash(tmp_path, monkeypatch)
     music = _history(review_cli)
-    run_id = _gated()["run_id"]
-    _answer(run_id, "trash")
-    envelope = _resumed(run_id)
+    envelope = _answered("trash")
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["items"] == []
     assert music.exists() and not any(trash.iterdir())

@@ -109,6 +109,13 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
+def _envelope(argv: list[str], code: ExitCode) -> dict:
+    """The JSON envelope of a drive that must exit with ``code``."""
+    status, out, err = drive(argv)
+    assert status == int(code), err or out
+    return json.loads(out)
+
+
 # Part 1: the exit-code vocabulary (KTD25, S4)
 def test_every_code_has_a_meaning_and_a_remediation_token():
     """Iterates the enum rather than listing members, so a new code is covered."""
@@ -250,8 +257,7 @@ WRITER_REFUSALS: dict[str, str] = {
     "rekordbox application version drift": "app-version-pin-drift",
     "missing database directory": "library-directory-missing",
     "missing database file": "library-database-missing",
-    "database open failure": "database-open-failed",
-    "canary read failure": "canary-read-failed",
+    "database open failure": "database-open-failed", "canary read failure": "canary-read-failed",
     "cloud sync canary tripped": "cloud-sync-active",
     # "Sync is on" and "we cannot tell" have opposite answers, so each is reserved.
     "cloud sync state unreadable": "cloud-sync-unreadable",
@@ -542,9 +548,7 @@ def _stopped_at_the_profile_gate() -> str:
 
 
 def test_an_unanswered_gate_exits_with_the_documented_code_and_leaves_the_run_resumable(configured):
-    code, out, err = drive(_TO_SLIM)
-    assert code == int(ExitCode.DECISION_REQUIRED)
-    envelope = json.loads(out)
+    envelope = _envelope(_TO_SLIM, ExitCode.DECISION_REQUIRED)
     assert output.envelope_problems(envelope) == []
     assert envelope["resumable"] is True
     assert envelope["cause"]["reason"] == "decision-required"
@@ -559,12 +563,9 @@ def test_an_unanswered_gate_exits_with_the_documented_code_and_leaves_the_run_re
 
 def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
     """R-693: the profile gate shows the delta its digest covers, in json and on screen."""
-    code, out, _ = drive(_TO_SLIM)
-    assert code == int(ExitCode.DECISION_REQUIRED)
-    shown = json.loads(out)["cause"]["detail"]["shown"]
-    code, out, _ = drive(["--output", "json", "-d", "profile.set.apply=abort", *_TO_SLIM[2:]])
-    assert code == int(ExitCode.OK)
-    declined = json.loads(out)["data"]
+    shown = _envelope(_TO_SLIM, ExitCode.DECISION_REQUIRED)["cause"]["detail"]["shown"]
+    abort = ["--output", "json", "-d", "profile.set.apply=abort", *_TO_SLIM[2:]]
+    declined = _envelope(abort, ExitCode.OK)["data"]
     assert shown["items"] == declined["items"]
     assert shown["items"], "full to slim turns modules off, so the delta cannot be empty"
     assert shown["digest"] == declined["digest"]
@@ -584,10 +585,8 @@ def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
 
 
 def test_the_same_gate_answered_by_name_proceeds(configured):
-    code, out, _ = drive(["--output", "json", "-d", "profile.set.apply=apply", "profile", "set", "slim"])
-    assert code == int(ExitCode.OK)
-    envelope = json.loads(out)
-    assert envelope["outcome"] == "ok"
+    apply = ["--output", "json", "-d", "profile.set.apply=apply", *_TO_SLIM[2:]]
+    assert _envelope(apply, ExitCode.OK)["outcome"] == "ok"
     config.reset_cache()
     assert config.load().profile.name == "slim"
 
@@ -608,10 +607,8 @@ def test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments(conf
     """U168: one command answers the gate and continues the run, arguments and all."""
     run_id = _stopped_at_the_profile_gate()
     assert gates.load(run_id).argv == ("profile", "set", "slim")
-    code, out, _ = drive(
-        ["--output", "json", "run", "decide", run_id, "profile.set.apply", "apply", "--continue"])
-    assert code == int(ExitCode.OK), out
-    envelope = json.loads(out)
+    answer = [*_TO_SLIM[:2], "run", "decide", run_id, "profile.set.apply", "apply", "--continue"]
+    envelope = _envelope(answer, ExitCode.OK)
     assert envelope["verb"] == "profile.set" and envelope["run_id"] == run_id
     config.reset_cache()
     assert config.load().profile.name == "slim"
@@ -633,9 +630,8 @@ def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(config
     document["modules"] = {"analysis": False}
     config.save(config.from_dict(document))
     config.reset_cache()
-    code, out, _ = drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
-    assert code == int(ExitCode.DECISION_STALE)
-    assert json.loads(out)["cause"]["reason"] == "decision-stale"
+    resumed = _envelope([*_TO_SLIM[:2], "--run", run_id, *_TO_SLIM[2:]], ExitCode.DECISION_STALE)
+    assert resumed["cause"]["reason"] == "decision-stale"
 
 
 def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
@@ -686,17 +682,30 @@ def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
         assert leaked not in source, f"the core writer names {leaked!r}"
 
 
-def test_no_environment_variable_or_config_key_can_answer_a_gate(configured, monkeypatch):
-    """A blanket answer satisfies every gate at once, which R34 forbids."""
-    for variable in ("CRATEKIT_YES", "CRATEKIT_DECISION", "CRATEKIT_ASSUME_YES"):
+@pytest.mark.parametrize(
+    "variables, argv",
+    [
+        # A blanket answer satisfies every gate at once, which R34 forbids.
+        (("CRATEKIT_YES", "CRATEKIT_DECISION", "CRATEKIT_ASSUME_YES"), ["profile", "set", "slim"]),
+        # A silently dropped decision stops at a gate the user believes they answered.
+        ((), ["-d", "no-equals-sign", "profile", "set", "slim"]),
+        ((), ["run", "decide", "{run}", "some.other.gate", "apply"]),
+        # A run record belongs to the verb that created it.
+        ((), ["--run", "{run}", "run", "show", "{run}"]),
+    ],
+    ids=[
+        "no-environment-variable-answers", "a-malformed-decision-is-refused",
+        "a-gate-the-verb-does-not-declare", "a-run-of-another-verb",
+    ],
+)
+def test_what_is_not_a_decision_leaves_the_profile_gate_unanswered(
+        configured, monkeypatch, variables, argv):
+    for variable in variables:
         monkeypatch.setenv(variable, "1")
-    code, _, _ = drive(["profile", "set", "slim"])
-    assert code == int(ExitCode.DECISION_REQUIRED)
-
-
-def test_a_malformed_decision_is_refused_rather_than_ignored(configured):
-    """A silently dropped decision stops at a gate the user believes they answered."""
-    code, _, _ = drive(["-d", "no-equals-sign", "profile", "set", "slim"])
+    if "{run}" in argv:
+        run_id = _stopped_at_the_profile_gate()
+        argv = [run_id if word == "{run}" else word for word in argv]
+    code, _, _ = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED)
 
 
@@ -713,38 +722,23 @@ def _pending_profile_run(**fields) -> gates.RunState:
 def test_a_verb_blocked_by_an_unverified_pending_action_refuses_before_doing_anything(configured):
     """What makes ``pending_human_action`` load-bearing rather than advisory."""
     state = _pending_profile_run(summary="import one file", blocks=("profile.set",))
-    code, out, _ = drive(["--output", "json", "--run", state.run_id, "profile", "set", "slim"])
-    assert code == int(ExitCode.PENDING_HUMAN)
-    assert json.loads(out)["cause"]["reason"] == "blocked-by-pending-action"
+    resumed = [*_TO_SLIM[:2], "--run", state.run_id, *_TO_SLIM[2:]]
+    blocked = _envelope(resumed, ExitCode.PENDING_HUMAN)
+    assert blocked["cause"]["reason"] == "blocked-by-pending-action"
 
 
 def test_a_run_that_reached_a_gate_reports_it(configured):
-    code, out, _ = drive(["--output", "json", "run", "show", _stopped_at_the_profile_gate()])
-    assert code == int(ExitCode.OK)
-    assert json.loads(out)["data"]["summary"]["open_gate"] == "profile.set.apply"
+    shown = _envelope([*_TO_SLIM[:2], "run", "show", _stopped_at_the_profile_gate()], ExitCode.OK)
+    assert shown["data"]["summary"]["open_gate"] == "profile.set.apply"
 
 
 def test_a_run_carrying_a_pending_action_reports_it_as_pending(configured):
     state = _pending_profile_run(
         summary="import one file into rekordbox",
         steps=("open the library application", "import the file"))
-    code, out, _ = drive(["--output", "json", "run", "show", state.run_id])
-    assert code == int(ExitCode.PENDING_HUMAN)
-    envelope = json.loads(out)
+    envelope = _envelope(["--output", "json", "run", "show", state.run_id], ExitCode.PENDING_HUMAN)
     assert output.envelope_problems(envelope) == []
     assert envelope["pending_human_action"]["verify_verb"] == "run.show"
-
-
-def test_a_decision_naming_a_gate_the_verb_does_not_declare_is_refused(configured):
-    run_id = _stopped_at_the_profile_gate()
-    code, _, _ = drive(["run", "decide", run_id, "some.other.gate", "apply"])
-    assert code == int(ExitCode.DECISION_REQUIRED)
-
-
-def test_a_run_record_belongs_to_the_verb_that_created_it(configured):
-    run_id = _stopped_at_the_profile_gate()
-    code, _, _ = drive(["--run", run_id, "run", "show", run_id])
-    assert code == int(ExitCode.DECISION_REQUIRED)
 
 
 # Part 5: the registry, the stub, and parity
@@ -971,11 +965,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
     """Enough arguments to drive one verb, a file under the ``configured`` library (R1);
     ``monkeypatch`` serves a lazy sample (U129)."""
     library = config.load().library.root
+    outbound = str(outbound_fakes.write_export(library / "outbound"))
+    absent_export = str(library / "no-such-export.xml")
+    no_list = str(library / "no-such-list.txt")
+    music = str(library / "Music")
     sample = {
         "profile.show": [], "profile.set": ["slim"],
         "run.show": ["no-such-run"], "run.decide": ["no-such-run", "profile.set.apply", "apply"],
-        # U170. Lazy: a run open at its gate a month gives the confirm a plan; test_run_retire.
-        "run.retire": _run_retire_over_one_old_gate,
+        "run.retire": _run_retire_over_one_old_gate,  # U170. Open a month at its gate: a plan.
         # U10. An absent identifier refuses from the vocabulary; an empty queue is a fresh install.
         "job.list": [], "job.show": ["no-such-job"], "job.resume": ["no-such-job"],
         "job.cancel": ["no-such-job"],
@@ -984,20 +981,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "review.resolve": ["no-such-item", "--verdict", "accepted"],
         "review.clear": ["no-such-item"], "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
-        # U36. Read only, it opens the database only for a native tree, so it exits OK.
-        "converge": [],
-        # U24. An empty store is not a failure; revoking is driven from the deletion suite.
-        "tombstone.list": [],
-        # U24. It refuses at its confirm gate; conformance 3 drives the two act OK path.
-        "delete.review": [],
-        # U16. An absent path, refused from the vocabulary; tests/test_match_states.py.
-        "match.run": [str(library / "no-such-list.txt")],
+        "converge": [],  # U36. Read only, it opens the database only for a native tree: OK.
+        "tombstone.list": [],  # U24. An empty store is not a failure.
+        "delete.review": [],  # U24. It refuses at its gate; conformance 3 drives the OK path.
+        "match.run": [no_list],  # U16. An absent path, refused from the vocabulary.
         # U42. Download freezes an absent list unread and audit reads an empty music folder: OK.
-        "acquire.download": [str(library / "no-such-list.txt")], "acquire.audit": [],
-        # U80. An absent list, refused before any walk, so nothing reaches the searcher.
-        "acquire.fallback": [str(library / "no-such-list.txt")],
-        # U81. The same absent list, refused before any walk, queue or download.
-        "acquire.fallback-fetch": [str(library / "no-such-list.txt")],
+        "acquire.download": [no_list], "acquire.audit": [],
+        "acquire.fallback": [no_list],  # U80. Refused before any walk reaches the searcher.
+        "acquire.fallback-fetch": [no_list],  # U81. Refused before any walk, queue or download.
         # U176. No session in the isolated keychain: both refuse auth-failed, before Bandcamp.
         "acquire.bandcamp": [], "acquire.bandcamp-fetch": [],
         # U23. The census takes no positional (R19) and queues without a database.
@@ -1005,93 +996,67 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # (U184) is in tests/test_session_ack_by_session.py.
         "session.ack": [], "session.release": [],
         "adopt.scan": [],
-        # U27. No positional (R19): its explicit gate is asked over an empty plan, abortable.
-        "adopt.apply": [],
-        # R-758. It reads the backup acknowledgment before its gate (R-733); the plan is empty.
-        "adopt.move": [],
+        "adopt.apply": [],  # U27. No positional (R19): an explicit gate over an empty plan.
+        "adopt.move": [],  # R-758. It reads the acknowledgment before its gate (R-733).
         # U119. Lazy: the tree cut over, the source made, so NO_OP; tests/test_genre_favorites.py.
         "favorites.refresh": _routing_tree_cut_over_with_a_source,
-        # U120. Lazy: the source made and no hearts job, so NO_OP; tests/test_favorites_backfill.py.
-        "favorites.backfill": _a_source_playlist,
-        # U145. No quarter playlist, so it asks nothing (UNREACHABLE_GATES); test_favorites_split.
-        "favorites.split": _a_source_playlist,
-        # U180. The source alone and in order, so NO_OP (UNREACHABLE_GATES); test_favorites_order.
-        "favorites.order": _a_source_playlist_in_a_folder,
-        # U61. The favourites export reaches the confirm gate; tests/test_sync_all.py.
-        "sync.all": ["--export", str(outbound_fakes.write_export(library / "outbound"))],
+        "favorites.backfill": _a_source_playlist,  # U120. No hearts job, so NO_OP.
+        "favorites.split": _a_source_playlist,  # U145. No quarter, no gate (UNREACHABLE_GATES).
+        "favorites.order": _a_source_playlist_in_a_folder,  # U180. In order, so NO_OP.
+        "sync.all": ["--export", outbound],  # U61. The favourites export reaches the gate.
         # U152, U181. Lazy fakes: the gate is asked, nothing queued, NO_OP; tests/test_sync_land.py.
         "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
-        # U293. The pass ends on its own first refusal, which the night records; test_sync_night.
-        "sync.night": [],
+        "sync.night": [],  # U293. The pass ends on its first refusal, which the night records.
         # U295. conftest reads the platform as Linux, so each refuses before launchd; test_schedule.
         "schedule.install": [], "schedule.show": [], "schedule.remove": [],
-        # U179. The plan step refuses for want of a Bandcamp session; tests/test_sync_bandcamp.py.
-        "sync.bandcamp": [],
+        "sync.bandcamp": [],  # U179. The plan step refuses for want of a Bandcamp session.
         # U20. An empty intake exits OK; rebuild names an actor, or the product answers for one.
         "route.inbox": [], "route.unplaced": [], "route.resort": [], "route.pending": [],
         "rebuild": ["--actor", "a-person"],
         # U27. The wizard answers everything from the recorded file and reaches no prompt.
         "setup": [], "doctor": [], "status": [],
-        # A credential is never an argument, so this drives the refusal naming both ways.
-        "login": ["provider-session"],
+        "login": ["provider-session"],  # A credential is never an argument: the refusal.
         # U37. Identify refuses a missing recording before any paid call; set (U129) is lazy.
         "intake.set": _intake_set_reaching_account_gate,
         "intake.identify": [str(library / "no-such-set.mp3")],
         "intake.playlist": ["https://example.invalid/playlist"],
-        # U69. An absent identifier, refused from the vocabulary.
-        "intake.missing": ["--job", "no-such-job"],
-        # U121. Lazy: one finished set job whose track is missing, so NO_OP.
-        "intake.inspiration": _finished_set_job_on_a_native_tree,
-        # R-770. A real file, lazy, since the verb is gated and on the bridge asks nothing.
-        "intake.file": lambda: [str(_a_file_in_the_library())],
-        # U154. No batch folder, so an empty plan, OK and no gate (UNREACHABLE_GATES).
-        "intake.shelve": ["--report", "--all"],
+        "intake.missing": ["--job", "no-such-job"],  # U69. Refused from the vocabulary.
+        "intake.inspiration": _finished_set_job_on_a_native_tree,  # U121. Track missing: NO_OP.
+        "intake.file": lambda: [str(_a_file_in_the_library())],  # R-770. Gated, asks nothing.
+        "intake.shelve": ["--report", "--all"],  # U154. No batch folder (UNREACHABLE_GATES).
         # U72. A folder with no audio, refused before the gate.
-        "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
-        # R-501. An absent export, refused from the vocabulary.
-        "intake.imported": ["--export", str(library / "no-such.xml")],
+        "intake.land": [music, "--export", str(library / "no-such.xml")],
+        "intake.imported": ["--export", str(library / "no-such.xml")],  # R-501. Refused.
         # U82. A pass never run: NO_OP; lazy (R-235), or its file trips the cutover precheck.
         "sync.mark": lambda: [
             "--xml",
             str(outbound_fakes.write_export(library / "landed").rename(
                 library / "landed" / "no-such-pass_synced_inboxed.xml")),
         ],
-        # R-838. No mark record, so an empty plan and NO_OP; tests/test_sync_unmark.py.
-        "sync.unmark": ["--pass", "no-such-pass_synced"],
-        "tag.folder": [str(library / "Music")],
-        # U40. An empty folder opens no database, so no cloud sync decision (R-246).
-        "tag.retag": [str(library / "Music")],
+        "sync.unmark": ["--pass", "no-such-pass_synced"],  # R-838. No mark record, so NO_OP.
+        "tag.folder": [music],
+        "tag.retag": [music],  # U40. An empty folder opens no database (R-246).
         # U43. An absent anchor refuses; the OK path is in tests/test_setbuilder_cli.py.
         "setbuild": [str(library / "Music" / "no-such-anchor.aiff")],
         # U44. OK: the path is queued unread; the refusal is in tests/test_master_cli.py.
         "master": [str(library / "Music" / "no-such-recording.wav")],
         # U45. Queued off the configured destinations; tests/test_backup_cli.py refuses.
         "backup.run": [], "name.apply": [],
-        # U102. The confirm gate over an empty queue; unflagged, tests/intake/test_repair.py.
-        "repair.paths": ["--apply"],
+        "repair.paths": ["--apply"],  # U102. The confirm gate over an empty queue.
         # U25. Run and restamp queue, so they still emit a job_state envelope.
-        "analyze.run": [str(library / "Music")], "analyze.calibrate": [], "analyze.validate": [],
-        "analyze.restamp": [str(library / "Music")], "analyze.vocals": [str(library / "Music")],
-        "metadata.mytags-vocals": [],
+        "analyze.run": [music], "analyze.calibrate": [], "analyze.validate": [],
+        "analyze.restamp": [music], "analyze.vocals": [music], "metadata.mytags-vocals": [],
         # U26. An empty registry; ``sync labels`` is retired (U109); tests/test_label_workers.py.
         "label.registry": [], "sync.labels": [],
         "label.import": ["no-such-label"], "label.harvest": ["https://example.invalid/playlist"],
-        # U75. An empty review queue accepts nothing, before the catalogue is resolved.
-        "label.approved": [],
-        # R-798. It lists what the genre gate holds.
-        "label.held": [],
-        # R-815. An empty review queue queues no job and says which zero, before any provider.
-        "label.judge": [],
-        # R-840. An empty review queue repairs none, before any provider.
-        "label.artists": [],
-        # U108. ``--go`` reaches the one gate; with no saved answer a yes downloads nothing.
-        "label.sync": ["--go"],
-        # R-835. A label nobody follows: still gated, NO_OP; tests/test_label_playlists.py.
-        "label.playlists": ["no-such-label"],
-        # R-836. The same for the prune. tests/test_prune.py.
-        "label.prune": ["no-such-label"],
-        # U123. The same for the heard merge. tests/test_label_heard.py.
-        "label.heard": ["no-such-label", "2023", "2026-10-09"],
+        "label.approved": [],  # U75. An empty review queue accepts nothing.
+        "label.held": [],  # R-798. It lists what the genre gate holds.
+        "label.judge": [],  # R-815. An empty review queue queues no job and says which zero.
+        "label.artists": [],  # R-840. An empty review queue repairs none, before any provider.
+        "label.sync": ["--go"],  # U108. ``--go`` reaches the one gate; a yes downloads nothing.
+        "label.playlists": ["no-such-label"],  # R-835. A label nobody follows: gated, NO_OP.
+        "label.prune": ["no-such-label"],  # R-836. The same for the prune.
+        "label.heard": ["no-such-label", "2023", "2026-10-09"],  # U123. And the heard merge.
         # R-835. The same, with the intake file the mark needs, lazy as ``sync.mark``.
         "label.mark": lambda: [
             "no-such-label",
@@ -1110,23 +1075,15 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             str(_written(library / "set-landed" / "no-such-set_inboxed.xml", "<DJ_PLAYLISTS/>")),
         ],
         # U27. An absent export under the library (R1) refuses; tests/modules/test_reports.py.
-        "audit.coverage": [str(library / "no-such-export.xml")],
-        "audit.duplicates": [str(library / "no-such-export.xml")],
-        "report.library": [str(library / "no-such-export.xml")],
-        "report.intake-aging": [str(library / "no-such-export.xml")],
-        # U27. An empty session log restores nothing, so OK with no backup acknowledgment.
-        "restore.list": [], "restore.run": [],
+        "audit.coverage": [absent_export], "audit.duplicates": [absent_export],
+        "report.library": [absent_export], "report.intake-aging": [absent_export],
+        "restore.list": [], "restore.run": [],  # U27. An empty session log restores nothing.
         # U96. It refuses here, the behaviour under test, and declares no gate.
         "restore.bare-metal": ["--target", str(library / "replacement"), "--accept-replacement"],
         # U33, U51. A real export (R1), since an absent one refuses before the gate.
-        "export.playlist": [
-            "crate-export", "--export", str(outbound_fakes.write_export(library / "outbound"))
-        ],
-        "sync.favorites": ["--export", str(outbound_fakes.write_export(library / "outbound"))],
-        # R-836. Never exported: an empty plan, still gated, NO_OP. tests/test_prune.py.
-        "export.prune": [
-            "crate-export", "--export", str(outbound_fakes.write_export(library / "outbound"))
-        ],
+        "export.playlist": ["crate-export", "--export", outbound],
+        "sync.favorites": ["--export", outbound],
+        "export.prune": ["crate-export", "--export", outbound],  # R-836. Never exported: NO_OP.
         # U28. A target under the library, or it would write the real agent skills folder.
         "skills.install": ["--into", str(library / "agent-skills")],
         # R-235. Lazy, since each changes library state: a cutover the precheck passes, a revert.
@@ -1135,56 +1092,35 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "export.collection": lambda: [
             str(library / "exports" / f"collection-{uuid.uuid4().hex}.xml")
         ],
-        # R-797. The author's threshold and the configured database.
-        "report.genres": [],
-        # Stale row genres: it reads the configured collection.
-        "tag.rows": [],
-        # R-923. The seeded rows made whole first, so an empty plan, gated, a no op apply.
-        "repair.rows": lambda: _rows_whole(),
-        # A32. Every row given the ContentLink value first, so the plan writes nothing.
-        "repair.link": lambda: _link_rows(),
-        # U132. The taxonomy copy lacks the genre Favorites class, so the plan adds it.
-        "taxonomy.upgrade": lambda: _taxonomy_behind(),
+        "report.genres": [],  # R-797. The author's threshold and the configured database.
+        "tag.rows": [],  # Stale row genres: it reads the configured collection.
+        "repair.rows": lambda: _rows_whole(),  # R-923. Rows made whole first: an empty plan.
+        "repair.link": lambda: _link_rows(),  # A32. ContentLink given first: nothing written.
+        "taxonomy.upgrade": lambda: _taxonomy_behind(),  # U132. The plan adds Favorites back.
         # U194. The template as the copy and a word answered; tests/test_taxonomy_word.py.
         "taxonomy.alias": lambda: _shipped_copy(["Latin Electronic", "Afro House"]),
         "taxonomy.folder": lambda: _shipped_copy(["Latin Electronic"]),
-        # R-799. It reads every tagging record, none on this fixture.
-        "tag.remap": [],
-        # U114. No row lacks a genre, so an empty plan, gated, a no op apply.
-        "tag.suggest": [],
-        # U339. A row no library holds is listed gone, gated, a no op. tests/test_tag_set.py.
-        "tag.set": ["Deep House", "--row", "no-such-row"],
-        # U340. A row the collection lacks is left, gated, a no op. tests/test_tag_second.py.
-        "tag.second": ["Deep House", "--row", "999999"],
-        # U292. It reads the collection and writes nothing; tests/test_tag_backlog.py.
-        "tag.backlog": [],
-        # U294. An empty backlog: NO_OP after the acknowledgment and the gate.
-        "tag.campaign": [],
-        # U172. The library root holds no audio, so NO_OP; tests/test_tag_guess.py.
-        "tag.guess": [str(library)],
-        # U111. The intake tree native, so INBOX plans empty and still asks.
-        "inbox.rotate": _intake_cut_over,
+        "tag.remap": [],  # R-799. It reads every tagging record, none on this fixture.
+        "tag.suggest": [],  # U114. No row lacks a genre, so an empty plan, gated, a no op.
+        "tag.set": ["Deep House", "--row", "no-such-row"],  # U339. Listed gone, gated, a no op.
+        "tag.second": ["Deep House", "--row", "999999"],  # U340. Left, gated, a no op.
+        "tag.backlog": [],  # U292. It reads the collection and writes nothing.
+        "tag.campaign": [],  # U294. An empty backlog: NO_OP after the acknowledgment and gate.
+        "tag.guess": [str(library)],  # U172. The library root holds no audio, so NO_OP.
+        "inbox.rotate": _intake_cut_over,  # U111. The intake tree native: an empty plan, asked.
         # U134. Lazy: the tree cut over, one account pass run, no INBOX playlist, so NO_OP.
         "inbox.refill": _finished_account_playlist_pass_on_a_native_tree,
-        # U166. Lazy: the tree cut over and no Analyze playlist, so NO_OP.
-        "inbox.analyzed": _intake_cut_over,
-        # U167. The check reads a copy of the fixture's database; tests/test_analyze_check.py.
-        "analyze.check": [],
-        # U327. Lazy: cut over, as the bridge refuses; no Analyze playlist, so gated and NO_OP.
-        "analyze.adopt": _intake_cut_over,
-        # U112. Its database area reads the acknowledgment first; both areas still ask.
-        "organize": [],
-        # U130. No pair marked: an empty plan, both gates ask, NO_OP; tests/test_sync_pair.py.
-        "sync.pair": [],
-        # U149. No year folder: NO_OP (UNREACHABLE_GATES). tests/test_sync_twins.py.
-        "sync.twins": _an_account_with_no_year_folder,
-        # U221. One twin holding one track: approving empties the hold, writing no database.
-        "sync.release": _a_twin_holding_one_track,
+        "inbox.analyzed": _intake_cut_over,  # U166. Cut over, no Analyze playlist: NO_OP.
+        "analyze.check": [],  # U167. The check reads a copy of the fixture's database.
+        "analyze.adopt": _intake_cut_over,  # U327. Cut over, as the bridge refuses: NO_OP.
+        "organize": [],  # U112. Its database area reads the acknowledgment first.
+        "sync.pair": [],  # U130. No pair marked: an empty plan, both gates ask, NO_OP.
+        "sync.twins": _an_account_with_no_year_folder,  # U149. NO_OP (UNREACHABLE_GATES).
+        "sync.release": _a_twin_holding_one_track,  # U221. Approving empties the hold.
         # U242. No playlist: empty plans, gate asked, nothing written. tests/test_u242_taken.py.
         "sync.taken": _an_account_with_no_year_folder,
         "sync.strip": _an_account_with_no_year_folder,
-        # U287. Nothing downloaded, so the account is never asked; tests/test_sync_removed.py.
-        "sync.removed": _an_account_with_no_year_folder,
+        "sync.removed": _an_account_with_no_year_folder,  # U287. The account is never asked.
     }[entry.name]
     if not callable(sample):
         return sample
@@ -1638,30 +1574,20 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
 
 
 #: Verbs that read the backup acknowledgment before their gate (R-733), named.
+#: The suites named for something other than their verb, ``tests/test_<verb>.py`` otherwise.
+_SUITE_OF = {
+    "favorites.refresh": "genre_favorites", "intake.inspiration": "set_inspiration_playlist"}
 ACKNOWLEDGED_BEFORE_THE_GATE = {
-    name: f"tests/{module}.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
-    for name, module in {
-        "inbox.analyzed": "test_inbox_analyzed",
-        "inbox.refill": "test_inbox_refill",
-        "adopt.move": "test_adopt_move",
-        "inbox.rotate": "test_inbox_rotate",
-        "tag.rows": "test_tag_rows",
-        "analyze.adopt": "test_analyze_adopt",
-        "repair.rows": "test_repair_rows",
-        "repair.link": "test_repair_link",
-        "favorites.refresh": "test_genre_favorites",
-        "favorites.backfill": "test_favorites_backfill",
-        "favorites.split": "test_favorites_split",
-        "favorites.order": "test_favorites_order",
-        "tag.suggest": "test_tag_suggest",
-        "tag.set": "test_tag_set",
-        "tag.campaign": "test_tag_campaign",
-        "intake.inspiration": "test_set_inspiration_playlist",
+    name: f"tests/test_{_SUITE_OF.get(name, name.replace('.', '_'))}.py::"
+    "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    for name in (
+        "inbox.analyzed", "inbox.refill", "adopt.move", "inbox.rotate", "tag.rows",
+        "analyze.adopt", "repair.rows", "repair.link", "favorites.refresh", "favorites.backfill",
+        "favorites.split", "favorites.order", "tag.suggest", "tag.set", "tag.campaign",
+        "intake.inspiration",
         # U112. Only its database area is refused without one; its own suite drives the rest.
-        "organize": "test_organize",
-        "sync.pair": "test_sync_pair",
-        "sync.twins": "test_sync_twins",
-    }.items()
+        "organize", "sync.pair", "sync.twins",
+    )
 }
 
 
@@ -1988,18 +1914,13 @@ def test_conformance_8_rejects_a_doctor_that_answers_without_working():
     from cratekit.cli.doctor import Finding, Status
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
 
-    def stub(status: Status, detail: str = "", title: str = "") -> dict:
-        return {k: Finding(key=k, title=title, status=status, detail=detail) for k in declared}
-    empty = stub(Status.OK)
-    assert _precondition_problems(declared, empty, empty), "an empty answer passed"
-    always_green = stub(Status.OK, detail="everything is fine on this machine", title="t")
-    assert _precondition_problems(declared, always_green, always_green), (
-        "a check that can never refuse passed"
-    )
-    always_red = stub(Status.FAIL, detail="everything is broken on this machine", title="t")
-    assert _precondition_problems(declared, always_red, always_red), (
-        "a check that fires on a correct install passed"
-    )
+    for status, detail, title, passed in (
+        (Status.OK, "", "", "an empty answer passed"),
+        (Status.OK, "everything is fine on this machine", "t", "a check that can never refuse"),
+        (Status.FAIL, "everything is broken on this machine", "t", "a check firing when correct"),
+    ):
+        stub = {k: Finding(key=k, title=title, status=status, detail=detail) for k in declared}
+        assert _precondition_problems(declared, stub, stub), passed
 
 
 # ── parity ───────────────────────────────────────────────────────────────────
@@ -2173,9 +2094,7 @@ def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
 
 def test_an_unconfigured_machine_refuses_with_a_precondition_and_a_remedy():
     """An unconfigured machine is a state, not an internal error."""
-    code, out, _ = drive(["--output", "json", "profile", "show"])
-    assert code == int(ExitCode.PRECONDITION)
-    envelope = json.loads(out)
+    envelope = _envelope(["--output", "json", "profile", "show"], ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "config-unusable"
     assert envelope["cause"]["remediation"]["remedy"] == str(Remedy.RUN_SETUP)
 
@@ -2208,53 +2127,50 @@ def _context_spec(*, explicit: bool) -> registry.GateSpec:
         name="context.probe", options=("proceed", "abort"), prompt="Proceed?", explicit=explicit)
 
 
-def _probe_state() -> gates.RunState:
-    return gates.RunState(run_id="r", verb="probe", created="now")
+_AGES = {"ages": [{"portion": "database", "state": "never-recorded"}]}
+
+
+def _refused_detail(spec: registry.GateSpec, *, supplied=(), **context) -> dict:
+    """What the refusal a probe run's resolver raises at ``spec`` carries."""
+    answered = {"supplied": dict(supplied)} if supplied else {}
+    state = gates.RunState(run_id="r", verb="probe", created="now")
+    resolver = gates.Gates(state=state, **answered)
+    with pytest.raises(gates.DecisionRequired) as raised:
+        resolver.require(spec, **context)
+    return raised.value.cause.detail
 
 
 def test_a_gate_refusal_carries_what_the_verb_consulted(configured):
     """U49: a gate refusal carries the facts the verb consulted, as a backup age."""
-    resolver = gates.Gates(state=_probe_state())
-    ages = {"ages": [{"portion": "database", "state": "never-recorded"}]}
-    with pytest.raises(gates.DecisionRequired) as raised:
-        resolver.require(_context_spec(explicit=False), context=ages)
-    shown = raised.value.cause.detail["shown"]
+    shown = _refused_detail(_context_spec(explicit=False), context=_AGES)["shown"]
     assert shown["ages"] == [{"portion": "database", "state": "never-recorded"}]
 
 
 def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
     """So "shows nothing" stays distinct from "looked and found nothing"."""
-    with pytest.raises(gates.DecisionRequired) as raised:
-        gates.Gates(state=_probe_state()).require(_context_spec(explicit=False))
-    detail = raised.value.cause.detail
+    detail = _refused_detail(_context_spec(explicit=False))
     assert "shown" not in detail
     assert set(detail) == {"gate", "options", "prompt", "explicit", "run_id"}
 
 
 def test_the_explicit_inline_refusal_carries_the_context_too(configured):
     """It is the one a person meets when trying to shortcut the acknowledgment (R34)."""
+    holder = {"holder": {"host": "elsewhere", "pid": 41}}
     spec = _context_spec(explicit=True)
-    resolver = gates.Gates(state=_probe_state(), supplied={spec.name: "proceed"})
-    with pytest.raises(gates.DecisionRequired) as raised:
-        resolver.require(spec, context={"holder": {"host": "elsewhere", "pid": 41}})
-    assert raised.value.cause.detail["shown"]["holder"]["host"] == "elsewhere"
+    detail = _refused_detail(spec, supplied={spec.name: "proceed"}, context=holder)
+    assert detail["shown"]["holder"]["host"] == "elsewhere"
 
 
 def test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it(configured):
     """So a terminal user is not left with a bare question."""
     spec = _context_spec(explicit=False)
-    ages = {"ages": [{"portion": "database", "state": "never-recorded"}]}
-    carried = render.render_gate(gates.DecisionRequired(spec, "r", ages).cause)
+    carried = render.render_gate(gates.DecisionRequired(spec, "r", _AGES).cause)
     assert "portion=database" in carried
     assert "state=never-recorded" in carried
     bare = render.render_gate(gates.DecisionRequired(spec, "r").cause)
     assert "portion" not in bare
     assert bare.splitlines() == [
-        "Proceed?",
-        "",
-        "  gate:    context.probe",
-        "  options: proceed, abort",
-        "",
+        "Proceed?", "", "  gate:    context.probe", "  options: proceed, abort", "",
         "  answer:  crate run decide r context.probe <option>",
         "  then:    add --continue to answer and carry on the run in one command",
         "  or:      rerun with -d context.probe=<option>",

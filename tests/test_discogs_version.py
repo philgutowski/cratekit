@@ -1,13 +1,11 @@
-"""U318: a remix takes a Discogs release and its genre only when that release carries
-its version.
+"""U318: a remix takes a Discogs release and its genre only when that release carries its version.
 
-At sitting 101 "Two Months Off (Tim Green Remix)" took release 8532080 and "As You Fly
-(Mita Gami Extended Mix)" the 16BL remix single, 28513768, since the match read a title
-by its core alone. Guarded: a file naming a version takes only a release that writes it,
-on a track or, for a single, its own title or a track that is the version alone; a file
-that matched before still does unless it names an unwritten version ("Extended Mix" and
-"Original Mix" are noise); the miss says why; Beatport, Traxsource and Bandcamp are
-unchanged. Offline; the titles are the sitting's, the artist a fixture.
+At sitting 101 "Two Months Off (Tim Green Remix)" took release 8532080 and "As You Fly (Mita Gami
+Extended Mix)" the 16BL remix single, 28513768, since the match read a title by its core alone.
+Guarded: a file naming a version takes only a release that writes it, on a track or, for a single,
+its own title or a track that is the version alone; a file that matched before still does unless it
+names an unwritten version ("Extended Mix" and "Original Mix" are noise); the miss says why;
+Beatport, Traxsource and Bandcamp are unchanged; offline, on sitting titles and a fixture artist.
 """
 
 from __future__ import annotations

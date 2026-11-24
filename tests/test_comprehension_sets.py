@@ -1,12 +1,7 @@
-"""U246: no comprehension rebuilds the same set once for every element it tests.
-
-``x not in set(derived)`` in a comprehension builds one set per element; a rebuild of ten
-thousand tracks spent 17 of 28 seconds that way. Every module under ``src/cratekit`` but the
-vendored downloader is walked for a set (``set``, ``frozenset``, ``dict.fromkeys``, a set or dict
-comprehension) built per element from names the comprehension, or one inside it, does not bind:
-in a condition or a membership test's right hand side. The fix builds it once above. An empty
-call, a set over the element (``set(row.tags)``), a ``for`` statement and a later ``for``
-clause's iterable are not the shape."""
+"""U246: no comprehension rebuilds the same set once for every element it tests, as
+``x not in set(derived)`` does; a rebuild of ten thousand tracks spent 17 of 28 seconds that way.
+The guard refuses a set built per element from names the comprehension does not bind, in a
+condition or a membership test's right hand side; the fix builds it once above."""
 
 from __future__ import annotations
 

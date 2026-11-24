@@ -1,9 +1,8 @@
-"""U244: a track Beatport misses gets its genre from the Discogs API, with a person's
-own token.
+"""U244: a track Beatport misses gets its genre from the Discogs API, with a person's own token.
 
-Absence is never an answer (no token, rejection, refusal, outage, reshape); a wrong
-release is worse than a miss; the token goes only in the Authorization header; a style
-becomes a tag only through the resolver. Offline, with a fixture token.
+Absence is never an answer (no token, rejection, refusal, outage, reshape); a wrong release is
+worse than a miss; the token goes only in the Authorization header; a style becomes a tag only
+through the resolver. Offline, with a fixture token.
 """
 
 from __future__ import annotations

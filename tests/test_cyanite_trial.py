@@ -219,13 +219,6 @@ def test_the_count_and_the_estimate_are_said_before_the_first_request(chosen, tm
     assert any("estimated cost: 4 upload(s) at 0.25 each, 1.00" in line for line in before)
 
 
-@pytest.mark.parametrize("cap", [0, 3])
-def test_a_count_over_the_cap_refuses_before_anything_is_sent(chosen, tmp_path, declared, keyed, cap):
-    with pytest.raises(cyanite.TrialRefused, match=f"4 file.*the cap is {cap}"):
-        _unsent(_settings(chosen, tmp_path / "t.tsv", send=True, cap=cap, price=0.1), declared)
-    assert not (tmp_path / "t.tsv").exists()
-
-
 def test_a_count_at_the_cap_is_sent(chosen, tmp_path, declared, keyed):
     fake = Recorded()
     ran = _run(_settings(chosen, tmp_path / "t.tsv", send=True, cap=4, price=0.1), declared, fake)
@@ -235,14 +228,20 @@ def test_a_count_at_the_cap_is_sent(chosen, tmp_path, declared, keyed):
 
 @pytest.mark.parametrize(
     ("given", "words"), [
-        ({"send": True, "price": 0.1}, "needs --cap"),
-        ({"send": True, "cap": 10}, "needs --price-per-track"),
-        ({"send": True, "cap": -1, "price": 0.1}, "below zero"),
-        ({"send": True, "cap": 10, "price": -0.1}, "below zero"),
+        pytest.param({"send": True, "price": 0.1}, "needs --cap", id="no-cap"),
+        pytest.param({"send": True, "cap": 10}, "needs --price-per-track", id="no-price"),
+        pytest.param({"send": True, "cap": -1, "price": 0.1}, "below zero", id="a-cap-below-zero"),
+        pytest.param({"send": True, "cap": 10, "price": -0.1}, "below zero", id="a-price-below-zero"),
+        *(pytest.param({"send": True, "cap": 10, "price": price}, "a number not below zero",
+                       id=f"a-price-of-{price}") for price in (float("nan"), float("inf"))),
+        *(pytest.param({"send": True, "cap": cap, "price": 0.1}, f"4 file.*the cap is {cap}",
+                       id=f"a-count-over-a-cap-of-{cap}") for cap in (0, 3)),
     ])
-def test_sending_needs_a_cap_and_a_price(chosen, tmp_path, declared, keyed, given, words):
+def test_a_send_without_a_cap_and_a_price_that_allow_it_refuses_before_anything_is_sent(
+        chosen, tmp_path, declared, keyed, given, words):
     with pytest.raises(cyanite.TrialRefused, match=words):
         _unsent(_settings(chosen, tmp_path / "t.tsv", **given), declared)
+    assert not (tmp_path / "t.tsv").exists()
 
 
 def test_no_key_refuses_saying_how_to_record_one_and_sends_nothing(chosen, tmp_path, declared):
@@ -800,12 +799,6 @@ def test_resume_refuses_a_table_that_is_not_text(chosen, out, declared, keyed):
     out.write_bytes(b"\xff\xfe\x00binary")
     with pytest.raises(cyanite.TrialRefused, match="could not be read as a table"):
         _unsent(_settings(chosen, out, resume=True, **SEND), declared)
-
-
-@pytest.mark.parametrize("price", [float("nan"), float("inf")])
-def test_a_price_that_is_not_a_number_refuses(chosen, tmp_path, declared, keyed, price):
-    with pytest.raises(cyanite.TrialRefused, match="a number not below zero"):
-        _unsent(_settings(chosen, tmp_path / "t.tsv", send=True, cap=10, price=price), declared)
 
 
 def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, template, keyed, capsys):

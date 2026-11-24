@@ -102,10 +102,40 @@ def test_a_partially_filled_config_names_only_what_is_actually_missing(library):
     assert "paths.download_staging" not in joined
 
 
-def test_an_empty_string_counts_as_missing(library):
-    """A blank in a wizard field is an unanswered question, not an answer."""
-    data = _with_library(library, volume_id="   ")
-    assert any("library.volume_id" in p for p in config.validate(data))
+@pytest.mark.parametrize(
+    "build, named",
+    [
+        # A blank in a wizard field is an unanswered question, not an answer.
+        (lambda lib, tmp: _with_library(lib, volume_id="   "), ["library.volume_id"]),
+        # R38 identifies a volume by recorded identity, never by where it mounts.
+        (lambda lib, tmp: _with_library(lib, volume_id=str(lib)),
+         [config.VOLUME_IDENTITY_KEY, "mount path"]),
+        (lambda lib, tmp: valid_data(lib, modules={"telepathy": True}), ["telepathy"]),
+        # A database on another filesystem has no rename based atomic commit with its coupled state.
+        (lambda lib, tmp: _outside(lib, tmp), ["db_path", "library.root"]),
+        # A bad date is a defect whether or not it is load bearing today.
+        (lambda lib, tmp: _with_library(lib, db_outside_root_acknowledged_on="someday"),
+         [config.ACKNOWLEDGMENT_KEY]),
+        (lambda lib, tmp: _prefix_map(lib, {"from": "/mnt/volume", "to": "{home}"}),
+         ["unsupported interpolation"]),
+        (lambda lib, tmp: _prefix_map(lib, {"from": "/mnt/volume"}), ["location_prefix_map[0].to"]),
+        # Else a string budget surfaces as a TypeError deep inside a rename.
+        (lambda lib, tmp: valid_data(lib, naming={"path_budget_bytes": "250"}),
+         ["path_budget_bytes"]),
+        (lambda lib, tmp: valid_data(lib, naming={"filename_max_bytes": "250"}),
+         ["filename_max_bytes"]),
+    ],
+    ids=[
+        "an-empty-string-counts-as-missing", "a-volume-identity-that-is-a-mount-path",
+        "an-unknown-module-toggle", "a-database-outside-the-root-until-acknowledged",
+        "a-malformed-acknowledgment-even-when-contained", "prefix-rule-unsupported-interpolation",
+        "prefix-rule-malformed-entry-named-by-index", "naming-budget-path_budget_bytes",
+        "naming-budget-filename_max_bytes",
+    ],
+)
+def test_a_value_validation_refuses_is_named_in_its_problems(library, tmp_path, build, named):
+    problems = config.validate(build(library, tmp_path))
+    assert any(all(word in p for word in named) for p in problems), problems
 
 
 def test_the_required_list_is_exactly_six_keys():
@@ -114,12 +144,6 @@ def test_the_required_list_is_exactly_six_keys():
 
 
 # R38: the volume identity key and its validation.
-def test_a_volume_identity_that_is_a_mount_path_is_rejected(library):
-    """R38 identifies a volume by recorded identity, never by where it mounts."""
-    problems = config.validate(_with_library(library, volume_id=str(library)))
-    assert any(config.VOLUME_IDENTITY_KEY in p and "mount path" in p for p in problems)
-
-
 def test_the_volume_identity_key_is_published_for_the_assertion_to_read():
     """U31 reads the key from here, so a rename cannot leave its guard behind."""
     assert config.VOLUME_IDENTITY_KEY == "library.volume_id"
@@ -194,11 +218,6 @@ def test_an_unknown_profile_or_module_refuses_by_name():
         profiles.resolve("gigantic")
     with pytest.raises(profiles.UnknownModule):
         profiles.resolve("slim", {"telepathy": True})
-
-
-def test_config_validation_rejects_an_unknown_module_toggle(library):
-    data = valid_data(library, modules={"telepathy": True})
-    assert any("telepathy" in p for p in config.validate(data))
 
 
 def test_every_extras_group_names_a_real_module(library):
@@ -506,12 +525,6 @@ def test_the_rekordbox_database_is_declared_library_scoped_state(cfg):
     assert config.state_path("rekordbox_db", cfg) == cfg.library.db_path
 
 
-def test_a_database_outside_the_library_root_refuses_until_it_is_acknowledged(library, tmp_path):
-    """A database on another filesystem has no rename based atomic commit with its coupled state."""
-    problems = config.validate(_outside(library, tmp_path))
-    assert any("db_path" in p and "library.root" in p for p in problems), problems
-
-
 def test_an_acknowledged_database_outside_the_library_root_loads_and_says_so(library, tmp_path):
     """Permitted only as a recorded decision, visible at setup."""
     data = _outside(library, tmp_path, db_outside_root_acknowledged_on="2026-08-01")
@@ -532,12 +545,6 @@ def test_a_non_date_acknowledgment_does_not_switch_the_refusal_off(library, tmp_
     problems = config.validate(_outside(library, tmp_path, db_outside_root_acknowledged_on=value))
     assert any(config.ACKNOWLEDGMENT_KEY in p and "date" in p for p in problems), problems
     assert any("is not under library.root" in p for p in problems), problems
-
-
-def test_a_malformed_acknowledgment_is_named_even_when_the_database_is_contained(cfg, library):
-    """A bad date is a defect whether or not it is load bearing today."""
-    data = _with_library(library, db_outside_root_acknowledged_on="someday")
-    assert any(config.ACKNOWLEDGMENT_KEY in p for p in config.validate(data))
 
 
 def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_another_one():
@@ -648,17 +655,6 @@ def test_the_prefix_map_survives_a_remount_because_it_interpolates(library, tmp_
     assert config.from_dict(data).resolved_prefix_map() == (("/mnt/volume", str(moved)),)
 
 
-@pytest.mark.parametrize(
-    "rule, expected",
-    [
-        ({"from": "/mnt/volume", "to": "{home}"}, "unsupported interpolation"),
-        ({"from": "/mnt/volume"}, "location_prefix_map[0].to"),
-    ],
-    ids=["unsupported-interpolation", "malformed-entry-named-by-index"])
-def test_a_bad_prefix_rule_is_named(library, rule, expected):
-    assert any(expected in p for p in config.validate(_prefix_map(library, rule)))
-
-
 def test_a_prefix_rule_carries_the_identity_of_the_volume_it_points_at(library):
     """A rule onto another disk says WHICH disk, and keeps it through a round trip."""
     music = {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": "AAAA-1111"}
@@ -767,8 +763,7 @@ def test_no_backup_destination_ships_with_a_default(cfg):
 
 # Backup destinations name an rclone remote (R-345).
 REMOTE_DESTINATIONS = {
-    "dest": "gdrive:bucket/path",
-    "archive_root": "gdrive:bucket/archive",
+    "dest": "gdrive:bucket/path", "archive_root": "gdrive:bucket/archive",
     "db_dest_root": "gdrive:bucket/db",
 }
 
@@ -791,10 +786,8 @@ def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
 @pytest.mark.parametrize(
     "typed",
     [
-        # A bare folder name, read as a path beside the worker's cwd.
-        "MusicBackup",
-        # An on the fly backend with no configured remote.
-        ":local:/tmp/backups",
+        "MusicBackup",  # A bare folder name, read as a path beside the worker's cwd.
+        ":local:/tmp/backups",  # An on the fly backend with no configured remote.
         # A Windows drive, which rclone treats as local either slash.
         "C:\\Backups",
         "C:/Backups",
@@ -1526,8 +1519,7 @@ def _drive_every_write_path(cfg) -> list[Path]:
     """Exercise every way this unit writes, as operations; returns the roots to audit."""
     # A credential: the installation state directory and the presence index.
     secrets.set(_KEY, _VALUE)
-    # The config file: the installation config directory.
-    config.save(cfg)
+    config.save(cfg)  # The config file: the installation config directory.
     # A library write two levels deep, so an intermediate directory shows.
     config.atomic_write_bytes(b"{}\n", config.state_path("tree_registry", cfg))
     # A migration: its lock file and a versioned backup beside the config.
@@ -1661,13 +1653,6 @@ def test_the_library_root_is_read_from_the_file_when_nothing_relocates_it(librar
     """The autouse isolation always relocates, so the file's own value is tested only here."""
     monkeypatch.delenv(config.ENV_LIBRARY_ROOT, raising=False)
     assert config.from_dict(valid_data(library)).library.root == library
-
-
-@pytest.mark.parametrize("key", ["path_budget_bytes", "filename_max_bytes"])
-def test_a_naming_budget_that_is_not_an_integer_is_named_at_load(library, key):
-    """Else a string budget surfaces as a TypeError deep inside a rename."""
-    problems = config.validate(valid_data(library, naming={key: "250"}))
-    assert any(key in p for p in problems), problems
 
 
 def test_the_overlap_contract_names_are_pinned_while_the_old_system_reads_them():

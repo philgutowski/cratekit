@@ -268,23 +268,20 @@ def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
 
 
 @pytest.mark.parametrize(
-    "started", [
+    ("session_id", "started", "counted"), [
         # The cutover day and the day before: a start is UTC, the day is the local date.
-        "2026-08-01T00:05:00Z",
-        "2026-07-31T23:50:00Z",
+        pytest.param("s-near", "2026-08-01T00:05:00Z", ("s-near",), id="the-cutover-day"),
+        pytest.param("s-near", "2026-07-31T23:50:00Z", ("s-near",), id="the-day-before"),
         # A start nothing can place counts, because it cannot be shown to predate.
-        "not a timestamp",
+        pytest.param("s-near", "not a timestamp", ("s-near",), id="a-start-nothing-can-place"),
+        # The day before the margin is the first day left out.
+        pytest.param("s-two-days", "2026-07-30T23:59:59Z", (), id="the-day-before-the-margin"),
     ])
-def test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts(cfg, started):
-    _write_started(cfg, "s-near", started)
+def test_a_write_counts_unless_it_can_be_shown_to_predate_the_cutover(
+        cfg, session_id, started, counted):
+    _write_started(cfg, session_id, started)
     _flipped(cfg)
-    assert tree_registry.native_writes(cfg, TREE_ID) == ("s-near",)
-
-
-def test_the_day_before_the_margin_is_the_first_day_left_out(cfg):
-    _write_started(cfg, "s-two-days", "2026-07-30T23:59:59Z")
-    _flipped(cfg)
-    assert tree_registry.native_writes(cfg, TREE_ID) == ()
+    assert tree_registry.native_writes(cfg, TREE_ID) == counted
 
 
 def test_a_tree_already_recorded_is_not_recorded_again(cfg):

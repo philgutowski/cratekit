@@ -114,12 +114,16 @@ def test_the_actor_it_answers_as_is_the_one_the_decide_verb_reads_as_the_session
     assert runs.SESSION_ACTOR == tail.SESSION_ACTOR == "session"
 
 
-def test_continue_is_a_flag_the_decide_verb_takes():
-    parser = build_parser()
-    args = parser.parse_args(
-        ["run", "decide", "R", tail.LAND_GATE, tail.LAND_OPTION, "--actor", "session", "--continue"]
-    )
-    assert args.continue_run is True
+@pytest.mark.parametrize(
+    ("argv", "flag"), [
+        pytest.param(
+            ["run", "decide", "R", tail.LAND_GATE, tail.LAND_OPTION, "--actor", "session",
+             "--continue"], "continue_run", id="continue-is-a-flag-the-decide-verb-takes"),
+        pytest.param(["intake", "land", "STAGING", "--pass", "PASS", "--rehearse"], "rehearse",
+                     id="the-rehearsal-command-is-the-flag-intake-land-takes"),
+    ])
+def test_a_flag_the_skill_passes_is_one_its_verb_takes(argv, flag):
+    assert getattr(build_parser().parse_args(argv), flag) is True
 
 
 def test_the_stops_it_branches_on_are_the_ones_sync_land_makes(flat):
@@ -149,12 +153,6 @@ def test_the_rehearsal_lines_it_reads_are_the_landings_own(flat):
     assert "`cause.detail.shown.rehearsal`" in flat
     assert "ends \"equal to this plan's\"" in flat
     assert '`cause.detail.shown["differs from the rehearsal"]`' in flat
-
-
-def test_the_rehearsal_command_is_the_flag_intake_land_takes():
-    parser = build_parser()
-    args = parser.parse_args(["intake", "land", "STAGING", "--pass", "PASS", "--rehearse"])
-    assert args.rehearse is True
 
 
 def test_the_organize_kinds_it_runs_exist_and_root_is_never_run(text, flat):

@@ -1,15 +1,8 @@
-"""R-926: under pytest, a state writer refuses a path outside the test root.
-
-On 2026-10-08 a probe outside ``tests/`` wrote a pytest library into the real ``config.toml``,
-since the redirecting conftest never loaded. The guard reads no environment variable: it asks
-whether pytest is loaded and the target resolves under the registered root. Clearing
-``config._TEST_WRITE_ROOT`` with the redirect left in place simulates removing the isolation, so
-a refusal comes only from the guard. The configuration is held to the test root alone;
-``atomic_write_bytes`` and ``exclusive_lock`` also accept the system temporary directory.
-
-A refused write aims at ``outside``, made under the system temporary directory and removed
-whatever the outcome (R-1917): a fixed name at the filesystem root, left by a mutant, once failed
-eight of these tests on that machine in every later run."""
+"""R-926: under pytest, a state writer refuses a path outside the test root, as a probe outside
+``tests/`` once wrote a pytest library into the real ``config.toml``. Clearing
+``config._TEST_WRITE_ROOT`` simulates a missing isolation; only the state writers may also use
+the system temporary directory. A refused write aims at ``outside``, removed whatever the outcome
+(R-1917), since a fixed name a mutant left once failed eight of these tests in every later run."""
 
 from __future__ import annotations
 

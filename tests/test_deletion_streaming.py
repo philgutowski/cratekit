@@ -1,8 +1,7 @@
 """U243: a rekordbox streaming row is not a local file, and an unmapped one is named.
 
-Only a row recorded as ``/v4/catalog/tracks/<id>/`` with nothing at it is excused; every
-other unmapped row still refuses, named by its prefix with the rule that would resolve
-it (D1).
+Only a row recorded as ``/v4/catalog/tracks/<id>/`` with nothing at it is excused; every other
+unmapped row still refuses, named by its prefix with the rule that would resolve it (D1).
 """
 
 from __future__ import annotations
