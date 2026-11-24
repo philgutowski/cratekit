@@ -1377,8 +1377,9 @@ crate inbox rotate
   rebuild repairs; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
   left behind and every playlist it could not compare, as `route resort` does.
 - The `vox` My Tag files a track into its genre folder's `with vox` on a
-  calibrated library, the same for `adopt apply`, `rebuild`, `route resort`
-  and `converge`; the file's vocal score does not. A track in `with vox`
+  calibrated library, the same for `adopt apply`, `rebuild`, `route resort`,
+  `route inbox`, `converge` and the account's mirror edits; the file's vocal
+  score does not. A track in `with vox`
   whose file clears the vocal cut and whose row carries no `vox` tag reads
   `untagged:BUCKET/with_vox:ROW` in `converge`, after a line counting them,
   a difference but not a leftover: `route resort`'s gate counts it under
@@ -1386,10 +1387,15 @@ crate inbox rotate
   `route resort` warns `vocal-membership-untagged`, naming each. Settle one by
   tagging it, `crate metadata mytags-vocals --apply` for a row that never
   carried the tag or in rekordbox for one whose tag was taken off, or by
-  taking it out of the playlist; then `converge` again. `route inbox`, which
-  reads no database before its gate, and the account's mirror edits still
-  file and leave `with vox` by the vocal score, the rule a landing writes the
-  tag by.
+  taking it out of the playlist; then `converge` again. A track moved on the
+  account keeps or joins its new folder's `with vox` by its tag and leaves
+  the old one, so the next `route resort` adds nothing back. `route inbox`
+  reads the tag before its gate and warns `inbox-vocal-untagged`, naming each
+  intake file that clears the cut and whose row carries no `vox` tag; it goes
+  in without `with vox` until `crate metadata mytags-vocals --apply` tags it
+  and `route resort` files it. Only `route inbox --export` and `route
+  unplaced --export`, which read an export and no database, still file `with
+  vox` by the vocal score, the rule a landing writes the tag by.
 - Audits and reports are read only. `audit duplicates` never deletes and
   remembers intentional alternates. `report genres` names genres with 50 or
   more tracks and no top level folder.
