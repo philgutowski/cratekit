@@ -25,7 +25,7 @@ from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, NamedTuple, Sequence
 
 from cratekit.core import (
     active_taxonomy,
@@ -43,7 +43,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import CratekitError, Scope, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.write import genre_favorites, routing_pass, trees
+from cratekit.write import genre_favorites, routing_pass, trees, vox_tag
 from cratekit.write.convergence_check import (
     VOCAL_DIMENSION,
     ConvergenceReport,
@@ -81,6 +81,11 @@ LEFT_BEHIND = "membership-left-behind"
 #: How many leftovers one warning names before it counts the rest. A back
 #: catalogue can leave thousands behind, and an envelope is read by a person.
 LEFT_BEHIND_NAMED = 20
+
+#: The envelope warning code a write carries for the vocal sub memberships its
+#: after check found the file's score would place and the vox My Tag does not
+#: (R-2056): not left behind, since tagging the row settles one as well.
+UNTAGGED_VOCALS = "vocal-membership-untagged"
 
 #: The envelope warning code a write carries for a playlist its after check
 #: could not tie to one destination (R-2020), so no count it shows reads whole.
@@ -181,6 +186,7 @@ def derive_from_taxonomy(
     truth: Iterable[Truth],
     *,
     vocal_threshold: float | None,
+    carries_vox: Callable[[str], bool] | None = None,
 ) -> tuple[tuple[DeclaredPlacement, ...], tuple[str, ...]]:
     """Route every file through the declared rules. Returns placements and gaps.
 
@@ -189,6 +195,13 @@ def derive_from_taxonomy(
     or the check would never compare it. A LIBRARY WITH NO VOCAL CALIBRATION IS
     A GAP, NOT A REFUSAL: the threshold is passed in (D7), and with None the
     dimension is named as not compared.
+
+    THE VOX MY TAG DECIDES THE VOCAL SUB (U127, R-2056) wherever a database is
+    read: ``carries_vox`` answers, for a file's location, whether its row
+    carries the tag, and a calibrated library files the track by that answer
+    and never by the score, as adoption does. A caller that reads no database
+    passes None and the file's score against the cut stands in, the rule the
+    landing writes the tag by.
     """
     # THE VOCAL CLASSES ONLY (U119). A playlist derived class comes from the
     # database through the genre favorites engine, added by callers with a handle.
@@ -227,8 +240,10 @@ def derive_from_taxonomy(
             genre = routing.genre_sub(declared, bucket_id, word)
             if genre is not None:
                 out.append(DeclaredPlacement(entry.location, bucket_id, genre.id))
-            if vocal_threshold is not None and routing.routes_with_vox(
-                entry.voxlevel, vocal_threshold
+            if vocal_threshold is not None and (
+                carries_vox(entry.location)
+                if carries_vox is not None
+                else routing.routes_with_vox(entry.voxlevel, vocal_threshold)
             ):
                 out.extend(
                     DeclaredPlacement(entry.location, bucket_id, sub_class.id)
@@ -349,6 +364,44 @@ def left_behind_warnings(
     return () if message is None else ({"code": LEFT_BEHIND, "message": message},)
 
 
+def untagged_message(records: Iterable[Mapping[str, Any]], *, listed_in: str) -> str | None:
+    """The sentence naming each vocal sub membership the vox My Tag does not place, or None.
+
+    R-2056. The file clears the vocal cut and its row carries no ``vox`` My
+    Tag, which decides the vocal sub (U127), so the declaration does not place
+    it and it is not a leftover either: the one gated write that tags it is
+    named beside taking it out. Capped as the leftovers are; sorted.
+    """
+    found = sorted(
+        f"{entry['folder']}/{entry['playlist']}: "
+        f"{entry.get('location') or 'row ' + str(entry.get('content_id'))}"
+        for entry in records
+    )
+    if not found:
+        return None
+    named = found[:LEFT_BEHIND_NAMED]
+    rest = len(found) - len(named)
+    return (
+        f"{len(found)} track(s) sit in a vocal sub-playlist whose file clears the "
+        f"vocal cut and whose row carries no vox My Tag, which is what files the "
+        f"vocal sub: {'; '.join(named)}"
+        + (f"; and {rest} more" if rest else "")
+        + ". crate metadata mytags-vocals --apply tags a row whose file clears "
+        "the cut and that never carried the tag; a row whose vox tag was taken "
+        "off is not tagged again, so put the tag back in rekordbox, or take out "
+        "of the playlist any track that does not belong there. Every one is "
+        f"listed in {listed_in}"
+    )
+
+
+def untagged_warnings(
+    records: Iterable[Mapping[str, Any]], *, listed_in: str
+) -> tuple[dict[str, str], ...]:
+    """The envelope warning over :func:`untagged_message`, or nothing."""
+    message = untagged_message(records, listed_in=listed_in)
+    return () if message is None else ({"code": UNTAGGED_VOCALS, "message": message},)
+
+
 def unidentified_message(playlists: Iterable[str]) -> str | None:
     """The sentence naming every playlist a write's check did not compare, or None.
 
@@ -383,6 +436,8 @@ def after_report(
     return {
         "tree_id": tree_id,
         "left_behind": [left_behind_record(entry) for entry in left_behind(after, declared)],
+        # Named apart from the leftovers (R-2056): tagging settles one as well.
+        "untagged": [left_behind_record(entry) for entry in after.untagged],
         "unidentified": list(after.unidentified),
     }
 
@@ -398,9 +453,11 @@ def after_messages(
     """
     reports = tuple(reports)
     records = [entry for report in reports for entry in report.get("left_behind") or ()]
+    untagged = [entry for report in reports for entry in report.get("untagged") or ()]
     unread = [str(entry) for report in reports for entry in report.get("unidentified") or ()]
     warnings = (
         *left_behind_warnings(records, listed_in=listed_in),
+        *untagged_warnings(untagged, listed_in=listed_in),
         *unidentified_warnings(unread),
     )
     return warnings, tuple(warning["message"] for warning in warnings)
@@ -607,6 +664,16 @@ def accept_as_it_stands(
         rb_writer.close_db(handle)
 
 
+class Membership(NamedTuple):
+    """What :func:`declared_membership` derived, by name."""
+
+    placements: tuple[DeclaredPlacement, ...]
+    not_compared: tuple[str, ...]
+    #: The vocal placements the file's score would make and the vox My Tag does
+    #: not (R-2056), for the check to name apart; empty unless the tag was read.
+    untagged: tuple[DeclaredPlacement, ...] = ()
+
+
 def declared_membership(
     cfg: config.Config,
     declared: taxonomy.Taxonomy,
@@ -615,12 +682,17 @@ def declared_membership(
     source: tree_registry.DerivationSource | None,
     vocal_threshold: float | None,
     truth: Iterable[Truth] | None = None,
-) -> tuple[tuple[DeclaredPlacement, ...], tuple[str, ...]]:
+    carries_vox: Callable[[str], bool] | None = None,
+) -> Membership:
     """What the declaration says the tree holds, by the source the registry records.
 
     ``tree_id`` is checked first (U219) by :func:`assert_derivable`, before a
     file is read. ``truth`` defaults to a live walk of the music directory; a
     caller supplying it supplies the READINGS, never the rules.
+    ``carries_vox`` is the vox My Tag's answer (R-2056), see
+    :func:`derive_from_taxonomy`; given one, the same readings are routed by
+    the score as well, and what the score places in a vocal sub and the tag
+    does not is returned as ``untagged``.
 
     A DERIVATION THAT PLACED NOTHING IS A REFUSAL, NOT AN ANSWER, since zero
     placements reads downstream as CONVERGED and clears the flag.
@@ -640,8 +712,11 @@ def declared_membership(
             detail={"source": str(source)},
         )
     music = Path(cfg.library.root) / cfg.library.music_dir
-    readings = library_truth(music) if truth is None else truth
-    placements, gaps = derive(declared, readings, vocal_threshold=vocal_threshold)
+    # Read once: the score's routing walks the same readings a second time.
+    readings = tuple(library_truth(music) if truth is None else truth)
+    placements, gaps = derive(
+        declared, readings, vocal_threshold=vocal_threshold, carries_vox=carries_vox
+    )
     if not placements:
         raise refuse(
             "rebuild-derivation-empty",
@@ -666,7 +741,59 @@ def declared_membership(
             origin=("tree_rebuild",),
             detail={"source": str(source), "music_dir": str(music), "not_compared": list(gaps)},
         )
-    return placements, gaps
+    untagged = _untagged(declared, readings, placements, vocal_threshold, derive, carries_vox)
+    return Membership(placements, gaps, untagged)
+
+
+def _untagged(
+    declared: taxonomy.Taxonomy,
+    readings: Sequence[Truth],
+    placements: Sequence[DeclaredPlacement],
+    vocal_threshold: float | None,
+    derive: Callable[..., Any],
+    carries_vox: Callable[[str], bool] | None,
+) -> tuple[DeclaredPlacement, ...]:
+    """The vocal placements the score makes over ``readings`` and the tag does not (R-2056).
+
+    The same derivation over the same readings with the score as the signal,
+    so a track is named only in the bucket its genre files it in. None when
+    the tag was not read, since then the score is the signal and there is no
+    other side.
+    """
+    if carries_vox is None or vocal_threshold is None:
+        return ()
+    vocal = _additive_ids(declared, taxonomy.SIGNAL_VOX)
+    placed = set(placements)
+    scored, _gaps = derive(declared, readings, vocal_threshold=vocal_threshold)
+    return tuple(entry for entry in scored if entry.sub in vocal and entry not in placed)
+
+
+def vox_carrier(
+    cfg: config.Config,
+    db: Any,
+    rows: Sequence[trees.ContentRow],
+    prefix_map: Sequence[locations.PrefixRule] | None = None,
+) -> Callable[[str], bool]:
+    """Whether a file's ONE active row carries the vox My Tag, read off ``db`` once (R-2056).
+
+    A file is matched to its row as the check matches it, so the tag and the
+    membership answer for the same row; a file no single active row holds
+    carries nothing, and the check names it unmatched. A library with no vox
+    tag at all carries it on no row. A tag row that cannot say whether it was
+    removed refuses, through :func:`cratekit.write.vox_tag.vox_tagged`.
+    """
+    tagged = vox_tag.vox_tagged(db) or frozenset()
+    if not tagged:
+        return lambda _location: False
+    rules = trees.prefix_rules(cfg, prefix_map)
+    root = cfg.library.root
+    index = trees.index_active_rows(rows, root=root, prefix_map=rules)
+
+    def carries(location: str) -> bool:
+        (match,) = trees.match_indexed_rows([location], index, root=root, prefix_map=rules)
+        return match.outcome is trees.MatchOutcome.MATCHED and match.content_id in tagged
+
+    return carries
 
 
 # ---------------------------------------------------------------------------
@@ -853,8 +980,38 @@ class _Tree:
             not_compared, tree_id=self.tree_id,
         )
 
+    def membership(
+        self,
+        *,
+        source: tree_registry.DerivationSource | None,
+        vocal_threshold: float | None,
+        truth: Iterable[Truth] | None,
+    ) -> Membership:
+        """The declared membership, its vocal sub filed by the vox My Tag (R-2056).
+
+        The tag is read only where it could file something: a calibrated
+        library whose declaration has a vocal sub, as adoption reads it.
+        """
+        reads_tag = vocal_threshold is not None and bool(
+            _additive_ids(self.declared, taxonomy.SIGNAL_VOX)
+        )
+        return declared_membership(
+            self.cfg,
+            self.declared,
+            tree_id=self.tree_id,
+            source=source,
+            vocal_threshold=vocal_threshold,
+            truth=truth,
+            carries_vox=(
+                vox_carrier(self.cfg, self.db, self.rows, self.prefix_map) if reads_tag else None
+            ),
+        )
+
     def compare(
-        self, placements: Sequence[DeclaredPlacement], not_compared: Sequence[str]
+        self,
+        placements: Sequence[DeclaredPlacement],
+        not_compared: Sequence[str],
+        untagged: Sequence[DeclaredPlacement] = (),
     ) -> ConvergenceReport:
         return check(
             self.cfg,
@@ -867,6 +1024,7 @@ class _Tree:
             root_exists=self.root_exists,
             prefix_map=self.prefix_map,
             not_compared=not_compared,
+            untagged=untagged,
         )
 
     def write(self, plan: dict[tuple[str, str], list[str]]) -> trees.MembershipReport:
@@ -906,15 +1064,12 @@ def report_convergence(
     the REGISTRY records, never one a caller names.
     """
     tree = _Tree(cfg, db, tree_id, registry, declared, tuple(rows), root_exists, prefix_map)
-    placements, gaps = declared_membership(
-        cfg,
-        declared,
-        tree_id=tree_id,
-        source=registry.derivation_source(tree_id),
-        vocal_threshold=vocal_threshold,
-        truth=truth,
+    derived = tree.membership(
+        source=registry.derivation_source(tree_id), vocal_threshold=vocal_threshold, truth=truth
     )
-    return tree.compare(*tree.favorites(placements, gaps))
+    return tree.compare(
+        *tree.favorites(derived.placements, derived.not_compared), derived.untagged
+    )
 
 
 def additions(report: ConvergenceReport) -> list[dict[str, str]]:
@@ -1198,18 +1353,14 @@ def rebuild_tree(
         analysis_roots, workflow,
     )
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    derived, not_compared = declared_membership(
-        cfg,
-        declared,
-        tree_id=tree_id,
-        source=source,
-        vocal_threshold=vocal_threshold,
-        truth=truth,
+    # The vox My Tag is read once, before the write; a rebuild writes no tag.
+    derived, not_compared, untagged = tree.membership(
+        source=source, vocal_threshold=vocal_threshold, truth=truth
     )
     # THE GENRE FAVORITES ARE READ OFF THE TREE AS IT STANDS for the before
     # check, and again off the tree the first write leaves (U119).
     placements, not_compared = tree.favorites(derived, not_compared)
-    before = tree.compare(placements, not_compared)
+    before = tree.compare(placements, not_compared, untagged)
 
     if approved is not None:
         assert_as_approved(before, approved)
@@ -1220,7 +1371,7 @@ def rebuild_tree(
     favorites = _favorites_to_file(derived, placements, before, approved)
     membership, destinations = _file_favorites(tree, root_id, favorites, membership, destinations)
     _record_landed(tree, root_id, destinations, record)
-    after = tree.compare(placements, not_compared)
+    after = tree.compare(placements, not_compared, untagged)
     cleared, marker_closed = _clear_on_evidence(cfg, tree_id, after, now)
     return RebuildReport(
         tree_id=tree_id,

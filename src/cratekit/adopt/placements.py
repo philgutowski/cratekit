@@ -25,15 +25,17 @@ a node no write recorded is recognised as a destination at all.
 THE VOCAL SUBS ARE READ HERE TOO (R-788), with the tag that says a track
 belongs in one, from the same open of the same database. The tag is the My Tag
 value the vocals verb writes, found by the names it writes it under,
-:data:`cratekit.write.metadata_cli.CATEGORY` and ``VALUE_VOX``. Whether the
-library has a calibrated cut is read through that module's one reader.
+:data:`cratekit.write.vox_tag.CATEGORY` and ``VALUE_VOX``, through
+:func:`cratekit.write.vox_tag.vox_tagged`, the one reader the rebuild and the
+convergence check ask too (R-2056). Whether the library has a calibrated cut is
+read through :mod:`cratekit.write.metadata_cli`'s one reader.
 
 Layer: modules. It reads configuration and the database and names no verb.
 """
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from cratekit.adopt.plan import (
     NO_VOCALS,
@@ -47,8 +49,7 @@ from cratekit.adopt.plan import (
 from cratekit.core import config, convergence, rb_writer, routing, taxonomy, tree_registry
 from cratekit.write import metadata_cli, rebuild
 from cratekit.write.routing_pass import destination
-
-_ORIGIN = ("adopt", "placements")
+from cratekit.write.vox_tag import vox_tagged as vox_tagged
 
 
 def named_place(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tuple[str, str]:
@@ -306,54 +307,6 @@ def vocal_standing(cfg: config.Config, declared: taxonomy.Taxonomy) -> bool:
     if not has_vocal_sub(declared):
         return False
     return metadata_cli.load_vocal_threshold(cfg) is not None
-
-
-def _removed(row: Any, what: str) -> bool:
-    """Whether rekordbox removed one My Tag row, through the one read of the marker."""
-    return rb_writer.soft_deleted(
-        row,
-        message=(
-            f"the {what} row {getattr(row, 'ID', '?')!r} cannot say whether "
-            f"rekordbox removed it, and treating that as live would file a "
-            f"track under a vocal sub for a tag nobody can see on it"
-        ),
-        origin=_ORIGIN,
-        detail={"row": str(getattr(row, "ID", "")), "kind": what},
-    )
-
-
-def vox_tagged(db: Any) -> frozenset[str] | None:
-    """Every track carrying the vox My Tag, or None when the library has no such tag.
-
-    A value of the vox name inside a category of the category name: the same
-    value under another category is another tag. NONE IS NOT THE EMPTY SET, a
-    library with the tag and nothing carrying it, and the plan tells them apart.
-
-    NOT THE WRITER'S FIND, AND THE DIFFERENCE IS THE MARKER.
-    :func:`cratekit.core.rb_writer.ensure_my_tag_value` takes the first
-    category of the name and reads no soft delete marker; that half is in the
-    ledger as a residual. A ROW REKORDBOX REMOVED IS NOT A TAG (R-758): a
-    removed association is a tag a person took off. A row that cannot say
-    whether it was removed refuses, through the one read of the marker.
-    """
-    categories = {
-        str(tag.ID)
-        for tag in db.get_my_tag(Name=metadata_cli.CATEGORY)
-        if not _removed(tag, "My Tag")
-    }
-    values = [
-        tag
-        for tag in db.get_my_tag(Name=metadata_cli.VALUE_VOX)
-        if str(getattr(tag, "ParentID", "") or "") in categories and not _removed(tag, "My Tag")
-    ]
-    if not values:
-        return None
-    return frozenset(
-        str(song.ContentID)
-        for value in values
-        for song in db.get_my_tag_songs(MyTagID=str(value.ID))
-        if not _removed(song, "My Tag association")
-    )
 
 
 def _frozen(found: dict[str, dict[str, set[str]]]) -> dict[str, dict[str, tuple[str, ...]]]:

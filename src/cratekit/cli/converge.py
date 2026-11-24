@@ -32,6 +32,13 @@ NOT_COMPARED = "not-compared"
 #: How many playlists not compared a differing line names before its differences.
 UNREAD_SHOWN = 5
 
+#: The line a differing tree leads with when it holds vocal memberships the vox
+#: My Tag does not place (R-2056), each listed as ``untagged:`` after it.
+UNTAGGED_COUNT = (
+    "{} vocal membership(s) untagged: the file clears the vocal cut and the row "
+    "carries no vox My Tag, so tag them or take them out"
+)
+
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.add_argument(
         "--tree",
@@ -95,8 +102,11 @@ def _compare(
     unread = tuple(f"{NOT_COMPARED}:{entry}" for entry in report.unidentified)
     if not report.converged:
         # At most five playlists not compared go first, so the cut at twenty
-        # drops neither kind (R-1991); the count says how many there are.
-        shown = "; ".join((*unread[:UNREAD_SHOWN], *report.summaries())[:20])
+        # drops neither kind (R-1991); the count says how many there are. The
+        # untagged vocal memberships are counted first (R-2056), since the
+        # leftovers listed before them would cut every one of them off.
+        counted = (UNTAGGED_COUNT.format(len(report.untagged)),) if report.untagged else ()
+        shown = "; ".join((*counted, *unread[:UNREAD_SHOWN], *report.summaries())[:20])
         if len(unread) > UNREAD_SHOWN:
             shown += f"; {len(unread)} playlist(s) not compared in all"
         return DIFFERING, shown

@@ -7,7 +7,8 @@ carrying this step's source identifier. ONCE: a track any mirror job still holds
 is awaited, never queued again, and the apply reads the queue again first.
 :func:`landed` and :func:`filed` hand the edit rule each landed track's row and
 the places its landing filed it (U227), so the account's edit is carried once.
-Another release of a recording the library holds is never queued.
+Another release of a recording the library holds is never queued. A track added
+to a WIP playlist is held with no ``acquire`` (U959), so none is queued for it.
 
 Layer: modules.
 """

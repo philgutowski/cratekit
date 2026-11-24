@@ -1110,8 +1110,11 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   comes into rekordbox at the next sync.
 - Never found by a bare `sync pair`: Cratekit's own trees, Favorites, twins
   (a twin is paired with its account playlist when it is made), smart
-  playlists, another app's folder, and folders `outbound.pair_skip_folders`
-  names (`["ARCHIVE"]` by default).
+  playlists, another app's folder, folders `outbound.pair_skip_folders`
+  names (`["ARCHIVE"]` by default), and a playlist under `WIP` that
+  `crate organize`'s account mirror already copies, so the account never
+  holds it twice. A WIP playlist a pair already keeps stays paired, and the
+  mirror leaves it out.
 - It plans once; the rekordbox gate `sync.pair.rekordbox` then the account
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
@@ -1257,14 +1260,14 @@ repeatable, plans just those steps; a side with no kind named is not asked.
 | rekordbox | `rotate` | Rotates INBOX, as `inbox rotate`. |
 | rekordbox | `record-labels` | Listed only; a landing files label batches itself. |
 | rekordbox | `inspiration` | Gives each downloaded (taken) set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
-| rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches). |
-| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks; the next new `sync land` pass takes the download. |
+| rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches); an edit to a WIP playlist stays on the account. |
+| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist, other than a WIP one, that the library lacks; the next new `sync land` pass takes the download. |
 | account | `labels` | Builds missing label folders and year playlists, and plans each label's dated `<Label> <year> new <date>` playlist of releases a go took that day. |
 | account | `sets` | Archives every set whose download is proven into `Downloaded Sets <year>`. |
 | account | `marks` | Marks every landed sync pass. |
 | account | `file` | Files each playlist a sync marked at the root into its `<year>` folder. |
 | account | `root` | Removes label debris whose tracks are all downloaded and empty root playlists, and empties legacy `<year> Custom Playlists` folders, each named on the gate. |
-| account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites and INBOX's live batches to a root folder of private playlists. |
+| account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites, INBOX's live batches and every playlist under the top level `WIP` folder to a root folder of private playlists. |
 | both | `yours` | Lists playlists you made, with a suggested home; never moves or renames them. |
 
 - An edit on Tidal to a mirrored genre playlist retags the track: moving it
@@ -1285,6 +1288,15 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   show it: into `Electronica / Other`, which files by no genre beside a
   second, or out of its folder when a second genre naming that same folder
   would then name it too.
+- Every plain playlist under the top level `WIP` folder is mirrored into an
+  account root folder `WIP`: one directly under it as `WIP <playlist>`, one in
+  a subfolder as `<subfolder> <playlist>`, so `WIP / Phil / deep and soulful`
+  becomes `Phil deep and soulful`. A playlist `sync pair` keeps (a custom
+  playlist twin is one), a smart playlist and a folder two levels down are
+  named on the step and not mirrored, and with no `WIP` folder a fact says so.
+  An edit you make on Tidal to a WIP playlist stays as you made it and is not
+  taken into rekordbox; a WIP playlist you delete or move out of `WIP` keeps
+  its account playlist.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a
@@ -1373,8 +1385,23 @@ crate inbox rotate
   that folder is asked, and only for rows `tag set` changed, so a track you
   put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
-  tree; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
+  tree, except a tree whose differences are `untagged` (below), which no
+  rebuild repairs; naming INBOX asks `rebuild.accept`. A driven rebuild names what it
   left behind and every playlist it could not compare, as `route resort` does.
+- The `vox` My Tag files a track into its genre folder's `with vox` on a
+  calibrated library, the same for `adopt apply`, `rebuild`, `route resort`
+  and `converge`; the file's vocal score does not. A track in `with vox`
+  whose file clears the vocal cut and whose row carries no `vox` tag reads
+  `untagged:BUCKET/with_vox:ROW` in `converge`, after a line counting them,
+  a difference but not a leftover: `route resort`'s gate counts it under
+  `vocal untagged`, apart from `left behind`, and a driven `rebuild` or
+  `route resort` warns `vocal-membership-untagged`, naming each. Settle one by
+  tagging it, `crate metadata mytags-vocals --apply` for a row that never
+  carried the tag or in rekordbox for one whose tag was taken off, or by
+  taking it out of the playlist; then `converge` again. `route inbox`, which
+  reads no database before its gate, and the account's mirror edits still
+  file and leave `with vox` by the vocal score, the rule a landing writes the
+  tag by.
 - Audits and reports are read only. `audit duplicates` never deletes and
   remembers intentional alternates. `report genres` names genres with 50 or
   more tracks and no top level folder.
@@ -1493,7 +1520,8 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-entries, at most five `not-compared` ones first), and `route resort` and
+entries: a count of the `untagged` vocal memberships first when there are
+any, then at most five `not-compared` ones), and `route resort` and
 `rebuild` list it as left behind. Under a folder
 renamed in rekordbox it is listed the same way when a write recorded that
 playlist, or recorded the folder and nothing else is filed into that band:
@@ -2036,7 +2064,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `library-root-unproven`, `library-root-foreign` | The backup found no library at the root, usually the volume not mounted. Mount it and run `crate backup run` again; `--library-emptied` only for a library emptied on purpose. |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
 | An unknown verb | `crate profile show`: its module is off. |
-| A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |
+| A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. Lines reading `untagged:` are settled by tagging or taking out, not by the rebuild. |
 | A stale lock from a machine that is gone | `crate session release`. |
 
 Exit codes by band:
