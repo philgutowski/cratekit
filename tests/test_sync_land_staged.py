@@ -12,10 +12,11 @@ import dataclasses
 import json
 from pathlib import Path
 
+from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import sync_land
 from cratekit.cli import tail as tail_chain
-from cratekit.core import tags
-from cratekit.core.cause import Cause, Remediation
+from cratekit.core import jobs, tags
+from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
@@ -25,9 +26,11 @@ from tests.test_sync_all import _playlist, bind_playlists
 from tests.test_sync_land import (  # noqa: F401 - fixtures by name
     _by_key,
     _check,
+    _enqueue,
     _refused,
     _staged,
     _summary,
+    dataclasses_replace_library,
     machine,
     tail,
     vocal_model,
@@ -48,20 +51,20 @@ def _first_pass(monkeypatch, script, cfg) -> dict:
     first = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     for n in ("101", "102"):
         path = _staged(cfg) / f"{n}.wav"
-        assert tags.write_tags(
-            path, {"artist": f"Artist {n}", "title": f"Title {n}", "isrc": ISRC[n]}
-        ), path
+        written = {"artist": f"Artist {n}", "title": f"Title {n}", "isrc": ISRC[n]}
+        assert tags.write_tags(path, written), path
     script.fetched.clear()
     return first
 
 
 def _second_pass(monkeypatch, *ids: str) -> tuple[int, dict]:
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _rows("101", "102")),
-        (_playlist("pl-b", "Peak"), _rows(*ids)),
-    )
+    warmup = (_playlist("pl-a", "Warmup"), _rows("101", "102"))
+    bind_playlists(monkeypatch, warmup, (_playlist("pl-b", "Peak"), _rows(*ids)))
     return drive(["sync", "land"])
+
+
+def _landings(tail) -> int:
+    return sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
 
 def _refused_beside_the_first(first: dict, second: dict) -> dict:
@@ -72,10 +75,8 @@ def _refused_beside_the_first(first: dict, second: dict) -> dict:
     (waiting,) = cause["detail"]["waiting"]
     assert waiting["pass"] == _summary(first)["land_name"]
     assert waiting["pass_run"] == _summary(first)["pass_run"]
-    assert (
-        f"crate sync land --pass-run {_summary(first)['pass_run']}"
-        in " ".join(cause["remediation"]["steps"])
-    )
+    command = f"crate sync land --pass-run {_summary(first)['pass_run']}"
+    assert command in " ".join(cause["remediation"]["steps"])
     return cause
 
 
@@ -86,8 +87,7 @@ def test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stag
     refuses before it downloads anything, naming the first and its command."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
-    landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
-
+    landings = _landings(tail)
     second = exited(_second_pass(monkeypatch, "101", "103"), ExitCode.REFUSED_BY_POLICY)
     assert script.fetched == []
     summary = _summary(second)
@@ -101,7 +101,7 @@ def test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stag
     assert cause["detail"]["waiting"][0]["tracks"] == 2
     staged = sorted(p.name for p in _staged(cfg).iterdir() if p.is_file())
     assert staged == ["101.wav", "102.wav"]
-    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
+    assert _landings(tail) == landings
 
 
 def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuses(
@@ -110,8 +110,7 @@ def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuse
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     downloads = len(_by_key("acquire.download"))
-    landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
-
+    landings = _landings(tail)
     second = exited(_second_pass(monkeypatch, "102"), ExitCode.REFUSED_BY_POLICY)
     assert script.fetched == []
     assert len(_by_key("acquire.download")) == downloads, "a download was queued"
@@ -123,7 +122,7 @@ def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuse
         "not landed yet"
     )
     _refused_beside_the_first(first, second)
-    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
+    assert _landings(tail) == landings
 
 
 def test_a_continued_pass_whose_own_downloads_are_staged_lists_them_again(
@@ -150,13 +149,9 @@ def _rename_incomplete(isrc: str) -> Cause:
         remediation=Remediation(remedy=Remedy.REPORT_DEFECT, steps=("read the files",)),
         retryable=True,
         origin=("write.naming_cli",),
-        detail={
-            "renamed": 0,
-            "incomplete_count": 1,
-            "incomplete": [
-                {"from": "101.wav", "path": "/staged/101.wav", "why": "taken", "isrc": isrc}
-            ],
-        },
+        detail={"renamed": 0, "incomplete_count": 1, "incomplete": [
+            {"from": "101.wav", "path": "/staged/101.wav", "why": "taken", "isrc": isrc}
+        ]},
     )
 
 
@@ -169,10 +164,7 @@ def test_a_name_stop_over_a_second_copy_names_the_pass_that_downloaded_it(
     first = _first_pass(monkeypatch, script, cfg)
     (download,) = _by_key("acquire.download")
     run_id = _summary(first)["pass_run"]
-    monkeypatch.setattr(
-        tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete(ISRC["101"]))
-    )
-
+    _name_refused(monkeypatch, tail, ISRC["101"])
     again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PRECONDITION)
     steps = again["cause"]["remediation"]["steps"]
     said = [step for step in steps if step.startswith(f"ISRC {ISRC['101']}")]
@@ -188,10 +180,7 @@ def test_a_second_copy_no_download_job_records_is_said_so(machine, monkeypatch, 
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     run_id = _summary(first)["pass_run"]
-    monkeypatch.setattr(
-        tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete("GBAAA2601999"))
-    )
-
+    _name_refused(monkeypatch, tail, "GBAAA2601999")
     again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PRECONDITION)
     steps = again["cause"]["remediation"]["steps"]
     assert (
@@ -199,6 +188,11 @@ def test_a_second_copy_no_download_job_records_is_said_so(machine, monkeypatch, 
         "take, is in no download job of this library, so the copy in its way did "
         "not come from a download here: compare the two by hand"
     ) in steps, steps
+
+
+def _name_refused(monkeypatch, tail, isrc: str) -> None:
+    """The name step refused as incomplete over a copy carrying ``isrc``."""
+    monkeypatch.setattr(tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete(isrc)))
 
 
 def _refusing_name(tail, cause: Cause):
@@ -218,8 +212,7 @@ def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_r
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     script.landings["103"] = Landing(kind="lossy")
-    landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
-
+    landings = _landings(tail)
     second = exited(_second_pass(monkeypatch, "101", "103"), ExitCode.REFUSED_BY_POLICY)
     summary = _summary(second)
     assert summary["staged"] == 1
@@ -227,31 +220,22 @@ def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_r
     assert not summary.get("download_job")
     assert script.fetched == []
     _refused_beside_the_first(first, second)
-    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
+    assert _landings(tail) == landings
 
 
 def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:
     """A download job over ``<list_name>.list.json`` freezing one track of ``isrc``."""
-    from cratekit.acquire import cli as acquire_cli
-    from cratekit.cli import registry
-    from cratekit.core import jobs
+    payload = {
+        acquire_cli.LIST: f"/lists/{list_name}.list.json",
+        acquire_cli.TRACKS: {"7": {"artist": "a", "title": "t", "isrc": isrc}},
+    }
+    job = _enqueue(cfg, tail_chain.DOWNLOAD_VERB, payload, "7")
+
+    def work(_job, _item):
+        if not finish:
+            raise RuntimeError("never acquired")
 
     with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key=registry.entry(tail_chain.DOWNLOAD_VERB).handler_key,
-            payload={
-                acquire_cli.LIST: f"/lists/{list_name}.list.json",
-                acquire_cli.TRACKS: {"7": {"artist": "a", "title": "t", "isrc": isrc}},
-            },
-            cfg=cfg,
-            item_ids=("7",),
-        )
-
-        def work(_job, _item):
-            if not finish:
-                raise RuntimeError("never acquired")
-
         try:
             jobs.drive(store, job.job_id, work)
         except Exception:  # noqa: BLE001 - the queue records the failed item
@@ -262,17 +246,13 @@ def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:
 def test_the_passes_named_are_this_librarys_finished_downloads_earliest_first(machine):
     """Only this library's finished downloads are named, earliest first; a job
     that froze the track and never acquired it, or another library's, is not."""
-    from tests.test_sync_land import dataclasses_replace_library
-
     cfg, _script = machine
     earliest = _download_job(cfg, "pass-a", ISRC["101"], finish=True)
     _download_job(cfg, "pass-unfinished", ISRC["101"], finish=False)
     _download_job(dataclasses_replace_library(cfg), "pass-elsewhere", ISRC["101"], finish=True)
     _download_job(cfg, "pass-other-recording", ISRC["102"], finish=True)
     latest = _download_job(cfg, "pass-b", ISRC["101"], finish=True)
-
     said = tail_chain._downloaded_by(ISRC["101"], "101.wav", cfg)
-
     assert said == (
         f"ISRC {ISRC['101']}, carried by 101.wav and by the file whose name it would "
         f"take, was downloaded by: pass-a (job {earliest}), pass-b (job {latest}); keep "
@@ -285,9 +265,6 @@ def test_a_stop_that_is_not_rename_incomplete_or_cannot_read_the_queue_is_unchan
 ):
     """Only the naming verb's own answer is read, and a queue that cannot be
     read leaves the refusal as it was."""
-    from cratekit.core import jobs
-    from cratekit.core.cause import CratekitError
-
     cfg, _script = machine
     _download_job(cfg, "pass-a", ISRC["101"], finish=True)
     other = dataclasses.replace(_rename_incomplete(ISRC["101"]), reason="internal-error")

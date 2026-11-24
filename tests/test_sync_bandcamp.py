@@ -26,30 +26,15 @@ from cratekit.intake import batch_name
 from tests._sync_builders import exited, failed
 from tests.bandcamp_fakes import FakeAccount, item
 from tests.cli_drive import drive
-from tests.test_bandcamp_cli import (
-    SESSION,
-    bind,
-    collection,
-    owned,
-)
-from tests.test_bandcamp_cli import (
-    account as account,  # noqa: PLC0414
-)
-from tests.test_bandcamp_cli import (
-    cfg as cfg,  # noqa: PLC0414
-)
-from tests.test_bandcamp_cli import (
-    library as library,  # noqa: PLC0414
-)
-from tests.test_bandcamp_cli import (
-    signed_in as signed_in,  # noqa: PLC0414
-)
-from tests.test_bandcamp_cli import (
-    silence as silence,  # noqa: PLC0414
-)
+from tests.test_bandcamp_cli import SESSION, bind, collection, owned
+from tests.test_bandcamp_cli import account as account  # noqa: PLC0414
+from tests.test_bandcamp_cli import cfg as cfg  # noqa: PLC0414
+from tests.test_bandcamp_cli import library as library  # noqa: PLC0414
+from tests.test_bandcamp_cli import signed_in as signed_in  # noqa: PLC0414
+from tests.test_bandcamp_cli import silence as silence  # noqa: PLC0414
 from tests.test_bandcamp_labels import PULS_FILES
 from tests.test_bandcamp_labels import puls as puls  # noqa: PLC0414
-from tests.test_sync_land import Tail, _gate, _ok, _refused
+from tests.test_sync_land import Tail, _enqueue, _gate, _ok, _refused
 
 ENTRY = registry.entry("sync.bandcamp")
 BATCH = "Batch One"
@@ -134,6 +119,33 @@ def _verbs(stand_in: Tail) -> list[tuple[str, ...]]:
     return [tuple(argv[:2]) if argv[:1] != ["-d"] else ("name", "apply") for argv in stand_in.calls]
 
 
+def _expiring(account) -> dict[str, bool]:
+    """The account's downloads answer 403 while the returned switch reads expired."""
+    original = account.get
+    state = {"expired": True}
+
+    def expiring(url, *, cookie):
+        if "/download" in url and state["expired"]:
+            return type(original(url, cookie=cookie))(403, "forbidden")
+        return original(url, cookie=cookie)
+
+    account.get = expiring
+    return state
+
+
+def _rehearsal_refused(reason: str, message: str, remedy: Remedy, **outcome: str) -> tuple:
+    """A rehearsal answered by a refusal of ``reason``."""
+    return _refused(
+        Cause(
+            reason=reason,
+            message=message,
+            remediation=Remediation(remedy=remedy),
+            origin=("test",),
+        ),
+        **outcome,
+    )
+
+
 # 1. The declaration
 
 
@@ -164,14 +176,9 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
     folder = _folder(signed_in)
     # THE ORDER: the plan, the fetch, the tail, the rehearsal, then the landing.
     assert _verbs(chain) == [
-        ("acquire", "bandcamp"),
-        ("acquire", "bandcamp-fetch"),
-        ("tag", "folder"), ("tag", "folder"),
-        ("tag", "guess"),
-        ("analyze", "run"), ("analyze", "run"),
-        ("analyze", "restamp"), ("analyze", "restamp"),
-        ("name", "apply"),
-        ("intake", "land"),
+        ("acquire", "bandcamp"), ("acquire", "bandcamp-fetch"), ("tag", "folder"),
+        ("tag", "folder"), ("tag", "guess"), ("analyze", "run"), ("analyze", "run"),
+        ("analyze", "restamp"), ("analyze", "restamp"), ("name", "apply"), ("intake", "land"),
         ("intake", "land"),
     ]
     name = "2026-11-01 Bandcamp PULS"
@@ -222,8 +229,7 @@ def test_the_tail_runs_on_the_absolute_batch_folder(signed_in, account, puls, ch
 
     folder = str(_folder(signed_in))
     queued = [argv for argv in chain.calls if argv[:1] in (["tag"], ["analyze"]) and "--job" not in argv]
-    # Three queued steps and the genre guess between them (U172), which a
-    # Bandcamp batch runs with no pass, since no account playlist asked for it.
+    # Three queued steps and the genre guess (U172), run with no pass: no account playlist asked.
     assert [argv[-1] for argv in queued] == [folder] * 4
     (guessed,) = [argv for argv in queued if argv[:2] == ["tag", "guess"]]
     assert "--pass" not in guessed
@@ -255,16 +261,11 @@ def test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing(
     signed_in, tmp_path, silence, library, monkeypatch, chain
 ):
     owned(library, "Nova Reef - Low Light.flac")
-    bind(
-        monkeypatch,
-        FakeAccount(
-            [
-                item("2", seller="pulsromania", artist="Nova Reef", title="Low Light",
-                     purchased="20 Oct 2026 10:00:00 GMT", tracks=[("", "Low Light")]),
-            ]
-        ),
+    low_light = item(
+        "2", seller="pulsromania", artist="Nova Reef", title="Low Light",
+        purchased="20 Oct 2026 10:00:00 GMT", tracks=[("", "Low Light")],
     )
-
+    bind(monkeypatch, FakeAccount([low_light]))
     envelope = exited(run("--batch", BATCH))
     assert envelope["outcome"] == "no_op"
     assert _verbs(chain) == [("acquire", "bandcamp")]
@@ -338,8 +339,7 @@ def test_a_file_whose_tags_cannot_be_read_is_unread_not_ungenred_and_names_no_la
     folder.mkdir(parents=True)
     (folder / "Broken.flac").write_bytes(b"not a flac container")
     chain.work[tail_chain.TAG] = _tag_with("Rominimal")
-    # The tag stand in writes each file; the broken one it cannot, so it is
-    # passed over the way the real step would record it.
+    # The tag stand in passes the broken file over, as the real step would record it.
     real_work = chain.work[tail_chain.TAG]
     chain.work[tail_chain.TAG] = lambda job, it: None if it.item_id == "Broken.flac" else real_work(job, it)
 
@@ -401,9 +401,8 @@ def test_a_failed_tail_step_plans_no_landing_and_names_the_continuation(
     # THE FETCH IS KEPT, and the way on is the verb again over the same batch.
     assert _staged(signed_in) == sorted(PULS_FILES)
     steps = envelope["cause"]["remediation"]["steps"]
-    assert any(
-        "crate sync bandcamp --batch 'Batch One' --seller PULS" in step for step in steps
-    ), steps
+    again = "crate sync bandcamp --batch 'Batch One' --seller PULS"
+    assert any(again in step for step in steps), steps
 
 
 def test_the_same_batch_again_takes_the_staged_files_on_and_fetches_nothing_twice(
@@ -423,14 +422,10 @@ def test_the_same_batch_again_takes_the_staged_files_on_and_fetches_nothing_twic
 
 
 def test_a_failed_rehearsal_plans_no_live_landing(signed_in, account, puls, chain):
-    stale = Cause(
-        reason="decision-stale",
-        message="the rehearsal's plan differs from the live plan",
-        remediation=Remediation(remedy=Remedy.REPLAN_THEN_DECIDE),
-        origin=("test",),
+    chain.landing.rehearsal = _rehearsal_refused(
+        "decision-stale", "the rehearsal's plan differs from the live plan",
+        Remedy.REPLAN_THEN_DECIDE,
     )
-    chain.landing.rehearsal = _refused(stale)
-
     envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     (rehearsed,) = chain.landing.rehearsed
     assert chain.landing.landed == []
@@ -443,14 +438,10 @@ def test_a_failed_rehearsal_plans_no_live_landing(signed_in, account, puls, chai
 def test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_landing(
     signed_in, account, puls, chain
 ):
-    missing = Cause(
-        reason=tail_chain.ACK_STOP,
-        message="no backup acknowledgment is recorded",
-        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP),
-        origin=("test",),
+    chain.landing.rehearsal = _rehearsal_refused(
+        tail_chain.ACK_STOP, "no backup acknowledgment is recorded", Remedy.ACKNOWLEDGE_BACKUP,
+        outcome="blocked",
     )
-    chain.landing.rehearsal = _refused(missing, outcome="blocked")
-
     envelope = exited(run("--seller", "PULS", "--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert envelope["pending_human_action"]["kind"] == "backup_ack"
     assert chain.landing.landed == []
@@ -519,15 +510,7 @@ def test_a_plan_holding_only_part_owned_releases_still_fetches_the_rest(
 def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_on(
     signed_in, account, puls, chain
 ):
-    original = account.get
-    state = {"expired": True}
-
-    def expiring(url, *, cookie):
-        if "/download" in url and state["expired"]:
-            return type(original(url, cookie=cookie))(403, "forbidden")
-        return original(url, cookie=cookie)
-
-    account.get = expiring
+    state = _expiring(account)
     envelope = failed(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] == "blocked"
     (job,) = _fetch_jobs()
@@ -547,15 +530,7 @@ def test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first(
     signed_in, account, puls, chain
 ):
     """Two hand run fetches into one batch, both parked: a run drives every one."""
-    original = account.get
-    state = {"expired": True}
-
-    def expiring(url, *, cookie):
-        if "/download" in url and state["expired"]:
-            return type(original(url, cookie=cookie))(403, "forbidden")
-        return original(url, cookie=cookie)
-
-    account.get = expiring
+    state = _expiring(account)
     drive(["acquire", "bandcamp-fetch", "--seller", "otherlabel", "--batch", BATCH])
     bandcamp_cli.forget()
     drive(["acquire", "bandcamp-fetch", "--seller", "otherlabel", "--batch", BATCH])
@@ -578,28 +553,19 @@ def test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first(
     fetch_checks = [
         c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.bandcamp.fetch"
     ]
-    assert f"fetch job {newest.job_id} staged 0 release(s), 1 already staged by this run" in fetch_checks
+    said = f"fetch job {newest.job_id} staged 0 release(s), 1 already staged by this run"
+    assert said in fetch_checks
 
 
 def test_a_release_refused_by_two_fetches_is_named_once(
     signed_in, account, puls, chain, tmp_path, silence, monkeypatch
 ):
     """An open fetch driven on refuses a lossy only release, and the new fetch refuses it again."""
-    with jobs.open_store() as store:
-        jobs.enqueue(
-            store,
-            handler_key=registry.entry(sync_bandcamp.FETCH_VERB).handler_key,
-            payload={
-                bandcamp_cli.BATCH: BATCH,
-                bandcamp_cli.RELEASES: {
-                    "4": {"seller": "otherlabel", "label": None, "label_id": None,
-                          "artist": "Coral Arc", "title": "Drift", "item_type": "album",
-                          "tracks": [{"number": 1, "artist": "", "title": "Drift"}], "held": []},
-                },
-            },
-            cfg=config.load(),
-            item_ids=("4",),
-        )
+    drift = {"seller": "otherlabel", "label": None, "label_id": None,
+             "artist": "Coral Arc", "title": "Drift", "item_type": "album",
+             "tracks": [{"number": 1, "artist": "", "title": "Drift"}], "held": []}
+    payload = {bandcamp_cli.BATCH: BATCH, bandcamp_cli.RELEASES: {"4": drift}}
+    _enqueue(config.load(), sync_bandcamp.FETCH_VERB, payload, "4")
     bind(monkeypatch, collection(tmp_path, silence, encodings=("mp3-320",)))
 
     envelope = exited(run("--seller", "otherlabel", "--batch", BATCH))
@@ -635,20 +601,11 @@ def test_the_tags_are_read_from_the_files_the_name_step_renamed(
 def test_an_open_fetch_into_another_batch_is_named_and_nothing_is_fetched(
     signed_in, account, chain
 ):
-    with jobs.open_store() as store:
-        held = jobs.enqueue(
-            store,
-            handler_key=registry.entry(sync_bandcamp.FETCH_VERB).handler_key,
-            payload={bandcamp_cli.BATCH: "Bandcamp 2026-10-31", bandcamp_cli.RELEASES: {}},
-            cfg=config.load(),
-            item_ids=("9",),
-        )
-
+    payload = {bandcamp_cli.BATCH: "Bandcamp 2026-10-31", bandcamp_cli.RELEASES: {}}
+    held = _enqueue(config.load(), sync_bandcamp.FETCH_VERB, payload, "9")
     envelope = exited(run("--batch", BATCH), ExitCode.PENDING_HUMAN)
     assert chain.calls == []
     (step,) = envelope["pending_human_action"]["steps"]
     assert step == "continue that batch first: crate sync bandcamp --batch 'Bandcamp 2026-10-31'"
-    assert _summary(envelope)["open_fetch"] == {
-        "job_id": held.job_id,
-        "batch": "Bandcamp 2026-10-31",
-    }
+    open_fetch = {"job_id": held.job_id, "batch": "Bandcamp 2026-10-31"}
+    assert _summary(envelope)["open_fetch"] == open_fetch
