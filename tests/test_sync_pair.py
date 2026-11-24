@@ -574,7 +574,11 @@ def _landed_for(w, cfg, account_id: str, content_ids, *, session_id: str, name: 
     from cratekit.cli import output
     from cratekit.intake import ingest
 
-    mirror_id = w.make(f"{name} (INBOX)", content_ids)
+    with writing(w) as handle:
+        mirror = handle.create_playlist(f"{name} (INBOX)")
+        for content_id in content_ids:
+            handle.add_to_playlist(mirror, content_id)
+        mirror_id = str(mirror.ID)
     session.write_record(
         session.SessionRecord(
             session_id=session_id,
