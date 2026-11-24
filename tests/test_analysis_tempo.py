@@ -128,8 +128,7 @@ def test_a_window_no_bin_falls_in_answers_none():
 
 
 def test_the_prior_prefers_the_level_nearer_the_centre_inside_the_window():
-    """Peaks at 89 and 136, the slower a twentieth stronger: a flat window names 89,
-    the prior at 120 names 136. The imbalance makes the prior the thing under test."""
+    """Peaks at 89 and 136, 89 a twentieth stronger: only the prior at 120 names 136."""
     strength = 1.05 * _autocorrelation_peaked_at(29.0) + _autocorrelation_peaked_at(19.0)
     assert int(np.argmax(strength)) == 29
     tempo = detect.tempo_from_autocorrelation(strength)
@@ -144,8 +143,7 @@ def test_a_click_train_is_named_within_a_beat_of_its_tempo(known):
 
 
 def test_a_pulse_above_the_ceiling_is_named_by_its_value_inside_the_window():
-    """A file at 166 is headed 83 under the shipped window, and 166 when the
-    window is raised: the window is the setting that decides."""
+    """A file at 166 is headed 83 under the shipped window and 166 under a raised one."""
     fast = _clicks(166.0)
     default = detect.measure_tempo(fast, RATE, floor=80, ceiling=160)
     raised = detect.measure_tempo(fast, RATE, floor=100, ceiling=200)
@@ -154,16 +152,14 @@ def test_a_pulse_above_the_ceiling_is_named_by_its_value_inside_the_window():
 
 
 def test_a_pulse_below_the_floor_is_named_by_its_subdivision():
-    """A 70 beat pulse with its eighths sounded names 140, the window's; a bare 70
-    click train carries nothing at 140."""
+    """A 70 pulse with its eighths sounded names 140; a bare 70 carries nothing at 140."""
     slow = _clicks(70.0) + 0.5 * _clicks(140.0)
     default = detect.measure_tempo(slow, RATE, floor=80, ceiling=160)
     assert default is not None and abs(default - 140.0) < 1.0
 
 
 def test_the_measure_equals_the_known_tempo_of_a_fixture_set_and_names_no_key(tmp_path):
-    """The fixture set the brief asks for: files with a known tempo and key, and
-    the tempo the detector measures equals it; the key it no longer reads (U343)."""
+    """The brief's fixture set of known tempo and key: the tempo, and no key (U343)."""
     cases = [
         ("one.wav", 128.0, A_MINOR, "8A"),
         ("two.wav", 122.0, C_MAJOR, "8B"),

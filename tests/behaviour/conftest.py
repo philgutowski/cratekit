@@ -1,15 +1,14 @@
 """The fixtures around every behaviour scenario (U297), on top of ``tests/conftest.py``.
 
-1. The roots move into the scenario's own ``tmp_path``, which pytest names for
-   the test alone, so paths do not change with the scenarios run before. The
-   variables are read off the environment, so a root added later moves too.
-2. The clock and the ids are pinned, and the terminal width and time zone
-   fixed, so two runs print and write the same bytes.
+1. The roots move into the scenario's own ``tmp_path``, so paths do not change
+   with the scenarios run before; read off the environment, so a root added
+   later moves too.
+2. The clock and ids are pinned and the terminal fixed, so two runs print and
+   write the same bytes.
 3. A scenario whose product roots reach past its own directory is refused
    before every command.
 
-All three are autouse, so they sit between the suite's isolation and a
-scenario's fixtures, each with its own ``pytest.MonkeyPatch``.
+All autouse, between the suite's isolation and a scenario's fixtures.
 """
 
 from __future__ import annotations

@@ -24,6 +24,7 @@ from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode
 from tests import adopt_fixtures
 from tests.cli_drive import approve_and_queue, drive
+from tests.test_adopt_workers import _reader_cache, library  # noqa: F401
 from tests.test_adoption import TREE_ID, _bucket_and_genre, _plan_of, _readable, _row
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
@@ -32,23 +33,6 @@ from tests.test_rb_writer_db import RECORDED_APP_VERSION
 FOREIGN_VOLUME = "0000-0000"
 APPLY = ["adopt", "apply"]
 GATE = "adopt.apply.approve"
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "db").mkdir(parents=True)
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
-
-
-@pytest.fixture(autouse=True)
-def _reader_cache():
-    """No test may inherit another's library: the reader memoizes on the shared path."""
-    collection.reset_cache()
-    yield
-    collection.reset_cache()
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +52,7 @@ def _platform_seams(monkeypatch):
 
 
 @pytest.fixture
-def cfg(library, monkeypatch):
+def cfg(library, monkeypatch):  # noqa: F811
     resolved = config.from_dict(valid_data(library))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     return resolved
@@ -148,10 +132,7 @@ def _apply(cfg_value, plan, declared_taxonomy, **overrides):
 
 
 def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, declared, silence):
-    """The lock is held inside the loop and released after; memberships come back
-    for the entries placed, valued with locations (U55), the collector writes
-    nothing, and the ledger names the approver (R34).
-    """
+    """Memberships are valued with locations (U55); the ledger names the approver (R34)."""
     plan, path = _one_track_plan(acknowledged, declared, silence)
     db = Path(acknowledged.library.db_path)
     db_before = db.stat().st_mtime_ns if db.exists() else None
@@ -189,9 +170,8 @@ def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, d
 
 
 def test_the_analysis_watch_is_armed_on_the_library_root(acknowledged, declared, silence):
-    """R17's fifth surface, runtime half: an analysis file moved from inside
-    ``tag_value``, beside the music folder rather than in it, makes the session refuse.
-    """
+    """R17's fifth surface, runtime half: an analysis file moved beside the music folder
+    rather than in it, from inside ``tag_value``, makes the session refuse."""
     plan, _path = _one_track_plan(acknowledged, declared, silence)
     grid = Path(acknowledged.library.root) / "ANLZ0001.DAT"
     grid.write_bytes(b"not a real grid, and never written by this product")
@@ -349,13 +329,8 @@ def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
 
 
 def test_the_census_is_the_library_and_every_row_of_it_is_carried(seeded, declared):
-    """Every live row comes back classified, the tombstone skipped, and two builds of
-    the unchanged library give one digest across a cleared cache.
-
-    The tree comes off the declared taxonomy (R19), and the census classifies
-    against the caller's taxonomy, so a modified one moves the tree and one
-    calling the genre too coarse stops it routing.
-    """
+    """The tree comes off the declared taxonomy (R19), and the census classifies against
+    the caller's, so an entry is never built from two taxonomies."""
     scanned = apply_cli.census(seeded, declared)
     by_id = {track.content_id: track for track in scanned}
 
@@ -415,7 +390,7 @@ def test_a_library_of_tombstones_and_an_empty_one_both_census_to_nothing(cfg, de
 
 
 @pytest.fixture
-def installed(library, monkeypatch):
+def installed(library, monkeypatch):  # noqa: F811
     """A machine the real ``cli.run`` can load, set up rather than half set up,
     with something applicable in its library."""
     resolved = config.from_dict(
@@ -460,9 +435,7 @@ def _decided(answer: str) -> tuple[str, dict]:
 
 
 def test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest(installed):
-    """R34's two acts, then the frozen payload carries the approved digest, and the
-    real ``argv_for`` resume gets past the gate to the uncut tree's refusal.
-    """
+    """R34's two acts; the real ``argv_for`` resume gets past the gate to the uncut tree."""
     verb = registry.entry("adopt.apply")
     expected = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
 
@@ -565,9 +538,8 @@ def _shown_matches(shown: dict, document: dict) -> None:
 
 
 def test_the_approval_gate_shows_every_entry_the_digest_was_taken_over(installed):
-    """The gate shows the applicable entries, the digest, the tree, the counts and
-    the collisions; what the plan will not touch is a count (R-693). A resume with
-    no answer meets the same gate."""
+    """What the plan will not touch is a count (R-693); a resume with no answer meets
+    the same gate."""
     plan = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
     document = adopt_plan.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}

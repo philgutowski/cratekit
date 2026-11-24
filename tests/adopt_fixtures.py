@@ -1,11 +1,8 @@
 """Building a disposable library the adopt verbs can actually read.
 
-Four suites share one contract between the reader, the census and the two
-verbs. Rows carry real files, since ``cratekit.adopt.scan.scan_rows`` stats
-each location and a missing file is excluded from the plan. D1 applies:
-nothing names a real volume, person or track.
-
-Not a test module: pytest does not collect it.
+Rows carry real files, since ``cratekit.adopt.scan.scan_rows`` stats each
+location and a missing file is excluded from the plan. D1 applies: nothing
+names a real volume, person or track.
 """
 
 from __future__ import annotations

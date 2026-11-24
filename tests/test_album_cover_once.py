@@ -74,12 +74,14 @@ def slept() -> list[float]:
     return []
 
 
-def ship(monkeypatch, host: Host, slept: list[float]) -> None:
-    """The shipped image fetch over ``host``, built where the binder builds it."""
+def ship(monkeypatch, answers: dict[str, list], slept: list[float]) -> Host:
+    """The shipped fetch over a host giving ``answers``, built where the binder builds it."""
+    host = Host(answers)
     real = searchers.default_image_fetch
     monkeypatch.setattr(
         searchers, "default_image_fetch", lambda: real(get=host, sleep=slept.append)
     )
+    return host
 
 
 @pytest.fixture
@@ -143,8 +145,7 @@ TRACKS = [f"track{index:02d}" for index in range(4)]
 def test_an_albums_files_naming_one_address_make_one_request_one_wait_and_one_encode(
     tmp_path, silence, monkeypatch, slept, encodes
 ):
-    host = Host({ALBUM: [cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [cover()]}, slept)
     paths = album(tmp_path / "Music", silence, TRACKS)
 
     results = sweep(paths, lambda _path: ALBUM)
@@ -163,8 +164,7 @@ def test_every_file_carries_byte_for_byte_what_it_carried_before(
 ):
     """The merge blocker, measured. Today's run is the control, and its own
     counts are asserted so the control is known to be today's shape."""
-    host = Host({ALBUM: [cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [cover()]}, slept)
     before = album(tmp_path / "before", silence, TRACKS)
     after = album(tmp_path / "after", silence, TRACKS)
 
@@ -192,8 +192,7 @@ def test_two_albums_in_one_folder_make_two_requests_and_two_encodes(
     tmp_path, silence, monkeypatch, slept, encodes
 ):
     """Interleaved, the order a flat folder of two albums sorts into."""
-    host = Host({ALBUM: [cover()], OTHER: [other_cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [cover()], OTHER: [other_cover()]}, slept)
     paths = album(tmp_path / "Music", silence, TRACKS)
     address = {path: (ALBUM if index % 2 == 0 else OTHER) for index, path in enumerate(paths)}
 
@@ -219,8 +218,7 @@ def test_two_albums_in_one_folder_make_two_requests_and_two_encodes(
 def test_a_fetch_that_failed_for_one_file_is_asked_again_for_the_next(
     tmp_path, silence, monkeypatch, slept, encodes, failure
 ):
-    host = Host({ALBUM: [failure, cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [failure, cover()]}, slept)
     paths = album(tmp_path / "Music", silence, ["a", "b", "c"])
 
     results = sweep(paths, lambda _path: ALBUM)
@@ -241,8 +239,7 @@ def test_bytes_that_are_not_a_picture_are_asked_again_and_fail_as_they_did(
 ):
     """A decode failure is a failure: never remembered as an answer, asked for
     again on every file as today, and said in today's sentence on each."""
-    host = Host({ALBUM: [NOT_A_PICTURE]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [NOT_A_PICTURE]}, slept)
     before = album(tmp_path / "before", silence, ["a", "b", "c"])
     after = album(tmp_path / "after", silence, ["a", "b", "c"])
 
@@ -262,8 +259,7 @@ def test_bytes_that_are_not_a_picture_are_asked_again_and_fail_as_they_did(
 def test_a_second_sweep_over_the_tagged_folder_fetches_nothing(
     tmp_path, silence, monkeypatch, slept, encodes
 ):
-    host = Host({ALBUM: [cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [cover()]}, slept)
     paths = album(tmp_path / "Music", silence, ["a", "b", "c"])
     sweep(paths, lambda _path: ALBUM)
     host.asked.clear()
@@ -282,8 +278,7 @@ def test_two_addresses_serving_the_same_bytes_make_two_requests_and_one_encode(
     tmp_path, silence, monkeypatch, slept, encodes
 ):
     """The fetch is remembered by its address and the encode by its bytes."""
-    host = Host({ALBUM: [cover()], OTHER: [cover()]})
-    ship(monkeypatch, host, slept)
+    host = ship(monkeypatch, {ALBUM: [cover()], OTHER: [cover()]}, slept)
     paths = album(tmp_path / "Music", silence, ["a", "b"])
     address = dict(zip(paths, (ALBUM, OTHER), strict=True))
 

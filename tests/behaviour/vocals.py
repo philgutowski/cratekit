@@ -1,9 +1,6 @@
 """The vocals scenarios: `crate analyze vocals` re-scoring a folder's vocal tags (U306).
 
-On a full profile machine with the vocals suite's fake model and decoder, a
-folder is queued and scored, rescored unchanged, ``--unscored`` and
-``--recursive`` run, and the size cap, a vanished file, a foreign job, an
-unloadable model and empty and absent folders each answer as themselves. Self
+On a full profile machine with the vocals suite's fake model and decoder. Self
 contained, so the suites beside it can be trimmed without moving it.
 """
 

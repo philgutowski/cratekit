@@ -1,16 +1,13 @@
 """A throwaway suite in which a test queued behind a busy worker has to move.
 
-U251 runs the suite with ``--dist worksteal``, and the mutation driver and
-the Linux battery must read a run where tests really moved. Here
-``tests/test_first.py`` opens with a test that holds its worker until a test
-queued behind it in the same file has run on the other worker, which only a
-steal can do; it gives up after a minute and fails, so a run with no move is
-red. A steal takes the queue's TAIL, and the last queued test fails on
-purpose, so the failure to report ran on a worker it was not first given.
-
-``addopts`` are the repository's own with two workers; every test records its
-worker in the directory ``LOG_VARIABLE`` names. The default distribution
-usually moves a test too, so ``tests/test_suite_distribution.py`` pins the option.
+U251 runs the suite with ``--dist worksteal``, and the mutation driver and the
+Linux battery must read a run where tests really moved. ``tests/test_first.py``
+opens with a test that holds its worker for up to a minute until a test queued
+behind it has run on the other worker, which only a steal can do. A steal
+takes the queue's TAIL, and the last queued test fails on purpose, so the
+failure to report ran on a worker it was not first given. The default
+distribution usually moves a test too, so ``tests/test_suite_distribution.py``
+pins the option.
 """
 
 from __future__ import annotations
@@ -80,27 +77,9 @@ def {holder}():
             return
         time.sleep(0.05)
     raise AssertionError("no test queued behind this one ran on another worker in a minute")
-
-
-def test_queued_1():
-    record("test_queued_1")
-
-
-def test_queued_2():
-    record("test_queued_2")
-
-
-def test_queued_3():
-    record("test_queued_3")
-
-
-def test_queued_4():
-    record("test_queued_4")
-
-
-def test_queued_5():
-    record("test_queued_5")
-
+""" + "".join(
+    f'\n\ndef test_queued_{n}():\n    record("test_queued_{n}")\n' for n in range(1, 6)
+) + """
 
 def test_queued_6():
     record("test_queued_6")

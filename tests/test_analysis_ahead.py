@@ -14,6 +14,7 @@ import shutil
 import signal
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -168,6 +169,19 @@ def reports_of(cfg, job_id: str, folder: Path) -> list[dict]:
     return cleaned
 
 
+def run_ok(argv: list[str]) -> dict:
+    """Drive ``argv`` and answer its envelope, which must say OK."""
+    code, envelope = drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def run_fresh(tmp_path, silence, monkeypatch, folder: str, names=NAMES, **machine_kw) -> dict:
+    """``analyze run`` over a fresh folder of ``names``, on the machine described."""
+    machine(monkeypatch, **machine_kw)
+    return run_ok(["analyze", "run", str(fill(tmp_path / folder, silence, names=names))])
+
+
 def pool_check(envelope: dict) -> dict:
     (check,) = envelope["data"]["progress"]["analysis"]["checks"]
     assert check["key"] == "analyze.pool"
@@ -182,8 +196,7 @@ def test_a_pooled_run_leaves_exactly_what_the_serial_run_leaves(
     pooled_folder = fill(tmp_path / "pooled", silence)
 
     machine(monkeypatch, swap=12 * GIB)
-    code, serial = drive(["analyze", "run", str(serial_folder)])
-    assert code == int(ExitCode.OK), serial
+    serial = run_ok(["analyze", "run", str(serial_folder)])
     serial_marks = measured_by(bound)
     assert {pid for pids in serial_marks.values() for pid in pids} == {os.getpid()}, (
         "a machine refused a pool measured a head outside the driver"
@@ -192,8 +205,7 @@ def test_a_pooled_run_leaves_exactly_what_the_serial_run_leaves(
         mark.unlink()
 
     machine(monkeypatch)
-    code, pooled = drive(["analyze", "run", str(pooled_folder)])
-    assert code == int(ExitCode.OK), pooled
+    pooled = run_ok(["analyze", "run", str(pooled_folder)])
     pooled_marks = measured_by(bound)
     assert set(pooled_marks) == {f"{name}.flac" for name in NAMES}
     assert all(os.getpid() not in pids for pids in pooled_marks.values()), (
@@ -236,8 +248,7 @@ def test_the_driver_settles_items_in_item_order_whatever_order_the_heads_finish(
         return real(cfg_, job, item, report)
 
     monkeypatch.setattr(artifacts, "produced", produced)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    run_ok(["analyze", "run", str(folder)])
     assert order == ["b.flac", "c.flac", "slow a.flac"], "the items are the sorted names"
 
 
@@ -246,8 +257,7 @@ def test_a_file_carrying_its_head_and_a_file_that_is_gone_are_never_sent_to_a_wo
 ):
     folder = fill(tmp_path / "mixed", silence, names=("03A - 120 - done", "fresh", "gone", "more"))
     machine(monkeypatch)
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
+    queued = run_ok(["analyze", "run", "--queue-only", str(folder)])
     (folder / "gone.flac").unlink()
 
     code, resumed = drive(resume_argv(job_of(queued)))
@@ -261,10 +271,7 @@ def test_a_file_carrying_its_head_and_a_file_that_is_gone_are_never_sent_to_a_wo
 def test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it(
     cfg, silence, tmp_path, monkeypatch
 ):
-    folder = fill(tmp_path / "healthy", silence)
-    machine(monkeypatch, core_count=6)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "healthy", core_count=6)
     check = pool_check(done)
     assert check["status"] == "ok"
     assert check["detail"].startswith(
@@ -278,10 +285,7 @@ def test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it(
 def test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate(
     cfg, silence, tmp_path, monkeypatch
 ):
-    folder = fill(tmp_path / "swapped", silence)
-    machine(monkeypatch, core_count=11, swap=int(11.8 * GIB))
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "swapped", core_count=11, swap=int(11.8 * GIB))
     check = pool_check(done)
     assert check["status"] == "info"
     assert check["detail"] == (
@@ -294,10 +298,7 @@ def test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate(
 def test_a_machine_using_most_of_its_memory_names_the_used_percent_gate(
     cfg, silence, tmp_path, monkeypatch
 ):
-    folder = fill(tmp_path / "full", silence)
-    machine(monkeypatch, core_count=11, used=92.0)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "full", core_count=11, used=92.0)
     assert pool_check(done)["detail"] == (
         "one worker, this process: memory is 92 percent in use, at or over the "
         "85 percent gate, so no pool was planned, under a ceiling of 9"
@@ -312,8 +313,7 @@ def test_memory_overrules_a_wide_core_count(cfg, silence, tmp_path, monkeypatch)
     # Enough, after the reserve and the headroom, for two workers and not three.
     available = reserve + (2 * cost * 100) // pool.DEFAULT_HEADROOM_PERCENT + cost // 2
     machine(monkeypatch, core_count=64, available=available)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_ok(["analyze", "run", str(folder)])
     check = pool_check(done)
     assert check["status"] == "info"
     assert check["detail"].startswith("2 workers measured tempo, drift and energy ahead")
@@ -322,10 +322,7 @@ def test_memory_overrules_a_wide_core_count(cfg, silence, tmp_path, monkeypatch)
 
 
 def test_two_cores_leave_no_ceiling_for_a_pool(cfg, silence, tmp_path, monkeypatch):
-    folder = fill(tmp_path / "small", silence)
-    machine(monkeypatch, core_count=2)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "small", core_count=2)
     assert pool_check(done)["detail"].startswith(
         "one worker, this process: the ceiling of 1 is what held it"
     )
@@ -345,14 +342,10 @@ def test_a_resume_of_a_finished_job_still_says_what_pool_it_ran_with(
     cfg, silence, tmp_path, monkeypatch
 ):
     """The line is read off the record the drive left, not out of this process's memory."""
-    folder = fill(tmp_path / "again", silence, names=("a", "b", "c"))
-    machine(monkeypatch)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "again", ("a", "b", "c"))
     first = pool_check(done)
     monkeypatch.setattr(ahead, "_SESSIONS", {})
-    code, again = drive(resume_argv(job_of(done)))
-    assert code == int(ExitCode.OK), again
+    again = run_ok(resume_argv(job_of(done)))
     assert pool_check(again) == first
     assert first["detail"].startswith("3 workers")
 
@@ -360,10 +353,7 @@ def test_a_resume_of_a_finished_job_still_says_what_pool_it_ran_with(
 def test_a_job_with_nothing_waiting_says_so_and_starts_nothing(
     cfg, silence, tmp_path, monkeypatch, bound
 ):
-    folder = fill(tmp_path / "settled", silence, names=("03A - 120 - x", "04B - 99 - y"))
-    machine(monkeypatch)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "settled", ("03A - 120 - x", "04B - 99 - y"))
     assert pool_check(done)["detail"] == (
         "one worker, this process: no file was waiting to be measured"
     )
@@ -371,15 +361,11 @@ def test_a_job_with_nothing_waiting_says_so_and_starts_nothing(
 
 
 def test_a_job_whose_record_is_gone_says_it_does_not_know(cfg, silence, tmp_path, monkeypatch):
-    folder = fill(tmp_path / "lost", silence, names=("a",))
-    machine(monkeypatch)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "lost", ("a",))
     record = jobs.store_dir(cfg) / artifacts.ARTIFACTS_DIRNAME / job_of(done) / "pool.json"
     assert record.is_file()
     record.unlink()
-    code, again = drive(resume_argv(job_of(done)))
-    assert code == int(ExitCode.OK), again
+    again = run_ok(resume_argv(job_of(done)))
     assert pool_check(again)["detail"].startswith("no pool was recorded for this job")
 
 
@@ -430,8 +416,7 @@ def test_a_pool_record_that_cannot_be_written_is_a_missing_line_and_never_a_fail
         raise OSError("the state directory is read only")
 
     monkeypatch.setattr(artifacts, "record_pool", refuses)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_ok(["analyze", "run", str(folder)])
     assert set(states(job_of(done)).values()) == {"done"}
     assert pool_check(done)["detail"].startswith("no pool was recorded for this job")
 
@@ -442,8 +427,7 @@ def test_a_job_another_driver_holds_records_no_pool_and_adds_none_to_the_refusal
     """This call ran nothing, so it has no pool to describe."""
     folder = fill(tmp_path / "held", silence, names=("a", "b"))
     machine(monkeypatch)
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
+    queued = run_ok(["analyze", "run", "--queue-only", str(folder)])
     job_id = job_of(queued)
     with jobs.driver_lock(job_id):
         code, refused = drive(resume_argv(job_id))
@@ -477,8 +461,7 @@ def test_the_restamp_shares_the_resume_and_opens_no_run_ahead(cfg, silence, tmp_
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
     code, restamped = drive(["analyze", "restamp", str(folder)])
     assert opened == [], restamped
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    run_ok(["analyze", "run", str(folder)])
     assert opened == ["analyze.run"]
 
 
@@ -507,12 +490,9 @@ def test_a_linked_or_malformed_pool_record_is_no_record(cfg, tmp_path):
 
 def test_a_closure_bound_by_a_test_is_never_sent_to_a_worker(cfg, silence, tmp_path, monkeypatch):
     """The other analysis suites bind closures; their runs stay in this process and say so."""
-    folder = fill(tmp_path / "closure", silence, names=("a", "b"))
-    machine(monkeypatch)
     monkeypatch.setattr(ahead, "_WORKER_BINDING", None)
     monkeypatch.setattr(light, "_DETECT", lambda path: fake_head(path))
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_fresh(tmp_path, silence, monkeypatch, "closure", ("a", "b"))
     assert pool_check(done)["detail"] == (
         "one worker, this process: the bound detector cannot be sent to a worker"
     )
@@ -580,14 +560,12 @@ def test_an_interrupt_during_a_run_ahead_ends_the_workers_and_the_resume_finishe
     assert set(states(job_of(stopped)).values()) == {"pending"}
     assert stopped["cause"]["detail"]["pool"]["workers"] == 4
 
-    code, resumed = drive(list(stopped["cause"]["detail"]["resume"]))
-    assert code == int(ExitCode.OK), resumed
+    run_ok(list(stopped["cause"]["detail"]["resume"]))
     assert set(states(job_of(stopped)).values()) == {"done"}
 
     monkeypatch.setattr(artifacts, "produced", real)
     machine(monkeypatch, swap=12 * GIB)
-    code, serial = drive(["analyze", "run", str(serial_folder)])
-    assert code == int(ExitCode.OK), serial
+    run_ok(["analyze", "run", str(serial_folder)])
     assert what_is_on_disk(folder) == what_is_on_disk(serial_folder)
 
 
@@ -598,8 +576,7 @@ def test_a_worker_that_dies_costs_the_run_nothing_but_its_pool(
     folder = fill(tmp_path / "died", silence, names=names)
     serial_folder = fill(tmp_path / "serial", silence, names=names)
     machine(monkeypatch)
-    code, done = drive(["analyze", "run", str(folder)])
-    assert code == int(ExitCode.OK), done
+    done = run_ok(["analyze", "run", str(folder)])
     check = pool_check(done)
     assert check["status"] == "info"
     assert "the pool was stopped early" in check["detail"]
@@ -608,8 +585,7 @@ def test_a_worker_that_dies_costs_the_run_nothing_but_its_pool(
     assert multiprocessing.active_children() == []
 
     machine(monkeypatch, swap=12 * GIB)
-    code, serial = drive(["analyze", "run", str(serial_folder)])
-    assert code == int(ExitCode.OK), serial
+    run_ok(["analyze", "run", str(serial_folder)])
     assert what_is_on_disk(folder) == what_is_on_disk(serial_folder)
 
 
@@ -629,16 +605,57 @@ def _wait_for_mark(marks: Path, name: str) -> None:
     raise AssertionError(f"no process ever measured {name}")
 
 
-def test_a_file_replaced_after_its_head_was_measured_is_measured_again(
-    silence, tmp_path, monkeypatch, bound
-):
+def _append(path) -> os.stat_result:
+    """Write 64 bytes onto the end of ``path`` in place, answering its stat from before."""
+    before = os.stat(path)
+    with open(path, "r+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        handle.write(b"\0" * 64)
+    return before
+
+
+def _replace(path: str) -> None:
     """Same name, different file: the worker's head is for a file that is no longer there."""
+    replacement = Path(path).with_suffix(".new")
+    replacement.write_bytes(Path(path).read_bytes() + b"\0" * 64)
+    os.replace(replacement, path)
+
+
+def _rewrite_in_place(path: str) -> None:
+    """Same inode, new content: the identity is not the inode alone."""
+    before = _append(path)
+    assert os.stat(path).st_ino == before.st_ino
+
+
+def _rewrite_at_the_same_length(path: str) -> None:
+    """Same inode, same size: only the modification time says it was written."""
+    before = os.stat(path)
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 5_000_000_000))
+    after = os.stat(path)
+    assert (after.st_ino, after.st_size) == (before.st_ino, before.st_size)
+
+
+def _rewrite_and_put_the_time_back(path: str) -> None:
+    """Same inode, same modification time: only the size says it was written."""
+    before = _append(path)
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = os.stat(path)
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+    assert after.st_size != before.st_size
+
+
+@pytest.mark.parametrize(
+    "change",
+    [_replace, _rewrite_in_place, _rewrite_at_the_same_length, _rewrite_and_put_the_time_back],
+    ids=["replaced", "rewritten-in-place", "same-length-by-its-time", "time-put-back-by-its-size"],
+)
+def test_a_file_changed_after_its_head_was_measured_is_measured_again(
+    silence, tmp_path, monkeypatch, bound, change
+):
     session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
     assert ahead.head("job-under-test", first, None)["rate"]
     _wait_for_mark(bound, "b.flac")
-    replacement = Path(second).with_suffix(".new")
-    replacement.write_bytes(Path(second).read_bytes() + b"\0" * 64)
-    os.replace(replacement, second)
+    change(second)
 
     found = ahead.head("job-under-test", second, None)
 
@@ -648,67 +665,9 @@ def test_a_file_replaced_after_its_head_was_measured_is_measured_again(
     assert os.getpid() in measured_by(bound)["b.flac"]
 
 
-def test_a_file_rewritten_in_place_after_its_head_was_measured_is_measured_again(
-    silence, tmp_path, monkeypatch, bound
-):
-    """Same inode, new content: the identity is not the inode alone."""
-    session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
-    ahead.head("job-under-test", first, None)
-    _wait_for_mark(bound, "b.flac")
-    before = os.stat(second)
-    with open(second, "r+b") as handle:
-        handle.seek(0, os.SEEK_END)
-        handle.write(b"\0" * 64)
-    assert os.stat(second).st_ino == before.st_ino
-
-    ahead.head("job-under-test", second, None)
-
-    assert session.remeasured == {"file-changed": 1}
-
-
-def test_a_file_rewritten_at_the_same_length_is_measured_again_by_its_time_alone(
-    silence, tmp_path, monkeypatch, bound
-):
-    """Same inode, same size: only the modification time says it was written."""
-    session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
-    ahead.head("job-under-test", first, None)
-    _wait_for_mark(bound, "b.flac")
-    before = os.stat(second)
-    os.utime(second, ns=(before.st_atime_ns, before.st_mtime_ns + 5_000_000_000))
-    after = os.stat(second)
-    assert (after.st_ino, after.st_size) == (before.st_ino, before.st_size)
-
-    ahead.head("job-under-test", second, None)
-
-    assert session.remeasured == {"file-changed": 1}
-
-
-def test_a_file_rewritten_with_its_time_put_back_is_measured_again_by_its_size_alone(
-    silence, tmp_path, monkeypatch, bound
-):
-    """Same inode, same modification time: only the size says it was written."""
-    session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
-    ahead.head("job-under-test", first, None)
-    _wait_for_mark(bound, "b.flac")
-    before = os.stat(second)
-    with open(second, "r+b") as handle:
-        handle.seek(0, os.SEEK_END)
-        handle.write(b"\0" * 64)
-    os.utime(second, ns=(before.st_atime_ns, before.st_mtime_ns))
-    after = os.stat(second)
-    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
-    assert after.st_size != before.st_size
-
-    ahead.head("job-under-test", second, None)
-
-    assert session.remeasured == {"file-changed": 1}
-
-
 def rewrites_as_it_reads(path: Path) -> dict | None:
     """A detector under which the file is written WHILE it is being read."""
-    with open(path, "r+b") as handle:
-        handle.seek(0, os.SEEK_END)
-        handle.write(b"\0" * 64)
+    _append(path)
     return fake_head(path)
 
 
@@ -817,8 +776,7 @@ def test_an_unreadable_calibration_is_each_items_refusal_and_opens_no_pool(
     monkeypatch.setattr(ahead, "_WORKER_BINDING", None)
     monkeypatch.setattr(light, "_DETECT", None)
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
-    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
-    assert code == int(ExitCode.OK), queued
+    queued = run_ok(["analyze", "run", "--queue-only", str(folder)])
     energy.calibration_path(cfg).parent.mkdir(parents=True, exist_ok=True)
     energy.calibration_path(cfg).write_text("{not json")
 
@@ -902,13 +860,6 @@ def test_no_shape_of_file_costs_less_than_it_did_before_u275(seconds, rate, chan
     assert light.worker_bytes(seconds, rate=rate, channels=channels) >= _todays_cost(
         seconds, rate, channels
     )
-
-
-def test_a_file_whose_length_is_unknown_costs_no_less_than_before(tmp_path):
-    unreadable = tmp_path / "odd.flac"
-    unreadable.write_bytes(b"\0" * 400_000)
-    assert tags.audio_seconds(unreadable) is None
-    assert light.cost_of(unreadable) >= _todays_cost(100.0, 1, 1)
 
 
 def test_a_file_whose_length_is_unknown_is_still_planned_narrower(tmp_path, monkeypatch):
@@ -1039,6 +990,7 @@ def test_a_length_the_header_will_not_give_is_bounded_by_the_files_size(tmp_path
     # The size's bound is the whole of it: no assumed rate is laid on top.
     assert light.cost_of(unreadable) == light.worker_bytes(100.0, rate=1, channels=1)
     assert light.cost_of(unreadable) == 384 * MIB + 100 * 3276800
+    assert light.cost_of(unreadable) >= _todays_cost(100.0, 1, 1), "less than it cost before"
     assert light.costliest([]) == light.LIGHT_BASE_BYTES
 
 
@@ -1051,34 +1003,22 @@ def test_a_real_files_length_rate_and_channels_are_read_off_its_header(silence):
     assert light.cost_of(silence) == light.worker_bytes(seconds, rate=44100, channels=2)
 
 
-@pytest.mark.parametrize("value", [0, -2, True, 44100.0, "2", None])
-def test_a_header_rate_or_channel_count_that_is_not_a_count_is_unknown(tmp_path, monkeypatch, value):
+def _header(monkeypatch, **info) -> None:
+    """A mutagen whose every file's header says ``info`` and nothing else."""
     import mutagen
 
-    class _Info:
-        length = 10.0
+    monkeypatch.setattr(mutagen, "File", lambda path: SimpleNamespace(info=SimpleNamespace(**info)))
 
-    class _Handle:
-        info = _Info()
 
-    _Handle.info.sample_rate = value
-    _Handle.info.channels = value
-    monkeypatch.setattr(mutagen, "File", lambda path: _Handle())
+@pytest.mark.parametrize("value", [0, -2, True, 44100.0, "2", None])
+def test_a_header_rate_or_channel_count_that_is_not_a_count_is_unknown(tmp_path, monkeypatch, value):
+    _header(monkeypatch, length=10.0, sample_rate=value, channels=value)
     assert tags.audio_shape(tmp_path / "x.flac") == (10.0, None, None)
 
 
 @pytest.mark.parametrize("length", [0.0, -3.0, float("inf"), float("nan"), True, "12"])
 def test_a_header_length_that_is_not_a_positive_number_is_unknown(tmp_path, monkeypatch, length):
-    import mutagen
-
-    class _Info:
-        pass
-
-    class _Handle:
-        info = _Info()
-
-    _Handle.info.length = length
-    monkeypatch.setattr(mutagen, "File", lambda path: _Handle())
+    _header(monkeypatch, length=length)
     assert tags.audio_seconds(tmp_path / "x.flac") is None
 
 

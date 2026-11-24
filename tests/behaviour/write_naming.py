@@ -1,9 +1,7 @@
 """The write layer's naming scenarios: a folder put in the naming convention (U302).
 
-`crate name apply --root FOLDER` renames each file out of convention behind its
-gate and writes its title tag; a row under an unmapped volume refuses the pass,
-and a rename onto a held name is never made. Its own file because both suites
-name ``configured`` and ``library``.
+`crate name apply --root FOLDER` renames and writes the title tag behind its gate.
+Its own file because both suites name ``configured`` and ``library``.
 """
 
 from __future__ import annotations

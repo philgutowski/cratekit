@@ -248,27 +248,6 @@ def test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_a
     assert plan.vocal_counts()[adopt_plan.VOCAL_RENAMED] == 2
 
 
-def test_a_tree_nobody_read_plans_no_vocal_membership():
-    blind = replace(_vocals("t"), read=False)
-    plan = _plan([_scanned("t")], blind)
-
-    assert _only(plan).vocal == ""
-    assert plan.vocals.state == adopt_plan.VOCALS_UNREAD
-
-
-def test_a_library_with_no_calibrated_cut_plans_no_vocal_membership():
-    """Without a cut adoption files nothing under the vocal sub, from a default cut
-    tag either, and says why."""
-    uncalibrated = replace(_vocals("t"), calibrated=False)
-    plan = _plan([_scanned("t")], uncalibrated)
-
-    assert _only(plan).vocal == ""
-    assert plan.vocal_memberships() == ()
-    assert sum(plan.vocal_counts().values()) == 0
-    assert plan.vocals.state == adopt_plan.VOCALS_UNCALIBRATED
-    assert adopt_plan.to_json(plan)["vocals"] == "uncalibrated"
-
-
 def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
     needs_genre = replace(_scanned("t"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket="")
     excluded = replace(
@@ -431,11 +410,24 @@ def test_the_digest_says_whether_the_tag_and_the_tree_were_read():
     assert [plan.vocals.filing for plan in plans] == [False, False, False, True, True]
 
 
-def test_each_reason_nothing_can_be_filed_plans_nothing_for_a_tagged_track():
-    for change in ({"read": False}, {"has_sub": False}, {"calibrated": False}):
-        plan = _plan([_scanned("t")], replace(_vocals("t"), **change))
-        assert _only(plan).vocal == "", change
-        assert plan.vocal_memberships() == (), change
+@pytest.mark.parametrize(
+    ("change", "state", "named"),
+    [
+        ({"read": False}, adopt_plan.VOCALS_UNREAD, "unread"),
+        ({"has_sub": False}, adopt_plan.VOCALS_NO_SUB, "no-sub"),
+        ({"calibrated": False}, adopt_plan.VOCALS_UNCALIBRATED, "uncalibrated"),
+    ],
+    ids=["a-tree-nobody-read", "no-vocal-sub", "no-calibrated-cut"],
+)
+def test_each_reason_nothing_can_be_filed_plans_nothing_for_a_tagged_track(change, state, named):
+    """Without a cut adoption files nothing under the vocal sub, from a default cut
+    tag either, and says why."""
+    plan = _plan([_scanned("t")], replace(_vocals("t"), **change))
+    assert _only(plan).vocal == ""
+    assert plan.vocal_memberships() == ()
+    assert sum(plan.vocal_counts().values()) == 0
+    assert plan.vocals.state == state
+    assert adopt_plan.to_json(plan)["vocals"] == named
 
 
 def test_a_vocal_membership_has_an_identifier_of_its_own():

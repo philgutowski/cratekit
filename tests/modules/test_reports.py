@@ -35,8 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 REPORTS_ROOT = SRC_ROOT / "cratekit" / "modules" / "reports"
 
-#: The naming template this library declares: a key and tempo head, and a lossy
-#: marker, so head stripping meets the shape a real name has.
+#: The declared naming template, a key and tempo head plus a lossy marker, as real names.
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
 TODAY = date(2026, 8, 2)
@@ -119,7 +118,6 @@ def _one_track_tree(root_children: list[str], root_count: int = 1) -> export.Lib
 
 
 def _refused(content: bytes):
-    """The cause ``read_export`` refuses ``content`` with."""
     with pytest.raises(CratekitError) as raised:
         export.read_export(content)
     return raised.value.cause
@@ -364,9 +362,7 @@ def test_the_reader_returns_playlists_and_never_folders(view):
     assert TREE.display not in displays and "Deep House" not in displays
 
 
-#: The three spellings of a node kind this build cannot read, applied to the
-#: export every other test drives: an undefined value, no attribute (a truncated
-#: or hand-edited export), and an empty one.
+#: Three spellings of a node kind this build cannot read: undefined, absent, empty.
 UNREADABLE_KINDS = [
     ("a Type value the format does not define", b'Type="1"', b'Type="2"'),
     ("no Type attribute at all", b' Type="1"', b""),
@@ -482,7 +478,6 @@ def test_entries_with_nothing_to_compare_are_never_grouped(view):
 
 
 def _copies(name: str, artist: str, count: int) -> export.LibraryView:
-    """``count`` entries of one name and artist, each at its own file."""
     return _view(
         [
             (index, name, artist, f"file://localhost/library/{index}.flac")
@@ -501,8 +496,7 @@ def test_half_tagged_entries_are_never_grouped(name, artist):
     assert duplicates.audit(_copies(name, artist, 3), template=TEMPLATE) == ()
 
 
-#: One recording, two composition forms, written as escapes because the two
-#: spellings look the same on screen and in a diff.
+#: One recording in two composition forms, escaped since both look alike on screen.
 _NFC_NAME = "Bj\u00f6rk"
 _NFD_NAME = "Bjo\u0308rk"
 
@@ -654,17 +648,11 @@ def test_a_revoked_ignore_puts_the_pair_back_in_front_of_a_person(view, store):
     assert len(duplicates.audit_and_offer(view, store, template=TEMPLATE).outstanding) == 1
 
 
-def test_the_audit_deletes_nothing_from_the_library(cfg, store):
+def test_the_audit_deletes_nothing_from_the_library(library_on_disk, store):
     """The behavioural half of "never deletes", over real files on disk."""
-    music = cfg.library.root / "Music"
-    for name in ("a.flac", "b.flac", "d.flac", "e.flac"):
-        (music / name).write_bytes(b"not really audio, but really bytes")
-    exported = music / "collection.xml"
-    exported.write_bytes(library_export())
+    duplicates.audit_and_offer(export.read_export_file(library_on_disk), store, template=TEMPLATE)
 
-    duplicates.audit_and_offer(export.read_export_file(exported), store, template=TEMPLATE)
-
-    assert sorted(path.name for path in music.iterdir()) == [
+    assert sorted(path.name for path in library_on_disk.parent.iterdir()) == [
         "a.flac",
         "b.flac",
         "collection.xml",
@@ -999,8 +987,7 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
     """READ ONLY, proved by taking the permission away rather than by watching."""
     music = cfg.library.root / "Music"
     database = cfg.library.db_path
-    # The decision store lives under the library root, so it is made before the
-    # lock, which then covers the root and not only the audio folder.
+    # The store lives under the root, so it is made before the lock covers the root.
     with review.open_store(cfg):
         pass
     locked = [library_on_disk, database, *sorted(music.glob("*.flac"))]
@@ -1043,8 +1030,7 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         assert len(audited.items) == 1
         assert audited.items[0].payload["copies"] == 2
     finally:
-        # A mode change needs ownership, not the write bit, so this restore
-        # succeeds through the lock.
+        # A mode change needs ownership, not the write bit, so this restore passes the lock.
         for path, mode in modes.items():
             path.chmod(mode)
         # Reached only when a lock did not hold: tidiness, not isolation.
@@ -1054,8 +1040,7 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
 
 # The structural half: the package cannot write, whatever a test drives
 
-#: Every top-level module the reports package may import, and every dotted target
-#: inside this one. DERIVED FROM WHAT READING NEEDS.
+#: Every module the reports package may import, DERIVED FROM WHAT READING NEEDS.
 ALLOWED_IMPORTS = frozenset(
     {
         "__future__",
@@ -1077,13 +1062,10 @@ ALLOWED_IMPORTS = frozenset(
     }
 )
 
-#: The package this allowlist governs, matched with a dot boundary: a bare
-#: prefix admitted a sibling such as ``cratekit/modules/reports_ledger.py``,
-#: which sits outside the directory ``_report_modules`` walks.
+#: The governed package, on a dot boundary: a bare prefix admitted an unwalked sibling.
 REPORTS_PACKAGE = "cratekit.modules.reports"
 
-#: Method names that mutate the filesystem and are not also ordinary methods on a
-#: string, a mapping, or a sequence.
+#: Filesystem mutating method names that are not also str, mapping or sequence methods.
 FILESYSTEM_MUTATIONS = frozenset(
     {
         # U254: the synced append beside the atomic writer.
@@ -1105,14 +1087,12 @@ FILESYSTEM_MUTATIONS = frozenset(
     }
 )
 
-#: The write surface the ALLOWLIST itself admits, spelled with the module a
-#: caller has to reach it THROUGH.
+#: The writers the ALLOWLIST itself admits, spelled with the module reached THROUGH.
 QUALIFIED_MUTATIONS = frozenset(
     {
         "config._back_up_version",
         "config.exclusive_lock",
-        # U298: the shared state store lock in its four forms, each creating
-        # its file and directory when absent.
+        # U298: the state store lock in its four forms, each creating its file when absent.
         "config.flock_exclusive",
         "config.held",
         "config.lock_now",
@@ -1153,13 +1133,10 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.assert_binding_version",
         "rb_writer.assert_schema_version",
         "rb_writer.default_protected_snapshot_paths",
-        # The disposable database copy and the read only handle over it both
-        # write a temporary directory, so a report reading through one reads
-        # through a writer.
+        # The disposable copy and the read only handle over it each write a temp directory.
         "rb_writer.disposable_copy",
         "rb_writer.read_only_copy",
-        # U267: the shared read handle opens the database at its first read,
-        # and its end closes or releases it.
+        # U267: the shared read handle opens the database at first read, closes at its end.
         "rb_writer.SharedRead",
         "rb_writer.done_reading",
         "rb_writer.integrity_ok",
@@ -1212,31 +1189,26 @@ QUALIFIED_MUTATIONS = frozenset(
         "tree_registry.record_cutover",
         "tree_registry.revert_cutover",
         "tree_registry.write",
-        # U298: calls ``config.load``, which writes the file back; a report is
-        # handed its configuration and loads none.
+        # U298: calls ``config.load``, which writes back; a report is handed its config.
         "output.load_config",
     }
 )
 
-#: The modules ``QUALIFIED_MUTATIONS`` qualifies against, derived rather than
-#: listed so a name added above brings its module with it.
+#: The modules ``QUALIFIED_MUTATIONS`` qualifies against, derived so a name brings its own.
 _QUALIFYING_MODULES = frozenset(name.split(".", 1)[0] for name in QUALIFIED_MUTATIONS)
 
 #: Characters in an ``open`` mode that mean the handle can write.
 _WRITING_MODES = frozenset({"w", "a", "x", "+"})
 
-#: How many dotted parts make a package rather than a module, for reading a
-#: ``from X import y``.
+#: How many dotted parts make a package rather than a module in ``from X import y``.
 _PACKAGE_DEPTH = 2
 
 
-#: What a dynamic import spells when its argument is not a readable literal. It
-#: is not a module path, so ``_permitted`` never matches it.
+#: An unreadable dynamic import's spelling, no module path ``_permitted`` can match.
 _COMPUTED_IMPORT = "<computed import>"
 
 
 def _is_package(dotted: str, root: Path = SRC_ROOT) -> bool:
-    """Whether a dotted path names a DIRECTORY in this repository's source tree."""
     return root.joinpath(*dotted.split(".")).is_dir()
 
 
@@ -1248,7 +1220,6 @@ def _package_of(module: str, root: Path = SRC_ROOT) -> str:
 
 
 def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[str]:
-    """Every module ``source`` depends on, as absolute dotted paths."""
     package = _package_of(module, root)
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
@@ -1274,19 +1245,16 @@ def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[s
 
 
 def _permitted(target: str) -> bool:
-    """Whether one resolved import is inside the allowlist or inside this package."""
     if target == REPORTS_PACKAGE or target.startswith(f"{REPORTS_PACKAGE}."):
         return True
     return any(target == allowed or target.startswith(f"{allowed}.") for allowed in ALLOWED_IMPORTS)
 
 
 def forbidden_imports(source: str, module: str) -> list[str]:
-    """Every dependency the reports package is not allowed to have."""
     return [target for target in _resolved_imports(source, module) if not _permitted(target)]
 
 
 def filesystem_mutations(source: str) -> list[str]:
-    """Every call in ``source`` that could change a file, with its line."""
     tree = ast.parse(source)
     modules, direct = _writer_bindings(tree)
     return mutations_in(tree, modules=modules, direct=direct)
@@ -1299,8 +1267,7 @@ class _Instance(NamedTuple):
     root: str = ""
 
 
-#: What an instance of a class renders as in the binding table: a suffix on the
-#: class path, since the parameter's spelling is not stable.
+#: An instance's suffix on its class path, since the parameter's spelling is not stable.
 _INSTANCE = "::self"
 
 
@@ -1376,8 +1343,7 @@ _scope_nodes = _memoized_on_node(_walk_scope)
 _nested_scopes = _memoized_on_node(_walk_nested)
 
 
-#: The statement fields a single run can skip entirely. ``finalbody`` is absent:
-#: a ``finally`` block runs on every path.
+#: Statement fields a run can skip; never ``finalbody``, which runs on every path.
 _BRANCHED_FIELDS = ("body", "orelse", "handlers", "cases")
 
 _BRANCHING = (
@@ -1442,7 +1408,6 @@ def _restored_attributes(scope: ast.AST, instance: _Instance) -> dict[str, str]:
 
 
 def _target_names(targets) -> set[str]:
-    """Every BARE NAME an assignment target list binds, unpacking as it goes."""
     found: set[str] = set()
     for target in targets:
         if isinstance(target, ast.Name):
@@ -1789,9 +1754,7 @@ def _scope_own_bindings(
             idle = _rebound_to_itself(child, instance)
             optional = id(child) in skippable
             for key, owner in found.items():
-                # A skipped veto counts only when something else supplies the
-                # key on the skipping path: always for a name; for an object key,
-                # when this scope's table holds it or a chained base binds it.
+                # A skipped veto counts only when the skipping path is supplied the key otherwise.
                 supplied = key.isidentifier() or chained or bool(table.get(key))
                 if key in idle or (optional and not owner and supplied):
                     continue
@@ -1802,8 +1765,7 @@ def _scope_own_bindings(
                 else:
                     objects.setdefault(key, "")
             for key in idle:
-                # What the key held, or else what the statement evaluates to:
-                # ``alias = alias or config`` can still be the module.
+                # What the key held, or else its value: ``alias = alias or config`` is the module.
                 held = table.get(key, "") or found.get(key, "")
                 if not held:
                     continue
@@ -2062,7 +2024,6 @@ def _writer_bindings(
 
 
 def _imported_modules(tree: ast.AST) -> frozenset[str]:
-    """Every name an ``import X`` statement binds to a MODULE."""
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -2072,7 +2033,6 @@ def _imported_modules(tree: ast.AST) -> frozenset[str]:
 
 
 def _receiver_module(node: ast.AST, modules: dict[str, _Bound], instance: _Instance) -> str:
-    """Which admitted module a receiver was BOUND to, or the empty string."""
     found = _bound_value(node, modules, instance)
     return found if isinstance(found, str) else ""
 
@@ -2123,7 +2083,6 @@ def _handed_over(node: ast.AST | None):
 
 
 def _stored(node: ast.AST):
-    """Every (receiver key, value) pair one statement stores."""
     if isinstance(node, ast.Assign):
         return [
             (_receiver_key(target), node.value) for target in node.targets if _receiver_key(target)
@@ -2222,8 +2181,7 @@ def mutations_in(
     found: list[str] = []
     for node in _scope_nodes(tree):
         if isinstance(node, ast.Attribute):
-            # The attribute, not the call, so a bound method captured now and
-            # called later is caught; the call branch checks bare names only.
+            # The attribute, not the call, so a bound method captured and called later is caught.
             if node.attr in FILESYSTEM_MUTATIONS:
                 found.append(f"line {node.lineno}: {node.attr}")
             else:
@@ -2231,9 +2189,7 @@ def mutations_in(
                 if holder and f"{holder}.{node.attr}" in QUALIFIED_MUTATIONS:
                     found.append(f"line {node.lineno}: {holder}.{node.attr}")
         elif isinstance(node, ast.Subscript):
-            # Rule 5, the receiver read through the table, so ``table =
-            # vars(Path)`` then ``table["write_text"](p, d)`` is caught, on the
-            # subscript as rule 1 reads an attribute.
+            # Rule 5 through the table: ``table = vars(Path)`` then ``table[...](p, d)``.
             space = _bound_value(node.value, resolved, instance)
             if isinstance(space, _Namespace):
                 said = _namespace_reads(
@@ -2242,8 +2198,7 @@ def mutations_in(
                 if said is not None:
                     found.append(f"line {node.lineno}: [{said}]")
         elif isinstance(node, ast.Name) and node.id in reachable:
-            # A writer imported off an admitted module, or its own, reached with
-            # no receiver; bound counts as called, as in rule 1.
+            # A writer imported off an admitted module, reached bare; bound counts as called.
             found.append(f"line {node.lineno}: {node.id}")
         elif isinstance(node, ast.Call):
             found += _call_mutations(
@@ -2287,9 +2242,7 @@ def _call_mutations(
     if isinstance(func, ast.Name) and name in FILESYSTEM_MUTATIONS:
         return [f"line {node.lineno}: {name}"]
     if isinstance(func, ast.Attribute):
-        # Rule 5 asked rather than indexed: ``Path.__dict__.get("write_text")``
-        # and ``vars(obj).pop(...)`` hand back the same function. The narrowing
-        # is the receiver being a type's attribute mapping, not the method name.
+        # Rule 5 asked rather than indexed, ``Path.__dict__.get(...)``, narrowed by receiver.
         space = _bound_value(func.value, resolved, instance)
         if isinstance(space, _Namespace):
             said = _namespace_reads(
@@ -2321,11 +2274,9 @@ def _call_mutations(
     if wanted is None:
         return []
     if not isinstance(wanted, ast.Constant) or not isinstance(wanted.value, str):
-        # The computed half. Inside the governed package a computed ``getattr``
-        # is reported whether or not it is called. ``__getattribute__`` is read
-        # only when its result is called, which keeps the ordinary delegation
-        # ``super().__getattribute__(name)`` quiet and still catches
-        # ``object.__getattribute__(p, n)(d)``.
+        # The computed half: a computed ``getattr`` is reported in the governed package
+        # called or not, ``__getattribute__`` only when its result is called, which keeps
+        # ``super().__getattribute__(name)`` quiet and ``object.__getattribute__(p, n)(d)`` not.
         if id(node) in invoked or (reflection and name == "getattr"):
             return [f"line {node.lineno}: {name}(<computed attribute>)"]
         return []
@@ -2337,8 +2288,7 @@ def _call_mutations(
     return []
 
 
-#: The builtin and the dunder that read an attribute by name, both writing when
-#: handed ``"write_text"``.
+#: The builtin and dunder reading an attribute by name, writing when handed a writer's.
 _REFLECTIVE_READERS = frozenset({"getattr", "__getattribute__"})
 
 
@@ -2358,9 +2308,8 @@ def _library_receiver(func: ast.AST, libraries: frozenset[str]) -> str:
     return ""
 
 
-#: The ``os.open`` flags that cannot change a file. Its second argument is a flag
-#: set, not a mode string, and ``cratekit/core/jobs.py`` opens a directory read
-#: only to fsync it.
+#: ``os.open`` flags that cannot change a file; ``cratekit/core/jobs.py`` opens a
+#: directory read only to fsync it.
 _READING_FLAGS = frozenset(
     {
         "O_RDONLY",
@@ -2477,8 +2426,7 @@ def _residual_document_text() -> str:
     archives = sorted((REPO_ROOT / RESIDUAL_ARCHIVES_NAME).glob("*.md"))
     return "".join(path.read_text() for path in [*archives, REPO_ROOT / RESIDUAL_FINDINGS_NAME])
 
-#: The files this unit is known to write: a floor rather than the list, since a
-#: hand kept list is the defect this guard answers.
+#: A floor, never the list, of the files this unit writes: a hand kept list is the defect.
 CITED_FLOOR = (
     "tests/modules/test_reports.py",
     "tests/test_rbxml.py",
@@ -2500,8 +2448,7 @@ CITED_FLOOR = (
 )
 
 
-#: How a commit names this unit, in its subject: the one identifier a merge does
-#: not move.
+#: How a commit subject names this unit, the one identifier a merge does not move.
 UNIT_COMMIT_TAG = "(U34)"
 
 
@@ -2514,7 +2461,6 @@ def _git(*argv: str) -> str:
 
 
 def _unit_log(*argv: str) -> str:
-    """One `git log` restricted to the commits this unit made."""
     return _git("log", "--format=", "-F", f"--grep={UNIT_COMMIT_TAG}", "HEAD", *argv)
 
 
@@ -2590,8 +2536,7 @@ def _citing_files() -> tuple[str, ...]:
     )
 
 
-#: Modules that live in the reports package and are NOT this unit's, so the bound
-#: below must not claim them.
+#: Reports package modules that are NOT this unit's, which the bound must not claim.
 _PACKAGE_MODULES_ANOTHER_UNIT_OWNS: frozenset[str] = frozenset(
     {
         "src/cratekit/modules/reports/coverage.py",
@@ -2642,12 +2587,10 @@ RESIDUALS_FILED_FLOOR = 12
 
 _CITATION = re.compile(r"\bR-(\d+)\b")
 
-#: A residual heading as the DOCUMENT writes it: the number it carries today, and
-#: the title, which is the part that survives a renumber.
+#: A residual heading in the DOCUMENT: today's number, and the title a renumber keeps.
 _DOCUMENT_HEADING = re.compile(r"^## R-(\d+)\. (.+?)[ \t]*$", re.MULTILINE)
 
-#: The same heading as a DIFF writes it when a commit adds one, which is what
-#: says the finding was FILED rather than merely mentioned.
+#: The heading in a DIFF adding it, which says the finding was FILED, not mentioned.
 _FILED_HEADING = re.compile(r"^\+## R-(\d+)\. (.+?)[ \t]*$", re.MULTILINE)
 
 
@@ -2693,8 +2636,7 @@ def _banned_addresses(
     return tuple(f"R-{numbers[one]}" for one in titles)
 
 
-#: The one passage whose subject is the numbers themselves, delimited by markers
-#: so the exemption cannot widen unseen.
+#: Markers delimiting the one passage about the numbers, so the exemption cannot widen.
 _COLLISION_OPEN = "[[collision-set]]"
 _COLLISION_CLOSE = "[[/collision-set]]"
 
@@ -2719,9 +2661,7 @@ def _citing_lines(text: str):
 def test_this_units_residuals_are_cited_by_title_and_never_by_number():
     """The citation rule, measured over `docs/` too rather than asserted about it."""
     banned = set(_banned_addresses(UNIT_RESIDUAL_TITLES, filed=_residual_titles_this_unit_filed()))
-    # The coverage is derived, then asserted. `_citing_files` reads git by two
-    # routes, so a file this branch adds is covered as it exists and a narrowing
-    # of either derivation is refused by the other.
+    # Derived by two routes, so a new file is covered and either narrowing is refused.
     covered = _citing_files()
     assert RESIDUAL_FINDINGS_NAME not in covered, "the file that DEFINES them is not policed"
     offenders: list[str] = []
@@ -2770,8 +2710,7 @@ def test_the_ban_list_is_the_residuals_this_unit_filed_and_nothing_else():
     banned = _banned_addresses(UNIT_RESIDUAL_TITLES, filed=filed)
     assert banned == tuple(f"R-{numbers[one]}" for one in UNIT_RESIDUAL_TITLES)
 
-    # NOBODY ELSE'S ADDRESS. The intruder is read out of the document rather than
-    # typed, so this stays a property of the document and not of one spelling.
+    # NOBODY ELSE'S ADDRESS, read out of the document rather than typed as one spelling.
     others = sorted(set(numbers) - set(filed))
     assert others, "the document holds no residual another unit filed, so this proves nothing"
     assert not {one.removeprefix("R-") for one in banned} & {numbers[one] for one in others}
@@ -2918,7 +2857,6 @@ def _first_party_module(target: str, root: Path = SRC_ROOT) -> tuple[str, Path] 
 
 
 def _names_bound_by(source: str) -> frozenset[str]:
-    """Every name a module's top level binds, read off its own statements."""
     names: set[str] = set()
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -3007,25 +2945,21 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     tree = ast.parse(source)
     imported, from_admitted = _writer_bindings(tree)
     own = _writer_names_of(dotted) | from_admitted
-    # Read off the whole file: a reflective read is bound in one function and
-    # called in another, and the imports sit above the statements this loop reads.
+    # Read off the whole file: a reflective read is bound in one function, called in another.
     invoked = _invoked_reads(tree)
     libraries = _imported_modules(tree)
-    # A function attached to a class (``Row.go = _go``) is a method of it, read
-    # off the whole module before the loop.
+    # ``Row.go = _go`` makes ``_go`` a method of ``Row``, read off the whole module first.
     attached = _attachments(tree)
     short = dotted.rsplit(".", 1)[-1]
     unnamed: list[str] = []
     loose: list[str] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # The name a caller in the reports package would spell: the
-            # function, or the class it constructs.
+            # The name a reports caller would spell: the function, or the class it constructs.
             named = (
                 node.name in FILESYSTEM_MUTATIONS or f"{short}.{node.name}" in QUALIFIED_MUTATIONS
             )
-            # A class is its own owner here, keyed by definition site as the
-            # binding table is, or its methods' ``self`` renders unqualified.
+            # A class owns itself, keyed by site as the table is, or ``self`` renders unqualified.
             owner = (
                 _class_key(node) if isinstance(node, ast.ClassDef) else attached.get(node.name, "")
             )
@@ -3044,8 +2978,7 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
             if found and not named:
                 unnamed.append(node.name)
         else:
-            # A module level write runs on import, never acceptable on the
-            # allowlist.
+            # A module level write runs on import, never acceptable on the allowlist.
             loose += mutations_in(
                 node,
                 reflection=False,
@@ -3090,111 +3023,51 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     )
 
 
-#: An admitted module whose writer is spelled through ``getattr`` with a literal
-#: name. Unnamed by the audit, a report reaches it by name with both structural
-#: guards green and a private ignore ledger written.
-ADMITTED_REFLECTIVE_WRITER = """
-def stash(path, data):
-    getattr(path, "write_text")(data)
-"""
-
-#: The same helper one token longer, three ways: a concatenation, a module
-#: constant and an f-string, each once invisible to the audit.
-ADMITTED_REFLECTIVE_WRITER_BY_CONCATENATION = """
-def stash(path, data):
-    getattr(path, "write_" + "text")(data)
-"""
-
-ADMITTED_REFLECTIVE_WRITER_BY_CONSTANT = """
-VERB = "write_text"
-
-
-def stash(path, data):
-    getattr(path, VERB)(data)
-"""
-
-ADMITTED_REFLECTIVE_WRITER_BY_FORMAT = """
-def stash(path, data):
-    getattr(path, f"write_text")(data)
-"""
-
-#: And the spelling that reaches the function object without a reflective read at
-#: all, which no rule in the guard could name before round four.
-ADMITTED_SUBSCRIPTED_WRITER = """
-from pathlib import Path
-
-
-def stash(path, data):
-    Path.__dict__["write_text"](path, data)
-"""
-
-#: The helpers the reflection switch was turned off for, in their real shape: a
-#: computed attribute read off a dataclass.
+#: The computed attribute read the reflection switch was turned off for, in real shape.
 ADMITTED_REFLECTIVE_READER = """
 def _field_value(name, spec):
     return getattr(spec, name)
 """
 
-#: An admitted module reaching another admitted module's writer: a one-line
-#: helper in ``naming`` writing the configuration file through ``config``.
-ADMITTED_MODULE_REACHING_ANOTHER_MODULES_WRITER = """
-from cratekit.core import config
-
-
-def refresh(cfg):
-    config.save(cfg)
-"""
-
-#: And the same writer imported by name rather than reached through its module,
-#: which is the other half of the binding table the audit now reads.
-ADMITTED_MODULE_IMPORTING_ANOTHER_MODULES_WRITER = """
-from cratekit.core.config import save as persist
-
-
-def refresh(cfg):
-    persist(cfg)
-"""
-
-#: An admitted module that writes when it is IMPORTED, so there is no name for
-#: the set to carry and no call for a report to avoid.
-ADMITTED_MODULE_LEVEL_WRITE = """
-from pathlib import Path
-
-Path("ledger").write_text("seen")
-
-
-def read(path):
-    return Path(path).read_text()
-"""
-
-#: An admitted module's ordinary attribute read named like a filesystem verb: the
-#: false positive the receiver check prevents.
-ADMITTED_GENERIC_ATTRIBUTE_READ = """
-def describe(spec):
-    return spec.load
-"""
-
-#: An admitted module reaching its own writer with no receiver, which a bare
-#: name inside a module must be qualified by that module to catch.
+#: Its own writer reached bare, which needs the bare name qualified by its module.
 ADMITTED_MODULE_REACHING_ITS_OWN_WRITER = """
 def refresh(cfg):
     return load()
 """
 
 
-def test_the_audit_names_a_writer_spelled_through_a_literal_getattr():
-    """The door the reflection switch opened, driven end to end."""
-    assert _unnamed_writers("cratekit.core.naming", ADMITTED_REFLECTIVE_WRITER) == ["stash"]
-
-
 @pytest.mark.parametrize(
     "source",
     [
-        ADMITTED_REFLECTIVE_WRITER,
-        ADMITTED_REFLECTIVE_WRITER_BY_CONCATENATION,
-        ADMITTED_REFLECTIVE_WRITER_BY_CONSTANT,
-        ADMITTED_REFLECTIVE_WRITER_BY_FORMAT,
-        ADMITTED_SUBSCRIPTED_WRITER,
+        # A writer spelled through a literal ``getattr``, once reached past both guards green.
+        """
+def stash(path, data):
+    getattr(path, "write_text")(data)
+""",
+        # One token longer three ways (concatenation, constant, f-string), each once unseen.
+        """
+def stash(path, data):
+    getattr(path, "write_" + "text")(data)
+""",
+        """
+VERB = "write_text"
+
+
+def stash(path, data):
+    getattr(path, VERB)(data)
+""",
+        """
+def stash(path, data):
+    getattr(path, f"write_text")(data)
+""",
+        # The function object with no reflective read, unnameable before round four.
+        """
+from pathlib import Path
+
+
+def stash(path, data):
+    Path.__dict__["write_text"](path, data)
+""",
     ],
 )
 def test_the_audit_names_a_writer_however_the_method_name_was_spelled(source):
@@ -3205,8 +3078,22 @@ def test_the_audit_names_a_writer_however_the_method_name_was_spelled(source):
 @pytest.mark.parametrize(
     "source",
     [
-        ADMITTED_MODULE_REACHING_ANOTHER_MODULES_WRITER,
-        ADMITTED_MODULE_IMPORTING_ANOTHER_MODULES_WRITER,
+        # A one line ``naming`` helper writing the configuration file through ``config``.
+        """
+from cratekit.core import config
+
+
+def refresh(cfg):
+    config.save(cfg)
+""",
+        # The same writer imported by name, the binding table's other half.
+        """
+from cratekit.core.config import save as persist
+
+
+def refresh(cfg):
+    persist(cfg)
+""",
     ],
 )
 def test_the_audit_reads_the_imports_of_the_module_it_is_auditing(source):
@@ -3221,8 +3108,17 @@ def test_the_audit_stays_quiet_on_the_reflective_reads_it_was_loosened_for():
 
 
 def test_the_audit_refuses_a_module_that_writes_when_it_is_imported():
-    """The ``loose`` branch, which no admitted module takes today."""
-    found = _unnamed_writers("cratekit.core.planted", ADMITTED_MODULE_LEVEL_WRITE)
+    """The ``loose`` branch: no name to list and no call to avoid, and no module takes it."""
+    imported = """
+from pathlib import Path
+
+Path("ledger").write_text("seen")
+
+
+def read(path):
+    return Path(path).read_text()
+"""
+    found = _unnamed_writers("cratekit.core.planted", imported)
     assert len(found) == 1
     assert found[0].startswith("<at import time>")
     assert "write_text" in found[0]
@@ -3230,7 +3126,11 @@ def test_the_audit_refuses_a_module_that_writes_when_it_is_imported():
 
 def test_the_audit_does_not_call_an_ordinary_attribute_read_a_writer():
     """P7 inside the audit itself, which is where the over-restriction landed."""
-    assert _unnamed_writers("cratekit.core.planted", ADMITTED_GENERIC_ATTRIBUTE_READ) == []
+    named_like_a_verb = """
+def describe(spec):
+    return spec.load
+"""
+    assert _unnamed_writers("cratekit.core.planted", named_like_a_verb) == []
 
 
 def test_the_audit_reads_a_modules_own_bare_call_as_qualified_by_that_module():
@@ -3253,7 +3153,6 @@ def test_a_package_on_the_allowlist_audits_every_module_underneath_it():
 
 
 def _plant(root: Path, modules: dict[str, str]) -> Path:
-    """Write a source tree of dotted modules under ``root``, and return it."""
     for dotted, source in modules.items():
         path = root.joinpath(*dotted.split(".")).with_suffix(".py")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -3261,8 +3160,7 @@ def _plant(root: Path, modules: dict[str, str]) -> Path:
     return root
 
 
-#: The one hop audit's driven relocation: ``cause`` keeps a thin caller and the
-#: raw ``os.open`` moves into ``access_probe``, which the allowlist does not name.
+#: ``cause`` keeps a thin caller; the raw ``os.open`` moves to unlisted ``access_probe``.
 DELEGATING_CAUSE = """
 from cratekit.core import access_probe
 
@@ -3279,8 +3177,7 @@ def open_for_probe(path):
     return os.open(path, os.O_RDWR | os.O_CREAT)
 """
 
-#: The sideways case the layering guard cannot see, two hops deep, with a cycle
-#: back so the walk must end on what it has seen.
+#: Sideways two hops deep, unseen by the layering guard, with a cycle the walk must end.
 SIDEWAYS_RBXML = """
 from cratekit.write import helper
 
@@ -3305,8 +3202,7 @@ def stash(path, data):
     path.write_text(data)
 """
 
-#: The sanctioned module delegating. ``review`` is exempt as itself, and the
-#: exemption is not a door: a writer it imports is audited like any other.
+#: ``review`` is exempt as itself, not as a door: a writer it imports is audited too.
 SANCTIONED_REVIEW = """
 from cratekit.core import ledger
 
@@ -3320,8 +3216,7 @@ def keep(path):
     path.touch()
 """
 
-#: The same delegation with no import statement for the closure to read, through
-#: the module attribute and through an aliased bare name.
+#: The delegation with no import statement, through ``importlib`` and an aliased name.
 IMPORT_MODULE_CAUSE = """
 import importlib
 
@@ -3338,8 +3233,7 @@ def probe(path):
     return load("cratekit.core.access_probe").open_for_probe(path)
 """
 
-#: A relative import inside a three level package, resolved by asking the tree
-#: whether the base is a directory; the real tree has no planted one.
+#: A relative import three levels deep, resolved by asking whether the base is a directory.
 RELATIVE_OPENER = """
 from . import keeper
 
@@ -3480,12 +3374,17 @@ def test_a_symbol_imported_from_a_package_follows_the_package_initializer(tmp_pa
     assert [dotted for dotted, _ in audited] == ["cratekit.core", "cratekit.core.cause"]
 
 
-#: The real module every shape below is driven against: it imports ``config``
-#: and ``taxonomy``, so a false positive here is a line somebody could write.
+#: The real module, importing ``config`` and ``taxonomy``: a false positive here is real.
 AGING_SOURCE = (REPORTS_ROOT / "aging.py").read_text()
 
-#: Ten shapes an ordinary author writes, appended to the real ``aging``, each a
-#: finding when the binding table was swept flat and only a parameter rebound.
+
+def _drive(*tables):
+    """One parametrize over several (shape, snippet) tables, each row id its shape."""
+    rows = [row for table in tables for row in table]
+    return pytest.mark.parametrize("shape,snippet", rows, ids=[one[0] for one in rows])
+
+
+#: Ordinary shapes, each a finding when the table was flat and only a parameter rebound.
 ORDINARY_SHAPES_IN_A_REPORT = [
     (
         "a loop target",
@@ -3591,8 +3490,7 @@ class Row:
     ),
 ]
 
-#: Ordinary mapping lookups whose key happens to spell a filesystem verb, which
-#: rule 5 once reported with no receiver read.
+#: Lookups whose key spells a filesystem verb, once reported with no receiver read.
 ORDINARY_MAPPING_LOOKUPS = [
     (
         "a counter read twice",
@@ -3613,17 +3511,7 @@ def go(counts):
     ),
 ]
 
-#: The most ordinary thing anybody writes with the dunder rule 4 names. It
-#: forwards the name the interpreter already handed it and calls nothing.
-ORDINARY_DUNDER_DELEGATION = """
-
-class Row:
-    def __getattribute__(self, name):
-        return super().__getattribute__(name)
-"""
-
-#: Three real writes once missed through the flat table: a tuple right hand side,
-#: a conditional, and a container more than one level deep.
+#: Real writes the flat table missed: a tuple, a conditional, a nested container.
 MISSED_WRITES_IN_A_REPORT = [
     (
         "a parallel unpacking",
@@ -3667,35 +3555,15 @@ def go(cfg, override):
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    ORDINARY_SHAPES_IN_A_REPORT,
-    ids=[one[0] for one in ORDINARY_SHAPES_IN_A_REPORT],
-)
-def test_an_ordinary_rebinding_in_a_real_report_is_not_a_write(shape, snippet):
-    """The ten false positives, driven against the module they were found in."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet", MISSED_WRITES_IN_A_REPORT, ids=[one[0] for one in MISSED_WRITES_IN_A_REPORT]
-)
-def test_a_write_through_an_unread_binding_shape_is_still_a_write(shape, snippet):
-    """The other direction of the same defect, and the one that costs a file."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet", ORDINARY_MAPPING_LOOKUPS, ids=[one[0] for one in ORDINARY_MAPPING_LOOKUPS]
-)
-def test_a_mapping_keyed_on_a_filesystem_verb_is_not_a_write(shape, snippet):
-    """Rule 5 with its receiver, against the module the rule would have fired in."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
 def test_the_dunder_that_forwards_its_own_name_is_not_a_write():
     """The collateral rule 4's own comment said naming the dunder did not have."""
-    assert filesystem_mutations(AGING_SOURCE + ORDINARY_DUNDER_DELEGATION) == []
+    forwarding = """
+
+class Row:
+    def __getattribute__(self, name):
+        return super().__getattribute__(name)
+"""
+    assert filesystem_mutations(AGING_SOURCE + forwarding) == []
     assert filesystem_mutations("def stash(p, n, d):\n    object.__getattribute__(p, n)(d)\n")
 
 
@@ -3731,8 +3599,7 @@ def test_a_container_key_this_cannot_read_binds_nothing():
     assert filesystem_mutations(constant + "\n\ndef go(cfg):\n    MODS['c'].save(cfg)\n")
 
 
-#: Eight indirect spellings of a reflective read whose result is called, which a
-#: switch reading only an inline ``Call`` of a ``Call`` missed.
+#: Reflective reads called indirectly, missed when only a ``Call`` of a ``Call`` was read.
 INDIRECTLY_INVOKED_REFLECTIVE_READS = [
     (
         "bound to a name and called",
@@ -3798,14 +3665,10 @@ INDIRECTLY_INVOKED_REFLECTIVE_READS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,source",
-    INDIRECTLY_INVOKED_REFLECTIVE_READS,
-    ids=[one[0] for one in INDIRECTLY_INVOKED_REFLECTIVE_READS],
-)
-def test_the_audit_names_a_writer_whose_reflective_read_is_called_indirectly(shape, source):
+@_drive(INDIRECTLY_INVOKED_REFLECTIVE_READS)
+def test_the_audit_names_a_writer_whose_reflective_read_is_called_indirectly(shape, snippet):
     """The switch, decided on the binding table rather than on local syntax."""
-    assert _unnamed_writers("cratekit.core.naming", source) == ["stash"], shape
+    assert _unnamed_writers("cratekit.core.naming", snippet) == ["stash"], shape
 
 
 def test_the_audit_stays_quiet_on_a_reflective_read_nothing_calls():
@@ -3831,8 +3694,7 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         'import tarfile\n\n\ndef read(p):\n    return tarfile.open(p, "r")\n',
         "import os\n\n\ndef sync(p):\n    return os.open(str(p), os.O_RDONLY)\n",
         "import os\n\n\ndef walk(p):\n    return os.open(p, os.O_RDONLY | os.O_DIRECTORY)\n",
-        # The bare imported flag, a pure read once reported as a write because
-        # only the dotted spelling was read.
+        # The bare imported flag, once a write because only the dotted spelling was read.
         "import os\nfrom os import O_RDONLY\n\n\ndef sync(p):\n    return os.open(str(p), O_RDONLY)\n",
         "import os\nfrom os import O_DIRECTORY, O_RDONLY\n\n\n"
         "def walk(p):\n    return os.open(p, O_RDONLY | O_DIRECTORY)\n",
@@ -3847,8 +3709,7 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         "import os\n\n\ndef make(p):\n    return os.open(p, os.O_CREAT | os.O_EXCL)\n",
         "import os\n\n\ndef make(p, flags):\n    return os.open(p, flags)\n",
         "import io\n\n\ndef go(p, mode):\n    return io.open(p, mode)\n",
-        # Every writing flag still fires in the bare spelling, and so does a flag
-        # held in a variable.
+        # Every writing flag fires bare too, and so does a flag held in a variable.
         "import os\nfrom os import O_CREAT\n\n\ndef make(p):\n    return os.open(p, O_CREAT)\n",
         "import os\nfrom os import O_WRONLY\n\n\ndef make(p):\n    return os.open(p, O_WRONLY)\n",
         "import os\nfrom os import O_RDWR\n\n\ndef make(p):\n    return os.open(p, O_RDWR)\n",
@@ -3856,8 +3717,7 @@ def test_a_module_level_open_does_not_have_its_file_read_as_its_mode():
         "import os\nfrom os import O_APPEND\n\n\ndef make(p):\n    return os.open(p, O_APPEND)\n",
         "import os\nfrom os import O_EXCL, O_RDONLY\n\n\n"
         "def make(p):\n    return os.open(p, O_RDONLY | O_EXCL)\n",
-        # A flag expression that is neither a name nor an attribute is
-        # unreadable, and unreadable is reported.
+        # A flag neither a name nor an attribute is unreadable, and unreadable is reported.
         "import os\n\n\ndef make(p, chosen):\n    return os.open(p, chosen())\n",
     ]
     for source in writing:
@@ -3886,9 +3746,9 @@ def test_the_binding_table_is_scoped_and_the_object_half_is_not():
     assert filesystem_mutations(stored)
 
 
-#: Two classes, one spelling: with one class the table's key can be as coarse as
-#: it likes and nothing disagrees.
-TWO_SELVES_IN_ONE_FILE = """
+def test_two_classes_spelling_one_attribute_do_not_share_a_binding():
+    """Both directions of the qualified key: with one class any key is coarse enough."""
+    two_selves = """
 
 class Injected:
     def __init__(self, config):
@@ -3905,11 +3765,7 @@ class Holder:
     def refresh(self, cfg):
         self.config.save(cfg)
 """
-
-
-def test_two_classes_spelling_one_attribute_do_not_share_a_binding():
-    """Both directions of the qualified key, in one file, against the real module."""
-    found = filesystem_mutations(AGING_SOURCE + TWO_SELVES_IN_ONE_FILE)
+    found = filesystem_mutations(AGING_SOURCE + two_selves)
     assert [one for one in found if "config.load" in one] == [], found
     assert [one for one in found if "config.save" in one], found
 
@@ -3947,8 +3803,7 @@ class Keeper:
         cls.mod.save(cfg)
 """
     assert filesystem_mutations(AGING_SOURCE + through_the_class)
-    # A class attribute overridden per instance: ``cls.mod`` is the class's
-    # ``None``, not the constructor's module.
+    # ``cls.mod`` is the class's ``None``, not the constructor's module.
     overridden = """
 
 class Keeper:
@@ -3964,8 +3819,7 @@ class Keeper:
     assert filesystem_mutations(AGING_SOURCE + overridden) == []
 
 
-#: A class attribute bound to an admitted module, in every spelling that reaches
-#: it; the class body form was once read as the scope around it and missed.
+#: Each spelling reaching a class attribute bound to a module; the body form was missed.
 CLASS_ATTRIBUTE_REACHES_A_WRITER = [
     (
         "read through the instance",
@@ -3994,8 +3848,7 @@ CLASS_ATTRIBUTE_REACHES_A_WRITER = [
     ),
 ]
 
-#: The other side of the class body being a scope, and every one of these was
-#: either wrong before or is wrong the moment the scope rule is relaxed.
+#: A class body is a scope: each was wrong before, or is the moment the rule relaxes.
 CLASS_BODY_STAYS_IN_THE_CLASS = [
     (
         "a class body name is not visible inside its methods",
@@ -4015,26 +3868,6 @@ CLASS_BODY_STAYS_IN_THE_CLASS = [
         "        def inner(self):\n            return self.mod.load\n\n        return inner\n",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    CLASS_ATTRIBUTE_REACHES_A_WRITER,
-    ids=[one[0] for one in CLASS_ATTRIBUTE_REACHES_A_WRITER],
-)
-def test_a_module_aliased_in_a_class_body_is_still_that_module(shape, snippet):
-    """The evasion the round already caught one line lower, closed at its own line."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    CLASS_BODY_STAYS_IN_THE_CLASS,
-    ids=[one[0] for one in CLASS_BODY_STAYS_IN_THE_CLASS],
-)
-def test_a_class_body_binds_for_its_class_and_for_nothing_else(shape, snippet):
-    """A class body is a scope, and the false positive direction says so."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
 def test_a_method_that_hands_back_a_module_is_keyed_under_its_class():
@@ -4088,8 +3921,7 @@ def test_the_audit_names_a_class_that_reaches_a_writer_through_its_body():
     assert _unnamed_writers("cratekit.core.naming", injected) == []
 
 
-#: A key that landed on the class declaring it rather than the class reaching it:
-#: a base, a mixin and a method attached after the fact, all ordinary code.
+#: Keys once parked on the declaring class, not the reaching one: all ordinary code.
 INHERITED_ATTRIBUTE_REACHES_A_WRITER = [
     (
         "a base class constructor's binding, read in a subclass",
@@ -4123,8 +3955,7 @@ INHERITED_ATTRIBUTE_REACHES_A_WRITER = [
     ),
 ]
 
-#: The other direction, which a family-wide key would get wrong: siblings do not
-#: share, a base does not borrow from its subclass, and a class is its site.
+#: What a family wide key gets wrong: siblings, a base borrowing down, a class's site.
 INHERITANCE_STAYS_IN_THE_FAMILY = [
     (
         "a sibling subclass's binding is not this subclass's",
@@ -4157,28 +3988,7 @@ INHERITANCE_STAYS_IN_THE_FAMILY = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    INHERITED_ATTRIBUTE_REACHES_A_WRITER,
-    ids=[one[0] for one in INHERITED_ATTRIBUTE_REACHES_A_WRITER],
-)
-def test_a_module_bound_anywhere_in_a_class_family_is_still_that_module(shape, snippet):
-    """The key resolved through the family rather than parked on one member of it."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    INHERITANCE_STAYS_IN_THE_FAMILY,
-    ids=[one[0] for one in INHERITANCE_STAYS_IN_THE_FAMILY],
-)
-def test_a_class_key_names_one_class_and_never_two(shape, snippet):
-    """The false positives a coarser key produces, which are ordinary code."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-
-
-#: Six ordinary shapes of a subclass overriding an attribute its base binds, each
-#: once reported as a write.
+#: Ordinary subclass overrides of an attribute its base binds, each once a write.
 AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
     (
         "a subclass overrides in its own constructor with a plain dict",
@@ -4221,8 +4031,7 @@ AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK = [
 ]
 
 
-#: The writes the override rule must not cost: an override blocks what is above
-#: it, never a sibling, a mixin, or another method binding the real module.
+#: An override blocks what is above it, never a sibling, a mixin or another method.
 AN_OVERRIDE_BLOCKS_NOTHING_ELSE = [
     (
         "a sibling subclass that binds the real module is still reached",
@@ -4255,27 +4064,6 @@ AN_OVERRIDE_BLOCKS_NOTHING_ELSE = [
         "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK,
-    ids=[one[0] for one in AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK],
-)
-def test_an_attribute_a_subclass_takes_for_itself_is_not_its_bases(shape, snippet):
-    """The false positive direction of the table the round before rebuilt."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
-    assert _unnamed_writers(REPORTS_PACKAGE + ".aging", AGING_SOURCE + snippet) == [], shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_BLOCKS_NOTHING_ELSE,
-    ids=[one[0] for one in AN_OVERRIDE_BLOCKS_NOTHING_ELSE],
-)
-def test_an_override_blocks_upward_and_never_sideways_or_down(shape, snippet):
-    """The miss direction of the same rule, asserted rather than reasoned about."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
 #: An override one indent in: the same false positive with a branch around it.
@@ -4342,8 +4130,7 @@ AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING = [
 ]
 
 
-#: The miss direction of the same rule: the base's binding is reachable in each,
-#: so each keeps firing.
+#: The miss direction: the base's binding is reachable in each, so each keeps firing.
 A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES = [
     (
         "a conditional override in a constructor that chains first",
@@ -4374,137 +4161,88 @@ A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING,
-    ids=[one[0] for one in AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING],
-)
-def test_a_branched_override_of_an_attribute_no_path_supplies_is_not_a_write(shape, snippet):
-    """The branch rule read on the OBJECT half, driven instead of described."""
+@_drive(AN_OVERRIDE_TAKES_THE_ATTRIBUTE_BACK, AN_OVERRIDE_INSIDE_A_BRANCH_REACHES_NOTHING)
+def test_an_attribute_a_subclass_takes_for_itself_is_not_its_bases(shape, snippet):
+    """The false positive direction, through the audit as well as the guard."""
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
     assert _unnamed_writers(REPORTS_PACKAGE + ".aging", AGING_SOURCE + snippet) == [], shape
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES,
-    ids=[one[0] for one in A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES],
-)
-def test_a_branched_override_still_loses_to_a_binding_that_survives_it(shape, snippet):
-    """The half a restriction on the key's SPELLING would have cost."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
+#: A class body binding under an instance write. The class spelling still fires, a
+#: resolved key is never taken back by an unresolved one (``_record`` clearing its
+#: mark), and ``del`` puts the class attribute back.
+CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STILL_WRITES = [
+    (
+        "read through the class under an ordinary constructor",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n\n"
+        "def through_the_class(cfg):\n    return Keeper.mod.save(cfg)\n",
+    ),
+    (
+        # ``Keeper.mod`` is the module until ``clear`` runs.
+        "read through the class under a method that rebinds it",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def clear(self):\n        Keeper.mod = None\n\n"
+        "    def go(self, cfg):\n        return Keeper.mod.save(cfg)\n",
+    ),
+    (
+        "resolved first",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "resolved second",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        # A class body binding ``None`` separates the mark from the value under it.
+        "the class body bound nothing",
+        "\n\nclass Keeper:\n    mod = None\n\n"
+        "    def __init__(self, raw):\n        self.mod = config\n\n"
+        "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a delete that reaches the class attribute",
+        "\n\nclass Deleter:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n",
+    ),
+]
+
+#: The quiet half: the instance spelling is shadowed, in either order the walk
+#: visits the two scopes, and a ``del`` with nothing underneath restores nothing.
+CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STAYS_QUIET = [
+    (
+        "read through the instance under an ordinary constructor",
+        "\n\nclass Keeper:\n    mod = config\n\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "the class body written after the constructor",
+        "\n\nclass Keeper:\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    mod = config\n\n"
+        "    def go(self, cfg):\n        return self.mod.save(cfg)\n",
+    ),
+    (
+        "a delete that reaches nothing",
+        "\n\nclass Deleter:\n"
+        "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
+        "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n",
+    ),
+]
 
 
-#: A CLASS BODY BINDING UNDER AN ORDINARY CONSTRUCTOR, which is the most common
-#: class in the language and which the table read as a write.
-CLASS_BODY_READ_THROUGH_THE_INSTANCE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-CLASS_BODY_READ_THROUGH_THE_CLASS = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n\n"
-    "def through_the_class(cfg):\n    return Keeper.mod.save(cfg)\n"
-)
-
-#: The class spelling under a method that rebinds it: ``Keeper.mod`` is the
-#: module until ``clear`` runs, so this fires.
-CLASS_BODY_REBOUND_THROUGH_THE_CLASS = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def clear(self):\n        Keeper.mod = None\n\n"
-    "    def go(self, cfg):\n        return Keeper.mod.save(cfg)\n"
-)
-
-
-def test_an_instance_override_shadows_a_class_body_binding_but_not_the_class():
-    """Both spellings of one attribute, because the two disagree at runtime."""
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_READ_THROUGH_THE_INSTANCE) == []
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_READ_THROUGH_THE_CLASS)
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_REBOUND_THROUGH_THE_CLASS)
-
-
-#: The order the walk visits two scopes in must not decide: the class body comes
-#: after the constructor here and before it above.
-CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR = (
-    "\n\nclass Keeper:\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    mod = config\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-
-def test_the_faint_tier_does_not_depend_on_which_scope_the_walk_reached_first():
-    """The order independence ``_record`` claims, driven in both orders."""
-    assert filesystem_mutations(AGING_SOURCE + CLASS_BODY_WRITTEN_AFTER_THE_CONSTRUCTOR) == []
-
-
-#: Two instance writes to one attribute, one resolved and one not, under a class
-#: body binding the same name: a resolved key is never taken back.
-A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE = (
-    "\n\nclass Keeper:\n    mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-#: The same pair with the class body binding ``None``, which separates the mark
-#: from the value under it.
-A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES = (
-    "\n\nclass Keeper:\n    mod = None\n\n"
-    "    def __init__(self, raw):\n        self.mod = config\n\n"
-    "    def forget(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        return self.mod.save(cfg)\n"
-)
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    [
-        A_RESOLVED_INSTANCE_WRITE_BEFORE_AN_UNRESOLVED_ONE,
-        A_RESOLVED_INSTANCE_WRITE_AFTER_AN_UNRESOLVED_ONE,
-        A_CLASS_BODY_THAT_BOUND_NOTHING_UNDER_TWO_INSTANCE_WRITES,
-    ],
-    ids=["resolved first", "resolved second", "the class body bound nothing"],
-)
-def test_an_unresolved_instance_write_never_takes_back_a_resolved_one(snippet):
-    """The half of ``_record`` that clears the mark, which nothing drove."""
-    assert filesystem_mutations(AGING_SOURCE + snippet)
-
-
-#: ``del`` puts the class attribute back, a real write that was once quiet.
-A_DELETE_THAT_REACHES_THE_CLASS_ATTRIBUTE = (
-    "\n\nclass Deleter:\n    mod = config\n\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n"
-)
-
-#: The same statement with nothing underneath to reach, so the restore takes what
-#: the class spelling holds, which is nothing.
-A_DELETE_THAT_REACHES_NOTHING = (
-    "\n\nclass Deleter:\n"
-    "    def __init__(self, raw):\n        self.mod = dict(raw)\n\n"
-    "    def go(self, cfg):\n        del self.mod\n        return self.mod.save(cfg)\n"
-)
-
-
-def test_deleting_an_instance_attribute_reaches_the_class_attribute_under_it():
-    """Both directions of the restore, because only one of them is a write."""
-    assert filesystem_mutations(AGING_SOURCE + A_DELETE_THAT_REACHES_THE_CLASS_ATTRIBUTE)
-    assert filesystem_mutations(AGING_SOURCE + A_DELETE_THAT_REACHES_NOTHING) == []
-
-
-#: Two class definitions of one name. In one statement list the second replaces
-#: the first, so nothing is reported; in two arms of a conditional only one runs,
-#: so a module bound in either arm can write.
+#: Two class definitions of one name: in two arms of a conditional only one runs,
+#: so either arm's module can write. Real writes once filed as undecidable by the
+#: residual "A class rebound after its own definition is no longer reachable by name".
 A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
     (
         "two class definitions in the arms of one conditional",
@@ -4566,8 +4304,8 @@ A_NAME_THAT_STILL_MEANS_ITS_CLASS = [
 ]
 
 
-#: What the two fixes above must not cost: the replaced class stays quiet, and a
-#: parameter or a real assignment of that name still takes it.
+#: What the two fixes above must not cost: a class replaced in ONE statement list
+#: stays quiet, and a parameter or a real assignment of that name still takes it.
 A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
     (
         "two class definitions in ONE statement list",
@@ -4619,27 +4357,6 @@ A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS = [
         "Keeper = dataclass(Keeper)\n\n\ndef go(cfg):\n    Keeper.mod.save(cfg)\n",
     ),
 ]
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_NAME_THAT_STILL_MEANS_ITS_CLASS,
-    ids=[one[0] for one in A_NAME_THAT_STILL_MEANS_ITS_CLASS],
-)
-def test_a_binding_that_replaced_nothing_leaves_the_name_alone(shape, snippet):
-    """Two real writes filed as undecidable by the residual
-    "A class rebound after its own definition is no longer reachable by name"."""
-    assert filesystem_mutations(AGING_SOURCE + snippet), shape
-
-
-@pytest.mark.parametrize(
-    "shape,snippet",
-    A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS,
-    ids=[one[0] for one in A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS],
-)
-def test_a_binding_that_really_replaced_something_still_takes_the_name(shape, snippet):
-    """The quiet direction of the same two fixes, which is where they could go wrong."""
-    assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
 def test_a_class_written_inside_a_factory_still_reaches_its_own_attribute():
@@ -4704,8 +4421,7 @@ def test_the_audit_names_a_writer_a_subclass_reaches_through_its_base():
     assert _unnamed_writers("cratekit.core.naming", inherited) == ["Row"]
 
 
-#: A type's attribute mapping reached through a binding rather than inline, as
-#: ``table = vars(Path)`` then ``table["write_text"]``.
+#: A type's attribute mapping reached through a binding, as ``table = vars(Path)``.
 NAMESPACE_REACHES_A_WRITER = [
     (
         "bound to a name from vars",
@@ -4765,8 +4481,7 @@ NAMESPACE_REACHES_A_WRITER = [
         "a generic writer named only by the module it belongs to",
         '\n\ndef go(cfg):\n    vars(config)["save"](cfg)\n',
     ),
-    # Four spellings one operator out from those above, each executed to confirm
-    # it writes a real file; ``collections`` is on the allowlist.
+    # One operator out, each run to confirm a real write; ``collections`` is admitted.
     (
         "carried through a dict UNION",
         '\n\ndef go(p, d):\n    (Path.__dict__ | {})["write_text"](p, d)\n',
@@ -4786,8 +4501,7 @@ NAMESPACE_REACHES_A_WRITER = [
     ),
 ]
 
-#: The same rule pointed at ordinary code, because a namespace binding that fires
-#: on a dispatch table is round four's defect with a longer reach.
+#: Ordinary dispatch tables, where a namespace binding firing is round four's defect.
 ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
     (
         "a mapping bound to a name",
@@ -4813,8 +4527,7 @@ ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
         "a generic name on a namespace nobody admits",
         '\n\ndef go(view):\n    return vars(view)["save"]\n',
     ),
-    # The same operations on an ordinary mapping: propagation carries the
-    # namespace it found, not mapping-ness itself.
+    # Ordinary mappings: propagation carries the namespace found, not mapping-ness.
     (
         "an ordinary mapping through a union",
         '\n\ndef go(counts):\n    return (counts | {})["rename"]\n',
@@ -4831,23 +4544,32 @@ ORDINARY_LOOKUPS_THROUGH_A_BINDING = [
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
+@_drive(
+    MISSED_WRITES_IN_A_REPORT,
+    CLASS_ATTRIBUTE_REACHES_A_WRITER,
+    INHERITED_ATTRIBUTE_REACHES_A_WRITER,
+    AN_OVERRIDE_BLOCKS_NOTHING_ELSE,
+    A_BRANCHED_OVERRIDE_THE_BASE_STILL_SURVIVES,
+    CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STILL_WRITES,
+    A_NAME_THAT_STILL_MEANS_ITS_CLASS,
     NAMESPACE_REACHES_A_WRITER,
-    ids=[one[0] for one in NAMESPACE_REACHES_A_WRITER],
 )
-def test_an_attribute_mapping_bound_to_a_name_is_still_that_mapping(shape, snippet):
-    """Rule 5 asked of the table rather than of the expression under its own nose."""
+def test_a_write_through_an_unread_binding_shape_is_still_a_write(shape, snippet):
+    """The direction of each defect that costs a file, in the real ``aging``."""
     assert filesystem_mutations(AGING_SOURCE + snippet), shape
 
 
-@pytest.mark.parametrize(
-    "shape,snippet",
+@_drive(
+    ORDINARY_SHAPES_IN_A_REPORT,
+    ORDINARY_MAPPING_LOOKUPS,
+    CLASS_BODY_STAYS_IN_THE_CLASS,
+    INHERITANCE_STAYS_IN_THE_FAMILY,
+    CLASS_BODY_UNDER_AN_INSTANCE_WRITE_STAYS_QUIET,
+    A_NAME_THAT_NO_LONGER_MEANS_ITS_CLASS,
     ORDINARY_LOOKUPS_THROUGH_A_BINDING,
-    ids=[one[0] for one in ORDINARY_LOOKUPS_THROUGH_A_BINDING],
 )
-def test_an_ordinary_mapping_bound_to_a_name_is_not_a_namespace(shape, snippet):
-    """The receiver, still doing the separating once the receiver can be a binding."""
+def test_an_ordinary_rebinding_in_a_real_report_is_not_a_write(shape, snippet):
+    """Each false positive, driven against the module it was found in."""
     assert filesystem_mutations(AGING_SOURCE + snippet) == [], shape
 
 
@@ -4893,8 +4615,7 @@ def test_a_module_reached_through_the_globals_mapping_is_still_that_module():
     )
 
 
-#: Six more ways a scope takes a name back, each the only thing driving a line of
-#: the shadow list, since a shadow nothing exercises gets deleted.
+#: Ways a scope takes a name back, each the only driver of a line of the shadow list.
 SHADOWS_IN_A_SCOPE = [
     (
         "an import of something else under the same name",
@@ -4957,8 +4678,7 @@ def go():
     ),
 ]
 
-#: The other direction of the same two lines: a scope that DOES still see the
-#: module, where a shadow read one level too wide would lose the write.
+#: Scopes that DO still see the module, where a shadow read too wide loses the write.
 WRITES_A_WIDER_SHADOW_WOULD_LOSE = [
     (
         "a comprehension target does not shadow the function around it",
@@ -4991,12 +4711,10 @@ def _mod():
 ]
 
 
-@pytest.mark.parametrize(
-    "shape,source", SHADOWS_IN_A_SCOPE, ids=[one[0] for one in SHADOWS_IN_A_SCOPE]
-)
-def test_every_shadow_this_table_claims_takes_the_name_back(shape, source):
+@_drive(SHADOWS_IN_A_SCOPE)
+def test_every_shadow_this_table_claims_takes_the_name_back(shape, snippet):
     """Four shadows nothing drove, which is four lines that read as coverage."""
-    assert filesystem_mutations(source) == [], shape
+    assert filesystem_mutations(snippet) == [], shape
 
 
 def test_a_name_bound_twice_in_ONE_scope_settles_to_neither():
@@ -5013,120 +4731,13 @@ def test_a_name_bound_twice_in_ONE_scope_settles_to_neither():
     assert filesystem_mutations(alone)
 
 
-@pytest.mark.parametrize(
-    "shape,source",
-    WRITES_A_WIDER_SHADOW_WOULD_LOSE,
-    ids=[one[0] for one in WRITES_A_WIDER_SHADOW_WOULD_LOSE],
-)
-def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, source):
+@_drive(WRITES_A_WIDER_SHADOW_WOULD_LOSE)
+def test_a_shadow_read_too_wide_would_lose_a_real_write(shape, snippet):
     """The cost of getting the scope boundaries wrong, in the expensive direction."""
-    assert filesystem_mutations(source), shape
+    assert filesystem_mutations(snippet), shape
 
 
-#: A module that hides its writer behind an alias, which is the shape that
-#: defeated the armed copy of U11's comma-separated-file guard.
-EVASIVE_IMPORT = """
-import shutil as tidy
-from os import replace as swap
-
-
-def clean(a, b):
-    tidy.rmtree(a)
-    swap(a, b)
-"""
-
-#: The same evasion one layer further out, through the package.
-EVASIVE_PACKAGE_IMPORT = """
-from cratekit.core import rb_writer
-
-
-def snapshot(cfg):
-    return rb_writer.open_db(cfg)
-"""
-
-#: And through a relative import, which nothing in the package uses today.
-EVASIVE_RELATIVE_IMPORT = """
-from ...core import rb_writer
-
-
-def snapshot(cfg):
-    return rb_writer.open_db(cfg)
-"""
-
-#: The same writer reached through a lazy import inside a function body.
-EVASIVE_LAZY_IMPORT = """
-def snapshot(cfg):
-    import sqlite3
-
-    return sqlite3.connect(str(cfg.library.db_path))
-"""
-
-#: A module that writes a private ignore file, which is the exact defect the
-#: countdown against this unit forbids by name.
-EVASIVE_PRIVATE_LEDGER = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    Path(path).write_text(decided)
-"""
-
-#: The same thing through a handle, so the mutating method never appears.
-EVASIVE_WRITE_HANDLE = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    with open(Path(path), "w") as handle:
-        handle.write(decided)
-"""
-
-#: The same handle through the bound method, whose mode is its first argument
-#: because its receiver is already the file.
-EVASIVE_BOUND_OPEN_HANDLE = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    handle = Path(path).open("w")
-    handle.write(decided)
-    handle.close()
-"""
-
-#: And with a mode this guard cannot read, which is how a literal check is walked
-#: past without ever writing the letter w.
-EVASIVE_COMPUTED_MODE = """
-from pathlib import Path
-
-MODE = "".join(["w"])
-
-
-def remember(path, decided):
-    with open(Path(path), MODE) as handle:
-        handle.write(decided)
-"""
-
-#: ``Path.replace`` overwrites its destination, how a private ledger is swapped
-#: into place atomically.
-EVASIVE_PATH_REPLACE = """
-from pathlib import Path
-
-
-def remember(scratch, ledger):
-    Path(scratch).replace(ledger)
-"""
-
-#: The writer loaded with no import statement at all: a database, a process and
-#: a file, all through the builtin.
-EVASIVE_DYNAMIC_IMPORT = """
-def remember(path, argv, db):
-    __import__("os").truncate(path, 0)
-    __import__("subprocess").run(argv)
-    return __import__("sqlite3").connect(db)
-"""
-
-#: The same builtin with a name this guard cannot read, which is the computed
-#: mode's trick applied to the import instead of to the handle.
+#: The computed mode's trick applied to the dynamic import's name.
 EVASIVE_COMPUTED_DYNAMIC_IMPORT = """
 NAME = "".join(["o", "s"])
 
@@ -5135,377 +4746,59 @@ def remember(path):
     __import__(NAME).truncate(path, 0)
 """
 
-#: The mutating method reached through a computed attribute name, so the method
-#: never appears as text and the outer call's ``func`` is itself a Call.
-EVASIVE_COMPUTED_ATTRIBUTE = """
-from pathlib import Path
 
-
-def remember(path, decided):
-    getattr(Path(path), "write_" + "text")(decided)
-"""
-
-#: The mutating method bound and not called, then called through its local.
-EVASIVE_CAPTURED_BOUND_METHOD = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    keep = Path(path).write_text
-    keep(decided)
-"""
-
-#: The writer reached through an admitted module with no forbidden import:
-#: ``config.load_from_path`` writes the file back too.
-EVASIVE_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg, path):
-    config.save(cfg)
-    return config.load_from_path(path)
-"""
-
-#: And through ``naming``, which ``duplicates`` already imports.
-EVASIVE_ALLOWLISTED_CLAIM = """
-from cratekit.core import naming
-
-
-def remember(target):
-    return naming.claim_target(target)
-"""
-
-#: The admitted writer reached through an aliased module, which the receiver
-#: check must survive.
-EVASIVE_ALIASED_ALLOWLISTED_WRITER = """
-from cratekit.core import config as settings
-
-
-def remember(cfg):
-    settings.save(cfg)
-"""
-
-#: The admitted writer imported straight off its module and renamed, with no
-#: receiver: the bare local is tracked back to what it was bound to.
-EVASIVE_IMPORTED_ALLOWLISTED_WRITER = """
-from cratekit.core.naming import claim_target as reserve
-
-
-def remember(target):
-    return reserve(target)
-"""
-
-#: The mutating name reached as a bare call: the only fixture driving the
-#: bare-name branch. The import guard catches it too, independently.
-EVASIVE_BARE_NAME_WRITER = """
-from shutil import rmtree
-from os import truncate
-
-
-def clean(a, path):
-    rmtree(a)
-    truncate(path, 0)
-"""
-
-#: The mutating method named as a literal string inside ``getattr``, which only
-#: the literal half of rule 4 catches.
-EVASIVE_LITERAL_GETATTR = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    getattr(Path(path), "write_text")(decided)
-"""
-
-#: The same trick pointed at a writer the ALLOWLIST admits, so the receiver has
-#: to be read inside ``getattr`` as well as outside it.
-EVASIVE_LITERAL_GETATTR_ON_AN_ADMITTED_MODULE = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    getattr(config, "save")(cfg)
-"""
-
-#: THE NINE SHAPES A RECEIVER CHECK READ OFF THE IMPORT TABLE ALONE LOST.
-EVASIVE_REBOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    alias = config
-    alias.save(cfg)
-"""
-
-#: The module reached through its own dotted path after a plain ``import``, the
-#: one receiver shape naming no local, resolved as a binding.
-EVASIVE_DOTTED_IMPORT_ALLOWLISTED_WRITER = """
-import cratekit.core.config
-
-
-def remember(cfg):
-    cratekit.core.config.save(cfg)
-"""
-
-#: The module parked in a LIST and reached by index.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_LIST = """
-from cratekit.core import config
-
-MODS = [config]
-
-
-def remember(cfg):
-    MODS[0].save(cfg)
-"""
-
-#: The module parked in a DICT, reaching the writer whose name reads as a load.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_DICT = """
-from cratekit.core import config
-
-MODS = {"c": config}
-
-
-def remember(path):
-    return MODS["c"].load_from_path(path)
-"""
-
-#: The module HANDED BACK by a function, so the receiver is a call result.
-EVASIVE_ALLOWLISTED_WRITER_FROM_A_CALL = """
-from cratekit.core import config
-
-
-def _mod():
-    return config
-
-
-def remember(cfg):
-    _mod().save(cfg)
-"""
-
-#: The module reached through a LOOP VARIABLE.
-EVASIVE_ALLOWLISTED_WRITER_IN_A_LOOP = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    for mod in (config,):
-        mod.save(cfg)
-"""
-
-#: The module injected as a DEFAULT ARGUMENT, which is how a module gets swapped
-#: out for a test and is the one shape where a parameter name is not a shadow.
-EVASIVE_ALLOWLISTED_WRITER_AS_A_DEFAULT = """
-from cratekit.core import config
-
-
-def remember(cfg, mod=config):
-    mod.save(cfg)
-"""
-
-#: The module STORED ON AN INSTANCE in one method and used in another, which is
-#: an ordinary constructor and is why a parameter shadows its own name only.
-EVASIVE_ALLOWLISTED_WRITER_ON_AN_ATTRIBUTE = """
-from cratekit.core import config
-
-
-class Keeper:
-    def __init__(self):
-        self.mod = config
-
-    def remember(self, cfg):
-        self.mod.save(cfg)
-"""
-
-#: The module bound by a WALRUS, which is a rebinding written inside the
-#: expression that uses it and has no assignment statement to read.
-EVASIVE_WALRUS_BOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    if (alias := config) is not None:
-        alias.save(cfg)
-"""
-
-#: And bound by a COMPREHENSION, which is a loop with no ``for`` statement.
-EVASIVE_COMPREHENSION_BOUND_ALLOWLISTED_WRITER = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    return [mod.save(cfg) for mod in (config,)]
-"""
-
-#: The rebound module reached through ``getattr``, so the receiver has to be
-#: resolved by binding inside rule 4 as well as outside it.
-EVASIVE_REBOUND_WRITER_THROUGH_GETATTR = """
-from cratekit.core import config
-
-
-def remember(cfg):
-    alias = config
-    getattr(alias, "save")(cfg)
-"""
-
-#: A STAR import, which binds every writer the module exposes with no name in the
-#: file for a check to read. Both halves of the import are permitted.
-EVASIVE_STAR_IMPORTED_ALLOWLISTED_WRITER = """
-from cratekit.core.config import *
-
-
-def remember(cfg):
-    save(cfg)
-"""
-
-#: THE FOUR SPELLINGS THAT REACH A METHOD WITHOUT NAMING IT AS AN ATTRIBUTE.
-EVASIVE_TYPE_DICT_SUBSCRIPT = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    Path.__dict__["write_text"](path, decided)
-"""
-
-#: The same function object through ``vars``, so even ``__dict__`` is gone.
-EVASIVE_VARS_SUBSCRIPT = """
-from pathlib import Path
-
-
-def remember(path, decided):
-    vars(Path)["write_text"](path, decided)
-"""
-
-#: The UNBOUND dunder ``getattr`` itself calls, which takes the receiver first.
-EVASIVE_UNBOUND_GETATTRIBUTE = """
-def remember(path, decided):
-    object.__getattribute__(path, "write_text")(decided)
-"""
-
-#: And the bound one, whose single argument is the method name: arity separates
-#: the two.
-EVASIVE_BOUND_GETATTRIBUTE = """
-def remember(path, decided):
-    path.__getattribute__("write_text")(decided)
-"""
-
-#: A private ledger in a sibling module whose name merely starts with this
-#: package's, outside what ``_report_modules`` scans.
-EVASIVE_SIBLING_PACKAGE = """
+@pytest.mark.parametrize(
+    "source",
+    [
+        # An aliased writer, the shape that defeated the armed copy of U11's CSV guard.
+        """
+import shutil as tidy
+from os import replace as swap
+
+
+def clean(a, b):
+    tidy.rmtree(a)
+    swap(a, b)
+""",
+        # The same evasion one layer further out, through the package.
+        """
+from cratekit.core import rb_writer
+
+
+def snapshot(cfg):
+    return rb_writer.open_db(cfg)
+""",
+        # And through a relative import, which nothing in the package uses today.
+        """
+from ...core import rb_writer
+
+
+def snapshot(cfg):
+    return rb_writer.open_db(cfg)
+""",
+        # The same writer reached through a lazy import inside a function body.
+        """
+def snapshot(cfg):
+    import sqlite3
+
+    return sqlite3.connect(str(cfg.library.db_path))
+""",
+        # No import statement at all: a file, a process and a database, through the builtin.
+        """
+def remember(path, argv, db):
+    __import__("os").truncate(path, 0)
+    __import__("subprocess").run(argv)
+    return __import__("sqlite3").connect(db)
+""",
+        EVASIVE_COMPUTED_DYNAMIC_IMPORT,
+        # A sibling module merely prefixed with this package's name, outside the walk.
+        """
 from cratekit.modules import reports_ledger
 
 
 def remember(path, decided):
     reports_ledger.remember(path, decided)
-"""
-
-#: Correct code: the one persistence allowed, every read primitive including a
-#: bound read method, and methods named like filesystem verbs, where only the
-#: keywords keep the arity rule off ``dataclasses.replace``.
-CORRECT_MODULE = """
-import dataclasses
-from pathlib import Path
-
-from cratekit.core import review
-from cratekit.core.review import Option
-
-
-def run(store, path, name, today, option):
-    content = Path(path).read_bytes()
-    bound = Path(path).open("rb")
-    bound.close()
-    builtin = open(path, "rb")
-    builtin.close()
-    reader = Path(path).read_text
-    reader()
-    tidied = name.replace("_", " ").casefold()
-    first_of_month = today.replace(day=1)
-    renamed = dataclasses.replace(option, summary=tidied)
-    queue = getattr(review, "Queue")
-    assert renamed is not None
-    return review.offer(
-        store,
-        queue=queue.DUPLICATES,
-        kind="duplicate-recording",
-        identity={"title": tidied},
-        payload={"bytes": len(content), "month": str(first_of_month)},
-        options=(Option(option_id="1", summary=tidied),),
-    )
-"""
-
-#: Correct code that imports a sibling module of this package, which the dot
-#: boundary must keep legal (P7).
-CORRECT_IN_PACKAGE_IMPORT = """
-from cratekit.modules.reports import aging
-from cratekit.modules.reports.export import LibraryView
-
-
-def run(view: LibraryView, intake, today):
-    return aging.intake_groupings(view, intake=intake, today=today)
-"""
-
-#: Correct code whose attribute names collide with the generic writers, which
-#: the receiver check exists for (P7).
-CORRECT_GENERIC_ATTRIBUTE_NAMES = """
-from cratekit.core import taxonomy
-
-
-def describe(view, spec):
-    saved = view.save
-    loaded = taxonomy.default_taxonomy().load
-    return saved, loaded, spec.load
-"""
-
-#: THE FIVE FALSE POSITIVES THE RECEIVER CHECK WAS FIRING TODAY, and they are
-#: the same P7 shape as the one above moved one level along.
-CORRECT_UNBOUND_RECEIVERS_NAMED_LIKE_MODULES = """
-def describe(config, naming, row, view, target):
-    first = config.load
-    second = row.config.load_from_path(target)
-    third = view.naming.claim_target(target)
-    return first, second, third, naming.claim_target(target)
-"""
-
-#: The harder half: a module importing ``config`` and taking a parameter of that
-#: name, which shadows it.
-CORRECT_PARAMETER_SHADOWING_AN_IMPORTED_MODULE = """
-from cratekit.core import config
-
-
-def describe(config, spec):
-    return config.load, config.save, spec.load
-
-
-def elsewhere(cfg):
-    return config.state_path("x", cfg)
-"""
-
-#: A method reading an attribute of ``self`` named after an admitted module; a
-#: shadow must not take the whole chain.
-CORRECT_ATTRIBUTE_NAMED_LIKE_A_MODULE = """
-class View:
-    def describe(self):
-        return self.config.load, self.naming.claim_target
-"""
-
-#: A lambda whose parameter is named after an imported admitted module, the one
-#: scope with no statement body.
-CORRECT_LAMBDA_PARAMETER_SHADOWING_A_MODULE = """
-from cratekit.core import config
-
-describe = lambda config: config.load
-"""
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        EVASIVE_IMPORT,
-        EVASIVE_PACKAGE_IMPORT,
-        EVASIVE_RELATIVE_IMPORT,
-        EVASIVE_LAZY_IMPORT,
-        EVASIVE_DYNAMIC_IMPORT,
-        EVASIVE_COMPUTED_DYNAMIC_IMPORT,
-        EVASIVE_SIBLING_PACKAGE,
+""",
     ],
 )
 def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
@@ -5516,36 +4809,266 @@ def test_the_import_allowlist_bites_every_shape_of_the_evasion(source):
 @pytest.mark.parametrize(
     "source",
     [
-        EVASIVE_PRIVATE_LEDGER,
-        EVASIVE_WRITE_HANDLE,
-        EVASIVE_BOUND_OPEN_HANDLE,
-        EVASIVE_COMPUTED_MODE,
-        EVASIVE_PATH_REPLACE,
-        EVASIVE_COMPUTED_ATTRIBUTE,
-        EVASIVE_CAPTURED_BOUND_METHOD,
-        EVASIVE_ALLOWLISTED_WRITER,
-        EVASIVE_ALLOWLISTED_CLAIM,
-        EVASIVE_ALIASED_ALLOWLISTED_WRITER,
-        EVASIVE_IMPORTED_ALLOWLISTED_WRITER,
-        EVASIVE_BARE_NAME_WRITER,
-        EVASIVE_LITERAL_GETATTR,
-        EVASIVE_LITERAL_GETATTR_ON_AN_ADMITTED_MODULE,
-        EVASIVE_REBOUND_ALLOWLISTED_WRITER,
-        EVASIVE_DOTTED_IMPORT_ALLOWLISTED_WRITER,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_LIST,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_DICT,
-        EVASIVE_ALLOWLISTED_WRITER_FROM_A_CALL,
-        EVASIVE_ALLOWLISTED_WRITER_IN_A_LOOP,
-        EVASIVE_ALLOWLISTED_WRITER_AS_A_DEFAULT,
-        EVASIVE_ALLOWLISTED_WRITER_ON_AN_ATTRIBUTE,
-        EVASIVE_WALRUS_BOUND_ALLOWLISTED_WRITER,
-        EVASIVE_COMPREHENSION_BOUND_ALLOWLISTED_WRITER,
-        EVASIVE_REBOUND_WRITER_THROUGH_GETATTR,
-        EVASIVE_STAR_IMPORTED_ALLOWLISTED_WRITER,
-        EVASIVE_TYPE_DICT_SUBSCRIPT,
-        EVASIVE_VARS_SUBSCRIPT,
-        EVASIVE_UNBOUND_GETATTRIBUTE,
-        EVASIVE_BOUND_GETATTRIBUTE,
+        # A private ignore file, the exact defect the countdown against this unit forbids.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    Path(path).write_text(decided)
+""",
+        # The same thing through a handle, so the mutating method never appears.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    with open(Path(path), "w") as handle:
+        handle.write(decided)
+""",
+        # The bound method, whose mode is its first argument since its receiver is the file.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    handle = Path(path).open("w")
+    handle.write(decided)
+    handle.close()
+""",
+        # An unreadable mode, past a literal check without ever writing the letter w.
+        """
+from pathlib import Path
+
+MODE = "".join(["w"])
+
+
+def remember(path, decided):
+    with open(Path(path), MODE) as handle:
+        handle.write(decided)
+""",
+        # ``Path.replace`` overwrites its destination, swapping a ledger in atomically.
+        """
+from pathlib import Path
+
+
+def remember(scratch, ledger):
+    Path(scratch).replace(ledger)
+""",
+        # A computed attribute name: the method never appears and ``func`` is itself a Call.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    getattr(Path(path), "write_" + "text")(decided)
+""",
+        # The mutating method bound and not called, then called through its local.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    keep = Path(path).write_text
+    keep(decided)
+""",
+        # An admitted writer, no forbidden import; ``config.load_from_path`` writes too.
+        """
+from cratekit.core import config
+
+
+def remember(cfg, path):
+    config.save(cfg)
+    return config.load_from_path(path)
+""",
+        # And through ``naming``, which ``duplicates`` already imports.
+        """
+from cratekit.core import naming
+
+
+def remember(target):
+    return naming.claim_target(target)
+""",
+        # An admitted writer through an aliased module, which the receiver check must survive.
+        """
+from cratekit.core import config as settings
+
+
+def remember(cfg):
+    settings.save(cfg)
+""",
+        # An admitted writer imported renamed, the bare local tracked back to its binding.
+        """
+from cratekit.core.naming import claim_target as reserve
+
+
+def remember(target):
+    return reserve(target)
+""",
+        # The only fixture on the bare name branch; the import guard catches it as well.
+        """
+from shutil import rmtree
+from os import truncate
+
+
+def clean(a, path):
+    rmtree(a)
+    truncate(path, 0)
+""",
+        # A literal string inside ``getattr``, caught only by rule 4's literal half.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    getattr(Path(path), "write_text")(decided)
+""",
+        # Aimed at an ADMITTED writer, so the receiver is read inside ``getattr`` too.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    getattr(config, "save")(cfg)
+""",
+        # THE NINE SHAPES A RECEIVER CHECK READ OFF THE IMPORT TABLE ALONE LOST.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    alias = config
+    alias.save(cfg)
+""",
+        # A plain ``import``'s dotted path, the one receiver naming no local, read as a binding.
+        """
+import cratekit.core.config
+
+
+def remember(cfg):
+    cratekit.core.config.save(cfg)
+""",
+        # The module parked in a LIST and reached by index.
+        """
+from cratekit.core import config
+
+MODS = [config]
+
+
+def remember(cfg):
+    MODS[0].save(cfg)
+""",
+        # The module parked in a DICT, reaching the writer whose name reads as a load.
+        """
+from cratekit.core import config
+
+MODS = {"c": config}
+
+
+def remember(path):
+    return MODS["c"].load_from_path(path)
+""",
+        # The module HANDED BACK by a function, so the receiver is a call result.
+        """
+from cratekit.core import config
+
+
+def _mod():
+    return config
+
+
+def remember(cfg):
+    _mod().save(cfg)
+""",
+        # The module reached through a LOOP VARIABLE.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    for mod in (config,):
+        mod.save(cfg)
+""",
+        # A DEFAULT ARGUMENT, how a test swaps a module: a parameter that is no shadow.
+        """
+from cratekit.core import config
+
+
+def remember(cfg, mod=config):
+    mod.save(cfg)
+""",
+        # STORED ON AN INSTANCE across methods, why a parameter shadows only its own name.
+        """
+from cratekit.core import config
+
+
+class Keeper:
+    def __init__(self):
+        self.mod = config
+
+    def remember(self, cfg):
+        self.mod.save(cfg)
+""",
+        # A WALRUS, a rebinding inside the expression using it, with no statement to read.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    if (alias := config) is not None:
+        alias.save(cfg)
+""",
+        # And bound by a COMPREHENSION, which is a loop with no ``for`` statement.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    return [mod.save(cfg) for mod in (config,)]
+""",
+        # A rebound module through ``getattr``: the receiver resolved by binding there too.
+        """
+from cratekit.core import config
+
+
+def remember(cfg):
+    alias = config
+    getattr(alias, "save")(cfg)
+""",
+        # A STAR import binds every writer unnamed; both halves of it are permitted.
+        """
+from cratekit.core.config import *
+
+
+def remember(cfg):
+    save(cfg)
+""",
+        # THE FOUR SPELLINGS THAT REACH A METHOD WITHOUT NAMING IT AS AN ATTRIBUTE.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    Path.__dict__["write_text"](path, decided)
+""",
+        # The same function object through ``vars``, so even ``__dict__`` is gone.
+        """
+from pathlib import Path
+
+
+def remember(path, decided):
+    vars(Path)["write_text"](path, decided)
+""",
+        # The UNBOUND dunder ``getattr`` itself calls, which takes the receiver first.
+        """
+def remember(path, decided):
+    object.__getattribute__(path, "write_text")(decided)
+""",
+        # The bound dunder, whose one argument is the name: arity separates the two.
+        """
+def remember(path, decided):
+    path.__getattribute__("write_text")(decided)
+""",
     ],
 )
 def test_the_mutation_guard_bites_the_private_ledger_in_every_shape(source):
@@ -5575,22 +5098,18 @@ _EVERY_MUTATING_NAME = (
 #: Every character ``_WRITING_MODES`` carries, each driven.
 _EVERY_WRITING_MODE = ("w", "a", "x", "+")
 
-#: A mode each of those characters really appears in. ``+`` is never a mode by
-#: itself, so it is driven where it is actually written.
+#: A real mode for each character; ``+`` is never a mode alone, so it rides in one.
 _MODES_THAT_WRITE = ("w", "a", "x", "r+", "w+b", "ab")
 
-#: Modes that must stay quiet, because a guard that fires on ``open(p, "rb")`` is
-#: a guard somebody routes around (P7) and this package reads files for a living.
+#: Quiet modes, since a guard firing on ``open(p, "rb")`` gets routed around (P7).
 _MODES_THAT_READ = ("r", "rb")
 
 
 def test_the_mutation_set_is_the_list_this_suite_drives():
-    """The two spellings of the same set, held together."""
     assert set(_EVERY_MUTATING_NAME) == FILESYSTEM_MUTATIONS
 
 
 def test_the_writing_modes_are_the_list_this_suite_drives():
-    """The same holding, for the mode characters."""
     assert set(_EVERY_WRITING_MODE) == _WRITING_MODES
 
 
@@ -5622,13 +5141,89 @@ def test_a_dynamic_import_this_cannot_read_is_reported_as_unnameable():
 @pytest.mark.parametrize(
     "source",
     [
-        CORRECT_MODULE,
-        CORRECT_IN_PACKAGE_IMPORT,
-        CORRECT_GENERIC_ATTRIBUTE_NAMES,
-        CORRECT_UNBOUND_RECEIVERS_NAMED_LIKE_MODULES,
-        CORRECT_PARAMETER_SHADOWING_AN_IMPORTED_MODULE,
-        CORRECT_ATTRIBUTE_NAMED_LIKE_A_MODULE,
-        CORRECT_LAMBDA_PARAMETER_SHADOWING_A_MODULE,
+        # Correct: the one persistence, every read primitive, and verb named methods, where
+        # only the keywords keep the arity rule off ``dataclasses.replace``.
+        """
+import dataclasses
+from pathlib import Path
+
+from cratekit.core import review
+from cratekit.core.review import Option
+
+
+def run(store, path, name, today, option):
+    content = Path(path).read_bytes()
+    bound = Path(path).open("rb")
+    bound.close()
+    builtin = open(path, "rb")
+    builtin.close()
+    reader = Path(path).read_text
+    reader()
+    tidied = name.replace("_", " ").casefold()
+    first_of_month = today.replace(day=1)
+    renamed = dataclasses.replace(option, summary=tidied)
+    queue = getattr(review, "Queue")
+    assert renamed is not None
+    return review.offer(
+        store,
+        queue=queue.DUPLICATES,
+        kind="duplicate-recording",
+        identity={"title": tidied},
+        payload={"bytes": len(content), "month": str(first_of_month)},
+        options=(Option(option_id="1", summary=tidied),),
+    )
+""",
+        # A sibling module of this package, which the dot boundary must keep legal (P7).
+        """
+from cratekit.modules.reports import aging
+from cratekit.modules.reports.export import LibraryView
+
+
+def run(view: LibraryView, intake, today):
+    return aging.intake_groupings(view, intake=intake, today=today)
+""",
+        # Attribute names colliding with the generic writers, the receiver check's case (P7).
+        """
+from cratekit.core import taxonomy
+
+
+def describe(view, spec):
+    saved = view.save
+    loaded = taxonomy.default_taxonomy().load
+    return saved, loaded, spec.load
+""",
+        # THE FIVE FALSE POSITIVES THE RECEIVER CHECK WAS FIRING, the P7 shape moved along.
+        """
+def describe(config, naming, row, view, target):
+    first = config.load
+    second = row.config.load_from_path(target)
+    third = view.naming.claim_target(target)
+    return first, second, third, naming.claim_target(target)
+""",
+        # The harder half: a parameter named ``config`` shadowing the imported module.
+        """
+from cratekit.core import config
+
+
+def describe(config, spec):
+    return config.load, config.save, spec.load
+
+
+def elsewhere(cfg):
+    return config.state_path("x", cfg)
+""",
+        # ``self`` attributes named after admitted modules; a shadow must not take the chain.
+        """
+class View:
+    def describe(self):
+        return self.config.load, self.naming.claim_target
+""",
+        # A lambda parameter shadowing an admitted module, the one scope with no statements.
+        """
+from cratekit.core import config
+
+describe = lambda config: config.load
+""",
     ],
 )
 def test_the_guards_stay_quiet_on_correct_code(source):

@@ -1,9 +1,7 @@
 """Tagging's row scenarios: a row's genre written from its file (U298).
 
-`crate tag rows` writes each row's genre from its file behind its gate inside
-one guarded session and reads every one back, one row per outcome; its gate,
-capture and commit are three of the things U298 gave one home each. Its own file
-because both borrowed suites name ``machine``.
+One guarded session, one row per outcome; its gate, capture and commit are three
+of the things U298 gave one home each. Its own file because both suites name ``machine``.
 """
 
 from __future__ import annotations

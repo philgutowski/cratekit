@@ -32,8 +32,7 @@ from tests.intake.test_workers import (
     three_tracks,
 )
 
-# The three fixtures the worker tests already build a configured, recognition
-# ready machine with. Bound by assignment so the names are this module's own.
+# The worker tests' fixtures, bound by assignment so the names are this module's own.
 cfg = workers.cfg
 library = workers.library
 recognised = workers.recognised
@@ -131,8 +130,7 @@ def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     assert [url for url, _ in fetcher.asked] == [URL]
     # What was identified is what was fetched: every chunk was carved from it.
     assert len(recognised.requests) == 3
-    # The job freezes the ADDRESS, because the file is gone, and the resume
-    # argv is rebuilt from it.
+    # The job freezes the ADDRESS, because the file is gone, and the resume argv is rebuilt from it.
     assert job_of(job_id).payload[intake_cli.SOURCE] == URL
     assert job_of(job_id).payload[intake_cli.PAGE] == {}
     assert resume_argv(job_id) == ["intake", "set", URL, "--job", job_id]
@@ -246,8 +244,7 @@ def test_a_scratch_folder_that_cannot_be_made_is_a_fact_about_this_machine(
 
 
 def test_a_local_path_never_consults_the_fetch_seam(cfg, library, recognised):
-    """The conftest's refusing fetcher is in force; a local recording freezes an
-    empty page."""
+    """The conftest's refusing fetcher is in force; a local recording freezes an empty page."""
     three_tracks(recognised)
     path = recording(library)
     code, envelope = drive(["intake", "set", str(path)])

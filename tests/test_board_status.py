@@ -8,13 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.test_board_reads import RESIDUAL, issue, load_board
-
-
-@pytest.fixture
-def board():
-    return load_board()
-
+from tests.test_board_reads import RESIDUAL, issue
+from tests.test_board_reads import board as board  # noqa: PLC0414
 
 HELD = ["In Progress", "In review"]
 

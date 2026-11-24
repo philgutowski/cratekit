@@ -62,9 +62,11 @@ def _row(content_id: str, recorded: Path | str) -> adopt_scan.CollectionRow:
     )
 
 
-def _scan(rows, root: Path, rules=(), **kwargs) -> dict[str, adopt_scan.ScannedTrack]:
+def _scan(
+    rows, root: Path, rules=(), probe=_readable, **kwargs
+) -> dict[str, adopt_scan.ScannedTrack]:
     scanned = adopt_scan.scan_rows(
-        rows, DECLARED, root=root, prefix_map=rules, probe=_readable, **kwargs
+        rows, DECLARED, root=root, prefix_map=rules, probe=probe, **kwargs
     )
     return {track.content_id: track for track in scanned}
 
@@ -153,17 +155,8 @@ def test_an_outside_row_is_never_probed(tmp_path):
         asked.append(path)
         return Readability.READABLE
 
-    root = tmp_path / "library"
     rules = (locations.PrefixRule("/old-machine/Sampler", str(tmp_path / "Sampler")),)
-    list(
-        adopt_scan.scan_rows(
-            [_row("s", f"/old-machine/Sampler/{PRESET}")],
-            DECLARED,
-            root=root,
-            prefix_map=rules,
-            probe=probe,
-        )
-    )
+    _scan([_row("s", f"/old-machine/Sampler/{PRESET}")], tmp_path / "library", rules, probe)
     assert asked == []
 
 
@@ -208,9 +201,7 @@ def _outside_plan(tmp_path: Path, ids: tuple[str, ...]) -> adopt_plan.AdoptionPl
     rules = (locations.PrefixRule("/old-machine/Sampler", str(tmp_path / "Sampler")),)
     rows = [_row("inside", root / "Music" / "a.flac"), _row("unmapped", "/no-rule/a.flac")]
     rows += [_row(content_id, f"/old-machine/Sampler/{content_id}.wav") for content_id in ids]
-    scanned = list(
-        adopt_scan.scan_rows(rows, DECLARED, root=root, prefix_map=rules, probe=_readable)
-    )
+    scanned = list(_scan(rows, root, rules).values())
     return adopt_plan.build_adoption_plan(scanned, DECLARED, tree=DECLARED.tree.id)
 
 

@@ -1,10 +1,8 @@
 """Intake's bridge scenarios: a landing through the XML bridge and its import verified (U307).
 
-`crate intake land --export` on a bridge tree ends pending on rekordbox's
-import, and `crate intake imported` reads a later export and retires the intake
-file; a moved staging folder and a missing one refuse. Its own file because the
-bridge suites' ``silence`` is another fixture of that name. The library folder
-is left for the suite's ``cfg`` to make, which refuses one already there.
+Its own file because the bridge suites' ``silence`` is another fixture of that
+name. The library folder is left for the suite's ``cfg`` to make, which refuses
+one already there.
 """
 
 from __future__ import annotations

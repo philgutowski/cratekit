@@ -384,24 +384,20 @@ class _Centred:
         monkeypatch.setattr(decode, "_mono_at", lambda librosa, window, nr, r: window)
 
 
-def test_the_centre_of_a_file_libsndfile_reads_is_one_windowed_load(monkeypatch):
-    seen = _Centred(monkeypatch, length=300.0)
+@pytest.mark.parametrize(
+    ("length", "opens", "offset"),
+    [
+        pytest.param(300.0, True, 90.0, id="the-centre-of-a-file-is-one-windowed-load"),
+        pytest.param(100.0, True, 0.0, id="shorter-than-the-window-reads-from-its-top"),
+        pytest.param(RuntimeError("no length"), True, 0.0, id="a-failed-length-opens"),
+        pytest.param(RuntimeError("no length"), RuntimeError("no soundfile"), 0.0, id="not-asked"),
+    ],
+)
+def test_a_file_libsndfile_reads_is_one_windowed_load(monkeypatch, length, opens, offset):
+    """Centred on the file's length where it is known, and read from the top where not."""
+    seen = _Centred(monkeypatch, length=length, opens=opens)
     assert decode.centred("a.flac", 22050, 120.0) == ("loaded", 22050)
-    assert seen.loads == [("a.flac", 22050, 90.0, 120.0)]
-    assert seen.ffmpeg == 0
-
-
-def test_a_file_shorter_than_the_window_is_read_from_its_top(monkeypatch):
-    seen = _Centred(monkeypatch, length=100.0)
-    decode.centred("a.flac", 22050, 120.0)
-    assert seen.loads == [("a.flac", 22050, 0.0, 120.0)]
-
-
-@pytest.mark.parametrize("opens", [True, RuntimeError("no soundfile")], ids=["opens", "not-asked"])
-def test_a_length_that_fails_for_a_file_libsndfile_opens_reads_from_the_top(monkeypatch, opens):
-    seen = _Centred(monkeypatch, length=RuntimeError("no length"), opens=opens)
-    decode.centred("a.flac", 22050, 120.0)
-    assert seen.loads == [("a.flac", 22050, 0.0, 120.0)]
+    assert seen.loads == [("a.flac", 22050, offset, 120.0)]
     assert seen.ffmpeg == 0
 
 

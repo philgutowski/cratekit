@@ -1,10 +1,7 @@
 """Adoption's scenarios: the scan, apply and move jobs, the genre report and the revert (U298, U310).
 
-`crate adopt scan` queues and drives one item per live row; `crate adopt apply`
-stops at its gate, then its worker writes the memberships inside one guarded
-session; every job's printing and report file is held (U298). U310 adds
-`crate adopt move` behind its gate, `crate report genres`, and the revert
-ledger, which no verb reaches, driven after an apply handed a tag to write.
+Every job's printing and report file is held (U298). The revert ledger, which
+no verb reaches, is driven after an apply handed a tag to write (U310).
 """
 
 from __future__ import annotations

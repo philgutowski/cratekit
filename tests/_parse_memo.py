@@ -1,21 +1,17 @@
 """One parse per source text inside a sharing scope, for the guards that sweep the package.
 
 The package-wide guards once called ``ast.parse`` 5,934 times for about 660
-files in one process (U258). A parse depends only on the text, so inside a
-scope the TEXT is the key: an edited file reads back as a new key and is
-parsed afresh, and two files with one text share one tree.
+files in one process (U258). The TEXT is the key, so an edited file is parsed
+afresh and two files with one text share one tree.
 
-Scoped, never held for the worker's life: holding every tree of the 681
-swept files cost about 720 MB a worker and slowed the collector more than
-the parses saved (measured on a four core Linux container). A scope is one
-test, or one module whose tests all sweep the package, as
-``tests/test_reserved_causes.py`` opens (U312). Outside a scope
-:func:`parsed` is ``ast.parse`` and holds nothing.
+Scoped, never held for the worker's life: every tree of the 681 swept files
+cost about 720 MB a worker and slowed the collector more than the parses
+saved (measured on a four core Linux container). A scope is one test, or one
+module whose tests all sweep the package (U312).
 
-READ ONLY BY CONTRACT, driven by ``tests/test_parse_memo.py``, which runs
-every shared question over shared trees in both orders and alone and compares
-each tree with a fresh parse, attribute by attribute. A guard that annotates
-nodes parses its own copy. Only the default parse is memoised.
+READ ONLY BY CONTRACT, driven by ``tests/test_parse_memo.py``, which compares
+every shared tree with a fresh parse; a guard that annotates nodes parses its
+own copy.
 """
 
 from __future__ import annotations

@@ -1,11 +1,8 @@
 """Backup's scenarios: a backup capture, its refusals, and the restore plan from it (U297, U311).
 
-`crate backup run` is queued and run against the restore suite's stand in for
-rclone, whose log is the capture's record of what would be copied where.
-`crate restore run --from-backup --dry-run` stops at its gate, then walks the
-plan performing none of it. The refusals answer
-`processes.running_process_names` with rekordbox or its agent, and the resume
-after it is gone finishes; a rehearsal and a human rendering are kept too.
+The restore suite's stand in for rclone logs what would be copied where, which
+is the capture's record. The refusals answer `processes.running_process_names`
+with rekordbox or its agent, and the resume after it is gone finishes.
 """
 
 from __future__ import annotations

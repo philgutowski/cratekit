@@ -1,9 +1,6 @@
 """Organize's scenarios: both areas, the filing, the root and the mirror (U309).
 
-`crate organize` plans the rekordbox and account areas behind a gate each, and
-the fake's record of every account call is written beside the ledger. The
-refusals: two root folders named for a genre, and no provider session; with
-export off the verb still plans and names the steps it left out.
+The fake's record of every account call is written beside the ledger.
 """
 
 from __future__ import annotations

@@ -140,6 +140,14 @@ def accepted(cfg, line: str = BOOT, url: str = UPLOAD) -> str:
     return item_id
 
 
+def fetched(cfg, tmp_path, monkeypatch, fake: FakeFetcher | None = None):
+    """Accept the boot row's upload, queue its list and drive the job once, through ``fake``."""
+    accepted(cfg)
+    fake = bind(monkeypatch, FakeFetcher() if fake is None else fake)
+    job_id = queued(tracklist(tmp_path, BOOT))
+    return fake, job_id, *run(job_id)
+
+
 def queue(path: Path) -> tuple[int, dict]:
     return drive(["acquire", "fallback-fetch", str(path)])
 
@@ -188,11 +196,7 @@ def test_the_fetch_key_resolves_to_this_worker():
 
 def test_a_lossy_file_lands_marked(permissive, tmp_path, monkeypatch):
     """R21: a second source file is lossy, so it is committed only WITH the marker."""
-    accepted(permissive)
-    fake = bind(monkeypatch, FakeFetcher())
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    code, envelope = run(job_id)
+    fake, job_id, code, envelope = fetched(permissive, tmp_path, monkeypatch)
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["state"] == "succeeded"
@@ -234,11 +238,7 @@ def test_this_verb_sweeps_the_staging_tree_it_shares_with_the_download_verb(
 
 
 def test_a_strict_policy_refuses_that_item_before_anything_downloads(strict, tmp_path, monkeypatch):
-    accepted(strict)
-    fake = bind(monkeypatch, FakeFetcher())
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    fake, job_id = fetched(strict, tmp_path, monkeypatch)[:2]
 
     item = only_item(job_id)
     assert item.state is jobs.ItemState.FAILED
@@ -267,16 +267,12 @@ def test_an_existing_output_is_refused_without_a_download(permissive, tmp_path, 
 def test_an_output_that_appears_during_the_download_is_refused_not_replaced(
     permissive, tmp_path, monkeypatch
 ):
-    accepted(permissive)
     kept = marked_final(permissive)
 
     def somebody_writes_it():
         kept.write_bytes(b"arrived while downloading")
 
-    bind(monkeypatch, FakeFetcher(before=somebody_writes_it))
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    job_id = fetched(permissive, tmp_path, monkeypatch, FakeFetcher(before=somebody_writes_it))[1]
 
     item = only_item(job_id)
     assert item.cause is not None and item.cause.reason == "output-exists"
@@ -286,11 +282,7 @@ def test_an_output_that_appears_during_the_download_is_refused_not_replaced(
 def test_artist_and_title_tags_come_from_the_row_not_the_upload_page(
     permissive, tmp_path, monkeypatch
 ):
-    accepted(permissive)
-    bind(monkeypatch, FakeFetcher())
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    fetched(permissive, tmp_path, monkeypatch)
 
     final = marked_final(permissive)
     assert tags.read_tag(final, "artist") == BOOT_ARTIST
@@ -315,7 +307,6 @@ def test_a_tempo_the_upload_carried_is_never_committed(permissive, tmp_path, mon
     """R17: an upload served as MP3 is not converted, so the tool's metadata drop never runs."""
     from mutagen.mp3 import MP3
 
-    accepted(permissive)
     fake = FakeFetcher()
     real = fake.fetch
 
@@ -325,10 +316,7 @@ def test_a_tempo_the_upload_carried_is_never_committed(permissive, tmp_path, mon
         return landed
 
     fake.fetch = fetch
-    bind(monkeypatch, fake)
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    job_id = fetched(permissive, tmp_path, monkeypatch, fake)[1]
 
     final = marked_final(permissive)
     assert only_item(job_id).state is jobs.ItemState.DONE
@@ -462,11 +450,7 @@ def test_the_accepted_upload_is_frozen_with_the_job(permissive, tmp_path, monkey
 
 def test_no_marker_text_refuses_the_item_before_a_download(library, tmp_path, monkeypatch):
     cfg = _configure(library, "allow_lossy_marked", marker="")
-    accepted(cfg)
-    fake = bind(monkeypatch, FakeFetcher())
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    fake, job_id = fetched(cfg, tmp_path, monkeypatch)[:2]
 
     item = only_item(job_id)
     assert item.cause is not None and item.cause.reason == "lossy-refused"
@@ -475,11 +459,8 @@ def test_no_marker_text_refuses_the_item_before_a_download(library, tmp_path, mo
 
 
 def test_a_failed_download_is_transient_and_stays_retryable(permissive, tmp_path, monkeypatch):
-    accepted(permissive)
-    bind(monkeypatch, FakeFetcher(fail=fallback.FallbackUnavailable("the edge hung up")))
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    unavailable = FakeFetcher(fail=fallback.FallbackUnavailable("the edge hung up"))
+    job_id = fetched(permissive, tmp_path, monkeypatch, unavailable)[1]
 
     item = only_item(job_id)
     assert item.cause is not None and item.cause.reason == "unavailable-transient"
@@ -490,13 +471,9 @@ def test_a_failed_download_is_transient_and_stays_retryable(permissive, tmp_path
 def test_a_file_that_cannot_be_tagged_from_its_row_is_not_committed(
     permissive, tmp_path, monkeypatch
 ):
-    accepted(permissive)
     fake = FakeFetcher(payload=b"not an mpeg stream")
     fake.fetch = lambda url, directory: _junk(directory)
-    bind(monkeypatch, fake)
-    job_id = queued(tracklist(tmp_path, BOOT))
-
-    run(job_id)
+    job_id = fetched(permissive, tmp_path, monkeypatch, fake)[1]
 
     item = only_item(job_id)
     assert item.cause is not None and item.cause.reason == "unavailable-transient"

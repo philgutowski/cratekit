@@ -1,8 +1,6 @@
 """The write layer's My Tag scenarios: vocal tags written from a file's vocal reading (U302).
 
-`crate metadata mytags-vocals --apply` writes the My Tags a file's vocal reading
-earns, never a content column; an unreadable calibration stops it with none
-written.
+Never a content column; an unreadable calibration stops it with none written.
 """
 
 from __future__ import annotations

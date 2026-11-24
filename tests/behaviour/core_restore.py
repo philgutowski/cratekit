@@ -1,7 +1,6 @@
 """A session's own snapshot restored, the plan first and then the database (U300).
 
-`crate restore run SESSION` stops at its gate, walks the plan with `--dry-run`,
-then puts the captured database back, on the restore suite's library.
+On the restore suite's library.
 """
 
 from __future__ import annotations

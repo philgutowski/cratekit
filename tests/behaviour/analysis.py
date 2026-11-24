@@ -1,10 +1,8 @@
 """Analysis's scenarios: `crate analyze run`, `calibrate`, `validate` and `restamp` (U306).
 
-On a full profile machine with synthesized FLAC, the heavy stack's seams bound
-to the workers suite's fakes and the stack itself read as absent, so the
-capture does not depend on what is installed. Each verb's runs, skips,
-refusals and missing extra are driven. Self contained, so the suites beside it
-can be trimmed without moving it.
+The heavy stack's seams are bound to the workers suite's fakes and the stack
+read as absent, so the capture does not depend on what is installed. Self
+contained, so the suites beside it can be trimmed without moving it.
 """
 
 from __future__ import annotations
