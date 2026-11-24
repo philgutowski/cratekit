@@ -323,40 +323,76 @@ def test_an_auth_failure_mid_run_keeps_what_landed_and_still_fails_the_invocatio
     assert set(result.requeue_keys()) == {"second", "third"}
 
 
-def test_a_failed_invocation_cannot_carry_a_permanent_unavailability():
-    """Quarantine is forever, so a broken adapter must not be able to feed it."""
-    with pytest.raises(ValueError, match="permanently unavailable"):
-        InvocationResult(
+#: Values the contract's types refuse to construct, and the words each refusal names. Each
+#: invariant lives on its type, so no branch anywhere can produce the value.
+_UNCONSTRUCTIBLE = {
+    # Quarantine is forever, so a broken adapter must not be able to feed it.
+    "a-failed-invocation-carrying-a-permanent-unavailability": (
+        lambda: InvocationResult(
             adapter="fake", outcome=InvocationOutcome.ADAPTER_BROKEN,
             results=(TrackResult(key="x", outcome=TrackOutcome.UNAVAILABLE_PERMANENT),),
             remedy=Remedy.SWITCH_ADAPTER, alternatives=("other",),
-        )
-
-
-def test_a_failed_invocation_must_carry_a_remedy():
-    with pytest.raises(ValueError, match="remedy token"):
-        InvocationResult(
+        ),
+        "permanently unavailable",
+    ),
+    "a-failed-invocation-with-no-remedy": (
+        lambda: InvocationResult(
             adapter="fake", outcome=InvocationOutcome.ADAPTER_BROKEN, alternatives=("other",)
-        )
-
-
-def test_an_auth_failure_with_nowhere_to_go_cannot_be_constructed():
-    """AE9 is a reporting requirement, so it is enforced where the report is built."""
-    with pytest.raises(ValueError, match="replacement path"):
-        InvocationResult(
+        ),
+        "remedy token",
+    ),
+    # AE9 is a reporting requirement, so it is enforced where the report is built.
+    "an-auth-failure-with-nowhere-to-go": (
+        lambda: InvocationResult(
             adapter="fake", outcome=InvocationOutcome.AUTH_FAILED,
             remedy=Remedy.REAUTHENTICATE_PROVIDER,
-        )
-
-
-def test_a_result_cannot_report_a_track_nobody_asked_for():
-    """An identity mix-up here becomes a file filed under the wrong track later."""
-    with pytest.raises(ValueError, match="nobody asked for"):
-        InvocationResult(
+        ),
+        "replacement path",
+    ),
+    # An identity mix-up here becomes a file filed under the wrong track later.
+    "a-result-for-a-track-nobody-asked-for": (
+        lambda: InvocationResult(
             adapter="fake", outcome=InvocationOutcome.OK,
             results=(TrackResult(key="stranger", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT),),
             requested=("asked-for",),
-        )
+        ),
+        "nobody asked for",
+    ),
+    "a-lossy-acquisition-that-forgot-the-marker": (
+        lambda: TrackResult(
+            key="x", outcome=TrackOutcome.ACQUIRED, path=Path("x.m4a"), lossless=False,
+            requires_lossy_marker=False,
+        ),
+        "R21",
+    ),
+    "an-acquired-result-naming-no-file": (
+        lambda: TrackResult(key="x", outcome=TrackOutcome.ACQUIRED), "must name the file",
+    ),
+    "an-acquired-result-not-stating-its-losslessness": (
+        lambda: TrackResult(key="x", outcome=TrackOutcome.ACQUIRED, path=Path("x.flac")),
+        "whether it is lossless",
+    ),
+    "a-non-acquired-result-carrying-a-file": (
+        lambda: TrackResult(
+            key="x", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT, path=Path("half.flac")
+        ),
+        "partial download",
+    ),
+    "a-policy-refusal-with-no-remedy": (
+        lambda: TrackResult(key="x", outcome=TrackOutcome.REFUSED_BY_POLICY), "remedy token",
+    ),
+    # R19 and D5: identity, never a display name.
+    "a-track-request-with-no-stable-identifier": (
+        lambda: TrackRequest(key="", artist="Someone", title="Something"), "stable identifier",
+    ),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(_UNCONSTRUCTIBLE))
+def test_a_value_the_contract_forbids_cannot_be_constructed(case):
+    build, match = _UNCONSTRUCTIBLE[case]
+    with pytest.raises(ValueError, match=match):
+        build()
 
 
 def test_the_report_names_everything_that_was_requested(adapter_name, settings, stored_session):
@@ -535,47 +571,14 @@ def test_no_policy_can_permit_a_lossy_source_without_the_marker(policy):
     assert not (decision.permitted and not decision.marker_required)
 
 
-def test_a_lossy_acquisition_that_forgot_the_marker_cannot_be_constructed():
-    """The invariant lives on the type, so no branch anywhere can produce it."""
-    with pytest.raises(ValueError, match="R21"):
-        TrackResult(
-            key="x", outcome=TrackOutcome.ACQUIRED, path=Path("x.m4a"), lossless=False,
-            requires_lossy_marker=False,
-        )
-
-
-def test_an_acquired_result_must_name_a_file_and_state_its_losslessness():
-    with pytest.raises(ValueError, match="must name the file"):
-        TrackResult(key="x", outcome=TrackOutcome.ACQUIRED)
-    with pytest.raises(ValueError, match="whether it is lossless"):
-        TrackResult(key="x", outcome=TrackOutcome.ACQUIRED, path=Path("x.flac"))
-
-
-def test_a_non_acquired_result_may_not_carry_a_file():
-    with pytest.raises(ValueError, match="partial download"):
-        TrackResult(key="x", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT, path=Path("half.flac"))
-
-
-def test_a_policy_refusal_must_say_what_would_change_the_answer():
-    with pytest.raises(ValueError, match="remedy token"):
-        TrackResult(key="x", outcome=TrackOutcome.REFUSED_BY_POLICY)
-
-
-def test_a_track_request_needs_a_stable_identifier():
-    """R19 and D5: identity, never a display name."""
-    with pytest.raises(ValueError, match="stable identifier"):
-        TrackRequest(key="", artist="Someone", title="Something")
-
-
 # Pacing and quality are owned by the adapter (KTD20)
 
 
-def test_settings_come_from_configuration_by_name(tmp_path, monkeypatch):
-    """Reads a real Config, since a stand-in would pass while U2's schema said otherwise."""
+def _config(tmp_path, monkeypatch, **extra) -> config.Config:
     library = tmp_path / "library"
     (library / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    cfg = config.from_dict(
+    return config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
@@ -583,8 +586,16 @@ def test_settings_come_from_configuration_by_name(tmp_path, monkeypatch):
                 "db_path": str(library / "db" / "master.db"),
             },
             "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "slim"},
-            "acquisition": {"lossless_policy": "allow_lossy_marked", "pacing_delay_s": 2.5},
+            **extra,
         }
+    )
+
+
+def test_settings_come_from_configuration_by_name(tmp_path, monkeypatch):
+    """Reads a real Config, since a stand-in would pass while U2's schema said otherwise."""
+    cfg = _config(
+        tmp_path, monkeypatch,
+        acquisition={"lossless_policy": "allow_lossy_marked", "pacing_delay_s": 2.5},
     )
     built = AdapterSettings.from_config(cfg)
 
@@ -596,19 +607,7 @@ def test_settings_come_from_configuration_by_name(tmp_path, monkeypatch):
 
 def test_the_configured_adapter_name_resolves_through_the_registry(tmp_path, monkeypatch):
     """F6: switching adapters is a configuration change, not a code change."""
-    library = tmp_path / "library"
-    (library / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    cfg = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(library), "volume_id": "F1E2-D3C4",
-                "db_path": str(library / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "slim"},
-        }
-    )
+    cfg = _config(tmp_path, monkeypatch)
     assert cfg.acquisition.adapter in registry.ADAPTERS
     assert registry.load(cfg.acquisition.adapter) is vendored.VendoredAdapter
 
@@ -1038,46 +1037,36 @@ class _PkceSession:
         self.expiry_time = 0.0
 
 
-def _token_round_trip(tmp_path, *, is_pkce: bool):
-    """Write a session through the vendored persistence and read it back (R-196)."""
+def _token_holder(path: Path, session: _PkceSession | None = None):
+    """The vendored tool's token holder over ``path``, built without its constructor."""
     from cratekit._vendor.downloader.config import Tidal
     from cratekit._vendor.downloader.model.cfg import Token
 
     holder = Tidal.__new__(Tidal)
     holder.cls_model = Token
     holder.data = Token()
-    holder.file_path = str(tmp_path / "token.json")
-    holder.session = _PkceSession(is_pkce)
+    holder.file_path = str(path)
+    if session is not None:
+        holder.session = session
+    return holder
+
+
+@pytest.mark.parametrize("is_pkce", [True, False], ids=["pkce", "device-flow"])
+def test_a_persisted_session_reloads_as_the_flow_it_came_from(tmp_path, is_pkce):
+    """R-196: the write dropped ``is_pkce``, so a PKCE token reloaded as lossy device-flow; a
+    legacy token stays identifiable rather than being read as PKCE by default."""
+    holder = _token_holder(tmp_path / "token.json", _PkceSession(is_pkce))
     holder.token_persist()
-
-    reader = Tidal.__new__(Tidal)
-    reader.cls_model = Token
-    reader.data = Token()
-    reader.file_path = holder.file_path
+    reader = _token_holder(tmp_path / "token.json")
     reader.read(holder.file_path)
-    return reader.data
-
-
-def test_a_persisted_pkce_session_reloads_as_a_pkce_session(tmp_path):
-    """R-196: the write dropped ``is_pkce``, so a PKCE token reloaded as lossy device-flow."""
-    assert _token_round_trip(tmp_path, is_pkce=True).is_pkce is True
-
-
-def test_a_session_with_no_pkce_marker_reloads_as_a_device_flow_session(tmp_path):
-    """A legacy token stays identifiable rather than being read as PKCE by default."""
-    assert _token_round_trip(tmp_path, is_pkce=False).is_pkce is False
+    assert reader.data.is_pkce is is_pkce
 
 
 def test_the_persisted_flag_never_goes_through_the_bool_coercing_setter(tmp_path):
     """``set_option`` calls ``.lower()`` on bool fields, and ``is_pkce`` is the only one."""
     from cratekit._vendor.downloader.config import Tidal
-    from cratekit._vendor.downloader.model.cfg import Token
 
-    holder = Tidal.__new__(Tidal)
-    holder.cls_model = Token
-    holder.data = Token()
-    holder.file_path = str(tmp_path / "token.json")
-    holder.session = _PkceSession(True)
+    holder = _token_holder(tmp_path / "token.json", _PkceSession(True))
 
     routed: list[str] = []
     original = Tidal.set_option

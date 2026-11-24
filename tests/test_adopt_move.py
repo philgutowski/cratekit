@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -35,6 +36,7 @@ from tests import adopt_fixtures
 from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_adopt_workers import (  # noqa: F401
     _energy_bucket,
+    _file_into,
     _platform_seams,
     _reader_cache,
     _release_process_locks,
@@ -74,9 +76,9 @@ def _pure_energy_bucket() -> taxonomy.Bucket:
     )
 
 
-def _other_energy_bucket() -> taxonomy.Bucket:
+def _other_energy_bucket(first: str = "") -> taxonomy.Bucket:
     """A second bucket split by energy, whose display routes to itself."""
-    first = _pure_energy_bucket().id
+    first = first or _pure_energy_bucket().id
     return next(
         bucket
         for bucket in DECLARED.buckets
@@ -155,12 +157,10 @@ def _moves(
 
 
 def _left_counts(**nonzero: int) -> dict:
-    """The left counts as the plan reports them, every reason present."""
     return {"total": sum(nonzero.values()), **{r: 0 for r in adopt_move.LEFT_REASONS}, **nonzero}
 
 
 def _refused(call, reason: str = "decision-stale"):
-    """The cause ``call`` raised, asserted to carry ``reason``."""
     with pytest.raises(Exception) as raised:
         call()
     assert raised.value.cause.reason == reason, raised.value.cause
@@ -175,8 +175,9 @@ def _refused(call, reason: str = "decision-stale"):
         (5, (SINK,), MED, (SINK,)),
         # R-758 in the entry's own bucket: a reading naming a third band adds it.
         (1, (MED, HIGH), LOW, tuple(sorted((MED, HIGH)))),
+        (8, (MED, HIGH), "", (MED,)),
     ],
-    ids=["leaves-med", "three-bands", "leaves-the-sink", "a-third-band"],
+    ids=["leaves-med", "three-bands", "leaves-the-sink", "a-third-band", "in-both"],
 )
 def test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
     energy, held, add, remove
@@ -193,12 +194,6 @@ def test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
     assert plan.left == ()
     assert plan.counts()["memberships_added"] == (1 if add else 0)
     assert plan.counts()["memberships_removed"] == len(remove)
-
-
-def test_a_track_in_both_has_only_the_stale_one_removed():
-    test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
-        8, (MED, HIGH), "", (MED,)
-    )
 
 
 @pytest.mark.parametrize("sub_class", sorted(CLASSES))
@@ -495,20 +490,22 @@ def test_what_the_tree_path_never_asks_about():
     assert plan.moves == () and plan.left == ()
 
 
+def _verdict_withheld(entry, **changed):
+    return replace(
+        entry,
+        disposition=adopt_scan.Disposition.WITHHELD,
+        withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
+        **changed,
+    )
+
+
 def _with_verdict_on(current: adopt_plan.AdoptionPlan, bucket: str) -> adopt_plan.AdoptionPlan:
     """The plan with a keep-separate verdict folded in for one bucket, the way
-    ``with_collision_verdicts`` folds it: every routed entry of that bucket
-    withheld under the verdict's reason."""
+    ``with_collision_verdicts`` folds it."""
     return replace(
         current,
         entries=tuple(
-            replace(
-                entry,
-                disposition=adopt_scan.Disposition.WITHHELD,
-                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-            )
-            if entry.applicable and entry.bucket == bucket
-            else entry
+            _verdict_withheld(entry) if entry.applicable and entry.bucket == bucket else entry
             for entry in current.entries
         ),
     )
@@ -518,16 +515,8 @@ def _refused_over(tracks, held: dict) -> adopt_plan.AdoptionPlan:
     """Adoption over an empty tree with every entry then withheld by a
     verdict, handed ``held`` as the tree the move reads."""
     current = _adoption(tracks, {})
-    entries = tuple(
-        replace(
-            entry,
-            disposition=adopt_scan.Disposition.WITHHELD,
-            withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-        )
-        for entry in current.entries
-    )
-    placements = adopt_plan.Placements(read=True, held=held)
-    return replace(current, entries=entries, placements=placements)
+    entries = tuple(_verdict_withheld(entry) for entry in current.entries)
+    return replace(current, entries=entries, placements=adopt_plan.Placements(read=True, held=held))
 
 
 def test_a_verdict_withheld_double_is_left_and_listed_under_its_own_reason():
@@ -689,14 +678,7 @@ def test_a_track_a_verdict_withheld_since_the_approval_is_a_stale_decision():
     two alone would perform the move."""
     current, approved = _approved_over([_scanned("t", HERE, energy=8)], {HERE: {"t": (MED,)}})
     (entry,) = current.entries
-    withheld = replace(
-        entry,
-        disposition=adopt_scan.Disposition.WITHHELD,
-        holds=(),
-        holds_unnamed=(),
-        withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-    )
-    refused = replace(current, entries=(withheld,))
+    refused = replace(current, entries=(_verdict_withheld(entry, holds=(), holds_unnamed=()),))
     assert (refused.entries[0].bucket, refused.entries[0].sub) == (HERE, HIGH)
     cause = _refused(lambda: move_cli.remaining(approved, refused, DECLARED))
     assert "does not move it" in cause.detail["moved_under"]["t"]
@@ -752,6 +734,15 @@ def test_what_is_left_of_a_move_is_narrowed_and_a_finished_one_is_dropped():
 
 # A placed library with real tags
 
+@contextmanager
+def _opened(cfg):
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
+
+
 #: Every library :func:`seed_library` built, by what it was built from: the
 #: directory holding its database and files, and the tree's root identifier.
 _SEEDED_LIBRARIES: dict[tuple, tuple[Path, str]] = {}
@@ -789,8 +780,7 @@ def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) ->
             shutil.copyfile(silence, path)
             if tag is not None:
                 assert tags.write_tags(path, {"energylevel": tag}) is True
-        handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-        try:
+        with _opened(cfg) as handle:
             tree = rb_writer.ensure_folder(handle, DECLARED.tree.display)
             for folder_display, sub_display, content_id in places:
                 parent = None if folder_display in outside else tree
@@ -799,8 +789,6 @@ def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) ->
                 rb_writer.add_memberships(handle, playlist, [content_id])
             handle.session.commit()
             root_id = str(tree.ID)
-        finally:
-            rb_writer.close_db(handle)
         template = silence.parent / f"seeded-{len(_SEEDED_LIBRARIES)}"
         template.mkdir()
         for path in (db, *(path for path, _content_id in files)):
@@ -813,7 +801,6 @@ def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) ->
 
 
 def _sql(cfg, statement: str, *params, many: list | None = None) -> list[tuple]:
-    """One statement in plain SQL, committed: its rows, as the file holds them."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         if many is not None:
@@ -871,15 +858,7 @@ _WITHHELD_BY_ADOPTION = {"m-med-reads-high", "m-vox-and-med", "m-sink-now-reads"
 
 def _other_bucket() -> taxonomy.Bucket:
     """A second energy bucket the fixture's other genre routes to."""
-    first = _energy_bucket().id
-    return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if bucket.sub_by_source is None
-        and bucket.energy.enabled
-        and bucket.id != first
-        and adopt_scan.classify_genre(DECLARED, bucket.display)[1] == bucket.id
-    )
+    return _other_energy_bucket(_energy_bucket().id)
 
 
 def _place(sub_id: str, bucket: taxonomy.Bucket | None = None) -> tuple[str, str]:
@@ -902,16 +881,21 @@ def moved(machine, silence):  # noqa: F811
     tracks.append((_TWICE, energy.display, "5"))
     places.append((*_place(MED), _TWICE))
     seed_library(machine, silence, tracks, places, on=date(2026, 9, 29))
-    # The second row of one pair (R-781), inserted since the writer will not write it.
+    _double_a_row(machine, "twice", _TWICE)  # R-781
+    return machine
+
+
+def _double_a_row(cfg, row_id: str, content_id: str) -> None:
+    """A second live row for a pair, inserted since the writer will not write it."""
     _sql(
-        machine,
+        cfg,
         "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
         "rb_local_deleted, created_at, updated_at) "
-        "SELECT 'twice', PlaylistID, ContentID, 99, 0, created_at, updated_at "
+        "SELECT ?, PlaylistID, ContentID, 99, 0, created_at, updated_at "
         "FROM djmdSongPlaylist WHERE ContentID = ?",
-        _TWICE,
+        row_id,
+        content_id,
     )
-    return machine
 
 
 def _rows(cfg) -> list[tuple[str, str, str, int]]:
@@ -1108,8 +1092,25 @@ _STAMPED = "ID, PlaylistID, ContentID, TrackNo, UUID, rb_data_status, created_at
 _STAMPED += "rb_local_deleted, updated_at, rb_local_usn"
 
 
+def _assert_moved(live: dict) -> None:
+    """Every planned track in the place its file reads, and only there."""
+    style = _style_bucket()
+    # In High and not in Med.
+    assert live["m-med-reads-high"] == {_place(HIGH)}
+    # In Med and High: Med removed, nothing added.
+    assert live["m-both-reads-high"] == {_place(HIGH)}
+    # The vocal sub is untouched.
+    assert live["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
+    assert live["m-sink-now-reads"] == {_place(MED)}
+    assert live["m-style"] == {_place(style.subs[1].id, style)}
+    # R-780: the stale band goes; the place the genre names is not touched.
+    assert live["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
+    assert live["m-no-genre"] == {_place(LOW)}
+    # Two moves on one track, one in each bucket.
+    assert live["m-two-buckets"] == {_place(MED), _place(MED, _other_bucket())}
+
+
 def _untouched(cfg) -> dict:
-    """Every content row, every guarded column by name and every cue table."""
     return {
         "content": _sql(cfg, "SELECT * FROM djmdContent ORDER BY ID"),
         **{
@@ -1154,20 +1155,7 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved, monkeypatc
     assert len(captured) == 1
     after, removed = _live(moved), _removed(moved)
     style = _style_bucket()
-
-    # In High and not in Med.
-    assert after["m-med-reads-high"] == {_place(HIGH)}
-    # In Med and High: Med removed, nothing added.
-    assert after["m-both-reads-high"] == {_place(HIGH)}
-    # The vocal sub is untouched.
-    assert after["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
-    assert after["m-sink-now-reads"] == {_place(MED)}
-    assert after["m-style"] == {_place(style.subs[1].id, style)}
-    # R-780: the stale band goes; the place the genre names is not touched.
-    assert after["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
-    assert after["m-no-genre"] == {_place(LOW)}
-    # Two moves on one track, one in each bucket.
-    assert after["m-two-buckets"] == {_place(MED), _place(MED, _other_bucket())}
+    _assert_moved(after)
     # Not planned, and left where they are.
     for content_id in (
         "m-candy-only",
@@ -1298,14 +1286,7 @@ def test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes(
     collection.reset_cache()
     code, resumed = drive(_resume(job_id))
     assert code == OK, resumed
-    finished = _live(moved)
-    assert finished["m-med-reads-high"] == {_place(HIGH)}
-    assert finished["m-both-reads-high"] == {_place(HIGH)}
-    assert finished["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
-    assert finished["m-sink-now-reads"] == {_place(MED)}
-    assert finished["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
-    assert finished["m-no-genre"] == {_place(LOW)}
-    assert finished["m-two-buckets"] == {_place(MED), _place(MED, _other_bucket())}
+    _assert_moved(_live(moved))
     report = artifacts.committed(moved, job_id)[-1]
     assert set(report["moved"]) == _MOVED and report["in_both"] == []
     assert (report["added"], report["already_present"], report["removed"]) == (0, 9, 9)
@@ -1578,8 +1559,6 @@ def _worker(job_id: str):
 
 
 def _worker_refuses(cfg, job_id: str, reason: str = "decision-stale", **changed):
-    """Run the worker over the job, its payload edited by ``changed``: it
-    refuses with ``reason`` and writes nothing."""
     before = _rows(cfg)
     handler, job, item = _requeued(job_id, **changed) if changed else _worker(job_id)
     cause = _refused(lambda: handler(job, item, jobs.frozen_config(job)), reason)
@@ -1588,16 +1567,10 @@ def _worker_refuses(cfg, job_id: str, reason: str = "decision-stale", **changed)
 
 
 def _file_in(cfg, content_id: str, sub_id: str) -> None:
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        folder_display, sub_display = _place(sub_id)
-        folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
-        playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-        rb_writer.add_memberships(handle, playlist, [content_id])
+        _file_into(handle, root, _energy_bucket().id, sub_id, content_id)
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision(moved):
@@ -1666,8 +1639,7 @@ def test_the_worker_refuses_rows_that_are_not_approved_and_a_job_naming_nobody(m
 
 
 def _write(cfg, moves):
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         known = {str(row.ID) for row in handle.get_playlist()}
         return trees.move_tree_membership(
             cfg,
@@ -1678,8 +1650,6 @@ def _write(cfg, moves):
             root_exists=lambda root_id: root_id in known,
             analysis_roots=[Path(cfg.library.root)],
         )
-    finally:
-        rb_writer.close_db(handle)
 
 
 def _to_high(content_id: str = "m-med-reads-high") -> list[trees.MembershipMove]:
@@ -1754,27 +1724,18 @@ def test_a_removal_from_a_playlist_that_is_not_there_creates_none(moved):
 
 
 def test_a_doubled_membership_leaves_in_one_move(moved):
-    _sql(
-        moved,
-        "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
-        "rb_local_deleted, created_at, updated_at) "
-        "SELECT 'doubled', PlaylistID, ContentID, 99, 0, created_at, updated_at "
-        "FROM djmdSongPlaylist WHERE ContentID = 'm-med-reads-high'",
-    )
+    _double_a_row(moved, "doubled", "m-med-reads-high")
     report = _write(moved, _to_high())
     assert report.removed == 2
     assert _live(moved)["m-med-reads-high"] == {_place(HIGH)}
 
 
 def _move_tree(cfg, **overrides):
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         trees.move_tree_membership(
             cfg, handle, tree_id=TREE_ID, registry=tree_registry.read(cfg), moves=[],
             root_exists=lambda _root: True, **overrides,
         )  # fmt: skip
-    finally:
-        rb_writer.close_db(handle)
 
 
 def test_an_empty_watch_is_refused(moved):
@@ -1803,16 +1764,13 @@ def _mark_one_removed(handle) -> None:
 
 
 def _guarded(cfg, change, **removals):
-    """Make ``change`` on a handle and commit it guarded: the refusal's cause,
-    or None when the commit landed."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
-    try:
-        change(handle)
-        rb_writer.commit_guarded(handle, **removals)
-    except rb_writer.RekordboxUnavailable as exc:
-        return exc.cause
-    finally:
-        rb_writer.close_db(handle)
+    """The refusal's cause, or None when the commit landed."""
+    with _opened(cfg) as handle:
+        try:
+            change(handle)
+            rb_writer.commit_guarded(handle, **removals)
+        except rb_writer.RekordboxUnavailable as exc:
+            return exc.cause
     return None
 
 
@@ -1858,8 +1816,7 @@ def test_the_additive_membership_writer_refuses_a_removal_in_its_session(moved, 
         return real(db, playlist, content_ids)
 
     monkeypatch.setattr(rb_writer, "add_memberships", adds_and_removes)
-    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
-    try:
+    with _opened(moved) as handle:
         known = {str(row.ID) for row in handle.get_playlist()}
         location = adopt_fixtures.recorded_location(Path(moved.library.root), "m-same.flac")
         with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
@@ -1874,8 +1831,6 @@ def test_the_additive_membership_writer_refuses_a_removal_in_its_session(moved, 
                 analysis_roots=[Path(moved.library.root)],
             )
         assert raised.value.cause.reason == "whitelist-violation"
-    finally:
-        rb_writer.close_db(handle)
     assert _rows(moved) == before
     with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
         _write(moved, [trees.MembershipMove("m-same", _place(LOW), (_place(MED),))])
@@ -1891,8 +1846,7 @@ def test_a_removed_membership_is_not_held_and_not_present(moved):
 
     bucket = _energy_bucket().id
     assert placements.read_placements(moved, DECLARED).holds(bucket, "m-med-reads-high") == (MED,)
-    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
-    try:
+    with _opened(moved) as handle:
         _mark_one_removed(handle)
         handle.session.commit()
         playlist = next(row for row in handle.get_playlist(Name=_place(MED)[1]))
@@ -1906,8 +1860,6 @@ def test_a_removed_membership_is_not_held_and_not_present(moved):
         ]
         assert rb_writer.remove_memberships(handle, playlist, ["m-med-reads-high"]) == []
         handle.session.rollback()
-    finally:
-        rb_writer.close_db(handle)
     assert placements.read_placements(moved, DECLARED).holds(bucket, "m-med-reads-high") == ()
 
 
