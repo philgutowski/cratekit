@@ -1,8 +1,7 @@
 """A verb module whose extras group is not installed.
 
-The import below names a top-level third-party module that the entry declares in
-``extras_modules``. Blocking it in a test reproduces a slim install exactly,
-without uninstalling anything.
+It imports a module the entry declares in ``extras_modules``; blocking it in a test
+reproduces a slim install without uninstalling anything.
 """
 
 import a_third_party_analysis_library  # noqa: F401
