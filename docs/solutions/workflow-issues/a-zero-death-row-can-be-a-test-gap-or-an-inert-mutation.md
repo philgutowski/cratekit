@@ -253,7 +253,7 @@ HANDLER_KEY = "duplicates.audit"
 ```
 
 `S5b_engine_default_drift` killed 3 on a subset of 371, across
-`tests/modules/test_reports.py:725`, `:735` and
+`tests/modules/test_reports.py:713`, `:723` and
 `tests/test_reports_cli.py:261`.
 
 That third kill is the guard the inert row had hidden the need for, and it is

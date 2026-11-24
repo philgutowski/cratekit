@@ -8,6 +8,7 @@ once, a refused one forgotten for every seam, and a failed login holds nothing.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import keyring
@@ -154,8 +155,22 @@ def quick_gate() -> provider_gate.Gate:
     return provider_gate.Gate(provider_gate.GateSettings(min_interval_s=0.001))
 
 
-def refused_with(excinfo) -> tuple[str, Any]:
-    return excinfo.value.cause.reason, excinfo.value.cause.remediation.remedy
+@pytest.fixture
+def factory(cfg, monkeypatch) -> Factory:
+    """The default factory over a recorded session, installed after the installation."""
+    found = use(monkeypatch, Factory())
+    record()
+    return found
+
+
+def refused_with(*seams, cfg) -> list[tuple[str, Any]]:
+    """The reason and remedy each seam's resolve, in turn, was refused with."""
+    refusals = []
+    for seam in seams:
+        with pytest.raises(CratekitError) as excinfo:
+            seam.resolve(cfg)
+        refusals.append((excinfo.value.cause.reason, excinfo.value.cause.remediation.remedy))
+    return refusals
 
 
 def test_an_unchanged_session_makes_no_keychain_write(monkeypatch):
@@ -228,15 +243,12 @@ def test_a_session_the_tool_changed_is_written_back_from_the_scope(monkeypatch):
     assert secrets.get_json(SESSION) == {"access_token": "FAKE-value-9", "token_type": "Bearer"}
 
 
-def test_a_process_resolving_both_seams_validates_the_session_once(cfg, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_a_process_resolving_both_seams_validates_the_session_once(factory, cfg, monkeypatch):
+    """The card's reproduction: catalogue twice and account twice."""
     keychain = Keychain(monkeypatch)
-
     first = catalogue.resolve(cfg)
     second = catalogue.resolve(cfg)
     remote = account.resolve(cfg)
-
     assert account.resolve(cfg) is remote
     assert len(factory.built) == 1
     assert factory.requests == LOGIN
@@ -247,22 +259,6 @@ def test_a_process_resolving_both_seams_validates_the_session_once(cfg, monkeypa
     assert isinstance(remote, tidal_account.TidalAccount)
     assert first is not second
     assert first._session is second._session is factory.built[0]
-
-
-def test_the_surveys_drive_logs_in_once_and_writes_nothing(cfg, monkeypatch):
-    """The card's reproduction: catalogue twice and account twice."""
-    factory = use(monkeypatch, Factory())
-    record()
-    keychain = Keychain(monkeypatch)
-
-    catalogue.resolve(cfg)
-    catalogue.resolve(cfg)
-    account.resolve(cfg)
-    account.resolve(cfg)
-
-    assert len(factory.built) == 1
-    assert len(factory.requests) == 2
-    assert keychain.writes == []
 
 
 def test_the_app_client_is_held_with_the_session_and_asks_one_token(cfg, monkeypatch):
@@ -312,28 +308,20 @@ def test_a_lost_app_value_is_noted_on_every_resolve_that_falls_back(cfg, monkeyp
     provider_gate._APP_LOST.clear()
 
 
-def test_other_gate_settings_open_a_session_of_their_own(cfg, tmp_path, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_other_gate_settings_open_a_session_of_their_own(factory, cfg, tmp_path):
     slower = config.from_dict(valid_data(tmp_path / "library", provider={"min_interval_s": 0.002}))
-
     catalogue.resolve(cfg)
     found = catalogue.resolve(slower)
-
     assert len(factory.built) == 2
     assert found._session.request_session._cratekit_gate.settings.min_interval_s == 0.002
 
 
 def test_a_401_on_the_account_drops_the_shared_client_and_the_catalogue_logs_in_again(
-    cfg, monkeypatch
+    factory, cfg
 ):
-    factory = use(monkeypatch, Factory())
-    record()
     catalogue.resolve(cfg)
     remote = account.resolve(cfg)
-
     cause = account.provider_failure(HTTPFailure(Answer(401)), "heart a track")
-
     assert cause.cause.reason == "credential-missing"
     found = catalogue.resolve(cfg)
     assert len(factory.built) == 2
@@ -343,159 +331,114 @@ def test_a_401_on_the_account_drops_the_shared_client_and_the_catalogue_logs_in_
 
 
 @pytest.mark.parametrize("status", [401, 403])
-def test_a_refusal_answered_through_the_shared_client_drops_it_for_both_seams(
-    cfg, monkeypatch, status
-):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_a_refusal_answered_through_the_shared_client_drops_it_for_both_seams(factory, cfg, status):
     found = catalogue.resolve(cfg)
     remote = account.resolve(cfg)
-
     found._session.request_session.status = status
     assert found._session.read() == status
-
     assert catalogue.resolve(cfg)._session is factory.built[1]
     assert account.resolve(cfg) is not remote
     assert len(factory.built) == 2
 
 
-def test_a_refusal_the_transport_raises_drops_the_client_too(cfg, monkeypatch):
+def test_a_refusal_the_transport_raises_drops_the_client_too(factory, cfg):
     """A refusal raised by the transport, not answered, drops the client too."""
-    factory = use(monkeypatch, Factory())
-    record()
     found = catalogue.resolve(cfg)
-
     found._session.request_session.raises = 401
     with pytest.raises(HTTPFailure):
         found._session.read()
-
     assert catalogue.resolve(cfg)._session is factory.built[1]
 
 
-def test_a_refusal_answered_to_a_client_no_longer_held_keeps_the_newer_one(cfg, monkeypatch):
+def test_a_refusal_answered_to_a_client_no_longer_held_keeps_the_newer_one(factory, cfg):
     """A 401 to a replaced client does not drop the newer session."""
-    factory = use(monkeypatch, Factory())
-    record()
     first = catalogue.resolve(cfg)
     record(dict(STORED, access_token="FAKE-value-7"))
     second = catalogue.resolve(cfg)
-
     first._session.request_session.status = 401
     first._session.read()
-
     assert catalogue.resolve(cfg)._session is second._session
     assert len(factory.built) == 2
 
 
-def test_an_answer_that_judges_no_session_keeps_the_client(cfg, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_an_answer_that_judges_no_session_keeps_the_client(factory, cfg):
     found = catalogue.resolve(cfg)
-
     for status in (404, 429, 500):
         found._session.request_session.status = status
         found._session.read()
-
     found._session.request_session.status = 200
     assert catalogue.resolve(cfg)._session is factory.built[0]
     assert len(factory.built) == 1
 
 
-def test_a_session_the_index_no_longer_records_is_refused_by_both_seams(cfg, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_a_session_the_index_no_longer_records_is_refused_by_both_seams(
+    factory, cfg, monkeypatch
+):
     catalogue.resolve(cfg)
     account.resolve(cfg)
     monkeypatch.setattr(secrets, "exists", lambda name: False)
-
-    for seam in (catalogue, account):
-        with pytest.raises(CratekitError) as excinfo:
-            seam.resolve(cfg)
-        assert refused_with(excinfo) == ("credential-missing", Remedy.AUTHENTICATE_PROVIDER)
+    assert refused_with(catalogue, account, cfg=cfg) == [
+        ("credential-missing", Remedy.AUTHENTICATE_PROVIDER)
+    ] * 2
     assert len(factory.requests) == 2
 
 
-def test_a_session_gone_from_the_keychain_after_an_open_is_refused_not_reused(cfg, monkeypatch):
+def test_a_session_gone_from_the_keychain_after_an_open_is_refused_not_reused(factory, cfg):
     """Deleted behind the index's back, the reuse reads the keychain and finds nothing."""
-    factory = use(monkeypatch, Factory())
-    record()
     catalogue.resolve(cfg)
     keyring.delete_password(secrets.SERVICE, str(SESSION))
-
-    with pytest.raises(CratekitError) as excinfo:
-        catalogue.resolve(cfg)
-
-    assert refused_with(excinfo) == ("credential-missing", Remedy.REAUTHENTICATE_PROVIDER)
+    assert refused_with(catalogue, cfg=cfg) == [
+        ("credential-missing", Remedy.REAUTHENTICATE_PROVIDER)
+    ]
     assert len(factory.requests) == 2
     assert provider_session.held() is None
 
 
-def test_a_keychain_that_cannot_be_read_on_a_reuse_says_repair_it(cfg, monkeypatch):
-    use(monkeypatch, Factory())
-    record()
+def test_a_keychain_that_cannot_be_read_on_a_reuse_says_repair_it(factory, cfg, monkeypatch):
     catalogue.resolve(cfg)
-
     def broken(service: str, username: str):
         raise RuntimeError("no backend")
-
     monkeypatch.setattr(keyring, "get_password", broken)
-    with pytest.raises(CratekitError) as excinfo:
-        catalogue.resolve(cfg)
+    assert refused_with(catalogue, cfg=cfg) == [
+        ("credential-missing", Remedy.REPAIR_CREDENTIAL_STORE)
+    ]
 
-    assert refused_with(excinfo) == ("credential-missing", Remedy.REPAIR_CREDENTIAL_STORE)
 
-
-def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(cfg, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(factory, cfg):
     catalogue.resolve(cfg)
     record(dict(STORED, access_token="FAKE-value-7"))
-
     found = catalogue.resolve(cfg)
-
     assert len(factory.built) == 2
     assert found._session.logged_in_with == "FAKE-value-7"
 
 
-def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(cfg, monkeypatch):
+def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(factory, cfg):
     """A session recorded afresh whose login fails leaves no adapter over the replaced one."""
-    factory = use(monkeypatch, Factory())
-    record()
     catalogue.resolve(cfg)
     account.resolve(cfg)
     record(dict(STORED, access_token="FAKE-value-7"))
     factory.client = {"status": 401}
-
-    for seam in (catalogue, account):
-        with pytest.raises(CratekitError) as excinfo:
-            seam.resolve(cfg)
-        assert refused_with(excinfo) == ("credential-missing", Remedy.REAUTHENTICATE_PROVIDER)
+    assert refused_with(catalogue, account, cfg=cfg) == [
+        ("credential-missing", Remedy.REAUTHENTICATE_PROVIDER)
+    ] * 2
     assert provider_session.held() is None
     assert len(factory.built) == 3
 
 
-def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(cfg, monkeypatch):
+def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(factory, cfg):
     """A 401 to the account's adapter over a replaced session keeps the newer session held."""
-    factory = use(monkeypatch, Factory())
-    record()
     account.resolve(cfg)
     record(dict(STORED, access_token="FAKE-value-7"))
     newer = catalogue.resolve(cfg)._session
-
     account.provider_failure(HTTPFailure(Answer(401)), "heart a track")
-
     assert catalogue.resolve(cfg)._session is newer
     assert account.resolve(cfg)._session is newer
     assert len(factory.built) == 2
 
 
-def test_the_held_sessions_repr_carries_no_token(cfg, monkeypatch):
-    use(monkeypatch, Factory())
-    record()
+def test_the_held_sessions_repr_carries_no_token(factory, cfg):
     catalogue.resolve(cfg)
-
     shown = repr(provider_session.held())
-
     assert "FAKE-value-1" not in shown
     assert "FAKE-value-2" not in shown
 
@@ -513,20 +456,13 @@ def test_a_refreshed_login_is_reused_while_the_keychain_holds_the_refresh(cfg, m
     assert secrets.get_json(SESSION)["access_token"] == "FAKE-value-3"
 
 
-def test_a_reuse_inside_a_cooldown_refuses_without_a_call(cfg, monkeypatch):
-    factory = use(monkeypatch, Factory())
-    record()
+def test_a_reuse_inside_a_cooldown_refuses_without_a_call(factory, cfg):
     found = catalogue.resolve(cfg)
     gate = found._session.request_session._cratekit_gate
-    import time
-
     now = time.time()
     gate._write(provider_gate._State(tripped_at=now, lifts_at=now + 900))
-
-    for seam in (catalogue, account):
-        with pytest.raises(CratekitError) as excinfo:
-            seam.resolve(cfg)
-        assert excinfo.value.cause.reason == provider_gate.COOLDOWN
+    refusals = refused_with(catalogue, account, cfg=cfg)
+    assert [reason for reason, _remedy in refusals] == [provider_gate.COOLDOWN] * 2
     assert factory.requests == LOGIN
 
 
@@ -537,11 +473,8 @@ def test_a_reuse_inside_a_cooldown_refuses_without_a_call(cfg, monkeypatch):
 def test_a_login_that_failed_holds_nothing_and_is_asked_again(cfg, monkeypatch, status, reason):
     factory = use(monkeypatch, Factory(status=status))
     record()
-
-    for _ in range(2):
-        with pytest.raises(CratekitError) as excinfo:
-            catalogue.resolve(cfg)
-        assert excinfo.value.cause.reason == reason
+    refusals = refused_with(catalogue, catalogue, cfg=cfg)
+    assert [said for said, _remedy in refusals] == [reason] * 2
     assert len(factory.built) == 2
     assert provider_session.held() is None
 

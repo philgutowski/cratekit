@@ -1,10 +1,8 @@
 """The outbound module's scenarios: the export engine and the two prunes (U309).
 
-`crate export playlist` writes a playlist onto the account through the export
-engine, and `crate export prune` and `crate label prune` take a dropped track
-off behind their gates, every account call recorded. The window lag is the
-real adapter's refusal, met through the lag suite's lagging client.
-``account_calls`` lives here; the organize and export scenarios import it.
+Every account call is recorded. The window lag is the real adapter's refusal,
+met through the lag suite's lagging client. ``account_calls`` lives here; the
+organize and export scenarios import it.
 """
 
 from __future__ import annotations

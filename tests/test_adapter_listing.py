@@ -87,15 +87,15 @@ def test_an_empty_listing_reads_as_empty_and_not_as_an_error():
     assert listing.playlist_tracks(Paged([], 100)) == []
 
 
+def _ignores_the_offset(limit: int, offset: int) -> list:
+    return corpus(limit)
+
+
 def test_a_runaway_offset_raises_rather_than_returning_what_it_collected():
     """U65. A provider ignoring the offset serves full pages for ever, so the budget raises."""
-
-    def ignores_the_offset(limit: int, offset: int) -> list:
-        return corpus(limit)
-
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.paginate(
-            ignores_the_offset, page_size=100, stop=listing.StopRule.EMPTY_PAGE, max_pages=3,
+            _ignores_the_offset, page_size=100, stop=listing.StopRule.EMPTY_PAGE, max_pages=3,
             shape="favorite_tracks",
         )
     message = str(raised.value)
@@ -106,13 +106,9 @@ def test_a_runaway_offset_raises_rather_than_returning_what_it_collected():
 
 def test_the_budget_is_spent_on_requests_and_the_walk_is_not_restarted():
     """The count in the message is items collected, so a zero there is its own bug."""
-
-    def ignores_the_offset(limit: int, offset: int) -> list:
-        return corpus(limit)
-
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.paginate(
-            ignores_the_offset, page_size=10, stop=listing.StopRule.EMPTY_PAGE, max_pages=4,
+            _ignores_the_offset, page_size=10, stop=listing.StopRule.EMPTY_PAGE, max_pages=4,
         )
     assert "40 item(s)" in str(raised.value)
 
@@ -244,42 +240,47 @@ def test_an_artist_release_listing_reads_to_the_end_across_both_methods():
 # A listing that cannot page refuses rather than truncating
 
 
-def test_a_listing_that_rejects_pagination_arguments_refuses():
-    """The source system took the single page here. That is a silent truncation."""
+def test_the_refusal_is_immediate_and_is_not_slept_on():
+    """The source system took the single page here, a silent truncation. U65: waiting cannot
+    change a client's signature, so the refusal is not retried; the sleep is captured."""
+    slept: list[float] = []
 
     class Old:
         def tracks(self) -> list:
             return corpus(100)
 
     with pytest.raises(listing.ListingNotPaginated, match="one page"):
-        listing.playlist_tracks(Old())
-
-
-def test_the_refusal_is_immediate_and_is_not_slept_on():
-    """U65. Waiting cannot change a client's signature, so the refusal is not retried;
-    the sleep is captured, not timed."""
-    slept: list[float] = []
-
-    class Old:
-        def tracks(self) -> list:
-            return corpus(100)
-
-    with pytest.raises(listing.ListingNotPaginated):
         listing.playlist_tracks(Old(), sleep=slept.append)
     assert slept == []
 
 
-def test_a_transient_failure_is_still_slept_on_the_full_ladder():
-    """The exclusion above is one exception, not a narrowing of the retry policy."""
-    slept: list[float] = []
+def _always_raises(error: BaseException):
     attempts = {"n": 0}
 
-    def flaky(limit: int, offset: int) -> list:
+    def fetch(limit: int, offset: int) -> list:
         attempts["n"] += 1
-        raise TimeoutError("the provider is busy")
+        raise error
 
-    with pytest.raises(TimeoutError):
-        listing.fetch_with_retry(flaky, limit=10, offset=0, sleep=slept.append)
+    return fetch, attempts
+
+
+def _retryable_refusal():
+    from cratekit.core.cause import refuse
+
+    return refuse("credential-missing", "try again shortly", retryable=True, origin=("tests",))
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError("the provider is busy"), _retryable_refusal()],
+    ids=["a-transient-failure", "a-refusal-declaring-itself-retryable"],
+)
+def test_a_failure_waiting_can_help_is_slept_on_the_full_ladder(error):
+    """The exclusion above is one exception, not a narrowing of the retry policy, and it reads
+    the refusal's own flag, never its type."""
+    slept: list[float] = []
+    fetch, attempts = _always_raises(error)
+    with pytest.raises(type(error)):
+        listing.fetch_with_retry(fetch, limit=10, offset=0, sleep=slept.append)
     assert attempts["n"] == listing.DEFAULT_MAX_RETRIES + 1
     assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
 
@@ -289,31 +290,14 @@ def test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on():
     from cratekit.core.cause import CratekitError, refuse
 
     slept: list[float] = []
-    attempts = {"n": 0}
-
-    def expired(limit: int, offset: int) -> list:
-        attempts["n"] += 1
-        raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
-
+    expired, attempts = _always_raises(
+        refuse("credential-missing", "the session expired mid page", origin=("tests",))
+    )
     with pytest.raises(CratekitError) as excinfo:
         listing.fetch_with_retry(expired, limit=10, offset=0, sleep=slept.append)
     assert excinfo.value.cause.reason == "credential-missing"
     assert attempts["n"] == 1
     assert slept == []
-
-
-def test_a_refusal_that_declares_itself_retryable_still_climbs_the_ladder():
-    """The exclusion reads the refusal's own flag, never its type."""
-    from cratekit.core.cause import CratekitError, refuse
-
-    slept: list[float] = []
-
-    def walled(limit: int, offset: int) -> list:
-        raise refuse("credential-missing", "try again shortly", retryable=True, origin=("tests",))
-
-    with pytest.raises(CratekitError):
-        listing.fetch_with_retry(walled, limit=10, offset=0, sleep=slept.append)
-    assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
 
 
 def test_a_listing_method_that_does_not_exist_refuses_by_name():
@@ -344,10 +328,7 @@ def test_a_transient_failure_retries_with_capped_exponential_backoff():
 
 def test_the_backoff_is_capped_rather_than_doubling_forever():
     slept: list[float] = []
-
-    def always_fails(limit: int, offset: int) -> list:
-        raise RuntimeError("503 Service Unavailable")
-
+    always_fails, _attempts = _always_raises(RuntimeError("503 Service Unavailable"))
     with pytest.raises(RuntimeError):
         listing.fetch_with_retry(
             always_fails, limit=100, offset=0, max_retries=8, base_delay=4.0, max_delay=10.0,
@@ -359,20 +340,20 @@ def test_the_backoff_is_capped_rather_than_doubling_forever():
 
 def test_a_permanent_failure_surfaces_after_the_retry_ceiling():
     """Breadth in what is retried is only honest if it is bounded."""
-    calls: list[int] = []
-
-    def always_fails(limit: int, offset: int) -> list:
-        calls.append(offset)
-        raise ValueError("the listing method is gone")
-
+    always_fails, attempts = _always_raises(ValueError("the listing method is gone"))
     with pytest.raises(ValueError):
         listing.fetch_with_retry(
             always_fails, limit=100, offset=0, max_retries=2, sleep=lambda _: None
         )
-    assert len(calls) == 3
+    assert attempts["n"] == 3
 
 
 # Deduplication, only where the provider can repeat an item
+
+
+def _page_of(pages: list[list[Item]], limit: int | None, offset: int) -> list:
+    index = offset // (limit or 1)
+    return pages[index] if index < len(pages) else []
 
 
 class Favorites:
@@ -380,8 +361,7 @@ class Favorites:
         self._pages = pages
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list:
-        index = offset // (limit or 1)
-        return self._pages[index] if index < len(self._pages) else []
+        return _page_of(self._pages, limit, offset)
 
 
 class Session:
@@ -429,8 +409,7 @@ class User:
         self.request = AccountRequest(serve or self._page)
 
     def _page(self, limit: int | None = None, offset: int = 0) -> list:
-        index = offset // (limit or 1)
-        return self._playlists[index] if index < len(self._playlists) else []
+        return _page_of(self._playlists, limit, offset)
 
 
 def test_a_favourite_repeated_across_a_page_boundary_is_returned_once():
@@ -489,26 +468,21 @@ def test_artist_releases_merge_both_listings_and_deduplicate():
     assert [r.id for r in listing.artist_releases(artist)] == ["a1", "a2", "s1"]
 
 
+class _OnlyAlbums:
+    # Honours the offset: a fake that ignores it is a runaway, which would mask these tests.
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
+        return corpus(2, prefix="a")[offset : offset + (limit or 2)]
+
+
 def test_a_missing_release_listing_is_skipped_rather_than_fatal():
     """Losing one listing beats refusing to crawl a label at all."""
-
-    class OnlyAlbums:
-        # Honours the offset: a fake that ignores it is a runaway, which would mask this test.
-        def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
-            return corpus(2, prefix="a")[offset : offset + (limit or 2)]
-
-    assert len(listing.artist_releases(OnlyAlbums())) == 2
+    assert len(listing.artist_releases(_OnlyAlbums())) == 2
 
 
 def test_a_skipped_release_listing_is_named_to_a_caller_that_asks():
     """R-261: the skip stands, and it leaves a record rather than nothing."""
-
-    class OnlyAlbums:
-        def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
-            return corpus(2, prefix="a")[offset : offset + (limit or 2)]
-
     skipped: list[str] = []
-    assert len(listing.artist_releases(OnlyAlbums(), skipped=skipped)) == 2
+    assert len(listing.artist_releases(_OnlyAlbums(), skipped=skipped)) == 2
     assert skipped == ["get_ep_singles"]
 
     whole: list[str] = []
@@ -790,6 +764,12 @@ def _client_over(endpoint: CursorEndpoint):
     return session
 
 
+def _kompakt_folder(session):
+    handle = session.folder()
+    handle.id = "folder-kompakt"
+    return handle
+
+
 def test_the_root_folders_are_walked_by_cursor_past_an_endpoint_that_ignores_offset():
     """The brief's first scenario: 55 folders over pages of 10, all returned once."""
     import tidalapi.playlist
@@ -827,10 +807,7 @@ def test_a_folders_playlists_are_walked_by_cursor_through_the_folders_own_parser
     import tidalapi.playlist
 
     endpoint = CursorEndpoint([_raw_playlist(n) for n in range(12)], page=5)
-    session = _client_over(endpoint)
-    handle = session.folder()
-    handle.id = "folder-kompakt"
-    found = listing.folder_playlists(handle, sleep=lambda _: None)
+    found = listing.folder_playlists(_kompakt_folder(_client_over(endpoint)), sleep=lambda _: None)
 
     assert [playlist.id for playlist in found] == [f"p{n}" for n in range(12)]
     assert all(isinstance(playlist, tidalapi.playlist.Playlist) for playlist in found)
@@ -854,10 +831,7 @@ def test_the_root_count_covers_playlists_too_so_folders_are_kept_after_counting(
 def test_a_folder_holding_a_folder_keeps_only_its_playlists():
     """R-887. A folder's count covers a folder nested in it as well."""
     endpoint = CursorEndpoint([_raw_folder(0)] + [_raw_playlist(n) for n in range(7)], page=5)
-    session = _client_over(endpoint)
-    handle = session.folder()
-    handle.id = "folder-kompakt"
-    found = listing.folder_playlists(handle, sleep=lambda _: None)
+    found = listing.folder_playlists(_kompakt_folder(_client_over(endpoint)), sleep=lambda _: None)
 
     assert [playlist.id for playlist in found] == [f"p{n}" for n in range(7)]
 
@@ -1180,9 +1154,7 @@ def test_a_folder_listing_of_owned_playlists_costs_its_pages_and_no_single_fetch
     """The brief's second scenario, over the cursor walk."""
     held = [_owned_playlist(n) for n in range(12)]
     transport = CountingTransport(held, page=5)
-    session = _logged_in_over(transport)
-    handle = session.folder()
-    handle.id = "folder-kompakt"
+    handle = _kompakt_folder(_logged_in_over(transport))
     found = listing.folder_playlists(handle, sleep=lambda _: None)
 
     assert [p.id for p in found] == [p["uuid"] for p in held]

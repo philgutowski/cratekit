@@ -1,9 +1,4 @@
-"""U220: the account adapter puts a playlist it just added to in order, over a provider that lags.
-
-Driven against a stand in client with a version tag, 412s, lagging reads and stale
-tags (Sitting 62). Since U231 moves are sent without read backs, a 412 resends the
-same move, and one later reading (``settled_order``) judges the order. D1 applies.
-"""
+"""U220: the adapter orders a playlist it just added to, over a provider that lags. D1 applies."""
 
 from __future__ import annotations
 

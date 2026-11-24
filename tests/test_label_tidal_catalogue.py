@@ -411,18 +411,15 @@ def test_a_short_link_is_refused_with_a_way_forward():
     assert "short share link" in str(excinfo.value)
 
 
-def test_a_missing_playlist_raises_and_never_returns_an_empty_list():
-    adapter = tidal_catalogue.TidalCatalogue(FakeClient())
-    with pytest.raises(tidal_catalogue.PlaylistUnresolvable):
-        adapter.playlist_for(PLAYLIST)
+class EmptyPlaylists(FakeClient):
+    def playlist(self, playlist_id):
+        del playlist_id
 
 
-def test_a_playlist_the_client_returns_nothing_for_raises_too():
-    class Empty(FakeClient):
-        def playlist(self, playlist_id):
-            del playlist_id
+@pytest.mark.parametrize("client", [FakeClient, EmptyPlaylists], ids=["missing", "returns-none"])
+def test_a_missing_playlist_raises_and_never_returns_an_empty_list(client):
     with pytest.raises(tidal_catalogue.PlaylistUnresolvable):
-        tidal_catalogue.TidalCatalogue(Empty()).playlist_for(PLAYLIST)
+        tidal_catalogue.TidalCatalogue(client()).playlist_for(PLAYLIST)
 
 
 @pytest.mark.parametrize(
@@ -767,22 +764,19 @@ def looking_up(answer: Any) -> FakeClient:
     return Looking()
 
 
-def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
-    with pytest.raises(ConnectionError):
-        harbour_roster(looking_up(ConnectionError("refused")), seed_artists=("id:99",))
+@pytest.mark.parametrize(
+    "failure", [ConnectionError("refused"), KeyError("99")], ids=["outage", "key-error"]
+)
+def test_a_failure_looking_up_an_id_seed_is_not_an_unresolved_seed(failure):
+    with pytest.raises(type(failure)):
+        harbour_roster(looking_up(failure), seed_artists=("id:99",))
 
 
-def test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed():
-    with pytest.raises(KeyError):
-        harbour_roster(looking_up(KeyError("99")), seed_artists=("id:99",))
-
-
-def test_the_client_object_not_found_is_an_unresolved_id_seed():
-    assert "id:99" in unresolved(looking_up(ObjectNotFound("gone")), seed_artists=("id:99",))
-
-
-def test_an_id_lookup_that_returns_none_is_an_unresolved_seed():
-    assert "id:99" in unresolved(looking_up(None), seed_artists=("id:99",))
+@pytest.mark.parametrize(
+    "answer", [ObjectNotFound("gone"), None], ids=["client-not-found", "returns-none"]
+)
+def test_an_id_lookup_that_finds_nothing_is_an_unresolved_seed(answer):
+    assert "id:99" in unresolved(looking_up(answer), seed_artists=("id:99",))
 
 
 def test_a_seed_that_is_not_digits_after_the_prefix_is_still_a_name():
@@ -944,16 +938,19 @@ def own_page() -> ProviderArtist:
     return ProviderArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
 
 
-def test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist(
-    cfg, monkeypatch
+@pytest.mark.parametrize(
+    "rostered", [True, False], ids=["offers-the-credited-artist", "compilation-not-offered"]
+)
+def test_discovery_offers_the_credited_artist_and_never_the_compilation(
+    cfg, monkeypatch, rostered
 ):
     act, compilation = _credited("Act A", "10")
     use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
     record_session()
-    adapter = catalogue.resolve(config.load())
-    roster = adapter.artist_for(harbour())
+    adapter = catalogue.resolve(config.load()) if rostered else None
+    if rostered:
+        assert adapter.artist_for(harbour()).artists == [act]
     found = source_of(harbour(), adapter).list_recent(-1)
-    assert roster.artists == [act]
     assert {item.identity for item in found} == {"a1"}
     assert "va1" not in {item.identity for item in found}
 
@@ -999,15 +996,6 @@ def test_an_authentication_error_on_album_search_still_refuses_the_label():
     )
     with pytest.raises(tidalapi.exceptions.AuthenticationError):
         harbour_roster(client)
-
-
-def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(cfg, monkeypatch):
-    act, compilation = _credited("Act A", "10")
-    use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
-    record_session()
-    found = source_of(harbour()).list_recent(-1)
-    assert {item.identity for item in found} == {"a1"}
-    assert "va1" not in {item.identity for item in found}
 
 
 def test_an_unresolved_name_seed_refuses_even_when_discovery_would_find_albums():
@@ -1411,19 +1399,25 @@ def test_a_release_is_paged_to_its_declared_count_and_carries_its_year(pauses):
     assert pauses == []
 
 
-def test_a_release_that_is_gone_raises_at_once_and_is_never_retried(pauses):
+#: The two reads of one release by identifier: its tracks (U75) and its artist (R-840).
+READS = pytest.mark.parametrize("read", ["release_tracks", "release_artist"])
+
+
+@READS
+def test_a_release_that_is_gone_raises_at_once_and_is_never_retried(read, pauses):
     client = AlbumClient(ObjectNotFound("album r-gone"))
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
-        tidal_catalogue.TidalCatalogue(client).release_tracks("r-gone")
+        getattr(tidal_catalogue.TidalCatalogue(client), read)("r-gone")
     assert isinstance(excinfo.value, LookupError)
     assert "'r-gone'" in str(excinfo.value)
     assert client.album_reads == ["r-gone"]
     assert pauses == []
 
 
-def test_a_release_the_client_returns_nothing_for_raises_too(pauses):
+@READS
+def test_a_release_the_client_returns_nothing_for_raises_too(read, pauses):
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
-        tidal_catalogue.TidalCatalogue(AlbumClient(None)).release_tracks("r-1")
+        getattr(tidal_catalogue.TidalCatalogue(AlbumClient(None)), read)("r-1")
 
 
 def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
@@ -1435,19 +1429,21 @@ def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
     assert pauses == [1.0]
 
 
-def test_an_outage_is_re_raised_as_the_provider_raised_it_once_the_ladder_is_spent(pauses):
+@READS
+def test_an_outage_is_re_raised_as_the_provider_raised_it_once_the_ladder_is_spent(read, pauses):
     client = AlbumClient(ConnectionError("the provider timed out"))
     with pytest.raises(ConnectionError):
-        tidal_catalogue.TidalCatalogue(client).release_tracks("r-1")
+        getattr(tidal_catalogue.TidalCatalogue(client), read)("r-1")
     assert len(client.album_reads) == 6
     assert pauses == [1.0, 2.0, 4.0, 8.0, 16.0]
 
 
+@READS
 @pytest.mark.parametrize("blank", ["", "   ", None])
-def test_no_identifier_is_refused_before_the_provider_is_asked(blank, pauses):
-    client = AlbumClient(ProviderAlbum("r-1", album_tracks(1), year=2020))
+def test_no_identifier_is_refused_before_the_provider_is_asked(blank, read, pauses):
+    client = AlbumClient(ProviderAlbum("r-1", album_tracks(1), year=2020, artist="Harbour Act"))
     with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
-        tidal_catalogue.TidalCatalogue(client).release_tracks(blank)
+        getattr(tidal_catalogue.TidalCatalogue(client), read)(blank)
     assert client.album_reads == []
 
 
@@ -1565,41 +1561,12 @@ def test_the_sweep_files_the_name_the_artist_read_returns():
     )
 
 
-def test_a_gone_release_has_no_artist_to_read_and_is_asked_about_once(pauses):
-    client = AlbumClient(ObjectNotFound("album r-gone"))
-    with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
-        tidal_catalogue.TidalCatalogue(client).release_artist("r-gone")
-    assert "'r-gone'" in str(excinfo.value)
-    assert client.album_reads == ["r-gone"]
-    assert pauses == []
-
-
-def test_an_artist_read_the_client_returns_nothing_for_raises_too(pauses):
-    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
-        tidal_catalogue.TidalCatalogue(AlbumClient(None)).release_artist("r-1")
-
-
 def test_a_rate_limited_artist_read_waits_and_is_asked_again(pauses):
     album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
     client = AlbumClient(RuntimeError("429 too many requests"), album)
     assert tidal_catalogue.TidalCatalogue(client).release_artist("r-1") == "Harbour Act"
     assert client.album_reads == ["r-1", "r-1"]
     assert pauses == [1.0]
-
-
-def test_an_artist_read_through_an_outage_is_re_raised_once_the_ladder_is_spent(pauses):
-    client = AlbumClient(ConnectionError("the provider timed out"))
-    with pytest.raises(ConnectionError):
-        tidal_catalogue.TidalCatalogue(client).release_artist("r-1")
-    assert len(client.album_reads) == 6
-
-
-@pytest.mark.parametrize("blank", ["", "   ", None])
-def test_an_artist_read_with_no_identifier_never_asks_the_provider(blank, pauses):
-    client = AlbumClient(ProviderAlbum("r-1", album_tracks(1), artist="Harbour Act"))
-    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
-        tidal_catalogue.TidalCatalogue(client).release_artist(blank)
-    assert client.album_reads == []
 
 
 def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pauses):

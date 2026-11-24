@@ -39,10 +39,8 @@ def test_a_recorded_answer_survives_a_rerun_that_does_not_name_it(configured):
 
 
 def test_an_absent_answer_falls_to_the_default_in_a_pipe(configured):
-    """With standard input trapped, a question the wizard cannot ask takes the
-    derived default."""
-    # Edit the raw text, since every writer puts the dataclass back whole,
-    # defaults included.
+    """With standard input trapped, a question the wizard cannot ask takes the derived default."""
+    # Edit the raw text, since every writer puts the dataclass back whole, defaults included.
     path = config.config_path()
     kept = [
         line
@@ -58,9 +56,8 @@ def test_an_absent_answer_falls_to_the_default_in_a_pipe(configured):
 
 
 def test_the_default_is_spelled_once(configured):
-    assert config.LibraryConfig.__dataclass_fields__["processed_dir"].default == (
-        config.DEFAULT_PROCESSED_DIR
-    )
+    field = config.LibraryConfig.__dataclass_fields__["processed_dir"]
+    assert field.default == config.DEFAULT_PROCESSED_DIR
 
 
 def test_the_processed_root_composes_from_the_two_keys(configured):
@@ -72,8 +69,7 @@ def test_the_processed_root_composes_from_the_two_keys(configured):
 
 
 def test_a_clean_machine_records_the_default_when_no_flag_names_one(tmp_path, monkeypatch):
-    """On a clean machine with no flag and standard input trapped, the derived
-    default is what reaches the file."""
+    """A clean machine with no flag and standard input trapped writes the derived default."""
     from cratekit.cli import doctor
     from tests.test_doctor import VOLUME, probes
 
@@ -82,28 +78,13 @@ def test_a_clean_machine_records_the_default_when_no_flag_names_one(tmp_path, mo
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
-    code, _out, err = drive(
-        [
-            "--output",
-            "json",
-            "setup",
-            "--library-root",
-            str(root),
-            "--db-path",
-            str(root / "db" / "master.db"),
-            "--volume-id",
-            VOLUME,
-            "--staging",
-            str(tmp_path / "staging"),
-            "--profile",
-            "slim",
-            "--taxonomy",
-            "default",
-        ]
-    )
+    code, _out, err = drive([
+        "--output", "json", "setup", "--library-root", str(root), "--db-path",
+        str(root / "db" / "master.db"), "--volume-id", VOLUME, "--staging",
+        str(tmp_path / "staging"), "--profile", "slim", "--taxonomy", "default",
+    ])
     assert code in {int(ExitCode.OK), int(ExitCode.PRECONDITION)}, err
     config.reset_cache()
     assert config.load().library.processed_dir == config.DEFAULT_PROCESSED_DIR
-    assert f'processed_dir = "{config.DEFAULT_PROCESSED_DIR}"' in config.config_path().read_text(
-        encoding="utf-8"
-    )
+    written = config.config_path().read_text(encoding="utf-8")
+    assert f'processed_dir = "{config.DEFAULT_PROCESSED_DIR}"' in written

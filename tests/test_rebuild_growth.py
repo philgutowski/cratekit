@@ -1,7 +1,6 @@
 """U246: a rebuild's second pass costs in proportion to its placements, not their square.
 
-The proof is a call count at two sizes, never a clock: linear work doubles, the
-old shape quadruples. Memberships come from the brief and the file. D1 applies.
+Proved by a call count at two sizes, never a clock: linear work doubles. D1 applies.
 """
 
 from __future__ import annotations
@@ -30,9 +29,7 @@ SMALL = 24
 
 
 def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, str], set[str]]]:
-    """Rebuild ``tracks`` favourites in a library of their own; comparisons and what was written.
-
-    A comparison is a ``DeclaredPlacement.__hash__`` or ``__eq__`` call."""
+    """Rebuild ``tracks`` favourites alone; ``DeclaredPlacement`` hash and eq calls, and the tree."""
     with monkeypatch.context() as patch:
         root = base / f"library-{tracks}"
         (root / "db").mkdir(parents=True)
@@ -111,21 +108,18 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
             rows = [trees.ContentRow(one, location[one], deleted=False) for one in ids]
 
             calls = 0
-            real_hash = DeclaredPlacement.__hash__
-            real_eq = DeclaredPlacement.__eq__
+            reals = {name: getattr(DeclaredPlacement, name) for name in ("__hash__", "__eq__")}
 
-            def hashed(self):
-                nonlocal calls
-                calls += 1
-                return real_hash(self)
+            def counted(real):
+                def comparison(*args):
+                    nonlocal calls
+                    calls += 1
+                    return real(*args)
 
-            def compared(self, other):
-                nonlocal calls
-                calls += 1
-                return real_eq(self, other)
+                return comparison
 
-            patch.setattr(DeclaredPlacement, "__hash__", hashed)
-            patch.setattr(DeclaredPlacement, "__eq__", compared)
+            for name, real in reals.items():
+                patch.setattr(DeclaredPlacement, name, counted(real))
             report = rebuild.rebuild_tree(
                 cfg,
                 db,
@@ -138,8 +132,8 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
                 vocal_threshold=None,
                 truth=truth,
             )
-            patch.setattr(DeclaredPlacement, "__hash__", real_hash)
-            patch.setattr(DeclaredPlacement, "__eq__", real_eq)
+            for name, real in reals.items():
+                patch.setattr(DeclaredPlacement, name, real)
             assert report.after.converged, report.after.summaries()
             tree_root_id = str(tree_root.ID)
         finally:
@@ -150,25 +144,19 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
 def _written(path: Path, root_id: str) -> dict[tuple[str, str], set[str]]:
     """Every playlist two levels under the root, by folder and name, read with sqlite."""
     conn = sqlite3.connect(path)
+    live = "AND COALESCE(rb_local_deleted, 0) = 0"
+
+    def under(table: str, columns: str, parent: str, key: str) -> list[tuple]:
+        query = f"SELECT {columns} FROM {table} WHERE {parent} = ? {live}"
+        return conn.execute(query, (key,)).fetchall()
+
     try:
         held: dict[tuple[str, str], set[str]] = {}
-        for folder_id, folder in conn.execute(
-            "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? "
-            "AND COALESCE(rb_local_deleted, 0) = 0",
-            (root_id,),
-        ).fetchall():
-            for playlist_id, name in conn.execute(
-                "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? "
-                "AND COALESCE(rb_local_deleted, 0) = 0",
-                (folder_id,),
-            ).fetchall():
+        for folder_id, folder in under("djmdPlaylist", "ID, Name", "ParentID", root_id):
+            for playlist_id, name in under("djmdPlaylist", "ID, Name", "ParentID", folder_id):
                 held[(folder, name)] = {
                     str(row[0])
-                    for row in conn.execute(
-                        "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? "
-                        "AND COALESCE(rb_local_deleted, 0) = 0",
-                        (playlist_id,),
-                    )
+                    for row in under("djmdSongPlaylist", "ContentID", "PlaylistID", playlist_id)
                 }
         return held
     finally:

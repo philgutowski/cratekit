@@ -1,8 +1,6 @@
-"""U219: a resort after a genre sub is added writes only under the genre tree.
+"""U219: a resort after a genre sub is added writes only under the genre tree (R-789, R-746).
 
-R-789 (sitting 61, A69): with the intake tree cut over (R-746), a resort rebuilt
-it with every band and the genre sub. Expected values come from the brief or the
-fixture's database, never the code under test.
+Expected values come from the brief or the fixture's database, never the code under test.
 """
 
 from __future__ import annotations
@@ -34,6 +32,7 @@ from cratekit.write import rebuild, routing_cli
 from tests.cli_drive import approve_and_queue
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
+from tests.test_restore import _refusal
 
 GENRE_TREE = "BY GENRE + ENERGY"
 INTAKE = "INBOX"
@@ -139,16 +138,13 @@ def both_native(tagged, monkeypatch) -> dict[str, str]:
     )
     path = Path(tagged.library.db_path)
     _build_disposable_database(path)
-    conn = sqlite3.connect(path)
-    try:
+    with contextlib.closing(sqlite3.connect(path)) as conn:
         for content_id, name in (("1", FIRST), ("2", SECOND)):
             conn.execute(
                 "UPDATE djmdContent SET FolderPath = ?, rb_local_deleted = 0 WHERE ID = ?",
                 (str(_music(tagged) / name), content_id),
             )
         conn.commit()
-    finally:
-        conn.close()
     handle = rb_writer.open_db(path, unlock=False, cfg=tagged)
     try:
         genre_root = rb_writer.ensure_folder(handle, GENRE_TREE)
@@ -193,8 +189,7 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 
 def _below(cfg: config.Config, root_id: str) -> dict[str, set[str]]:
     """Every node under a root by path, with its rows, read with sqlite past the engine's depth."""
-    conn = sqlite3.connect(Path(cfg.library.db_path))
-    try:
+    with contextlib.closing(sqlite3.connect(Path(cfg.library.db_path))) as conn:
         found: dict[str, set[str]] = {}
         pending = [(root_id, "")]
         while pending:
@@ -215,8 +210,6 @@ def _below(cfg: config.Config, root_id: str) -> dict[str, set[str]]:
                 }
                 pending.append((str(node_id), f"{path} / "))
         return found
-    finally:
-        conn.close()
 
 
 GATE = "route.resort.apply"
@@ -247,10 +240,7 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
 
     _exited(_resort())
 
-    assert _below(cfg, both_native["intake"]) == before, (
-        "the resort wrote under INBOX, which is the folder sitting 61 found: "
-        "the intake tree's rebuild derived the routing tree's placements"
-    )
+    assert _below(cfg, both_native["intake"]) == before, "the resort wrote under INBOX"
     genre = _below(cfg, both_native["genre"])
     assert genre[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}, genre
 
@@ -270,10 +260,7 @@ def test_the_gate_shows_every_add_and_only_the_routing_trees(both_native):
     ), shown
     assert {row["tree"] for row in shown["items"]} == {taxonomy.default_taxonomy().tree.id}
     assert shown["adds"] == 4 and shown["count"] == 4, shown
-    assert any("INBOX" in line for line in shown["left alone"]), (
-        "the intake tree was left alone without a word, so a person cannot tell "
-        "that from a resort that forgot it"
-    )
+    assert any("INBOX" in line for line in shown["left alone"]), "INBOX left alone unsaid"
     assert _below(cfg, both_native["genre"]) == {}, "asking wrote something"
 
 
@@ -299,8 +286,7 @@ def test_a_resort_with_no_change_plans_nothing_and_queues_nothing(both_native):
     _exited(_resort())
     shown = _offered()["cause"]["detail"]["shown"]
     assert shown["items"] == [] and shown["adds"] == 0, shown
-    refused = _offered()
-    run_id = refused["run_id"]
+    run_id = _offered()["run_id"]
     _decide(run_id, "apply")
     again = _exited(_drive(["--run", run_id, "route", "resort"]))
     assert again["data"]["job_id"] == "", "a resort with nothing to add queued a job"
@@ -358,7 +344,7 @@ def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
     config.reset_cache()
     assert _offered()["cause"]["detail"]["shown"]["digest"] == (
         refused["cause"]["detail"]["shown"]["digest"]
-    ), "the copy and the live file planned differently, so this test proves nothing"
+    ), "the copy and the live file planned differently"
     code, acted = _drive(["--run", run_id, "route", "resort"])
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted
@@ -380,8 +366,7 @@ def test_a_rebuild_naming_the_intake_tree_refuses_and_queues_nothing(both_native
 
 def test_a_rebuild_of_every_tree_leaves_the_intake_tree_alone(both_native):
     cfg = config.load()
-    code, queued = _drive(["rebuild", "--actor", "a-person"])
-    assert code == int(ExitCode.OK), queued
+    queued = _exited(_drive(["rebuild", "--actor", "a-person"]))
     assert [w["code"] for w in queued["warnings"]] == ["tree-not-derived"], queued
     _exited(_drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}
@@ -403,21 +388,16 @@ def test_route_inbox_files_into_the_routing_tree_only(both_native, monkeypatch):
     intake.mkdir(parents=True, exist_ok=True)
     arrived = intake / "Puls Three.flac"
     arrived.write_bytes(b"")
-    conn = sqlite3.connect(Path(cfg.library.db_path))
-    try:
+    with contextlib.closing(sqlite3.connect(Path(cfg.library.db_path))) as conn:
         conn.execute("UPDATE djmdContent SET FolderPath = ? WHERE ID = '2'", (str(arrived),))
         conn.commit()
-    finally:
-        conn.close()
     monkeypatch.setattr(
         rebuild,
         "read_truth",
         lambda path: rebuild.Truth(location=str(path), genre=GENRE_SUB, energy=5),
     )
     _exited(_drive(["-d", "route.inbox.apply=apply", "route", "inbox"]))
-    assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}, (
-        "route inbox wrote the routing tree's folders under INBOX"
-    )
+    assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}, "route inbox wrote INBOX"
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"2"}
 
 
@@ -442,15 +422,15 @@ def test_the_derivation_refuses_the_intake_tree_before_reading_a_file(configured
         raise AssertionError("the derivation read the library before refusing")
 
     monkeypatch.setattr(rebuild, "library_truth", unread)
-    with pytest.raises(CratekitError) as caught:
-        rebuild.declared_membership(
-            configured,
-            declared,
-            tree_id=declared.intake.id,
-            source=tree_registry.DerivationSource.TAXONOMY,
-            vocal_threshold=None,
-        )
-    assert caught.value.cause.reason == "rebuild-tree-not-derivable"
+    cause = _refusal(
+        rebuild.declared_membership,
+        configured,
+        declared,
+        tree_id=declared.intake.id,
+        source=tree_registry.DerivationSource.TAXONOMY,
+        vocal_threshold=None,
+    )
+    assert cause.reason == "rebuild-tree-not-derivable"
 
 
 FAVORITES_SOURCE = "All Favorites"
@@ -482,9 +462,7 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
     shown = _shown(_offered()["cause"]["detail"]["shown"]["items"])
     _exited(_resort())
     written = _landed(_below(cfg, with_favourite["genre"]))
-    assert written == shown, (
-        f"the resort wrote {sorted(written - shown)}, which its gate never showed"
-    )
+    assert written == shown, f"the gate never showed {sorted(written - shown)}"
 
 
 def test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next(with_favourite):
@@ -537,8 +515,7 @@ def _accept(actor: str = "the-dj") -> dict:
     assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
     run_id = refused["run_id"]
     _exited(_drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor]))
-    accepted = _exited(_drive(["--run", run_id, *verb]))
-    return accepted
+    return _exited(_drive(["--run", run_id, *verb]))
 
 
 def _restore_again(cfg: config.Config) -> None:
@@ -554,9 +531,7 @@ def test_a_restore_marked_inbox_is_accepted_by_a_named_person(restored):
     assert accepted["data"]["state"] == "accepted"
     record = convergence.read(cfg).tree("inbox")
     assert record.unconverged and record.disposition is not None
-    assert record.disposition.actor == "the-dj", (
-        "the disposition names the command line's string rather than who answered"
-    )
+    assert record.disposition.actor == "the-dj", "the disposition names the argv's actor"
     assert not _landing_refuses(cfg)
     assert _below(cfg, restored["intake"]) == {BATCH: {"1", "2"}}, "accepting wrote INBOX"
 
@@ -575,9 +550,8 @@ def test_the_engine_never_accepts_a_tree_a_rebuild_can_repair(restored):
     """Acceptance is for a tree nothing derives; the routing tree is cleared on evidence."""
     cfg = config.load()
     declared = taxonomy.default_taxonomy()
-    with pytest.raises(CratekitError) as caught:
-        rebuild.accept_as_it_stands(cfg, declared, declared.tree.id, actor="the-dj")
-    assert caught.value.cause.reason == "refused-by-policy"
+    cause = _refusal(rebuild.accept_as_it_stands, cfg, declared, declared.tree.id, actor="the-dj")
+    assert cause.reason == "refused-by-policy"
     assert convergence.read(cfg).tree(declared.tree.id).blocking
 
 
@@ -593,9 +567,7 @@ def test_a_second_restore_clears_the_acceptance_of_the_first(restored):
     assert not _landing_refuses(cfg)
     _restore_again(cfg)
     record = convergence.read(cfg).tree("inbox")
-    assert record.disposition is None, (
-        "a named person's acceptance of the first restore stands over the second"
-    )
+    assert record.disposition is None, "the first restore's acceptance stands over the second"
     assert _landing_refuses(cfg)
 
 
@@ -612,12 +584,10 @@ def test_a_resort_that_left_a_favourite_for_later_says_so(with_favourite):
     with _handle(cfg) as handle:
         convergence.record_fingerprint(cfg, handle)
     _restore_again(cfg)
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    done = _exited(_resort())
     (warning,) = [w for w in done["warnings"] if w["code"] == "resort-again"]
     assert "run the resort again" in warning["message"]
     assert taxonomy.default_taxonomy().tree.id in warning["message"], warning
-    code, again = _resort()
-    assert code == int(ExitCode.OK), again
+    again = _exited(_resort())
     assert [w for w in again["warnings"] if w["code"] == "resort-again"] == []
     assert not convergence.read(cfg).tree(taxonomy.default_taxonomy().tree.id).blocking

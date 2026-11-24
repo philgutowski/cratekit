@@ -1,17 +1,16 @@
 """The guarded writer's source scans, read over the writer AND its parts (R-1890).
 
-``tests/test_rb_writer_guard.py`` scans ``inspect.getsource(rb_writer)``, which
-reads none of the parts U300 split out, so a bare error or unreserved refusal in a
-part passed it. That beat grid suite is never edited, so its checks are applied
-here to the writer and its parts (``tests/_split_modules.py``), refusals read
-through both factory spellings; other routes are held by the population pins.
-The soft delete guard's fix lives in ``tests/_source_guards.py`` and is proved here.
+``tests/test_rb_writer_guard.py`` reads none of the parts U300 split out and is never
+edited, so its checks run here over every part (``tests/_split_modules.py``), refusals
+read through both factory spellings. The fix in ``tests/_source_guards.py`` is proved here.
 """
 
 from __future__ import annotations
 
 import ast
 
+from cratekit.core.cause import REASONS
+from cratekit.core.exit_codes import ExitCode, meaning_of
 from tests import _source_guards as guard
 from tests._split_modules import files_of
 
@@ -88,9 +87,6 @@ def test_no_part_of_the_writer_raises_a_bare_runtime_error_or_system_exit():
 
 
 def test_every_refusal_the_writer_or_a_part_raises_through_a_factory_is_reserved():
-    from cratekit.core.cause import REASONS
-    from cratekit.core.exit_codes import ExitCode, meaning_of
-
     for path in files_of(WRITER):
         for reason in sorted(raised_reasons(path.read_text(encoding="utf-8"))):
             assert reason in REASONS, f"{path.name} raises {reason!r}, not a declared reason"
@@ -132,6 +128,8 @@ _ACCESSOR = (
     "\n"
     "\n"
 )
+#: A permissive read of the column through the accessor.
+READS = "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n"
 
 
 def test_the_soft_delete_guard_fires_on_a_permissive_read_through_the_accessor():
@@ -152,7 +150,6 @@ def test_the_soft_delete_guard_fires_on_a_permissive_read_through_the_accessor()
 
 def test_the_accessor_is_recognized_by_the_import_shapes_the_guard_knows_and_nothing_else():
     """The shapes ``_writer_imports`` names; its known limits list what it does not."""
-    reads = "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n"
     for accessor in (
         _ACCESSOR,
         "def _writer():\n    import cratekit.core.rb_writer as w\n    return w\n",
@@ -162,13 +159,13 @@ def test_the_accessor_is_recognized_by_the_import_shapes_the_guard_knows_and_not
         "if True:\n    def _writer():\n        from cratekit.core import rb_writer\n"
         "        return rb_writer\n",
     ):
-        assert guard.permissive_soft_delete_reads(accessor + reads), accessor
+        assert guard.permissive_soft_delete_reads(accessor + READS), accessor
     for not_one in (
         "def _writer():\n    from cratekit.core import config\n    return config\n",
         "def _writer():\n    from cratekit.core import rb_writer\n    return None\n",
         "",
     ):
-        assert not guard.permissive_soft_delete_reads(not_one + reads), not_one
+        assert not guard.permissive_soft_delete_reads(not_one + READS), not_one
 
 
 def test_the_soft_delete_guard_stays_quiet_on_the_parts_correct_reads():
@@ -186,19 +183,18 @@ def test_the_soft_delete_guard_stays_quiet_on_the_parts_correct_reads():
 
 def test_the_accessor_imported_from_its_one_home_names_the_column():
     """``from cratekit.core.rb_call_time import writer as _writer``, the parts' spelling since U329."""
-    reads = "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n"
     for accessor in (
         "from cratekit.core.rb_call_time import writer as _writer\n",
         "from .rb_call_time import writer as _writer\n",
     ):
-        assert guard.permissive_soft_delete_reads(accessor + reads), accessor
+        assert guard.permissive_soft_delete_reads(accessor + READS), accessor
     bare = "from cratekit.core.rb_call_time import writer\n"
-    assert guard.permissive_soft_delete_reads(bare + reads.replace("_writer()", "writer()"))
+    assert guard.permissive_soft_delete_reads(bare + READS.replace("_writer()", "writer()"))
     for not_one in (
         "from cratekit.core.session_call_time import session as _writer\n",
         "from cratekit.core.other import writer as _writer\n",
     ):
-        assert not guard.permissive_soft_delete_reads(not_one + reads), not_one
+        assert not guard.permissive_soft_delete_reads(not_one + READS), not_one
 
 
 def test_every_accessor_read_of_the_column_in_the_parts_is_seen_by_the_guard():

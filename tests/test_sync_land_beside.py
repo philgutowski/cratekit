@@ -13,8 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import sync_land
 from cratekit.cli import tail as tail_chain
+from cratekit.core import jobs
 from cratekit.core.cause import Cause, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import beside as staged_reading
@@ -37,6 +39,7 @@ from tests.test_sync_land import (  # noqa: F401 - fixtures by name
     _refused,
     _staged,
     _summary,
+    dataclasses_replace_library,
     full,
     machine,
     tail,
@@ -95,6 +98,25 @@ def _pass(monkeypatch, *ids: str, name: str = "Warmup", playlist: str = "pl-a") 
 def _landable(script) -> None:
     for n in ISRC:
         script.landings.setdefault(n, Landing())
+
+
+def _ready(machine) -> tuple:
+    """``machine`` with every ISRC row downloadable."""
+    cfg, script = machine
+    _landable(script)
+    return cfg, script
+
+
+def _two(monkeypatch, first: tuple[str, ...], second: tuple[str, ...]) -> None:
+    """The account's ``pl-a`` Warmup and ``pl-b`` Peak, holding those rows."""
+    warmup = (_playlist("pl-a", "Warmup"), _rows(*first))
+    bind_playlists(monkeypatch, warmup, (_playlist("pl-b", "Peak"), _rows(*second)))
+
+
+def _waiting(job: str, tracks: int, pass_name: str | None = None, pass_run: str | None = None):
+    """One download the refusal names as waiting."""
+    return {"job": job, "run": None, "verb": "acquire.download", "tracks": tracks,
+            "pass": pass_name, "pass_run": pass_run}
 
 
 # 1. A label go's download waiting at its landing's gate
@@ -167,16 +189,7 @@ def test_a_plain_download_beside_the_pass_refuses_naming_it(machine, monkeypatch
 
     envelope = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.DOWNLOAD)
-    assert cause["detail"]["waiting"] == [
-        {
-            "job": plain,
-            "run": None,
-            "verb": "acquire.download",
-            "tracks": 1,
-            "pass": None,
-            "pass_run": None,
-        }
-    ]
+    assert cause["detail"]["waiting"] == [_waiting(plain, 1)]
     assert f"move the tracks of job {plain} out of {_staged(cfg)}" in " ".join(
         cause["remediation"]["steps"]
     )
@@ -189,31 +202,17 @@ def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_la
 ):
     """An earlier pass's tracks are another download's, so a new pass refuses
     and names the first pass's own continue command."""
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101", "102"), ExitCode.PENDING_HUMAN)
     (download,) = _by_key("acquire.download")
     first_run = _summary(first)["pass_run"]
     script.fetched.clear()
-
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _rows("101", "102")),
-        (_playlist("pl-b", "Peak"), _rows("101", "103")),
-    )
+    _two(monkeypatch, ("101", "102"), ("101", "103"))
     second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert script.fetched == []
-    assert cause["detail"]["waiting"] == [
-        {
-            "job": download.job_id,
-            "run": None,
-            "verb": "acquire.download",
-            "tracks": 2,
-            "pass": _summary(first)["land_name"],
-            "pass_run": first_run,
-        }
-    ]
+    waiting = _waiting(download.job_id, 2, _summary(first)["land_name"], first_run)
+    assert cause["detail"]["waiting"] == [waiting]
     assert (
         f"take the sync pass {_summary(first)['land_name']} to its landing with: "
         f"crate sync land --pass-run {first_run}"
@@ -223,18 +222,12 @@ def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_la
 def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monkeypatch, renaming):
     """A first pass whose tail renamed its tracks, its landing's gate never
     answered, is named as whose tail may have renamed them."""
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101", "102"), ExitCode.PENDING_HUMAN)
     renamed = _files(cfg)
     assert renamed == ["Artist - 101.wav", "Artist - 102.wav"]
     first_run = _summary(first)["pass_run"]
-
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _rows("101", "102")),
-        (_playlist("pl-b", "Peak"), _rows("103")),
-    )
+    _two(monkeypatch, ("101", "102"), ("103",))
     second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert cause["detail"]["unnamed"] == renamed
@@ -244,18 +237,10 @@ def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monke
 
 
 def test_a_pass_whose_landing_is_proven_is_not_named(machine, monkeypatch, renaming):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
-    (Path(cfg.library.root) / f"{_summary(first)['land_name']}{land_cli.INTAKE_SUFFIX}").write_text(
-        "<xml/>"
-    )
-    bind_playlists(
-        monkeypatch,
-        (_playlist("pl-a", "Warmup"), _rows("101")),
-        (_playlist("pl-b", "Peak"), _rows("103")),
-    )
-
+    _proven(cfg, first)
+    _two(monkeypatch, ("101",), ("103",))
     second = exited(drive(["sync", "land"]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(second, sync_land.DOWNLOAD)
     assert cause["detail"]["waiting"] == []
@@ -266,22 +251,26 @@ def test_a_pass_whose_landing_is_proven_is_not_named(machine, monkeypatch, renam
 
 
 def _refusing_landing(tail: Tail) -> None:
-    tail.landing = lambda _argv: _refused(
-        Cause(
-            reason="library-export-unusable",
-            message="the rekordbox export could not be read",
-            remediation=Remediation(remedy=Remedy.PREPARE_LIBRARY_IN_REKORDBOX),
-            origin=("test",),
-        )
+    unusable = Cause(
+        reason="library-export-unusable",
+        message="the rekordbox export could not be read",
+        remediation=Remediation(remedy=Remedy.PREPARE_LIBRARY_IN_REKORDBOX),
+        origin=("test",),
     )
+    tail.landing = lambda _argv: _refused(unusable)
+
+
+def _proven(cfg, first: dict) -> None:
+    """The landing of the pass ``first`` proven by its intake file."""
+    name = _summary(first)["land_name"]
+    (Path(cfg.library.root) / f"{name}{land_cli.INTAKE_SUFFIX}").write_text("<xml/>")
 
 
 @pytest.mark.parametrize("stop", ["gate", "failed"])
 def test_the_passes_own_renamed_tracks_after_its_tail_stopped_run_on(
     machine, monkeypatch, renaming, stop
 ):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     if stop == "failed":
         _refusing_landing(renaming)
     code, first = _pass(monkeypatch, "101", "102")
@@ -289,35 +278,31 @@ def test_the_passes_own_renamed_tracks_after_its_tail_stopped_run_on(
     assert _files(cfg) == ["Artist - 101.wav", "Artist - 102.wav"]
     run_id = _summary(first)["pass_run"]
     renaming.landing = Tail().landing
-    landings = sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"])
-
+    landings = _landings(renaming)
     again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PENDING_HUMAN)
-    assert sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"]) == landings + 1
+    assert _landings(renaming) == landings + 1
     assert _summary(again)["stopped_at"] == sync_land.LAND_GATE
 
 
 def test_a_file_put_there_since_the_tail_stopped_is_not_the_passes_own(
     machine, monkeypatch, renaming
 ):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
     (_staged(cfg) / "Someone - Else.wav").write_bytes(b"RIFF")
-    landings = sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"])
-
+    landings = _landings(renaming)
     again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(again, sync_land.DOWNLOAD)
     assert cause["detail"]["unnamed"] == ["Someone - Else.wav"]
-    assert sum(1 for argv in renaming.calls if argv[:2] == ["intake", "land"]) == landings
+    assert _landings(renaming) == landings
 
 
 def test_a_file_the_passes_tail_left_and_then_changed_is_not_its_own(
     machine, monkeypatch, renaming
 ):
     """The record is the identity the landing's digest reads, not the name."""
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
     (_staged(cfg) / "Artist - 101.wav").write_bytes(b"something else entirely")
@@ -329,20 +314,16 @@ def test_a_file_the_passes_tail_left_and_then_changed_is_not_its_own(
 def test_once_the_passes_landing_is_proven_its_record_reads_nothing_as_its_own(
     machine, monkeypatch, renaming
 ):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
-    name = _summary(first)["land_name"]
-    (Path(cfg.library.root) / f"{name}{land_cli.INTAKE_SUFFIX}").write_text("<xml/>")
-
+    _proven(cfg, first)
     again = exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.REFUSED_BY_POLICY)
     assert _refused_beside(again, sync_land.DOWNLOAD)["detail"]["unnamed"] == ["Artist - 101.wav"]
 
 
 def test_the_record_is_kept_under_the_pass_at_each_tail_stop(machine, monkeypatch, renaming):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     record = staged_reading.pass_record(cfg, _summary(first)["land_name"])
     kept = staged_reading.kept(record)
@@ -352,8 +333,7 @@ def test_the_record_is_kept_under_the_pass_at_each_tail_stop(machine, monkeypatc
 def test_a_record_that_cannot_be_kept_is_a_warning_and_the_next_run_refuses(
     machine, monkeypatch, renaming
 ):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     real_keep = staged_reading.keep
 
     def unwritable(*_args, **_kwargs):
@@ -408,8 +388,7 @@ def test_an_unreadable_staging_folder_refuses_the_pass_before_it_downloads(
 def test_an_unreadable_library_root_refuses_over_the_passes_renamed_tracks(
     machine, monkeypatch, renaming
 ):
-    cfg, script = machine
-    _landable(script)
+    cfg, script = _ready(machine)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     run_id = _summary(first)["pass_run"]
 
@@ -435,8 +414,7 @@ def test_an_unreadable_library_root_refuses_over_the_passes_renamed_tracks(
 def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
     full, monkeypatch, tail
 ):
-    cfg, script = full
-    _landable(script)
+    cfg, script = _ready(full)
     first = exited(_pass(monkeypatch, "101"), ExitCode.PENDING_HUMAN)
     first_run = _summary(first)["pass_run"]
     one_release_answered(monkeypatch, script)
@@ -472,47 +450,49 @@ def _landings(tail: Tail) -> int:
     return sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
 
+def _by_hand(script, tmp_path):
+    """What arrives: a download run by hand, its job's id."""
+    return lambda: downloaded_by_hand(script, tmp_path, "x1")
+
+
+def _arriving(monkeypatch, arrive, *at: str) -> ArrivingTail:
+    """An ``ArrivingTail`` bound as the chain's dispatch."""
+    stand_in = ArrivingTail(arrive, *([at] if at else []))
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    return stand_in
+
+
 def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
     machine, monkeypatch, tmp_path
 ):
     """A download another process finished while the tail ran is not planned
     into the landing, and nothing is kept as the pass's own."""
-    cfg, script = machine
-    _landable(script)
-    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
-
+    cfg, script = _ready(machine)
+    stand_in = _arriving(monkeypatch, _by_hand(script, tmp_path))
     envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == [stand_in.arrived]
     assert (cause["detail"]["before"], cause["detail"]["after"]) == (1, 2)
     assert _landings(stand_in) == 0, "the landing was planned over what arrived"
     name = _summary(envelope)["land_name"]
-    assert (
-        f"crate intake land {_staged(cfg)} --pass {name}" in " ".join(cause["remediation"]["steps"])
-    )
+    land = f"crate intake land {_staged(cfg)} --pass {name}"
+    assert land in " ".join(cause["remediation"]["steps"])
     record = staged_reading.pass_record(cfg, name)
     assert not record.exists(), "the record kept what arrived as the pass's own"
-    # No continue command, which would refuse beside the pass's own renamed
-    # tracks with no record kept.
+    # No continue command, which would refuse beside the pass's own unrecorded renamed tracks.
     assert not any("crate sync land --pass-run" in one for one in cause["remediation"]["steps"])
     warnings = cause["detail"]["sync_land"]["warnings"]
     assert [one["code"] for one in warnings].count(sync_land.UNRECORDED_WARNING) == 1, warnings
 
 
-def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(
-    machine, monkeypatch
-):
-    cfg, script = machine
-    _landable(script)
+def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(machine, monkeypatch):
+    cfg, script = _ready(machine)
 
     def put_there():
         (_staged(cfg) / "dropped.wav").write_bytes(b"RIFF")
         return "a person"
 
-    stand_in = ArrivingTail(put_there)
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
-
+    stand_in = _arriving(monkeypatch, put_there)
     envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == []
@@ -520,17 +500,12 @@ def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(
     assert _landings(stand_in) == 0
 
 
-def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
-    full, monkeypatch, tmp_path
-):
+def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(full, monkeypatch, tmp_path):
     """The same rule for the go's tail, in ``cli.label_sync``."""
     cfg, script = full
-    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    stand_in = _arriving(monkeypatch, _by_hand(script, tmp_path))
     one_release_answered(monkeypatch, script)
-
     _go_run, code, envelope = approved_go()
-
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     cause = envelope["cause"]
     assert cause["reason"] == "refused-by-policy", cause
@@ -544,9 +519,6 @@ def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
 
 
 def _download_over(cfg, listed: str, *, key: str = "acquire.download") -> str:
-    from cratekit.acquire import cli as acquire_cli
-    from cratekit.core import jobs
-
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store, handler_key=key, payload={acquire_cli.LIST: listed}, cfg=cfg, item_ids=("1",)
@@ -555,9 +527,6 @@ def _download_over(cfg, listed: str, *, key: str = "acquire.download") -> str:
 
 
 def test_a_passes_own_downloads_are_this_librarys_over_its_own_list_by_name(machine):
-    from cratekit.core import jobs
-    from tests.test_sync_land import dataclasses_replace_library
-
     cfg, _script = machine
     name = "2026-11-11T000000Z-abcd_synced"
     own = _download_over(cfg, f"/lists/{name}.list.json")
@@ -570,19 +539,10 @@ def test_a_passes_own_downloads_are_this_librarys_over_its_own_list_by_name(mach
 
 
 def test_only_a_download_over_a_synced_list_is_a_passes():
-    from cratekit.core import jobs
-
     def job(listed: str, key: str = "acquire.download") -> jobs.Job:
         return jobs.Job(
-            job_id="j",
-            handler_key=key,
-            payload={"list": listed},
-            config_fingerprint="",
-            config_toml="",
-            library_id="",
-            state=jobs.JobState.SUCCEEDED,
-            created="",
-            updated="",
+            job_id="j", handler_key=key, payload={"list": listed}, config_fingerprint="",
+            config_toml="", library_id="", state=jobs.JobState.SUCCEEDED, created="", updated="",
         )
 
     assert staged_reading.pass_of(job("/x/p_synced.list.json")) == "p_synced"
@@ -596,11 +556,8 @@ def test_a_download_finished_as_the_landing_is_planned_refuses_the_planned_landi
 ):
     """An arrival between the check after the tail and the landing's own listing
     refuses the plan, naming its run, rather than handing it on at its gate."""
-    cfg, script = machine
-    _landable(script)
-    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
-
+    cfg, script = _ready(machine)
+    stand_in = _arriving(monkeypatch, _by_hand(script, tmp_path), "intake", "land")
     envelope = exited(_pass(monkeypatch, "101"), ExitCode.REFUSED_BY_POLICY)
     cause = _refused_beside(envelope, sync_land.LAND)
     assert cause["detail"]["arrived"] == [stand_in.arrived]
@@ -613,12 +570,9 @@ def test_a_download_finished_as_the_landing_is_planned_refuses_the_planned_landi
 
 def test_a_download_finished_as_a_gos_landing_is_planned_refuses_it(full, monkeypatch, tmp_path):
     cfg, script = full
-    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    _arriving(monkeypatch, _by_hand(script, tmp_path), "intake", "land")
     one_release_answered(monkeypatch, script)
-
     _go_run, code, envelope = approved_go()
-
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     cause = envelope["cause"]
     assert cause["detail"]["planned_run"] == "land-run", cause
@@ -631,21 +585,13 @@ def test_a_gos_tail_that_fails_while_a_download_arrives_says_its_record_was_not_
 ):
     """The record's warning rides the refusal."""
     cfg, script = full
-
-    def arrive_and_fail():
-        return downloaded_by_hand(script, tmp_path, "x1")
-
-    stand_in = ArrivingTail(arrive_and_fail)
-
     def failing(_job, _item):
         raise RuntimeError("the analysis failed")
 
+    stand_in = _arriving(monkeypatch, _by_hand(script, tmp_path))
     stand_in.work[sync_land.ANALYZE] = failing
-    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
     one_release_answered(monkeypatch, script)
-
     _go_run, code, envelope = approved_go()
-
     assert code != int(ExitCode.OK), envelope
     warnings = envelope["cause"]["detail"]["label_sync"]["warnings"]
     (unkept,) = [one for one in warnings if one["code"] == "label-sync-landing-unrecorded"]

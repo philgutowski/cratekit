@@ -3,14 +3,14 @@
 A filed track's genre is moved, through the verb, to a genre another top level
 folder files by; then ``adopt move`` takes it out of its old genre folder's
 energy band, ``with vox`` and Favorites (R-1965) and into the new folder's, the
-one move it makes across folders.
-A track a person put in a second genre folder by hand is left there, and a
-genre moved back asks nothing. The library is ``tests/test_adopt_move.py``'s.
-D1 applies.
+one move it makes across folders. A track a person put in a second genre folder
+by hand is left there, and a genre moved back asks nothing. The library is
+``tests/test_adopt_move.py``'s. D1 applies.
 """
 
 from __future__ import annotations
 
+import shutil
 from datetime import date
 from pathlib import Path
 
@@ -18,13 +18,15 @@ import pytest
 
 from cratekit.adopt import collection, genre_moves
 from cratekit.adopt import move as adopt_move
-from cratekit.core import rb_writer, routing, session, tags, taxonomy
+from cratekit.adopt import placements as adopt_placements
+from cratekit.adopt.plan import Placements, alongside_places, in_own_folder
+from cratekit.core import jobs, rb_writer, routing, session, tags, taxonomy
 from cratekit.core.exit_codes import ExitCode
-from cratekit.tagging import genre_set_cli
-from cratekit.write import genre_favorites, trees
+from cratekit.tagging import genre_set_cli, second_cli
+from cratekit.write import genre_favorites, rebuild, trees
 from cratekit.write.routing_pass import destination
 from tests.cli_drive import approve_and_queue, drive
-from tests.test_adopt_move import DECLARED, HIGH, LOW, _live, _removed, seed_library
+from tests.test_adopt_move import DECLARED, HIGH, LOW, _fails, _live, _removed, _sql, seed_library
 from tests.test_adopt_workers import _calibrate, _resume, _tag_vox
 from tests.test_adopt_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_adopt_workers import _reader_cache as _reader_cache  # noqa: PLC0414
@@ -34,40 +36,53 @@ from tests.test_adopt_workers import (
 from tests.test_adopt_workers import library as library  # noqa: PLC0414
 from tests.test_adopt_workers import machine as machine  # noqa: PLC0414
 from tests.test_adopt_workers import silence as silence  # noqa: PLC0414
+from tests.test_tag_rows import acts
 
 #: The bucket the track is filed in, and the one its new genre names.
 OLD_BUCKET, OLD_GENRE = "house_funky_disco", "Funky House"
 NEW_BUCKET, NEW_GENRE = "deep_house", "Deep House"
+#: A lookup row for a third genre, so a track can be given it.
+TECH_HOUSE = (
+    "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
+    "VALUES ('9990', 'Tech House', 'u', 0, '2026-10-01', '2026-10-01')"
+)
 
 
 def _place(bucket: str, band: str) -> tuple[str, str]:
     return destination(DECLARED, bucket, band)
 
 
-@pytest.fixture
-def filed(machine, silence):
-    """``mover`` and ``stays`` in the old folder's high band, ``second`` in the new
-    folder's low band and, put there by hand, in the old folder's high band too."""
-    tracks = [
-        ("mover", OLD_GENRE, "8"),
-        ("stays", OLD_GENRE, "8"),
-        ("second", NEW_GENRE, "2"),
-    ]
-    places = [
-        (*_place(OLD_BUCKET, HIGH), "mover"),
-        (*_place(OLD_BUCKET, HIGH), "stays"),
-        (*_place(NEW_BUCKET, LOW), "second"),
-        (*_place(OLD_BUCKET, HIGH), "second"),
-    ]
-    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1))
+def _seeded(machine, silence, tracks, places, *, vox: bool = False, **kwargs):
+    """``seed_library``'s library with real genre tags and an acknowledgment; with ``vox``,
+    ``mover`` vox tagged under a calibrated cut and the library filed by ``adopt apply``."""
+    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1), **kwargs)
     music = Path(machine.library.root) / "Music"
     for stray in ("one.flac", "two.flac"):
         (music / stray).unlink(missing_ok=True)
     for content_id, genre, _energy in tracks:
         assert tags.write_tags(music / f"{content_id}.flac", {"genre": genre})
     session.record_acknowledgment(machine, terminal=lambda: True)
+    if vox:
+        _calibrate(machine)
+        _tag_vox(machine, "mover")
     collection.reset_cache()
+    if vox:
+        _apply()
     return machine
+
+
+@pytest.fixture
+def filed(machine, silence):
+    """``mover`` and ``stays`` in the old folder's high band, ``second`` in the new
+    folder's low band and, put there by hand, in the old folder's high band too."""
+    tracks = [("mover", OLD_GENRE, "8"), ("stays", OLD_GENRE, "8"), ("second", NEW_GENRE, "2")]
+    places = [
+        (*_place(OLD_BUCKET, HIGH), "mover"),
+        (*_place(OLD_BUCKET, HIGH), "stays"),
+        (*_place(NEW_BUCKET, LOW), "second"),
+        (*_place(OLD_BUCKET, HIGH), "second"),
+    ]
+    return _seeded(machine, silence, tracks, places)
 
 
 def _held(cfg, content_id: str) -> set[tuple[str, str]]:
@@ -75,15 +90,19 @@ def _held(cfg, content_id: str) -> set[tuple[str, str]]:
     return set(_live(cfg).get(content_id, ()))
 
 
-def _tag_set(*argv: str) -> dict:
-    verb = ["tag", "set", NEW_GENRE, *argv]
-    _code, refused = drive(verb)
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
-    code, acted = drive(["--run", run_id, *verb])
+def _acted(verb: list[str], gate: str = genre_set_cli.CONFIRM_GATE) -> dict:
+    code, acted, _refused = acts(verb, gate)
     assert code == int(ExitCode.OK), acted
     collection.reset_cache()
     return acted
+
+
+def _tag_set(*argv: str) -> dict:
+    return _acted(["tag", "set", NEW_GENRE, *argv])
+
+
+def _tag_set_genre(genre: str, *rows: str) -> dict:
+    return _acted(["tag", "set", genre, *(arg for row in rows for arg in ("--row", row))])
 
 
 def _shown() -> dict:
@@ -92,12 +111,24 @@ def _shown() -> dict:
     return refused["cause"]["detail"]["shown"]
 
 
-def _move() -> dict:
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+def _job(verb: list[str], gate: str) -> dict:
+    _run_id, job_id = approve_and_queue(verb, gate)
     code, resumed = drive(_resume(job_id))
     assert code == int(ExitCode.OK), resumed
     collection.reset_cache()
     return resumed
+
+
+def _move() -> dict:
+    return _job(["adopt", "move"], "adopt.move.approve")
+
+
+def _apply() -> dict:
+    return _job(["adopt", "apply"], "adopt.apply.approve")
+
+
+def _queued_move() -> str:
+    return approve_and_queue(["adopt", "move"], "adopt.move.approve")[1]
 
 
 def test_the_moved_track_leaves_its_old_genre_folder_for_the_new_ones_band(filed):
@@ -107,8 +138,7 @@ def test_the_moved_track_leaves_its_old_genre_folder_for_the_new_ones_band(filed
     assert "crate adopt move" in acted["warnings"][-1]["message"]
     assert dict(genre_moves.read(filed)) == {"mover": frozenset({OLD_BUCKET})}
 
-    shown = _shown()
-    (move,) = shown["items"]
+    (move,) = _shown()["items"]
     assert (move["content_id"], move["bucket"], move["target_bucket"]) == (
         "mover", OLD_BUCKET, NEW_BUCKET
     )
@@ -128,10 +158,6 @@ def test_the_moved_track_leaves_its_old_genre_folder_for_the_new_ones_band(filed
 def test_rows_never_filed_are_filed_by_the_step_the_run_names(filed, silence):
     """A row with no genre given one, filed nowhere: the run names `adopt apply`
     first, and the two steps file every row (review round one)."""
-    import shutil
-
-    from tests.test_adopt_move import _sql
-
     music = Path(filed.library.root) / "Music"
     shutil.copyfile(music / "stays.flac", music / "fresh.flac")
     assert tags.clear_tags(music / "fresh.flac", ["genre"])
@@ -145,9 +171,7 @@ def test_rows_never_filed_are_filed_by_the_step_the_run_names(filed, silence):
     acted = _tag_set("--row", "fresh", "--row", "mover")
     said = acted["warnings"][1]["message"]
     assert "run `crate adopt apply`" in said and "then `crate adopt move`, which takes the 1" in said
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, applied = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), applied
+    _apply()
     _move()
     assert _held(filed, "fresh") == {_place(NEW_BUCKET, HIGH)}
     assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH)}
@@ -156,22 +180,11 @@ def test_rows_never_filed_are_filed_by_the_step_the_run_names(filed, silence):
 
 def test_a_genre_given_again_after_the_approval_refuses_the_move_stale(filed):
     """The folder a move files into is part of what was approved (review round one)."""
-    from tests.test_adopt_move import _sql
-
-    _sql(
-        filed,
-        "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
-        "VALUES ('9990', 'Tech House', 'u', 0, '2026-10-01', '2026-10-01')",
-    )
+    _sql(filed, TECH_HOUSE)
     _tag_set("--row", "mover")
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
-    verb = ["tag", "set", "Tech House", "--row", "mover"]
-    _code, refused = drive(verb)
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
-    code, acted = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK) and acted["data"]["totals"]["written"] == 1, acted
-    collection.reset_cache()
+    job_id = _queued_move()
+    acted = _tag_set_genre("Tech House", "mover")
+    assert acted["data"]["totals"]["written"] == 1, acted
 
     code, resumed = drive(_resume(job_id))
 
@@ -184,26 +197,11 @@ def test_a_genre_given_again_after_the_approval_refuses_the_move_stale(filed):
 
 def test_a_track_leaving_two_folders_in_one_job_spends_both(filed):
     """Two moves of one track in one job each spend their folder (review round two)."""
-    from tests.test_adopt_move import _sql
-
-    _sql(
-        filed,
-        "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
-        "VALUES ('9990', 'Tech House', 'u', 0, '2026-10-01', '2026-10-01')",
-    )
+    _sql(filed, TECH_HOUSE)
     _tag_set("--row", "mover")
-    for _ in range(2):
-        _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-        assert drive(_resume(job_id))[0] == int(ExitCode.OK)
-        collection.reset_cache()
-        if _ == 0:
-            verb = ["tag", "set", "Tech House", "--row", "mover"]
-            _code, refused = drive(verb)
-            run_id = refused["run_id"]
-            drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply",
-                   "--actor", "a-person"])
-            assert drive(["--run", run_id, *verb])[0] == int(ExitCode.OK)
-            collection.reset_cache()
+    _apply()
+    _tag_set_genre("Tech House", "mover")
+    _apply()
     assert dict(genre_moves.read(filed)) == {"mover": frozenset({OLD_BUCKET, NEW_BUCKET})}
     _move()
     assert _held(filed, "mover") == {_place("tech_house", HIGH)}
@@ -218,9 +216,7 @@ def test_a_hand_placed_second_folder_is_never_asked_without_a_genre_move(filed):
 def test_a_move_already_half_made_by_adoption_only_removes(filed):
     _tag_set("--row", "mover")
     # ADOPTION FILES IT IN THE NEW FOLDER FIRST, and leaves the old one.
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, applied = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), applied
+    _apply()
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH), _place(NEW_BUCKET, HIGH)}
     (move,) = _shown()["items"]
     assert (move["add"], move["remove"]) == ("", [HIGH])
@@ -230,13 +226,7 @@ def test_a_move_already_half_made_by_adoption_only_removes(filed):
 
 def test_a_genre_moved_back_asks_nothing_of_the_old_folder(filed):
     _tag_set("--row", "mover")
-    verb = ["tag", "set", OLD_GENRE, "--row", "mover"]
-    _code, refused = drive(verb)
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
-    code, acted = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), acted
-    collection.reset_cache()
+    _tag_set_genre(OLD_GENRE, "mover")
     # THE OLD BUCKET IS THE ONE THE GENRE NAMES AGAIN, and the new one was never
     # filed, so the entry is spent and nothing waits on it.
     assert dict(genre_moves.read(filed)) == {}
@@ -256,8 +246,8 @@ def _entry(bucket: str, genre: str) -> "adopt_move.PlanEntry":
 
 
 def test_a_bucket_any_entry_of_the_track_claims_is_never_left():
-    """Per content identifier, never per entry, so a second genre folder an
-    entry of the same track files it in (U340) is kept."""
+    """Per content identifier, never per entry, so a second genre folder an entry of the
+    same track files it in (U340) is kept."""
     moved = {"mover": frozenset({OLD_BUCKET})}
     alone = [_entry(NEW_BUCKET, NEW_GENRE)]
     assert adopt_move.still_moved(alone, DECLARED, moved) == moved
@@ -271,11 +261,8 @@ def test_a_move_stopped_before_its_removal_keeps_its_entry_and_a_resume_finishes
     filed, monkeypatch
 ):
     """The entry is spent only once the track reads back moved (mutation table, M24)."""
-    from cratekit.core import jobs, rb_writer
-    from tests.test_adopt_move import _fails
-
     _tag_set("--row", "mover")
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    job_id = _queued_move()
     with monkeypatch.context() as patched:
         patched.setattr(rb_writer, "remove_memberships", _fails)
         code, failed = drive(_resume(job_id))
@@ -283,29 +270,16 @@ def test_a_move_stopped_before_its_removal_keeps_its_entry_and_a_resume_finishes
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH), _place(NEW_BUCKET, HIGH)}
     assert dict(genre_moves.read(filed)) == {"mover": frozenset({OLD_BUCKET})}
 
-    with jobs.open_store() as store:
-        jobs.retry(store, job_id)
-    collection.reset_cache()
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
+    _retried(job_id)
+
     assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH)}
     assert dict(genre_moves.read(filed)) == {}
 
 
 def test_a_track_with_a_second_genre_leaves_only_its_old_folder(filed):
     """One move, by the first genre's entry; the second genre's folder stays (U340)."""
-    from cratekit.tagging import second_cli
-
-    verb = ["tag", "second", "Tech House", "--row", "mover"]
-    _code, refused = drive(verb)
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, second_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
-    code, acted = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), acted
-    collection.reset_cache()
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    assert drive(_resume(job_id))[0] == int(ExitCode.OK)
-    collection.reset_cache()
+    _acted(["tag", "second", "Tech House", "--row", "mover"], second_cli.CONFIRM_GATE)
+    _apply()
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH), _place("tech_house", HIGH)}
 
     _tag_set("--row", "mover")
@@ -338,22 +312,12 @@ def _in_tree(cfg, content_id: str) -> set[tuple[str, str]]:
     return _held(cfg, content_id) - {SOURCE}
 
 
-def _apply() -> dict:
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, applied = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), applied
-    collection.reset_cache()
-    return applied
-
-
 @pytest.fixture
 def sung(machine, silence):
-    """``mover`` vox tagged and a favourite, ``plain`` a favourite only, and
-    ``kept`` a favourite in the old folder's Candy too, each filed by
-    ``adopt apply`` in the old folder's high band, ``with vox`` and Favorites as
-    its tags and the source say; ``deep`` in the new folder gives the library
-    its genre row. The cut and the tag rows are the ones the vocals verb
-    leaves (``tests/test_adopt_workers.py``)."""
+    """``mover`` vox tagged and a favourite, ``plain`` a favourite only, and ``kept`` a
+    favourite in the old folder's Candy too, each filed by ``adopt apply`` in the old
+    folder's high band, ``with vox`` and Favorites; ``deep`` gives the new folder's genre
+    row. The cut and the tag rows are the vocals verb's (``tests/test_adopt_workers.py``)."""
     movers = ("mover", "plain", "kept")
     tracks = [*((content_id, OLD_GENRE, "8") for content_id in movers), ("deep", NEW_GENRE, "2")]
     places = [
@@ -362,23 +326,12 @@ def sung(machine, silence):
         (*_place(OLD_BUCKET, CANDY), "kept"),
         (*_place(NEW_BUCKET, LOW), "deep"),
     ]
-    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1), outside=(SOURCE[0],))
-    music = Path(machine.library.root) / "Music"
-    for stray in ("one.flac", "two.flac"):
-        (music / stray).unlink(missing_ok=True)
-    for content_id, genre, _energy in tracks:
-        assert tags.write_tags(music / f"{content_id}.flac", {"genre": genre})
-    session.record_acknowledgment(machine, terminal=lambda: True)
-    _calibrate(machine)
-    _tag_vox(machine, "mover")
-    collection.reset_cache()
-    _apply()
-    return machine
+    return _seeded(machine, silence, tracks, places, vox=True, outside=(SOURCE[0],))
 
 
 def test_a_vocal_favourite_leaves_the_old_folders_with_vox_and_favorites_too(sung):
-    """The brief's drive: filed, given another genre, applied, moved; it ends in
-    the new folder's band, ``with vox`` and Favorites and nowhere in the old."""
+    """The brief's drive: filed, given another genre, applied, moved; it ends in the new
+    folder's band, ``with vox`` and Favorites and nowhere in the old."""
     olds = {_place(OLD_BUCKET, sub) for sub in (HIGH, VOX, FAVORITES)}
     news = {_place(NEW_BUCKET, sub) for sub in (HIGH, VOX, FAVORITES)}
     assert _in_tree(sung, "mover") == olds
@@ -403,8 +356,8 @@ def test_a_vocal_favourite_leaves_the_old_folders_with_vox_and_favorites_too(sun
 
 
 def test_a_favourite_with_no_vocal_sub_leaves_the_old_favorites(sung):
-    """The Favorites membership alone, with no ``with vox``, moved before
-    ``adopt apply`` files the new folder, so the move adds the band itself."""
+    """The Favorites membership alone, with no ``with vox``, moved before ``adopt apply``
+    files the new folder, so the move adds the band itself."""
     _tag_set("--row", "plain")
     (move,) = _shown()["items"]
     assert (move["add"], move["remove"]) == (HIGH, sorted([HIGH, FAVORITES]))
@@ -414,8 +367,8 @@ def test_a_favourite_with_no_vocal_sub_leaves_the_old_favorites(sung):
 
 
 def test_a_manual_sub_is_never_removed_and_keeps_the_old_folders_favorites(sung):
-    """Candy keeps the track in the old folder, so its Favorites there is still
-    what the mirror files; removing it would be undone by the next refresh."""
+    """Candy keeps the track in the old folder, so its Favorites there is still what the
+    mirror files; removing it would be undone by the next refresh."""
     _tag_set("--row", "kept")
     (move,) = _shown()["items"]
     assert move["remove"] == [HIGH]
@@ -426,20 +379,25 @@ def test_a_manual_sub_is_never_removed_and_keeps_the_old_folders_favorites(sung)
     assert dict(genre_moves.read(sung)) == {}
 
 
-def test_a_derived_membership_added_after_the_approval_refuses_the_move_stale(sung):
-    """The worker asks the plan's own rule again: a sub nobody was shown leaving."""
-    _tag_set("--row", "plain")
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
-    handle = rb_writer.open_db(rb_writer.live_db_path(sung), unlock=False, cfg=sung)
+def _by_hand(cfg, sub: str, content_id: str) -> None:
+    """``content_id`` added to the old folder's ``sub`` playlist as a person would add it."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
     try:
         tree = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        folder = rb_writer.ensure_folder(handle, _place(OLD_BUCKET, VOX)[0], parent=tree)
-        vocal = rb_writer.ensure_playlist(handle, _place(OLD_BUCKET, VOX)[1], folder)
-        rb_writer.add_memberships(handle, vocal, ["plain"])
+        folder = rb_writer.ensure_folder(handle, _place(OLD_BUCKET, sub)[0], parent=tree)
+        playlist = rb_writer.ensure_playlist(handle, _place(OLD_BUCKET, sub)[1], folder)
+        rb_writer.add_memberships(handle, playlist, [content_id])
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
     collection.reset_cache()
+
+
+def test_a_derived_membership_added_after_the_approval_refuses_the_move_stale(sung):
+    """The worker asks the plan's own rule again: a sub nobody was shown leaving."""
+    _tag_set("--row", "plain")
+    job_id = _queued_move()
+    _by_hand(sung, VOX, "plain")
 
     code, resumed = drive(_resume(job_id))
 
@@ -451,8 +409,6 @@ def test_a_derived_membership_added_after_the_approval_refuses_the_move_stale(su
 
 
 def _node(bucket: str, sub: str, *content_ids: str, playlist_id: str, names=None):
-    from cratekit.write import rebuild
-
     folder, playlist = names or _place(bucket, sub)
     return rebuild.TreeNode(
         folder_id=f"f-{bucket}", folder_display=folder, playlist_id=playlist_id,
@@ -461,16 +417,11 @@ def _node(bucket: str, sub: str, *content_ids: str, playlist_id: str, names=None
 
 
 def test_the_shipped_places_beside_a_band_are_the_two_derived_classes_and_the_genre_subs():
-    from cratekit.adopt.plan import alongside_places
-
     assert alongside_places(DECLARED, OLD_BUCKET) == (VOX, FAVORITES)
     assert alongside_places(DECLARED, GENRE_SUB_BUCKET) == (VOX, FAVORITES, GENRE_SUB)
 
 
 def test_the_reader_files_each_place_beside_the_band_and_the_folders_other_playlists_apart():
-    from cratekit.adopt import placements as adopt_placements
-    from cratekit.adopt.plan import alongside_places
-
     beside = alongside_places(DECLARED, OLD_BUCKET)
     nodes = [
         _node(OLD_BUCKET, HIGH, "t", playlist_id="p1"),
@@ -504,8 +455,6 @@ def _asked(placements) -> tuple:
 
 
 def _placed(**fields):
-    from cratekit.adopt.plan import Placements
-
     return Placements(read=True, **{
         name: {OLD_BUCKET: {"mover": tuple(subs)}} for name, subs in fields.items()
     })
@@ -538,12 +487,8 @@ def test_a_favorites_another_playlist_keeps_is_not_asked_alone_and_not_left_besi
 
 
 def test_a_place_another_bucket_declares_names_no_folder_of_the_declarer():
-    """A former place sits in the holder's folder and a split place is the
-    holder's band, so neither makes the declarer read the holder's other
-    playlists as its own (review round one)."""
-    from cratekit.adopt import placements as adopt_placements
-    from cratekit.adopt.plan import in_own_folder
-
+    """A former place sits in the holder's folder and a split place is the holder's band, so
+    neither makes the declarer read the holder's other playlists as its own (review round one)."""
     assert in_own_folder(DECLARED, "rnb", HIGH)
     assert not in_own_folder(DECLARED, "soul", "rnb_high")
     assert not in_own_folder(DECLARED, "hip_hop", "non_electronic_hip_hop")
@@ -570,32 +515,22 @@ def _vocal_favourite(machine, silence, genre: str, places) -> None:
     """``mover`` vox tagged, a favourite, filed by ``adopt apply`` from ``places``;
     ``other`` carries ``genre`` so the library has its row."""
     tracks = [("mover", places[0][2], "8"), ("other", genre, "2")]
-    seed_library(
-        machine, silence, tracks, [*places[1:], (*SOURCE, "mover")],
-        on=date(2026, 10, 1), outside=(SOURCE[0],),
+    _seeded(
+        machine, silence, tracks, [*places[1:], (*SOURCE, "mover")], vox=True,
+        outside=(SOURCE[0],),
     )
-    music = Path(machine.library.root) / "Music"
-    for stray in ("one.flac", "two.flac"):
-        (music / stray).unlink(missing_ok=True)
-    for content_id, track_genre, _energy in tracks:
-        assert tags.write_tags(music / f"{content_id}.flac", {"genre": track_genre})
-    session.record_acknowledgment(machine, terminal=lambda: True)
-    _calibrate(machine)
-    _tag_vox(machine, "mover")
-    collection.reset_cache()
-    _apply()
+
+
+#: R&B to Soul, Soul's split place: the vocal favourite filed in R&B's high band.
+R_AND_B = [("", "", "R&B"), (*_place("rnb", HIGH), "mover"), (*_place("soul", LOW), "other")]
 
 
 def test_a_row_moved_into_the_genre_split_out_of_its_folder_leaves_every_place_there(
     machine, silence
 ):
-    """R&B to Soul, Soul's split place: R&B's band is Soul's own move to take
-    out, so R&B's Favorites leaves with ``with vox`` in the same job, the job
-    finishes and the entry is spent (review round one, BLOCKING)."""
-    _vocal_favourite(
-        machine, silence, "Soul",
-        [("", "", "R&B"), (*_place("rnb", HIGH), "mover"), (*_place("soul", LOW), "other")],
-    )
+    """R&B's band is Soul's own move to take out, so R&B's Favorites leaves with ``with vox``
+    in the same job, the job finishes and the entry is spent (review round one, BLOCKING)."""
+    _vocal_favourite(machine, silence, "Soul", R_AND_B)
     rnb = {_place("rnb", sub) for sub in (HIGH, VOX, FAVORITES)}
     assert _in_tree(machine, "mover") == rnb
     _tag_set_genre("Soul", "mover")
@@ -616,10 +551,9 @@ def test_a_row_moved_into_the_genre_split_out_of_its_folder_leaves_every_place_t
 
 
 def test_a_row_filed_in_a_genre_sub_leaves_it_with_the_band(machine, silence):
-    """A Rominimal row ``route resort`` filed in the old folder's genre sub,
-    given Deep House: the genre sub was filed by the genre it no longer
-    carries, so it leaves with the band, and Favorites with it (review round
-    one, BLOCKING)."""
+    """A Rominimal row ``route resort`` filed in the old folder's genre sub, given Deep
+    House: the genre sub was filed by the genre it no longer carries, so it leaves with the
+    band, and Favorites with it (review round one, BLOCKING)."""
     _vocal_favourite(
         machine, silence, NEW_GENRE,
         [
@@ -628,9 +562,7 @@ def test_a_row_filed_in_a_genre_sub_leaves_it_with_the_band(machine, silence):
             (*_place(NEW_BUCKET, LOW), "other"),
         ],
     )
-    _run_id, job_id = approve_and_queue(["route", "resort"], "route.resort.apply")
-    assert drive(_resume(job_id))[0] == int(ExitCode.OK)
-    collection.reset_cache()
+    _job(["route", "resort"], "route.resort.apply")
     old = {_place(GENRE_SUB_BUCKET, sub) for sub in (HIGH, VOX, FAVORITES, GENRE_SUB)}
     assert _in_tree(machine, "mover") == old
     _tag_set_genre(NEW_GENRE, "mover")
@@ -646,17 +578,6 @@ def test_a_row_filed_in_a_genre_sub_leaves_it_with_the_band(machine, silence):
     assert code == int(ExitCode.OK), converged
 
 
-def _tag_set_genre(genre: str, *rows: str) -> dict:
-    verb = ["tag", "set", genre, *(arg for row in rows for arg in ("--row", row))]
-    _code, refused = drive(verb)
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, genre_set_cli.CONFIRM_GATE, "apply", "--actor", "a-person"])
-    code, acted = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), acted
-    collection.reset_cache()
-    return acted
-
-
 def _skipping(name: str):
     """``rb_writer.remove_memberships`` making no removal from playlists named ``name``."""
     real = rb_writer.remove_memberships
@@ -668,8 +589,6 @@ def _skipping(name: str):
 
 
 def _retried(job_id: str) -> None:
-    from cratekit.core import jobs
-
     with jobs.open_store() as store:
         jobs.retry(store, job_id)
     collection.reset_cache()
@@ -678,18 +597,24 @@ def _retried(job_id: str) -> None:
     collection.reset_cache()
 
 
-def test_a_place_beside_the_band_still_held_is_read_back_unfinished_and_a_resume_finishes(
-    sung, monkeypatch
-):
-    """The read back counts a place beside the band the move had to leave
-    (review round two): the job fails, the entry stays, the resume removes it."""
-    _tag_set("--row", "plain")
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+def _failed_move(monkeypatch, skipped: str) -> tuple[str, dict]:
+    """A queued move whose removals from ``skipped`` are never made: its job and failure."""
+    job_id = _queued_move()
     with monkeypatch.context() as patched:
-        patched.setattr(rb_writer, "remove_memberships", _skipping(_place(OLD_BUCKET, FAVORITES)[1]))
+        patched.setattr(rb_writer, "remove_memberships", _skipping(skipped))
         code, failed = drive(_resume(job_id))
     collection.reset_cache()
     assert code != int(ExitCode.OK), failed
+    return job_id, failed
+
+
+def test_a_place_beside_the_band_still_held_is_read_back_unfinished_and_a_resume_finishes(
+    sung, monkeypatch
+):
+    """The read back counts a place beside the band the move had to leave (review round
+    two): the job fails, the entry stays, the resume removes it."""
+    _tag_set("--row", "plain")
+    job_id, failed = _failed_move(monkeypatch, _place(OLD_BUCKET, FAVORITES)[1])
     assert failed["cause"]["inner"]["detail"]["in_both"] == ["plain"]
     assert _in_tree(sung, "plain") == {_place(OLD_BUCKET, FAVORITES), _place(NEW_BUCKET, HIGH)}
     assert dict(genre_moves.read(sung)) == {"plain": frozenset({OLD_BUCKET})}
@@ -703,20 +628,11 @@ def test_a_place_beside_the_band_still_held_is_read_back_unfinished_and_a_resume
 def test_a_candy_membership_added_after_the_approval_keeps_the_favorites_and_the_job_finishes(
     sung,
 ):
-    """A person files the row in the old folder's Candy between the gate and the
-    job: the worker keeps the Favorites and its read back agrees (review round two)."""
+    """A person files the row in the old folder's Candy between the gate and the job: the
+    worker keeps the Favorites and its read back agrees (review round two)."""
     _tag_set("--row", "plain")
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
-    handle = rb_writer.open_db(rb_writer.live_db_path(sung), unlock=False, cfg=sung)
-    try:
-        tree = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        folder = rb_writer.ensure_folder(handle, _place(OLD_BUCKET, CANDY)[0], parent=tree)
-        candy = rb_writer.ensure_playlist(handle, _place(OLD_BUCKET, CANDY)[1], folder)
-        rb_writer.add_memberships(handle, candy, ["plain"])
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    collection.reset_cache()
+    job_id = _queued_move()
+    _by_hand(sung, CANDY, "plain")
 
     code, resumed = drive(_resume(job_id))
 
@@ -731,21 +647,12 @@ def test_a_candy_membership_added_after_the_approval_keeps_the_favorites_and_the
 def test_a_genre_move_is_spent_only_when_every_move_of_its_track_finished(
     machine, silence, monkeypatch
 ):
-    """R&B to Soul makes two moves of one track; Soul's removal from R&B High
-    is made to fail, so the entry stays for the resume, which finishes it
-    (review round two)."""
-    _vocal_favourite(
-        machine, silence, "Soul",
-        [("", "", "R&B"), (*_place("rnb", HIGH), "mover"), (*_place("soul", LOW), "other")],
-    )
+    """R&B to Soul makes two moves of one track; Soul's removal from R&B High is made to
+    fail, so the entry stays for the resume, which finishes it (review round two)."""
+    _vocal_favourite(machine, silence, "Soul", R_AND_B)
     _tag_set_genre("Soul", "mover")
     _apply()
-    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
-    with monkeypatch.context() as patched:
-        patched.setattr(rb_writer, "remove_memberships", _skipping(_place("rnb", HIGH)[1]))
-        code, failed = drive(_resume(job_id))
-    collection.reset_cache()
-    assert code != int(ExitCode.OK), failed
+    job_id, _failed = _failed_move(monkeypatch, _place("rnb", HIGH)[1])
     assert _in_tree(machine, "mover") == {_place("rnb", HIGH), _place("soul", HIGH)}
     assert dict(genre_moves.read(machine)) == {"mover": frozenset({"rnb"})}
 
@@ -756,10 +663,8 @@ def test_a_genre_move_is_spent_only_when_every_move_of_its_track_finished(
 
 
 def test_a_folder_holding_the_track_only_beside_the_band_still_reads_its_other_playlists():
-    """No band of the folder holds the track, so the folder is known only from
-    its Favorites, and Candy there still keeps that Favorites (mutation R08)."""
-    from cratekit.adopt import placements as adopt_placements
-
+    """No band of the folder holds the track, so the folder is known only from its
+    Favorites, and Candy there still keeps that Favorites (mutation R08)."""
     nodes = [
         _node(OLD_BUCKET, FAVORITES, "t", playlist_id="p1"),
         _node(OLD_BUCKET, CANDY, "t", playlist_id="p2"),
@@ -770,10 +675,8 @@ def test_a_folder_holding_the_track_only_beside_the_band_still_reads_its_other_p
 
 
 def test_a_band_of_another_folder_does_not_keep_this_folders_favorites():
-    """A Soul row in R&B High holds Soul's split place, which is R&B's
-    playlist, so it does not keep Soul's own Favorites (mutation R11)."""
-    from cratekit.adopt.plan import Placements
-
+    """A Soul row in R&B High holds Soul's split place, which is R&B's playlist, so it does
+    not keep Soul's own Favorites (mutation R11)."""
     held = Placements(
         read=True, held={"soul": {"t": ("rnb_high",)}}, alongside={"soul": {"t": (FAVORITES,)}}
     )

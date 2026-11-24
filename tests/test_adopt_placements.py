@@ -19,6 +19,7 @@ from cratekit.core import convergence, routing, taxonomy
 from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
 from tests.test_adopt_move import HIGH, LOW, MED, SINK, _scanned
+from tests.test_adopt_move import _no_genre as _needs_genre
 from tests.test_adopt_move import _pure_energy_bucket as _energy_bucket
 from tests.test_adopt_workers import _style_bucket
 
@@ -124,10 +125,53 @@ def test_a_track_in_one_band_whose_file_reads_another_is_withheld_and_listed():
     ]
 
 
-def test_a_withheld_entry_keeps_the_identifier_of_the_work_it_was():
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], _held(bucket, t=(MED,))))
-    assert entry.entry_id == adopt_plan.entry_id_for(TREE_ID, "t", bucket, HIGH)
+_B = _energy_bucket().id
+_WITHHELD, _ROUTE = adopt_scan.Disposition.WITHHELD, adopt_scan.Disposition.ROUTE
+
+#: One track in the energy bucket: its reading, the places it holds, the
+#: disposition the plan gives it and the entry's fields that follow.
+_ONE_TRACK = {
+    "withheld-keeps-its-identifier": (
+        8, _held(_B, t=(MED,)), _WITHHELD,
+        {"entry_id": adopt_plan.entry_id_for(TREE_ID, "t", _B, HIGH)},
+    ),
+    "sink-whose-file-now-reads": (
+        5, _held(_B, t=(SINK,)), _WITHHELD, {"sub": MED, "holds": (SINK,)},
+    ),
+    "band-whose-file-has-no-reading": (
+        None, _held(_B, t=(HIGH,)), _WITHHELD, {"sub": SINK, "holds": (HIGH,), "energy": None},
+    ),
+    # The live library holds 37 of these; the writer reports the row present.
+    "two-bands-one-the-plan-names": (8, _held(_B, t=(HIGH, MED)), _ROUTE, {}),
+    "two-bands-and-a-third-named": (
+        1, _held(_B, t=(HIGH, MED)), _WITHHELD, {"holds": tuple(sorted((HIGH, MED)))},
+    ),
+    "unread-tree-carrying-held-subs": (
+        8, adopt_plan.Placements(read=False, held={_B: {"t": (MED,)}}), _ROUTE, {},
+    ),
+    "the-planned-sub-under-another-name-only": (
+        8,
+        adopt_plan.Placements(read=True, held={_B: {"t": (HIGH,)}}, unnamed={_B: {"t": (HIGH,)}}),
+        _WITHHELD, {"sub": HIGH, "holds": (HIGH,), "holds_unnamed": (HIGH,)},
+    ),
+    # ``unnamed`` is a part of ``held``, so one without the other shows nothing.
+    "an-unnamed-sub-it-does-not-hold": (
+        8, adopt_plan.Placements(read=True, unnamed={_B: {"t": (HIGH,)}}), _ROUTE, {},
+    ),
+    # The plan asks the taxonomy itself, even when handed a held sub class.
+    **{
+        f"only-in-sub-class-{entry.id}": (8, _held(_B, t=(entry.id,)), _ROUTE, {"sub": HIGH})
+        for entry in DECLARED.sub_classes
+    },
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(_ONE_TRACK))
+def test_a_track_holding_a_place_is_withheld_only_where_it_competes(case):
+    energy, placements, disposition, expected = _ONE_TRACK[case]
+    entry = _only(_plan([_scanned("t", _B, energy=energy)], placements))
+    assert entry.disposition is disposition
+    assert {name: getattr(entry, name) for name in expected} == expected
 
 
 def test_a_track_in_no_sub_of_the_bucket_is_added_as_before():
@@ -141,29 +185,6 @@ def test_a_track_in_no_sub_of_the_bucket_is_added_as_before():
     assert entry.disposition is adopt_scan.Disposition.ROUTE
     assert (entry.sub, entry.holds, entry.withheld_by) == (HIGH, (), "")
     assert plan.withheld_by_placement()["total"] == 0
-
-
-@pytest.mark.parametrize("sub_class", [entry.id for entry in DECLARED.sub_classes])
-def test_a_track_sitting_only_in_a_sub_class_is_added_to_its_band(sub_class):
-    """The plan asks the taxonomy itself, even when handed a held sub class."""
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], _held(bucket, t=(sub_class,))))
-    assert entry.disposition is adopt_scan.Disposition.ROUTE
-    assert entry.sub == HIGH
-
-
-def test_a_track_in_the_no_reading_sub_whose_file_now_reads_is_withheld():
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=5)], _held(bucket, t=(SINK,))))
-    assert entry.disposition is adopt_scan.Disposition.WITHHELD
-    assert (entry.sub, entry.holds) == (MED, (SINK,))
-
-
-def test_a_track_in_a_band_whose_file_has_no_reading_is_withheld_from_the_sink():
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=None)], _held(bucket, t=(HIGH,))))
-    assert entry.disposition is adopt_scan.Disposition.WITHHELD
-    assert (entry.sub, entry.holds, entry.energy) == (SINK, (HIGH,), None)
 
 
 def test_a_track_in_one_style_sub_is_withheld_from_another():
@@ -183,20 +204,6 @@ def test_a_track_already_in_the_sub_the_plan_names_is_not_withheld():
     entry = _only(plan)
     assert entry.disposition is adopt_scan.Disposition.ROUTE
     assert adopt_plan.to_json(plan)["held_elsewhere"] == []
-
-
-def test_a_track_in_two_bands_is_not_withheld_from_the_one_the_plan_names():
-    """The live library holds 37 of these; the writer reports the row present."""
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], _held(bucket, t=(HIGH, MED))))
-    assert entry.disposition is adopt_scan.Disposition.ROUTE
-
-
-def test_a_track_in_two_bands_is_withheld_from_a_third_and_both_are_listed():
-    bucket = _energy_bucket().id
-    entry = _only(_plan([_scanned("t", bucket, energy=1)], _held(bucket, t=(HIGH, MED))))
-    assert entry.disposition is adopt_scan.Disposition.WITHHELD
-    assert entry.holds == tuple(sorted((HIGH, MED)))
 
 
 # ── the digest and the unread tree ─────────────────────────────────────────
@@ -229,26 +236,7 @@ def test_a_tree_nobody_read_is_a_different_plan_from_a_tree_holding_nothing():
     assert unread.digest() != empty.digest()
 
 
-def test_an_unread_tree_withholds_nothing_even_when_it_carries_held_subs():
-    bucket = _energy_bucket().id
-    unread = adopt_plan.Placements(read=False, held={bucket: {"t": (MED,)}})
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], unread))
-    assert entry.disposition is adopt_scan.Disposition.ROUTE
-
-
 # ── the verdict paths keep what the plan read ──────────────────────────────
-
-
-def _needs_genre(content_id: str, *, energy: int | None) -> adopt_scan.ScannedTrack:
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac",
-        readability=adopt_scan.Readability.READABLE,
-        disposition=adopt_scan.Disposition.NEEDS_GENRE,
-        genre="",
-        energy=energy,
-    )
 
 
 def test_a_genre_answered_later_is_withheld_over_the_place_the_track_holds():
@@ -329,12 +317,56 @@ def _node(
     )
 
 
-def test_a_node_carrying_the_declared_names_is_the_sub_it_names():
-    bucket = _energy_bucket().id
-    found = adopt_placements.placements_from(DECLARED, [_node(bucket, MED, "t", "u")], None)
+_RENAMED = ("Renamed folder", "Renamed list")
+
+#: Nodes read off the energy bucket, the convergence record beside them, and
+#: what the placements answer: (method, track) to its value.
+_READ_BACK = {
+    "declared-names": (
+        [_node(_B, MED, "t", "u")], None,
+        {("holds", "t"): (MED,), ("holds", "absent"): ()},
+    ),
+    "recorded-node-under-the-declared-names": (
+        [_node(_B, MED, "t")], _recorded(_B),
+        {("holds", "t"): (MED,), ("holds_unnamed", "t"): ()},
+    ),
+    "one-sub-under-both-names": (
+        [_node(_B, MED, "t", "u", names=_RENAMED), _node(_B, MED, "t", ids=("f2", "p2"))],
+        _recorded(_B),
+        {("holds", "t"): (MED,), ("holds_unnamed", "t"): (),
+         ("holds", "u"): (MED,), ("holds_unnamed", "u"): (MED,)},
+    ),
+    "two-nodes-for-one-destination": (
+        [_node(_B, MED, "t", ids=("f1", "p1")), _node(_B, MED, "u", ids=("f2", "p2"))], None,
+        {("holds", "t"): (MED,), ("holds", "u"): (MED,)},
+    ),
+    "two-bands": (
+        [_node(_B, MED, "t", ids=("f1", "p1")), _node(_B, HIGH, "t", ids=("f1", "p2"))], None,
+        {("holds", "t"): tuple(sorted((MED, HIGH))), ("holds_doubled", "t"): ()},
+    ),
+    # R-781's shape, carried rather than lost in the set (R-780 lists it).
+    "a-pair-held-by-two-rows": (
+        [_node(_B, MED, "t", "u", doubled=("t",))], None,
+        {("holds", "t"): (MED,), ("holds_doubled", "t"): (MED,), ("holds", "u"): (MED,),
+         ("holds_doubled", "u"): (), ("holds_doubled", "absent"): ()},
+    ),
+    "two-playlists-for-one-sub-are-not-a-double": (
+        [_node(_B, MED, "t", ids=("f1", "p1")), _node(_B, MED, "t", ids=("f2", "p2"))], None,
+        {("holds", "t"): (MED,), ("holds_doubled", "t"): ()},
+    ),
+    "a-double-in-a-renamed-recorded-node": (
+        [_node(_B, MED, "t", names=_RENAMED, doubled=("t",))], _recorded(_B),
+        {("holds_doubled", "t"): (MED,)},
+    ),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(_READ_BACK))
+def test_a_tree_read_back_holds_what_its_nodes_name(case):
+    nodes, record, expected = _READ_BACK[case]
+    found = adopt_placements.placements_from(DECLARED, nodes, record)
     assert found.read is True
-    assert found.holds(bucket, "t") == (MED,)
-    assert found.holds(bucket, "absent") == ()
+    assert {key: getattr(found, key[0])(_B, key[1]) for key in expected} == expected
 
 
 def test_a_band_label_a_bucket_overrides_still_resolves_to_the_band():
@@ -366,75 +398,6 @@ def test_a_renamed_node_is_resolved_through_its_recorded_identifier():
     assert found.holds_unnamed(bucket, "t") == (MED,)
 
 
-def test_a_sub_held_under_both_names_is_one_the_writer_can_see():
-    bucket = _energy_bucket().id
-    record = _recorded(bucket)
-    nodes = [
-        _node(bucket, MED, "t", "u", names=("Renamed folder", "Renamed list")),
-        _node(bucket, MED, "t", ids=("f2", "p2")),
-    ]
-    found = adopt_placements.placements_from(DECLARED, nodes, record)
-    assert (found.holds(bucket, "t"), found.holds_unnamed(bucket, "t")) == ((MED,), ())
-    assert (found.holds(bucket, "u"), found.holds_unnamed(bucket, "u")) == ((MED,), (MED,))
-
-
-def test_a_recorded_node_that_carries_the_declared_names_is_not_unnamed():
-    bucket = _energy_bucket().id
-    record = _recorded(bucket)
-    found = adopt_placements.placements_from(DECLARED, [_node(bucket, MED, "t")], record)
-    assert (found.holds(bucket, "t"), found.holds_unnamed(bucket, "t")) == ((MED,), ())
-
-
-def test_two_nodes_answering_for_one_destination_both_count():
-    bucket = _energy_bucket().id
-    nodes = [
-        _node(bucket, MED, "t", ids=("f1", "p1")),
-        _node(bucket, MED, "u", ids=("f2", "p2")),
-    ]
-    found = adopt_placements.placements_from(DECLARED, nodes, None)
-    assert (found.holds(bucket, "t"), found.holds(bucket, "u")) == ((MED,), (MED,))
-
-
-def test_a_track_in_two_bands_holds_both():
-    bucket = _energy_bucket().id
-    nodes = [
-        _node(bucket, MED, "t", ids=("f1", "p1")),
-        _node(bucket, HIGH, "t", ids=("f1", "p2")),
-    ]
-    found = adopt_placements.placements_from(DECLARED, nodes, None)
-    assert found.holds(bucket, "t") == tuple(sorted((MED, HIGH)))
-    assert found.holds_doubled(bucket, "t") == ()
-
-
-def test_a_pair_held_by_two_rows_is_held_once_and_doubled():
-    """R-781's shape, carried rather than lost in the set (R-780 lists it)."""
-    bucket = _energy_bucket().id
-    found = adopt_placements.placements_from(
-        DECLARED, [_node(bucket, MED, "t", "u", doubled=("t",))], None
-    )
-    assert (found.holds(bucket, "t"), found.holds_doubled(bucket, "t")) == ((MED,), (MED,))
-    assert (found.holds(bucket, "u"), found.holds_doubled(bucket, "u")) == ((MED,), ())
-    assert found.holds_doubled(bucket, "absent") == ()
-
-
-def test_two_nodes_answering_for_one_sub_are_two_playlists_and_not_a_double():
-    bucket = _energy_bucket().id
-    nodes = [
-        _node(bucket, MED, "t", ids=("f1", "p1")),
-        _node(bucket, MED, "t", ids=("f2", "p2")),
-    ]
-    found = adopt_placements.placements_from(DECLARED, nodes, None)
-    assert (found.holds(bucket, "t"), found.holds_doubled(bucket, "t")) == ((MED,), ())
-
-
-def test_a_double_in_a_renamed_recorded_node_is_still_a_double():
-    bucket = _energy_bucket().id
-    record = _recorded(bucket)
-    renamed = _node(bucket, MED, "t", names=("Renamed folder", "Renamed list"), doubled=("t",))
-    found = adopt_placements.placements_from(DECLARED, [renamed], record)
-    assert found.holds_doubled(bucket, "t") == (MED,)
-
-
 def test_a_double_in_a_playlist_that_is_not_a_place_is_not_carried():
     bucket = _energy_bucket()
     hand_made = _node(
@@ -449,24 +412,6 @@ def test_a_double_in_a_playlist_that_is_not_a_place_is_not_carried():
 
 
 # ── a place the writer cannot see, and a screen the digest covers ──────────
-
-
-def test_a_track_in_the_planned_sub_under_another_name_only_is_withheld():
-    bucket = _energy_bucket().id
-    renamed = adopt_plan.Placements(
-        read=True, held={bucket: {"t": (HIGH,)}}, unnamed={bucket: {"t": (HIGH,)}}
-    )
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], renamed))
-    assert entry.disposition is adopt_scan.Disposition.WITHHELD
-    assert (entry.sub, entry.holds, entry.holds_unnamed) == (HIGH, (HIGH,), (HIGH,))
-
-
-def test_an_unnamed_sub_the_track_does_not_hold_changes_nothing():
-    """``unnamed`` is a part of ``held``, so one without the other shows nothing."""
-    bucket = _energy_bucket().id
-    odd = adopt_plan.Placements(read=True, unnamed={bucket: {"t": (HIGH,)}})
-    entry = _only(_plan([_scanned("t", bucket, energy=8)], odd))
-    assert entry.disposition is adopt_scan.Disposition.ROUTE
 
 
 def test_the_digest_covers_every_field_the_review_list_shows():

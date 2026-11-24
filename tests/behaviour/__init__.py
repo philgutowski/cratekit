@@ -1,24 +1,19 @@
 """Behaviour scenarios: what `crate` prints and writes, captured for comparison (U297).
 
 `scripts/behaviour_compare.py capture` runs these files as a pytest run of their
-own and `compare` reads two captures. They are not named ``test_*.py``, so the
-suite never collects them.
+own and `compare` reads two captures; not named ``test_*.py``, the suite never
+collects them.
 
-One file per package, named for the package whose verbs it drives, so two cards
-never edit the same one; a second suite's ``machine`` lives in a file named for
-the package and the verb, as ``tagging_rows.py`` does (U298). A scenario takes
-the ``stage`` fixture and drives commands through it:
-
-    def test_a_tag_is_written(stage, machine, silence):
-        ...
-        stage.crate("tag", "remap")
-
-Its fixtures are the suite's own, imported, never new builders. Assert what the
-scenario depends on, an exit code or a job id, so broken setup fails the capture
+One file per package, so two cards never edit the same one; a second suite's
+``machine`` lives in a file named for the package and the verb, as
+``tagging_rows.py`` does (U298). A scenario takes the ``stage`` fixture and
+drives commands through it, ``stage.crate("tag", "remap")``. Its fixtures are
+the suite's own, imported, never new builders. Assert what the scenario
+depends on, an exit code or a job id, so broken setup fails the capture
 instead of recording a refusal as the behaviour.
 
-This module holds the stage's parts: the pinned clock, the counted ids and the
-``Stage``; ``conftest.py`` puts them around every scenario.
+This module holds the pinned clock, the counted ids and the ``Stage``;
+``conftest.py`` puts them around every scenario.
 """
 
 from __future__ import annotations
@@ -134,13 +129,10 @@ class Counted:
 def pin(patch):
     """Hold the clock at ``INSTANT`` and draw ids from a fresh count, through ``patch``.
 
-    The returned callable takes the pins off again, the shared ``random`` seed
-    included. Pinned: ``datetime`` and ``date``; ``time.time`` and
-    ``time.time_ns``; ``time.monotonic`` and ``time.perf_counter``, which stand
-    still, so a wait never times out; ``uuid.uuid4``, ``secrets.token_hex`` and
-    ``secrets.token_bytes``; and the binding's row stamps
-    (``pin_binding_stamps``). File times are set by ``Stage.settle``; the process
-    id and inodes are the capture's own, which ``compare`` knows by name.
+    The returned callable takes the pins off again, the ``random`` seed
+    included. The monotonic clocks stand still, so a wait never times out. File
+    times are set by ``Stage.settle``; the process id and inodes are the
+    capture's own, which ``compare`` knows by name.
     """
     if _PINS["on"]:
         raise RuntimeError("the pins are already on, and one scenario runs at a time")
@@ -294,9 +286,8 @@ def scenario_name(path: Path, function: str) -> str:
 def process_identity() -> list[str]:
     """The words this process is known by in what it writes: its id and when it started.
 
-    Both differ between captures whatever the tree does, so they are written into
-    the capture for `compare` to read across. The start is spelled as
-    ``core.session.process_started`` spells it.
+    Both differ between captures whatever the tree does, so `compare` reads
+    across them; the start is spelled as ``core.session.process_started`` does.
     """
     import psutil
 

@@ -1,7 +1,6 @@
 """U211, review round two: a backup job is never offered as a run to continue.
 
-Its cause is the job's verdict. The fixtures are ``tests/test_backup_cli.py``'s,
-apart because both suites name one ``cfg``.
+Its cause is the job's verdict. The fixtures are ``tests/test_backup_cli.py``'s.
 """
 
 from __future__ import annotations
@@ -16,22 +15,22 @@ from tests.test_process_scan import DYING, FakeProcess, finder
 from tests.test_process_scan import table as table  # noqa: PLC0414
 
 
-def _careful(monkeypatch) -> None:
-    """The backup suite fakes an empty machine; this one reads the fake table carefully."""
+def _a_job_the_scan_refused(monkeypatch, table) -> str:
+    """A backup filed over a dying process, the fake table read carefully, not as empty."""
     monkeypatch.setattr(
         processes,
         "running_process_names",
         lambda: tuple(name for _pid, name in processes.running_processes()),
     )
+    table(FakeProcess(300, raises=DYING), finder())
+    _code, first = _drive(["backup", "run"])
+    return first["data"]["job_id"]
 
 
 def test_a_backup_job_refused_by_the_scan_is_not_offered_as_a_run_to_continue(
     cfg, rclone, monkeypatch, table
 ):
-    _careful(monkeypatch)
-    table(FakeProcess(300, raises=DYING), finder())
-    code, first = _drive(["backup", "run"])
-    job_id = first["data"]["job_id"]
+    job_id = _a_job_the_scan_refused(monkeypatch, table)
     code, ran = _drive(["backup", "run", "--job", job_id])
     cause = ran["cause"]
     assert cause["reason"] == processes.UNCONFIRMED, ran
@@ -46,10 +45,7 @@ def test_a_fresh_backup_takes_the_snapshot_once_the_process_has_exited(
     cfg, rclone, monkeypatch, table
 ):
     """What the job's verdict leaves a person to do, driven to the end."""
-    _careful(monkeypatch)
-    table(FakeProcess(300, raises=DYING), finder())
-    code, first = _drive(["backup", "run"])
-    _drive(["backup", "run", "--job", first["data"]["job_id"]])
+    _drive(["backup", "run", "--job", _a_job_the_scan_refused(monkeypatch, table)])
     table(finder())
     code, fresh = _drive(["backup", "run"])
     code, done = _drive(["backup", "run", "--job", fresh["data"]["job_id"]])

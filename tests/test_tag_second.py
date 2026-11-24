@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import registry
-from cratekit.core import active_taxonomy, config, rb_writer, tags, taxonomy
+from cratekit.core import active_taxonomy, config, routing, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import second, second_cli
@@ -51,11 +51,8 @@ def _second_of(path: Path) -> str | None:
 
 
 def _plan(cfg: config.Config, **kwargs) -> second.SecondPlan:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with _rows_suite.opened(cfg) as db:
         return second.plan(cfg, db, active_taxonomy.load(cfg), **kwargs)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _by_row(plan: second.SecondPlan) -> dict[str, second.Item]:
@@ -71,8 +68,6 @@ def _bytes(path: Path) -> str:
 
 def test_the_shipped_words_this_suite_names_file_as_it_assumes():
     assert {DEEP, TECH, MELODIC} <= {bucket.display for bucket in DECLARED.buckets}
-    from cratekit.core import routing
-
     assert routing.files_by_genre(DECLARED, NOWHERE) is None
     assert routing.files_by_genre(DECLARED, COARSE) is None
     assert routing.second_bucket(DECLARED, DEEP, TECH) == DECLARED.bucket_for_display(TECH)
@@ -91,21 +86,12 @@ def test_a_genre_that_files_nowhere_refuses_before_anything_is_read(word):
 
 def test_each_chosen_row_lands_in_one_outcome(machine, silence):
     paths = build(
-        machine,
-        silence,
-        Track("10", file=DEEP),
-        Track("11", file=TECH),
-        Track("12", file=""),
-        Track("13", file=DEEP),
-        Track("14", file=DEEP),
-        Track("15", file=_suggest_suite.ABSENT),
+        machine, silence, Track("10", file=DEEP), Track("11", file=TECH), Track("12", file=""),
+        Track("13", file=DEEP), Track("14", file=DEEP), Track("15", file=_suggest_suite.ABSENT),
     )
     assert tags.write_tags(paths["13"], {"secondgenre": TECH})
-    found = _by_row(
-        _plan(
-            machine, genre=TECH, chosen=["10", "11", "12", "13", "14", "15", "999"], leave=["14"]
-        )
-    )
+    chosen = ["10", "11", "12", "13", "14", "15", "999"]
+    found = _by_row(_plan(machine, genre=TECH, chosen=chosen, leave=["14"]))
     assert {cid: (item.action, item.reason) for cid, item in found.items()} == {
         "10": (second.WRITE, ""),
         "11": (second.LEAVE, second.SAME_FOLDER),
@@ -159,33 +145,33 @@ def test_a_file_that_moved_since_the_plan_is_not_written(machine, silence):
     assert raised.value.cause.reason == "tag-second-unwritten"
 
 
-def _seed_playlists(cfg: config.Config) -> None:
-    """A folder named with the separator inside it, a playlist under it, two members."""
+def _seed(
+    cfg: config.Config,
+    nodes: list[tuple[str, str, int, str, int]],
+    members: list[tuple[str, str, str, int]],
+) -> None:
+    """Playlist rows ``(id, name, attribute, parent, removed)`` and memberships
+    ``(id, playlist, content, removed)`` written straight into the copy."""
     connection = sqlite3.connect(cfg.library.db_path)
     try:
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(djmdPlaylist)")}
-        rows = [
-            ("900", "Minimal / Deep Tech", 1, "root"),
-            ("901", "Med", 0, "900"),
-            ("902", "Med", 0, "root"),
-        ]
-        for pid, name, attribute, parent in rows:
-            values = {
+        has_seq = any(
+            row[1] == "Seq" for row in connection.execute("PRAGMA table_info(djmdPlaylist)")
+        )
+        for pid, name, attribute, parent, removed in nodes:
+            fields = {
                 "ID": pid, "Name": name, "Attribute": attribute, "ParentID": parent,
-                "rb_local_deleted": 0,
+                "rb_local_deleted": removed, **({"Seq": 0} if has_seq else {}),
             }
-            values.update({"Seq": 0} if "Seq" in columns else {})
-            names = ", ".join(values)
-            marks = ", ".join("?" for _ in values)
             connection.execute(
-                f"INSERT INTO djmdPlaylist ({names}) VALUES ({marks})", tuple(values.values())
+                f"INSERT INTO djmdPlaylist ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})",
+                tuple(fields.values()),
             )
-        for sid, content_id in (("950", "10"), ("951", "11")):
-            connection.execute(
-                "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
-                "rb_local_deleted) VALUES (?, '901', ?, 0, 0)",
-                (sid, content_id),
-            )
+        connection.executemany(
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted) "
+            "VALUES (?, ?, ?, 0, ?)",
+            members,
+        )
         connection.commit()
     finally:
         connection.close()
@@ -195,9 +181,14 @@ def test_a_playlist_is_found_by_its_whole_path_even_with_the_separator_in_a_name
     machine, silence
 ):
     build(machine, silence, Track("10", file=DEEP), Track("11", file=DEEP), Track("12", file=DEEP))
-    _seed_playlists(machine)
-    db = rb_writer.open_db(machine.library.db_path, unlock=False, cfg=machine)
-    try:
+    # A folder named with the separator inside it, a playlist under it, two members.
+    _seed(
+        machine,
+        [("900", "Minimal / Deep Tech", 1, "root", 0), ("901", "Med", 0, "900", 0),
+         ("902", "Med", 0, "root", 0)],
+        [("950", "901", "10", 0), ("951", "901", "11", 0)],
+    )
+    with _rows_suite.opened(machine) as db:
         assert second.playlist_members(db, "Minimal / Deep Tech / Med") == ("10", "11")
         for path, reason in (
             ("Minimal / Deep Tech", "it names a folder"),
@@ -210,8 +201,6 @@ def test_a_playlist_is_found_by_its_whole_path_even_with_the_separator_in_a_name
         with pytest.raises(CratekitError) as raised:
             second.chosen_rows(db, rows_given=[], rows_file=None, playlist=None)
         assert raised.value.cause.reason == "tag-second-no-rows"
-    finally:
-        rb_writer.close_db(db)
 
 
 def test_a_rows_file_names_rows_one_per_line(tmp_path):
@@ -238,13 +227,8 @@ def test_the_verb_is_registered_with_an_explicit_gate_and_writes_files_only():
 def test_the_verb_asks_then_writes_and_names_the_filing_step(machine, silence):
     paths = build(machine, silence, Track("10", file=DEEP))
     verb = [*VERB, TECH, "--row", "10"]
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == GATE
+    run_id, _refused = _rows_suite.decided(verb, GATE)
     assert _second_of(paths["10"]) is None
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
     code, acted = drive(["--run", run_id, *verb])
     assert code == int(ExitCode.OK), acted
     assert _second_of(paths["10"]) == TECH

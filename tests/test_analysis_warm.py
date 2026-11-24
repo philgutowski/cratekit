@@ -175,8 +175,9 @@ def test_nothing_is_warmed_and_no_lock_is_taken_without_the_extra(monkeypatch):
     assert warm._WARMED is False, "a process that could not warm is not marked warmed"
 
 
-def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
-    """The one call keeping two processes out of the cache, against a librosa stand in."""
+@pytest.fixture
+def order(monkeypatch) -> list[str]:
+    """A librosa stand in whose every load fails, and the warm up and each load in turn."""
     import types
 
     order: list[str] = []
@@ -189,30 +190,23 @@ def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypat
     stand_in.load = load
     monkeypatch.setitem(sys.modules, "librosa", stand_in)
     monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
+    return order
+
+
+def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, order):
+    """The one call keeping two processes out of the cache, against a librosa stand in."""
     found = detect.analyse_file(tmp_path / "missing.flac")
     assert found == {"path": tmp_path / "missing.flac", "terminal": detect.TERMINAL_UNDECODABLE}
     assert order == ["warmed", "decoded"]
 
 
-def test_the_energy_measure_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
+def test_the_energy_measure_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch, order):
     """U344, closing R-1491: the restamp's and calibrate's measure is warmed as a head is."""
-    import types
-
     from cratekit.analysis import decode, energy
 
-    order: list[str] = []
-    stand_in = types.ModuleType("librosa")
-
-    def load(*args, **kwargs):
-        order.append("decoded")
-        raise RuntimeError("no such file")
-
-    stand_in.load = load
-    monkeypatch.setitem(sys.modules, "librosa", stand_in)
     # The stand in has no length to give, and libsndfile is read as opening the
     # file whether or not soundfile is installed, so the decode is librosa's.
     monkeypatch.setattr(decode, "libsndfile_opens", lambda path: True)
-    monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
     assert energy.features_from_path(tmp_path / "missing.flac") is None
     assert order == ["warmed", "decoded"]
 
@@ -254,6 +248,13 @@ def _audio(folder: Path) -> list[Path]:
     return made
 
 
+def _child(*argv: str, **options) -> subprocess.CompletedProcess:
+    """This interpreter run on ``argv``, its output captured and its exit returned."""
+    return subprocess.run(
+        [sys.executable, *argv], capture_output=True, text=True, check=False, **options
+    )
+
+
 def _cache_listing(cache: Path) -> dict[str, int]:
     return {
         str(path.relative_to(cache)): path.stat().st_size
@@ -285,24 +286,14 @@ def test_the_warm_up_reaches_every_kernel_a_real_head_reaches(tmp_path):
     cache = tmp_path / "numba"
     cache.mkdir()
     environment = _environment(NUMBA_CACHE_DIR=str(cache))
-    warmed = subprocess.run(
-        [sys.executable, "-c", "from cratekit.analysis import warm; print(warm.kernels())"],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
+    warmed = _child(
+        "-c", "from cratekit.analysis import warm; print(warm.kernels())", env=environment
     )
     assert warmed.returncode == 0 and warmed.stdout.strip() == "True", warmed.stderr[-2000:]
     after_the_warm_up = _cache_listing(cache)
     assert after_the_warm_up, "the warm up compiled nothing, so this test proves nothing"
 
-    done = subprocess.run(
-        [sys.executable, "-c", _REAL_HEADS, *map(str, files)],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    done = _child("-c", _REAL_HEADS, *map(str, files), env=environment)
     assert done.returncode == 0, done.stderr[-2000:]
     assert _cache_listing(cache) == after_the_warm_up, (
         "a real head compiled a kernel the warm up did not reach"
@@ -348,14 +339,8 @@ def test_two_workers_starting_together_on_an_empty_cache_finish(tmp_path, attemp
     cache.mkdir()
     script = tmp_path / "cold_pool.py"
     script.write_text(_COLD_POOL)
-    done = subprocess.run(
-        [sys.executable, str(script), *map(str, files)],
-        env=_environment(NUMBA_CACHE_DIR=str(cache)),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=600,
-    )
+    environment = _environment(NUMBA_CACHE_DIR=str(cache))
+    done = _child(str(script), *map(str, files), env=environment, timeout=600)
     assert done.returncode == 0, (
         f"attempt {attempt}: exit {done.returncode}\\n{done.stderr[-3000:]}"
     )

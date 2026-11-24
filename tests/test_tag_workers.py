@@ -95,6 +95,13 @@ def a_job(store, cfg: config.Config, *item_ids: str):
     return jobs.enqueue(store, handler_key="tag.folder", payload={}, cfg=cfg, item_ids=item_ids)
 
 
+def advance(ctx, store, job, nothing_to_run="report a sweep it never ran"):
+    """``shell.advance`` as the tagging verbs call it."""
+    return shell.advance(
+        ctx, store, job, origin=("tagging", "cli"), nothing_to_run=nothing_to_run
+    )
+
+
 # The reported payload
 
 
@@ -154,13 +161,7 @@ def test_a_job_with_no_items_is_refused_rather_than_driven(store, cfg):
     job = a_job(store, cfg)
 
     with pytest.raises(CratekitError) as caught:
-        shell.advance(
-            ctx,
-            store,
-            job,
-            origin=("tagging", "cli"),
-            nothing_to_run="report a tagging sweep over a folder it never walked",
-        )
+        advance(ctx, store, job, "report a tagging sweep over a folder it never walked")
 
     cause = caught.value.cause
     assert cause.reason == "internal-error"
@@ -176,13 +177,7 @@ def test_a_cancelled_job_raises_rather_than_reporting_through_a_normal_envelope(
     jobs.cancel(store, job.job_id)
 
     with pytest.raises(CratekitError) as caught:
-        shell.advance(
-            ctx,
-            store,
-            jobs.get(store, job.job_id),
-            origin=("tagging", "cli"),
-            nothing_to_run="report a sweep it never ran",
-        )
+        advance(ctx, store, jobs.get(store, job.job_id))
 
     assert caught.value.cause.reason == "cancelled"
     assert ctx.driven == []
@@ -194,13 +189,7 @@ def test_a_succeeded_job_comes_back_without_being_driven_again(store, cfg):
     job = a_job(store, cfg, "one.flac")
     jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
 
-    settled, warnings = shell.advance(
-        ctx,
-        store,
-        jobs.get(store, job.job_id),
-        origin=("tagging", "cli"),
-        nothing_to_run="report a sweep it never ran",
-    )
+    settled, warnings = advance(ctx, store, jobs.get(store, job.job_id))
 
     assert settled.state is jobs.JobState.SUCCEEDED
     assert warnings == ()
@@ -212,13 +201,7 @@ def test_an_open_job_is_driven_and_comes_back_as_it_stands_afterwards(store, cfg
     ctx = Ctx(store, warnings=({"code": "one-skipped", "message": "a file moved"},))
     job = a_job(store, cfg, "one.flac", "two.flac")
 
-    settled, warnings = shell.advance(
-        ctx,
-        store,
-        job,
-        origin=("tagging", "cli"),
-        nothing_to_run="report a sweep it never ran",
-    )
+    settled, warnings = advance(ctx, store, job)
 
     assert ctx.driven == [job.job_id]
     assert settled.state is jobs.JobState.SUCCEEDED
@@ -239,11 +222,8 @@ def test_nothing_in_the_tagging_shell_is_named_drive():
     tree = ast.parse(SHELL_SOURCE.read_text(encoding="utf-8"))
 
     assert _drive_calls(tree) == 0
-    defined = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    defined = [node.name for node in ast.walk(tree) if isinstance(node, functions)]
     assert "drive" not in defined, defined
 
 
@@ -337,16 +317,11 @@ def test_the_artifact_helper_never_resolves_the_queue_root_for_itself():
         if not isinstance(node, ast.Call):
             continue
         callee = node.func
-        named = (
-            callee.attr
-            if isinstance(callee, ast.Attribute)
-            else callee.id
-            if isinstance(callee, ast.Name)
-            else ""
+        named = callee.attr if isinstance(callee, ast.Attribute) else (
+            callee.id if isinstance(callee, ast.Name) else ""
         )
-        if named in {"store_dir", "queue_path", "load", "load_from_path"} and not (
-            node.args or node.keywords
-        ):
+        bare_call = not (node.args or node.keywords)
+        if named in {"store_dir", "queue_path", "load", "load_from_path"} and bare_call:
             bare.append(named)
     assert not bare, (
         "the queue root must come from the configuration the job froze, passed "
@@ -396,9 +371,7 @@ def shipped_over(monkeypatch, fetch, *, token) -> None:
 
 def general(monkeypatch, track, album=None, seen: list[str] | None = None):
     """Bind the general catalogue's lookup, which ``published.for_taxonomy`` reads at call time."""
-    lookup = published.genre_lookup(
-        fetch=deezer_fetch(track, album, seen), sleep=lambda _seconds: None
-    )
+    lookup = published.genre_lookup(fetch=deezer_fetch(track, album, seen), sleep=lambda _s: None)
     monkeypatch.setattr(published, "for_lookup", lambda: lookup)
     return lookup
 
@@ -422,14 +395,20 @@ def raising_on(searcher, title: str):
     return wrapped
 
 
-def hit(source_genre: str, genre: str | None = None, *, off_taxonomy: bool = False) -> SearchHit:
+def hit(source_genre: str, genre: str | None = None, *, off_taxonomy: bool = False, **more):
     """One answer, naming what it answered even declining (R24); ``off_taxonomy`` with a genre."""
     return SearchHit(
         genre=genre,
         source=searchers.BEATPORT,
         source_genre=source_genre,
         off_taxonomy=off_taxonomy,
+        **more,
     )
+
+
+def deep(names):
+    """A searcher answering each title named with ``deep house``, read as ``SPECIFIC``."""
+    return answering({name: hit("deep house", SPECIFIC) for name in names})
 
 
 def tag_job():
@@ -454,7 +433,7 @@ def resume_argv(job_id: str) -> list[str]:
 
 def swept(folder: Path):
     """Queue a sweep over ``folder``, then drive it as the job driver would."""
-    drive(["tag", "folder", "--queue-only", str(folder)])
+    queue(folder)
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     return job, code, resumed
@@ -472,6 +451,37 @@ def item_causes(job_id: str) -> dict[str, str]:
             for item in jobs.items(store, job_id)
             if item.cause is not None
         }
+
+
+def places(folder: Path, silence: Path, names) -> None:
+    """One untagged file per name."""
+    for name in names:
+        place(folder, silence, name)
+
+
+def queue(folder: Path):
+    """``crate tag folder`` over ``folder``, queued and not driven."""
+    return drive(["tag", "folder", "--queue-only", str(folder)])
+
+
+def warning_codes(envelope: dict) -> list[str]:
+    """Every warning code on one envelope, in the order the verb attached them."""
+    return [warning["code"] for warning in envelope["warnings"]]
+
+
+def warned(envelope: dict) -> dict[str, str]:
+    """Each warning's message by its code."""
+    return {warning["code"]: warning["message"] for warning in envelope["warnings"]}
+
+
+def warned_all(envelope: dict, code: str) -> list[str]:
+    """Every message warned under ``code``, in order."""
+    return [warning["message"] for warning in envelope["warnings"] if warning["code"] == code]
+
+
+def retag_reports(cfg: config.Config, job_id: str) -> dict:
+    """This job's committed reports, keyed by the item they describe."""
+    return {report["item"]: report for report in artifacts.committed(cfg, job_id)}
 
 
 # The binding
@@ -496,15 +506,11 @@ def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
     """Read back off disk; the third holds fill if empty and a picture, so no art search (U85)."""
     from tests.test_tagging_engine import _jpeg, plant
 
-    place(folder, silence, "a")
-    place(folder, silence, "b")
+    places(folder, silence, "ab")
     plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
-    searcher = bound(
-        monkeypatch,
-        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
-    )
+    searcher = bound(monkeypatch, deep("ab"))
 
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+    code, queued = queue(folder)
     assert code == int(ExitCode.OK), queued
     job = tag_job()
     assert list(item_states(job.job_id)) == ["a.flac", "b.flac", "c.flac"], (
@@ -521,7 +527,7 @@ def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
         "the file that already carried a genre was asked about anyway"
     )
 
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert len(reports) == 3, reports
     assert reports["a.flac"]["genre_written"] == SPECIFIC
     assert reports["c.flac"]["genre_written"] is None
@@ -533,9 +539,9 @@ def test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged
 ):
     """``sub/deep.flac`` is the common case, joined back onto the payload's folder."""
     place(folder / "sub", silence, "deep")
-    bound(monkeypatch, answering({"deep": hit("deep house", SPECIFIC)}))
+    bound(monkeypatch, deep(["deep"]))
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
+    queue(folder)
     job = tag_job()
     assert list(item_states(job.job_id)) == [str(Path("sub") / "deep.flac")]
 
@@ -560,11 +566,7 @@ def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
     assert tagging["skipped"][tag.NO_HIT] == 1
     assert tagging["tagged"] == 0
     assert set(tagging["skipped"]) == {
-        tag.HAS_GENRE,
-        tag.NO_HIT,
-        tag.UNMAPPED_GENRE,
-        tag.SOURCES_UNREAD,
-        tag.NO_ISRC,
+        tag.HAS_GENRE, tag.NO_HIT, tag.UNMAPPED_GENRE, tag.SOURCES_UNREAD, tag.NO_ISRC
     }, (
         "a summary listing only the reasons it saw cannot tell 'none of those "
         "here' from 'this build does not count them'"
@@ -575,8 +577,7 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
     cfg, folder, silence, monkeypatch
 ):
     """R24: each string names an alias the taxonomy lacks, as the resolver declines it."""
-    for name in ("a", "b", "c"):
-        place(folder, silence, name)
+    places(folder, silence, "abc")
     declines = [
         value for value in ("Techno", "Electronic") if routing.suggest_tag(TAXONOMY, value).declined
     ]
@@ -589,9 +590,7 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
     assert tagging["unresolved"] == {"Techno": 2, "Electronic": 1}
     assert tagging["skipped"][tag.UNMAPPED_GENRE] == 3
     assert [report["source_genre"] for report in artifacts.committed(cfg, job.job_id)] == [
-        "Techno",
-        "Techno",
-        "Electronic",
+        "Techno", "Techno", "Electronic"
     ]
 
 
@@ -599,20 +598,11 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     cfg, folder, silence, monkeypatch
 ):
     """R-650: an off taxonomy word written to disk is reported, apart from a decline."""
-    for name in ("a", "b", "c", "d", "e"):
-        place(folder, silence, name)
-    bound(
-        monkeypatch,
-        answering(
-            {
-                "a": hit("gqom", "gqom", off_taxonomy=True),
-                "b": hit("gqom", "gqom", off_taxonomy=True),
-                "c": hit("Deep House", "Deep House"),
-                "d": hit("Techno"),
-                "e": hit("bubblegum bass", "bubblegum bass", off_taxonomy=True),
-            }
-        ),
-    )
+    places(folder, silence, "abcde")
+    gqom = hit("gqom", "gqom", off_taxonomy=True)
+    bubblegum = hit("bubblegum bass", "bubblegum bass", off_taxonomy=True)
+    hits = {"a": gqom, "b": gqom, "c": hit("Deep House", "Deep House"), "d": hit("Techno")}
+    bound(monkeypatch, answering({**hits, "e": bubblegum}))
 
     job, _code, resumed = swept(folder)
 
@@ -621,14 +611,10 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     assert tagging["unresolved"] == {"Techno": 1}
     assert tagging["tagged"] == 4, "they were written, so they are tagged"
     assert [report["off_taxonomy"] for report in artifacts.committed(cfg, job.job_id)] == [
-        True,
-        True,
-        False,
-        False,
-        True,
+        True, True, False, False, True
     ]
 
-    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    warnings = warned(resumed)
     assert tag_cli.OFF_TAXONOMY == "tag-folder-off-taxonomy", (
         "the code is the surface a log filter matches on, so it is pinned here "
         "rather than only referred to by name"
@@ -690,23 +676,16 @@ REFUSED_FALLBACKS = {
 
 
 def _fetched(answer) -> searchers.Fetched:
-    return answer if isinstance(answer, searchers.Fetched) else searchers.Fetched(
-        text=answer, status=200
-    )
+    is_fetched = isinstance(answer, searchers.Fetched)
+    return answer if is_fetched else searchers.Fetched(text=answer, status=200)
 
 
 def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_as_no_hit(
     cfg, folder, silence, monkeypatch
 ):
     """R-791: two catalogues never read are said on every surface, never as ``no-hit``."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
-    refused = {
-        searchers.BEATPORT: EMPTY_BEATPORT,
-        searchers.TRAXSOURCE: TRAXSOURCE_403,
-        searchers.BANDCAMP: BANDCAMP_CHALLENGE,
-    }
-    bound(monkeypatch, _catalogues({"a": refused, "b": refused}))
+    places(folder, silence, "ab")
+    bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS, "b": REFUSED_FALLBACKS}))
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -732,14 +711,14 @@ def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_a
     assert tagging["answers"][searchers.BEATPORT]["miss"] == 2
     assert tagging["answers"][searchers.BEATPORT]["blocked"] == 0, "zero filled"
 
-    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    warnings = warned(resumed)
     assert tag_cli.SOURCES_UNREAD == "tag-folder-sources-unread"
     assert tag_cli.SOURCE_BLOCKED == "tag-folder-source-blocked"
     unread = warnings[tag_cli.SOURCES_UNREAD]
     assert "2 files were left untagged" in unread
     assert "Across the sweep: traxsource refused this client on 2; bandcamp refused this client on 2" in unread
     assert "parse break" not in unread
-    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    blocked = warned_all(resumed, tag_cli.SOURCE_BLOCKED)
     assert len(blocked) == 2
     assert blocked[0].startswith("traxsource refused every one of the 2 searches")
     assert blocked[1].startswith("bandcamp refused every one of the 2 searches")
@@ -761,31 +740,35 @@ def _refusing_sweep(monkeypatch, seen: list[str]):
             return searchers.Fetched(text=results(), status=200)
         return searchers.Fetched(note=f"no route for {url}")
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-
-    def for_taxonomy(declared=None, refusals=None):
-        return searchers.catalogue_searcher(
-            TAXONOMY,
-            fetch=fetch,
-            sleep=lambda _s: None,
-            discogs=asker,
-            refusals=refusals,
-        )
-
-    monkeypatch.setattr(searchers, "for_taxonomy", for_taxonomy)
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
 
 def _beatport_asked(seen: list[str]) -> int:
     return sum(url.startswith(searchers.BEATPORT_SEARCH) for url in seen)
 
 
+def _by_somebody(folder: Path, name: str, genre: str = SPECIFIC) -> searchers.Fetched:
+    """Credit ``name`` to Somebody, and a Beatport page listing that track in ``genre``."""
+    assert tags.write_tags(folder / f"{name}.flac", {"artist": "Somebody"})
+    page = beatport_page([beatport_track("Somebody", name, genre)])
+    return searchers.Fetched(text=page, status=200)
+
+
+def _beatport_or(seen: list[str], beatport: searchers.Fetched, rest: searchers.Fetched):
+    """A fetch recording each URL, Beatport answering ``beatport`` and every other ``rest``."""
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        return beatport if url.startswith(searchers.BEATPORT_SEARCH) else rest
+
+    return fetch
+
+
 def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refused(
     cfg, folder, silence, monkeypatch
 ):
     """U281: three of five reach Beatport, the rest recorded unsent, every file askable."""
-    for name in ("a", "b", "c", "d", "e"):
-        place(folder, silence, name)
+    places(folder, silence, "abcde")
     seen: list[str] = []
     _refusing_sweep(monkeypatch, seen)
 
@@ -803,9 +786,7 @@ def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refuse
         (beatport,) = [s for s in report["answers"] if s["source"] == searchers.BEATPORT]
         assert beatport["answer"] == "blocked"
         notes.append(beatport["note"])
-    assert [note.startswith(searchers.NOT_SENT) for note in notes] == [
-        False, False, False, True, True,
-    ]
+    assert [note.startswith(searchers.NOT_SENT) for note in notes] == [False] * 3 + [True] * 2
     assert tags.read_genre_from_file(folder / "e.flac") is None
 
     tagging = resumed["data"]["progress"]["tagging"]
@@ -816,7 +797,7 @@ def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refuse
     assert tagging["not_sent"][searchers.BEATPORT] == 2
     assert tagging["not_sent"][searchers.DISCOGS] == 0, "zero filled"
 
-    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    warnings = warned(resumed)
     unread = warnings[tag_cli.SOURCES_UNREAD]
     assert (
         "Across the sweep: beatport refused this client (Cloudflare challenge) on 5, "
@@ -832,21 +813,17 @@ def test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file(
     cfg, folder, silence, monkeypatch
 ):
     """The count is the run's: a second sweep starts from Beatport's first three lookups."""
-    for name in ("a", "b", "c", "d"):
-        place(folder, silence, name)
+    places(folder, silence, "abcd")
     seen: list[str] = []
     _refusing_sweep(monkeypatch, seen)
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
-    first = tag_job()
-    code, _ = drive(resume_argv(first.job_id))
+    first, code, _ = swept(folder)
     assert code == int(ExitCode.OK)
     assert _beatport_asked(seen) == 3
 
     again = folder.parent / "again"
-    for name in ("f", "g", "h", "i"):
-        place(again, silence, name)
-    drive(["tag", "folder", "--queue-only", str(again)])
+    places(again, silence, "fghi")
+    queue(again)
     with jobs.open_store() as store:
         (second,) = [
             job
@@ -865,21 +842,12 @@ def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
     """The count is the run's, not the job's: a retried job driven again asks afresh."""
     from tests.test_discogs_searcher import results
 
-    for name in ("a", "b", "c", "d", "e"):
-        place(folder, silence, name)
+    places(folder, silence, "abcde")
     seen: list[str] = []
-
-    def fetch(url: str) -> searchers.Fetched:
-        seen.append(url)
-        if url.startswith(searchers.BEATPORT_SEARCH):
-            return BEATPORT_CHALLENGE
-        return searchers.Fetched(text=results(), status=200)
-
+    fetch = _beatport_or(seen, BEATPORT_CHALLENGE, searchers.Fetched(text=results(), status=200))
     shipped_over(monkeypatch, fetch, token=None)
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
-    job = tag_job()
-    drive(resume_argv(job.job_id))
+    job, _code, _ = swept(folder)
     assert _beatport_asked(seen) == 3
     assert set(item_causes(job.job_id).values()) == {searchers.UNREACHABLE_REASON}
 
@@ -894,18 +862,11 @@ def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sen
     cfg, folder, silence, monkeypatch
 ):
     """Discogs sends nothing after its first refusal, and the warning counts one search (U281)."""
-    for name in ("a", "b", "c", "d"):
-        place(folder, silence, name)
-    seen: list[str] = []
-
-    def fetch(url: str) -> searchers.Fetched:
-        seen.append(url)
-        if url.startswith(searchers.BEATPORT_SEARCH):
-            return searchers.Fetched(text=beatport_page([]), status=200)
-        return searchers.Fetched(note="HTTP 403", status=403)
-
     from tests.test_discogs_searcher import SENT
 
+    places(folder, silence, "abcd")
+    seen: list[str] = []
+    fetch = _beatport_or(seen, EMPTY_BEATPORT, searchers.Fetched(note="HTTP 403", status=403))
     shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
@@ -915,7 +876,7 @@ def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sen
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["answers"][searchers.DISCOGS]["blocked"] == 4
     assert tagging["not_sent"][searchers.DISCOGS] == 3
-    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    warnings = warned(resumed)
     assert (
         "discogs refused this client on 4, 3 of them not asked once it had "
         "refused this client"
@@ -930,9 +891,8 @@ def test_a_sweep_some_of_whose_refusals_were_a_challenge_says_how_many():
     summary = {"challenged": {searchers.BEATPORT: 2}, "not_sent": {searchers.BEATPORT: 1}}
 
     said = tag_cli._unread_phrase(summary, searchers.BEATPORT, "blocked", 4)
-    whole = tag_cli._unread_phrase(
-        {"challenged": {searchers.BEATPORT: 4}}, searchers.BEATPORT, "blocked", 4
-    )
+    challenged = {"challenged": {searchers.BEATPORT: 4}}
+    whole = tag_cli._unread_phrase(challenged, searchers.BEATPORT, "blocked", 4)
     plain = tag_cli._unread_phrase({}, searchers.BEATPORT, "blocked", 4)
 
     assert said == (
@@ -941,33 +901,25 @@ def test_a_sweep_some_of_whose_refusals_were_a_challenge_says_how_many():
     )
     assert whole == "beatport refused this client (Cloudflare challenge) on 4"
     assert plain == "beatport refused this client on 4"
-    assert tag_cli._unread_phrase({}, searchers.BEATPORT, "unreachable", 4) == (
-        "beatport unreachable on 4"
-    )
+    down = tag_cli._unread_phrase({}, searchers.BEATPORT, "unreachable", 4)
+    assert down == "beatport unreachable on 4"
 
 
 def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence, monkeypatch):
     """A Beatport that is down is unreachable, said so, and asked on every file."""
     from tests.test_discogs_searcher import SENT, results
 
-    for name in ("a", "b", "c", "d"):
-        place(folder, silence, name)
+    places(folder, silence, "abcd")
     seen: list[str] = []
-
-    def fetch(url: str) -> searchers.Fetched:
-        seen.append(url)
-        if url.startswith(searchers.BEATPORT_SEARCH):
-            return searchers.Fetched(note="HTTP 503", status=503)
-        return searchers.Fetched(text=results(), status=200)
-
+    down = searchers.Fetched(note="HTTP 503", status=503)
+    fetch = _beatport_or(seen, down, searchers.Fetched(text=results(), status=200))
     shipped_over(monkeypatch, fetch, token=SENT)
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
-    code, resumed = drive(resume_argv(tag_job().job_id))
+    _job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
 
     assert _beatport_asked(seen) == 4
-    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    warnings = warned(resumed)
     assert "Across the sweep: beatport unreachable on 4" in warnings[tag_cli.SOURCES_UNREAD]
     assert "refused" not in warnings[tag_cli.SOURCES_UNREAD]
     assert tag_cli.SOURCE_BLOCKED not in warnings
@@ -977,41 +929,23 @@ def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_war
     cfg, folder, silence, monkeypatch
 ):
     """Bandcamp blocked on every file it was sent is named, though one file never asked it."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
-    assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
-    matched = searchers.Fetched(
-        text=beatport_page([beatport_track("Somebody", "a", SPECIFIC)]), status=200
-    )
-    bound(
-        monkeypatch,
-        _catalogues(
-            {
-                "a": {searchers.BEATPORT: matched},
-                "b": {
-                    searchers.BEATPORT: EMPTY_BEATPORT,
-                    searchers.TRAXSOURCE: EMPTY_TRAXSOURCE,
-                    searchers.BANDCAMP: BANDCAMP_CHALLENGE,
-                },
-            }
-        ),
-    )
+    places(folder, silence, "ab")
+    matched = _by_somebody(folder, "a")
+    challenged = {**ALL_MISSED, searchers.BANDCAMP: BANDCAMP_CHALLENGE}
+    bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: matched}, "b": challenged}))
 
     job, _code, resumed = swept(folder)
 
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert reports["a.flac"]["genre_written"] == SPECIFIC
     assert [said["answer"] for said in reports["a.flac"]["answers"]] == [
-        "matched",
-        searchers.NOT_ASKED,
-        searchers.NOT_ASKED,
-        searchers.NOT_ASKED,
+        "matched", searchers.NOT_ASKED, searchers.NOT_ASKED, searchers.NOT_ASKED
     ]
     assert reports["b.flac"]["skipped"] == tag.SOURCES_UNREAD
 
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
-    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    blocked = warned_all(resumed, tag_cli.SOURCE_BLOCKED)
     assert len(blocked) == 1
     assert "bandcamp refused every one of the 1 searches" in blocked[0]
 
@@ -1024,24 +958,13 @@ def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
     broken = searchers.Fetched(
         text='<div data-trid="1" class="trk-row"><span>moved</span></div>', status=200
     )
-    bound(
-        monkeypatch,
-        _catalogues(
-            {
-                "a": {
-                    searchers.BEATPORT: EMPTY_BEATPORT,
-                    searchers.TRAXSOURCE: broken,
-                    searchers.BANDCAMP: EMPTY_BANDCAMP,
-                }
-            }
-        ),
-    )
+    bound(monkeypatch, _catalogues({"a": {**ALL_MISSED, searchers.TRAXSOURCE: broken}}))
 
     job, _code, resumed = swept(folder)
 
     (report,) = artifacts.committed(cfg, job.job_id)
     assert report["unread"] == {searchers.TRAXSOURCE: "parse-break"}
-    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    warnings = warned(resumed)
     message = warnings[tag_cli.SOURCES_UNREAD]
     assert message.startswith("1 file was left untagged")
     assert "traxsource parse-break on 1" in message
@@ -1054,26 +977,21 @@ def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
 ):
     """A fallback never asked is no refusal (row C5 of ``r791-b``)."""
     place(folder, silence, "a")
-    assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
-    matched = searchers.Fetched(
-        text=beatport_page([beatport_track("Somebody", "a", SPECIFIC)]), status=200
-    )
-    bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: matched}}))
+    bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: _by_somebody(folder, "a")}}))
 
     job, _code, resumed = swept(folder)
 
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["tagged"] == 1
     assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
-    codes = [warning["code"] for warning in resumed["warnings"]]
+    codes = warning_codes(resumed)
     assert tag_cli.SOURCE_BLOCKED not in codes
     assert tag_cli.SOURCES_UNREAD not in codes
 
 
 def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, silence, monkeypatch):
     """Every catalogue asked and none knows the track: the absence ``no-hit`` means, unqualified."""
-    place(folder, silence, "a")
-    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    assert tags.write_tags(place(folder, silence, "a"), {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, DEEZER_UNKNOWN)
 
@@ -1083,7 +1001,7 @@ def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, si
     assert report["skipped"] == tag.NO_HIT
     assert [said["answer"] for said in report["answers"]] == ["miss"] * 4
     assert report["unread"] == {}
-    codes = [warning["code"] for warning in resumed["warnings"]]
+    codes = warning_codes(resumed)
     assert tag_cli.SOURCES_UNREAD not in codes
     assert tag_cli.SOURCE_BLOCKED not in codes
     assert tag_cli.PUBLISHED_UNREAD not in codes
@@ -1097,8 +1015,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     cfg, folder, silence, monkeypatch
 ):
     """AE1: Beatport misses, both fallbacks refuse, and the general catalogue knows the album."""
-    place(folder, silence, "a")
-    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    assert tags.write_tags(place(folder, silence, "a"), {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS}))
     seen: list[str] = []
     general(monkeypatch, deezer_track(), deezer_album(["Rock"]), seen)
@@ -1114,30 +1031,24 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     assert (report["source"], report["source_genre"]) == (published.SOURCE, "Rock")
     assert report["off_taxonomy"] is False
     assert [(said["source"], said["answer"]) for said in report["answers"]] == [
-        (searchers.BEATPORT, "miss"),
-        (searchers.TRAXSOURCE, "blocked"),
-        (searchers.BANDCAMP, "blocked"),
-        (published.SOURCE, "matched"),
+        (searchers.BEATPORT, "miss"), (searchers.TRAXSOURCE, "blocked"),
+        (searchers.BANDCAMP, "blocked"), (published.SOURCE, "matched"),
     ]
     assert report["answers"][-1]["source_genre"] == "Rock"
     assert len(seen) == 2
 
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["tagged"] == 1
+    shops = (searchers.BEATPORT, searchers.DISCOGS, searchers.TRAXSOURCE, searchers.BANDCAMP)
     assert tagging["tagged_by"] == {
-        searchers.BEATPORT: 0,
-        searchers.DISCOGS: 0,
-        searchers.TRAXSOURCE: 0,
-        searchers.BANDCAMP: 0,
-        published.SOURCE: 1,
-        tag.LABEL_GENRE: 0,
+        **dict.fromkeys(shops, 0), published.SOURCE: 1, tag.LABEL_GENRE: 0
     }
     assert tagging["answers"][published.SOURCE]["matched"] == 1
     assert set(tagging["answers"][published.SOURCE]) == set(published.ANSWERS), "zero filled"
     assert tag.NO_ISRC not in tagging["answers"][searchers.BEATPORT], (
         "a record shop is never asked by ISRC, so it carries no count for one"
     )
-    codes = [warning["code"] for warning in resumed["warnings"]]
+    codes = warning_codes(resumed)
     assert tag_cli.OFF_TAXONOMY not in codes
     assert tag_cli.PUBLISHED_UNREAD not in codes
     assert tag_cli.NO_ISRC_FILES not in codes
@@ -1147,25 +1058,18 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
     cfg, folder, silence, monkeypatch
 ):
     """A 429 on every file: the summary names the catalogue and count once."""
-    for name in ("a", "b", "c"):
-        place(folder, silence, name)
+    places(folder, silence, "abc")
     for name in ("a", "b"):
         assert tags.write_tags(folder / f"{name}.flac", {"isrc": ISRC})
-    assert tags.write_tags(folder / "c.flac", {"artist": "Somebody"})
-    matched = searchers.Fetched(
-        text=beatport_page([beatport_track("Somebody", "c", SPECIFIC)]), status=200
-    )
-    bound(
-        monkeypatch,
-        _catalogues({"a": ALL_MISSED, "b": ALL_MISSED, "c": {searchers.BEATPORT: matched}}),
-    )
+    matched = {searchers.BEATPORT: _by_somebody(folder, "c")}
+    bound(monkeypatch, _catalogues({"a": ALL_MISSED, "b": ALL_MISSED, "c": matched}))
     asked: list[str] = []
     general(monkeypatch, RATE_LIMITED, seen=asked)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
 
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     for name in ("a.flac", "b.flac"):
         assert reports[name]["skipped"] == tag.SOURCES_UNREAD
         assert reports[name]["unread"] == {published.SOURCE: "blocked"}
@@ -1180,16 +1084,16 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
     assert reports["b.flac"]["answers"][-1]["note"].startswith("not asked: the catalogue refused")
 
     assert tag_cli.PUBLISHED_UNREAD == "tag-folder-published-unread"
-    named = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.PUBLISHED_UNREAD]
+    named = warned_all(resumed, tag_cli.PUBLISHED_UNREAD)
     assert len(named) == 1
     assert named[0].startswith(f"{published.SOURCE}, the general catalogue asked by ISRC")
     assert "any of the 2 files it was asked about (blocked on 2)" in named[0]
     assert "no file in this run got a published genre from it" in named[0]
     assert "does not try to get past" in named[0]
     assert "parse break" not in named[0]
-    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    blocked = warned_all(resumed, tag_cli.SOURCE_BLOCKED)
     assert blocked == [], "the general catalogue has its own warning and is named once"
-    unread = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCES_UNREAD]
+    unread = warned_all(resumed, tag_cli.SOURCES_UNREAD)
     assert len(unread) == 1 and f"{published.SOURCE} refused this client on 2" in unread[0]
 
 
@@ -1212,7 +1116,7 @@ def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["answers"][published.SOURCE]["miss"] == 1
     assert tagging["answers"][published.SOURCE]["unreachable"] == 1
-    (named,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.PUBLISHED_UNREAD]
+    (named,) = warned_all(resumed, tag_cli.PUBLISHED_UNREAD)
     assert "could not be read on 1 of the 2 files it was asked about (unreachable on 1)" in named
     assert "those files got no published genre from it" in named
     assert "no file in this run" not in named
@@ -1233,7 +1137,7 @@ def test_a_block_on_a_file_a_record_shop_declined_is_still_said(cfg, folder, sil
     (report,) = artifacts.committed(cfg, job.job_id)
     assert report["skipped"] == tag.UNMAPPED_GENRE
     assert report["unread"] == {published.SOURCE: "blocked"}
-    codes = [warning["code"] for warning in resumed["warnings"]]
+    codes = warning_codes(resumed)
     assert tag_cli.SOURCES_UNREAD not in codes
     assert codes.count(tag_cli.PUBLISHED_UNREAD) == 1
 
@@ -1241,17 +1145,16 @@ def test_a_block_on_a_file_a_record_shop_declined_is_still_said(cfg, folder, sil
 def test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it(
     cfg, folder, silence, monkeypatch
 ):
-    place(folder, silence, "a")
-    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    assert tags.write_tags(place(folder, silence, "a"), {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, '["a JSON answer in a shape this reader does not know"]')
 
     job, _code, resumed = swept(folder)
 
-    (named,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.PUBLISHED_UNREAD]
+    (named,) = warned_all(resumed, tag_cli.PUBLISHED_UNREAD)
     assert "(parse-break on 1)" in named
     assert "A parse break is a defect in this software" in named
-    (unread,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCES_UNREAD]
+    (unread,) = warned_all(resumed, tag_cli.SOURCES_UNREAD)
     assert f"{published.SOURCE} parse-break on 1" in unread
     assert "A parse break is a defect" not in unread, (
         "the general catalogue's parse break is said once, by its own warning"
@@ -1262,14 +1165,13 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
     cfg, folder, silence, monkeypatch
 ):
     """AE4: both files lack an ISRC under different skip reasons, and the warning counts both."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
+    places(folder, silence, "ab")
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS, "b": ALL_MISSED}))
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
 
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert reports["a.flac"]["skipped"] == tag.SOURCES_UNREAD
     assert reports["b.flac"]["skipped"] == tag.NO_ISRC
     for report in reports.values():
@@ -1282,17 +1184,16 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
     assert tagging["answers"][published.SOURCE][tag.NO_ISRC] == 2
 
     assert tag_cli.NO_ISRC_FILES == "tag-folder-no-isrc"
-    (bare,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.NO_ISRC_FILES]
+    (bare,) = warned_all(resumed, tag_cli.NO_ISRC_FILES)
     assert bare.startswith("2 files were not asked about at deezer")
     assert "not reported as tracks no catalogue carries" in bare
-    codes = [warning["code"] for warning in resumed["warnings"]]
+    codes = warning_codes(resumed)
     assert tag_cli.PUBLISHED_UNREAD not in codes, "a catalogue never asked was not unread"
 
 
 def test_a_published_word_with_no_folder_is_listed_as_unresolved(cfg, folder, silence, monkeypatch):
     """R3: the catalogue's own word is the one to alias, so the summary names it."""
-    place(folder, silence, "a")
-    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    assert tags.write_tags(place(folder, silence, "a"), {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, deezer_track(), deezer_album(["Films/Games"]))
 
@@ -1313,14 +1214,13 @@ def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
     cfg, folder, silence, monkeypatch
 ):
     """The quiet case: a warning on a clean run soon goes unread."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
+    places(folder, silence, "ab")
     bound(monkeypatch, answering({"a": hit("Deep House", "Deep House"), "b": hit("Techno")}))
 
     job, _code, resumed = swept(folder)
 
     assert resumed["data"]["progress"]["tagging"]["off_taxonomy"] == {}
-    assert tag_cli.OFF_TAXONOMY not in [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.OFF_TAXONOMY not in warning_codes(resumed)
 
 
 def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status(
@@ -1339,17 +1239,12 @@ def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status
 
     reports = artifacts.committed(cfg, job.job_id)
     assert [report["art_repair"] for report in reports] == [
-        art.REPAIR_FIXED,
-        art.REPAIR_FIXED,
-        art.REPAIR_NONE,
+        art.REPAIR_FIXED, art.REPAIR_FIXED, art.REPAIR_NONE
     ]
     assert reports[0]["art_repair_detail"] == "1 of 1 pictures re-encoded"
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["art_repair"] == {
-        art.REPAIR_FIXED: 2,
-        art.REPAIR_OK: 0,
-        art.REPAIR_NONE: 1,
-        art.REPAIR_ERROR: 0,
+        art.REPAIR_FIXED: 2, art.REPAIR_OK: 0, art.REPAIR_NONE: 1, art.REPAIR_ERROR: 0,
         art.REPAIR_UNCHECKED: 0,
     }
     assert tagging["skipped"][tag.HAS_GENRE] == 1
@@ -1362,9 +1257,8 @@ def test_a_report_from_before_the_repair_is_counted_under_no_status(cfg, store):
     """A report with no status says nothing about the art."""
     job = a_job(store, cfg, "old.flac")
     (item,) = jobs.items(store, job.job_id)
-    produced = artifacts.produced(
-        cfg, job, item, {"item": "old.flac", "genre_written": None, "skipped": tag.NO_HIT}
-    )
+    old = {"item": "old.flac", "genre_written": None, "skipped": tag.NO_HIT}
+    produced = artifacts.produced(cfg, job, item, old)
     produced.final.parent.mkdir(parents=True, exist_ok=True)
     produced.staged.replace(produced.final)
 
@@ -1384,15 +1278,9 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(cfg, folder, sile
     plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
     place(folder, silence, "d")
 
-    def art_hit(name: str) -> SearchHit:
-        return SearchHit(
-            genre=SPECIFIC,
-            source=searchers.BEATPORT,
-            source_genre="deep house",
-            art_url=f"https://example.test/{name}.jpg",
-        )
-
-    searcher = bound(monkeypatch, answering({name: art_hit(name) for name in "abcd"}))
+    art_url = "https://example.test/{}.jpg".format
+    hits = {name: hit("deep house", SPECIFIC, art_url=art_url(name)) for name in "abcd"}
+    searcher = bound(monkeypatch, answering(hits))
     fetched: list[str] = []
 
     def fetch_image(url: str) -> bytes | None:
@@ -1405,12 +1293,10 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(cfg, folder, sile
     assert code == int(ExitCode.OK), resumed
 
     assert [asked for _artist, asked in searcher.asked] == ["a", "b", "d"]
-    assert fetched == [f"https://example.test/{name}.jpg" for name in ("a", "b", "d")]
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert fetched == [f"https://example.test/{name}.jpg" for name in "abd"]
+    reports = retag_reports(cfg, job.job_id)
     assert {name: reports[f"{name}.flac"]["art_fetch"] for name in "abcd"} == {
-        "a": tag.ART_EMBEDDED,
-        "b": tag.ART_EMBEDDED,
-        "c": tag.ART_PRESENT,
+        "a": tag.ART_EMBEDDED, "b": tag.ART_EMBEDDED, "c": tag.ART_PRESENT,
         "d": tag.ART_UNAVAILABLE,
     }
     assert "d.jpg" in reports["d.flac"]["art_fetch_detail"]
@@ -1421,10 +1307,7 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(cfg, folder, sile
         assert (block.width, block.height, block.depth) == (800, 800, 24)
     assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
     assert resumed["data"]["progress"]["tagging"]["art_fetch"] == {
-        tag.ART_EMBEDDED: 2,
-        tag.ART_PRESENT: 1,
-        tag.ART_UNAVAILABLE: 1,
-        tag.ART_ERROR: 0,
+        tag.ART_EMBEDDED: 2, tag.ART_PRESENT: 1, tag.ART_UNAVAILABLE: 1, tag.ART_ERROR: 0,
         tag.ART_UNCHECKED: 0,
     }
 
@@ -1447,21 +1330,9 @@ def test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_count
     row = beatport_track(ARTIST, TITLE, BUCKET_GENRE)
     row["release"] = {"release_image_uri": cover}
     seen: list[str] = []
-    fetch = routed(
-        search=results(7),
-        releases={7: release(7, styles=("Deep House",))},
-        beatport=beatport_page([row]),
-        seen=seen,
-    )
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-
-    def for_taxonomy(declared=None, refusals=None):
-        return searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        )
-
-    monkeypatch.setattr(searchers, "for_taxonomy", for_taxonomy)
-    general(monkeypatch, None)
+    releases = {7: release(7, styles=("Deep House",))}
+    fetch = routed(search=results(7), releases=releases, beatport=beatport_page([row]), seen=seen)
+    shipped_over(monkeypatch, fetch, token=SENT)
     fetched: list[str] = []
 
     def fetch_image(url: str) -> bytes:
@@ -1481,11 +1352,9 @@ def test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_count
     assert tags.read_genre_from_file(folder / "b.flac") == decided
     assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC, "never re-tagged"
 
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert {name: reports[f"{name}.flac"]["art_fetch"] for name in names} == {
-        "a": tag.ART_EMBEDDED,
-        "b": tag.ART_PRESENT,
-        "c": tag.ART_EMBEDDED,
+        "a": tag.ART_EMBEDDED, "b": tag.ART_PRESENT, "c": tag.ART_EMBEDDED
     }
     assert reports["a.flac"]["source"] == searchers.DISCOGS
 
@@ -1501,8 +1370,7 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
     """U282: the warning names Discogs' outage before Beatport's refusal."""
     from tests.test_discogs_searcher import SENT, results
 
-    place(folder, silence, "a")
-    place(folder, silence, "b")
+    places(folder, silence, "ab")
     seen: list[str] = []
 
     def fetch(url: str) -> searchers.Fetched:
@@ -1520,10 +1388,10 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert reports["a.flac"]["unread"] == {searchers.DISCOGS: "unreachable"}
     assert reports["b.flac"]["unread"] == {searchers.BEATPORT: "blocked"}
-    unread = {w["code"]: w["message"] for w in resumed["warnings"]}[tag_cli.SOURCES_UNREAD]
+    unread = warned(resumed)[tag_cli.SOURCES_UNREAD]
     across = unread.split("Across the sweep: ", 1)[1]
     assert across.index(searchers.DISCOGS) < across.index(searchers.BEATPORT), across
 
@@ -1539,11 +1407,9 @@ def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_ever
         path = place(folder, silence, name)
         assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
     seen: list[str] = []
-    fetch = routed(
-        search=searchers.Fetched(note="HTTP 401", status=401),
-        beatport=beatport_page([beatport_track(ARTIST, TITLE, BUCKET_GENRE)]),
-        seen=seen,
-    )
+    refused = searchers.Fetched(note="HTTP 401", status=401)
+    page = beatport_page([beatport_track(ARTIST, TITLE, BUCKET_GENRE)])
+    fetch = routed(search=refused, beatport=page, seen=seen)
     shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
@@ -1553,7 +1419,7 @@ def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_ever
     assert tagging["tagged_by"][searchers.BEATPORT] == 3
     assert tagging["discogs_token_refused"] == 3
     assert tagging["discogs_without_token"] == 0
-    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    warnings = warned(resumed)
     assert tag_cli.DISCOGS_NO_TOKEN_FILES not in warnings
     refused = warnings[tag_cli.DISCOGS_TOKEN_REFUSED_FILES]
     assert "refused the recorded token" in refused and "3 file(s)" in refused
@@ -1569,29 +1435,15 @@ def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
     from tests.test_tagging_engine import _jpeg, blocks
 
     names = [f"t{index:02d}" for index in range(10)]
-    for name in names:
-        place(folder, silence, name)
+    places(folder, silence, names)
     cover = _jpeg(1000, 1000)
-    bound(
-        monkeypatch,
-        answering(
-            {
-                name: SearchHit(
-                    genre=SPECIFIC,
-                    source=searchers.BEATPORT,
-                    source_genre="deep house",
-                    art_url=ALBUM,
-                )
-                for name in names
-            }
-        ),
-    )
+    hits = {name: hit("deep house", SPECIFIC, art_url=ALBUM) for name in names}
+    bound(monkeypatch, answering(hits))
     host = Host({ALBUM: [cover]})
     slept: list[float] = []
     real_fetch = searchers.default_image_fetch
-    monkeypatch.setattr(
-        searchers, "default_image_fetch", lambda: real_fetch(get=host, sleep=slept.append)
-    )
+    shipped = lambda: real_fetch(get=host, sleep=slept.append)
+    monkeypatch.setattr(searchers, "default_image_fetch", shipped)
     expected = art.to_cdj_jpeg(cover).data
     encoded: list[bytes] = []
     real_encode = art.to_cdj_jpeg
@@ -1608,7 +1460,7 @@ def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
     assert host.asked == [ALBUM]
     assert len(slept) == 1
     assert encoded == [cover]
-    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    reports = retag_reports(cfg, job.job_id)
     assert {reports[f"{name}.flac"]["art_fetch"] for name in names} == {tag.ART_EMBEDDED}
     for name in names:
         (block,) = blocks(folder / f"{name}.flac")
@@ -1620,9 +1472,8 @@ def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory
     cfg, folder, silence, monkeypatch
 ):
     """The total is read off the committed reports, so it holds across a resume."""
-    for name in ("a", "b", "c"):
-        place(folder, silence, name)
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    places(folder, silence, "abc")
+    bound(monkeypatch, deep("a"))
 
     job, _code, resumed = swept(folder)
 
@@ -1635,18 +1486,21 @@ def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory
 # The two zeroes, which are not one zero
 
 
+def queued_nothing(code: int, envelope: dict, warning: str) -> None:
+    """A no-op naming no job, warned ``warning`` alone, with nothing in the queue."""
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert warning_codes(envelope) == [warning]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
 def test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is(cfg, folder):
     """AE3: a job with no items would read as a clean sweep."""
     (folder / "cover.jpg").write_bytes(b"not audio")
 
-    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-no-audio"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    queued_nothing(*queue(folder), "tag-folder-no-audio")
 
 
 def test_an_empty_folder_argument_never_sweeps_the_working_directory(
@@ -1656,13 +1510,7 @@ def test_an_empty_folder_argument_never_sweeps_the_working_directory(
     place(folder, silence, "a")
     monkeypatch.chdir(folder)
 
-    code, envelope = drive(["tag", "folder", "--queue-only", ""])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-unnamed"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    queued_nothing(*drive(["tag", "folder", "--queue-only", ""]), "tag-folder-unnamed")
     assert tags.read_genre_from_file(folder / "a.flac") in (None, "")
 
 
@@ -1673,14 +1521,7 @@ def test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_t
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
 
-    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-no-audio"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    queued_nothing(*queue(folder), "tag-folder-no-audio")
 
 
 def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silence):
@@ -1689,7 +1530,7 @@ def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silen
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
 
-    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
+    code, envelope = queue(folder)
 
     assert code == int(ExitCode.OK), envelope
     assert list(item_states(tag_job().job_id)) == ["committed.flac"]
@@ -1697,35 +1538,47 @@ def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silen
 
 def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
     """A missing folder and an empty one ask different next moves."""
-    code, envelope = drive(["tag", "folder", "--queue-only", str(tmp_path / "no-such-folder")])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-absent"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
+    queued_nothing(*queue(tmp_path / "no-such-folder"), "tag-folder-absent")
 
 
 # The failure part way through, and the resume that follows it
 
 
+def failed_only(code: int, envelope: dict, job_id: str, items: dict, failed: str, reason: str):
+    """A refused run whose ``failed`` item alone failed, for ``reason``; the rest done."""
+    assert code != int(ExitCode.OK), envelope
+    done = jobs.ItemState.DONE
+    assert item_states(job_id) == {
+        item: jobs.ItemState.FAILED if name == failed else done for name, item in items.items()
+    }
+    assert item_causes(job_id) == {items[failed]: reason}
+
+
+def retried_only_b(cfg: config.Config, folder: Path, monkeypatch, job_id: str) -> None:
+    """Retried, the job drives ``b`` alone, the item that failed, and every item ends done."""
+    second = bound(monkeypatch, deep("abc"))
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert second.asked == [("", "b")], (
+        "the resume re-attempted work whose artifact was already durable"
+    )
+    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert len(artifacts.committed(cfg, job_id)) == 3
+
+
 def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, silence, monkeypatch):
     """R19x: an unread catalogue fails its item and the job carries a cause."""
-    for name in ("a", "b", "c"):
-        place(folder, silence, name)
-    table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
-    bound(monkeypatch, raising_on(answering(table), "b"))
+    places(folder, silence, "abc")
+    bound(monkeypatch, raising_on(deep("abc"), "b"))
 
     job, code, resumed = swept(folder)
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job.job_id) == {
-        "a.flac": jobs.ItemState.DONE,
-        "b.flac": jobs.ItemState.FAILED,
-        "c.flac": jobs.ItemState.DONE,
-    }
-    assert item_causes(job.job_id) == {"b.flac": searchers.UNREACHABLE_REASON}
+    items = {name: f"{name}.flac" for name in "abc"}
+    failed_only(code, resumed, job.job_id, items, "b", searchers.UNREACHABLE_REASON)
     with jobs.open_store() as store:
         assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
         assert jobs.get(store, job.job_id).cause is not None
@@ -1736,47 +1589,26 @@ def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, si
 
 def test_a_retried_job_drives_only_the_item_that_failed(cfg, folder, silence, monkeypatch):
     """R19x: counted by searcher calls, since re-asking leaves the same states."""
-    for name in ("a", "b", "c"):
-        place(folder, silence, name)
-    table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
-    bound(monkeypatch, raising_on(answering(table), "b"))
-    drive(["tag", "folder", "--queue-only", str(folder)])
-    job = tag_job()
-    drive(resume_argv(job.job_id))
+    places(folder, silence, "abc")
+    bound(monkeypatch, raising_on(deep("abc"), "b"))
+    job, _code, _ = swept(folder)
 
-    second = bound(monkeypatch, answering(table))
-    with jobs.open_store() as store:
-        jobs.retry(store, job.job_id)
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
-    assert second.asked == [("", "b")], (
-        "the resume re-attempted work whose artifact was already durable"
-    )
-    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
-    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
-    assert len(artifacts.committed(cfg, job.job_id)) == 3
+    retried_only_b(cfg, folder, monkeypatch, job.job_id)
 
 
 def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
     cfg, folder, silence, monkeypatch
 ):
     """R15: refused under the shared ``source-missing`` (R-251), not an internal error."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    places(folder, silence, "ab")
+    bound(monkeypatch, deep("a"))
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
+    queue(folder)
     job = tag_job()
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job.job_id))
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job.job_id) == {
-        "a.flac": jobs.ItemState.DONE,
-        "b.flac": jobs.ItemState.FAILED,
-    }
-    assert item_causes(job.job_id) == {"b.flac": "source-missing"}
+    failed_only(code, resumed, job.job_id, {"a": "a.flac", "b": "b.flac"}, "b", "source-missing")
 
 
 # The resume argv
@@ -1789,7 +1621,7 @@ def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
     place(folder, silence, "a")
     bound(monkeypatch, answering({}))
 
-    drive(["tag", "folder", "--queue-only", str(folder)])
+    queue(folder)
     job = tag_job()
 
     argv = resume_argv(job.job_id)
@@ -1821,6 +1653,31 @@ def coarse(folder: Path, silence: Path, name: str) -> Path:
     return place(folder, silence, name, CATCH_ALL)
 
 
+def coarses(folder: Path, silence: Path, names: str) -> None:
+    """One catch-all file per name."""
+    for name in names:
+        coarse(folder, silence, name)
+
+
+def retag_queued(folder: Path) -> str:
+    """The retag over ``folder`` confirmed and queued, by its job's id."""
+    return approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)[1]
+
+
+def retag_ready(folder: Path, silence: Path, monkeypatch, names: str, searcher) -> str:
+    """Catch-all files under ``names``, ``searcher`` bound, and the retag confirmed and queued."""
+    coarses(folder, silence, names)
+    bound(monkeypatch, searcher)
+    return retag_queued(folder)
+
+
+def retagged(folder: Path, silence: Path, monkeypatch, names: str, searcher):
+    """``retag_ready``, and the job driven as its driver would."""
+    job_id = retag_ready(folder, silence, monkeypatch, names, searcher)
+    code, envelope = drive(resume_argv(job_id))
+    return job_id, code, envelope
+
+
 def selected(folder: Path) -> list[Path]:
     """What a fresh walk of the folder would take, as it stands right now."""
     return [candidate.path for candidate in retag.select(folder, declared=TAXONOMY).candidates]
@@ -1829,8 +1686,7 @@ def selected(folder: Path) -> list[Path]:
 def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, folder, silence):
     """R-693: ``shown`` holds the folder and each planned file with its genre."""
     del repair_on
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
+    coarses(folder, silence, "ab")
     expected = retag_cli.plan_for(str(folder.absolute()), TAXONOMY)
 
     code, refused = drive(["tag", "retag", str(folder)])
@@ -1846,9 +1702,8 @@ def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, fol
 def test_the_retag_resume_gate_shows_the_frozen_rows_it_asks_about(repair_on, folder, silence):
     """A resume shows the rows read off the frozen payload, never off a fresh walk."""
     del repair_on
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    coarses(folder, silence, "ab")
+    job_id = retag_queued(folder)
     with jobs.open_store() as store:
         payload = jobs.get(store, job_id).payload
     # THE FOLDER MOVES ON, so a screen built from a fresh walk would differ.
@@ -1871,11 +1726,10 @@ def test_a_resume_after_a_partial_run_meets_its_gate_rather_than_going_stale(
     repair_on, folder, silence, monkeypatch
 ):
     """KTD8 and AE4: a corrected file leaving the selection must not make every resume stale."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "bc"}))
+    coarses(folder, silence, "abc")
+    bound(monkeypatch, deep("bc"))
 
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_queued(folder)
     assert tags.write_genre(folder / "a.flac", SPECIFIC), "the stand-in write failed"
     assert selected(folder) == [folder / "b.flac", folder / "c.flac"], (
         "the selection did not shrink, so this case cannot see the stall it is for"
@@ -1895,14 +1749,6 @@ def queued_jobs() -> tuple:
         return jobs.list_jobs(store)
 
 
-def retag_reports(cfg: config.Config, job_id: str) -> dict:
-    """This job's committed reports, keyed by the item they describe."""
-    return {report["item"]: report for report in artifacts.committed(cfg, job_id)}
-
-
-# The binding
-
-
 # The happy path
 
 
@@ -1910,11 +1756,10 @@ def test_three_confirmed_files_go_from_pending_to_done_and_carry_a_specific_genr
     repair_on, folder, silence, monkeypatch
 ):
     """Confirm, queue, drive, write and read back; the items are the confirmed rows."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    searcher = bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
+    coarses(folder, silence, "abc")
+    searcher = bound(monkeypatch, deep("abc"))
 
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_queued(folder)
     assert list(item_states(job_id)) == [str(folder / f"{name}.flac") for name in "abc"]
 
     code, resumed = drive(resume_argv(job_id))
@@ -1933,11 +1778,10 @@ def test_the_report_is_derived_from_what_ran_rather_than_from_what_was_planned(
     repair_on, folder, silence, monkeypatch
 ):
     """R16: the report is read back off disk, zeroes included."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    coarses(folder, silence, "abc")
+    bound(monkeypatch, deep("a"))
 
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_queued(folder)
     tags.write_genre(folder / "b.flac", SPECIFIC)
     _code, resumed = drive(resume_argv(job_id))
 
@@ -1979,15 +1823,8 @@ def test_an_empty_plan_is_still_asked_about_and_queues_nothing_and_says_which_ze
     place(folder, silence, "already-specific", SPECIFIC)
     named = str(folder.parent / "no-such-folder") if absent else str(folder)
 
-    code, envelope = answered(["tag", "retag", named], "apply")
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == [
-        "tag-retag-folder-absent" if absent else "tag-retag-nothing-coarse"
-    ]
-    assert queued_jobs() == ()
+    warning = "tag-retag-folder-absent" if absent else "tag-retag-nothing-coarse"
+    queued_nothing(*answered(["tag", "retag", named], "apply"), warning)
 
 
 def test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing(
@@ -2019,8 +1856,8 @@ def test_a_genre_changed_between_the_confirm_and_the_drive_is_left_to_its_owner(
 ):
     """A curation made since outranks this sweep; a blank genre is fill if empty's."""
     coarse(folder, silence, "a")
-    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    searcher = bound(monkeypatch, deep("a"))
+    job_id = retag_queued(folder)
 
     assert tags.write_genre(folder / "a.flac", by_hand)
     code, resumed = drive(resume_argv(job_id))
@@ -2037,20 +1874,13 @@ def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
     repair_on, folder, silence, monkeypatch
 ):
     """R15: refused under the shared ``source-missing`` (R-251), not an internal error."""
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_ready(folder, silence, monkeypatch, "ab", deep("a"))
 
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job_id))
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job_id) == {
-        str(folder / "a.flac"): jobs.ItemState.DONE,
-        str(folder / "b.flac"): jobs.ItemState.FAILED,
-    }
-    assert item_causes(job_id) == {str(folder / "b.flac"): "source-missing"}
+    items = {name: str(folder / f"{name}.flac") for name in "ab"}
+    failed_only(code, resumed, job_id, items, "b", "source-missing")
 
 
 # The review queue, reached through the worker rather than through the sweep
@@ -2060,12 +1890,10 @@ def test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue(
     repair_on, folder, silence, monkeypatch
 ):
     """A catch-all answer goes to the review queue, opened per item on the frozen configuration."""
-    path = coarse(folder, silence, "a")
+    path = folder / "a.flac"
     other = TAXONOMY.fallback.too_coarse_as_source[2]
-    bound(monkeypatch, answering({"a": hit("some vendor genre", other)}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    code, resumed = drive(resume_argv(job_id))
+    vendor = answering({"a": hit("some vendor genre", other)})
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "a", vendor)
 
     assert code == int(ExitCode.OK), resumed
     assert tags.read_genre_from_file(path) == CATCH_ALL
@@ -2086,23 +1914,16 @@ def test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked(
     """The verdict is read before the catalogue is asked, seen only as no search."""
     path = coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
-    _first_run, first_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    drive(resume_argv(first_job))
+    drive(resume_argv(retag_queued(folder)))
 
     with review.open_store(repair_on) as store:
         item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
         chosen = next(option for option in item.options if option.summary == SPECIFIC)
-        review.resolve(
-            store,
-            item.item_id,
-            review.Verdict.ACCEPTED,
-            option=chosen.option_id,
-            actor="a-person",
-        )
+        accepted = review.Verdict.ACCEPTED
+        review.resolve(store, item.item_id, accepted, option=chosen.option_id, actor="a-person")
 
     second = bound(monkeypatch, answering({"a": hit("deep house", "Techno")}))
-    _second_run, second_job = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    code, resumed = drive(resume_argv(second_job))
+    code, resumed = drive(resume_argv(retag_queued(folder)))
 
     assert code == int(ExitCode.OK), resumed
     assert second.asked == []
@@ -2116,21 +1937,11 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
     repair_on, folder, silence, monkeypatch
 ):
     """R19x: the unanswered item fails, its neighbours stay done, the job carries a cause."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
-    bound(monkeypatch, raising_on(answering(table), "b"))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    failing = raising_on(deep("abc"), "b")
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "abc", failing)
 
-    code, resumed = drive(resume_argv(job_id))
-
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job_id) == {
-        str(folder / "a.flac"): jobs.ItemState.DONE,
-        str(folder / "b.flac"): jobs.ItemState.FAILED,
-        str(folder / "c.flac"): jobs.ItemState.DONE,
-    }
-    assert item_causes(job_id) == {str(folder / "b.flac"): searchers.UNREACHABLE_REASON}
+    items = {name: str(folder / f"{name}.flac") for name in "abc"}
+    failed_only(code, resumed, job_id, items, "b", searchers.UNREACHABLE_REASON)
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
     assert tags.read_genre_from_file(folder / "b.flac") == CATCH_ALL
@@ -2138,37 +1949,17 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
 
 def test_a_retried_retag_drives_only_the_item_that_failed(repair_on, folder, silence, monkeypatch):
     """R19x: counted by searcher calls, since re-asking leaves the same states."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
-    bound(monkeypatch, raising_on(answering(table), "b"))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    drive(resume_argv(job_id))
+    failing = raising_on(deep("abc"), "b")
+    job_id, _code, _ = retagged(folder, silence, monkeypatch, "abc", failing)
 
-    second = bound(monkeypatch, answering(table))
-    with jobs.open_store() as store:
-        jobs.retry(store, job_id)
-    code, resumed = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), resumed
-    assert second.asked == [("", "b")], (
-        "the resume re-attempted work whose artifact was already durable"
-    )
-    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
-    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
-    assert len(artifacts.committed(repair_on, job_id)) == 3
+    retried_only_b(repair_on, folder, monkeypatch, job_id)
 
 
 def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recovers_it(
     repair_on, folder, silence, monkeypatch
 ):
     """R-185 measured: the row keeps the catch-all, and only the artifact can recover it."""
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, raising_on(answering({"a": hit("deep house", SPECIFIC)}), "b"))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    drive(resume_argv(job_id))
+    job_id, _code, _ = retagged(folder, silence, monkeypatch, "ab", raising_on(deep("a"), "b"))
 
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     sources = {
@@ -2195,11 +1986,6 @@ def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recove
     assert report["written"] == SPECIFIC
 
 
-def warning_codes(envelope: dict) -> list[str]:
-    """Every warning code on one envelope, in the order the verb attached them."""
-    return [warning["code"] for warning in envelope["warnings"]]
-
-
 def job_cause(job_id: str):
     """The cause the queue recorded, read back from the store."""
     with jobs.open_store() as store:
@@ -2210,24 +1996,15 @@ def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
     repair_on, folder, silence, monkeypatch
 ):
     """R-185: the warning names the row's reload and the folder."""
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "ab"}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "ab", deep("ab"))
 
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["retag"]["corrected"] == 2, resumed
     assert retag_cli.LIBRARY_ROW_STALE in warning_codes(resumed), resumed
-    told = next(
-        warning
-        for warning in resumed["warnings"]
-        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
-    )
-    assert str(folder) in told["message"], told
-    assert "`crate tag rows`" in told["message"], (
-        f"the run named a disagreement and no act to settle it: {told['message']!r}"
+    told = warned_all(resumed, retag_cli.LIBRARY_ROW_STALE)[0]
+    assert str(folder) in told, told
+    assert "`crate tag rows`" in told, (
+        f"the run named a disagreement and no act to settle it: {told!r}"
     )
 
 
@@ -2235,12 +2012,7 @@ def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
     repair_on, folder, silence, monkeypatch
 ):
     """The zero half, driven through a decline so the resume path is reached."""
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "ab", answering({}))
 
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["retag"]["corrected"] == 0, resumed
@@ -2252,13 +2024,8 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
     repair_on, folder, silence, monkeypatch
 ):
     """R-185 and R-225: the reload rides the refusal's steps, the retry remedy first."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
-    bound(monkeypatch, raising_on(answering(table), "b"))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    code, refused = drive(resume_argv(job_id))
+    failing = raising_on(deep("abc"), "b")
+    job_id, code, refused = retagged(folder, silence, monkeypatch, "abc", failing)
 
     assert code != int(ExitCode.OK), refused
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
@@ -2297,10 +2064,7 @@ def test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_a
     repair_on, folder, silence, monkeypatch
 ):
     """R-1103: the refusing file fails ``tag-retag-unwritten`` and the other two land."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_ready(folder, silence, monkeypatch, "abc", deep("abc"))
     refusing_writes_on(monkeypatch, "b")
 
     code, refused = drive(resume_argv(job_id))
@@ -2336,9 +2100,7 @@ def test_a_retag_whose_only_file_will_not_take_its_genre_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
     """Nothing was corrected, so the job leaves through ``no-evidence`` and names no reload."""
-    coarse(folder, silence, "a")
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_ready(folder, silence, monkeypatch, "a", deep("a"))
     refusing_writes_on(monkeypatch, "a")
 
     code, refused = drive(resume_argv(job_id))
@@ -2357,10 +2119,7 @@ def test_a_retag_file_that_will_not_take_its_genre_is_named_in_the_human_answer(
     repair_on, folder, silence, monkeypatch
 ):
     """What a person reads at the terminal names the file, not only the counts."""
-    for name in ("a", "b"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "ab"}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_ready(folder, silence, monkeypatch, "ab", deep("ab"))
     refusing_writes_on(monkeypatch, "b")
 
     code, text = drive_human(resume_argv(job_id))
@@ -2374,9 +2133,8 @@ def test_a_parked_retag_keeps_both_the_block_and_the_reload(
     repair_on, folder, silence, monkeypatch
 ):
     """R-290: ``with_reload_step`` must keep the ``JobBlocked`` type."""
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    inner = answering({name: hit("deep house", SPECIFIC) for name in "abc"})
+    coarses(folder, silence, "abc")
+    inner = deep("abc")
 
     def parking_on_b(artist: str, name: str):
         if name == "b":
@@ -2387,7 +2145,7 @@ def test_a_parked_retag_keeps_both_the_block_and_the_reload(
 
     parking_on_b.asked = inner.asked  # type: ignore[attr-defined]
     bound(monkeypatch, parking_on_b)
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    job_id = retag_queued(folder)
 
     code, refused = drive(resume_argv(job_id))
 
@@ -2404,11 +2162,7 @@ def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):
     """The zero half: a run that changed nothing names no reload."""
-    coarse(folder, silence, "a")
-    bound(monkeypatch, raising_on(answering({}), "a"))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    code, refused = drive(resume_argv(job_id))
+    _job_id, code, refused = retagged(folder, silence, monkeypatch, "a", raising_on(deep(""), "a"))
 
     assert code != int(ExitCode.OK), refused
     assert tags.read_genre_from_file(folder / "a.flac") == CATCH_ALL
@@ -2421,25 +2175,14 @@ def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
 ):
     """The queueing envelope always names the reload: every planned file is too coarse."""
     coarse(folder, silence, "a")
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    bound(monkeypatch, deep("a"))
 
-    verb = ["tag", "retag", str(folder)]
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, decision = drive(["run", "decide", run_id, RETAG_GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), decision
-
-    code, queued = drive(["--run", run_id, *verb])
+    code, queued = answered(["tag", "retag", str(folder)], "apply")
 
     assert code == int(ExitCode.OK), queued
     assert retag_cli.LIBRARY_ROW_STALE in warning_codes(queued), queued
-    told = next(
-        warning
-        for warning in queued["warnings"]
-        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
-    )
-    assert str(folder) in told["message"], told
+    told = warned_all(queued, retag_cli.LIBRARY_ROW_STALE)[0]
+    assert str(folder) in told, told
 
 
 def test_the_retag_entry_declares_the_file_surface_alone_and_no_database_decision():
@@ -2537,7 +2280,7 @@ def test_tag_folder_by_hand_prints_the_settled_job_and_no_drive_command(
     cfg, folder, silence, monkeypatch
 ):
     place(folder, silence, "a")
-    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    bound(monkeypatch, deep("a"))
 
     code, text = drive_human(["tag", "folder", str(folder)])
 
@@ -2553,9 +2296,9 @@ def test_tag_folder_queue_only_returns_the_sweep_queued_with_nothing_asked(
     cfg, folder, silence, monkeypatch
 ):
     place(folder, silence, "a")
-    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    searcher = bound(monkeypatch, deep("a"))
 
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+    code, queued = queue(folder)
 
     assert code == int(ExitCode.OK), queued
     assert queued["data"]["state"] == "queued"
@@ -2582,9 +2325,8 @@ def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it
     """A real SIGINT through the engine's checkpoint, in the call that queued the sweep."""
     import signal
 
-    for name in ("a", "b", "c", "d"):
-        place(folder, silence, name)
-    answers = answering({name: hit("deep house", SPECIFIC) for name in "abcd"})
+    places(folder, silence, "abcd")
+    answers = deep("abcd")
 
     def interrupting(artist: str, title: str):
         found = answers(artist, title)
@@ -2637,20 +2379,12 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
     """R-1184: a folder's own name in another case is named; a broken copy warns plainly."""
     from tests.test_active_taxonomy import write_active
 
-    for name in ("a", "b"):
-        place(folder, silence, name)
-    bound(
-        monkeypatch,
-        answering(
-            {
-                "a": hit("breaks / d&b / dubstep", "breaks / d&b / dubstep", off_taxonomy=True),
-                "b": hit("gqom", "gqom", off_taxonomy=True),
-            }
-        ),
-    )
+    places(folder, silence, "ab")
+    breaks = hit("breaks / d&b / dubstep", "breaks / d&b / dubstep", off_taxonomy=True)
+    bound(monkeypatch, answering({"a": breaks, "b": hit("gqom", "gqom", off_taxonomy=True)}))
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
-    message = {w["code"]: w["message"] for w in resumed["warnings"]}[tag_cli.OFF_TAXONOMY]
+    message = warned(resumed)[tag_cli.OFF_TAXONOMY]
     assert "crate taxonomy alias 'breaks / d&b / dubstep' 'Breaks / D&B / Dubstep'" in message
     assert "gqom" in message.split("takes one answer only")[0]
     assert "gqom" not in message.split("takes one answer only")[1]
@@ -2658,7 +2392,7 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
     write_active(cfg, "this is not a taxonomy [[[")
     code, again = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), again
-    plain = {w["code"]: w["message"] for w in again["warnings"]}[tag_cli.OFF_TAXONOMY]
+    plain = warned(again)[tag_cli.OFF_TAXONOMY]
     assert "takes one answer only" not in plain and "breaks / d&b / dubstep" in plain
 
 
@@ -2666,13 +2400,11 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
     cfg, folder, silence, monkeypatch
 ):
     """U244: with no Discogs token both files are ``sources-unread`` and the login step is named."""
-    for name in ("a", "b"):
-        place(folder, silence, name)
+    places(folder, silence, "ab")
 
     def fetch(url: str) -> searchers.Fetched:
-        return EMPTY_BEATPORT if url.startswith(searchers.BEATPORT_SEARCH) else searchers.Fetched(
-            note=f"no route for {url}"
-        )
+        unrouted = searchers.Fetched(note=f"no route for {url}")
+        return EMPTY_BEATPORT if url.startswith(searchers.BEATPORT_SEARCH) else unrouted
 
     bound(monkeypatch, searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _s: None))
     job, code, resumed = swept(folder)
@@ -2683,7 +2415,7 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["skipped"][tag.NO_HIT] == 0
     assert tagging["discogs_without_token"] == 2
-    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    warnings = warned(resumed)
     assert "crate login discogs-token" in warnings[tag_cli.DISCOGS_NO_TOKEN_FILES]
     unread = warnings[tag_cli.SOURCES_UNREAD]
     assert "discogs not asked for want of a token on 2" in unread
@@ -2693,27 +2425,29 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
 # The active taxonomy, parsed once a sweep (U247)
 
 
+def unique_active(cfg: config.Config) -> str:
+    """A text no other test parsed, written as the library's active copy."""
+    from cratekit.core import taxonomy
+    from tests.test_active_taxonomy import write_active
+
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    write_active(cfg, text)
+    return text
+
+
 def test_a_sweep_parses_the_active_taxonomy_once_however_many_files_it_tags(
     cfg, folder, silence, monkeypatch
 ):
     """The worker reads the library's copy for every file and parses it for the first."""
-    from cratekit.core import taxonomy
     from tests.test_tagging_engine import _jpeg, plant
 
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    active = config.state_path("taxonomy_active", cfg)
-    active.parent.mkdir(parents=True, exist_ok=True)
-    active.write_text(text, encoding="utf-8")
-    place(folder, silence, "a")
-    place(folder, silence, "b")
+    text = unique_active(cfg)
+    places(folder, silence, "ab")
     plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
-    bound(
-        monkeypatch,
-        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
-    )
+    bound(monkeypatch, deep("ab"))
     parses = counted(monkeypatch)
 
-    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+    code, queued = queue(folder)
     assert code == int(ExitCode.OK), queued
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
@@ -2729,19 +2463,10 @@ def test_a_retag_parses_the_active_taxonomy_once_however_many_files_it_corrects(
     repair_on, folder, silence, monkeypatch
 ):
     """The third per item handler the speed survey named, counted the same way."""
-    from cratekit.core import taxonomy
-
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    active = config.state_path("taxonomy_active", repair_on)
-    active.parent.mkdir(parents=True, exist_ok=True)
-    active.write_text(text, encoding="utf-8")
-    for name in ("a", "b", "c"):
-        coarse(folder, silence, name)
-    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
+    text = unique_active(repair_on)
     parses = counted(monkeypatch)
 
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-    code, resumed = drive(resume_argv(job_id))
+    job_id, code, resumed = retagged(folder, silence, monkeypatch, "abc", deep("abc"))
 
     assert code == int(ExitCode.OK), resumed
     assert item_states(job_id) == {

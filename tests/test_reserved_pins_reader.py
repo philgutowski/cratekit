@@ -1,9 +1,5 @@
-"""The reserved cause pins are read from one file per package (U296).
-
-``tests/_pinned_reserved_populations.py`` merges ``tests/ratchets/reserved_causes/``
-into the tables ``tests/test_reserved_causes.py`` compares with the tree. Proven
-here: the reader merges, and refuses at import a file it would read wrongly.
-"""
+"""U296: ``tests/_pinned_reserved_populations.py`` merges one pin file per package from
+``tests/ratchets/reserved_causes/``, and refuses at import a file it would read wrongly."""
 
 from __future__ import annotations
 

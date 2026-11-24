@@ -102,13 +102,23 @@ def test_an_expired_session_is_rejected_never_an_empty_collection():
         bandcamp.read_collection(FakeAccount(four(), expired=True), COOKIE, now=NOW)
 
 
-def test_a_session_the_summary_names_but_the_pages_refuse_is_rejected():
-    class Refusing(FakeAccount):
+def _posting(answer: bandcamp.Response) -> FakeAccount:
+    class Posting(FakeAccount):
         def post_json(self, url, payload, *, cookie):
-            return bandcamp.Response(403, "forbidden")
+            return answer
 
+    return Posting(four())
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [bandcamp.Response(403, "forbidden"),
+     bandcamp.Response(200, json.dumps({"error": True, "error_message": "no"}))],
+    ids=["pages-refusing-a-session-the-summary-names", "a-page-answering-with-an-error"],
+)
+def test_a_page_refusing_the_session_or_answering_an_error_is_rejected(answer):
     with pytest.raises(bandcamp.SessionRejected):
-        bandcamp.read_collection(Refusing(four()), COOKIE, now=NOW)
+        bandcamp.read_collection(_posting(answer), COOKIE, now=NOW)
 
 
 def test_a_page_with_items_and_no_way_on_refuses_rather_than_ending():
@@ -120,17 +130,6 @@ def test_a_page_with_items_and_no_way_on_refuses_rather_than_ending():
 
     with pytest.raises(bandcamp.BandcampUnavailable, match="older than it"):
         bandcamp.read_collection(Stuck(four(), page_size=2), COOKIE, now=NOW)
-
-
-def test_a_page_that_repeats_its_token_refuses_rather_than_looping():
-    class Repeating(FakeAccount):
-        def _page(self, items, end, *, more):
-            page = super()._page(items, end, more=more)
-            page["last_token"] = "tok2"
-            return page
-
-    with pytest.raises(bandcamp.BandcampUnavailable):
-        bandcamp.read_collection(Repeating(four(), page_size=2), COOKIE, now=NOW)
 
 
 def test_a_server_failure_is_unavailable_not_rejected():
@@ -189,29 +188,36 @@ def test_the_file_is_fetched_from_the_link_the_stat_answer_names(tmp_path):
     assert stat and stat[0].endswith("&.vrs=1")
 
 
-def test_a_stat_answer_that_is_not_ready_is_unavailable(tmp_path):
-    class Busy(FakeAccount):
+def _stat_answering(answer: bandcamp.Response):
+    class Stat(FakeAccount):
         def get(self, url, *, cookie):
             if "/statdownload/" in url:
-                return bandcamp.Response(200, json.dumps({"result": "err"}))
+                return answer
             return super().get(url, cookie=cookie)
 
-    account = Busy(archives={"1": archive({"a.flac": b"x"})})
-    offers = bandcamp.download_offers(account, COOKIE, download_page("1"))
+    account = Stat(archives={"1": archive({"a.flac": b"x"})})
+    return account, bandcamp.download_offers(account, COOKIE, download_page("1"))
+
+
+def test_a_stat_answer_that_is_not_ready_is_unavailable(tmp_path):
+    account, offers = _stat_answering(bandcamp.Response(200, json.dumps({"result": "err"})))
     with pytest.raises(bandcamp.BandcampUnavailable, match="not finished"):
         bandcamp.fetch(account, COOKIE, offers["flac"], tmp_path / "hold")
     assert account.downloaded == []
 
 
-def test_an_unreadable_stat_answer_keeps_the_link_it_was_given(tmp_path):
-    class Odd(FakeAccount):
-        def get(self, url, *, cookie):
-            if "/statdownload/" in url:
-                return bandcamp.Response(200, "nothing here")
-            return super().get(url, cookie=cookie)
-
-    account = Odd(archives={"1": archive({"a.flac": b"x"})})
-    offers = bandcamp.download_offers(account, COOKIE, download_page("1"))
+@pytest.mark.parametrize(
+    "answer",
+    [
+        bandcamp.Response(200, "nothing here"),
+        bandcamp.Response(
+            200, json.dumps({"result": "ok", "download_url": "https://elsewhere.example/f.zip"})
+        ),
+    ],
+    ids=["unreadable", "naming-a-link-outside-bandcamp"],
+)
+def test_a_stat_answer_unreadable_or_leading_elsewhere_keeps_the_link_it_was_given(tmp_path, answer):
+    account, offers = _stat_answering(answer)
     bandcamp.fetch(account, COOKIE, offers["flac"], tmp_path / "hold")
     assert account.downloaded == [offers["flac"]]
 
@@ -319,21 +325,8 @@ def test_a_summary_naming_no_fan_is_rejected_even_when_the_pages_would_answer():
     "page", [{}, {"items": None}, {"error": False}, {"items": "x"}], ids=["empty", "null", "no-items", "not-a-list"]
 )
 def test_a_page_holding_no_list_of_items_is_unavailable_never_the_end(page):
-    class Shapeless(FakeAccount):
-        def post_json(self, url, payload, *, cookie):
-            return bandcamp.Response(200, json.dumps(page))
-
     with pytest.raises(bandcamp.BandcampUnavailable):
-        bandcamp.read_collection(Shapeless(four()), COOKIE, now=NOW)
-
-
-def test_a_page_answering_with_an_error_is_rejected():
-    class Erroring(FakeAccount):
-        def post_json(self, url, payload, *, cookie):
-            return bandcamp.Response(200, json.dumps({"error": True, "error_message": "no"}))
-
-    with pytest.raises(bandcamp.SessionRejected):
-        bandcamp.read_collection(Erroring(four()), COOKIE, now=NOW)
+        bandcamp.read_collection(_posting(bandcamp.Response(200, json.dumps(page))), COOKIE, now=NOW)
 
 
 def test_a_purchase_in_both_listings_is_read_once():
@@ -376,29 +369,8 @@ def html_escape(text: str) -> str:
     return html.escape(text, quote=True)
 
 
-def test_a_stat_answer_naming_a_link_outside_bandcamp_is_not_followed(tmp_path):
-    class Redirecting(FakeAccount):
-        def get(self, url, *, cookie):
-            if "/statdownload/" in url:
-                answer = {"result": "ok", "download_url": "https://elsewhere.example/f.zip"}
-                return bandcamp.Response(200, json.dumps(answer))
-            return super().get(url, cookie=cookie)
-
-    account = Redirecting(archives={"1": archive({"a.flac": b"x"})})
-    offers = bandcamp.download_offers(account, COOKIE, download_page("1"))
-    bandcamp.fetch(account, COOKIE, offers["flac"], tmp_path / "hold")
-    assert account.downloaded == [offers["flac"]]
-
-
 def test_the_stat_request_refusing_the_session_is_rejected(tmp_path):
-    class Expiring(FakeAccount):
-        def get(self, url, *, cookie):
-            if "/statdownload/" in url:
-                return bandcamp.Response(403, "forbidden")
-            return super().get(url, cookie=cookie)
-
-    account = Expiring(archives={"1": archive({"a.flac": b"x"})})
-    offers = bandcamp.download_offers(account, COOKIE, download_page("1"))
+    account, offers = _stat_answering(bandcamp.Response(403, "forbidden"))
     with pytest.raises(bandcamp.SessionRejected):
         bandcamp.fetch(account, COOKIE, offers["flac"], tmp_path / "hold")
 

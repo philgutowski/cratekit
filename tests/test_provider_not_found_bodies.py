@@ -34,13 +34,12 @@ from tests.test_isrc_cache import catalogue as isrc_catalogue
 from tests.test_label_tidal_catalogue import AlbumClient
 from tests.test_provider_rejection_bodies import cyclic
 
-#: A provider saying it has nothing, with a body the client can and cannot read.
+#: A provider saying it has nothing, with a body the client can and cannot read, and
+#: answers that say nothing about the thing asked for, whatever their body.
 NOT_FOUND = [
     pytest.param(404, HTML, id="404-html"), pytest.param(404, b"", id="404-empty"),
     pytest.param(404, NOT_FOUND_BODY, id="404-json"),
 ]
-
-#: Answers that say nothing about the thing asked for, whatever their body.
 UNAVAILABLE = [
     pytest.param(503, HTML, id="503-html"), pytest.param(502, HTML, id="502-html"),
     pytest.param(503, b"", id="503-empty"), pytest.param(500, NOT_FOUND_BODY, id="500-json"),
@@ -192,20 +191,21 @@ def clock() -> Clock:
     return Clock()
 
 
+def asking(seam: str, client: Client, clock: Clock, monkeypatch) -> Callable[[], object]:
+    """The seam's question about ``ONE``, over a cache of its own."""
+    made = isrc_cache_of(clock)
+    if seam == "account":
+        return lambda: isrc_account(client, made).match_track(identity="1", isrc=ONE)
+    return lambda: isrc_catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
+
+
 @pytest.mark.parametrize("seam", ["account", "catalogue"])
 def test_an_isrc_answered_by_a_404_page_is_asked_once_and_kept(clock, monkeypatch, seam):
     client = Client({ONE: client_failure(404, HTML)})
-    made = isrc_cache_of(clock)
-
-    def ask():
-        if seam == "account":
-            return isrc_account(client, made).match_track(identity="1", isrc=ONE)
-        return isrc_catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
-
+    ask = asking(seam, client, clock, monkeypatch)
     assert ask() in (None, ())
     assert client.asked == [ONE]
     assert ask() in (None, ())
-
     assert client.asked == [ONE]
     assert stored()["entries"][f"{ONE}|GB"]["tracks"] == []
 
@@ -214,19 +214,12 @@ def test_an_isrc_answered_by_a_404_page_is_asked_once_and_kept(clock, monkeypatc
 def test_an_isrc_answered_by_a_503_page_is_retried_and_never_kept(clock, monkeypatch, seam):
     client = Client({ONE: single()})
     client.failures = [client_failure(503, HTML) for _ in range(6)]
-    made = isrc_cache_of(clock)
-
-    def ask():
-        if seam == "account":
-            return isrc_account(client, made).match_track(identity="1", isrc=ONE)
-        return isrc_catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
-
+    ask = asking(seam, client, clock, monkeypatch)
     with pytest.raises((CratekitError, ValueError)):
         ask()
     asked = len(client.asked)
     assert asked > 1, "an outage was answered without a retry"
     client.failures = []
-
     assert ask()
     assert len(client.asked) == asked + 1
 
@@ -273,18 +266,19 @@ def settings(tmp_path: Path) -> AdapterSettings:
     return AdapterSettings(download_staging=staging)
 
 
-def test_a_track_the_provider_answers_with_a_404_page_is_permanent_with_no_retry(settings):
-    result = acquire_one(_Refusing(client_failure(404, HTML)), TrackRequest(key="1"), settings)
-
-    assert result.outcome is TrackOutcome.UNAVAILABLE_PERMANENT
-    assert result.remedy is None
-
-
-def test_a_track_the_provider_answers_with_a_503_page_is_transient(settings):
-    result = acquire_one(_Refusing(client_failure(503, HTML)), TrackRequest(key="1"), settings)
-
-    assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
-    assert result.remedy is Remedy.RETRY_LATER
+@pytest.mark.parametrize(
+    ("status", "outcome", "remedy"),
+    [
+        pytest.param(404, TrackOutcome.UNAVAILABLE_PERMANENT, None,
+                     id="a-404-page-is-permanent-with-no-retry"),
+        pytest.param(503, TrackOutcome.UNAVAILABLE_TRANSIENT, Remedy.RETRY_LATER,
+                     id="a-503-page-is-transient"),
+    ],
+)
+def test_a_track_the_provider_answers_with_an_error_page(settings, status, outcome, remedy):
+    result = acquire_one(_Refusing(client_failure(status, HTML)), TrackRequest(key="1"), settings)
+    assert result.outcome is outcome
+    assert result.remedy is remedy
 
 
 def test_no_file_landed_carrying_a_404_page_stays_transient():

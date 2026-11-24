@@ -1,8 +1,4 @@
-"""``crate organize --report`` opens the library once (U267).
-
-One read handle opened at the first read, shared, closed on every way out; the
-gated run opens as before. Counts were measured on the base (seven opens, 26).
-"""
+"""``crate organize --report`` opens the library once, closed on every way out (U267)."""
 
 from __future__ import annotations
 

@@ -1,9 +1,7 @@
 """Intake's set scenarios: a set landed under INSPIRATION and the backfill verb (U307).
 
-`crate intake land --set` writes the set's playlist in played order and adds a
-second part to it (U135); `crate intake inspiration --job` backfills behind its
-gate, adds nothing again, and refuses with no acknowledgment. Its own file
-because the set suites name ``machine`` and pin the batch day.
+A second part is added to the set's playlist (U135). Its own file because the
+set suites name ``machine`` and pin the batch day.
 """
 
 from __future__ import annotations

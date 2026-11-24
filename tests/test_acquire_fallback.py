@@ -99,6 +99,13 @@ def run(path: Path) -> tuple[int, dict]:
     return drive(["acquire", "fallback", str(path)])
 
 
+def searched(tmp_path, monkeypatch, *lines: str, answers=None, fail=()):
+    """Run the verb once over ``lines``, a fake answering ``answers``, by default the boot's."""
+    answers = boot_answers() if answers is None else answers
+    fake = bind(monkeypatch, FakeSearcher(answers, fail=fail))
+    return fake, *run(tracklist(tmp_path, *lines))
+
+
 def checks(envelope: dict) -> dict[str, dict]:
     return {c["key"].removeprefix("acquire.fallback."): c for c in envelope["data"]["checks"]}
 
@@ -135,10 +142,7 @@ def boot_answers():
 
 
 def test_ranked_candidates_are_offered_on_one_item(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, BOOT)
-    fake = bind(monkeypatch, FakeSearcher(boot_answers()))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, BOOT)
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
@@ -209,31 +213,23 @@ def test_an_accepted_upload_is_reported_with_its_url_and_not_searched(
     assert envelope["data"]["summary"]["fetch_next"] == f"crate acquire fallback-fetch {path}"
 
 
-def test_an_acceptance_naming_no_upload_of_several_stalls(cfg, library, tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("hits", "state", "url"),
+    [
+        ((hit(SC, 1, "a", "b"), hit(SC, 2, "c", "d")), fallback.STALLED, None),
+        ((hit(SC, 1, "a", "b"),), fallback.ACCEPTED, "https://soundcloud.example/1"),
+    ],
+    ids=["naming-no-upload-of-several-stalls", "over-one-option-is-that-option"],
+)
+def test_an_acceptance_settles_on_an_upload_only_when_it_names_one(cfg, hits, state, url):
     wanted = match.read_text_lines(BOOT)[0]
     with review.open_store(cfg) as items:
-        held = fallback.propose(
-            items, wanted, fallback.Answer(hits=(hit(SC, 1, "a", "b"), hit(SC, 2, "c", "d"))),
-            handler_key="suite",
-        )
+        held = fallback.propose(items, wanted, fallback.Answer(hits=hits), handler_key="suite")
         review.resolve(items, held.item_id, review.Verdict.ACCEPTED, actor="suite")
         said = fallback.settled(items, wanted)
 
-    assert said is not None and said.state == fallback.STALLED
-    assert said.url is None
-
-
-def test_an_acceptance_over_one_option_is_that_option(cfg):
-    wanted = match.read_text_lines(BOOT)[0]
-    with review.open_store(cfg) as items:
-        held = fallback.propose(
-            items, wanted, fallback.Answer(hits=(hit(SC, 1, "a", "b"),)), handler_key="suite"
-        )
-        review.resolve(items, held.item_id, review.Verdict.ACCEPTED, actor="suite")
-        said = fallback.settled(items, wanted)
-
-    assert said is not None and said.state == fallback.ACCEPTED
-    assert said.url == "https://soundcloud.example/1"
+    assert said is not None and said.state == state
+    assert said.url == url
 
 
 def test_a_rejected_row_is_not_searched_again_and_says_so(cfg, library, tmp_path, monkeypatch):
@@ -254,10 +250,7 @@ def test_a_rejected_row_is_not_searched_again_and_says_so(cfg, library, tmp_path
 
 
 def test_no_candidate_anywhere_refuses_and_names_the_row(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, TIDE)
-    fake = bind(monkeypatch, FakeSearcher({}))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, TIDE, answers={})
 
     assert len(fake.calls) == 2
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -270,10 +263,7 @@ def test_no_candidate_anywhere_refuses_and_names_the_row(cfg, library, tmp_path,
 def test_a_row_with_none_beside_a_row_offered_is_a_failing_check(
     cfg, library, tmp_path, monkeypatch
 ):
-    path = tracklist(tmp_path, BOOT, TIDE)
-    bind(monkeypatch, FakeSearcher(boot_answers()))
-
-    code, envelope = run(path)
+    _, code, envelope = searched(tmp_path, monkeypatch, BOOT, TIDE)
 
     assert code == int(ExitCode.OK), envelope
     unfound = checks(envelope)["unfound"]
@@ -366,10 +356,10 @@ def test_an_outage_names_every_row_already_offered(cfg, library, tmp_path, monke
 
 
 def test_an_outage_on_the_first_row_says_nothing_was_offered(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, TIDE)
-    bind(monkeypatch, FakeSearcher({(SC, TIDE_Q): [hit(SC, 1, "Nova Reef", "Tide")]}, fail={(YT, TIDE_Q)}))
-
-    code, envelope = run(path)
+    _, code, envelope = searched(
+        tmp_path, monkeypatch, TIDE,
+        answers={(SC, TIDE_Q): [hit(SC, 1, "Nova Reef", "Tide")]}, fail={(YT, TIDE_Q)},
+    )
 
     assert envelope["cause"]["reason"] == "unavailable-transient", (code, envelope)
     assert "nothing was offered this run" in envelope["cause"]["message"]
@@ -393,10 +383,7 @@ def test_any_searcher_failure_is_an_outage_not_a_crash(cfg, library, tmp_path, m
 
 def test_an_owned_row_is_never_searched(cfg, library, tmp_path, monkeypatch):
     (library / "Music" / "Nova Reef - Tide.flac").write_bytes(b"")
-    path = tracklist(tmp_path, TIDE, BOOT)
-    fake = bind(monkeypatch, FakeSearcher(boot_answers()))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, TIDE, BOOT)
 
     assert code == int(ExitCode.OK), envelope
     assert {q for _p, q, _n in fake.calls} == {BOOT_Q}
@@ -439,10 +426,7 @@ def _provider_question(cfg, line: str, verdict: review.Verdict | None) -> None:
 @pytest.mark.parametrize("verdict", [None, review.Verdict.ACCEPTED])
 def test_a_row_with_a_provider_route_is_not_searched(cfg, library, tmp_path, monkeypatch, verdict):
     _provider_question(cfg, TIDE, verdict)
-    path = tracklist(tmp_path, TIDE, BOOT)
-    fake = bind(monkeypatch, FakeSearcher(boot_answers()))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, TIDE, BOOT)
 
     assert code == int(ExitCode.OK), envelope
     assert {q for _p, q, _n in fake.calls} == {BOOT_Q}
@@ -454,10 +438,7 @@ def test_a_row_whose_provider_candidates_were_rejected_is_searched(
     cfg, library, tmp_path, monkeypatch
 ):
     _provider_question(cfg, BOOT, review.Verdict.REJECTED)
-    path = tracklist(tmp_path, BOOT)
-    fake = bind(monkeypatch, FakeSearcher(boot_answers()))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, BOOT)
 
     assert code == int(ExitCode.OK), envelope
     assert {q for _p, q, _n in fake.calls} == {BOOT_Q}
@@ -466,10 +447,7 @@ def test_a_row_whose_provider_candidates_were_rejected_is_searched(
 
 def test_only_provider_routed_rows_is_a_no_op_not_a_refusal(cfg, library, tmp_path, monkeypatch):
     _provider_question(cfg, TIDE, None)
-    path = tracklist(tmp_path, TIDE)
-    fake = bind(monkeypatch, FakeSearcher({}))
-
-    code, envelope = run(path)
+    fake, code, envelope = searched(tmp_path, monkeypatch, TIDE, answers={})
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -659,10 +637,7 @@ def test_a_provider_route_beside_an_unfound_row_is_reported_not_refused(
 ):
     """A row with a route is something to do, and the unfound row is a failing check."""
     _provider_question(cfg, TIDE, None)
-    path = tracklist(tmp_path, TIDE, GLASS)
-    bind(monkeypatch, FakeSearcher({}))
-
-    code, envelope = run(path)
+    _, code, envelope = searched(tmp_path, monkeypatch, TIDE, GLASS, answers={})
 
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]

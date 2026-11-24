@@ -10,13 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.test_board_reads import load_board
-
-
-@pytest.fixture
-def board():
-    return load_board()
-
+from tests.test_board_reads import board as board  # noqa: PLC0414
 
 LEDGER_TEXT = "# Residual findings\n" + "".join(
     f"\n## R-{n}. {title}\n\nFound: U{n}.\n"

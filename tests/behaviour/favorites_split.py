@@ -1,15 +1,15 @@
 """Favorites split's scenarios: the quarter playlists turned into months behind the gate (U308).
 
-`crate favorites split` dates each quarter member by its hearts job, the
-account, or not at all, then fills the months and retires the quarters.
+Each quarter member is dated by its hearts job, the account, or not at all.
 """
 
 from __future__ import annotations
 
 from cratekit.core.exit_codes import ExitCode
-from tests.test_favorites_backfill import _account, _land, _stage
+from tests.behaviour.favorites_backfill import _landed_hearts
+from tests.test_favorites_backfill import _account
 from tests.test_favorites_split import AUG, GATE, NOV, OCT, VERB, _quarter
-from tests.test_intake_land_hearts_native import UNKNOWN, _home, hearts_swept
+from tests.test_intake_land_hearts_native import _home
 from tests.test_intake_land_hearts_native import pinned_day as pinned_day  # noqa: PLC0414
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
@@ -22,16 +22,6 @@ from tests.test_intake_land_native import native_library as native_library  # no
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 
 OK = int(ExitCode.OK)
-
-
-def _landed_hearts(stage, cfg, silence, titles: dict[str, str | None]) -> None:
-    """The suite's hearts landed with no pass, the staged files given the pinned
-    instant, since the landing's digest names each by its time."""
-    hearts_swept(cfg, {title: UNKNOWN if when is None else when for title, when in titles.items()}, run_id="")
-    for title in titles:
-        _stage(cfg, silence, title)
-    stage.settle()
-    _land()
 
 
 def test_quarters_split_into_months_behind_the_gate(stage, native_library, silence, monkeypatch):

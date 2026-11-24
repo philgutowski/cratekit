@@ -542,3 +542,164 @@ features added since. Ledger only: a maintainer facing count.
 **Measured cost.** Maintainer facing. A regression in any of the three would let the measure read a reach off the list, or a dangling verb, as clean, while the battery's own rules, which share the reading, stay green over the same fixtures. Not driven against the tree: the measure reads 0 reaches off the list and 0 dangling verbs on the branch either way.
 
 **Closes when:** a fixture test in `tests/test_refactor_measure.py` holds each reading, a lazy plain import, a chain through two handed modules, and a drive whose builder succeeds and whose help fails. Ledger only.
+
+---
+
+## R-2046. A replay row names a test a later unit renamed away, and its batch then measures nothing
+
+**Found:** at the kill set replay of #984, U335, 2026-11-24.
+
+**The mechanism.** `killset.py`'s `tests_of` keeps a subset entry whose file exists, without asking whether its test does. Rows u135 A8 and A12 name `test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set` and `test_inspiration_join_stays_pinned_beside_the_inbox_join` in `tests/test_u135_set_inbox_join.py`, which no longer define them, so the subset collects nothing and `mutate.py` refuses the whole batch with NOTHING MEASURED. The load calls (`load_spec`, `load_mapped`, `refuse_unrecorded_sources`) and a collect of the union of a batch's subsets both pass over it.
+
+**Measured cost.** One helper container's run of before batch five, about twenty minutes, before the two rows were pointed at their file and the batch restarted.
+
+**Closes when:** `killset.py rows` drops or widens to its file a subset entry whose node id does not collect, or the driver's load check collects each row's subset. Ledger only: maintainer facing.
+
+---
+
+## R-2047. One case of the sync pair merge fold runs the same merge as another
+
+**Found:** at the review of #984, U335, 2026-11-24.
+
+**The mechanism.** `test_the_side_that_leads_the_order` in `tests/test_sync_pair_merge.py` holds the cases `with_no_change..._leads_again-rekordbox` and `the_stopped_writes_order_is_not_read_against_the_base-stopped` with identical parameters. The base ran the same merge in the two tests they were folded from, so the fold kept every assertion and one case is redundant.
+
+**Measured cost.** One merge run twice, under a millisecond; no guard lost.
+
+**Closes when:** one of the two cases is given the input its base test's name describes, or the two are named as one. Ledger only.
+
+---
+
+## R-2048. Test slice four is 7.95 percent smaller, short of its 59,053 line bar and of the 13.97 percent share
+
+**Found:** at the build of #984, U335, 2026-11-24.
+
+**The mechanism.** The brief fixed the slice at 95 files and 68,640 lines on `d289f61` and its bar at 59,053. By the card's start eleven new test files had landed inside the same path range (U339, U340, R-1716, R-1950, R-1991, R-2020) and the old files had grown, so the range held 106 files and 74,245 lines. Eight builders trimmed it to U312's rules, folds through parametrize, shared helpers and builders, prose cut to the rule and its reason, with no blank line removed inside a test body and no statement packed, and reached 68,342: 5,903 fewer, 7.95 percent (per run of files 3.2, 4.9, 11.0, 9.0, 9.0, 9.3, 7.0 and 10.2 percent). Each stopped for the reason R-1941 gave: docstrings were already one line (3,276 docstring and 1,611 comment lines of 74,245), and the tests are distinct scenarios whose setup differs, so a fold needs a branch per row, and every helper pays its own def, docstring and two blank lines.
+
+**Measured cost.** The slice is 9,289 lines over the brief's bar and 4,469 over the share floor of 63,873. No person using a verb pays for it; the epic's point 5 line bar stays missed by this slice's share.
+
+**Closes when:** the audit card of U290 (#987, U338) settles point 5's line bar against the suite as it now stands, by a measure that does not count the separating blank lines PEP 8 requires, or by a card that removes whole tests a stronger test covers. Ledger only: maintainer facing.
+
+---
+
+## R-2049. The title differential's corpus is the tagging tests' string constants, so a test trim moves it
+
+**Found:** at the review of #984, U335, 2026-11-24.
+
+**The mechanism.** `scripts/title_differential.py` builds its corpus from every short string constant of fifteen tagging test files. A trim that folds tests or renames a fixture's file names changes that corpus: on this branch `corpus()` read 2,248 strings on the base and 2,318 on the head, 8 lost (among them the file names "a dance record" and "a disco record" of the remap fold) and 78 gained, mostly parametrize ids.
+
+**Measured cost.** None measured: the script is a differential research tool run by hand, exits 0 always, and is not a verb. A later run compares a slightly different corpus than an earlier one.
+
+**Closes when:** the corpus is a fixed data file the script owns, or the record of any run names the commit its corpus was read at. Ledger only: maintainer facing.
+
+---
+
+## R-2050. A replay row widened to the full suite can record an unrelated death as its kill
+
+**Found:** at the kill set replay of #981, U332, 2026-11-24.
+
+**The mechanism.** `scripts/mutate.py` promotes a row whose subset kills
+nothing to the full suite, and counts any death there as the row's kill.
+`u317.Q10_token_not_struck` (`_strike_token(cfg)` to `pass` in
+`src/cratekit/modules/tools/backup.py`) names `tests/test_backup_quick.py` as
+its subset, which errors at setup on a container without rclone, so the
+driver widened it. In U332's before batch 1, on `324cafa`, the full suite
+recorded one death,
+`tests/test_jobs.py::test_everything_the_queue_writes_is_owner_only_under_any_umask`,
+a test that drives only the job queue and never reaches the backup. The after
+batch, whose row named that file, widened too and recorded none, so
+`killset.py check` reads the row as lost. Two later full suite runs of the same
+mutation on the base killed nothing, so the death did not reproduce: one
+intermittent failure became a recorded kill.
+
+**Measured cost.** None to a person using the verbs. The row's own killers,
+`test_a_failed_run_by_another_installation_makes_the_next_run_full` and
+`test_a_run_that_fails_strikes_the_token_from_the_library_fact`, kill it on
+both sides once rclone is present (`docs/mutation/u332-replay-q10-rclone-before.json`
+and `-after.json`, `check` exits 0 on the pair). The cost is a maintainer
+reading a lost kill that is not one, and the reverse: a kill recorded on an
+intermittent death stands for a guard no test holds.
+
+**Closes when:** a promoted row's death is confirmed by running the dying
+tests again under the mutation, or a death in a test that never imports the
+mutated module is reported apart from the kill. Ledger only: maintainer facing.
+
+---
+
+## R-2051. Test slice 1 ends 3.5 percent smaller, not 14, because structure alone gives no more
+
+**Found:** at the build of #981, U332, 2026-11-24.
+
+**The mechanism.** #981 asked slice 1 of the test tree (the 200 files from
+`tests/__init__.py` to `tests/test_catalogue_app.py` in path order, 73,259
+lines at `55e958b`) to end at or under 62,155 lines, so the four slices
+together bring `tests/` under point 5's bar of 249,132. Eight builders cut it
+by Phillip's answer A on #847: parametrize folds, shared setup within a file
+or a support file of the slice, deleting a test only where another checks all
+it checks, and prose cut to the rule and its reason. They reached 70,702 by `scripts/refactor_measure.py lines`, 2,557
+lines fewer. Every builder stopped short and measured why (1.6 to 7.0 percent
+per group): the tests left are distinct end to end scenarios whose setup
+differs test to test; a table of strings is as long as the tests it would
+replace; the prose left is almost all one line reasons, residual titles and
+decisions; and 5,189 lines are not the card's to cut (`tests/conftest.py`,
+`tests/_pending.py`, the reserved cause pins). About 13,600 of the slice's lines
+are blank, mostly the two between top level definitions. The cuts that would
+reach the number are formatting (dropping those blank lines, joining calls
+already split over lines) or deleting tests that still guard something, and the
+card took neither. R-1941 measured the same wall across the whole suite.
+
+**Measured cost.** None to a person using the verbs. Point 5 of #847 stays
+unmet by about 8,547 lines in this slice; the question on #981 asked Phillip
+how to treat the miss, and the card took the recommended option, land with
+the miss named.
+
+**Closes when:** the audit card after the four slices (#987) settles point 5,
+by a decision to accept what structure gives, to lower the bar, or to count
+lines another way. Ledger only: maintainer facing.
+
+---
+
+## R-2052. Slice three of the test trimming is cut by a third of its share, since what is left is layout
+
+**Found:** at the build of #983, U334, 2026-11-24.
+
+**The mechanism.** #983 owed the 104 test files from `tests/test_label_playlists_kept.py` to `tests/test_restore_cli.py` a cut to at most 62,948 lines (16.4 percent of the 75,260 the range held at `55e958b`, four files having joined it since the brief's `d289f61`). Eight builders cut it from structure and prose to 71,656, 4.8 percent, with every test still running and every assertion kept: the groups reached 0.9, 5.95, 1.54, 1.28, 7.7 (7.6 after a three line fix to one of its files), 2.95, 6.0 and 14.09 percent. Each measured why it stopped: docstrings were already one line, exact repetition inside a file is a few percent of logical lines, and a parametrize case costs two to four lines against the five to eight of the test it replaces, so folds of short tests break even. Of the 71,656 lines left, 14,219 are blank, 5,759 of them the second of PEP 8's two between top level definitions, and several hundred are test signatures wrapped because the test's name is a sentence.
+
+**Measured cost.** Point 5 of #847's definition of done stays unmet by 8,708 lines in this slice. No person using the verbs pays anything; the suite is as strong as before.
+
+**Closes when:** the epic's audit decides what point 5's line bar should be measured against, or a card the audit files reaches it some other way. The question on #983 offered a blank line cut and a test rename card as options and took the recommended one, landing the gap named. Ledger only: maintainer facing.
+
+---
+
+## R-2053. The mutation driver writes killing node ids as pytest names them, so a table quoting the portability guard's planted values fails the scan
+
+**Found:** at the kill set replay of #983, U334, 2026-11-24.
+
+**The mechanism.** `tests/test_portability.py::test_guard_covers_every_shipped_surface` is parametrized over planted offences, a home directory and access tokens among them, and pytest writes each case's values into its node id. `scripts/mutate.py` records the killing node ids whole in the table's `.json` and `.md`, so a replay row that test kills, `u28-skills-independent.X1_placeholder_exemption`, carried the planted home path and token into `docs/mutation/`, and `scripts/scan_repo.py` and `test_portability.py::test_the_repository_itself_is_clean` refused the tree. U334 wrote those values as placeholders by hand, as the u313 tables had done.
+
+**Measured cost.** One red battery on the branch, caught before the merge; a maintainer hand edits a measured table. Nobody using the verbs pays.
+
+**Closes when:** the driver writes a killing node id through the scan's own placeholder rule before recording it, or the guard's case ids are given by `ids=` naming the offence rather than its text, with a test that a replay of that row passes the scan. Ledger only: maintainer facing.
+
+---
+
+## R-2054. The mutation driver runs under an inherited SIGINT ignore and says nothing, so an interrupt guard's kill reads zero
+
+**Found:** at the kill set replay of #983, U334, 2026-11-24.
+
+**The mechanism.** `scripts/mutate.py` and `scripts/cloud_battery.py` measure in whatever signal dispositions their process inherited. Started under `nohup` and a shell's `&`, SIGINT is ignored, every pytest child and every pool worker inherits that, and a mutant that removes `src/cratekit/core/pool.py`'s own `signal.signal(signal.SIGINT, signal.SIG_IGN)` in the stream worker survives `tests/test_pool_stream.py::test_the_terminals_interrupt_does_not_kill_a_stream_worker`. Neither the table nor its markdown records the disposition, so the zero reads as a lost kill.
+
+**Measured cost.** One row of 2,592 in U334's replay, `u241.M01_worker_takes_the_interrupt`, read zero in after batch 4 and was measured again as a one row batch, killed on both sides. Maintainer facing: a false loss costs a re-measure, and a false zero on a new row would read as a guard nothing kills.
+
+**Closes when:** the driver records the SIGINT disposition it measured under and refuses, or resets SIGINT to the default before its first run, when the inherited one is ignored, with a test that starts it so. Ledger only: maintainer facing.
+
+---
+
+## R-2055. The restore suites' tests that fail on Linux were moved onto shared fixtures and checked only by reading
+
+**Found:** at the review of #983, U334, 2026-11-24.
+
+**The mechanism.** 26 tests in `tests/test_restore_cli.py` (no `rclone` on the container) and 8 in `tests/test_restore.py` (root ignores a directory's mode, and one backup restore) fail on every Linux container and are on the base's known failures. #983 moved them onto the fixtures and helpers it added in those files (`acked`, `record`, `remote_log`, `scratch`, `target`, `seams`, `decided`, `_refusal`, `_one_session`, `_recover`, `_two_acts`, `_refused_as`). The review compared each against `main` and found the same calls in the same order with the same arguments, but none of them could be run to a pass here, and a kill whose only killer is one of them cannot be seen by the Linux replay either.
+
+**Measured cost.** Not driven: on Linux they fail before and after for the machine's reasons, the same 34 ids. If a rewrite were wrong, a macOS battery would show it as newly failing there.
+
+**Closes when:** the macOS battery runs these two files on the merged tree and reports the 34 tests passing as they did on `main` at `55e958b`. Ledger only: the check is owed at a local sitting, already in the record's OWED paragraph.

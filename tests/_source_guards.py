@@ -1,14 +1,10 @@
 """Source analysis shared by the guards that hold a LATER unit to what an earlier one settled.
 
-``tests/test_review_queue.py``, ``tests/test_cli_contract.py``,
-``tests/test_pool_sizing.py`` and the exit code guards ask these questions,
-once, here; two copies of one walk once disagreed about an aliased import.
-
-Every question is answered against the name the source actually BOUND the
-module to, in any import shape, never by matching an attribute name: a
-reviewer passed a hand edited CSV gate with one unrelated ``.offer(`` call.
-And each accepts every import shape the repository allows, since a guard that
-fires on correct code gets routed around (P7).
+Asked once, here, since two copies of one walk once disagreed about an aliased
+import. Answered against the name the source BOUND the module to, never an
+attribute name (a hand edited CSV gate passed with one unrelated ``.offer(``),
+in every import shape the repository allows, since a guard that fires on
+correct code gets routed around (P7).
 """
 
 from __future__ import annotations
@@ -34,11 +30,10 @@ def _children(node: ast.AST) -> list[ast.AST]:
 def _walk(node: ast.AST):
     """Every node under ``node``, itself first, in exactly ``ast.walk``'s order (U326).
 
-    The module walked last is held by identity with its walk, since the
-    questions a sweep asks of one file come one after another; holding one beat
-    holding none or many when measured on 2026-11-22. Sound only while no tree
-    is written between two questions about it: nothing here writes one, and a
-    caller that edits its own tree must parse the edited text afresh.
+    The module walked last is held by identity with its walk, since a sweep asks
+    one file its questions in a row (one beat none or many, measured 2026-11-22).
+    Sound only while no tree is written between two questions: a caller that
+    edits its own tree must parse the edited text afresh.
     """
     if not isinstance(node, ast.Module):
         return _breadth_first(node)
@@ -135,8 +130,7 @@ class ImportsOf:
         from cratekit.core.review import offer # offer(...)
 
     plus an ancestor package (``from cratekit import core``) and relative
-    imports. Pass the importing file's ``package`` so a relative import resolves
-    exactly rather than by dotted tail.
+    imports, resolved exactly when the importer's ``package`` is passed.
     """
 
     def __init__(self, tree: ast.AST, module: str, package: str | None = None) -> None:
@@ -220,8 +214,8 @@ class ImportsOf:
 class ReviewImports(ImportsOf):
     """:class:`ImportsOf` fixed to the review module, which is what U11 declared.
 
-    ``package`` is forwarded: dropping it raises nothing and makes the guard
-    answer about the wrong file, which three tests in ``test_review_queue.py`` drive.
+    ``package`` is forwarded, since dropping it raises nothing and answers about
+    the wrong file (driven by three tests in ``test_review_queue.py``).
     """
 
     def __init__(self, tree: ast.AST, package: str | None = None) -> None:
@@ -245,32 +239,36 @@ def calls_attribute(source: str, module: str, wanted: str, *, package: str | Non
     )
 
 
+def _targets_of(statement: ast.AST) -> tuple[list[ast.AST], ast.AST | None]:
+    """An assignment's targets and value, annotated or not; ``([], None)`` for anything else."""
+    if isinstance(statement, ast.Assign):
+        return list(statement.targets), statement.value
+    if isinstance(statement, ast.AnnAssign) and statement.value is not None:
+        return [statement.target], statement.value
+    return [], None
+
+
+def _named(statement: ast.AST) -> list[tuple[str, ast.AST]]:
+    """The plain names one assignment binds, each with its value."""
+    targets, value = _targets_of(statement)
+    return [(target.id, value) for target in targets if isinstance(target, ast.Name)]
+
+
 def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:
     """Every ``name = value`` and ``self.name = value``, as (dotted target, value)."""
     found: list[tuple[str, ast.AST]] = []
     for node in _walk(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                name = _dotted(target)
-                if name is not None:
-                    found.append((name, node.value))
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            name = _dotted(node.target)
+        targets, value = _targets_of(node)
+        for target in targets:
+            name = _dotted(target)
             if name is not None:
-                found.append((name, node.value))
+                found.append((name, value))
     return found
 
 
 def calls_review(source: str, wanted: str, package: str | None = None) -> bool:
     """Whether this source CALLS the review module's ``wanted`` function."""
-    tree = ast.parse(source)
-    imports = ReviewImports(tree, package)
-    if not imports.reaches_review:
-        return False
-    return any(
-        isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
-        for node in _walk(tree)
-    )
+    return calls_attribute(source, REVIEW_MODULE, wanted, package=package)
 
 
 def offers_into(source: str, queue: str, package: str | None = None) -> bool:
@@ -354,10 +352,9 @@ def methods_on_review_construction(
 def constructs_a_csv_writer(source: str) -> list[str]:
     """Every place this source builds a comma separated WRITER, in any import shape.
 
-    Three narrowings, so the guard cannot fire on correct code (P7): writing
-    only, since R12 names a file the product wrote for hand editing and pasted
-    intake is legitimate; the module named, not just the attribute; and the name
-    the source bound, so ``import csv as spreadsheet`` is caught.
+    Narrowed so it cannot fire on correct code (P7): writing only, since R12
+    names a file written for hand editing and pasted intake is legitimate; and
+    the module by the name the source bound, so ``import csv as spreadsheet`` is caught.
     """
     tree = ast.parse(source)
     module_names = {
@@ -396,10 +393,8 @@ def package_modules(package_root) -> list[tuple[str, str]]:
 
 
 # ── U38: the two shapes that bypass the reserved exit-code table. ────────────
-#
-# Appended, so units landing at once conflict visibly rather than merging
-# silently. Answered against the name the source BOUND, never the text
-# ``ExitCode``, which anyone's class or one ``as`` would defeat.
+# Appended, so units landing at once conflict visibly. Answered against the name
+# the source BOUND, never the text ``ExitCode``, which one ``as`` would defeat.
 
 #: The module that owns the status vocabulary. Its package and leaf are derived
 #: at use, so a test can move the constant and watch every question follow.
@@ -409,20 +404,16 @@ EXIT_CODE_MODULE = "cratekit.core.exit_codes"
 EXIT_CODE_CLASS = "ExitCode"
 
 #: A cause slug as this repository spells one: lowercase words joined by single
-#: hyphens. Not a key rule on its own: the string must also be a declared
-#: cause, from the registry, the caller's derivation, or an enum member in the
-#: same source. See ``ReservedCodeTable``.
+#: hyphens. Not a key rule alone: the string must also be a declared cause.
 CAUSE_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 
 
 def _relative_module(node: ast.ImportFrom, package: str) -> str | None:
     """The absolute module a RELATIVE import names, resolved against its package.
 
-    One dot is the file's own package, for a module and for that package's
-    ``__init__`` alike. None when the level walks off the top: Python's slice
-    would otherwise quietly hand back a shorter package and report an import the
-    interpreter refuses (driven by
-    ``test_a_relative_import_that_walks_off_the_top_names_nothing``).
+    One dot is the file's own package, for a module and its ``__init__`` alike.
+    None when the level walks off the top, where a slice would quietly hand back
+    a shorter package (``test_a_relative_import_that_walks_off_the_top_names_nothing``).
     """
     parts = package.split(".")
     if node.level - 1 >= len(parts):
@@ -436,11 +427,10 @@ def _import_targets(
 ) -> tuple[bool, bool]:
     """Whether one ``from ... import`` names MODULE, or the package MODULE sits in.
 
-    One implementation for both walks here; see the residual
+    One implementation for both walks; see the residual
     "Two copies of one import walk still carry a relative-import defect".
-    Resolved against the importer's package when known, so ``from . import
-    exit_codes`` in ``cli`` is the table. Without one the TAIL is matched and a
-    bare sibling accepted, and ``from . import X`` (module None) names the package.
+    Resolved against a known package, so ``from . import exit_codes`` in ``cli`` is the table; without
+    one the TAIL is matched, and ``from . import X`` names the package.
     """
     owner, _, leaf = module.rpartition(".")
     if not node.level:
@@ -459,12 +449,9 @@ def _import_targets(
 class ExitCodeImports:
     """How one source file reaches ``ExitCode``, in every import shape.
 
-    Collapse outstanding: this is the walk :class:`ImportsOf` does, with its own
-    relative resolver through ``_import_targets``. Collapse it into
-    ``ImportsOf(tree, EXIT_CODE_MODULE, package)`` narrowed to the ``ExitCode``
-    symbol, threading the package at every call site. The two resolvers agreed
-    on 140 cases at the U12 merge, so it is deduplication, not a fix, and the
-    residuals record the plan.
+    Collapse outstanding: the walk :class:`ImportsOf` does, with its own
+    resolver. The two agreed on 140 cases at the U12 merge, so collapsing it is
+    deduplication, not a fix; the residuals record the plan.
 
     Seven shapes are recognized::
 
@@ -541,16 +528,7 @@ class ExitCodeImports:
 
 def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
     """Every ``NAME = <expression>`` at module level, so a code held in a constant is read."""
-    found: dict[str, ast.AST] = {}
-    for node in getattr(tree, "body", []):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    found[target.id] = node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            if isinstance(node.target, ast.Name):
-                found[node.target.id] = node.value
-    return found
+    return {name: value for node in getattr(tree, "body", []) for name, value in _named(node)}
 
 
 def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
@@ -559,15 +537,7 @@ def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
     for node in _walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
-        members: dict[str, ast.AST] = {}
-        for statement in node.body:
-            if isinstance(statement, ast.Assign):
-                for target in statement.targets:
-                    if isinstance(target, ast.Name):
-                        members[target.id] = statement.value
-            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
-                if isinstance(statement.target, ast.Name):
-                    members[statement.target.id] = statement.value
+        members = {name: value for statement in node.body for name, value in _named(statement)}
         if members:
             found[node.name] = members
     return found
@@ -582,9 +552,8 @@ ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum"})
 def _enum_bases(tree: ast.AST) -> set[str]:
     """Every local name in this source that IS a base out of the ``enum`` module.
 
-    Bound through the import graph, so ``from enum import StrEnum as Vocabulary``
-    is read. Only the symbol import: ``e.StrEnum`` is answered by the spelling
-    clause in ``_declared_enum_values``.
+    The symbol import only, so ``from enum import StrEnum as Vocabulary`` is
+    read; ``e.StrEnum`` is the spelling clause's in ``_declared_enum_values``.
     """
     found: set[str] = set()
     for node in _walk(tree):
@@ -599,16 +568,11 @@ def _enum_bases(tree: ast.AST) -> set[str]:
 def _declared_enum_values(tree: ast.AST) -> set[str]:
     """Every cause-shaped string this source declares as an enum member value.
 
-    The DECLARATION half of the key test: a string declared in the file's own
-    enum is a cause before anybody reserved it. Matched on the base, never on the
-    class or variable name, by two clauses each with its own fixture: a base
-    bound from ``enum`` under another name, and a base spelled ending in
-    ``Enum``, which covers our own bases in other modules.
-
-    Not read: a base from another module whose name is neither, such as
-    ``class Cause(Vocabulary)``; that needs the other file.
-    ``test_no_module_declares_a_vocabulary_on_a_base_this_cannot_read`` measures
-    the tree for it.
+    A string in the file's own enum is a cause before anybody reserved it.
+    Matched on the base, never the class name: one bound from ``enum`` under any
+    name, or one spelled ending in ``Enum``. A base from another module named
+    neither way needs the other file, and
+    ``test_no_module_declares_a_vocabulary_on_a_base_this_cannot_read`` measures it.
     """
     bound = _enum_bases(tree)
     found: set[str] = set()
@@ -621,24 +585,17 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
         ):
             continue
         for statement in node.body:
-            values = []
-            if isinstance(statement, ast.Assign):
-                values = [statement.value]
-            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
-                values = [statement.value]
-            for value in values:
-                if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                    if CAUSE_SLUG.match(value.value):
-                        found.add(value.value)
+            _, value = _targets_of(statement)
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                if CAUSE_SLUG.match(value.value):
+                    found.add(value.value)
     return found
 
 
 #: How far a code is chased through names, members and arithmetic, bounded so a
-#: mutually recursive pair of constants cannot hang the suite. THREE, the depth
-#: of the deepest promised spelling (``BASE = 30``, ``OFFSET = BASE``,
-#: ``OFFSET + 1``). A coverage dial, not a correctness constant: two aliases
-#: before the literal are read, three are silent, the pinned cost of the number.
-#: See the residual "One check in this unit is unreachable".
+#: mutually recursive pair cannot hang the suite. THREE, the deepest promised
+#: spelling (``BASE = 30``, ``OFFSET = BASE``, ``OFFSET + 1``); a coverage dial,
+#: so three aliases are silent. See the residual "One check in this unit is unreachable".
 MAX_HOPS = 3
 
 
@@ -650,9 +607,8 @@ def resolve_int(
 ) -> int | None:
     """The integer an expression evaluates to, through names, members and arithmetic.
 
-    Shared by both guards, since a code held in a constant is the careful
-    spelling. ``True`` is not an integer here, and a name that resolves to
-    nothing resolves to nothing rather than a guess.
+    Shared by both guards. ``True`` is not an integer here, and a name that
+    resolves to nothing resolves to nothing rather than a guess.
     """
     if node is None or hops > MAX_HOPS:
         return None
@@ -668,10 +624,8 @@ def resolve_int(
         owner = _dotted(node.value) or ""
         return resolve_int(members.get(owner, {}).get(node.attr), names, members, hops + 1)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        # THE ONLY THING THAT READS A NEGATIVE. Without it ``sys.exit(-1)``, which
-        # reaches the shell as 255 and the job engine as a signal death, is silent. See
-        # the residual
-        # "A negative process status is reserved against in prose and was covered by nothing".
+        # THE ONLY THING THAT READS A NEGATIVE, which reaches the shell as 255; see the
+        # residual "A negative process status is reserved against in prose and was covered by nothing".
         inner = resolve_int(node.operand, names, members, hops + 1)
         return None if inner is None else -inner
     if isinstance(node, ast.BinOp):
@@ -690,12 +644,9 @@ def resolve_int(
         if isinstance(node.op, (ast.FloorDiv, ast.Mod)) and right != 0:
             return left // right if isinstance(node.op, ast.FloorDiv) else left % right
         return None
-    # ``int(30)`` around a plain integer, a live path: ``sys.exit(int(code))``
-    # arrives here, and without it the bare status guard goes quiet on a real
-    # bypass. The builtin is matched by the text of its name, as five other rules
-    # here do; the residual
-    # "Six of this unit's own rules recognize a builtin by the text of its name"
-    # carries that with the measurement that no package module aliases one.
+    # ``sys.exit(int(code))`` arrives here, and without it the bare status guard
+    # goes quiet on a real bypass. The builtin is matched by its name's text; see
+    # the residual "Six of this unit's own rules recognize a builtin by the text of its name".
     if isinstance(node, ast.Call) and _dotted(node.func) == "int" and len(node.args) == 1:
         return resolve_int(node.args[0], names, members, hops + 1)
     return None
@@ -704,36 +655,29 @@ def resolve_int(
 def _within_scope(body: list[ast.stmt]):
     """Every node inside a block of statements, without entering a nested scope."""
     for statement in body:
-        if isinstance(
-            statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-        ):
+        if isinstance(statement, _SCOPE_NODES):
             continue
         yield statement
         yield from _walk_scope(statement)
 
 
-#: THERE IS NO PER-LINE OFF SWITCH. The old ``# not-a-reservation: <reason>``
-#: could silence a whole registry from one comment and was never used. Ordinary
-#: data keyed on a cause slug with an in-range integer is REPORTED, and answered
-#: by a review: into the table, or into ``TABLE_OWNERS`` with a reason.
+#: THERE IS NO PER-LINE OFF SWITCH: one could silence a whole registry. Data
+#: keyed on a cause slug with an in-range integer is REPORTED, and answered by a
+#: review: into the table, or into ``TABLE_OWNERS`` with a reason.
 
 
 class ReservedCodeTable:
     """Reads one source for a second opinion about what a refusal cause exits with.
 
-    ONE KEY SET AND ONE VALUE RULE. Every declared refusal cause is a key, and
-    any of them beside a status is a reservation: an ``ExitCode`` member in any
-    spelling, a conversion round one, a code held in a name or class attribute,
-    a module's own ``IntEnum`` member, small arithmetic, or a bare integer inside
-    the reserved range (``True`` and ``False`` never). A false alarm costs one
-    look; a miss is a module quietly disagreeing with the registry. The key is
-    resolved through names too, and every construct holding keys in a subtree
-    asks ``cause_keys_within``.
+    ONE KEY SET AND ONE VALUE RULE. Any declared refusal cause beside a status
+    is a reservation: an ``ExitCode`` member in any spelling, a conversion round
+    one, a code held in a name or class attribute, small arithmetic, or a bare
+    integer in the reserved range (never a bool). A false alarm costs one look;
+    a miss is a module quietly disagreeing with the registry.
 
-    THE RESIDUAL LIMIT: a poll interval keyed by a cause slug reads as a
-    reservation and is reported, since matching on variable names is a guard a
-    rename defeats. Shapes still silent are recorded in the residual
-    "The tiers were bought with a number that does not exist".
+    THE RESIDUAL LIMIT: a poll interval keyed by a cause slug is reported, since
+    a guard on variable names is defeated by a rename. Shapes still silent are in
+    the residual "The tiers were bought with a number that does not exist".
     """
 
     def __init__(
@@ -764,8 +708,7 @@ class ReservedCodeTable:
                 CONFIG_UNUSABLE = "config-unusable"
             CODES = {Slug.CONFIG_UNUSABLE: 30}
 
-        A name not resolving to a declared cause answers None, as an undeclared
-        literal does, so this widens what is READ, not what is a cause.
+        This widens what is READ, not what is a cause.
         """
         held = self._resolved(node)
         if not (isinstance(held, ast.Constant) and isinstance(held.value, str)):
@@ -882,17 +825,13 @@ class ReservedCodeTable:
         found: list[tuple[ast.AST, ast.AST, str | None]] = []
         for node in _walk(self.tree):
             if isinstance(node, ast.Dict):
-                # A mapping literal, including inside ``dict(**{...})``,
-                # ``MappingProxyType({...})`` and ``CODES.update({...})``. Keys stay bound to
-                # THEIR value.
+                # A mapping literal, inside ``dict(**{...})`` or ``CODES.update({...})`` too,
+                # each key bound to ITS value.
                 for key, value in zip(node.keys, node.values):
                     if key is not None:
                         found.append((key, value, None))
-                # A RECORD written as a mapping::
-                #
-                #     [{"cause": "config-unusable", "code": 30}, ...]
-                #
-                # The slug and code sit in the VALUES, never the keys, which are field names.
+                # A RECORD as a mapping, ``{"cause": "config-unusable", "code": 30}``: the
+                # slug and code sit in the VALUES, never the keys, which are field names.
                 found.extend(self._crossed(list(node.values)))
             elif isinstance(node, (ast.Tuple, ast.List)):
                 found.extend(self._crossed(list(node.elts)))
@@ -914,9 +853,8 @@ class ReservedCodeTable:
                     and function.attr == "setdefault"
                     and len(node.args) == 2
                 ):
-                    # Redundant with the catch-all below, but binds the key to ITS value by
-                    # position, so a three-argument call cannot pair the wrong two. See the
-                    # residual "One check in this unit is unreachable".
+                    # Binds the key to ITS value by position, which the catch-all cannot; see
+                    # the residual "One check in this unit is unreachable".
                     found.append((node.args[0], node.args[1], None))
                 elif _dotted(function) in {"dict", "OrderedDict"} and len(node.args) == 1:
                     found.extend(self._zipped(node.args[0]))
@@ -992,11 +930,9 @@ def reserved_code_tables(
 ) -> list[str]:
     """Every place this source gives a refusal cause its own exit code.
 
-    Not restricted to dict literals or two-element pairs: the protected file
-    declares its own table as a tuple of three-field dataclasses. ``package``
-    lets a relative import resolve exactly; without it ``ExitCodeImports`` falls
-    back. There is no second key set parameter, because a defaulted parameter
-    that weakens the guard when omitted makes the absence-asserting scans greener.
+    Not only dict literals and pairs: the protected file declares its table as a
+    tuple of three-field dataclasses. There is no second key set parameter, since
+    a default that weakens the guard when omitted makes absence scans greener.
     """
     tree = ast.parse(source)
     table = ReservedCodeTable(tree, causes, code_range, package)
@@ -1009,11 +945,7 @@ def reserved_code_tables_in(
     code_range: tuple[int, int],
     package: str | None = None,
 ) -> list[str]:
-    """:func:`reserved_code_tables` asked of a tree already parsed (U258), read and never written.
-
-    It lets a test share one tree among its questions, since the text must reach
-    nothing here but ``ast.parse``.
-    """
+    """:func:`reserved_code_tables` asked of a tree already parsed (U258), read and never written."""
     return _reservations(ReservedCodeTable(tree, causes, code_range, package))
 
 
@@ -1050,18 +982,12 @@ TRACKED_MODULES = frozenset({"sys", "os", "builtins", "importlib"})
 
 
 def _walk_scope(node: ast.AST):
-    """Every node in ONE lexical scope, not entering a nested def, class or lambda.
-
-    A module-level ``stop = sys.exit`` is an exit in functions that inherit it,
-    not in one with a parameter of the same name.
-    """
+    """Every node in ONE lexical scope, not entering a nested def, class or lambda."""
     stack = list(_children(node))
     while stack:
         current = stack.pop()
         yield current
-        if isinstance(
-            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-        ):
+        if isinstance(current, _SCOPE_NODES):
             continue
         stack.extend(_children(current))
 
@@ -1109,16 +1035,11 @@ class ProcessExits:
         inherited: ProcessExits | None = None,
         shadowed: set[str] | None = None,
     ) -> None:
-        if inherited is None:
-            self.modules: dict[str, str] = {}
-            self.exits: set[str] = set()
-            self.statuses: set[str] = {"SystemExit"}
-            self.importers: set[str] = {"__import__"}
-        else:
-            self.modules = dict(inherited.modules)
-            self.exits = set(inherited.exits)
-            self.statuses = set(inherited.statuses)
-            self.importers = set(inherited.importers)
+        fresh = inherited is None
+        self.modules: dict[str, str] = {} if fresh else dict(inherited.modules)
+        self.exits: set[str] = set() if fresh else set(inherited.exits)
+        self.statuses: set[str] = {"SystemExit"} if fresh else set(inherited.statuses)
+        self.importers: set[str] = {"__import__"} if fresh else set(inherited.importers)
         for name in shadowed or ():
             self.modules.pop(name, None)
             self.exits.discard(name)
@@ -1144,13 +1065,8 @@ class ProcessExits:
                 self._bind_symbols(child)
             elif isinstance(child, ast.ClassDef):
                 classes.append(child)
-            elif isinstance(child, ast.Assign):
-                for target in child.targets:
-                    if isinstance(target, ast.Name):
-                        assignments.append((target.id, child.value))
-            elif isinstance(child, ast.AnnAssign) and child.value is not None:
-                if isinstance(child.target, ast.Name):
-                    assignments.append((child.target.id, child.value))
+            else:
+                assignments.extend(_named(child))
         changed = True
         while changed:
             changed = False
@@ -1245,14 +1161,13 @@ class ProcessExits:
         if isinstance(node, ast.Name):
             return node.id in self.exits
         if isinstance(node, ast.Attribute):
+            # No dotted lookup: every name in ``self.exits`` is bare. ``self.stop =
+            # sys.exit`` is not read, since binding across methods leaks across scopes,
+            # and no package module holds an exit on an attribute.
             identity = self.module_identity(node.value)
             return bool(
                 identity in EXIT_ATTRIBUTES and node.attr == EXIT_ATTRIBUTES[identity]
             )
-            # A dotted lookup here was dead code: every name in ``self.exits`` is bare.
-            # ``self.stop = sys.exit`` then ``self.stop(30)`` is NOT handled, since binding
-            # across methods leaks across scopes; no package module holds an exit on an
-            # attribute.
         if isinstance(node, ast.Call):
             identity, attribute = self._fetched(node)
             return bool(
@@ -1282,16 +1197,12 @@ class ProcessExits:
 def process_status_literals(source: str) -> list[str]:
     """Every place this source turns a bare integer into a process status.
 
-    ``sys.exit(21)`` bypasses the vocabulary. Every name is bound through the
-    import graph by module identity, so ``runner.exit(21)`` on someone's own
-    object is not caught. The status is RESOLVED, through the scope it is read
-    in, so ``sys.exit(PRECONDITION)`` is caught and a shadowing parameter
-    resolves to nothing. Zero and ``True`` are excluded; a status this cannot
-    evaluate, like ``sys.exit(int(code_for(cause)))``, stays silent.
-
-    A NEGATIVE STATUS IS REPORTED: the shell reads ``exit(-1)`` as 255 and the
-    job engine's ``returncode`` as a signal death.
-    ``test_a_negative_status_is_a_bare_status_too`` drives it.
+    ``sys.exit(21)`` bypasses the vocabulary. Names are bound by module identity,
+    so ``runner.exit(21)`` is not caught, and the status is RESOLVED in its
+    scope, so ``sys.exit(PRECONDITION)`` is and a shadowing parameter is not.
+    Zero and ``True`` are excluded; an unevaluable status stays silent. A
+    NEGATIVE one is reported, since the shell reads ``exit(-1)`` as 255
+    (``test_a_negative_status_is_a_bare_status_too``).
     """
     tree = ast.parse(source)
     found: list[str] = []
@@ -1311,13 +1222,7 @@ def _scope_literals(node: ast.AST, inherited: dict[str, ast.AST]) -> dict[str, a
     for parameter in _parameter_names(node):
         names.pop(parameter, None)
     for child in _walk_scope(node):
-        if isinstance(child, ast.Assign):
-            for target in child.targets:
-                if isinstance(target, ast.Name):
-                    names[target.id] = child.value
-        elif isinstance(child, ast.AnnAssign) and child.value is not None:
-            if isinstance(child.target, ast.Name):
-                names[child.target.id] = child.value
+        names.update(_named(child))
     return names
 
 
@@ -1330,9 +1235,7 @@ def _scan_for_exits(
 ) -> None:
     nested: list[ast.AST] = []
     for child in _walk_scope(node):
-        if isinstance(
-            child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-        ):
+        if isinstance(child, _SCOPE_NODES):
             nested.append(child)
             continue
         if not isinstance(child, ast.Call) or len(child.args) != 1:
@@ -1403,11 +1306,9 @@ RB_WRITER_ACCESSOR = "writer"
 def _writer_accessors(tree: ast.AST) -> set[str]:
     """Functions that import the writer and return the name they bound it to.
 
-    Keyed on what makes a function the writer: its imports bind it and a return
-    hands back that name, plain or dotted, at any depth. And since U329 the
-    accessor's one home, ``from cratekit.core.rb_call_time import writer [as
-    _writer]`` or the relative ``from .rb_call_time import writer`` inside
-    ``core``, binds the same accessor under its local name.
+    A return of that name, plain or dotted, at any depth. Since U329 an import
+    of ``writer`` from its one home, ``cratekit.core.rb_call_time`` (relative
+    inside ``core``), binds the same accessor under its local name.
     """
     found: set[str] = set()
     for node in _walk(tree):
@@ -1442,8 +1343,7 @@ class SoftDeleteNames:
     * a local constant assigned any of those, one hop;
     * a local constant assigned a FALSEY constant.
 
-    One hop, the depth :func:`offers_into` accepts: the shape a person reaches
-    for around a guard is one name.
+    One hop, as :func:`offers_into` accepts: a person reaches round a guard with one name.
     """
 
     def __init__(self, tree: ast.AST) -> None:
@@ -1453,13 +1353,10 @@ class SoftDeleteNames:
         #: accessor, so ``_writer().SOFT_DELETE_COLUMN`` names the column.
         self.accessor_names: set[str] = _writer_accessors(tree)
 
-        # The one hop, resolved after the imports and to a fixed point, so file order
-        # does not decide it.
-        # Local names bound to something FALSEY: a permissive default with a name.
+        #: Local names bound to something FALSEY: a permissive default with a name.
         self.falsey_names: set[str] = set()
-        # The one hop and the module alias chain, to a fixed point, so ``M = W`` where
-        # ``W`` is itself an alias resolves.
-        # Local names that ARE the rb_writer module.
+        # The one hop and the module alias chain, after the imports and to a fixed
+        # point, so neither file order nor ``M = W`` with ``W`` an alias decides it.
         pairs = _assignments(tree)
         for _ in range(len(pairs) + 1):
             grew = False
@@ -1482,12 +1379,7 @@ class SoftDeleteNames:
         #: as ``COLUMN_TYPES.get(SOFT_DELETE_COLUMN)`` in the house style.
         self.lookup_tables: set[str] = set()
         for node in getattr(tree, "body", []):
-            targets: list[ast.AST] = []
-            value: ast.AST | None = None
-            if isinstance(node, ast.Assign):
-                targets, value = list(node.targets), node.value
-            elif isinstance(node, ast.AnnAssign) and node.value is not None:
-                targets, value = [node.target], node.value
+            targets, value = _targets_of(node)
             if value is None or not _is_container(value):
                 continue
             for target in targets:
@@ -1577,9 +1469,8 @@ class SoftDeleteNames:
     def is_permissive(self, node: ast.AST) -> bool:
         """Whether ``node`` is a default that reads as 'this row is active'.
 
-        Falsey is the whole test, since the marker is consumed as a truth value. A
-        sentinel is truthy and not flagged: uncompared, it reports rows DELETED,
-        which fails loudly.
+        Falsey is the whole test, as the marker is read as a truth value; a truthy
+        sentinel, uncompared, reports rows DELETED, which fails loudly.
         """
         return self._is_falsey(node)
 
@@ -1589,18 +1480,15 @@ def _soft_delete_reads(
 ) -> list[tuple[ast.AST, ast.AST | None]]:
     """Every read of the marker, paired with the default it supplied, if any.
 
-    Three access shapes, since a row arrives as a binding object and as a raw
-    query mapping. A ``.get`` on a receiver bound at module level TO A CONTAINER
-    LITERAL is a per-column table and excluded; keyed on the name alone,
-    ``row = fetch_one()`` would excuse every ``row.get(COL, 0)``.
+    A row arrives as a binding object and as a raw mapping. A ``.get`` on a name
+    bound at module level TO A CONTAINER is a per-column table and excluded; on
+    the name alone, ``row = fetch_one()`` would excuse every ``row.get(COL, 0)``.
     """
     found: list[tuple[ast.AST, ast.AST | None]] = []
     for node in _walk(tree):
         if isinstance(node, ast.Attribute) and node.attr == SOFT_DELETE_COLUMN_LITERAL:
-            # ``row.rb_local_deleted``: no default, so never permissive, recorded for the
-            # reader pin. LOAD context only: ``self.rb_local_deleted = deleted`` in a test
-            # double defines the attribute, and counting it would make the pin fire on the
-            # next fixture. A read is a Load by construction.
+            # No default, so never permissive, recorded for the reader pin. A Load
+            # only: a test double's ``self.rb_local_deleted = deleted`` defines it.
             if not isinstance(node.ctx, ast.Load):
                 continue
             found.append((node, None))
@@ -1640,10 +1528,8 @@ def _soft_delete_reads(
 
 
 def _local_names(scope: ast.AST) -> set[str]:
-    """Names this scope binds itself: parameters, assignments, and walrus targets.
-
-    Every binding form, walked rather than matched: with only bare ``Name``
-    targets, this was silent (measured 2026-09-10)::
+    """Names this scope binds itself, every binding form walked; bare ``Name``
+    targets alone were silent on this (measured 2026-09-10)::
 
         TABLE = {}                       # a real per-column lookup table
         def read(rows):
@@ -1659,14 +1545,7 @@ def _local_names(scope: ast.AST) -> set[str]:
             if isinstance(node, ast.Name):
                 found.add(node.id)
 
-    found: set[str] = set()
-    arguments = getattr(scope, "args", None)
-    if arguments is not None:
-        for group in ("posonlyargs", "args", "kwonlyargs"):
-            found.update(item.arg for item in getattr(arguments, group, []) or [])
-        for single in (getattr(arguments, "vararg", None), getattr(arguments, "kwarg", None)):
-            if single is not None:
-                found.add(single.arg)
+    found: set[str] = _parameter_names(scope)
     for node in _own_nodes(scope):
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -1758,12 +1637,7 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
     for scope in _scopes(tree):
         holders: dict[str, ast.AST] = {}
         for statement in _own_nodes(scope):
-            targets: list[ast.AST] = []
-            value: ast.AST | None = None
-            if isinstance(statement, ast.Assign):
-                targets, value = list(statement.targets), statement.value
-            elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
-                targets, value = [statement.target], statement.value
+            targets, value = _targets_of(statement)
             if value is None:
                 continue
             reads = _soft_delete_reads(value, names)
@@ -1830,11 +1704,10 @@ def _rebinding_statements(scope: ast.AST, holders: dict[str, ast.AST]):
 def permissive_soft_delete_reads(source: str) -> list[str]:
     """Every place this source reads the soft-delete marker PERMISSIVELY (U18, U19, U21).
 
-    FORBIDDEN: a read supplying a FALSEY fallback, however spelled, or one
-    laundered a line later (:func:`_laundered_reads`), since a falsey fallback
-    silently promotes every tombstone to a live row. LEFT ALONE (P7): a compared
-    sentinel, no default, a plain read, the constant's definition, a ``.get`` on
-    a module-level table. Its limits are in the residual
+    A FALSEY fallback, however spelled or laundered a line later, silently
+    promotes every tombstone to a live row. LEFT ALONE (P7): a compared
+    sentinel, no default, the constant's definition, a module table's ``.get``.
+    Limits: the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract".
     """
     tree = ast.parse(source)
@@ -1854,11 +1727,9 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
 def reads_soft_delete_marker(source: str) -> bool:
     """Whether this source reads the soft-delete marker at all, permissively or not.
 
-    Feeds an exact-membership pin over the modules that read the column, the only
-    shape that catches a widening; see the residual
-    "Guard whitelists assert what is forbidden, never what is permitted". It
-    forces U24's ``trees.soft_delete_marker`` reconciliation. Defining the column
-    is not reading it, so ``core/rb_writer.py`` is not a reader.
+    Feeds an exact-membership pin, the only shape that catches a widening; see the
+    residual "Guard whitelists assert what is forbidden, never what is permitted".
+    Defining the column is not reading it (U24).
     """
     tree = ast.parse(source)
     return bool(_soft_delete_reads(tree, SoftDeleteNames(tree)))

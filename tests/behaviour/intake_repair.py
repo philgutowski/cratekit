@@ -1,8 +1,7 @@
 """Intake's repair scenarios: a doubled file name proposed, accepted and renamed (U307).
 
-`crate repair paths --root` offers a shorter name for each doubled file, and
-`--apply` renames only the accepted one behind its gate, or refuses before any
-rename over a row the new name would take. Its own file for its ``library``.
+Only the accepted one is renamed, or none over a row the new name would take.
+Its own file for its ``library``.
 """
 
 from __future__ import annotations

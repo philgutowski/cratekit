@@ -46,12 +46,8 @@ def _backed_up(cfg, **ages: timedelta) -> None:
     """Record each named portion as completed that long ago, through the fact writer."""
     now = datetime.now(UTC)
     for portion, age in ages.items():
-        backup_facts.record(
-            cfg,
-            backup_facts.Portion(portion),
-            completed_at=now - age,
-            destination="/backups/probe",
-        )
+        part, done, where = backup_facts.Portion(portion), now - age, "/backups/probe"
+        backup_facts.record(cfg, part, completed_at=done, destination=where)
 
 
 def _answered_by(actor: str) -> tuple[int, dict]:
@@ -62,14 +58,8 @@ def _answered_by(actor: str) -> tuple[int, dict]:
     return _drive(["--run", run_id, "session", "ack"])
 
 
-def test_the_session_mints_with_no_terminal_when_both_ages_are_under_five_days(
-    nobody_at_a_terminal,
-):
-    cfg = nobody_at_a_terminal
-    _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4, hours=23))
-
-    envelope = exited(_answered_by(SESSION))
-    summary = envelope["data"]["summary"]
+def _minted_by_the_session(cfg, summary: dict):
+    """The record and the summary both say the session minted it by the age rule: the record."""
     assert summary["recorded"] is True
     assert (summary["rule"], summary["decided_by"]) == ("session-ages", SESSION)
     kept = session.read_acknowledgment(cfg)
@@ -78,6 +68,24 @@ def test_the_session_mints_with_no_terminal_when_both_ages_are_under_five_days(
     # The record's own actor is the process's account, never the answer's.
     assert kept.actor == session.derive_actor() != SESSION
     assert {entry.portion for entry in kept.shown} == {"files", "database"}
+    return kept
+
+
+def _refused_too_old(cfg, envelope: dict, named: str) -> None:
+    cause = envelope["cause"]
+    assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
+    assert named in cause["message"], cause["message"]
+    assert cause["remediation"]["remedy"] == "run-backup", cause
+    assert session.read_acknowledgment(cfg) is None
+
+
+def test_the_session_mints_with_no_terminal_when_both_ages_are_under_five_days(
+    nobody_at_a_terminal,
+):
+    cfg = nobody_at_a_terminal
+    _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4, hours=23))
+
+    _minted_by_the_session(cfg, exited(_answered_by(SESSION))["data"]["summary"])
 
 
 @pytest.mark.parametrize(
@@ -105,12 +113,8 @@ def test_the_session_is_refused_naming_the_portion_over_five_days_or_unknown(
     _backed_up(cfg, **ages)
 
     envelope = exited(_answered_by(SESSION), ExitCode.ACK_REQUIRED)
-    cause = envelope["cause"]
-    assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
-    assert named in cause["message"], cause["message"]
-    assert "run a backup first" in cause["message"]
-    assert cause["remediation"]["remedy"] == "run-backup", cause
-    assert session.read_acknowledgment(cfg) is None
+    _refused_too_old(cfg, envelope, named)
+    assert "run a backup first" in envelope["cause"]["message"]
 
 
 def test_a_session_with_a_terminal_is_still_held_to_the_ages(installed):  # noqa: F811
@@ -163,8 +167,7 @@ def test_a_record_written_before_u138_reads_as_the_terminal_rule():
     ids=["a-second-under-five-days", "exactly-five-days"],
 )
 def test_the_bound_is_strict_at_exactly_five_days(cfg, age, mints):
-    """On one clock, so "exactly" means exactly; through the dispatcher the
-    clock moves after the fact is written and cannot tell under from at."""
+    """On one clock, so "exactly" means exactly; the dispatcher's clock moves after the write."""
     now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
     for portion in backup_facts.Portion:
         backup_facts.record(cfg, portion, completed_at=now - age, destination="/backups/probe")
@@ -209,16 +212,10 @@ def test_one_command_mints_as_the_session_when_both_ages_are_four_days(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=4), database=timedelta(days=4))
 
-    envelope = exited(_drive(ONE_COMMAND))
-    summary = envelope["data"]["summary"]
+    summary = exited(_drive(ONE_COMMAND))["data"]["summary"]
     assert (summary["recorded"], summary["already_valid"]) == (True, False)
-    assert (summary["rule"], summary["decided_by"]) == ("session-ages", SESSION)
-    kept = session.read_acknowledgment(cfg)
-    assert kept is not None and kept.valid_at(datetime.now(UTC))
-    assert (kept.rule, kept.decided_by) == ("session-ages", SESSION)
-    assert kept.actor == session.derive_actor() != SESSION
+    kept = _minted_by_the_session(cfg, summary)
     assert summary["expires_at"] == kept.expires_at.isoformat()
-    assert {entry.portion for entry in kept.shown} == {"files", "database"}
     assert _waiting_runs() == []
 
 
@@ -249,12 +246,7 @@ def test_one_command_refuses_naming_the_portion_and_records_nothing(
     cfg = nobody_at_a_terminal
     _backed_up(cfg, **ages)
 
-    envelope = exited(_drive(ONE_COMMAND), ExitCode.ACK_REQUIRED)
-    cause = envelope["cause"]
-    assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
-    assert named in cause["message"], cause["message"]
-    assert cause["remediation"]["remedy"] == "run-backup", cause
-    assert session.read_acknowledgment(cfg) is None
+    _refused_too_old(cfg, exited(_drive(ONE_COMMAND), ExitCode.ACK_REQUIRED), named)
     assert _waiting_runs() == []
 
 

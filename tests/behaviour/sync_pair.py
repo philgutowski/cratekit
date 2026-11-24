@@ -1,10 +1,9 @@
 """Sync pair's scenarios on one marked pair: the suite's own tests, driven through the stage (U304).
 
 Each runs one pair suite test as written, routed by
-``tests/behaviour/sync.borrowed``, so the capture holds each envelope, gate,
-database, pairs record and held plan, then the plan as a person reads it. No
-tie and no ceiling stop: the ISRC cache and the provider gate bind their clock
-as a default argument, which the pin does not reach.
+``tests/behaviour/sync.borrowed``, then the plan as a person reads it. No tie
+and no ceiling stop: the ISRC cache and the provider gate bind their clock as
+a default argument, which the pin does not reach.
 """
 
 from __future__ import annotations

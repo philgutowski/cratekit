@@ -30,34 +30,27 @@ VOLUME = "F1E2-D3C4"
 INSTALLED_APP_VERSION = "7.0.1"
 
 
-def _usable_trash(path: Path) -> TrashStatus:
-    """A volume whose Trash accepts a move, derived from the path the check was handed."""
+def _layout(path: Path) -> TrashLayout:
+    """The Trash layout derived from the path the check was handed."""
     root = Path(path) / ".Trashes"
-    return TrashStatus(TrashLayout(root=root, files=root / "501"), True)
+    return TrashLayout(root=root, files=root / "501")
+
+
+def _usable_trash(path: Path) -> TrashStatus:
+    return TrashStatus(_layout(path), True)
 
 
 def _absent_trash(path: Path) -> TrashStatus:
-    """A volume nobody has ever deleted from, which is not a fault but the common case.
-
-    The Trash is created on first use, and doctor asks with ``create=False``.
-    """
-    root = Path(path) / ".Trashes"
-    return TrashStatus(
-        TrashLayout(root=root, files=root / "501"),
-        False,
-        f"{root / '501'} is not a directory",
-        absent=True,
-    )
+    """Nobody has ever deleted from it: not a fault but the common case, since the Trash
+    is created on first use and doctor asks with ``create=False``."""
+    layout = _layout(path)
+    return TrashStatus(layout, False, f"{layout.files} is not a directory", absent=True)
 
 
 def _no_trash(path: Path) -> TrashStatus:
-    """A volume with no usable Trash: UNWRITABLE, the one shape no create can fix."""
-    root = Path(path) / ".Trashes"
-    return TrashStatus(
-        TrashLayout(root=root, files=root / "501"),
-        False,
-        f"{root / '501'} is not writable by this account",
-    )
+    """UNWRITABLE, the one shape no create can fix."""
+    layout = _layout(path)
+    return TrashStatus(layout, False, f"{layout.files} is not writable by this account")
 
 
 def green(**overrides) -> _Probes:

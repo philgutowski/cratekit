@@ -1,8 +1,6 @@
 """Tagging's folder scenarios: `crate tag folder` over a download folder (U306).
 
-The shipped catalogue searcher, over a fetch answering per shop, decides three
-files; a second sweep finds nothing, empty and missing folders say why, and a
-Discogs token is asked first while a refusing Beatport stops after three. Self
+The shipped catalogue searcher, over a fetch answering per shop. Self
 contained, so the suites beside it can be trimmed without moving it.
 """
 

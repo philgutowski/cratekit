@@ -9,9 +9,13 @@ drives it on a disposable library.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from pyrekordbox.db6.registry import RekordboxAgentRegistry
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from cratekit.core import rb_removal, rb_writer
 from cratekit.core.rb_removal import RenumberingStamp
@@ -106,6 +110,15 @@ def _planned_at(read_at):
 STAMPED = {"p3": (STAMP.counter, STAMP.at)}
 
 
+def _before_holding(p3) -> rb_writer.DatabaseReading:
+    """BEFORE, its row ``p3`` holding the stamp ``p3`` before the removal."""
+    before = _reading(ROWS, gone=None)
+    return rb_writer.DatabaseReading(
+        before.rows, before.named, before.counter, before.positions,
+        {**before.stamps, "p3": p3}, PLANNED,
+    )
+
+
 def test_a_stamp_earlier_than_the_plan_is_refused():
     after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
     later = _planned_at("2026-11-23 18:40:01.251 +00:00")
@@ -127,16 +140,11 @@ def test_a_stamp_at_the_plan_s_own_instant_is_forward():
 )
 def test_the_time_a_row_held_is_never_read_against_another_clock_only_left_unmoved(held):
     """A row's old ``updated_at`` may come from another machine; only an unmoved text refuses."""
-    before = _reading(ROWS, gone=None)
-    before = rb_writer.DatabaseReading(
-        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], held)}, PLANNED
-    )
+    before = _before_holding((OLD[0], held))
     after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
     assert rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP) == []
     unmoved = _reading(ROWS, moved={"p3": 2}, stamps={"p3": (STAMP.counter, STAMP.at)})
-    unmoved_before = rb_writer.DatabaseReading(
-        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], STAMP.at)}, PLANNED
-    )
+    unmoved_before = _before_holding((OLD[0], STAMP.at))
     violations = rb_writer.collection_removal_violations(unmoved_before, unmoved, removed=["x"], stamp=STAMP)
     assert any("was to be stamped updated_at" in line for line in violations), violations
 
@@ -174,11 +182,6 @@ def test_a_text_off_the_stamp_s_form_on_any_one_axis_is_not_read(text):
 
 def test_a_reading_carries_the_time_it_was_read(monkeypatch):
     """``database_reading`` stamps its own time, which the stamp is held after."""
-    import sqlite3
-
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
     monkeypatch.setattr(rb_removal, "_now", lambda: datetime(2026, 11, 23, 18, 40, 1, 7000, tzinfo=timezone.utc))
     engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(":memory:"))
 
@@ -237,8 +240,6 @@ def test_a_stamp_s_time_refuses_a_moment_with_no_zone():
 
 
 def test_the_removal_stamp_takes_the_clock_and_the_count_the_commit_will_leave(monkeypatch):
-    from pyrekordbox.db6.registry import RekordboxAgentRegistry
-
     class Handle:
         def get_local_usn(self):
             return 100
@@ -248,19 +249,21 @@ def test_the_removal_stamp_takes_the_clock_and_the_count_the_commit_will_leave(m
     assert rb_removal.removal_stamp(Handle()) == RenumberingStamp(103, "2026-11-23 18:40:01.250 +00:00")
 
 
-def test_a_count_that_cannot_be_read_refuses_and_rolls_back(monkeypatch):
-    from pyrekordbox.db6.registry import RekordboxAgentRegistry
-
+@pytest.mark.parametrize(
+    ("usn", "buffer"), [(None, []), (7, ())],
+    ids=["a-count-that-cannot-be-read", "a-buffer-that-is-not-a-list"],
+)
+def test_a_count_that_cannot_be_said_refuses_and_rolls_back(monkeypatch, usn, buffer):
     rolled: list[bool] = []
 
     class Handle:
         def get_local_usn(self):
-            return None
+            return usn
 
         def rollback(self):
             rolled.append(True)
 
-    monkeypatch.setattr(RekordboxAgentRegistry, "__update_sequence__", [])
+    monkeypatch.setattr(RekordboxAgentRegistry, "__update_sequence__", buffer)
     with pytest.raises(rb_writer.RekordboxUnavailable, match="cannot be said"):
         rb_removal.counter_at_commit(Handle())
     assert rolled == [True]
@@ -268,11 +271,7 @@ def test_a_count_that_cannot_be_read_refuses_and_rolls_back(monkeypatch):
 
 def test_a_count_already_at_the_stamp_is_refused_as_unmoved():
     """The row held the stamp's count before the removal: the count did not move."""
-    before = _reading(ROWS, gone=None, read_at=PLANNED)
-    before = rb_writer.DatabaseReading(
-        before.rows, before.named, before.counter, before.positions,
-        {**before.stamps, "p3": (STAMP.counter, OLD[1])}, PLANNED,
-    )
+    before = _before_holding((STAMP.counter, OLD[1]))
     after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
     violations = rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP)
     assert any("from 3047665 and holds 3047665, so the count did not move" in line for line in violations), violations
@@ -283,24 +282,6 @@ def test_a_removal_that_renumbers_nothing_is_not_held_to_the_plan_s_time():
     lone = [("q1", "q", "a", 1), ("q2", "q", "x", 2)]
     before = _reading(lone, gone=None, read_at="2026-11-24 00:00:00.000 +00:00")
     assert rb_writer.collection_removal_violations(before, _reading(lone), removed=["x"], stamp=STAMP) == []
-
-
-def test_a_buffer_that_is_not_a_list_refuses_and_rolls_back(monkeypatch):
-    from pyrekordbox.db6.registry import RekordboxAgentRegistry
-
-    rolled: list[bool] = []
-
-    class Handle:
-        def get_local_usn(self):
-            return 7
-
-        def rollback(self):
-            rolled.append(True)
-
-    monkeypatch.setattr(RekordboxAgentRegistry, "__update_sequence__", ())
-    with pytest.raises(rb_writer.RekordboxUnavailable, match="cannot be said"):
-        rb_removal.counter_at_commit(Handle())
-    assert rolled == [True]
 
 
 def test_the_count_is_read_through_the_writer_so_a_patch_there_bites(monkeypatch):

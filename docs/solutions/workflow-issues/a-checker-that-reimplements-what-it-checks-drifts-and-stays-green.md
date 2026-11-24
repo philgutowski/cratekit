@@ -606,14 +606,11 @@ real parser would not recognise.
 THE SIBLING APPLICATION, in the same commit, from a different finding. Two skills
 described a profile disabled verb as refusing with an explanation when it is in
 fact absent from the parser. The correction was not only to the prose. The
-behaviour was pinned against the parser, `tests/test_skills_lint.py:530`, and the
+behaviour was pinned against the parser, `tests/test_skills_lint.py:508`, and the
 docstring names the property:
 
 ```python
-    """A switched off module's verb never reaches argparse: an invalid choice,
-    not a refusal with a cause. Pinned against the parser, so skills describing
-    it stay true if the product changes model.
-    """
+    """A switched off module's verb is an invalid choice to argparse, not a refusal with a cause."""
 ```
 
 with an anti vacuity assertion before the drive, so the pin cannot pass by the

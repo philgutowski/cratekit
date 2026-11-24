@@ -1,7 +1,5 @@
-"""U230: a download an account edit queued is filed there even when that playlist lists it.
-
-The queueing playlist's base is read without the track while the landing's filing stands. Pure.
-"""
+"""U230: a download an account edit queued is filed there even when that playlist lists it,
+its base read without the track while the landing's filing stands. Pure."""
 
 from __future__ import annotations
 

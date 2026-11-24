@@ -1,8 +1,6 @@
 """Intake's missing scenarios over a set: rows named by exact ISRC and the rest handed on (U307).
 
-A recognised set's rows are listed when one ISRC names them, the rest written
-to the unlisted list with reasons; a provider that cannot answer refuses before
-any file. Its own file for its ``cfg`` and ``library``.
+Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

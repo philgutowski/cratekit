@@ -38,9 +38,7 @@ def later(minutes: int) -> datetime:
 @pytest.fixture
 def trivia(world):
     """``Genre Trivia!`` synced, its adopted account folder holding two old DOWNLOADED copies.
-
-    Answers the rekordbox folder and the two copies' account identifiers.
-    """
+    Answers the rekordbox folder and the two copies' account identifiers."""
     folder_id = world.account.create_folder(FOLDER)
     copies = {}
     for title in ("DOWNLOADED Techno", "DOWNLOADED House"):
@@ -58,13 +56,22 @@ def trivia(world):
     return rekordbox, copies
 
 
-def unrecorded(cfg) -> None:
-    """Make the document read as one written before U216: no folder says what it held."""
+def _rewritten(cfg, change) -> None:
+    """The pairs document read, changed in place by ``change`` and written back."""
     path = config.state_path("playlist_pairs", cfg)
     raw = json.loads(path.read_text(encoding="utf-8"))
-    for folder in raw.get("folders", {}).values():
-        folder.pop("held", None)
+    change(raw)
     path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def unrecorded(cfg) -> None:
+    """Make the document read as one written before U216: no folder says what it held."""
+
+    def forget(raw):
+        for folder in raw.get("folders", {}).values():
+            folder.pop("held", None)
+
+    _rewritten(cfg, forget)
 
 
 def left(plan, kind: str) -> dict[str, dict]:
@@ -166,10 +173,9 @@ def test_a_downloaded_copy_of_a_playlist_no_pair_holds_comes_in(world, cfg, triv
     old = world.account.create_playlist(f"{FOLDER} Disco")
     folder_id = next(fid for fid, name in world.account.folders().items() if name == FOLDER)
     world.account.move_to_folder(old, folder_id)
-    path = config.state_path("playlist_pairs", cfg)
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    raw["folders"][FOLDER]["held"] = sorted([*raw["folders"][FOLDER]["held"], old])
-    path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _rewritten(cfg, lambda raw: raw["folders"][FOLDER].update(
+        held=sorted([*raw["folders"][FOLDER]["held"], old])
+    ))
     copy = on_account(world, "DOWNLOADED Disco", FOLDER, "t5")
     plan = plan_only()
     assert f"{FOLDER} Disco" in left(plan, pair_discover.BEFORE)
@@ -191,8 +197,7 @@ def test_every_reason_names_the_rekordbox_playlist_to_pair_by_hand(world, trivia
 
 
 def test_a_downloaded_copy_in_a_created_folder_is_named_a_copy(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     world.dates["t1"] = LONG_AGO
     assert sync()[0] == int(ExitCode.OK)
     on_account(world, "DOWNLOADED Opener", "GIG READY", "t1")
@@ -204,9 +209,7 @@ def test_a_downloaded_copy_in_a_created_folder_is_named_a_copy(world):
 # A folder adopted before U216, whose record says nothing of what it held
 
 
-def test_without_a_record_or_a_creation_time_every_unpaired_playlist_is_named(
-    world, cfg, trivia
-):
+def test_without_a_record_or_a_creation_time_every_unpaired_playlist_is_named(world, cfg, trivia):
     """No readable creation time leaves the playlist out."""
     rekordbox, copies = trivia
     unrecorded(cfg)
@@ -241,16 +244,16 @@ def test_without_a_record_the_creation_time_decides(world, cfg, trivia):
 def test_without_a_record_the_moment_is_read_from_this_folders_own_pairs(world, cfg, trivia):
     """A pair made earlier in another folder does not date this folder's adoption."""
     rekordbox, _copies = trivia
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     assert sync()[0] == int(ExitCode.OK)
     unrecorded(cfg)
-    path = config.state_path("playlist_pairs", cfg)
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    for pair in raw["pairs"].values():
-        if pair.get("folder") == "GIG READY":
-            pair["marked"] = "2026-01-02T00:00:00+00:00"
-    path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def marked_early(raw):
+        for pair in raw["pairs"].values():
+            if pair.get("folder") == "GIG READY":
+                pair["marked"] = "2026-01-02T00:00:00+00:00"
+
+    _rewritten(cfg, marked_early)
     between = on_account(world, f"{FOLDER} Disco", FOLDER, "t3")
     world.account.made_at[between] = datetime(2026, 3, 1, tzinfo=timezone.utc)
     plan = plan_only()
@@ -336,17 +339,8 @@ def test_downloaded_copy_names_the_paired_title_it_copies():
 def _document(cfg, folders) -> None:
     path = config.state_path("playlist_pairs", cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "version": pairs.PAIRS_VERSION,
-                "library_id": cfg.library.volume_id,
-                "pairs": {},
-                "folders": folders,
-            }
-        ),
-        encoding="utf-8",
-    )
+    document = {"version": pairs.PAIRS_VERSION, "library_id": cfg.library.volume_id}
+    path.write_text(json.dumps({**document, "pairs": {}, "folders": folders}), encoding="utf-8")
 
 
 @pytest.mark.parametrize("held", ["a", [""], [3], {"a": 1}])
@@ -358,13 +352,10 @@ def test_a_folder_whose_held_is_not_ids_refuses_the_document(cfg, held):
 
 
 def test_a_folder_record_keeps_what_it_held_through_another_write(cfg):
-    _document(
-        cfg,
-        {
-            FOLDER: {"folder_id": "f1", "created": False, "held": ["b", "a"]},
-            "Old": {"folder_id": "f2", "created": False},
-        },
-    )
+    _document(cfg, {
+        FOLDER: {"folder_id": "f1", "created": False, "held": ["b", "a"]},
+        "Old": {"folder_id": "f2", "created": False},
+    })
     store = pairs.PairStore(cfg)
     store.remember({"9": pairs.Miss("X", "none")})
     folders = store.folders()

@@ -1,10 +1,8 @@
 """Mastering's scenarios: the commands planned for the encoder, and its refusals (U311).
 
-`crate master` runs on a real recording through ``mastering.subprocess_runner``
-answered by ``_recorder``, whose kept commands are written out, so the capture
-holds every argument asked of ffmpeg and ffprobe. The refusals: an encoder
-named at a missing program through ``CRATEKIT_BIN_FFMPEG``, and an existing
-master without ``--overwrite``.
+``mastering.subprocess_runner`` is answered by ``_recorder``, whose kept
+commands are written out, so the capture holds every argument asked of ffmpeg
+and ffprobe.
 """
 
 from __future__ import annotations

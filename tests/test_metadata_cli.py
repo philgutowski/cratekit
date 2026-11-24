@@ -6,8 +6,12 @@ import shutil
 from pathlib import Path
 
 import pytest
+from pyrekordbox.db6 import tables
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from cratekit.core import config, locations, rb_writer, session, tags
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import metadata_cli
 from tests._containers import synth_container
@@ -22,6 +26,23 @@ def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
     code, envelope = result
     assert code == int(expected), envelope
     return envelope
+
+
+def _voiced_row(db_path: Path, audio: Path) -> None:
+    """Content row 3, recording ``audio``, added to the database at ``db_path``."""
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as db_session:
+        db_session.add(
+            _row(
+                tables.DjmdContent,
+                ID="3",
+                Title="voiced.flac",
+                rb_local_deleted=0,
+                FolderPath=locations.location_url(audio),
+            )
+        )
+        db_session.commit()
+    engine.dispose()
 
 
 @pytest.fixture
@@ -73,24 +94,7 @@ def ready(tmp_path, monkeypatch, silence):
     audio = music / "voiced.flac"
     shutil.copy2(silence, audio)
     assert tags.write_tags(audio, {"voxlevel": 80, "voxgender": "M", "voxgenderconf": 90})
-
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    engine = create_engine(f"sqlite:///{db_path}")
-    with Session(engine) as db_session:
-        db_session.add(
-            _row(
-                tables.DjmdContent,
-                ID="3",
-                Title="voiced.flac",
-                rb_local_deleted=0,
-                FolderPath=locations.location_url(audio),
-            )
-        )
-        db_session.commit()
-    engine.dispose()
+    _voiced_row(db_path, audio)
     return cfg, audio, db_path
 
 
@@ -125,34 +129,20 @@ def test_a_present_vocal_calibration_is_its_own_threshold(tmp_path):
 @pytest.mark.parametrize(
     "text",
     [
-        '{"threshold": 37.',
-        "",
-        '["threshold", 37.5]',
-        '{"method": "otsu"}',
-        '{"threshold": "high"}',
-        '{"threshold": null}',
-        '{"threshold": NaN}',
-        '{"threshold": Infinity}',
-        '{"threshold": 1' + "0" * 400 + "}",
-        '{"threshold": true}',
-    ],
-    ids=[
-        "truncated",
-        "empty",
-        "list",
-        "no-key",
-        "text",
-        "null",
-        "nan",
-        "infinity",
-        "overflow",
-        "boolean",
+        pytest.param('{"threshold": 37.', id="truncated"),
+        pytest.param("", id="empty"),
+        pytest.param('["threshold", 37.5]', id="list"),
+        pytest.param('{"method": "otsu"}', id="no-key"),
+        pytest.param('{"threshold": "high"}', id="text"),
+        pytest.param('{"threshold": null}', id="null"),
+        pytest.param('{"threshold": NaN}', id="nan"),
+        pytest.param('{"threshold": Infinity}', id="infinity"),
+        pytest.param('{"threshold": 1' + "0" * 400 + "}", id="overflow"),
+        pytest.param('{"threshold": true}', id="boolean"),
     ],
 )
 def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path, text):
     """R-342: a corrupt calibration is not an absent one, so it is never the default cut."""
-    from cratekit.core.cause import CratekitError
-
     cfg = config.from_dict(valid_data(tmp_path / "library"))
     path = _vocal_calibration(cfg, text)
     with pytest.raises(CratekitError) as caught:
@@ -162,8 +152,6 @@ def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path
 
 
 def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypatch):
-    from cratekit.core.cause import CratekitError
-
     cfg = config.from_dict(valid_data(tmp_path / "library"))
     path = _vocal_calibration(cfg, '{"threshold": 37.5}')
     # Raised, not chmod, since an account bypassing permissions would read the file.
@@ -185,8 +173,7 @@ def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypa
 
 
 def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing(ready):
-    cfg, audio, db_path = ready
-    del audio
+    cfg, _audio, db_path = ready
     _vocal_calibration(cfg, '{"threshold": 37.')
     envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "vocal-calibration-unreadable"
@@ -199,8 +186,7 @@ def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing
 
 
 def test_the_plan_names_existing_rows_and_writes_nothing(ready):
-    cfg, audio, db_path = ready
-    del audio
+    cfg, _audio, db_path = ready
     envelope = _exited(drive(["metadata", "mytags-vocals"]))
     items = envelope["data"]["items"]
     assert [row["content_id"] for row in items] == ["3"]
@@ -219,8 +205,7 @@ def test_the_plan_names_existing_rows_and_writes_nothing(ready):
 
 
 def test_apply_writes_my_tags_and_does_not_write_a_content_column(ready):
-    cfg, audio, db_path = ready
-    del audio
+    cfg, _audio, db_path = ready
     before = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
     try:
         row = next(c for c in before.get_content() if str(c.ID) == "3")
@@ -254,38 +239,18 @@ def test_apply_writes_my_tags_and_does_not_write_a_content_column(ready):
 
 
 def test_a_second_apply_is_idempotent(ready):
-    cfg, audio, db_path = ready
-    del cfg, audio
     drive(["metadata", "mytags-vocals", "--apply"])
     envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]))
     assert envelope["data"]["totals"]["written"] == 0
     assert envelope["data"]["totals"]["already"] == 2
-    del db_path
 
 
 def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypatch):
     """First caller of ensure_my_tag_value: the writer's refusal must reach the person."""
-    cfg, audio, db_path = ready
-    del audio
+    cfg, _audio, db_path = ready
     db_path.unlink()
     _build_disposable_database(db_path, with_tag_category=False)
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    engine = create_engine(f"sqlite:///{db_path}")
-    with Session(engine) as db_session:
-        db_session.add(
-            _row(
-                tables.DjmdContent,
-                ID="3",
-                Title="voiced.flac",
-                rb_local_deleted=0,
-                FolderPath=locations.location_url(Path(cfg.library.root) / "Music" / "voiced.flac"),
-            )
-        )
-        db_session.commit()
-    engine.dispose()
+    _voiced_row(db_path, Path(cfg.library.root) / "Music" / "voiced.flac")
     code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "mytag-category-template-missing"
@@ -293,8 +258,7 @@ def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypa
 
 def test_an_apply_is_listed_by_restore_list_as_a_restorable_session(ready):
     """The cost R-375 names, reproduced through both verbs a person would type."""
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
     _exited(drive(["metadata", "mytags-vocals", "--apply"]))
 
     listing = _exited(drive(["restore", "list"]))
@@ -316,15 +280,13 @@ def test_the_change_key_is_not_the_display_name_a_person_can_rename():
 
 
 def test_a_plan_only_run_leaves_no_record(ready):
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
     _exited(drive(["metadata", "mytags-vocals"]))
     assert session.records(cfg) == ()
 
 
 def test_an_apply_that_refuses_mid_write_is_abandoned_and_claims_no_commit(ready, monkeypatch):
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
 
     def refuse_the_commit(*args, **kwargs):
         raise RuntimeError("the commit never landed")
@@ -341,8 +303,7 @@ def test_an_apply_that_refuses_mid_write_is_abandoned_and_claims_no_commit(ready
 
 
 def test_the_capture_is_protected_while_the_apply_is_in_flight(ready, monkeypatch):
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
     seen: dict[str, object] = {}
     real_commit = rb_writer.commit_guarded
 
@@ -359,8 +320,7 @@ def test_the_capture_is_protected_while_the_apply_is_in_flight(ready, monkeypatc
 
 def test_a_second_apply_writes_nothing_and_claims_no_commit(ready):
     """A restore reads a committed source as work it would discard. A no-op is not work."""
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
     drive(["metadata", "mytags-vocals", "--apply"])
     envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]))
     assert envelope["data"]["totals"]["written"] == 0
@@ -376,8 +336,7 @@ def test_an_apply_whose_commit_lands_and_then_raises_is_recorded_as_committed(re
     """The binding commits and THEN saves a playlist file, so a raise can follow durable rows."""
     from pyrekordbox.db6 import database as binding
 
-    cfg, audio, db_path = ready
-    del audio, db_path
+    cfg, _audio, _db_path = ready
     real_commit = binding.Rekordbox6Database.commit
 
     def lands_then_fails(self, *args, **kwargs):

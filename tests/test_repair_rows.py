@@ -1,8 +1,7 @@
 """``crate repair rows``: rekordbox's defaults on a row lacking them (R-923), and a file's
 inode on a row the binding numbered at random (U115).
 
-Libraries are disposable and rows written in plain SQL, so a NULL is a NULL. An
-autouse fixture pins the volume's inode bound; one test measures it for real.
+Rows are plain SQL on disposable libraries; the inode bound is pinned, and one test measures it.
 """
 
 from __future__ import annotations
@@ -389,17 +388,15 @@ def test_the_digest_is_equal_on_a_copy_at_another_path(machine, tmp_path):
     assert _planned(machine).digest == _planned(machine, copy).digest
 
 
-def test_the_digest_moves_when_a_planned_column_is_filled_elsewhere(machine):
+@pytest.mark.parametrize(
+    "assignment",
+    ["SamplerGain = 0.0", f"{FILE_ID} = 777"],
+    ids=["a-planned-column-filled-elsewhere", "a-random-id-replaced-elsewhere"],
+)
+def test_the_digest_moves_when_a_planned_value_changes_elsewhere(machine, assignment):
     build(machine)
     before = _planned(machine).digest
-    _sql(machine, "UPDATE djmdContent SET SamplerGain = 0.0 WHERE ID = '101'")
-    assert _planned(machine).digest != before
-
-
-def test_the_digest_moves_when_a_random_id_is_replaced_elsewhere(machine):
-    build(machine)
-    before = _planned(machine).digest
-    _sql(machine, f"UPDATE djmdContent SET {FILE_ID} = 777 WHERE ID = '101'")
+    _sql(machine, f"UPDATE djmdContent SET {assignment} WHERE ID = '101'")
     assert _planned(machine).digest != before
 
 
@@ -784,11 +781,14 @@ def test_judge_names_a_planned_column_still_null_and_a_column_that_moved():
     assert moved == ("101: BPM",)
 
 
+#: Row 101's random id planned to become the file's inode, 4242.
+RENUMBERED = row_defaults.Item(
+    content_id="101", title="t", path="p", columns=(), file_id=4242, file_id_was="200000000"
+)
+
+
 def test_judge_reads_a_planned_renumber_as_written_and_an_unplanned_one_as_moved():
-    renumbered = row_defaults.Item(
-        content_id="101", title="t", path="p", columns=(), file_id=4242, file_id_was="200000000"
-    )
-    plan = row_defaults.DefaultsPlan(items=(renumbered, _item("102", ())), rows=2)
+    plan = row_defaults.DefaultsPlan(items=(RENUMBERED, _item("102", ())), rows=2)
     before = {"101": {FILE_ID: "200000000", "BPM": 0}, "102": {FILE_ID: "200000000", "BPM": 0}}
     after = {"101": {FILE_ID: 4242, "BPM": 0}, "102": {FILE_ID: 4242, "BPM": 0}}
     wrong, moved = row_defaults.judge(plan, before, after)
@@ -797,10 +797,7 @@ def test_judge_reads_a_planned_renumber_as_written_and_an_unplanned_one_as_moved
 
 
 def test_judge_names_a_renumber_that_did_not_take():
-    renumbered = row_defaults.Item(
-        content_id="101", title="t", path="p", columns=(), file_id=4242, file_id_was="200000000"
-    )
-    plan = row_defaults.DefaultsPlan(items=(renumbered,), rows=1)
+    plan = row_defaults.DefaultsPlan(items=(RENUMBERED,), rows=1)
     before = {"101": {FILE_ID: "200000000"}}
     after = {"101": {FILE_ID: "200000000"}}
     wrong, moved = row_defaults.judge(plan, before, after)

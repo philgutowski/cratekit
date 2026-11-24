@@ -1,7 +1,5 @@
 """U236: the month the library placed a favourite in is never read as rekordbox's addition.
-
-Pure, over ``decide``, ``placed_after`` and the ledger's placement record. D1 applies.
-"""
+Pure, over ``decide``, ``placed_after`` and the ledger's placement record. D1 applies."""
 
 from __future__ import annotations
 

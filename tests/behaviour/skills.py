@@ -1,9 +1,6 @@
 """The skills package's scenario: what `crate skills install` copies (U311).
 
-The verb copies the shipped skills with a build stamp: into a clean directory,
-over its own copies, over an older build's copy naming a withdrawn file, beside
-a person's own file, and into its default directory under the moved home. Every
-copy is held by its bytes.
+Every copy, into each kind of directory, is held by its bytes.
 """
 
 from __future__ import annotations

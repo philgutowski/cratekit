@@ -1,9 +1,7 @@
 """R-797: a bucket promoted to its own folder leaves the playlist its tracks sat in.
 
 R&B became a top level folder split by energy, and its old playlist is its
-former place: what competes, what the reader finds, what adoption withholds,
-what the move plans, the writer's refusal, and the verb over real tags. The old
-shape is rebuilt from the shipped text and checked. D1 applies.
+former place. The old shape is rebuilt from the shipped text and checked. D1 applies.
 """
 
 from __future__ import annotations
@@ -36,6 +34,7 @@ from tests.test_adopt_move import (  # noqa: F401
     _left_counts,
     _live,
     _moves,
+    _refused,
     _refused_over,
     _removed,
     _rows,
@@ -457,9 +456,7 @@ def test_a_move_whose_target_is_a_former_place_is_refused_and_nothing_is_written
     approved = _approved()
     fields = {name: getattr(approved, name) for name in approved.__slots__}
     fields.update(target=FORMER.id, add=FORMER.id, remove=(HIGH,))
-    with pytest.raises(Exception) as raised:
-        move_cli.membership_moves([adopt_move.Move(**fields)], DECLARED)
-    assert raised.value.cause.reason == "decision-stale"
+    _refused(lambda: move_cli.membership_moves([adopt_move.Move(**fields)], DECLARED))
 
 
 def test_the_worker_narrows_a_move_whose_band_landed_to_the_removal_alone():
@@ -476,9 +473,7 @@ def test_the_worker_finds_a_finished_move_done():
 @pytest.mark.parametrize("genre", [STAYING_GENRE, ELSEWHERE.display, ""])
 def test_a_genre_that_left_the_promoted_bucket_since_the_approval_is_a_stale_decision(genre):
     current = _adoption([_scanned("t", energy=8, genre=genre)], _in_old("t"))
-    with pytest.raises(Exception) as raised:
-        move_cli.remaining([_approved()], current, DECLARED)
-    assert raised.value.cause.reason == "decision-stale"
+    _refused(lambda: move_cli.remaining([_approved()], current, DECLARED))
 
 
 # The verb, against a disposable library filed under the old shape
@@ -634,8 +629,7 @@ def test_an_approved_move_files_each_track_in_its_band_and_a_second_plans_nothin
 
 def test_a_library_whose_own_taxonomy_still_has_the_sub_moves_no_track_of_that_sub(promoted):
     """Under the library's old shape nothing is filed twice. The one move planned is
-    the old shape's own: R-758 moves a hand filed track to its genre's style.
-    """
+    the old shape's own: R-758 moves a hand filed track to its genre's style."""
     target = config.state_path("taxonomy_active", promoted)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(old_shape_text(), encoding="utf-8")

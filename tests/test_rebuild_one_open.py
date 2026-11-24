@@ -1,7 +1,6 @@
 """U250: a derivation reads each library file through one container open.
 
-The proof is the count of ``mutagen.File`` calls, and every reading equals what
-the three single field readers gave. D1 applies.
+Proved by counting ``mutagen.File`` calls against the three single field readers. D1 applies.
 """
 
 from __future__ import annotations
@@ -89,28 +88,20 @@ def test_one_open_reads_what_the_three_readers_read(tmp_path, opens, suffix, cas
 
 def test_a_numeric_reading_converts_the_way_the_single_readers_convert(tmp_path):
     """Guard against an equality that holds only because both sides read None."""
-    path = _tagged(tmp_path / "lib", ".flac", "numeric", READINGS["numeric"])
-    assert rebuild.read_truth(path) == rebuild.Truth(
-        location=str(path), genre="Deep House", energy=7, voxlevel=55
-    )
-    word = _tagged(tmp_path / "lib", ".mp3", "word", READINGS["energy-word"])
-    assert rebuild.read_truth(word) == rebuild.Truth(
-        location=str(word), genre="Techno", energy=None, voxlevel=20
-    )
-    vox = _tagged(tmp_path / "lib", ".m4a", "vox", READINGS["vox-word"])
-    assert rebuild.read_truth(vox) == rebuild.Truth(
-        location=str(vox), genre="Disco", energy=4, voxlevel=None
-    )
-    padded = _tagged(tmp_path / "lib", ".aiff", "padded", READINGS["padded"])
-    assert rebuild.read_truth(padded) == rebuild.Truth(
-        location=str(padded), genre="Garage", energy=6, voxlevel=40
-    )
-    # A decimal is not a whole number, for the energy reader and read_truth alike.
-    decimal = _tagged(tmp_path / "lib", ".ogg", "decimal", READINGS["decimal"])
-    assert tags.read_energy_from_file(decimal) is None
-    assert rebuild.read_truth(decimal) == rebuild.Truth(
-        location=str(decimal), genre="Electro", energy=None, voxlevel=None
-    )
+    for suffix, case, name, genre, energy, voxlevel in (
+        (".flac", "numeric", "numeric", "Deep House", 7, 55),
+        (".mp3", "energy-word", "word", "Techno", None, 20),
+        (".m4a", "vox-word", "vox", "Disco", 4, None),
+        (".aiff", "padded", "padded", "Garage", 6, 40),
+        (".ogg", "decimal", "decimal", "Electro", None, None),
+    ):
+        path = _tagged(tmp_path / "lib", suffix, name, READINGS[case])
+        if case == "decimal":
+            # Not a whole number, for the energy reader and read_truth alike.
+            assert tags.read_energy_from_file(path) is None
+        assert rebuild.read_truth(path) == rebuild.Truth(
+            location=str(path), genre=genre, energy=energy, voxlevel=voxlevel
+        ), case
 
 
 def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path, opens):

@@ -1,9 +1,8 @@
 """Intake's pass scenarios: a sync pass landed with its account playlists and hearts (U307).
 
-`crate intake land --pass` files each account playlist under its own name
-(U113, U175) and hearts into All Favorites, Pink (U120, U153); `crate inbox
-refill --pass` refills an emptied playlist (U134); `crate inbox analyzed`
-clears what rekordbox analysed (U166). Its own file because the suite pins the
+Account playlists under their own names (U113, U175), hearts into All
+Favorites, Pink (U120, U153), an emptied playlist refilled (U134) and what
+rekordbox analysed cleared (U166). Its own file because the suite pins the
 batch day with an autouse fixture.
 """
 

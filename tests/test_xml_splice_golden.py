@@ -12,6 +12,7 @@ The goldens are checked intact, then each writer is driven against its own.
 
 from __future__ import annotations
 
+import difflib
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -19,6 +20,8 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import taxonomy, tree_registry
+from cratekit.write import trees
+from cratekit.write.rbxml import splice_into_subplaylist
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _routing_xml, _xml_doc
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
@@ -38,12 +41,10 @@ GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
         b'Location="file://localhost/bait.flac"/>',
     ),
     "sort_inbox_route": (
-        "CRLF-only routing splice with the Entries count bumped to match",
-        b'Entries="2"',
+        "CRLF-only routing splice with the Entries count bumped to match", b'Entries="2"'
     ),
     "sort_inbox_rating": (
-        "the Rating value is patched in place and CRLF is undisturbed",
-        b'Rating="255"',
+        "the Rating value is patched in place and CRLF is undisturbed", b'Rating="255"'
     ),
     "sort_unplaced_existing_sub": (
         "the existing-sub insert path emits CRLF, not the bare LF it once did",
@@ -54,8 +55,7 @@ GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
         b'<NODE Name="Low Energy" Type="1" KeyType="0" Entries="1">',
     ),
     "sort_unplaced_rating": (
-        "the second copy of the rating writer, pinned so the merge is "
-        "byte-checked on both sides",
+        "the second copy of the rating writer, pinned so the merge is byte-checked on both sides",
         b'Rating="255"',
     ),
     "create_vox_playlists": (
@@ -67,8 +67,7 @@ GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
         b'<NODE Name="Record Labels" Type="0" Count="1">',
     ),
     # Not ported: the source system had no landing step. Produced by
-    # ``tests/test_landing_labels.py``, which is the file REGEN=1 is run over
-    # for this one.
+    # ``tests/test_landing_labels.py``, the file REGEN=1 is run over for this one.
     "land_label_tree": (
         "a landed batch whose one document carries the intake playlist and the "
         "label tree, labels A to Z and newest year first",
@@ -81,6 +80,10 @@ GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
 #: Named, so the count of ported ones below cannot be met by one of these.
 NOT_PORTED = frozenset({"land_label_tree"})
 
+#: The two years of one label the label tree tests write.
+LABEL_BUCKETS = {2025: [{"track_ids": [900000001, 900000002]}], 2024: [{"track_ids": [900000003]}]}
+
+
 def _check(name: str, produced: bytes) -> None:
     """Compare produced bytes to the golden, or rewrite it under REGEN=1."""
     path = GOLDEN_DIR / f"{name}.bytes"
@@ -91,18 +94,21 @@ def _check(name: str, produced: bytes) -> None:
     assert path.exists(), f"missing golden {path}; run REGEN=1 to create it"
     expected = path.read_bytes()
     if produced != expected:
-        import difflib
-
         diff = "\n".join(
             difflib.unified_diff(
                 expected.decode("utf-8", "replace").splitlines(),
                 produced.decode("utf-8", "replace").splitlines(),
-                fromfile=f"{name}.bytes (golden)",
-                tofile="produced",
-                lineterm="",
+                fromfile=f"{name}.bytes (golden)", tofile="produced", lineterm="",
             )
         )
         raise AssertionError(f"byte mismatch vs golden {name}:\n{diff}")
+
+
+def _written(apply, changes: dict, xml: bytes | None = None) -> bytes:
+    """``xml``, the routing fixture unless given, after ``apply`` writes ``changes`` into it."""
+    content = bytearray(_routing_xml() if xml is None else xml)
+    apply(changes, content)
+    return bytes(content)
 
 
 # Integrity half: the ported goldens are intact and still mean something.
@@ -116,8 +122,7 @@ def test_every_declared_golden_is_present_and_no_others():
         f"goldens on disk but undeclared: {sorted(on_disk - declared)}; "
         f"declared but missing from disk: {sorted(declared - on_disk)}"
     )
-    ported = declared - NOT_PORTED
-    assert len(ported) == 9, "the source system had nine goldens; all nine port"
+    assert len(declared - NOT_PORTED) == 9, "the source system had nine goldens; all nine port"
     assert NOT_PORTED <= declared, "a golden named as this product's own is gone"
 
 
@@ -140,8 +145,7 @@ def test_golden_is_a_complete_well_formed_document(name):
 def test_golden_still_carries_the_invariant_it_documents(name):
     """The table's claim is checked against the bytes, so the golden stays reviewable."""
     description, marker = GOLDEN_INVARIANTS[name]
-    data = (GOLDEN_DIR / f"{name}.bytes").read_bytes()
-    assert marker in data, (
+    assert marker in (GOLDEN_DIR / f"{name}.bytes").read_bytes(), (
         f"golden {name} no longer contains the bytes for its documented invariant "
         f"({description}); marker was {marker!r}"
     )
@@ -160,12 +164,8 @@ def test_the_fixtures_the_goldens_were_produced_from_still_build():
 
 
 def test_splice_tracks_into_subplaylist_golden():
-    from cratekit.write.rbxml import splice_into_subplaylist
-
     content = bytearray(_routing_xml())
-    result = splice_into_subplaylist(
-        content, "Deep House", "High Energy", [900000001, 900000002]
-    )
+    result = splice_into_subplaylist(content, "Deep House", "High Energy", [900000001, 900000002])
     assert result.warning is None and result.inserted == 2
     out = bytes(content)
     _check("splice_subplaylist", out)
@@ -175,8 +175,6 @@ def test_splice_tracks_into_subplaylist_golden():
 
 def test_name_collision_current_behaviour():
     """The unique sub name disambiguates the collision, so a change is a behaviour shift."""
-    from cratekit.write.rbxml import splice_into_subplaylist
-
     content = bytearray(_routing_xml(collision=True))
     result = splice_into_subplaylist(content, "Deep House", "High Energy", [900000001])
     out = bytes(content)
@@ -191,11 +189,7 @@ def test_name_collision_current_behaviour():
 
 
 def test_route_into_energy_sub_golden():
-    from cratekit.write import trees
-
-    content = bytearray(_routing_xml())
-    trees.apply_playlist_changes({("Deep House", "High Energy"): [101, 102]}, content)
-    out = bytes(content)
+    out = _written(trees.apply_playlist_changes, {("Deep House", "High Energy"): [101, 102]})
     _check("sort_inbox_route", out)
     assert _no_bare_lf(out)
     assert b'Entries="2"' in out
@@ -204,33 +198,21 @@ def test_route_into_energy_sub_golden():
 
 def test_entries_count_matches_tracks_actually_inserted():
     """Entries is not decorative. rekordbox trusts it over the child count."""
-    from cratekit.write import trees
-
-    content = bytearray(_routing_xml())
-    trees.apply_playlist_changes({("Deep House", "High Energy"): [1, 2, 3]}, content)
-    out = bytes(content)
+    out = _written(trees.apply_playlist_changes, {("Deep House", "High Energy"): [1, 2, 3]})
     assert b'Entries="3"' in out
     assert out.count(b'<TRACK Key="') == 3
 
 
 def test_unplaced_existing_sub_golden():
     """That path once emitted a bare LF where every sibling emitted CRLF."""
-    from cratekit.write import trees
-
-    content = bytearray(_routing_xml())
-    trees.apply_unplaced_changes({("Deep House", "High Energy"): [101, 102]}, content)
-    out = bytes(content)
+    out = _written(trees.apply_unplaced_changes, {("Deep House", "High Energy"): [101, 102]})
     _check("sort_unplaced_existing_sub", out)
     assert b'            <TRACK Key="101"/>\r\n' in out
     assert _no_bare_lf(out)
 
 
 def test_unplaced_new_sub_golden():
-    from cratekit.write import trees
-
-    content = bytearray(_routing_xml())
-    trees.apply_unplaced_changes({("Deep House", "Low Energy"): [201]}, content)
-    out = bytes(content)
+    out = _written(trees.apply_unplaced_changes, {("Deep House", "Low Energy"): [201]})
     _check("sort_unplaced_new_sub", out)
     assert b'<NODE Name="Low Energy" Type="1" KeyType="0" Entries="1">' in out
     assert b'            <TRACK Key="201"/>\r\n' in out
@@ -252,11 +234,7 @@ def _rating_fixture(track_id: int, rating: int) -> bytes:
 @pytest.mark.parametrize("golden", ["sort_inbox_rating", "sort_unplaced_rating"])
 def test_rating_write_golden(golden):
     """The source carried two rating writers; both goldens matching proves one lost nothing."""
-    from cratekit.write import trees
-
-    content = bytearray(_rating_fixture(42, 0))
-    trees.apply_rating_changes({42: 255}, content)
-    out = bytes(content)
+    out = _written(trees.apply_rating_changes, {42: 255}, _rating_fixture(42, 0))
     _check(golden, out)
     assert b'Rating="255"' in out and b'Rating="0"' not in out
     assert _no_bare_lf(out), "the rating writer must not disturb CRLF"
@@ -276,9 +254,7 @@ def _vox_fixture() -> bytes:
 
 
 def test_add_vocal_playlists_golden():
-    from cratekit.write.trees import add_vox_playlists
-
-    out, modified = add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
+    out, modified = trees.add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
     assert modified == ["Deep House"]
     _check("create_vox_playlists", out)
     assert _no_bare_lf(out)
@@ -286,29 +262,30 @@ def test_add_vocal_playlists_golden():
 
 
 def test_add_vocal_playlists_is_idempotent():
-    from cratekit.write.trees import add_vox_playlists
-
-    once, _ = add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
-    twice, modified = add_vox_playlists(once, DECLARED, registry=tree_registry.EMPTY)
+    once, _ = trees.add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
+    twice, modified = trees.add_vox_playlists(once, DECLARED, registry=tree_registry.EMPTY)
     assert modified == []
     assert twice == once
 
 
-def test_label_subtree_golden(tmp_path):
-    """The fifth duplicated splicer, and the only one that writes a whole tree."""
-    from cratekit.write import trees
-
+@pytest.fixture
+def fresh(tmp_path) -> Path:
     source = tmp_path / "fresh.xml"
     source.write_bytes(_fresh_xml())
-    out_path = tmp_path / "labeled.xml"
-    buckets = {
-        2025: [{"track_ids": [900000001, 900000002]}],
-        2024: [{"track_ids": [900000003]}],
-    }
+    return source
+
+
+def _labelled(source: Path, out: Path) -> bytes:
+    """``LABEL_BUCKETS`` written as Kompakt's label tree from ``source`` into ``out``."""
     trees.insert_record_labels_tree(
-        source, "Kompakt", buckets, out_path, declared=DECLARED, registry=tree_registry.EMPTY
+        source, "Kompakt", LABEL_BUCKETS, out, declared=DECLARED, registry=tree_registry.EMPTY
     )
-    out = out_path.read_bytes()
+    return out.read_bytes()
+
+
+def test_label_subtree_golden(tmp_path, fresh):
+    """The fifth duplicated splicer, and the only one that writes a whole tree."""
+    out = _labelled(fresh, tmp_path / "labeled.xml")
     _check("label_library_insert", out)
     assert _no_bare_lf(out)
     assert b'<NODE Name="Record Labels" Type="0" Count="1">' in out
@@ -316,19 +293,9 @@ def test_label_subtree_golden(tmp_path):
     assert b'            <TRACK Key="900000001"/>\r\n' in out
 
 
-def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path):
+def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path, fresh):
     """R-129: a second write of the same label adds nothing, against the single write's golden."""
-    from cratekit.write import trees
-
-    source = tmp_path / "fresh.xml"
-    source.write_bytes(_fresh_xml())
-    buckets = {
-        2025: [{"track_ids": [900000001, 900000002]}],
-        2024: [{"track_ids": [900000003]}],
-    }
-    once = tmp_path / "once.xml"
-    twice = tmp_path / "twice.xml"
-    trees.insert_record_labels_tree(source, "Kompakt", buckets, once, declared=DECLARED, registry=tree_registry.EMPTY)
-    trees.insert_record_labels_tree(once, "Kompakt", buckets, twice, declared=DECLARED, registry=tree_registry.EMPTY)
-    _check("label_library_insert", twice.read_bytes())
-    assert twice.read_bytes() == once.read_bytes()
+    once = _labelled(fresh, tmp_path / "once.xml")
+    twice = _labelled(tmp_path / "once.xml", tmp_path / "twice.xml")
+    _check("label_library_insert", twice)
+    assert twice == once

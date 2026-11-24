@@ -1,8 +1,4 @@
-"""U63: the provider account adapter behind the outbound seam, driven against fakes.
-
-The client is a fake at ``provider_session.CLIENT_FACTORY``; some end to end drives
-also give rows an ISRC through ``source``, since an export carries none. D1 applies.
-"""
+"""U63: the provider account adapter behind the outbound seam, over a fake client. D1 applies."""
 
 from __future__ import annotations
 
@@ -369,16 +365,30 @@ def test_a_code_asked_to_agree_lists_its_one_track_only_when_it_is_the_row():
     assert match_row(found, "Moon Path", identity="9") == "101"
 
 
-def test_a_row_with_no_version_agrees_with_an_original_mix_and_not_with_an_edit():
-    client = releases(sun("101", "Original Mix"), sun("202", "Radio Edit"))
-    assert match_row(adapter(client), "Sun Path") == "101"
-
-
-def test_a_version_the_provider_spells_inside_the_title_is_read_the_same_way():
-    client = releases(
-        sun("101", name="Sun Path - Radio Edit"), sun("202", name="Sun Path (Extended Mix)")
-    )
-    assert match_row(adapter(client), "Sun Path (Radio Edit)") == "101"
+@pytest.mark.parametrize(
+    ("client", "title", "chosen"),
+    [
+        pytest.param(lambda: releases(sun("101", "Original Mix"), sun("202", "Radio Edit")),
+                     "Sun Path", "101", id="no-version-agrees-with-an-original-mix-not-an-edit"),
+        pytest.param(lambda: releases(sun("101", name="Sun Path - Radio Edit"),
+                                      sun("202", name="Sun Path (Extended Mix)")),
+                     "Sun Path (Radio Edit)", "101", id="a-version-spelled-inside-the-title"),
+        pytest.param(lambda: releases(sun("101"), sun("202"), sun("303", "Radio Edit"),
+                                      hearts=["303"]),
+                     "Sun Path", None, id="a-heart-on-a-release-the-row-does-not-name-decides"),
+        pytest.param(lambda: releases(sun("101", None, "Aurora Bloom"), sun("202")),
+                     "Sun Path", "202", id="another-artist-under-the-same-title-does-not-agree"),
+        pytest.param(lambda: releases(sun("101", "Kai Tern Remix", "Nova Reef", "Kai Tern"),
+                                      sun("202")),
+                     "Sun Path (Kai Tern Remix)", "101", id="an-unbilled-remixer-still-agrees"),
+        pytest.param(lambda: releases(sun("101"), withdrawn(sun("202"))),
+                     "Sun Path", "101", id="a-withdrawn-release-does-not-stop-the-one-that-plays"),
+        pytest.param(lambda: releases(sun("101", name="Sun Path - Live"), sun("202", "Radio Edit")),
+                     "Sun Path (Live)", "101", id="a-provider-title-with-a-dash-agrees-either-way"),
+    ],
+)
+def test_the_release_agreeing_with_the_rows_names_is_the_match(client, title, chosen):
+    assert match_row(adapter(client()), title) == chosen
 
 
 def test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them():
@@ -402,12 +412,6 @@ def test_two_hearted_releases_spelled_alike_are_still_no_match():
     assert "hearts 2 of those" in found.unmatched_reason("7")
 
 
-def test_a_heart_on_a_release_the_row_does_not_name_decides_nothing():
-    """The hearted one is the radio edit, and the row is the plain record."""
-    client = releases(sun("101"), sun("202"), sun("303", "Radio Edit"), hearts=["303"])
-    assert match_row(adapter(client), "Sun Path") is None
-
-
 def test_no_release_agreeing_is_no_match_and_the_hearts_are_not_read():
     """An ISRC the provider filed on another record chooses nothing, hearted or not."""
     client = releases(sun("101", name="Moon Road"), sun("202", "Dub", name="Moon Road"))
@@ -416,11 +420,6 @@ def test_no_release_agreeing_is_no_match_and_the_hearts_are_not_read():
     assert match_row(found, "Sun Path") is None
     assert "none of them agrees" in found.unmatched_reason("7")
     assert client.user.favorites.pages == []
-
-
-def test_another_artist_under_the_same_title_does_not_agree():
-    client = releases(sun("101", None, "Aurora Bloom"), sun("202"))
-    assert match_row(adapter(client), "Sun Path") == "202"
 
 
 def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
@@ -436,11 +435,6 @@ def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
     assert match_row(found, "Sun Path", artist="Nova") is None, "half a name"
 
 
-def test_a_remixer_the_provider_bills_and_the_row_does_not_is_still_agreement():
-    client = releases(sun("101", "Kai Tern Remix", "Nova Reef", "Kai Tern"), sun("202"))
-    assert match_row(adapter(client), "Sun Path (Kai Tern Remix)") == "101"
-
-
 def test_a_track_the_provider_will_not_play_is_never_the_choice():
     """Its version was never read, so a withdrawn extended mix looks like the plain record."""
     client = releases(sun("101", "Radio Edit"), withdrawn(sun("202", "Extended Mix")))
@@ -450,16 +444,6 @@ def test_a_track_the_provider_will_not_play_is_never_the_choice():
     assert "1 cannot be streamed" in reason and "none of the rest agrees" in reason
     client.user.favorites.hearts = ["202"]
     assert match_row(adapter(client), "Sun Path") is None, "a heart does not revive it"
-
-
-def test_a_withdrawn_release_does_not_stop_the_one_that_plays_from_being_chosen():
-    assert match_row(adapter(releases(sun("101"), withdrawn(sun("202")))), "Sun Path") == "101"
-
-
-def test_a_provider_title_that_reads_two_ways_agrees_under_either_too():
-    """The same recording must resolve whichever side spelled the version with a dash."""
-    client = releases(sun("101", name="Sun Path - Live"), sun("202", "Radio Edit"))
-    assert match_row(adapter(client), "Sun Path (Live)") == "101"
 
 
 def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
@@ -902,7 +886,7 @@ def isrc_for(row: str) -> str:
 
 
 def give_rows_an_isrc(monkeypatch) -> None:
-    """The one substitution beyond the client. See the module docstring."""
+    """The one substitution beyond the client: each row an ISRC, which an export never carries."""
     for name, key in (("local_tracks", "identity"), ("heart_candidates", "row_id")):
 
         def given(library, track_ids, *, cfg, real=getattr(source, name), key=key):
@@ -1385,17 +1369,22 @@ def test_without_any_agreeing_the_same_tie_still_refuses_in_the_words_the_mirror
     assert service.AGREEING_RELEASES in found.unmatched_reason("7")
 
 
-def test_a_file_album_naming_none_of_the_tied_releases_still_takes_one():
-    assert any_release(adapter(single_and_album_cut()), album="Night Drives") == "101"
-
-
-def test_a_file_album_naming_two_of_three_takes_the_lower_of_those_two():
-    assert any_release(adapter(three_on_albums()), album="Tidal Lines") == "202"
-
-
-def test_two_hearted_releases_take_the_lower_hearted_one_never_an_unhearted_one():
-    client = releases(*tie("101", "202", "303", "404"), hearts=["404", "202"])
-    assert any_release(adapter(client)) == "202"
+@pytest.mark.parametrize(
+    ("client", "album", "chosen"),
+    [
+        pytest.param(single_and_album_cut, "Night Drives", "101", id="album-naming-none-takes-one"),
+        pytest.param(three_on_albums, "Tidal Lines", "202", id="album-naming-two-takes-the-lower"),
+        pytest.param(lambda: releases(*tie("101", "202", "303", "404"), hearts=["404", "202"]),
+                     "", "202", id="two-hearted-take-the-lower-hearted-never-an-unhearted"),
+        # An empty tag is not a name: it never picks out the release the provider left unnamed.
+        pytest.param(lambda: releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), "")),
+                     "", "101", id="no-album-tag-never-narrows-to-an-unnamed-album"),
+        # Case and spacing on the tag do not stop it naming the album cut over the lower single.
+        pytest.param(single_and_album_cut, " tidal LINES ", "202", id="the-album-under-the-fold"),
+    ],
+)
+def test_any_agreeing_takes_one_release_of_a_tie(client, album, chosen):
+    assert any_release(adapter(client()), album=album) == chosen
 
 
 def test_a_lone_heart_and_a_lone_album_choose_as_they_always_did():
@@ -1421,17 +1410,6 @@ def test_a_row_with_no_title_to_judge_agreement_by_still_refuses_with_any_agreei
     found = adapter(releases(*tie("101", "202")))
     assert any_release(found, title="") is None
     assert "no artist and title" in found.unmatched_reason("7")
-
-
-def test_a_file_with_no_album_tag_never_narrows_to_releases_with_no_album_name():
-    """An empty tag is not a name: it must not pick out the release the provider left unnamed."""
-    client = releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), ""))
-    assert any_release(adapter(client)) == "101"
-
-
-def test_the_files_album_narrows_a_tie_under_the_products_own_fold():
-    """Case and spacing on the tag do not stop it naming the album cut over the lower single."""
-    assert any_release(adapter(single_and_album_cut()), album=" tidal LINES ") == "202"
 
 
 # ── U208: the adapter says when ``any_agreeing`` broke a tie ──

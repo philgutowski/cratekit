@@ -12,12 +12,13 @@ from pathlib import Path
 
 import keyring
 import pytest
+from keyring.backends import fail
 
 from cratekit.acquire import provider_session, vendored
 from cratekit.acquire.adapter import AdapterAuthFailed
 from cratekit.core import config, secrets
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.label import catalogue
+from cratekit.label import catalogue, tidal_catalogue
 from cratekit.modules.outbound import account
 from tests.cli_drive import drive
 from tests.test_config import valid_data
@@ -29,15 +30,16 @@ REFRESHED = "FAKE-value-3"
 HARVEST = ["label", "harvest", "https://example.invalid/playlist/harvest"]
 
 
-def no_keychain(monkeypatch) -> None:
+def no_keychain(monkeypatch, factory: Factory | None = None) -> Factory | None:
     """The opt in for a machine with no keychain: keyring's fail backend refuses a write."""
-    from keyring.backends import fail
-
+    if factory is not None:
+        use(monkeypatch, factory)
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED))
     backend = fail.Keyring()
     monkeypatch.setattr(keyring, "set_password", backend.set_password)
     monkeypatch.setattr(keyring, "get_password", backend.get_password)
+    return factory
 
 
 def use(monkeypatch, factory: Factory) -> Factory:
@@ -45,8 +47,11 @@ def use(monkeypatch, factory: Factory) -> Factory:
     return factory
 
 
-def noted_since(before: int) -> tuple[str, ...]:
-    return provider_session.unstored()[before:]
+@pytest.fixture
+def noted():
+    """The classes the process notes as not stored from the start of the test on."""
+    before = len(provider_session.unstored())
+    return lambda: provider_session.unstored()[before:]
 
 
 @pytest.fixture
@@ -80,52 +85,39 @@ def not_stored(envelope: dict) -> list[str]:
     ]
 
 
-def test_a_refreshed_login_the_keychain_cannot_take_returns_the_client(monkeypatch):
-    factory = use(monkeypatch, Factory(refresh_to=REFRESHED))
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
-
+def test_a_refreshed_login_the_keychain_cannot_take_returns_the_client(monkeypatch, noted):
+    factory = no_keychain(monkeypatch, Factory(refresh_to=REFRESHED))
     client = provider_session.client_session(gate=quick_gate())
-
     assert client is factory.built[0]
     assert client.access_token == REFRESHED
-    assert noted_since(before) == ("CredentialBackendUnavailable",)
+    assert noted() == ("CredentialBackendUnavailable",)
     assert secrets.get_json(SESSION) == STORED
 
 
 def test_the_held_session_is_the_stored_one_so_a_reuse_neither_logs_in_nor_warns_again(
-    cfg, monkeypatch
+    cfg, monkeypatch, noted
 ):
     """The keychain still holds the opened session, so the next resolve reuses the client."""
-    factory = use(monkeypatch, Factory(refresh_to=REFRESHED))
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
-
+    factory = no_keychain(monkeypatch, Factory(refresh_to=REFRESHED))
     catalogue.resolve(cfg)
     catalogue.resolve(cfg)
     account.resolve(cfg)
-
     assert len(factory.built) == 1
-    assert noted_since(before) == ("CredentialBackendUnavailable",)
+    assert noted() == ("CredentialBackendUnavailable",)
     held = provider_session.held()
     assert held is not None
     assert held.blob == json.dumps(STORED, sort_keys=True)
 
 
-def test_an_unchanged_session_on_the_opt_in_writes_nothing_and_notes_nothing(monkeypatch):
-    use(monkeypatch, Factory())
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
-
+def test_an_unchanged_session_on_the_opt_in_writes_nothing_and_notes_nothing(monkeypatch, noted):
+    no_keychain(monkeypatch, Factory())
     provider_session.client_session(gate=quick_gate())
+    assert noted() == ()
 
-    assert noted_since(before) == ()
 
-
-def test_an_index_that_refuses_after_the_keychain_took_the_refresh_is_noted(monkeypatch):
+def test_an_index_that_refuses_after_the_keychain_took_the_refresh_is_noted(monkeypatch, noted):
     use(monkeypatch, Factory(refresh_to=REFRESHED))
     record()
-    before = len(provider_session.unstored())
 
     def unreadable(name):
         raise refuse("credential-index-unreadable", "the credential index could not be read")
@@ -135,14 +127,15 @@ def test_an_index_that_refuses_after_the_keychain_took_the_refresh_is_noted(monk
     client = provider_session.client_session(gate=quick_gate())
 
     assert client.access_token == REFRESHED
-    assert noted_since(before) == ("CratekitError",)
+    assert noted() == ("CratekitError",)
 
 
-def test_an_index_that_cannot_be_locked_is_noted_and_the_keychain_is_untouched(monkeypatch):
+def test_an_index_that_cannot_be_locked_is_noted_and_the_keychain_is_untouched(
+    monkeypatch, noted
+):
     use(monkeypatch, Factory(refresh_to=REFRESHED))
     record()
     keychain = Keychain(monkeypatch)
-    before = len(provider_session.unstored())
 
     def unlockable(action="update"):
         raise secrets.CredentialIndexUnusable("the index could not be locked")
@@ -152,15 +145,14 @@ def test_an_index_that_cannot_be_locked_is_noted_and_the_keychain_is_untouched(m
     provider_session.client_session(gate=quick_gate())
 
     assert keychain.writes == []
-    assert noted_since(before) == ("CredentialIndexUnusable",)
+    assert noted() == ("CredentialIndexUnusable",)
     assert secrets.get_json(SESSION) == STORED
 
 
-def test_a_token_file_that_cannot_take_the_refresh_is_noted(monkeypatch):
+def test_a_token_file_that_cannot_take_the_refresh_is_noted(monkeypatch, noted):
     use(monkeypatch, Factory(refresh_to=REFRESHED))
     record()
     keychain = Keychain(monkeypatch)
-    before = len(provider_session.unstored())
     real = config.atomic_write_bytes
 
     def full(data, path, **kwargs):
@@ -174,14 +166,13 @@ def test_a_token_file_that_cannot_take_the_refresh_is_noted(monkeypatch):
 
     assert client.access_token == REFRESHED
     assert keychain.writes == []
-    assert noted_since(before) == ("OSError",)
+    assert noted() == ("OSError",)
 
 
-def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch):
+def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch, noted):
     """A session with nothing to store never reports a file that cannot be written."""
     use(monkeypatch, Factory())
     record()
-    before = len(provider_session.unstored())
     real = config.atomic_write_bytes
     writes: list[Path] = []
 
@@ -195,15 +186,14 @@ def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch):
     provider_session.client_session(gate=quick_gate())
 
     assert len(writes) == 1, "only the materialised file, never a rewrite of it"
-    assert noted_since(before) == ()
+    assert noted() == ()
 
 
 def test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns(
     installed, monkeypatch
 ):
     """Through the real dispatcher: the verb's own answer stands and the warning rides beside it."""
-    use(monkeypatch, Factory())
-    no_keychain(monkeypatch)
+    no_keychain(monkeypatch, Factory())
     _, unchanged = drive(HARVEST)
     assert not_stored(unchanged) == []
     provider_session.forget()
@@ -223,8 +213,7 @@ def test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns(
 
 def test_the_warning_is_this_verbs_alone(installed, monkeypatch):
     """A note an earlier verb in the same process made is not the next one's."""
-    use(monkeypatch, Factory(refresh_to=REFRESHED))
-    no_keychain(monkeypatch)
+    no_keychain(monkeypatch, Factory(refresh_to=REFRESHED))
     _, first = drive(HARVEST)
     assert len(not_stored(first)) == 1
 
@@ -239,78 +228,72 @@ def test_the_drives_warning_keeps_its_code():
 
 
 def test_a_rejected_login_on_the_opt_in_still_raises_the_rejection_and_holds_nothing(
-    cfg, monkeypatch
+    cfg, monkeypatch, noted
 ):
-    use(monkeypatch, Factory(status=401, refresh_to=REFRESHED))
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
-
+    no_keychain(monkeypatch, Factory(status=401, refresh_to=REFRESHED))
     with pytest.raises(AdapterAuthFailed):
         provider_session.client_session(gate=quick_gate())
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
-
     assert excinfo.value.cause.reason == "credential-missing"
     assert provider_session.held() is None
-    assert noted_since(before) == ()
+    assert noted() == ()
 
 
-def test_a_session_the_provider_no_longer_accepts_still_raises(monkeypatch):
-    """A login the client answers False to is an expired session, never reused."""
+class Expired(Factory):
+    """A login the client answers False to: an expired session."""
 
-    class Expired(Factory):
-        def __call__(self):
-            client = super().__call__()
-            client.load_oauth_session = lambda *a, **k: False
-            return client
+    def __call__(self):
+        client = super().__call__()
+        client.load_oauth_session = lambda *a, **k: False
+        return client
 
-    use(monkeypatch, Expired())
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
 
-    with pytest.raises(AdapterAuthFailed):
+class Unencodable(Factory):
+    """A login that leaves a field the session file cannot hold."""
+
+    def __call__(self):
+        client = super().__call__()
+        real = client.load_oauth_session
+
+        def login(*args, **kwargs):
+            answered = real(*args, **kwargs)
+            client.refresh_token = object()
+            return answered
+
+        client.load_oauth_session = login
+        return client
+
+
+@pytest.mark.parametrize(
+    ("factory", "raised"),
+    [
+        pytest.param(Expired, AdapterAuthFailed,
+                     id="a-session-the-provider-no-longer-accepts-still-raises"),
+        pytest.param(Unencodable, TypeError, id="a-defect-in-the-capture-still-raises"),
+    ],
+)
+def test_a_login_that_is_no_store_failure_still_raises_on_the_opt_in(
+    monkeypatch, noted, factory, raised
+):
+    """An expired session is never reused, and a capture defect is never a warning."""
+    no_keychain(monkeypatch, factory())
+    with pytest.raises(raised):
         provider_session.client_session(gate=quick_gate())
-    assert noted_since(before) == ()
+    assert noted() == ()
 
 
-def test_a_defect_in_the_capture_still_raises(monkeypatch):
-    """A field the session file cannot hold is a defect, never a warning."""
-
-    class Unencodable(Factory):
-        def __call__(self):
-            client = super().__call__()
-            real = client.load_oauth_session
-
-            def login(*args, **kwargs):
-                answered = real(*args, **kwargs)
-                client.refresh_token = object()
-                return answered
-
-            client.load_oauth_session = login
-            return client
-
-    use(monkeypatch, Unencodable())
-    no_keychain(monkeypatch)
-    before = len(provider_session.unstored())
-
-    with pytest.raises(TypeError):
-        provider_session.client_session(gate=quick_gate())
-    assert noted_since(before) == ()
-
-
-def test_a_defect_in_the_write_back_still_raises(monkeypatch):
+def test_a_defect_in_the_write_back_still_raises(monkeypatch, noted):
     use(monkeypatch, Factory(refresh_to=REFRESHED))
     record()
-    before = len(provider_session.unstored())
 
     def broken(name, payload):
         raise RuntimeError("a defect in the write")
 
     monkeypatch.setattr(secrets, "set_json", broken)
-
     with pytest.raises(RuntimeError):
         provider_session.client_session(gate=quick_gate())
-    assert noted_since(before) == ()
+    assert noted() == ()
 
 
 def test_a_scope_that_asked_for_no_tolerance_still_raises_its_write_back_failure(
@@ -342,10 +325,7 @@ def test_two_failed_stores_in_one_verb_make_one_warning_naming_the_class_once(
     installed, monkeypatch
 ):
     """A verb whose two logins both failed to store says so once."""
-    from cratekit.label import tidal_catalogue
-
-    use(monkeypatch, Factory(refresh_to=REFRESHED))
-    no_keychain(monkeypatch)
+    no_keychain(monkeypatch, Factory(refresh_to=REFRESHED))
     original = tidal_catalogue.open_catalogue
 
     def opening(cfg=None):

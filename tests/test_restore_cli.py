@@ -1,16 +1,11 @@
-"""U27: the restore verbs, and the ONE session that spans both halves of a restore.
-
-Driven through the real ``backup.plan_restore`` and ``backup.run_restore``; taking
-the lock twice in one process raises, so one acquisition is measurable (D1).
-"""
+"""U27: the restore verbs, and the ONE session spanning both halves of a restore; taking the
+lock twice in one process raises, so one acquisition is measurable (D1)."""
 
 from __future__ import annotations
 
 import io
 import json
 import shutil
-import subprocess
-import sys
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -26,26 +21,24 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from cratekit.session import restore_cli
 from tests import test_restore as restore_suite
-from tests.test_restore import acknowledge, completed_session, gate_seams
+from tests.test_restore import (
+    _lock_taken_in_another_process,
+    _raised,
+    _refusal,
+    acknowledge,
+    completed_session,
+    gate_seams,
+)
+from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
+from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
+from tests.test_restore import acked as acked  # noqa: PLC0414 - fixture
+from tests.test_restore import record as record  # noqa: PLC0414 - fixture
 
 #: The configured library fixture, assigned so a test parameter cannot shadow an import.
 cfg = restore_suite.cfg
 
 #: The confirmation gate's declared name, spelled once.
 CONFIRM = "restore.run.confirm"
-
-
-@pytest.fixture(autouse=True)
-def _release_process_locks():
-    """No test may leave this process believing it still holds a session lock."""
-    yield
-    session._HELD.clear()
-
-
-@pytest.fixture(autouse=True)
-def _nothing_is_running(monkeypatch):
-    """No rekordbox process, injected, so no test depends on this machine."""
-    monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
 
 
 @pytest.fixture
@@ -60,6 +53,13 @@ def installed(cfg, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     return cfg
+
+
+@pytest.fixture
+def remote_log(installed, monkeypatch) -> Path:
+    """The installed library acknowledged, with the fake rclone's invocation log."""
+    acknowledge(installed)
+    return _fake_rclone(installed, monkeypatch)
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
@@ -82,6 +82,13 @@ def _two_acts(argv: list[str], option: str = "restore") -> tuple[int, dict, dict
     _answer(refused["run_id"], option)
     code, envelope = _drive(["--run", refused["run_id"], *argv])
     return code, refused, envelope
+
+
+def _refused_as(code: int, envelope: dict, reason: str, exit_code=ExitCode.PRECONDITION):
+    """The run was refused with ``exit_code``, naming ``reason``; its envelope."""
+    assert code == int(exit_code), envelope
+    assert envelope["cause"]["reason"] == reason, envelope
+    return envelope
 
 
 def _offered_digest(refused: dict) -> str:
@@ -135,29 +142,39 @@ def _remote_holds(snapshots, *, marker=OWN, cfg_value=None) -> None:
     (home / REMOTE_MARKERS).write_text(f"{name}\n" if name else "")
 
 
-def _lock_taken_in_another_process(path: Path) -> int:
-    """Try to take the library lock in a REAL second interpreter. Zero means it succeeded."""
-    script = (
-        "import fcntl, sys\n"
-        "handle = open(sys.argv[1], 'a+')\n"
-        "try:\n"
-        "    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
-        "except OSError:\n"
-        "    sys.exit(3)\n"
-        "sys.exit(0)\n"
+def _one_session(cfg_value, runner, **overrides):
+    """Both halves under one session, pulling ``STAMP`` with no rekordbox running."""
+    arguments = {"session_id": None, "from_backup": True, "snapshot": STAMP, **overrides}
+    return restore_cli.restore_under_one_session(
+        cfg_value, runner=runner, process_lister=lambda: (), **arguments, **gate_seams(cfg_value)
     )
-    return subprocess.run(
-        [sys.executable, "-c", script, str(path)], capture_output=True
-    ).returncode
 
 
-# The one session. This is the unit.
+def _failing(command):
+    """A remote that lists ``STAMP`` and refuses every transfer."""
+    if "lsf" in command.argv:
+        return backup.CommandResult(returncode=0, stdout=f"{STAMP}/\n")
+    return backup.CommandResult(returncode=1, stdout="", stderr="connection refused")
 
 
-def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(cfg, tmp_path):
+def _outside(cfg_value, home: Path, held: bytes | None, on: str = "2026-09-20"):
+    """The acknowledged layout with the database in ``home``, outside the root."""
+    home.mkdir(parents=True)
+    if held is not None:
+        (home / "master.db").write_bytes(held)
+    library = replace(
+        cfg_value.library, db_path=home / "master.db", db_outside_root_acknowledged_on=on
+    )
+    return replace(cfg_value, library=library)
+
+
+# The one session spanning both halves. This is the unit.
+
+
+def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(
+    cfg, tmp_path, acked, record
+):
     """The wiring call U32 proved at the seam and could not make."""
-    acknowledge(cfg)
-    record, _captured = completed_session(cfg)
     (tmp_path / "recovered").mkdir()
     observed: list[int] = []
     labels: list[str] = []
@@ -167,33 +184,21 @@ def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(cfg, tm
         observed.append(_lock_taken_in_another_process(session.lock_path(cfg)))
         return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z\n")
 
-    report = restore_cli.restore_under_one_session(
-        cfg,
-        session_id=record.session_id,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        target=tmp_path / "recovered",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(cfg),
+    report = _one_session(
+        cfg, runner, session_id=record.session_id, target=tmp_path / "recovered"
     )
-
     assert backup.RESTORE_DATABASE in labels, "the off-machine half never ran"
     assert observed and all(code != 0 for code in observed), (
-        "a second process took the library lock while the mirror was being "
-        "pulled, so the restore is not one acquisition"
+        "a second process took the lock while the mirror was pulled: not one acquisition"
     )
-    assert report.outcome is not None and report.outcome.performed, (
-        "the capture half never ran"
-    )
+    assert report.outcome is not None and report.outcome.performed, "the capture half never ran"
     assert report.pulled, "the report does not name the transfers the mirror half made"
 
 
 def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
-    cfg, tmp_path
+    cfg, tmp_path, acked
 ):
     """The half that ran is named, and the half that did not is ``None``."""
-    acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     database = config.state_path("rekordbox_db", cfg).name
     restored = tuple(
@@ -202,29 +207,21 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
         if sidecar.restored
     )
     listing = "".join([database + "\n", *(database + suffix + "\n" for suffix in restored)])
-
-    report = restore_cli.restore_under_one_session(
+    report = _one_session(
         cfg,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        target=tmp_path / "recovered",
-        runner=lambda command: backup.CommandResult(
+        lambda command: backup.CommandResult(
             returncode=0,
             stdout=listing if command.label == backup.LIST_SNAPSHOT_CONTENTS else "",
         ),
-        process_lister=lambda: (),
-        **gate_seams(cfg),
+        target=tmp_path / "recovered",
     )
 
     # From the inventory and the listing, never the report: the database plus each sidecar.
     expected = 1 + len(restored)
     assert expected > 1, "the inventory restores no sidecar, so this pins nothing"
-
     assert report.outcome is None
     assert report.pulled == (backup.RESTORE_DATABASE,) * expected
     assert report.absent == ()
-
     payload = restore_cli._performed(report, {"digest": "d"})
     assert payload["totals"]["transfers"] == expected
     assert payload["totals"]["absent_sidecars"] == []
@@ -235,21 +232,17 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
 
 
 def test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception(
-    installed, tmp_path, monkeypatch
+    installed, tmp_path, acked
 ):
     """KTD25 at the boundary this unit created."""
-    acknowledge(installed)
-    unconfigured = _without_remote(installed)
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.restore_under_one_session(
-            unconfigured,
-            session_id=None,
-            from_backup=True,
-            target=tmp_path,
-            **gate_seams(installed),
-        )
-
-    cause = excinfo.value.cause
+    cause = _refusal(
+        restore_cli.restore_under_one_session,
+        _without_remote(installed),
+        session_id=None,
+        from_backup=True,
+        target=tmp_path,
+        **gate_seams(installed),
+    )
     assert cause.reason == str(backup.Refusal.REMOTE_NOT_CONFIGURED)
     assert cause.code is not ExitCode.INTERNAL
     assert cause.remediation.remedy or cause.remediation.steps, (
@@ -270,12 +263,11 @@ def _without_remote(cfg_value):
 # restore list
 
 
-def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_counts(installed):
+def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_counts(
+    installed, record
+):
     """AE18's first half, through the dispatcher, unacknowledged: read only, outside the gates."""
-    record, _captured = completed_session(installed)
-
     code, envelope = _drive(["restore", "list"])
-
     assert code == int(ExitCode.OK), envelope
     rows = envelope["data"]["items"]
     assert rows, "the listing returned nothing on a library with a session"
@@ -290,12 +282,8 @@ def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_co
 def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
     """Reported rather than filtered, which is ``Restorable``'s decision carried out."""
     record, captured = completed_session(installed)
-    for path in sorted(captured.root.rglob("*"), reverse=True):
-        path.unlink() if path.is_file() else path.rmdir()
-    captured.root.rmdir()
-
+    shutil.rmtree(captured.root)
     code, envelope = _drive(["restore", "list"])
-
     assert code == int(ExitCode.OK), envelope
     only = envelope["data"]["items"][0]
     assert only["session_id"] == record.session_id
@@ -306,35 +294,23 @@ def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
 # restore run: the two acts, and what is behind them
 
 
-def test_the_confirmation_is_two_acts_and_then_the_database_comes_back(installed, monkeypatch):
+def test_the_confirmation_is_two_acts_and_then_the_database_comes_back(installed, acked, record):
     """AE18's second half, end to end, through the real dispatcher."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
     database = config.state_path("rekordbox_db", installed)
     before = database.read_bytes()
     database.write_bytes(b"database, generation two")
-
-    code, refused = _drive(["restore", "run", record.session_id])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    code, refused, envelope = _two_acts(["restore", "run", record.session_id])
     assert refused["cause"]["detail"]["gate"] == CONFIRM
     assert refused["resumable"] is True
-    run_id = refused["run_id"]
-
-    _answer(run_id, "restore")
-
-    code, envelope = _drive(["--run", run_id, "restore", "run", record.session_id])
     assert code == int(ExitCode.OK), envelope
     assert database.read_bytes() == before, "the verb reported OK and restored nothing"
     assert envelope["data"]["totals"]["steps"], "no step was reported as performed"
 
 
-def test_an_aborted_confirmation_restores_nothing(installed, monkeypatch):
+def test_an_aborted_confirmation_restores_nothing(installed, acked, record):
     """Abort is a real answer, and the measurement is the disk rather than the word."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
     database = config.state_path("rekordbox_db", installed)
     database.write_bytes(b"database, generation two")
-
     code, refused, envelope = _two_acts(["restore", "run", record.session_id], "abort")
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP)
@@ -344,12 +320,9 @@ def test_an_aborted_confirmation_restores_nothing(installed, monkeypatch):
 
 
 def test_a_decision_recorded_against_an_offer_the_world_has_moved_past_is_refused(
-    installed, monkeypatch
+    installed, acked, record
 ):
     """The digest is what makes a stale answer visible, and this is what puts it there."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
-
     code, refused = _drive(["restore", "run", record.session_id])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
@@ -360,7 +333,6 @@ def test_a_decision_recorded_against_an_offer_the_world_has_moved_past_is_refuse
         (session.TreeChange(tree="routing", created=99, updated=99),)
     )
     session.write_record(record, installed)
-
     code, envelope = _drive(["--run", run_id, "restore", "run", record.session_id])
     assert code == int(ExitCode.DECISION_STALE), envelope
 
@@ -374,14 +346,10 @@ def test_nothing_to_restore_is_an_outcome_and_opens_no_session(installed):
     assert envelope["data"]["items"] == []
 
 
-def test_a_confirmed_restore_queues_no_job_at_all(installed):
+def test_a_confirmed_restore_queues_no_job_at_all(installed, acked, record):
     """Why the payload defect ``adopt.apply`` shipped cannot exist here, MEASURED."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
-
     code, refused, envelope = _two_acts(["restore", "run", record.session_id])
     assert code == int(ExitCode.OK), envelope
-
     with jobs.open_store() as store:
         assert list(jobs.list_jobs(store)) == [], (
             "the restore queued a job, so it now owes the frozen run its explicit "
@@ -403,9 +371,8 @@ def test_a_session_identifier_nothing_recorded_is_refused_by_name(installed):
     )
 
 
-def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path):
+def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path, acked):
     """The dry run reaches BOTH halves, measured on the argv the runner is handed."""
-    acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     seen: list[tuple[str, ...]] = []
 
@@ -413,30 +380,15 @@ def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path):
         seen.append(tuple(command.argv))
         return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z\n")
 
-    restore_cli.restore_under_one_session(
-        cfg,
-        session_id=None,
-        dry_run=True,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        target=tmp_path / "recovered",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(cfg),
-    )
-
+    _one_session(cfg, runner, dry_run=True, target=tmp_path / "recovered")
     transfers = [argv for argv in seen if "copy" in argv]
     assert transfers, "the rehearsal described no transfer at all"
     for argv in transfers:
-        assert "--dry-run" in argv, (
-            f"a rehearsal handed the transfer {argv} with nothing neutralizing it"
-        )
+        assert "--dry-run" in argv, f"a rehearsal handed {argv} with nothing neutralizing it"
 
 
-def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg):
+def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg, acked, record):
     """The order is the reason the two halves compose, and it is not asserted elsewhere."""
-    acknowledge(cfg)
-    record, _captured = completed_session(cfg)
     database = config.state_path("rekordbox_db", cfg)
     live = b"database, generation two, written after the capture"
     database.write_bytes(live)
@@ -446,29 +398,14 @@ def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg):
         observed.append(database.read_bytes())
         return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z\n")
 
-    restore_cli.restore_under_one_session(
-        cfg,
-        session_id=record.session_id,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(cfg),
-    )
-
+    _one_session(cfg, runner, session_id=record.session_id)
     assert observed, "the mirror half never ran, so no order was measured"
-    assert observed[0] == live, (
-        "the database had already been replaced when the mirror pull began, so "
-        "the capture was spent first and the remote is about to land on top of it"
-    )
-    assert database.read_bytes() != live, (
-        "the capture half never ran at all, so the order above is vacuous"
-    )
+    assert observed[0] == live, "the capture was spent before the mirror pull began"
+    assert database.read_bytes() != live, "the capture half never ran, so the order is vacuous"
 
 
-def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg):
+def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg, acked):
     """The analysis watch names the library root, driven rather than read."""
-    acknowledge(cfg)
     armed: list[tuple] = []
     real = restore.recovery_session
 
@@ -479,21 +416,16 @@ def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg):
     record, _captured = completed_session(cfg)
     outside_music = Path(cfg.library.root) / "db"
     assert outside_music.is_dir(), "the fixture has no library directory outside Music"
-
     import unittest.mock  # noqa: PLC0415
-
     with unittest.mock.patch.object(restore, "recovery_session", recording):
         restore_cli.restore_under_one_session(
             cfg, session_id=record.session_id, **gate_seams(cfg)
         )
 
-    assert armed == [(str(Path(cfg.library.root)),)], (
-        f"the session was armed over {armed} rather than over the library root"
-    )
+    assert armed == [(str(Path(cfg.library.root)),)], f"the session was armed over {armed}"
     watched = Path(armed[0][0])
     assert outside_music != watched and watched in outside_music.parents, (
-        "the armed root does not contain the part of the library a restore "
-        "writes to, so the watch is narrower than the blast radius"
+        "the watch is narrower than the part of the library a restore writes to"
     )
 
 
@@ -501,59 +433,31 @@ def test_a_bare_run_takes_the_newest_spendable_capture_and_not_merely_the_newest
     """The default has to skip an unusable row, or it refuses on every library that has one."""
     older, _first = completed_session(cfg, started="2026-08-01T00:00:00+00:00", stamp="a")
     newer, wrecked = completed_session(cfg, started="2026-08-02T00:00:00+00:00", stamp="b")
-    for path in sorted(wrecked.root.rglob("*"), reverse=True):
-        path.unlink() if path.is_file() else path.rmdir()
-    wrecked.root.rmdir()
-
+    shutil.rmtree(wrecked.root)
     chosen = restore_cli._newest_restorable(cfg)
-
     assert chosen is not None
-    assert chosen.session_id == older.session_id, (
-        f"the default chose {newer.session_id}, whose capture cannot be spent"
-    )
+    assert chosen.session_id == older.session_id, f"the default chose {newer.session_id}"
 
 
-def test_a_dry_run_walks_every_step_and_performs_none_of_them(installed, monkeypatch):
+def test_a_dry_run_walks_every_step_and_performs_none_of_them(installed, acked, record):
     """The rehearsal, through the verb, measured against the database's bytes."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
     database = config.state_path("rekordbox_db", installed)
     database.write_bytes(b"database, generation two")
-
     code, refused, envelope = _two_acts(["restore", "run", record.session_id, "--dry-run"])
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["dry_run"] is True
     assert envelope["data"]["totals"]["steps"], "a rehearsal that described no step"
-    assert database.read_bytes() == b"database, generation two", (
-        "a rehearsal performed the restore"
-    )
+    assert database.read_bytes() == b"database, generation two", "a rehearsal performed it"
 
 
-def test_the_discard_override_reaches_the_engine_as_identifiers(installed, monkeypatch):
+def test_the_discard_override_reaches_the_engine_as_identifiers(installed, acked):
     """R30's override, driven from the command line in both directions."""
-    acknowledge(installed)
     target, _captured = completed_session(installed, started="2026-08-01T00:00:00+00:00", stamp="a")
     later, _second = completed_session(installed, started="2026-08-02T00:00:00+00:00", stamp="b")
-
-    code, refused = _drive(["restore", "run", target.session_id])
-    run_id = refused["run_id"]
-    _answer(run_id, "restore")
-    code, envelope = _drive(["--run", run_id, "restore", "run", target.session_id])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
-    assert envelope["cause"]["reason"] == "restore-discards-committed-work"
-
-    code, refused = _drive(
-        ["restore", "run", target.session_id, "--discard", later.session_id]
-    )
-    run_id = refused["run_id"]
-    _answer(run_id, "restore")
-    code, envelope = _drive(
-        [
-            "--run", run_id, "restore", "run", target.session_id,
-            "--discard", later.session_id,
-        ]
-    )
+    code, _refused, envelope = _two_acts(["restore", "run", target.session_id])
+    _refused_as(code, envelope, "restore-discards-committed-work", ExitCode.DECISION_REQUIRED)
+    argv = ["restore", "run", target.session_id, "--discard", later.session_id]
+    code, _refused, envelope = _two_acts(argv)
     assert code == int(ExitCode.OK), envelope
 
 
@@ -567,31 +471,20 @@ def test_the_digest_moves_when_the_discard_set_moves(installed):
         ["restore", "run", target.session_id, "--discard", later.session_id]
     )
 
-    assert _offered_digest(narrow) != _offered_digest(wide), (
-        "naming a session to discard did not move the digest, so a decision "
-        "recorded against the narrow restore is honoured against the wide one"
-    )
+    assert _offered_digest(narrow) != _offered_digest(wide), "the discard set moved no digest"
 
 
 def test_the_digest_moves_when_the_mirror_half_or_the_rehearsal_flag_is_added(
-    installed, monkeypatch
+    installed, monkeypatch, record
 ):
     """Approving one session authorises neither a mirror pull nor a full restore from a preview."""
-    record, _captured = completed_session(installed)
     # The offer asks the remote which snapshot it is offering.
     _fake_rclone(installed, monkeypatch)
-
     _code, capture_only = _drive(["restore", "run", record.session_id])
     _code, with_mirror = _drive(["restore", "run", record.session_id, "--from-backup"])
     _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
-
-    assert _offered_digest(capture_only) != _offered_digest(with_mirror), (
-        "adding the mirror half did not move the digest"
-    )
-    assert _offered_digest(preview) != _offered_digest(capture_only), (
-        "the rehearsal flag did not move the digest, so a decision made about a "
-        "preview is honoured against a restore that performs every step"
-    )
+    assert _offered_digest(capture_only) != _offered_digest(with_mirror), "the mirror half"
+    assert _offered_digest(preview) != _offered_digest(capture_only), "the rehearsal flag"
 
 
 def test_the_confirmation_gate_is_found_by_digest_source_and_not_by_position(installed):
@@ -606,54 +499,35 @@ def test_the_confirmation_gate_is_found_by_digest_source_and_not_by_position(ins
 
     assert chosen.digest_source == "plan"
     assert chosen.name == CONFIRM
-    assert chosen is not reversed_entry.gates[0], (
-        "the handler took the first gate, which is the confirmation only by "
-        "the order the entry happens to be written in"
-    )
+    assert chosen is not reversed_entry.gates[0], "the handler took the first gate by position"
 
 
 def test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default(
-    cfg, tmp_path
+    cfg, tmp_path, acked
 ):
     """The per-slug answer survives, which is the whole reason the table holds one."""
-    acknowledge(cfg)
-    unconfigured = _without_remote(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.restore_under_one_session(
-            unconfigured,
-            session_id=None,
-            from_backup=True,
-            target=tmp_path,
-            **gate_seams(cfg),
-        )
-
-    slug = str(backup.Refusal.REMOTE_NOT_CONFIGURED)
-    expected = reservations.remediation_for(slug)
-    got = excinfo.value.cause.remediation
+    got = _refusal(
+        restore_cli.restore_under_one_session,
+        _without_remote(cfg),
+        session_id=None,
+        from_backup=True,
+        target=tmp_path,
+        **gate_seams(cfg),
+    ).remediation
+    expected = reservations.remediation_for(str(backup.Refusal.REMOTE_NOT_CONFIGURED))
     assert (got.remedy, got.steps) == (expected.remedy, expected.steps), (
-        f"the refusal carries {got!r} rather than the reservation table's "
-        f"{expected!r}, so the per-slug answer was discarded"
+        f"the refusal carries {got!r} rather than the reservation table's {expected!r}"
     )
-    assert got.remedy != Remedy.REPORT_DEFECT, (
-        "an unconfigured remote is not a defect in this program"
-    )
+    assert got.remedy != Remedy.REPORT_DEFECT, "an unconfigured remote is not a defect here"
 
 
-def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed, monkeypatch):
+def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed, acked, record):
     """The reported digest identifies the AUTHORISATION, never the work."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
-
-    code, refused = _drive(["restore", "run", record.session_id])
-    run_id = refused["run_id"]
+    code, refused, envelope = _two_acts(["restore", "run", record.session_id])
     offered = refused["cause"]["detail"]
-    _answer(run_id, "restore")
-    code, envelope = _drive(["--run", run_id, "restore", "run", record.session_id])
-
     assert code == int(ExitCode.OK), envelope
     from cratekit.cli import gates as cli_gates  # noqa: PLC0415
-
-    recorded = cli_gates.load(run_id).decisions[CONFIRM]
+    recorded = cli_gates.load(refused["run_id"]).decisions[CONFIRM]
     assert envelope["data"]["digest"] == recorded.digest, (
         f"the report's digest is not the one the decision carries; the gate was "
         f"offered {offered.get('gate')!r}"
@@ -663,110 +537,49 @@ def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed
 # Fix round 2: the review's two blocking findings, and command line coverage
 
 
-def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen(cfg):
+def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen(cfg, acked):
     """BLOCKING finding 1, driven, and the measurement is what a person was told."""
-    acknowledge(cfg)
     database = config.state_path("rekordbox_db", cfg)
     wal = database.with_name(database.name + "-wal")
     wal.write_bytes(b"transactions committed since the last checkpoint")
-
-    def failing(command):
-        if "lsf" in command.argv:
-            return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
-        return backup.CommandResult(returncode=1, stdout="", stderr="connection refused")
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.restore_under_one_session(
-            cfg,
-            session_id=None,
-            from_backup=True,
-            snapshot="2026-08-01T000000Z",
-            runner=failing,
-            process_lister=lambda: (),
-            **gate_seams(cfg),
-        )
-
-    cause = excinfo.value.cause
+    cause = _refusal(_one_session, cfg, _failing)
     assert cause.reason == str(backup.Refusal.RESTORE_TRANSFER_FAILED)
-    assert cause.code is not ExitCode.INTERNAL, (
-        "an unreachable remote is not a defect in this program"
-    )
-    assert backup.RESTORE_DATABASE in cause.message, (
-        "the refusal does not name which transfer failed"
-    )
-    assert cause.remediation.steps, (
-        "the person is told the restore failed and not what to do about it"
-    )
+    assert cause.code is not ExitCode.INTERNAL, "an unreachable remote is not a defect here"
+    assert backup.RESTORE_DATABASE in cause.message, "the refusal names no failed transfer"
+    assert cause.remediation.steps, "the person is not told what to do about it"
     # The companions were cleared and stay cleared, as the message says.
     assert not wal.exists()
     assert str(wal.name) in cause.message or "companion" in cause.message
 
 
-def test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass(cfg):
+def test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass(cfg, acked):
     """The same defect, one branch over, found by asking what else had the shape."""
-    acknowledge(cfg)
     database = config.state_path("rekordbox_db", cfg)
     wal = database.with_name(database.name + "-wal")
     wal.write_bytes(b"still here, because a rehearsal clears nothing")
-
-    def failing(command):
-        if "lsf" in command.argv:
-            return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
-        return backup.CommandResult(returncode=1, stdout="", stderr="connection refused")
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.restore_under_one_session(
-            cfg,
-            session_id=None,
-            dry_run=True,
-            from_backup=True,
-            snapshot="2026-08-01T000000Z",
-            runner=failing,
-            process_lister=lambda: (),
-            **gate_seams(cfg),
-        )
-
-    assert excinfo.value.cause.reason == str(backup.Refusal.RESTORE_TRANSFER_FAILED)
+    cause = _refusal(_one_session, cfg, _failing, dry_run=True)
+    assert cause.reason == str(backup.Refusal.RESTORE_TRANSFER_FAILED)
     assert wal.exists(), "a rehearsal cleared the live companion files"
 
 
-def test_a_transfer_that_succeeds_is_still_reported(cfg):
+def test_a_transfer_that_succeeds_is_still_reported(cfg, acked):
     """The other direction, so the refusal above is not simply a verb that refuses."""
-    acknowledge(cfg)
-
-    report = restore_cli.restore_under_one_session(
-        cfg,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        runner=lambda command: backup.CommandResult(returncode=0, stdout=""),
-        process_lister=lambda: (),
-        **gate_seams(cfg),
-    )
-
+    report = _one_session(cfg, lambda command: backup.CommandResult(returncode=0, stdout=""))
     assert report.pulled, "a run whose every transfer succeeded reported nothing"
 
 
-def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, tmp_path):
+def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, tmp_path, acked):
     """The report a person reads names the sidecar the snapshot did not hold."""
-    acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     database = config.state_path("rekordbox_db", cfg).name
-
-    report = restore_cli.restore_under_one_session(
+    report = _one_session(
         cfg,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        target=tmp_path / "recovered",
-        runner=lambda command: backup.CommandResult(
+        lambda command: backup.CommandResult(
             returncode=0,
             stdout=(database + "\n") if command.label == backup.LIST_SNAPSHOT_CONTENTS else "",
         ),
-        process_lister=lambda: (),
-        **gate_seams(cfg),
+        target=tmp_path / "recovered",
     )
-
     assert report.pulled == (backup.RESTORE_DATABASE,)
     assert report.absent == ("-wal",)
     payload = restore_cli._performed(report, {"digest": "d"})
@@ -785,17 +598,7 @@ def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
     cfg, tmp_path, listing, pulled, word
 ):
     """R-338 at the report a person reads: the grids arrived, or it says they did not."""
-    home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    (home / "master.db").write_bytes(b"live")
-    outside = replace(
-        cfg,
-        library=replace(
-            cfg.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-20",
-        ),
-    )
+    outside = _outside(cfg, tmp_path / "home" / "rekordbox", b"live")
     acknowledge(outside)
     (tmp_path / "recovered").mkdir()
 
@@ -803,17 +606,7 @@ def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
         answers = {backup.LIST_SNAPSHOT_CONTENTS: "master.db\n", backup.LIST_SHARE: listing}
         return backup.CommandResult(returncode=0, stdout=answers.get(command.label, ""))
 
-    report = restore_cli.restore_under_one_session(
-        outside,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        target=tmp_path / "recovered",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(outside),
-    )
-
+    report = _one_session(outside, runner, target=tmp_path / "recovered")
     assert report.pulled == pulled
     assert report.share == word
     totals = restore_cli._performed(report, {"digest": "d"})["totals"]
@@ -824,17 +617,7 @@ def test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_cle
     cfg, tmp_path
 ):
     """Driven against the REAL analysis watch, with a runner that really writes."""
-    home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    (home / "master.db").write_bytes(b"live")
-    outside = replace(
-        cfg,
-        library=replace(
-            cfg.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-20",
-        ),
-    )
+    outside = _outside(cfg, tmp_path / "home" / "rekordbox", b"live")
     acknowledge(outside)
 
     def runner(command):
@@ -845,58 +628,36 @@ def test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_cle
         answers = {backup.LIST_SNAPSHOT_CONTENTS: "master.db\n", backup.LIST_SHARE: "PIONEER/\n"}
         return backup.CommandResult(returncode=0, stdout=answers.get(command.label, ""))
 
-    report = restore_cli.restore_under_one_session(
-        outside,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-01T000000Z",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(outside),
-    )
-
+    report = _one_session(outside, runner)
     assert report.pulled == (backup.RESTORE_DATABASE,)
     assert report.share == "withheld"
     assert not list(Path(outside.library.root).rglob("ANLZ*"))
 
 
-def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
+def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed, acked):
     """BLOCKING finding 2, with its producer DRIVEN rather than hand mutated."""
-    acknowledge(installed)
     record, captured = completed_session(installed)
     removed = restore.prune(
         installed, policy=restore.RetentionPolicy(keep=0, max_age=timedelta(0))
     )
-    assert removed and not captured.root.exists(), (
-        "retention removed nothing, so the state under test was never produced"
-    )
-
+    assert removed and not captured.root.exists(), "retention removed nothing"
     _code, listing = _drive(["restore", "list"])
     row = listing["data"]["items"][0]
     assert row["restorable"] is False
     sentence = row["unusable"]
     assert sentence, "the listing explains nothing, so there is nothing to agree with"
-
-    code, envelope = _drive(["restore", "run", record.session_id])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-record-unusable"
-    assert envelope["cause"]["remediation"]["remedy"] != str(Remedy.REPORT_DEFECT), (
-        "a person is told to report a defect for a capture this product deleted"
-    )
-    assert sentence in envelope["cause"]["message"], (
-        "the two surfaces give different accounts of one state"
-    )
+    argv = ["restore", "run", record.session_id]
+    envelope = _refused_as(*_drive(argv), "restore-record-unusable")
+    assert envelope["cause"]["remediation"]["remedy"] != str(Remedy.REPORT_DEFECT)
+    assert sentence in envelope["cause"]["message"], "the two surfaces disagree on one state"
 
 
-def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg):
+def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg, acked):
     """The half of finding 2 that costs something, and it is the ordering."""
-    acknowledge(cfg)
     record, captured = completed_session(cfg)
     restore.prune(cfg, policy=restore.RetentionPolicy(keep=0, max_age=timedelta(0)))
     assert not captured.root.exists()
     ran: list[str] = []
-
     with pytest.raises(CratekitError) as excinfo:
         restore_cli.restore_under_one_session(
             cfg,
@@ -914,42 +675,29 @@ def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg):
 
 
 def test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher(
-    installed, monkeypatch
+    installed, remote_log
 ):
     """``--from-backup``, driven end to end, which nothing did before."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-
     code, refused, envelope = _two_acts(["restore", "run", "--from-backup"])
-
     assert code == int(ExitCode.OK), envelope
-    invoked = log.read_text().splitlines() if log.exists() else []
+    invoked = remote_log.read_text().splitlines() if remote_log.exists() else []
     assert invoked, "the flag was accepted and no transfer was ever attempted"
     copies = [line for line in invoked if " copy " in f" {line} "]
-    assert envelope["data"]["totals"]["transfers"] == len(copies), (
-        f"the report claims {envelope['data']['totals']['transfers']} transfers and "
-        f"the program was asked to copy {len(copies)} times"
-    )
+    assert envelope["data"]["totals"]["transfers"] == len(copies), envelope["data"]["totals"]
     assert all(item["half"] == "off-machine" for item in envelope["data"]["items"])
 
 
-def test_without_the_flag_no_transfer_is_attempted_at_all(installed, monkeypatch):
+def test_without_the_flag_no_transfer_is_attempted_at_all(installed, remote_log):
     """The other direction, so the test above is not passing on a verb that always pulls."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-
     code, refused, envelope = _two_acts(["restore", "run"])
-
     assert code == int(ExitCode.OK), envelope
-    invoked = log.read_text().splitlines() if log.exists() else []
+    invoked = remote_log.read_text().splitlines() if remote_log.exists() else []
     assert invoked == [], f"a restore nobody asked to pull reached the remote: {invoked}"
 
 
-def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg):
+def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg, acked):
     """The flag that decides whether hundreds of gigabytes move, pinned both ways."""
-    acknowledge(cfg)
     captured: dict[bool, list[str]] = {}
-
     for wanted in (False, True):
         labels: list[str] = []
 
@@ -957,48 +705,25 @@ def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg):
             sink.append(command.label)
             return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
 
-        restore_cli.restore_under_one_session(
-            cfg,
-            session_id=None,
-            from_backup=True,
-            include_mirror=wanted,
-            snapshot="2026-08-01T000000Z",
-            runner=runner,
-            process_lister=lambda: (),
-            **gate_seams(cfg),
-        )
+        _one_session(cfg, runner, include_mirror=wanted)
         captured[wanted] = labels
 
     assert backup.RESTORE_MIRROR in captured[True]
-    assert backup.RESTORE_MIRROR not in captured[False], (
-        "the mirror was pulled by a run that did not ask for it"
-    )
+    assert backup.RESTORE_MIRROR not in captured[False], "a mirror nobody asked for was pulled"
 
 
-def test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled(cfg):
+def test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled(cfg, acked):
     """``--snapshot``, pinned on the argv the transfer is actually given."""
-    acknowledge(cfg)
     seen: list[tuple[str, ...]] = []
 
     def runner(command):
         seen.append(tuple(command.argv))
         return backup.CommandResult(returncode=0, stdout="2026-08-01T000000Z/\n")
 
-    restore_cli.restore_under_one_session(
-        cfg,
-        session_id=None,
-        from_backup=True,
-        snapshot="2026-08-02T111111Z",
-        runner=runner,
-        process_lister=lambda: (),
-        **gate_seams(cfg),
-    )
-
+    _one_session(cfg, runner, snapshot="2026-08-02T111111Z")
     copies = [argv for argv in seen if "copy" in argv]
     assert copies, "no transfer was attempted"
-    assert all("2026-08-02T111111Z" in " ".join(argv) for argv in copies), (
-        f"the named snapshot did not reach the transfer: {copies}"
-    )
+    assert all("2026-08-02T111111Z" in " ".join(argv) for argv in copies), copies
 
 
 # ── the two properties nothing pinned at either layer ─────────────────────────
@@ -1013,36 +738,26 @@ def test_the_default_takes_the_newest_of_several_spendable_captures(cfg):
     chosen = restore_cli._newest_restorable(cfg)
 
     assert chosen is not None
-    assert chosen.session_id == newer.session_id, (
-        f"the default took {chosen.session_id}, which is not the newest spendable "
-        f"capture of the two"
-    )
+    assert chosen.session_id == newer.session_id, f"the default took {chosen.session_id}"
 
 
 def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
     """The VERIFIED half of spendable, which nothing pinned at either layer."""
     record, captured = completed_session(cfg)
     only = restore_cli._newest_restorable(cfg)
-    assert only is not None and only.session_id == record.session_id, (
-        "the fixture's own capture is not spendable, so this pins nothing"
-    )
+    assert only is not None and only.session_id == record.session_id, "the fixture is unspendable"
 
     manifest = captured.root / snapshot.MANIFEST_NAME
     document = json.loads(manifest.read_text())
-    assert document.get("integrity_verified") is True, (
-        "the fixture's capture was never verified, so clearing the flag pins nothing"
-    )
+    assert document.get("integrity_verified") is True, "the fixture's capture was never verified"
     document["integrity_verified"] = False
     manifest.write_text(json.dumps(document))
 
-    assert restore_cli._newest_restorable(cfg) is None, (
-        "an unverified capture was offered as the default restore target"
-    )
+    assert restore_cli._newest_restorable(cfg) is None, "an unverified capture was the default"
 
 
 
-# R-368: a restore into a directory that is not the live library: the live library
-# by another name, and a target beside a capture rollback.
+# R-368: a target that is the live library by another name, or beside a capture rollback.
 
 
 def _sidecars_beside(path: Path) -> tuple[Path, ...]:
@@ -1063,28 +778,17 @@ def _copy_destinations(log: Path) -> list[str]:
 
 
 def test_a_target_restores_the_database_into_the_directory_it_names(
-    installed, tmp_path, monkeypatch
+    installed, scratch, remote_log
 ):
     """The close condition, driven through the dispatcher onto a scratch directory."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-    scratch = tmp_path / "rehearsal"
-    scratch.mkdir()
     live = config.state_path("rekordbox_db", installed)
     companions = _sidecars_beside(live)
-
     code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(scratch)])
-
     assert code == int(ExitCode.OK), envelope
-    destinations = _copy_destinations(log)
+    destinations = _copy_destinations(remote_log)
     assert destinations, "the flag was accepted and no transfer was ever attempted"
-    assert all(place.startswith(str(scratch.resolve())) for place in destinations), (
-        f"a restore asked for {scratch} was pointed at {destinations}"
-    )
-    assert all(beside.exists() for beside in companions), (
-        "the rehearsal cleared the LIVE companion files beside the live database, "
-        "which is the work no capture holds"
-    )
+    assert all(place.startswith(str(scratch.resolve())) for place in destinations), destinations
+    assert all(beside.exists() for beside in companions), "the LIVE companions were cleared"
     assert live.read_bytes() == b"database, generation one"
 
 
@@ -1097,56 +801,42 @@ def test_a_target_restores_the_database_into_the_directory_it_names(
     ],
 )
 def test_a_target_that_is_holds_or_sits_in_the_library_is_refused(
-    installed, monkeypatch, where, why
+    installed, remote_log, where, why
 ):
     """The containment check, over the root and what equality alone does not cover."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
     root = Path(installed.library.root)
     named = {"root": root, "inside": root / "beneath", "above": root.parent}[where]
     if where == "inside":
         named.mkdir()
 
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(named)])
-
     assert code == int(ExitCode.PRECONDITION), f"{why}: {envelope}"
     assert envelope["cause"]["reason"] == "restore-target-is-live-root", why
     assert envelope["cause"]["detail"]["check"] == "containment", why
-    assert not log.exists(), "the remote was reached by a run that is refused"
+    assert not remote_log.exists(), "the remote was reached by a run that is refused"
 
 
-def test_a_target_whose_database_lands_on_the_live_one_is_refused(
-    installed, tmp_path, monkeypatch
-):
+def test_a_target_whose_database_lands_on_the_live_one_is_refused(installed, tmp_path, remote_log):
     """The check the containment one cannot make, in the layout rekordbox ships."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
     home = tmp_path / "home" / "rekordbox"
     outside = _database_outside(installed, home)
     (home / "master.db").write_bytes(b"database, generation one")
     assert backup.database_target_for(outside, home) == config.state_path(
         "rekordbox_db", outside
     ), "the fixture does not reproduce the layout, so this pins nothing"
-    assert not home.is_relative_to(outside.library.root), (
-        "the database's directory is inside the library root here, so the "
-        "containment check would refuse it and this measures that instead"
-    )
-
-    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(home)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    assert not home.is_relative_to(outside.library.root), "containment would answer this"
+    argv = ["restore", "run", "--from-backup", "--target", str(home)]
+    envelope = _refused_as(*_drive(argv), "restore-target-is-live-root")
     assert envelope["cause"]["detail"]["check"] == "destination"
-    assert not log.exists(), "the remote was reached by a run that is refused"
+    assert not remote_log.exists(), "the remote was reached by a run that is refused"
     # The sentence names where the database would land, not only the slug.
     assert str(home / "master.db") in envelope["cause"]["message"], envelope
     assert "live database" in envelope["cause"]["message"], envelope
 
 
 @pytest.mark.parametrize("case", ["no-pull", "beside-a-discard", "beside-a-named-session"])
-def test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused(installed, case):
+def test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused(installed, case, acked):
     """The flag names where a pulled database goes, and never beside a rollback."""
-    acknowledge(installed)
     if case == "no-pull":
         argv = ["restore", "run", "--target", "/somewhere/else"]
     else:
@@ -1155,80 +845,48 @@ def test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused(insta
         extra = ["--discard", "s-1"] if case == "beside-a-discard" else []
         argv = ["restore", "run", *named, "--from-backup", "--target", "/somewhere/else", *extra]
 
-    code, envelope = _drive(argv)
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-target-invalid"
+    _refused_as(*_drive(argv), "restore-target-invalid")
 
 
-def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path, monkeypatch):
+def test_a_target_run_rolls_no_session_back_even_by_default(
+    installed, scratch, remote_log, record
+):
     """The OTHER way a capture reaches a run, which the refusal above cannot see."""
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch)
-    record, _captured = completed_session(installed)
-    assert restore_cli._newest_restorable(installed) is not None, (
-        "no capture is spendable here, so a default nobody suppressed would be "
-        "None anyway and this pins nothing"
-    )
-    scratch = tmp_path / "rehearsal"
-    scratch.mkdir()
-
+    assert restore_cli._newest_restorable(installed) is not None, "no capture is spendable"
     code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(scratch)])
-
     assert code == int(ExitCode.OK), envelope
     assert all(item["half"] == "off-machine" for item in envelope["data"]["items"])
-    assert "converged" not in envelope["data"]["totals"], (
-        f"a rehearsal reported on the capture restore's own question, so a "
-        f"session was spent: {envelope['data']['totals']}"
-    )
+    assert "converged" not in envelope["data"]["totals"], envelope["data"]["totals"]
     assert record.session_id in {
         entry.session_id for entry in restore.list_sessions(installed)
     }
 
 
 def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
-    installed, tmp_path, monkeypatch
+    installed, scratch, remote_log
 ):
     """A decision about a rehearsal must not be honoured against the live restore."""
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch)
-    scratch = tmp_path / "rehearsal"
-    scratch.mkdir()
-
     _code, live = _drive(["restore", "run", "--from-backup"])
     _code, rehearsal = _drive(
         ["restore", "run", "--from-backup", "--target", str(scratch)]
     )
-
-    assert _offered_digest(live) != _offered_digest(rehearsal), (
-        "pointing the restore at a scratch directory did not move the digest, so "
-        "a decision made about the rehearsal is honoured against the live library"
-    )
+    assert _offered_digest(live) != _offered_digest(rehearsal), "the target moved no digest"
 
 
 def test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal(
-    installed, tmp_path, monkeypatch
+    installed, tmp_path, remote_log
 ):
     """The existing refusal, reached through the new flag rather than restated."""
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch)
     missing = tmp_path / "not-mounted"
-
     code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(missing)])
-
-    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
-    assert envelope["cause"]["reason"] == str(backup.Refusal.RESTORE_TARGET_ABSENT)
+    absent = str(backup.Refusal.RESTORE_TARGET_ABSENT)
+    _refused_as(code, envelope, absent, ExitCode.LIBRARY_UNAVAILABLE)
 
 
 def test_a_rehearsal_is_still_refused_while_rekordbox_is_running(
-    installed, tmp_path, monkeypatch
+    installed, scratch, monkeypatch, remote_log
 ):
     """Today's live gates stay, which is half of what this unit promised."""
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch)
-    scratch = tmp_path / "rehearsal"
-    scratch.mkdir()
-
     _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
     _answer(refused["run_id"], "restore")
     monkeypatch.setattr(
@@ -1237,36 +895,22 @@ def test_a_rehearsal_is_still_refused_while_rekordbox_is_running(
     code, envelope = _drive(
         ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
     )
-
-    assert code == int(ExitCode.REKORDBOX_OPEN), envelope
-    assert envelope["cause"]["reason"] == "rekordbox-running"
+    _refused_as(code, envelope, "rekordbox-running", ExitCode.REKORDBOX_OPEN)
 
 
-def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypatch):
+def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypatch, acked):
     """The resolution, measured where leaving it out actually costs something."""
-    acknowledge(installed)
     root = Path(installed.library.root)
     monkeypatch.chdir(root.parent)
-
-    code, envelope = _drive(["restore", "run", "--from-backup", "--target", root.name])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    argv = ["restore", "run", "--from-backup", "--target", root.name]
+    envelope = _refused_as(*_drive(argv), "restore-target-is-live-root")
     # The refusal reports the resolved directory, not the word that was typed.
     assert envelope["cause"]["detail"]["target"] == str(root), envelope
 
 
 def _database_outside(installed, home: Path):
     """Save the acknowledged layout with the database in ``home``, outside the root."""
-    home.mkdir(parents=True)
-    outside = replace(
-        installed,
-        library=replace(
-            installed.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-18",
-        ),
-    )
+    outside = _outside(installed, home, None, "2026-09-18")
     config.save(outside)
     config.reset_cache()
     return outside
@@ -1275,8 +919,7 @@ def _database_outside(installed, home: Path):
 def _live_by_another_spelling(where: Path, code: int, envelope: dict, check: str, why: str):
     """Refused as the live library where the filesystem folds case, and not otherwise."""
     if _case_folds(where):
-        assert code == int(ExitCode.PRECONDITION), envelope
-        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        _refused_as(code, envelope, "restore-target-is-live-root")
         assert envelope["cause"]["detail"]["check"] == check
     else:
         assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
@@ -1294,48 +937,34 @@ def _case_folds(where: Path) -> bool:
         probe.rmdir()
 
 
-def test_a_differently_cased_library_root_is_still_the_library(
-    installed, tmp_path, monkeypatch
-):
+def test_a_differently_cased_library_root_is_still_the_library(installed, tmp_path, remote_log):
     """The guard's own defect, found by this unit's review and driven here."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
     root = Path(installed.library.root)
     shouted = root.with_name(root.name.upper())
     assert str(shouted) != str(root), "the fixture's root is already upper case"
     live = config.state_path("rekordbox_db", installed)
     companions = _sidecars_beside(live)
-
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
-
     if _case_folds(tmp_path):
-        assert code == int(ExitCode.PRECONDITION), envelope
-        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-        assert all(beside.exists() for beside in companions), (
-            "a target spelled in another case was accepted and cleared the live "
-            "companion files"
-        )
-        assert not log.exists(), "the remote was reached by a run that is refused"
+        _refused_as(code, envelope, "restore-target-is-live-root")
+        assert all(beside.exists() for beside in companions), "the live companions were cleared"
+        assert not remote_log.exists(), "the remote was reached by a run that is refused"
     else:
         assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
-            f"this filesystem holds the two spellings as two directories, so "
-            f"{shouted} is not the library and refusing it names the wrong fact"
+            f"this filesystem holds the two spellings apart, so {shouted} is not the library"
         )
 
 
 def test_a_differently_cased_database_directory_is_still_the_live_database(
-    installed, tmp_path, monkeypatch
+    installed, tmp_path, acked
 ):
     """The same fold, on the destination check rather than on containment."""
-    acknowledge(installed)
     home = tmp_path / "home" / "Rekordbox"
     _database_outside(installed, home)
     (home / "master.db").write_bytes(b"database, generation one")
     shouted = home.with_name(home.name.upper())
     assert str(shouted) != str(home)
-
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
-
     _live_by_another_spelling(
         tmp_path, code, envelope, "destination",
         f"the database would land in {shouted} and not on the live one",
@@ -1343,40 +972,26 @@ def test_a_differently_cased_database_directory_is_still_the_live_database(
 
 
 def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
-    installed, tmp_path
+    installed, tmp_path, acked
 ):
     """The ancestor WALK, measured where the candidate itself is not the root."""
-    acknowledge(installed)
     root = Path(installed.library.root)
     (root / "beneath").mkdir()
     inside = root.parent / root.name.upper() / "beneath"
-    assert not inside.is_relative_to(root), (
-        "the two spellings share a prefix here, so the string test alone answers "
-        "this and the walk is not what is being measured"
-    )
-
+    assert not inside.is_relative_to(root), "the string test alone would answer this"
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(inside)])
-
     _live_by_another_spelling(
         tmp_path, code, envelope, "containment", f"{inside} is not inside the library"
     )
 
 
-def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
-    installed, tmp_path
-):
+def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(installed, tmp_path, acked):
     """The half of the destination check that ``samefile`` alone cannot make."""
-    acknowledge(installed)
     home = tmp_path / "home" / "rekordbox"
     _database_outside(installed, home)
-    assert not (home / "master.db").exists(), (
-        "the database is on disk here, so the first half of the check answers "
-        "this and the half under measurement is not reached"
-    )
+    assert not (home / "master.db").exists(), "the half under measurement is not reached"
     shouted = home.with_name(home.name.upper())
-
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
-
     _live_by_another_spelling(
         tmp_path, code, envelope, "destination",
         f"the database would land in {shouted} and not where the live one belongs",
@@ -1400,39 +1015,27 @@ def _copied_from(log: Path) -> list[str]:
     return [line.split()[1] for line in lines if line.startswith("copy ")]
 
 
-def test_a_backup_landing_between_the_two_acts_moves_the_digest(installed, monkeypatch):
+def test_a_backup_landing_between_the_two_acts_moves_the_digest(installed, remote_log):
     """The ledger's measurement, driven: offer and answer, then a second snapshot."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-
     _code, refused = _drive(["restore", "run", "--from-backup"])
     item = _shown(refused)
     assert item["snapshot"] == STAMP
     _answer(refused["run_id"], "restore")
-
     _remote_holds((STAMP, LATER), cfg_value=installed)
     code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
-
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     assert code != int(ExitCode.OK)
-    assert _copied_from(log) == [], (
-        f"a decision made about {STAMP} was honoured and pulled {_copied_from(log)}"
-    )
+    assert _copied_from(remote_log) == [], f"a decision about {STAMP} was honoured"
 
 
-def test_what_is_offered_is_what_is_pulled_and_reported(installed, monkeypatch):
+def test_what_is_offered_is_what_is_pulled_and_reported(installed, monkeypatch, acked):
     """The newest stamp is resolved once, shown, approved, used, and named in the report."""
-    acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
-
-    _code, refused = _drive(["restore", "run", "--from-backup"])
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup"])
     item = _shown(refused)
     assert item["snapshot"] == LATER
     assert item["snapshot_named"] is False
     assert item["recorded_volume"] == preflight.normalize_identity(installed.library.volume_id)
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
-
     assert code == int(ExitCode.OK), envelope
     copied = _copied_from(log)
     assert copied and all(f"/{LATER}/db/" in source for source in copied), copied
@@ -1443,46 +1046,31 @@ def test_what_is_offered_is_what_is_pulled_and_reported(installed, monkeypatch):
     )
 
 
-def test_the_ledgers_traversal_value_is_refused_at_the_verb(installed, monkeypatch):
+def test_the_ledgers_traversal_value_is_refused_at_the_verb(installed, remote_log):
     """Through the dispatcher, with the value the finding was measured with."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-
-    code, envelope = _drive(
-        [
-            "restore", "run", "--from-backup",
-            "--snapshot", "../another-library-snapshots/2020-01-01T000000Z",
-        ]
-    )
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_NAME_INVALID)
+    traversal = "../another-library-snapshots/2020-01-01T000000Z"
+    argv = ["restore", "run", "--from-backup", "--snapshot", traversal]
+    envelope = _refused_as(*_drive(argv), str(backup.Refusal.SNAPSHOT_NAME_INVALID))
     assert envelope["cause"]["remediation"]["steps"], envelope["cause"]
-    assert not log.exists() or log.read_text() == ""
+    assert not remote_log.exists() or remote_log.read_text() == ""
 
 
 def test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes(
-    installed, monkeypatch
+    installed, monkeypatch, acked
 ):
-    acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, marker="0000-AAAA")
-
-    code, envelope = _drive(["restore", "run", "--from-backup", "--snapshot", STAMP])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
+    argv = ["restore", "run", "--from-backup", "--snapshot", STAMP]
+    envelope = _refused_as(*_drive(argv), str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH))
     message = envelope["cause"]["message"]
     assert "0000-aaaa" in message
     assert preflight.normalize_identity(installed.library.volume_id) in message
     assert _copied_from(log) == []
 
 
-def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, monkeypatch):
+def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, monkeypatch, acked):
     """``--snapshot-volume``, driven end to end, and held to what it names."""
-    acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, marker="0000-AAAA")
     named = ["restore", "run", "--from-backup", "--snapshot", STAMP]
-
     _code, refused = _drive([*named, "--snapshot-volume", "0000-aaaa"])
     item = _shown(refused)
     assert item["expected_volume"] == "0000-aaaa"
@@ -1493,63 +1081,46 @@ def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, mo
     code, envelope = _drive(["--run", refused["run_id"], *named])
     assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
     assert _copied_from(log) == []
-
     code, envelope = _drive(
         ["--run", refused["run_id"], *named, "--snapshot-volume", "0000-aaaa"]
     )
     assert code == int(ExitCode.OK), envelope
     assert _copied_from(log), "the flag was accepted and nothing was pulled"
-
     _remote_holds((STAMP,), marker="9999-BBBB")
     code, envelope = _drive([*named, "--snapshot-volume", "0000-aaaa"])
     assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
 
 
 def test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled(
-    installed, monkeypatch
+    installed, monkeypatch, acked
 ):
     """Every snapshot that exists on the day this lands is unmarked."""
-    acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, marker=None)
-
     code, envelope = _drive(["restore", "run", "--from-backup"])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED)
+    _refused_as(code, envelope, str(backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED))
     assert STAMP in envelope["cause"]["message"]
-
-    named = ["restore", "run", "--from-backup", "--snapshot", STAMP]
-    _code, refused = _drive(named)
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--snapshot", STAMP])
     item = _shown(refused)
     assert item["snapshot_named"] is True
     assert item["recorded_volume"] is None
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(["--run", refused["run_id"], *named])
     assert code == int(ExitCode.OK), envelope
     assert _copied_from(log)
 
 
 def test_a_restore_that_pulls_nothing_off_the_machine_still_asks_the_remote_nothing(
-    installed, monkeypatch
+    installed, monkeypatch, record
 ):
     """The early listing is paid only by the half that needs it."""
-    record, _captured = completed_session(installed)
     log = _fake_rclone(installed, monkeypatch)
-
     _drive(["restore", "run", record.session_id])
-
     assert not log.exists() or log.read_text() == ""
 
 
-def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypatch):
+def test_the_digest_moves_when_the_expected_volume_is_stated(installed, remote_log):
     """The flag is part of what is approved, measured where it changes nothing else."""
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch)
-
     _code, plain = _drive(["restore", "run", "--from-backup"])
-    _code, stated = _drive(
-        ["restore", "run", "--from-backup", "--snapshot-volume", installed.library.volume_id]
-    )
-
+    stating = ["--snapshot-volume", installed.library.volume_id]
+    _code, stated = _drive(["restore", "run", "--from-backup", *stating])
     assert _shown(plain)["recorded_volume"] == _shown(stated)["recorded_volume"]
     assert _offered_digest(plain) != _offered_digest(stated)
 
@@ -1563,34 +1134,24 @@ def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypa
         ["--snapshot", STAMP, "--include-mirror"],
     ],
 )
-def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, flags):
+def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, flags, record):
     """They were dropped in silence, ahead of a rollback nobody meant."""
-    record, _captured = completed_session(installed)
-
-    code, envelope = _drive(["restore", "run", record.session_id, *flags])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-flag-needs-pull"
+    argv = ["restore", "run", record.session_id, *flags]
+    envelope = _refused_as(*_drive(argv), "restore-flag-needs-pull")
     assert envelope["cause"]["detail"]["flags"] == [f for f in flags if f.startswith("--")]
     assert envelope["cause"]["remediation"]["steps"]
 
 
-def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
-    installed, monkeypatch
-):
+def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(installed, remote_log):
     """The window INSIDE the second act, which the digest cannot see."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
     home = Path(config.installation_state_dir())
-
     _code, refused = _drive(["restore", "run", "--from-backup"])
     _answer(refused["run_id"], "restore")
     (home / f"{REMOTE_SNAPSHOTS}.next").write_text(f"{STAMP}/\n{LATER}/\n")
     code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
-
     assert code == int(ExitCode.OK), envelope
     assert not (home / f"{REMOTE_SNAPSHOTS}.next").exists(), "the remote never moved"
-    copied = _copied_from(log)
+    copied = _copied_from(remote_log)
     assert copied and all(f"/{STAMP}/db/" in source for source in copied), copied
 
 
@@ -1609,12 +1170,8 @@ MIRRORED = "Music/a-track.flac"
 
 
 class _Remote:
-    """A runner that answers the listings and PERFORMS each copy as a file write.
-
-    ``failing`` labels exit non-zero writing nothing; ``cut`` labels land what they
-    carry and THEN exit non-zero; ``failing_files`` names snapshot files whose own
-    transfer fails, so one half can land part of the fileset.
-    """
+    """A runner answering the listings and PERFORMING each copy: ``failing`` labels write
+    nothing, ``cut`` ones land and THEN fail, ``failing_files`` fail their own transfer."""
 
     def __init__(
         self,
@@ -1688,11 +1245,14 @@ def _everything_on_disk(*roots: Path) -> dict[str, bytes | None]:
 
 def _gone(cfg_value, **overrides) -> dict:
     """The engine suite's dead volume, plus a person at a terminal."""
-    seams = restore_suite._volume_is_gone(cfg_value)
-    seams["terminal"] = lambda: True
-    seams["process_lister"] = lambda: ()
-    seams.update(overrides)
-    return seams
+    dead = restore_suite._volume_is_gone(cfg_value)
+    return {**dead, "terminal": lambda: True, "process_lister": lambda: (), **overrides}
+
+
+@pytest.fixture
+def seams(cfg) -> dict:
+    """``_gone``'s seams for the configured library."""
+    return _gone(cfg)
 
 
 def _replacement(tmp_path) -> Path:
@@ -1701,15 +1261,25 @@ def _replacement(tmp_path) -> Path:
     return target
 
 
-def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg, tmp_path):
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
+@pytest.fixture
+def target(tmp_path) -> Path:
+    return _replacement(tmp_path)
+
+
+@pytest.fixture
+def scratch(tmp_path) -> Path:
+    """An empty directory to rehearse a restore into."""
+    (tmp_path / "rehearsal").mkdir()
+    return tmp_path / "rehearsal"
+
+
+def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(
+    cfg, tmp_path, target, seams
+):
     remote = _Remote(cfg)
     state = Path(config.installation_state_dir())
     before = _everything_on_disk(tmp_path, state)
-
     report = _recover(cfg, target, remote, **seams)
-
     assert (target / MIRRORED).read_bytes() == b"mirrored"
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
     assert (target / "db" / "master.db-wal").exists()
@@ -1722,7 +1292,6 @@ def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg,
     destinations = [Path(c.argv[3]) for c in remote.transfers]
     assert len(destinations) == 3
     assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
-
     after = _everything_on_disk(tmp_path, state)
     outside = {
         path
@@ -1774,33 +1343,25 @@ def test_a_refusal_before_the_lock_leaves_the_disk_untouched(cfg, tmp_path, case
     remote = _Remote(cfg)
     state = Path(config.installation_state_dir())
     before = _everything_on_disk(tmp_path, state)
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=accepted, runner=remote, **seams
-        )
-
-    assert excinfo.value.cause.reason == "recovery-target-refused"
-    assert said in excinfo.value.cause.message
+    cause = _refusal(
+        restore_cli.recover_under_bare_metal_session,
+        cfg, target=target, accepted=accepted, runner=remote, **seams,
+    )
+    assert cause.reason == "recovery-target-refused"
+    assert said in cause.message
     assert remote.calls == [], "the remote was asked something by a refused recovery"
     assert _everything_on_disk(tmp_path, state) == before
     assert not restore.recovery_lock_path().exists()
 
 
-def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_it(
-    cfg, tmp_path
-):
+def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_it(cfg, target):
     """The verb never passes ``replacing_existing``, and has no flag that could."""
-    target = _replacement(tmp_path)
     (target / "db").mkdir(parents=True)
     (target / "db" / "master.db").write_bytes(b"somebody's library")
     remote = _Remote(cfg)
-
-    with pytest.raises(CratekitError) as excinfo:
-        _recover(cfg, target, remote, **_gone(cfg))
-
-    assert excinfo.value.cause.reason == "recovery-target-refused"
-    assert "already holds master.db" in excinfo.value.cause.message
+    cause = _refusal(_recover, cfg, target, remote, **_gone(cfg))
+    assert cause.reason == "recovery-target-refused"
+    assert "already holds master.db" in cause.message
     assert remote.calls == []
     assert (target / "db" / "master.db").read_bytes() == b"somebody's library"
     # A usage error prints no envelope, so the parser is asked rather than driven.
@@ -1810,10 +1371,8 @@ def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_i
         )
 
 
-def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
+def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, target, seams):
     """Asked from a REAL second interpreter, while each transfer is in flight."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     observed: list[int] = []
 
     class _Watching(_Remote):
@@ -1823,7 +1382,6 @@ def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
             return super().__call__(command)
 
     _recover(cfg, target, _Watching(cfg), **seams)
-
     assert observed == [3, 3, 3], observed
     assert _lock_taken_in_another_process(restore.recovery_lock_path()) == 0
 
@@ -1831,7 +1389,6 @@ def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
 def test_a_recovery_already_running_here_refuses_the_second_one(cfg, tmp_path):
     """The engine's busy path, which this verb is the first caller to own."""
     import fcntl  # noqa: PLC0415
-
     target = _replacement(tmp_path)
     seams = _gone(cfg)
     remote = _Remote(cfg)
@@ -1839,11 +1396,10 @@ def test_a_recovery_already_running_here_refuses_the_second_one(cfg, tmp_path):
     lock.parent.mkdir(parents=True, exist_ok=True)
     with open(lock, "a+") as other:
         fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with pytest.raises(CratekitError) as excinfo:
-            _recover(cfg, target, remote, **seams)
+        cause = _refusal(_recover, cfg, target, remote, **seams)
 
-    assert excinfo.value.cause.reason == "session-lock-held", excinfo.value.cause
-    assert str(lock) in excinfo.value.cause.message
+    assert cause.reason == "session-lock-held", cause
+    assert str(lock) in cause.message
     assert remote.calls == []
     assert list(target.iterdir()) == []
 
@@ -1854,34 +1410,19 @@ def test_the_verb_cannot_be_typed_without_naming_a_target():
         cli.build_parser().parse_args(["restore", "bare-metal", "--accept-replacement"])
 
 
-def test_a_recovery_is_refused_underneath_a_running_rekordbox(cfg, tmp_path):
-    target = _replacement(tmp_path)
+def test_a_recovery_is_refused_underneath_a_running_rekordbox(cfg, target):
     remote = _Remote(cfg)
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg,
-            target=target,
-            accepted=True,
-            runner=remote,
-            **_gone(cfg, process_lister=lambda: ("rekordbox",)),
-        )
-
-    assert excinfo.value.cause.reason == "rekordbox-running"
+    seams = _gone(cfg, process_lister=lambda: ("rekordbox",))
+    cause = _refusal(_recover, cfg, target, remote, **seams)
+    assert cause.reason == "rekordbox-running"
     assert remote.transfers == []
     assert list(target.iterdir()) == []
 
 
-def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
+def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, target, seams):
     """The engine runs every command before reading one; the verb runs a half."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     remote = _Remote(cfg, failing={backup.RESTORE_MIRROR})
-
-    with pytest.raises(CratekitError) as excinfo:
-        _recover(cfg, target, remote, **seams)
-
-    cause = excinfo.value.cause
+    cause = _refusal(_recover, cfg, target, remote, **seams)
     assert cause.reason == "restore-transfer-failed"
     assert cause.detail["half"] == restore_cli.MIRROR_HALF
     assert cause.detail["completed_halves"] == []
@@ -1891,19 +1432,13 @@ def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
     assert not any("remove" in step for step in cause.remediation.steps)
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not list(target.rglob("*.db"))
-
     again = _recover(cfg, target, _Remote(cfg), **seams)
     assert again.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
 
 
-def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, tmp_path):
-    target = _replacement(tmp_path)
+def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, target):
     remote = _Remote(cfg, failing={backup.RESTORE_DATABASE})
-
-    with pytest.raises(CratekitError) as excinfo:
-        _recover(cfg, target, remote, **_gone(cfg))
-
-    cause = excinfo.value.cause
+    cause = _refusal(_recover, cfg, target, remote, **_gone(cfg))
     assert cause.reason == "restore-transfer-failed"
     assert cause.detail["half"] == restore_cli.DATABASE_HALF
     assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
@@ -1915,56 +1450,36 @@ def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, 
     assert (target / MIRRORED).exists()
 
 
-def test_a_rehearsal_passes_the_same_gates_and_writes_nothing(cfg, tmp_path):
-    target = _replacement(tmp_path)
+def test_a_rehearsal_passes_the_same_gates_and_writes_nothing(cfg, target):
     remote = _Remote(cfg)
-
-    report = restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
-    )
-
+    report = _recover(cfg, target, remote, dry_run=True, **_gone(cfg))
     assert report.dry_run is True
     assert report.mirror == (backup.RESTORE_MIRROR,)
     assert len(report.database) == 2
     assert all("--dry-run" in c.argv for c in remote.transfers)
     assert list(target.iterdir()) == []
+    cause = _refusal(
+        restore_cli.recover_under_bare_metal_session,
+        cfg, target=target, accepted=False, dry_run=True, runner=remote, **_gone(cfg),
+    )
+    assert "explicit decision" in cause.message
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=False, dry_run=True, runner=remote, **_gone(cfg)
-        )
-    assert "explicit decision" in excinfo.value.cause.message
 
-
-def test_a_failed_rehearsal_says_nothing_was_written(cfg, tmp_path):
-    target = _replacement(tmp_path)
+def test_a_failed_rehearsal_says_nothing_was_written(cfg, target):
     remote = _Remote(cfg, failing={backup.RESTORE_MIRROR})
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
-        )
-
-    assert "nothing was written" in excinfo.value.cause.message
-    assert excinfo.value.cause.detail["dry_run"] is True
-    assert not any("remove" in step for step in excinfo.value.cause.remediation.steps)
+    cause = _refusal(_recover, cfg, target, remote, dry_run=True, **_gone(cfg))
+    assert "nothing was written" in cause.message
+    assert cause.detail["dry_run"] is True
+    assert not any("remove" in step for step in cause.remediation.steps)
 
 
-def test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything(
-    cfg, tmp_path
-):
+def test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything(cfg, target):
     """The removal step is for a half that may have landed files. A rehearsal landed none."""
-    target = _replacement(tmp_path)
     remote = _Remote(cfg, failing={backup.RESTORE_DATABASE})
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
-        )
-
-    assert excinfo.value.cause.detail["half"] == restore_cli.DATABASE_HALF
-    assert "nothing was written" in excinfo.value.cause.message
-    assert not any("remove" in step for step in excinfo.value.cause.remediation.steps)
+    cause = _refusal(_recover, cfg, target, remote, dry_run=True, **_gone(cfg))
+    assert cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert "nothing was written" in cause.message
+    assert not any("remove" in step for step in cause.remediation.steps)
     assert list(target.iterdir()) == []
 
 
@@ -1972,45 +1487,33 @@ def test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything(
 CARRIED = (MIRRORED, ".cratekit/queue.db", ".cratekit/snapshots/one/master.db")
 
 
-def test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed(cfg, tmp_path):
+def test_a_recovery_whose_database_half_failed_reruns_with_nothing_removed(cfg, target, seams):
     """R-592. The rerun used to be refused until every database file was deleted."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     first = _Remote(cfg, failing={backup.RESTORE_DATABASE}, mirrored=CARRIED)
-    with pytest.raises(CratekitError) as failed:
-        _recover(cfg, target, first, **seams)
-    assert failed.value.cause.detail["half"] == restore_cli.DATABASE_HALF
+    failed = _refusal(_recover, cfg, target, first, **seams)
+    assert failed.detail["half"] == restore_cli.DATABASE_HALF
     assert (target / ".cratekit" / "queue.db").exists(), "the fixture landed nothing"
-
     report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
-
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / ".cratekit" / "queue.db").exists()
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
 
 
-def test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed(cfg, tmp_path):
+def test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed(cfg, target, seams):
     """The mirror landed the queue and a capture, then dropped. No step, no refusal."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     first = _Remote(cfg, cut={backup.RESTORE_MIRROR}, mirrored=CARRIED)
-    with pytest.raises(CratekitError) as failed:
-        _recover(cfg, target, first, **seams)
-    assert failed.value.cause.detail["half"] == restore_cli.MIRROR_HALF
-    assert not any("remove" in step for step in failed.value.cause.remediation.steps)
+    failed = _refusal(_recover, cfg, target, first, **seams)
+    assert failed.detail["half"] == restore_cli.MIRROR_HALF
+    assert not any("remove" in step for step in failed.remediation.steps)
     assert len(list(target.rglob("*.db"))) == 2, "the fixture landed nothing"
-
     report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
-
     assert report.mirror == (backup.RESTORE_MIRROR,)
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
 
 
-def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
+def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, target, seams):
     """A mirror taken before the backup excluded the database may still hold it."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     stale = (*CARRIED, "db/master.db", "db/master.db-wal")
     first = _Remote(cfg, cut={backup.RESTORE_MIRROR}, mirrored=stale)
     with pytest.raises(CratekitError):
@@ -2018,56 +1521,36 @@ def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
     assert (target / ".cratekit" / "queue.db").exists(), "the fixture landed nothing"
     assert not (target / "db" / "master.db").exists()
     assert not (target / "db" / "master.db-wal").exists()
-
     report = _recover(cfg, target, _Remote(cfg, mirrored=stale), **seams)
-
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
 
 
 def test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step(
-    cfg, tmp_path
+    cfg, target, seams
 ):
     """WHAT R-592 STILL LEAVES, driven. The database arrived and its log did not."""
-    target = _replacement(tmp_path)
-    seams = _gone(cfg)
     first = _Remote(cfg, mirrored=CARRIED, failing_files={"master.db-wal"})
-    with pytest.raises(CratekitError) as failed:
-        _recover(cfg, target, first, **seams)
-    step = failed.value.cause.remediation.steps[-1]
+    step = _refusal(_recover, cfg, target, first, **seams).remediation.steps[-1]
     assert (target / "db" / "master.db").exists(), "the fixture landed nothing"
-
-    with pytest.raises(CratekitError) as excinfo:
-        _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
-    assert "already holds master.db" in excinfo.value.cause.message
-
+    again = _refusal(_recover, cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
+    assert "already holds master.db" in again.message
     assert "remove master.db and any companion" in step
     assert str(target / "db") in step
     for landed in (target / "db").glob("master.db*"):
         landed.unlink()
     report = _recover(cfg, target, _Remote(cfg, mirrored=CARRIED), **seams)
-
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / ".cratekit" / "queue.db").exists()
     assert (target / "db" / "master.db-wal").read_bytes() == b"from the snapshot"
 
 
-def test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half(cfg, tmp_path):
+def test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half(cfg, target):
     """Asked twice, because the first answer is hours old by the second half."""
-    target = _replacement(tmp_path)
     remote = _Remote(cfg)
     answers = iter([(), ("rekordbox",)])
-
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg,
-            target=target,
-            accepted=True,
-            runner=remote,
-            **_gone(cfg, process_lister=lambda: next(answers)),
-        )
-
-    cause = excinfo.value.cause
+    seams = _gone(cfg, process_lister=lambda: next(answers))
+    cause = _refusal(_recover, cfg, target, remote, **seams)
     assert cause.reason == "rekordbox-running"
     assert cause.detail["half"] == restore_cli.DATABASE_HALF
     assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
@@ -2082,25 +1565,14 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
 ):
     """rekordbox's own default layout: the database is on the internal disk."""
     home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    (home / "master.db").write_bytes(b"alive, and never on the lost volume")
-    outside = replace(
-        cfg,
-        library=replace(
-            cfg.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-18",
-        ),
-    )
+    outside = _outside(cfg, home, b"alive, and never on the lost volume", "2026-09-18")
     assert backup.database_target_for(outside, tmp_path) == tmp_path / "master.db", (
         "the fixture does not reproduce the layout, so this pins nothing"
     )
     target = _replacement(tmp_path)
     # No write ahead log, so the plan names an absent companion the report must not.
     remote = _Remote(outside, holds=("master.db",))
-
     report = _recover(outside, target, remote, **_gone(outside))
-
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not (target / "master.db").exists()
     # The share rides the database half and is withheld before the remote is asked (R-338).
@@ -2128,14 +1600,11 @@ def lost(cfg, monkeypatch):
     return cfg
 
 
-def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch, tmp_path):
-    target = _replacement(tmp_path)
+def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch, target):
     log = _fake_rclone(lost, monkeypatch)
-
     code, envelope = _drive(
         ["restore", "bare-metal", "--target", str(target), "--accept-replacement"]
     )
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["verb"] == "restore.bare-metal"
     totals = envelope["data"]["totals"]
@@ -2158,14 +1627,10 @@ def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch,
     assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
 
 
-def test_the_verb_refuses_without_the_acceptance_flag(lost, monkeypatch, tmp_path):
-    target = _replacement(tmp_path)
+def test_the_verb_refuses_without_the_acceptance_flag(lost, monkeypatch, target):
     log = _fake_rclone(lost, monkeypatch)
-
-    code, envelope = _drive(["restore", "bare-metal", "--target", str(target)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "recovery-target-refused"
+    argv = ["restore", "bare-metal", "--target", str(target)]
+    envelope = _refused_as(*_drive(argv), "recovery-target-refused")
     assert "explicit decision" in envelope["cause"]["message"]
     assert not log.exists() or "copy" not in log.read_text()
 
@@ -2176,13 +1641,10 @@ def test_the_verb_refuses_while_the_library_is_mounted(installed, monkeypatch, t
     monkeypatch.setattr(restore, "_is_mount_point", lambda _path: True)
     target = _replacement(tmp_path)
     log = _fake_rclone(installed, monkeypatch)
-
     code, envelope = _drive(
         ["restore", "bare-metal", "--target", str(target), "--accept-replacement"]
     )
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "recovery-target-refused"
+    _refused_as(code, envelope, "recovery-target-refused")
     assert "nothing to recover from bare metal" in envelope["cause"]["message"]
     assert not log.exists() or log.read_text() == ""
     assert list(target.iterdir()) == []
@@ -2203,12 +1665,10 @@ def test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing(
     monkeypatch.setenv("PATH", str(tmp_path))
     target = _replacement(tmp_path)
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg, target=target, accepted=True, **_gone(cfg)
-        )
+    recover = restore_cli.recover_under_bare_metal_session
+    cause = _refusal(recover, cfg, target=target, accepted=True, **_gone(cfg))
 
-    assert excinfo.value.cause.reason == "rclone-missing"
+    assert cause.reason == "rclone-missing"
     assert list(target.iterdir()) == []
 
 
@@ -2225,17 +1685,10 @@ def test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left(
         raise processes._unconfirmed([(300, "SystemError: proc_cmdline")])
 
     answers = scans()
-
-    with pytest.raises(processes.AbsenceUnconfirmed) as excinfo:
-        restore_cli.recover_under_bare_metal_session(
-            cfg,
-            target=target,
-            accepted=True,
-            runner=remote,
-            **_gone(cfg, process_lister=lambda: next(answers)),
-        )
-
-    cause = excinfo.value.cause
+    cause = _raised(
+        processes.AbsenceUnconfirmed,
+        _recover, cfg, target, remote, **_gone(cfg, process_lister=lambda: next(answers)),
+    ).cause
     assert cause.reason == processes.UNCONFIRMED
     assert "process 300" in cause.message
     assert "mirror half completed" in cause.message

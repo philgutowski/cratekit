@@ -7,6 +7,7 @@ under the lock, before the send. Driven on a fake clock and a recording transpor
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta
 
 import pytest
@@ -15,6 +16,7 @@ from cratekit.core import config, jobs, night_budget, provider_gate
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.provider_gate import Gate, GateSettings, Night
+from tests.test_config import valid_data
 from tests.test_provider_gate import Clock, Transport
 
 
@@ -139,54 +141,43 @@ def test_a_ceiling_raised_through_the_environment_never_widens_a_firing(monkeypa
             assert held.budget == 500
 
 
-def test_the_ceiling_still_holds_beside_a_line_above_it(tmp_path, clock):
-    """A line handed past the ceiling by a parent's environment cannot widen a command."""
-    gate = _gate(tmp_path, clock, calls_per_command=2)
-    transport = Transport()
-
-    with provider_gate.command() as scope:
-        scope.night = Night(start=0, budget=10, night="n")
-        _send(gate, transport)
-        _send(gate, transport)
-        with pytest.raises(jobs.Parked) as caught:
-            _send(gate, transport)
-
-    assert caught.value.cause.reason == provider_gate.CEILING
+def _hand_a_line_past_the_ceiling(scope) -> None:
+    scope.night = Night(start=0, budget=10, night="n")
 
 
-def test_a_line_read_off_the_environment_is_held_beside_the_ceiling(
-    tmp_path, clock, monkeypatch
+def _the_line_off_the_environment(scope) -> None:
+    assert scope.night == Night(start=0, budget=100, night="n")
+
+
+@pytest.mark.parametrize(
+    ("ceiling", "bump", "line", "in_scope", "reason"),
+    [
+        pytest.param(2, 0, None, _hand_a_line_past_the_ceiling, provider_gate.CEILING,
+                     id="the-ceiling-still-holds-beside-a-line-above-it"),
+        pytest.param(2, 0, "0:100:n", _the_line_off_the_environment, provider_gate.CEILING,
+                     id="a-line-read-off-the-environment-is-held-beside-the-ceiling"),
+        pytest.param(50, 10, "10:2:n", None, provider_gate.NIGHT,
+                     id="an-inherited-night-line-stops-a-child-at-the-nights-remainder"),
+    ],
+)
+def test_the_lower_of_the_ceiling_and_a_handed_line_stops_the_third_call(
+    tmp_path, clock, monkeypatch, ceiling, bump, line, in_scope, reason
 ):
-    """An inherited night line can only lower: the ceiling still holds beside it."""
-    gate = _gate(tmp_path, clock, calls_per_command=2)
+    """A line from a parent or the environment can only lower; the ceiling holds beside it."""
+    gate = _gate(tmp_path, clock, calls_per_command=ceiling)
     transport = Transport()
-    monkeypatch.setenv(provider_gate.NIGHT_ENV, "0:100:n")
-
+    if bump:
+        _bump(gate, bump)
+    if line:
+        monkeypatch.setenv(provider_gate.NIGHT_ENV, line)
     with provider_gate.command() as scope:
-        assert scope.night == Night(start=0, budget=100, night="n")
+        if in_scope:
+            in_scope(scope)
         _send(gate, transport)
         _send(gate, transport)
         with pytest.raises(jobs.Parked) as caught:
             _send(gate, transport)
-
-    assert caught.value.cause.reason == provider_gate.CEILING
-
-
-def test_an_inherited_night_line_stops_a_child_at_the_nights_remainder(
-    tmp_path, clock, monkeypatch
-):
-    gate = _gate(tmp_path, clock, calls_per_command=50)
-    transport = Transport()
-    _bump(gate, 10)
-    monkeypatch.setenv(provider_gate.NIGHT_ENV, "10:2:n")
-
-    with provider_gate.command():
-        _send(gate, transport)
-        _send(gate, transport)
-        with pytest.raises(jobs.Parked) as caught:
-            _send(gate, transport)
-
-    assert caught.value.cause.reason == provider_gate.NIGHT
+    assert caught.value.cause.reason == reason
 
 
 @pytest.mark.parametrize("text", ["", "x", "1:2", "a:2:n", "1:b:n", "1:2:", "-1:2:n"])
@@ -236,8 +227,6 @@ def test_the_line_reaches_a_child_through_the_environment_and_is_put_back(monkey
     settings = GateSettings()
     with provider_gate.command():
         with provider_gate.night(7, 8, "n", calls_per_hour=600, settings=settings):
-            import os
-
             assert os.environ[provider_gate.NIGHT_ENV] == "7:8:n"
             assert os.environ[provider_gate.BUDGET_ENV] == "600"
         assert os.environ[provider_gate.NIGHT_ENV] == "earlier"
@@ -287,26 +276,22 @@ def test_a_firing_is_charged_before_its_first_call_and_closed_after():
     assert (ledger.night, ledger.spent, ledger.open_start) == ("2026-11-21", 25, None)
 
 
-def test_a_second_firing_of_the_night_has_only_what_is_left():
+@pytest.mark.parametrize(
+    ("spent", "later", "expected"),
+    [
+        pytest.param(60, timedelta(hours=1), {"spent_before": 60, "remaining": 40},
+                     id="a-second-firing-of-the-night-has-only-what-is-left"),
+        pytest.param(100, timedelta(days=1), {"spent_before": 0, "night": "2026-11-22"},
+                     id="the-next-night-starts-from-nothing"),
+    ],
+)
+def test_a_later_firing_is_charged_what_its_own_night_spent(spent, later, expected):
     _set_total(0)
     first = night_budget.open_night(100, now=AT_THREE)
-    _set_total(60)
+    _set_total(spent)
     night_budget.close_night(first)
-
-    second = night_budget.open_night(100, now=AT_THREE + timedelta(hours=1))
-
-    assert second.spent_before == 60 and second.remaining == 40
-
-
-def test_the_next_night_starts_from_nothing():
-    _set_total(0)
-    first = night_budget.open_night(100, now=AT_THREE)
-    _set_total(100)
-    night_budget.close_night(first)
-
-    nxt = night_budget.open_night(100, now=AT_THREE + timedelta(days=1))
-
-    assert nxt.spent_before == 0 and nxt.night == "2026-11-22"
+    opened = night_budget.open_night(100, now=AT_THREE + later)
+    assert {key: getattr(opened, key) for key in expected} == expected
 
 
 def test_a_spent_night_refuses_and_names_when_it_frees():
@@ -324,24 +309,39 @@ def test_a_spent_night_refuses_and_names_when_it_frees():
     assert cause.detail["frees_at"].startswith("2026-11-22T12:00")
 
 
-def test_a_dead_firings_mark_from_an_earlier_night_is_charged_to_tonight():
-    """Review round one: a firing that died before noon was free after it."""
-    _set_total(200)
+@pytest.mark.parametrize(
+    ("marked", "total", "expected"),
+    [
+        pytest.param(200, 500, {"spent_before": 300, "remaining": 900},
+                     id="a-dead-firings-mark-from-an-earlier-night-is-charged-to-tonight"),
+        pytest.param(900, 1, {"spent_before": 0, "start": 1},
+                     id="an-earlier-nights-mark-above-the-total-is-dropped-at-the-new-night"),
+    ],
+)
+def test_an_earlier_nights_unclosed_mark_at_the_new_night(marked, total, expected):
+    """Review rounds one and two: such a firing was once free after noon, or refused every night."""
+    _set_total(marked)
     night_budget.open_night(1200, now=AT_THREE - timedelta(days=1))  # never closed
-    _set_total(500)
-
+    _set_total(total)
     opened = night_budget.open_night(1200, now=AT_THREE)
+    assert {key: getattr(opened, key) for key in expected} == expected
 
-    assert opened.spent_before == 300 and opened.remaining == 900
 
-
-def test_a_gate_unreadable_at_the_close_is_none_and_keeps_the_mark():
-    _set_total(10)
+@pytest.mark.parametrize(
+    ("start", "spoil"),
+    [
+        pytest.param(10, lambda: config.state_path(provider_gate.STATE_KEY).write_text("{"),
+                     id="a-gate-unreadable-at-the-close-is-none-and-keeps-the-mark"),
+        pytest.param(50, lambda: _set_total(5),
+                     id="a-total-below-its-own-mark-at-close-keeps-the-mark"),
+    ],
+)
+def test_a_close_that_cannot_count_the_firing_is_none_and_keeps_the_mark(start, spoil):
+    _set_total(start)
     opened = night_budget.open_night(100, now=AT_THREE)
-    config.state_path(provider_gate.STATE_KEY).write_text("{")
-
+    spoil()
     assert night_budget.close_night(opened) is None
-    assert night_budget.read().open_start == 10
+    assert night_budget.read().open_start == start
 
 
 def test_outside_any_command_a_line_off_the_environment_holds_the_call(
@@ -388,46 +388,32 @@ def test_a_ledger_that_cannot_be_read_refuses(text):
     assert caught.value.cause.reason == provider_gate.NIGHT
 
 
-def test_a_gate_that_cannot_be_read_refuses_the_night():
+def _a_gate_that_cannot_be_read() -> None:
     path = config.state_path(provider_gate.STATE_KEY)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{")
 
-    with pytest.raises(CratekitError) as caught:
-        night_budget.open_night(100, now=AT_THREE)
 
-    assert "provider gate's state file could not be read" in caught.value.cause.message
-
-
-def test_an_earlier_nights_mark_above_the_total_is_dropped_at_the_new_night():
-    """Review round two, finding 3: it once refused every night after."""
-    _set_total(900)
-    night_budget.open_night(1200, now=AT_THREE - timedelta(days=1))  # never closed
-    _set_total(1)
-
-    opened = night_budget.open_night(1200, now=AT_THREE)
-
-    assert opened.spent_before == 0 and opened.start == 1
-
-
-def test_a_total_below_an_earlier_firings_mark_refuses():
+def _a_total_below_an_earlier_firings_mark() -> None:
     _set_total(50)
     night_budget.open_night(100, now=AT_THREE)
     _set_total(5)
 
+
+@pytest.mark.parametrize(
+    ("setup", "said"),
+    [
+        pytest.param(_a_gate_that_cannot_be_read, "provider gate's state file could not be read",
+                     id="a-gate-that-cannot-be-read-refuses-the-night"),
+        pytest.param(_a_total_below_an_earlier_firings_mark, "below the mark",
+                     id="a-total-below-an-earlier-firings-mark-refuses"),
+    ],
+)
+def test_a_total_the_night_cannot_trust_refuses_saying_why(setup, said):
+    setup()
     with pytest.raises(CratekitError) as caught:
         night_budget.open_night(100, now=AT_THREE)
-
-    assert "below the mark" in caught.value.cause.message
-
-
-def test_a_total_below_its_own_mark_at_close_keeps_the_mark():
-    _set_total(50)
-    opened = night_budget.open_night(100, now=AT_THREE)
-    _set_total(5)
-
-    assert night_budget.close_night(opened) is None
-    assert night_budget.read().open_start == 50
+    assert said in caught.value.cause.message
 
 
 def test_the_ledger_sits_beside_the_gate_whatever_the_state_directory(monkeypatch, tmp_path):
@@ -446,8 +432,6 @@ def test_the_night_defaults_sit_below_every_line_above_them():
 @pytest.mark.parametrize("key", ["night_calls", "night_calls_per_hour"])
 @pytest.mark.parametrize("value", [0, -1, True, 1.5, "10"])
 def test_a_night_line_that_is_not_a_positive_whole_number_refuses_at_load(tmp_path, key, value):
-    from tests.test_config import valid_data
-
     data = valid_data(tmp_path / "library")
     data["provider"] = {key: value}
     with pytest.raises(config.ConfigError) as caught:
@@ -456,8 +440,6 @@ def test_a_night_line_that_is_not_a_positive_whole_number_refuses_at_load(tmp_pa
 
 
 def test_the_night_lines_round_trip_through_the_file(tmp_path):
-    from tests.test_config import valid_data
-
     data = valid_data(tmp_path / "library")
     data["provider"] = {"night_calls": 300, "night_calls_per_hour": 90}
     built = config.from_dict(data)

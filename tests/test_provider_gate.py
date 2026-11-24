@@ -1,9 +1,8 @@
 """R-705: one gate for every call to the streaming provider.
 
-Pacing and ``Retry-After``, the breaker, a cooldown outliving the process, one
-driver at a time across real processes (R-759), spend counted across processes,
-the two build sites, and the call ceiling per command (U193). Schedules run on a
-fake clock; the two process tests use real sleeps, as a kernel lock cannot be faked.
+Pacing, the breaker, a cooldown outliving the process, one driver at a time (R-759),
+spend, the two build sites and the call ceiling (U193). On a fake clock, but for the
+process tests, since a kernel lock cannot be faked.
 """
 
 from __future__ import annotations
@@ -1232,28 +1231,24 @@ def test_a_command_stops_before_the_call_past_its_ceiling_with_the_count_at_the_
     assert gate.spend().calls == 3, "the refused call was counted"
 
 
-
-def test_a_ceiling_of_one_says_one_call(paths, clock):
-    """The refusal counts in words a person reads: one call, not one calls."""
+@pytest.mark.parametrize(
+    ("said", "unsaid"),
+    [(["this command made 1 call to the"], []),
+     (["remaining items stay queued", "read and did not keep is read again when it continues"],
+      ["is kept"])],
+    ids=["a-ceiling-of-one-says-one-call",
+         "the-ceiling-never-says-kept-over-work-a-continue-does-again"],
+)
+def test_the_stop_at_a_ceiling_of_one_is_said_in_words_a_person_reads(paths, clock, said, unsaid):
+    """One call, not one calls; and U217: not every command keeps what it read."""
     gate = ceiling_gate(paths, clock, 1)
     with provider_gate.command():
         send_through(gate, Transport())
         with pytest.raises(jobs.Parked) as caught:
             send_through(gate, Transport())
-    assert "this command made 1 call to the" in caught.value.cause.message
-
-def test_the_ceiling_never_says_kept_over_work_a_continue_does_again(paths, clock):
-    """U217: not every command keeps what it read, so the stop claims nothing kept."""
-    gate = ceiling_gate(paths, clock, 1)
-    transport = Transport()
-    with provider_gate.command():
-        send_through(gate, transport)
-        with pytest.raises(jobs.Parked) as caught:
-            send_through(gate, transport)
     message = caught.value.cause.message
-    assert "is kept" not in message
-    assert "remaining items stay queued" in message
-    assert "read and did not keep is read again when it continues" in message
+    assert [phrase for phrase in said if phrase not in message] == []
+    assert [phrase for phrase in unsaid if phrase in message] == []
 
 
 def test_the_stop_is_remembered_so_a_swallowing_tool_still_parks(paths, clock):

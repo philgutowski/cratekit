@@ -1,9 +1,5 @@
-"""Tests for ``scripts/mutate.py``, the mutation table driver, and its part
-``scripts/mutate_table.py``.
-
-They run against a throwaway fixture package with its own tiny suite and git
-repository, never Cratekit's suite, so every count is one a reader can check by
-hand: four functions, four tests.
+"""``scripts/mutate.py`` and ``scripts/mutate_table.py``, run over a throwaway fixture package
+with its own git repository and tiny suite, so every count can be checked by hand.
 """
 
 from __future__ import annotations
@@ -42,15 +38,17 @@ battery = _load("cratekit_cloud_battery_for_the_driver", "cloud_battery.py")
 
 @pytest.fixture(autouse=True)
 def _stand_in_filesystem_root(tmp_path_factory, monkeypatch):
-    """R-1917: in these tests the driver's guard lists a stand in for the filesystem root.
-
-    Tests elsewhere in the suite make and remove a probe at the real root on Linux
-    (``tests/test_doctor.py``), so a guard over the real one would read a parallel
-    worker's probe as a leak. Returns the real root, for the one test that reads it.
-    """
+    """R-1917: the guard lists a stand in root, since ``tests/test_doctor.py`` probes the real
+    one in parallel. Returns the real root, for the one test that reads it."""
     real = mutate.FILESYSTEM_ROOT
     monkeypatch.setattr(mutate, "FILESYSTEM_ROOT", tmp_path_factory.mktemp("filesystem-root"))
     return real
+
+
+def _says(text: str, *parts: str) -> None:
+    for part in parts:
+        assert part in text, part
+
 
 GUARDS = '''"""Two guards and one function nothing tests."""
 
@@ -294,8 +292,7 @@ leak_repo = _kind_fixture("leak")
 
 @pytest.fixture
 def places(tmp_path, monkeypatch) -> tuple[Path, Path]:
-    """The battery's places read off a mount table of the test's own (U273):
-    ``shm`` is a tmpfs and everything else ext4, the same on any machine."""
+    """U273: a mount table of the test's own, ``shm`` a tmpfs and all else ext4."""
     root = tmp_path / "places"
     memory, disk = root / "shm", root / "disk"
     memory.mkdir(parents=True)
@@ -818,9 +815,10 @@ def test_a_batch_in_memory_reads_the_listed_test_on_disk_and_says_so(placed_repo
     (row,) = batch.results
     assert row.status == "killed"
     assert PLACED_ID in row.killed
-    markdown = mutate.render_markdown(batch)
-    assert "Temporary files: in memory" in markdown
-    assert "1 test(s) the baseline ran on disk" in markdown
+    _says(
+        mutate.render_markdown(batch), "Temporary files: in memory",
+        "1 test(s) the baseline ran on disk",
+    )
     with pytest.raises(mutate.DriverRefusal, match="BASELINE IS NOT GREEN"):
         mutate.measure_batch(
             repo, "placed-unlisted", [KILL], known=mutate.KnownFailures(place="memory")
@@ -847,10 +845,7 @@ def test_a_baseline_red_from_a_scrubbed_environment_is_refused_naming_the_count(
     with pytest.raises(mutate.DriverRefusal) as caught:
         mutate.measure_batch(env_repo, "scrubbed", [_row("K1", "return value * 2", "return 0")])
     message = str(caught.value)
-    assert "BASELINE IS NOT GREEN" in message
-    assert "3 failing" in message
-    assert "THE BATCH IS INVALID" in message
-    assert "ENVIRONMENT" in message
+    _says(message, "BASELINE IS NOT GREEN", "3 failing", "THE BATCH IS INVALID", "ENVIRONMENT")
 
 
 def test_the_child_starts_in_a_sandbox_and_never_writes_the_callers_config(
@@ -890,10 +885,7 @@ def test_a_leak_during_the_baseline_names_the_phase(leak_repo, monkeypatch, tmp_
             leak_repo, "leak-baseline", [_row("K1", "if value < lowest:", "if value < 1:")],
             allow_dirty=True, guard=mutate.take_state_guard((guarded,)),
         )
-    message = str(caught.value)
-    assert "the full baseline" in message
-    assert str(guarded) in message
-    assert "R-343" in message
+    _says(str(caught.value), "the full baseline", str(guarded), "R-343")
 
 
 def test_a_leak_under_a_row_names_that_row_and_stops_the_batch(leak_repo, monkeypatch, tmp_path):
@@ -931,14 +923,10 @@ def test_one_batch_writes_its_control_environment_and_guard_into_the_table(repo,
     assert data["state_guarded"]
     assert data["reused_rows"] == 0
     text = markdown.read_text(encoding="utf-8")
-    assert "fixture row K1" in text
-    assert "PYTHONDONTWRITEBYTECODE=1" in text
-    for name in [*mutate.SCRUBBED_ENV, *mutate.SANDBOXED_ENV]:
-        assert name in text, name
-    assert "the watched roots are unchanged" in text
-    assert str(guarded) in text
-    assert "1 entries" in text
-    assert "not seen by this guard" in text, "the claim must say what it does not cover"
+    _says(text, "fixture row K1", "PYTHONDONTWRITEBYTECODE=1", *mutate.SCRUBBED_ENV)
+    _says(text, *mutate.SANDBOXED_ENV, "the watched roots are unchanged", str(guarded))
+    # The claim must say what it does not cover.
+    _says(text, "1 entries", "not seen by this guard")
     assert "reused from a prior sidecar" not in text
 
 
@@ -974,15 +962,13 @@ def test_resume_reuses_an_unchanged_row_names_it_unwatched_and_measures_an_edite
     )
     assert (resumed.reused_rows, resumed.results[0].deaths) == (1, 99)
     markdown = mutate.render_markdown(resumed)
-    assert "1 row(s) were reused from a prior sidecar" in markdown
-    assert "did not watch" in markdown
+    _says(markdown, "1 row(s) were reused from a prior sidecar", "did not watch")
     edited = mutate.measure_batch(repo, "resume", [KILL], prior=prior)
     assert edited.results[0].deaths == 1
 
 
 def test_any_change_under_the_real_root_is_a_leak(tmp_path):
-    """A new directory, a same size rewrite with its timestamps put back, and a root
-    that did not exist being made: each reaches the real path."""
+    """A new directory, a same size rewrite with its times put back, a root made: all leak."""
     root = tmp_path / "real"
     root.mkdir()
     config = root / "config.toml"
@@ -1123,10 +1109,7 @@ def test_a_full_batch_measures_every_row_owes_its_composites_and_restores_the_tr
     assert "NO COMPOSITE" in note["Z2"]
     assert "composite not required" in note["Z3"]
     markdown = mutate.render_markdown(batch)
-    assert "NO COMPOSITE" in markdown
-    assert "## Considered and dropped" in markdown
-    assert "`D1`" in markdown
-    assert "collection error" in markdown
+    _says(markdown, "NO COMPOSITE", "## Considered and dropped", "`D1`", "collection error")
     assert "Null control" in markdown
 
 
@@ -1311,12 +1294,10 @@ def test_a_replay_batch_spends_one_baseline_and_one_control_and_carries_its_sour
         {"source": {"table": "u1.json", "id": "K9"}, "to": "u1.K1", "reason": "merged into K1"}
     ]
     markdown = mutate.render_markdown(batch)
-    assert "Pass kind: replay." in markdown
-    assert "it has no row cap and chooses no rows" in markdown
-    assert "- Source: `u1.json`, row `K1`" in markdown
-    assert f"- Moved: {MOVED}" in markdown
-    assert "- `u1.json` row `K9` is covered by `u1.K1`: merged into K1" in markdown
-    assert "Recorded rows this replay left out and did NOT measure" in markdown
+    _says(markdown, "Pass kind: replay.", "it has no row cap and chooses no rows")
+    _says(markdown, "- Source: `u1.json`, row `K1`", f"- Moved: {MOVED}")
+    _says(markdown, "- `u1.json` row `K9` is covered by `u1.K1`: merged into K1")
+    _says(markdown, "Recorded rows this replay left out and did NOT measure")
     assert "METHOD caps" not in markdown
 
 
@@ -1360,8 +1341,7 @@ def _delete_the_killing_test(repo: Path) -> None:
 
 
 def test_a_replay_reuses_nothing_once_the_killing_test_is_gone_committed_or_not(repo):
-    """A kill measured before its test was deleted is not a kill here, and a deletion
-    not yet committed leaves the commit's name unchanged."""
+    """A kill from before its test was deleted is none; an uncommitted deletion keeps the head."""
     first = _replay(repo)
     assert first.results[0].status == "killed"
     _delete_the_killing_test(repo)
@@ -1545,9 +1525,10 @@ def test_resuming_a_replay_from_another_commits_sidecar_says_nothing_is_reused(
     _commit(repo, "the table and its rows")
     capsys.readouterr()
     assert mutate.main(argv) == 0
-    err = capsys.readouterr().err
-    assert "resume: nothing of u1-replay.json is reused: it was measured at" in err
-    assert "so every row is measured again" in err
+    _says(
+        capsys.readouterr().err, "resume: nothing of u1-replay.json is reused: it was measured at",
+        "so every row is measured again",
+    )
     assert json.loads((out / "u1-replay.json").read_text(encoding="utf-8"))["reused_rows"] == 0
     assert mutate.main(argv) == 0
     assert "measured again" not in capsys.readouterr().err
@@ -1571,8 +1552,7 @@ def test_a_capped_pass_writes_the_sidecar_and_dropped_rows_it_always_wrote(repo)
 
 
 def test_the_count_and_the_failure_survive_a_steal(tmp_path, monkeypatch):
-    """The count is the collection's, not one worker's queue, and the stolen failure
-    reaches the report, for the full suite and for a row's three file subset."""
+    """The count is the collection's and a stolen failure is reported, full suite and subset."""
     repo = stealing.write(tmp_path / "stealing-repo")
     _git(repo, "init", "-q", "-b", "main")
     _commit(repo, "a suite whose tests move between workers")
@@ -1588,15 +1568,12 @@ def test_the_count_and_the_failure_survive_a_steal(tmp_path, monkeypatch):
         stealing.assert_the_failure_moved(log)
 
 
-# The full baseline read from the battery's verdict for the same commit, U271.
-# The verdicts are written by the battery itself, run for real over the fixture,
-# except where a test changes one field of a real one to name the key it tests.
+# U271: the full baseline read from the battery's own verdict, run for real over the fixture.
 
 
 @pytest.fixture
 def battery_on(monkeypatch):
-    """Point the battery at a fixture and run its verbs there for real, replacing only
-    the history fetch and the static checks, which read the real repository."""
+    """The battery's verbs run for real on a fixture, bar the history fetch and static checks."""
     for name in stealing.INHERITED_RUN_STATE:
         monkeypatch.delenv(name, raising=False)
 
@@ -1641,8 +1618,7 @@ def _read_verdict(root: Path, state: Path, *, digest: str | None = None):
 
 @pytest.fixture
 def judged(red_repo, battery_on) -> tuple[Path, Path]:
-    """The red fixture with the battery's baseline and a clean compare on its head:
-    the one failing test is the machine's."""
+    """The red fixture under a clean compare: its one failing test is the machine's."""
     state = battery_on(red_repo)
     assert battery.cmd_compare(None) == 0
     return red_repo, state
@@ -1668,12 +1644,12 @@ def test_a_clean_verdict_for_this_commit_stands_for_the_full_baseline_and_says_s
     assert read.control.runs == 1
     assert read.control.collected == read.baseline_collected
     assert read.subset_baselines == measured.subset_baselines == 1
-    text = mutate.render_markdown(read)
-    assert "Full baseline: READ, not measured by this driver" in text
-    assert "`cloud_battery.py compare`" in text
-    assert "Subset baselines: 1, each measured by this driver" in text
-    assert "The null control below ran the full suite in this driver's own environment" in text
-    assert mutate.BATTERY_VERDICT.as_posix() in text
+    _says(
+        mutate.render_markdown(read), "Full baseline: READ, not measured by this driver",
+        "`cloud_battery.py compare`", "Subset baselines: 1, each measured by this driver",
+        "The null control below ran the full suite in this driver's own environment",
+        mutate.BATTERY_VERDICT.as_posix(),
+    )
     assert (read.to_dict()["baseline_source"], read.to_dict()["subset_baselines"]) == ("read", 1)
     text = mutate.render_markdown(measured)
     assert "Full baseline: measured by this driver" in text
@@ -1706,10 +1682,10 @@ def test_a_red_verdict_for_this_commit_refuses_the_batch(red_repo, battery_on):
     assert battery.cmd_compare(None) == 1
     with pytest.raises(mutate.DriverRefusal) as caught:
         _batch(red_repo, state, "red-verdict")
-    message = str(caught.value)
-    assert "BASELINE IS NOT GREEN: 1 failing" in message
-    assert "read from the battery's verdict" in message
-    assert "tests/test_branch.py::test_the_branch_broke" in message
+    _says(
+        str(caught.value), "BASELINE IS NOT GREEN: 1 failing", "read from the battery's verdict",
+        "tests/test_branch.py::test_the_branch_broke",
+    )
 
 
 def _edited_verdict(state: Path, **fields) -> None:
@@ -1812,8 +1788,7 @@ def test_the_driver_and_the_battery_name_one_record():
 
 
 def test_a_run_that_stopped_early_with_exit_one_is_not_read(red_repo, battery_on):
-    """Serially, a test ending the session exits 1 as a complete red run does, and
-    compare still reads it clean; only the count of tests that reported tells."""
+    """A session ended serially exits 1 like a red run; only the count that reported tells."""
     state = battery_on(red_repo)
     (red_repo / "tests" / "test_zzz_stop.py").write_text(
         "import pytest\n\n\ndef test_a_stop():\n    pytest.exit('stop', returncode=1)\n\n\n"
@@ -1841,8 +1816,7 @@ def test_a_status_git_cannot_read_is_never_a_clean_tree(judged):
 def test_an_entry_added_directly_under_the_root_stops_the_batch_at_that_row(
     leak_repo, monkeypatch, tmp_path
 ):
-    """R-1917: a child that leaves a folder at the filesystem root is caught where it ran,
-    though it touched neither watched root. A stand in plays the root."""
+    """R-1917: a folder left at the (stand in) root is caught where it ran, outside both roots."""
     guarded = _guarded(tmp_path)
     top = tmp_path / "stand-in-root"
     (top / "usr").mkdir(parents=True)
@@ -1853,9 +1827,7 @@ def test_an_entry_added_directly_under_the_root_stops_the_batch_at_that_row(
             guard=mutate.take_state_guard((guarded,), top=top),
         )
     message = str(caught.value)
-    assert "row LEAKY" in message
-    assert "added left-behind" in message
-    assert "R-1917" in message
+    _says(message, "row LEAKY", "added left-behind", "R-1917")
     assert "the full baseline" not in message
     _assert_untouched(leak_repo)
 
@@ -1876,8 +1848,7 @@ def test_a_name_added_removed_or_retyped_under_the_root_is_a_leak_and_a_deeper_w
     sentinel.mkdir()
     with pytest.raises(mutate.StateLeak) as caught:
         mutate.check_state_guard(guard, label="row G1")
-    assert "added cratekit-r926-outside-every-test-root" in str(caught.value)
-    assert "row G1" in str(caught.value)
+    _says(str(caught.value), "added cratekit-r926-outside-every-test-root", "row G1")
 
     guard = mutate.take_state_guard((), top=top)
     sentinel.rmdir()
@@ -1916,5 +1887,4 @@ def test_a_root_that_cannot_be_listed_refuses_the_batch_rather_than_reading_as_u
     """Two unreadable listings are equal, so a guard taken over one would pass every child."""
     with pytest.raises(mutate.DriverRefusal) as refused:
         mutate.take_state_guard((), top=tmp_path / "missing")
-    assert "R-1917" in str(refused.value)
-    assert "FileNotFoundError" in str(refused.value)
+    _says(str(refused.value), "R-1917", "FileNotFoundError")

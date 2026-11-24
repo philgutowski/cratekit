@@ -1,8 +1,5 @@
-"""U144: every downloaded set on the account gets its INSPIRATION playlist, by matching.
-
-Through the real dispatcher on the native landing suite's disposable database, a strict
-account and a catalogue from memory. D1 applies.
-"""
+"""U144: every downloaded set on the account gets its INSPIRATION playlist, by matching, through
+the real dispatcher, a disposable database, a strict account and a catalogue. D1 applies."""
 
 from __future__ import annotations
 

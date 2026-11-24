@@ -66,10 +66,13 @@ def real_rclone(monkeypatch, tmp_path) -> str:
     return str(found)
 
 
-def _configured(root: Path, remote: str, tmp_path: Path) -> config.Config:
-    """A library at ``root`` whose three destinations are on the remote named."""
-    (root / "Music").mkdir(parents=True, exist_ok=True)
-    (root / "db").mkdir(parents=True, exist_ok=True)
+def _configured(
+    root: Path, remote: str, tmp_path: Path, *, folders: tuple[str, ...] = ("Music", "db")
+) -> config.Config:
+    """A library at ``root`` holding ``folders``, whose three destinations are on the remote named."""
+    root.mkdir(parents=True, exist_ok=True)
+    for folder in folders:
+        (root / folder).mkdir(exist_ok=True)
     return config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
@@ -87,15 +90,19 @@ def _configured(root: Path, remote: str, tmp_path: Path) -> config.Config:
     )
 
 
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
+def _saved(tmp_path: Path, monkeypatch, *, folders: tuple[str, ...] = ("Music", "db")) -> config.Config:
     root = tmp_path / "library"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    built = _configured(root, "remote", tmp_path)
+    built = _configured(root, "remote", tmp_path, folders=folders)
     config.save(built)
     config.reset_cache()
     return built
+
+
+@pytest.fixture
+def cfg(tmp_path, monkeypatch):
+    return _saved(tmp_path, monkeypatch)
 
 
 def _write(path: Path, content: bytes, *, at: datetime) -> None:
@@ -112,7 +119,6 @@ def _one_track(cfg) -> None:
 
 
 def _seed(cfg) -> Path:
-    """Three tracks in the library, and the folder they live in."""
     music = cfg.library.root / "Music"
     tracks = {"kept.flac": b"kept, generation one", "retagged.flac": b"genre: house...."}
     for name, content in {**tracks, "removed.flac": b"removed, generation one"}.items():
@@ -141,7 +147,6 @@ def _mirror(payload: dict, cfg, *, now: datetime, publish: bool = False) -> dict
 
 
 def _held(folder: Path) -> dict[str, bytes]:
-    """Every file under one folder, by relative path."""
     files = sorted(folder.rglob("*")) if folder.is_dir() else []
     return {str(path.relative_to(folder)): path.read_bytes() for path in files if path.is_file()}
 
@@ -274,8 +279,6 @@ def test_a_rehearsal_counts_what_it_would_send_and_sends_nothing(cfg, real_rclon
 
 
 def _answering(stderr: str, *, returncode: int = 0, elapsed: float | None = 12.5):
-    """A stand in runner whose mirror answers as told."""
-
     def runner(command: backup.Command) -> backup.CommandResult:
         if command.label == backup.MIRROR:
             return backup.CommandResult(returncode=returncode, stderr=stderr, elapsed=elapsed)
@@ -391,7 +394,6 @@ def _record(cfg, portion=backup_facts.Portion.FILES, *, at=MOMENT, where="somewh
 
 
 def _fact_file(**extra) -> str:
-    """A fact file holding one files portion completed at ``MOMENT``."""
     files = {"completed_at": MOMENT.isoformat(), "destination": "remote:mirror"}
     return json.dumps({"schema_version": 1, "portions": {"files": files}, **extra})
 

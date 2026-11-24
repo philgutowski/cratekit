@@ -167,64 +167,47 @@ def _kinds(root, *, policy, marker="[MP3]"):
     }
 
 
-def test_strict_policy_reports_every_lossy_file_marked_or_not(tmp_path):
-    """Strict reports a lossy track as unacquired, so the marker is irrelevant under it."""
-    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].mp3", "keeper.flac")
-
-    found = _kinds(root, policy=LosslessPolicy.STRICT)
-    assert found == {
-        "plain.mp3": "lossy-under-strict", "Artist - Title [MP3].mp3": "lossy-under-strict",
-    }
+STRICT, MARKED = (LosslessPolicy.STRICT,), (LosslessPolicy.ALLOW_LOSSY_MARKED,)
+MP3, FLAC = "Artist - Title [MP3].mp3", "Artist - Title [MP3].flac"
 
 
-def test_permissive_policy_reports_only_the_unmarked_lossy_file(tmp_path):
-    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].mp3")
-
-    found = _kinds(root, policy=LosslessPolicy.ALLOW_LOSSY_MARKED)
-    assert found == {"plain.mp3": "lossy-unmarked"}
-
-
-def test_a_lossless_file_wearing_the_marker_is_reported(tmp_path):
-    """The naming engine strips the marker, so a lossless file carrying one collapses onto
-    another recording."""
-    root = _music(tmp_path, "Artist - Title [MP3].flac", "honest.flac")
-
-    for policy in LosslessPolicy:
-        found = _kinds(root, policy=policy)
-        assert found == {"Artist - Title [MP3].flac": "marked-lossless"}, policy
-
-
-def test_an_mp4_container_is_reported_undecided_rather_than_assumed(tmp_path):
-    """ALAC and AAC share the container, so the suffix cannot answer under either policy."""
-    root = _music(tmp_path, "ambiguous.m4a")
-
-    for policy in LosslessPolicy:
-        assert _kinds(root, policy=policy) == {"ambiguous.m4a": "format-undecided"}, policy
-
-
-def test_a_configuration_with_no_marker_text_decides_no_marker_question(tmp_path):
-    """An empty marker means the marker kind is undecidable; the strict kind still fires."""
-    root = _music(tmp_path, "plain.mp3", "Artist - Title [MP3].flac")
-
-    assert _kinds(root, policy=LosslessPolicy.ALLOW_LOSSY_MARKED, marker="") == {}
-    assert _kinds(root, policy=LosslessPolicy.STRICT, marker="") == {
-        "plain.mp3": "lossy-under-strict"
-    }
+@pytest.mark.parametrize(
+    ("names", "policies", "marker", "expected"),
+    [
+        # Strict reports a lossy track as unacquired, so the marker is irrelevant under it.
+        (("plain.mp3", MP3, "keeper.flac"), STRICT, "[MP3]",
+         {"plain.mp3": "lossy-under-strict", MP3: "lossy-under-strict"}),
+        (("plain.mp3", MP3), MARKED, "[MP3]", {"plain.mp3": "lossy-unmarked"}),
+        # The naming engine strips the marker, so a marked lossless file collapses onto another.
+        ((FLAC, "honest.flac"), tuple(LosslessPolicy), "[MP3]", {FLAC: "marked-lossless"}),
+        # ALAC and AAC share the container, so the suffix cannot answer under either policy.
+        (("ambiguous.m4a",), tuple(LosslessPolicy), "[MP3]", {"ambiguous.m4a": "format-undecided"}),
+        # An empty marker means the marker kind is undecidable; the strict kind still fires.
+        (("plain.mp3", FLAC), MARKED, "", {}),
+        (("plain.mp3", FLAC), STRICT, "", {"plain.mp3": "lossy-under-strict"}),
+        # The marked artwork is the half that reaches ``classify``'s unknown branch.
+        (("cover.jpg", ".DS_Store", "notes.txt", "Artist - Title [MP3].jpg"), tuple(LosslessPolicy),
+         "[MP3]", {}),
+    ],
+    ids=[
+        "strict-reports-every-lossy-file-marked-or-not", "permissive-reports-only-the-unmarked",
+        "a-lossless-file-wearing-the-marker", "an-mp4-container-is-undecided",
+        "no-marker-text-decides-no-marker-question", "no-marker-text-strict-still-fires",
+        "non-audio-files-are-not-reported",
+    ],
+)
+def test_the_audit_reports_each_file_by_its_kind_under_each_policy(
+    tmp_path, names, policies, marker, expected
+):
+    root = _music(tmp_path, *names)
+    for policy in policies:
+        assert _kinds(root, policy=policy, marker=marker) == expected, policy
 
 
 def test_a_music_directory_that_does_not_exist_is_empty_rather_than_an_error(tmp_path):
     assert acquire_cli.findings(
         tmp_path / "nothing-here", policy=LosslessPolicy.STRICT, marker="[MP3]"
     ) == ()
-
-
-def test_non_audio_files_are_not_reported(tmp_path):
-    """Artwork, playlists and system files are no findings; the marked artwork
-    (``Artist - Title [MP3].jpg``) is the half that reaches ``classify``'s unknown branch."""
-    root = _music(tmp_path, "cover.jpg", ".DS_Store", "notes.txt", "Artist - Title [MP3].jpg")
-
-    for policy in LosslessPolicy:
-        assert _kinds(root, policy=policy) == {}, policy
 
 
 def test_a_directory_it_cannot_list_is_reported(tmp_path):

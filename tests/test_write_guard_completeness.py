@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
+import types
 
 import pytest
+import sqlalchemy
 
 from cratekit.core import rb_writer as W
 
@@ -53,43 +56,36 @@ def _empty_buffer(monkeypatch):
     monkeypatch.setattr(W, "_registry_changes", lambda db: ({}, {}, {}))
 
 
+def _buffered(monkeypatch, created: dict, modified: dict | None = None) -> None:
+    """The binding's update buffer holding ``created`` and ``modified``, keyed by instance."""
+    changes = ({id(o): seen for o, seen in created.items()},)
+    changes += ({id(o): seen for o, seen in (modified or {}).items()}, {})
+    monkeypatch.setattr(W, "_registry_changes", lambda db: changes)
+
+
 # W2. A flush must not blind the guard
 
 
 def test_a_creation_flushed_out_of_the_session_is_still_judged(monkeypatch):
     """A creation an autoflush carried out of the session is still refused, from the buffer."""
-    forbidden = _FakeObj("djmdArtist")
-    monkeypatch.setattr(
-        W, "_registry_changes", lambda db: ({id(forbidden): ("djmdArtist", set())}, {}, {})
-    )
-
+    _buffered(monkeypatch, {_FakeObj("djmdArtist"): ("djmdArtist", set())})
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_session_whitelisted(_Session(), object())
-
     assert "djmdArtist" in str(excinfo.value)
 
 
 def test_a_content_creation_flushed_away_is_still_refused(monkeypatch):
     """The case A1 made real: intake is buildable, so the guard must police it."""
-    row = _FakeObj("djmdContent")
-    monkeypatch.setattr(
-        W, "_registry_changes", lambda db: ({id(row): ("djmdContent", set())}, {}, {})
-    )
-
+    _buffered(monkeypatch, {_FakeObj("djmdContent"): ("djmdContent", set())})
     with pytest.raises(W.RekordboxUnavailable) as excinfo:
         W.assert_session_whitelisted(_Session(), object())
-
     assert "djmdContent" in str(excinfo.value)
 
 
 def test_the_two_sources_are_unioned_rather_than_either_being_trusted_alone(monkeypatch):
     """Neither source is complete, so the guard reads their union (P4)."""
     from_session = _FakeObj("djmdSongPlaylist")
-    from_buffer = _FakeObj("djmdArtist")
-    monkeypatch.setattr(
-        W, "_registry_changes", lambda db: ({id(from_buffer): ("djmdArtist", set())}, {}, {})
-    )
-
+    _buffered(monkeypatch, {_FakeObj("djmdArtist"): ("djmdArtist", set())})
     created, _modified, _removed = W.pending_changes(_Session(new=[from_session]), object())
     assert sorted(table for table, _ in created) == ["djmdArtist", "djmdSongPlaylist"]
 
@@ -97,12 +93,7 @@ def test_the_two_sources_are_unioned_rather_than_either_being_trusted_alone(monk
 def test_one_instance_created_then_updated_is_reported_once_as_a_creation(monkeypatch):
     """Creation wins. Reporting both would be two findings for one act."""
     obj = _FakeObj("djmdPlaylist")
-    monkeypatch.setattr(
-        W,
-        "_registry_changes",
-        lambda db: ({id(obj): ("djmdPlaylist", set())}, {id(obj): ("djmdPlaylist", {"Name"})}, {}),
-    )
-
+    _buffered(monkeypatch, {obj: ("djmdPlaylist", set())}, {obj: ("djmdPlaylist", {"Name"})})
     created, modified, _removed = W.pending_changes(_Session(), object())
     assert [t for t, _ in created] == ["djmdPlaylist"]
     assert modified == []
@@ -133,15 +124,10 @@ def test_every_operation_the_binding_can_record_is_translated():
                 op = arg.elts[1]
                 if isinstance(op, ast.Constant) and isinstance(op.value, str):
                     ops.add(op.value)
-
     assert ops, "the parse found no operations; the walk is broken, not the binding"
 
-    handled = _operations_the_guard_translates()
-    missing = sorted(ops - handled)
-    assert not missing, (
-        f"the binding can record {missing} and the guard does not translate them, "
-        "so those writes would be judged with no table and no columns"
-    )
+    missing = sorted(ops - _operations_the_guard_translates())
+    assert not missing, f"the guard does not translate {missing}, so it judges no table or column"
 
 
 def _operations_the_guard_translates() -> set[str]:
@@ -157,28 +143,17 @@ def _operations_the_guard_translates() -> set[str]:
     return found
 
 
-def test_an_operation_the_guard_has_never_heard_of_fails_closed():
+def test_an_operation_the_guard_has_never_heard_of_fails_closed(monkeypatch):
     """An unknown op reports the sentinel, which is outside every writable set."""
     obj = _FakeObj("djmdPlaylist")
 
     class _Registry:
         __update_sequence__ = [(obj, "teleport", "", "")]
 
-    import sys
-    import types
-
     module = types.ModuleType("pyrekordbox.db6.registry")
     module.RekordboxAgentRegistry = _Registry
-    saved = sys.modules.get("pyrekordbox.db6.registry")
-    sys.modules["pyrekordbox.db6.registry"] = module
-    try:
-        _created, modified, _removed = _REAL_REGISTRY_CHANGES(object())
-    finally:
-        if saved is not None:
-            sys.modules["pyrekordbox.db6.registry"] = saved
-        else:
-            del sys.modules["pyrekordbox.db6.registry"]
-
+    monkeypatch.setitem(sys.modules, "pyrekordbox.db6.registry", module)
+    _created, modified, _removed = _REAL_REGISTRY_CHANGES(object())
     assert modified[id(obj)] == ("djmdPlaylist", {W.UNINSPECTABLE})
 
 
@@ -237,8 +212,6 @@ def test_a_flushed_creation_is_read_back_from_both_sources(monkeypatch):
     def inspect(obj):
         seen.append(obj)
         return _Inspected()
-
-    import sqlalchemy
 
     monkeypatch.setattr(sqlalchemy, "inspect", inspect)
 

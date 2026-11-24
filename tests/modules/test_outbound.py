@@ -18,6 +18,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import export, hearts, ledger, pairs, shell
 from cratekit.modules.outbound.hearts import REMOVE_FLAGS
 from tests import outbound_fakes
+from tests.modules import library_config
 from tests.outbound_fakes import FakeAccount, FakeColors
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
@@ -33,22 +34,8 @@ FORBIDDEN_WRITE_NAMES = frozenset({
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A library configuration, saved only by the tests that drive the CLI."""
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (tmp_path / "install").mkdir()
-    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "install"))
-    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(tmp_path / "cfgdir"))
-    built = config.from_dict({
-        "schema_version": config.CURRENT_SCHEMA_VERSION,
-        "library": {
-            "root": str(root), "volume_id": "F1E2-D3C4", "db_path": str(root / "db" / "master.db")
-        },
-        "paths": {"download_staging": str(tmp_path / "staging")},
-        "profile": {"name": "full"},
-    })
-    config.reset_cache()
-    return built
+    """Saved only by the tests that drive the CLI."""
+    return library_config(tmp_path, monkeypatch)
 
 
 def _trees(root: Path):
@@ -93,27 +80,23 @@ def test_playlist_export_reports_unmatched_tracks_rather_than_dropping_them(cfg)
     assert account.playlist_tracks(report.remote_id) == ("tid-1",)
 
 
-def test_the_export_plan_hands_the_account_the_release_title_and_not_the_display_one():
-    """R-356. The display title carries the naming head and agrees with no provider."""
-    account = FakeAccount()
-    _match(account, artist="Nova Reef", isrc="AA0000000001", release_title="Sun Path")
+@pytest.mark.parametrize(
+    "album, catalog, matched",
+    [
+        # R-356. The display title carries the naming head and agrees with no provider.
+        ({}, {}, ()),
+        # R-572. The album rides with the ISRC so releases spelled alike can be told apart.
+        ({"album": "Tidal Lines"}, {"7": "tid-7"}, (("7", "tid-7"),)),
+    ],
+    ids=["release-title-not-display-title", "the-files-album-tag"],
+)
+def test_the_export_plan_hands_the_account_the_release_title_and_album(album, catalog, matched):
+    account = FakeAccount(catalog=catalog)
+    planned = _match(account, artist="Nova Reef", isrc="AA0000000001", release_title="Sun Path", **album)
+    assert planned.matched == matched
     assert account.matches == [{
         "identity": "7", "isrc": "AA0000000001", "title": "Sun Path", "artist": "Nova Reef",
-        "album": "",
-    }]
-
-
-def test_the_export_plan_hands_the_account_the_files_album_tag():
-    """R-572. The album rides with the ISRC so releases spelled alike can be told apart."""
-    account = FakeAccount(catalog={"7": "tid-7"})
-    planned = _match(
-        account, artist="Nova Reef", isrc="AA0000000001", release_title="Sun Path",
-        album="Tidal Lines",
-    )
-    assert planned.matched == (("7", "tid-7"),)
-    assert account.matches == [{
-        "identity": "7", "isrc": "AA0000000001", "title": "Sun Path", "artist": "Nova Reef",
-        "album": "Tidal Lines",
+        "album": album.get("album", ""),
     }]
 
 
