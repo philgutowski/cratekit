@@ -215,3 +215,46 @@ def test_the_step_over_the_library_refuses_wip_alone_and_plans_the_genre_folder(
     assert states == {f"mirror:{DEEP.display}": PLANNED, "mirror:WIP": REFUSED}
     (wip,) = [step for step in area.steps if step.key == "mirror:WIP"]
     assert wip.cause.reason == mirror.AMBIGUOUS_REASON
+
+
+def test_a_removed_wip_folder_and_a_playlist_named_wip_are_not_the_wip_folder(cfg, db, monkeypatch):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Low", "1")
+    gone = Wip(db)
+    gone.playlist("warmup", "1")
+    gone.root.rb_local_deleted = 1
+    db.add_to_playlist(db.create_playlist("WIP"), "2")
+    db.session.commit()
+    read = _read(cfg, db, monkeypatch)
+    assert read.refused == {}
+    assert read.wip == "the library holds no top level folder named 'WIP', so nothing is mirrored for it"
+
+
+def test_a_subfolder_name_is_titled_stripped(cfg, db, monkeypatch):
+    Tree(cfg, db)
+    wip = Wip(db)
+    wip.playlist("lisa sandbox", "1", under=wip.sub("Lisa "))
+    assert _shape(_wip(_read(cfg, db, monkeypatch))) == {"Lisa lisa sandbox": ["1"]}
+
+
+def test_a_wip_title_another_mirrored_folder_takes_refuses_wip_alone(cfg, db, monkeypatch):
+    """The edit rule reads a playlist by its title: WIP / Deep House / Low would read as the genre's Low."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Low", "1")
+    wip = Wip(db)
+    wip.playlist("Low", "2", under=wip.sub(DEEP.display))
+    wip.playlist(SET, "3", under=wip.sub("Phil"))
+    read = _read(cfg, db, monkeypatch)
+    assert list(read.refused) == ["WIP"]
+    refused = read.refused["WIP"]
+    assert refused.reason == mirror.AMBIGUOUS_REASON
+    assert f"'{DEEP.display} Low'" in refused.message and "nothing was planned for WIP" in refused.message
+    assert [one.name for one in read.folders] == [DEEP.display]
+
+
+def test_the_title_rule_the_mirror_and_sync_pair_share():
+    assert mirror.wip_title(("WIP ", SET)) == f"WIP {SET}"
+    assert mirror.wip_title(("WIP", "Phil ", SET)) == f"Phil {SET}"
+    assert mirror.wip_title(("WIP", "Phil", "Older", SET)) == ""
+    assert mirror.wip_title(("GIG READY", "Phil", SET)) == ""
+    assert mirror.wip_title(("WIP",)) == ""

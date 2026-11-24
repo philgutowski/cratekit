@@ -156,3 +156,14 @@ def test_an_account_removal_rekordbox_made_too_is_agreed_and_settles(machine):
     machine.run()
     assert machine.held(TITLE) == ["r1"]
     machine.plans_nothing()
+
+
+def test_a_track_held_on_one_wip_playlist_is_still_added_to_another_by_rekordbox():
+    """Each WIP playlist holds alone: an edit held on one never stops rekordbox's addition to another."""
+    held = edits.Mirrored(place=_place(), account=frozenset({"r9"}), rekordbox=frozenset(), agreed=frozenset())
+    other = edits.Mirrored(
+        place=_place("WIP warmup"), account=frozenset(), rekordbox=frozenset({"r9"}), agreed=frozenset()
+    )
+    decided = edits.decide([held, other], {"r9": ["9"]})
+    assert decided.holds == {TITLE: edits.Hold(keep=frozenset({"r9"}))}
+    assert decided.hold("WIP warmup") == edits.Hold()

@@ -307,6 +307,7 @@ def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple
         skip=cfg.outbound.pair_skip_folders,
         paired=(pair.rekordbox_id for pair in document.pairs.values()),
         released=document.released.rekordbox,
+        mirrored=pair_discover.mirrored_wip(cfg),
     )
     listed = list(discovery.listed)
     if not discovery.found:

@@ -1110,8 +1110,11 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   comes into rekordbox at the next sync.
 - Never found by a bare `sync pair`: Cratekit's own trees, Favorites, twins
   (a twin is paired with its account playlist when it is made), smart
-  playlists, another app's folder, and folders `outbound.pair_skip_folders`
-  names (`["ARCHIVE"]` by default).
+  playlists, another app's folder, folders `outbound.pair_skip_folders`
+  names (`["ARCHIVE"]` by default), and a playlist under `WIP` that
+  `crate organize`'s account mirror already copies, so the account never
+  holds it twice. A WIP playlist a pair already keeps stays paired, and the
+  mirror leaves it out.
 - It plans once; the rekordbox gate `sync.pair.rekordbox` then the account
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call

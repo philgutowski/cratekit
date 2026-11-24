@@ -95,14 +95,28 @@ def test_no_wip_folder_is_one_fact_and_no_step(world):
     assert account_mirror.WIP_FACT not in world.plan().facts
 
 
-def test_the_plans_request_count_is_unchanged_by_wip_beside_soul(world):
-    """The WIP folder is one more step of the same area: no request of its own beyond its rows."""
-    world.mirror(soul())
-    alone = world.plan().facts[account_mirror.PLAN_FACT].split(" ")[0]
+def _requests(world, *folders) -> int:
     world.account = outbound_fakes.StrictAccount(catalog={f"c{n}": f"r{n}" for n in range(1, 400)})
-    world.mirror(soul(), wip_folder())
-    beside = world.plan().facts[account_mirror.PLAN_FACT].split(" ")[0]
-    assert alone == beside
+    world.mirror(*folders)
+    return int(world.plan().facts[account_mirror.PLAN_FACT].split(" ")[0])
+
+
+def test_wip_adds_only_its_own_rows_requests_to_the_plan(world):
+    """The WIP folder is one more step of the same area: its rows' matches, the root read shared."""
+    soul_alone = _requests(world, soul())
+    wip_alone = _requests(world, wip_folder(*THREE))
+    beside = _requests(world, soul(), wip_folder(*THREE))
+    # One root folder read, then one match per row: five WIP rows.
+    assert wip_alone == 1 + 5
+    assert beside == soul_alone + wip_alone - 1
+
+
+def test_the_mirrored_wip_titles_are_what_sync_pair_reads(world, installed):
+    from cratekit.sync import pair_discover
+
+    world.mirror(wip_folder(*THREE))
+    world.run()
+    assert pair_discover.mirrored_wip(installed) == frozenset(title for title, _rows in THREE)
 
 
 # 2. The frozen plan

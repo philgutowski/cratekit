@@ -10,7 +10,8 @@ unplaced`` lists it (2026-11-04); a FAVOURITE is placed as a heart is, through
 ``favorites.placement``, never into a quarter; an UNFAVOURITE leaves All
 Favorites and its filing playlists but stays hearted on the account (the two
 step rule of 2026-10-14); a JOIN or LEAVE changes a batch found live directly
-under INBOX, never Old.
+under INBOX, never Old. An edit to a WIP playlist (U959) is held as the account
+has it and never carried here.
 
 ONE GUARDED SESSION FOR EVERY TRACK: the file's two tags first, each read back,
 then the row's genre where rekordbox already holds that name, then the tree

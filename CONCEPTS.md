@@ -436,7 +436,8 @@ The account tracks a mirrored playlist held when `crate organize`'s account
 mirror last finished it, in the outbound ledger under `agreed`. It tells an
 account edit (taken into rekordbox by the `mirror-edits` step) from a rekordbox
 change; a new account track the library lacks goes to `mirror-downloads`, whose
-job the next new sync pass takes. Its landing's own filing by tags is not a
+job the next new sync pass takes. An edit to a WIP playlist is held as the
+account has it and neither taken nor queued (U959). Its landing's own filing by tags is not a
 rekordbox change: the edit is carried once (U227), reading a queuing
 playlist never agreed as it stood at the queue (U230). Nor is the month a
 favourite put in `All Favorites` was placed in: kept beside it under `placed`,

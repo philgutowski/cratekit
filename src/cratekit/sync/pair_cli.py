@@ -13,7 +13,8 @@ first sync is approved (``modules/outbound/pairs.py``); with no argument every
 marked pair syncs.
 
 A sync of every pair also pairs each plain rekordbox playlist the author made
-outside Cratekit's trees, Favorites and ``outbound.pair_skip_folders`` with an
+outside Cratekit's trees, Favorites and ``outbound.pair_skip_folders``, and not
+one under WIP the account mirror already copies (U959), with an
 account playlist it makes (U198, ``sync/pair_discover.py``), and makes in
 rekordbox each playlist made on the account in a synced folder (U202,
 ``sync/pair_reverse.py``). A playlist a folder already held when it was adopted,
