@@ -2654,7 +2654,7 @@ def test_a_numeric_identifier_is_still_addressable(number):
             "GB-AYA-15-00001", "US-RC1-76-07839", (ACCENTED, "3"), None, frozenset({"1", "3"}),
             id="display-codes-still-collide"),
     ])
-def test_one_isrc_however_spelled_is_one_recording_and_two_still_collide(
+def test_case_display_and_placeholder_isrcs_fold_and_two_codes_still_collide(
     cfg, ours, theirs, other, one_version, ambiguous):
     one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc=ours)
     another = replace(_removed(cfg, *other), title="Strobe", isrc=theirs)
