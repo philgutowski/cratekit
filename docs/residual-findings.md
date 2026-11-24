@@ -590,3 +590,68 @@ features added since. Ledger only: a maintainer facing count.
 **Measured cost.** None measured: the script is a differential research tool run by hand, exits 0 always, and is not a verb. A later run compares a slightly different corpus than an earlier one.
 
 **Closes when:** the corpus is a fixed data file the script owns, or the record of any run names the commit its corpus was read at. Ledger only: maintainer facing.
+
+---
+
+## R-2050. A replay row widened to the full suite can record an unrelated death as its kill
+
+**Found:** at the kill set replay of #981, U332, 2026-11-24.
+
+**The mechanism.** `scripts/mutate.py` promotes a row whose subset kills
+nothing to the full suite, and counts any death there as the row's kill.
+`u317.Q10_token_not_struck` (`_strike_token(cfg)` to `pass` in
+`src/cratekit/modules/tools/backup.py`) names `tests/test_backup_quick.py` as
+its subset, which errors at setup on a container without rclone, so the
+driver widened it. In U332's before batch 1, on `324cafa`, the full suite
+recorded one death,
+`tests/test_jobs.py::test_everything_the_queue_writes_is_owner_only_under_any_umask`,
+a test that drives only the job queue and never reaches the backup. The after
+batch, whose row named that file, widened too and recorded none, so
+`killset.py check` reads the row as lost. Two later full suite runs of the same
+mutation on the base killed nothing, so the death did not reproduce: one
+intermittent failure became a recorded kill.
+
+**Measured cost.** None to a person using the verbs. The row's own killers,
+`test_a_failed_run_by_another_installation_makes_the_next_run_full` and
+`test_a_run_that_fails_strikes_the_token_from_the_library_fact`, kill it on
+both sides once rclone is present (`docs/mutation/u332-replay-q10-rclone-before.json`
+and `-after.json`, `check` exits 0 on the pair). The cost is a maintainer
+reading a lost kill that is not one, and the reverse: a kill recorded on an
+intermittent death stands for a guard no test holds.
+
+**Closes when:** a promoted row's death is confirmed by running the dying
+tests again under the mutation, or a death in a test that never imports the
+mutated module is reported apart from the kill. Ledger only: maintainer facing.
+
+---
+
+## R-2051. Test slice 1 ends 3.5 percent smaller, not 14, because structure alone gives no more
+
+**Found:** at the build of #981, U332, 2026-11-24.
+
+**The mechanism.** #981 asked slice 1 of the test tree (the 200 files from
+`tests/__init__.py` to `tests/test_catalogue_app.py` in path order, 73,259
+lines at `55e958b`) to end at or under 62,155 lines, so the four slices
+together bring `tests/` under point 5's bar of 249,132. Eight builders cut it
+by Phillip's answer A on #847: parametrize folds, shared setup within a file
+or a support file of the slice, deleting a test only where another checks all
+it checks, and prose cut to the rule and its reason. They reached 70,702 by `scripts/refactor_measure.py lines`, 2,557
+lines fewer. Every builder stopped short and measured why (1.6 to 7.0 percent
+per group): the tests left are distinct end to end scenarios whose setup
+differs test to test; a table of strings is as long as the tests it would
+replace; the prose left is almost all one line reasons, residual titles and
+decisions; and 5,189 lines are not the card's to cut (`tests/conftest.py`,
+`tests/_pending.py`, the reserved cause pins). About 13,600 of the slice's lines
+are blank, mostly the two between top level definitions. The cuts that would
+reach the number are formatting (dropping those blank lines, joining calls
+already split over lines) or deleting tests that still guard something, and the
+card took neither. R-1941 measured the same wall across the whole suite.
+
+**Measured cost.** None to a person using the verbs. Point 5 of #847 stays
+unmet by about 8,547 lines in this slice; the question on #981 asked Phillip
+how to treat the miss, and the card took the recommended option, land with
+the miss named.
+
+**Closes when:** the audit card after the four slices (#987) settles point 5,
+by a decision to accept what structure gives, to lower the bar, or to count
+lines another way. Ledger only: maintainer facing.
