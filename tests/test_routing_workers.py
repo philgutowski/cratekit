@@ -34,13 +34,22 @@ from cratekit.core import (
     preflight,
     profiles,
     rb_writer,
+    routing,
     session,
     taxonomy,
     tree_registry,
 )
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.write import genre_favorites, metadata_cli, rebuild, routing_cli, routing_pass, trees
+from cratekit.write import (
+    genre_favorites,
+    metadata_cli,
+    rebuild,
+    routing_cli,
+    routing_pass,
+    trees,
+    vox_tag,
+)
 from tests._readings import serve_readings
 from tests._sync_builders import exited, failed
 from tests.test_active_taxonomy import shipped_without, write_active
@@ -340,7 +349,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     cuts: list[tuple[object, object]] = []
     frozen = object()
     measured = object()
-    after = SimpleNamespace(missing=(), unidentified=("F/P",))
+    after = SimpleNamespace(missing=(), untagged=(), unidentified=("F/P",))
     staged: list[tuple] = []
     approvals: list[object] = []
 
@@ -385,7 +394,12 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     driven = SimpleNamespace(job_id="j", payload={routing_cli.RESORT_ADDS_KEY: [mine, other]})
     assert routing_cli.handle_resort(driven, item, frozen) == "staged"
     assert approvals == [None, [mine]]
-    found = {"tree_id": TREE_ID, "left_behind": [{"kept": measured}], "unidentified": ["F/P"]}
+    found = {
+        "tree_id": TREE_ID,
+        "left_behind": [{"kept": measured}],
+        "untagged": [],
+        "unidentified": ["F/P"],
+    }
     assert staged == [
         (rebuild_verb.REBUILD_ARTIFACTS, frozen, queued, item, found),
         (routing_cli.RESORT_ARTIFACTS, frozen, driven, item, {**found, "due_again": 0}),
@@ -1006,7 +1020,7 @@ def test_the_rebuild_worker_stages_its_after_check_as_its_report(acknowledged, n
     assert _membership(acknowledged, native) == {"1"}
     assert produced.final == rebuild_verb.REBUILD_ARTIFACTS.final_path(acknowledged, "j", 0)
     staged = json.loads(produced.staged.read_text(encoding="utf-8"))
-    assert staged == {"tree_id": TREE_ID, "left_behind": [], "unidentified": []}
+    assert staged == {"tree_id": TREE_ID, "left_behind": [], "untagged": [], "unidentified": []}
 
 
 def test_the_gap_rule_is_the_derivations_own():
@@ -2218,6 +2232,17 @@ def _vox_members(cfg: config.Config, root_id: str) -> set[str]:
     return {cid for node in _vox_nodes(cfg, root_id) for cid in node.content_ids}
 
 
+def _tag_vox(cfg: config.Config, content_id: str) -> None:
+    """Put the vox My Tag on one row, which files the vocal sub on every database path (R-2056)."""
+    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
+    try:
+        value = rb_writer.ensure_my_tag_value(handle, vox_tag.CATEGORY, vox_tag.VALUE_VOX)
+        rb_writer.add_my_tag(handle, value, content_id)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+
 @pytest.fixture
 def vox_levels(monkeypatch) -> dict[str, int]:
     """Voxlevel readings served from the file NAME, set by each test."""
@@ -2279,10 +2304,17 @@ def test_a_second_calibrated_inbox_creates_no_second_vocal_sub(acknowledged, nat
 
 
 @QUEUED_VERBS
-@pytest.mark.parametrize("level, filed", [(6, True), (4, False)], ids=["above", "below"])
+@pytest.mark.parametrize(
+    "level, filed",
+    [(4, True), (6, False)],
+    ids=["tagged-under-the-cut", "untagged-over-the-cut"],
+)
 def test_a_calibrated_resume_files_under_with_vox_and_does_not_warn(
     acknowledged, native, vox_levels, argv, level, filed
 ):
+    """The vox My Tag files the vocal sub, never the file's score (U127, R-2056)."""
+    if filed:
+        _tag_vox(acknowledged, "1")
     if argv[0] == "route":
         # U219: a resort's adds are approved at its gate; a rebuild reads at the drive.
         _calibrated(acknowledged)
@@ -2324,6 +2356,7 @@ def test_a_worker_driven_without_the_resume_refuses_a_corrupt_calibration(
 
 def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, vox_levels):
     vox_levels[SHELVED] = 6
+    _tag_vox(acknowledged, "1")
     exited(_drive(["converge"]))
     job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
     _calibrated(acknowledged)
@@ -2334,6 +2367,36 @@ def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, v
     (check,) = [c for c in after["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
     assert check["status"] == converge.MATCHING, check
     assert "not compared" not in check["detail"], check
+
+
+def test_a_vocal_member_the_tag_left_is_named_untagged_by_converge_and_the_resort(
+    acknowledged, native, vox_levels
+):
+    """R-2056: over the cut with no tag, the score's old placement is neither matching nor a
+    leftover; ``converge`` says ``untagged`` and the resort's gate counts it apart."""
+    _calibrated(acknowledged)
+    vox_levels[SHELVED] = 6
+    _tag_vox(acknowledged, "1")
+    job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
+    _drive(["rebuild", "--actor", "a-person", "--job", job_id])
+    assert _vox_members(acknowledged, native) == {"1"}
+    _set_row(acknowledged, "UPDATE djmdSongMyTag SET rb_local_deleted = 1 WHERE ContentID = ?", "1")
+
+    after = exited(_drive(["converge"]))
+    (check,) = [c for c in after["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
+    assert check["status"] == converge.DIFFERING, check
+    assert f"untagged:{_destination_bucket()}/{trees.VOX_SUB_CLASS}:1" in check["detail"], check
+    assert "unexpected:" not in check["detail"], check
+
+    code, refused = _drive_once(["route", "resort"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert (shown["vocal untagged"], shown["left behind"]) == (1, 0), shown
+
+
+def _destination_bucket() -> str:
+    """The bucket the shipped rules file the shelved track's reading under."""
+    return routing.resolve_bucket(taxonomy.default_taxonomy(), None).bucket_id
 
 
 def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(acknowledged, native):

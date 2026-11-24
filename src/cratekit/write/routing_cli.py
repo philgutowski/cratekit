@@ -160,10 +160,9 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     elif files:
         threshold = metadata_cli.load_vocal_threshold(cfg)
         readings = [rebuild.read_truth(path) for path in files]
-        derived: dict[
-            tree_registry.DerivationSource | None,
-            tuple[tuple[rebuild.DeclaredPlacement, ...], tuple[str, ...]],
-        ] = {}
+        # NO DATABASE IS READ BEFORE THIS GATE, so the score stands in for the
+        # vox My Tag the landing wrote from it (R-2056).
+        derived: dict[tree_registry.DerivationSource | None, rebuild.Membership] = {}
         for tree_id in native:
             source = entries.derivation_source(tree_id)
             if source not in derived:
@@ -171,8 +170,8 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
                     cfg, declared, tree_id=tree_id, source=source, vocal_threshold=threshold,
                     truth=readings,
                 )
-            placements[tree_id], not_derived = derived[source]
-            gaps.update(not_derived)
+            placements[tree_id] = derived[source].placements
+            gaps.update(derived[source].not_compared)
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
     genre: dict[str, str] = {}
@@ -700,6 +699,7 @@ def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str
         "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
         "adds": len(adds),
         "left behind": int(facts.get("left_behind") or 0),
+        "vocal untagged": int(facts.get("untagged") or 0),
         "playlists not compared": playlists,
         "not derived": list(facts.get("not_derived") or ()),
         "left alone": list(facts.get("left_alone") or ()),
@@ -735,6 +735,8 @@ def route_resort(ctx) -> Envelope:
         for report in reports:
             adds.extend(rebuild.additions(report))
         facts["left_behind"] = sum(len(report.unexpected) for report in reports)
+        # In a vocal sub by the score and not the tag (R-2056), not left behind.
+        facts["untagged"] = sum(len(report.untagged) for report in reports)
         facts["not_derived"] = sorted(
             {gap for report in reports for gap in report.not_compared}
         )

@@ -25,6 +25,8 @@ from cratekit.core import analysis_store, config, locations, rb_writer, session,
 from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
+from cratekit.write.vox_tag import CATEGORY as CATEGORY
+from cratekit.write.vox_tag import VALUE_VOX as VALUE_VOX
 
 _ORIGIN = ("write", "metadata_cli")
 
@@ -41,8 +43,6 @@ _NAMED_PREFIXES = 3
 #: stable, unlike ``CATEGORY``, a display name a person can rename (R19).
 CHANGE_KEY = "my-tags.vocals"
 
-CATEGORY = "Vocals"
-VALUE_VOX = "vox"
 VALUE_MALE = "male vox"
 VALUE_FEMALE = "female vox"
 
