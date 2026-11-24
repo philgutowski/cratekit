@@ -37,6 +37,12 @@ def _old_drive(tmp_path: Path) -> Path:
 _RealPrompter = prompt.Prompter
 
 
+def _counts(envelope: dict) -> tuple[int, int, int]:
+    """The plan's active, unresolved and unmapped totals, in that order."""
+    totals = envelope["data"]["totals"]
+    return totals["active"], totals["unresolved"], totals["unmapped"]
+
+
 @pytest.fixture
 def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
@@ -60,13 +66,15 @@ class Bench:
 
         assert silence is not None
         engine = create_engine(f"sqlite:///{self.db_path}")
+        rows = [(f"old-{index}.flac", True) for index in range(old)]
+        rows += [(f"local-{index}.flac", False) for index in range(local)]
         with Session(engine) as db_session:
-            next_id = 100
-            for index in range(old):
-                audio = self.music / f"old-{index}.flac"
+            for next_id, (name, renamed) in enumerate(rows, start=100):
+                audio = self.music / name
                 shutil.copy2(silence, audio)
-                assert tags.write_tags(audio, {"voxlevel": 80, "voxgender": "F"})
-                recorded = self.old_drive / "Music" / audio.name
+                if renamed:
+                    assert tags.write_tags(audio, {"voxlevel": 80, "voxgender": "F"})
+                recorded = self.old_drive / "Music" / audio.name if renamed else audio
                 db_session.add(
                     _row(
                         tables.DjmdContent,
@@ -76,20 +84,6 @@ class Bench:
                         FolderPath=locations.location_url(recorded),
                     )
                 )
-                next_id += 1
-            for index in range(local):
-                audio = self.music / f"local-{index}.flac"
-                shutil.copy2(silence, audio)
-                db_session.add(
-                    _row(
-                        tables.DjmdContent,
-                        ID=str(next_id),
-                        Title=audio.name,
-                        rb_local_deleted=0,
-                        FolderPath=locations.location_url(audio),
-                    )
-                )
-                next_id += 1
             db_session.commit()
         engine.dispose()
 
@@ -273,8 +267,7 @@ def test_a_minority_of_unmapped_rows_stays_ok_with_the_counts_visible(bench, sil
     code, envelope = drive(["metadata", "mytags-vocals"])
 
     assert code == int(ExitCode.OK), envelope
-    totals = envelope["data"]["totals"]
-    assert (totals["active"], totals["unresolved"], totals["unmapped"]) == (15, 5, 3)
+    assert _counts(envelope) == (15, 5, 3)
     assert envelope["data"]["items"] == []
 
 
@@ -286,9 +279,8 @@ def test_the_rule_setup_should_have_offered_turns_the_majority_into_a_plan(bench
     code, envelope = drive(["metadata", "mytags-vocals"])
 
     assert code == int(ExitCode.OK), envelope
-    totals = envelope["data"]["totals"]
-    assert (totals["active"], totals["unresolved"], totals["unmapped"]) == (12, 2, 0)
-    assert totals["count"] == 10
+    assert _counts(envelope) == (12, 2, 0)
+    assert envelope["data"]["totals"]["count"] == 10
     assert all(item["values"] == ["vox", "female vox"] for item in envelope["data"]["items"])
 
 
@@ -298,6 +290,12 @@ def test_the_rule_setup_should_have_offered_turns_the_majority_into_a_plan(bench
 def _real_survey() -> doctor.Probes:
     """The green machine with the one seam under test left real."""
     return doctor_machines.green(path_survey=doctor_model._survey_paths)
+
+
+def _finding(cfg: config.Config, probes: doctor.Probes) -> doctor.Finding:
+    """The ``library.paths_resolved`` finding of one doctor run on these probes."""
+    findings = doctor.run(cfg, probes=probes).findings
+    return next(f for f in findings if f.key == "library.paths_resolved")
 
 
 def test_doctor_fails_paths_resolved_over_a_majority_off_a_copy(bench, silence, opened):
@@ -319,20 +317,12 @@ def test_doctor_fails_paths_resolved_over_a_majority_off_a_copy(bench, silence, 
 
 def test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok(bench, silence, opened):
     bench.add_rows(old=3, local=10, silence=silence)
-    minority = next(
-        f
-        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
-        if f.key == "library.paths_resolved"
-    )
+    minority = _finding(bench.cfg, probes=_real_survey())
     assert minority.status is doctor.Status.INFO
     assert "3 of 15" in minority.detail
 
     bench.record_rule()
-    clean = next(
-        f
-        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
-        if f.key == "library.paths_resolved"
-    )
+    clean = _finding(bench.cfg, probes=_real_survey())
     assert clean.status is doctor.Status.OK
     assert "15 active rows" in clean.detail
     _never_the_live_path(opened, bench.db_path)
@@ -340,11 +330,7 @@ def test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok(bench,
 
 def test_doctor_says_so_when_there_is_no_database_to_read(bench, opened):
     bench.db_path.unlink()
-    finding = next(
-        f
-        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
-        if f.key == "library.paths_resolved"
-    )
+    finding = _finding(bench.cfg, probes=_real_survey())
     assert finding.status is doctor.Status.INFO
     assert "no database file" in finding.detail
     assert opened == []
@@ -352,11 +338,7 @@ def test_doctor_says_so_when_there_is_no_database_to_read(bench, opened):
 
 def test_doctor_reports_a_copy_it_could_not_open_as_unknown_rather_than_good(bench, opened):
     bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
-    finding = next(
-        f
-        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
-        if f.key == "library.paths_resolved"
-    )
+    finding = _finding(bench.cfg, probes=_real_survey())
     assert finding.status is doctor.Status.FAIL
     assert finding.cause is not None
     assert finding.remedy is not None
@@ -365,32 +347,18 @@ def test_doctor_reports_a_copy_it_could_not_open_as_unknown_rather_than_good(ben
 
 
 def test_the_two_synthetic_machines_answer_the_check_opposite_ways(bench):
-    healthy = next(
-        f
-        for f in doctor.run(bench.cfg, probes=doctor_machines.green()).findings
-        if f.key == "library.paths_resolved"
-    )
-    broken = next(
-        f
-        for f in doctor.run(bench.cfg, probes=doctor_machines.hostile()).findings
-        if f.key == "library.paths_resolved"
-    )
+    healthy = _finding(bench.cfg, probes=doctor_machines.green())
+    broken = _finding(bench.cfg, probes=doctor_machines.hostile())
     assert healthy.status is doctor.Status.OK
     # rekordbox running is the check's first question: no copy is taken under it.
     assert broken.status is doctor.Status.FAIL
     assert broken.remedy is Remedy.QUIT_REKORDBOX
     assert broken.cause is None
     # Closed and recognised, the survey refuses under the plan's own slug.
-    surveyed = next(
-        f
-        for f in doctor.run(
-            bench.cfg,
-            probes=doctor_machines.hostile(
-                process_lister=lambda: (), identity_provider=lambda _path: doctor_machines.VOLUME
-            ),
-        ).findings
-        if f.key == "library.paths_resolved"
+    closed = doctor_machines.hostile(
+        process_lister=lambda: (), identity_provider=lambda _path: doctor_machines.VOLUME
     )
+    surveyed = _finding(bench.cfg, probes=closed)
     assert surveyed.status is doctor.Status.FAIL
     assert surveyed.remedy is Remedy.RUN_SETUP
     assert surveyed.cause is not None
@@ -421,12 +389,25 @@ def _note(wizard: setup_verb._Wizard) -> doctor.Finding:
     return next(n for n in wizard.notes if n.key == "setup.prefix_map")
 
 
+def _counting(asked: list[str], answer: str) -> prompt.Prompter:
+    """A prompter that answers ``answer`` and records every time it was asked."""
+    def read_line() -> str:
+        asked.append("asked")
+        return f"{answer}\n"
+
+    return _RealPrompter(read_line=read_line, read_secret=lambda _q: "", write=lambda _t: None)
+
+
+def _offer(cfg: config.Config, prompter: prompt.Prompter):
+    """The prefix map offer on a fresh document of ``cfg``: its answer, the document, the wizard."""
+    document = dict(cfg.to_toml_dict())
+    wizard = setup_verb._Wizard(document, prompter)
+    return setup_verb._propose_prefix_map(wizard, document, cfg), document, wizard
+
+
 def test_setup_offers_the_rule_from_the_databases_own_drive_names_off_a_copy(bench, opened):
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is True
-
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is True
     assert document["library"]["location_prefix_map"] == [
         {"from": str(bench.old_drive), "to": config.LIBRARY_ROOT_TOKEN}
     ]
@@ -442,11 +423,8 @@ def test_setup_offers_the_rule_from_the_databases_own_drive_names_off_a_copy(ben
 
 
 def test_setup_records_nothing_when_the_offer_goes_unanswered(bench, opened):
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _silent())
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _silent())
+    assert offered is False
     assert document["library"].get("location_prefix_map", []) == []
     note = _note(wizard)
     assert note.status is doctor.Status.INFO
@@ -456,49 +434,40 @@ def test_setup_records_nothing_when_the_offer_goes_unanswered(bench, opened):
 
 def test_setup_skips_the_offer_when_no_database_is_present(bench, opened):
     bench.db_path.unlink()
-    document = dict(bench.cfg.to_toml_dict())
     asked: list[str] = []
-    prompter = _RealPrompter(
-        read_line=lambda: (asked.append("asked"), "yes\n")[1],
-        read_secret=lambda _q: "",
-        write=lambda _t: None,
-    )
-    wizard = setup_verb._Wizard(document, prompter)
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _counting(asked, "yes"))
+    assert offered is False
     assert asked == []
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
     assert "no database file" in _note(wizard).detail
 
 
-def test_setup_offers_nothing_when_the_two_drive_names_agree(bench, opened):
-    bench.set_drives(f"{bench.root}/", f"{bench.root}/")
-    document = dict(bench.cfg.to_toml_dict())
+@pytest.mark.parametrize(
+    "nested,blank_map",
+    [(False, True), (True, False)],
+    ids=["the-two-drive-names-agree", "the-root-sits-under-the-recorded-drive"],
+)
+def test_setup_offers_nothing_when_the_rows_already_sit_where_they_say(
+    bench, opened, nested, blank_map
+):
+    """Both names on the root, or a library nested inside the recorded drive, need no rule."""
+    recorded = bench.root.parent if nested else bench.root
+    bench.set_drives(f"{recorded}/", f"{recorded}/")
     asked: list[str] = []
-    prompter = _RealPrompter(
-        read_line=lambda: (asked.append("asked"), "yes\n")[1],
-        read_secret=lambda _q: "",
-        write=lambda _t: None,
-    )
-    wizard = setup_verb._Wizard(document, prompter)
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _counting(asked, "yes"))
+    assert offered is False
     assert asked == []
-    assert document["library"].get("location_prefix_map", []) == []
+    if blank_map:
+        assert document["library"].get("location_prefix_map", []) == []
     assert "no prefix rule is needed" in _note(wizard).detail
     _never_the_live_path(opened, bench.db_path)
 
 
 def test_setup_leaves_a_recorded_map_alone(bench, opened):
     cfg = bench.record_rule()
-    document = dict(cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, cfg) is False
-
+    offered, document, wizard = _offer(cfg, _scripted(["yes"]))
+    assert offered is False
     assert document["library"]["location_prefix_map"] == [
         {"from": str(bench.old_drive), "to": str(bench.root)}
     ]
@@ -508,11 +477,8 @@ def test_setup_leaves_a_recorded_map_alone(bench, opened):
 
 def test_setup_notes_a_copy_it_could_not_open_and_leaves_the_verdict_to_doctor(bench, opened):
     bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is False
     note = _note(wizard)
     assert note.status is doctor.Status.INFO
     assert "could not be read from a copy" in note.detail
@@ -552,16 +518,10 @@ def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
 
 def test_doctor_takes_no_copy_while_rekordbox_is_running(bench, silence, opened):
     bench.add_rows(old=10, silence=silence)
-    finding = next(
-        f
-        for f in doctor.run(
-            bench.cfg,
-            probes=doctor_machines.green(
-                process_lister=lambda: ("rekordboxAgent",), path_survey=doctor_model._survey_paths
-            ),
-        ).findings
-        if f.key == "library.paths_resolved"
+    running = doctor_machines.green(
+        process_lister=lambda: ("rekordboxAgent",), path_survey=doctor_model._survey_paths
     )
+    finding = _finding(bench.cfg, probes=running)
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.QUIT_REKORDBOX
     assert "rekordboxAgent" in finding.detail
@@ -571,16 +531,10 @@ def test_doctor_takes_no_copy_while_rekordbox_is_running(bench, silence, opened)
 def test_doctor_defers_to_the_volume_checks_before_reading_anything(bench, silence, opened):
     """A leftover mount point holding a stale database is not surveyed."""
     bench.add_rows(old=10, silence=silence)
-    finding = next(
-        f
-        for f in doctor.run(
-            bench.cfg,
-            probes=doctor_machines.green(
-                identity_provider=lambda _path: "0000-0000", path_survey=doctor_model._survey_paths
-            ),
-        ).findings
-        if f.key == "library.paths_resolved"
+    stale = doctor_machines.green(
+        identity_provider=lambda _path: "0000-0000", path_survey=doctor_model._survey_paths
     )
+    finding = _finding(bench.cfg, probes=stale)
     assert finding.status is doctor.Status.INFO
     assert "not asserted" in finding.detail
     assert opened == []
@@ -611,17 +565,13 @@ def test_a_row_whose_location_will_not_decode_counts_as_unresolved_not_a_defect(
     code, envelope = drive(["metadata", "mytags-vocals"])
 
     assert code == int(ExitCode.OK), envelope
-    totals = envelope["data"]["totals"]
-    assert (totals["active"], totals["unresolved"], totals["unmapped"]) == (5, 3, 0)
+    assert _counts(envelope) == (5, 3, 0)
 
 
 def test_setup_skips_the_offer_while_rekordbox_is_running(bench, opened, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is False
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
     # The wizard's own sentence, since it asked before it copied.
@@ -638,11 +588,8 @@ def test_setup_notes_a_file_it_could_not_copy_rather_than_aborting(bench, opened
         return _shutil.copy2(src, dst, *args, **kwargs)
 
     monkeypatch.setattr(rb_writer.shutil, "copy2", denied)
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is False
     note = _note(wizard)
     assert note.status is doctor.Status.INFO
     assert "could not be copied" in note.detail
@@ -650,50 +597,22 @@ def test_setup_notes_a_file_it_could_not_copy_rather_than_aborting(bench, opened
     assert document["library"].get("location_prefix_map", []) == []
 
 
-def test_setup_offers_the_root_when_rekordbox_still_records_the_old_name_twice(bench, opened):
-    """The drive was renamed and rekordbox has not been opened since."""
-    bench.set_drives(f"{bench.old_drive}/", f"{bench.old_drive}/")
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is True
-
+@pytest.mark.parametrize(
+    "current,to",
+    [(None, config.LIBRARY_ROOT_TOKEN), ("CURRENT", None)],
+    ids=["the-root-when-the-old-name-is-recorded-twice", "a-current-drive-not-the-root"],
+)
+def test_setup_offers_a_rule_from_the_old_drive_to_where_the_library_now_is(
+    bench, opened, current, to
+):
+    """A renamed drive rekordbox has not seen since maps to the root; a library that is a
+    folder on the current drive maps drive to drive."""
+    now = bench.old_drive if current is None else bench.root.parent / "Volumes" / current
+    bench.set_drives(f"{bench.old_drive}/", f"{now}/")
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is True
     assert document["library"]["location_prefix_map"] == [
-        {"from": str(bench.old_drive), "to": config.LIBRARY_ROOT_TOKEN}
-    ]
-    _never_the_live_path(opened, bench.db_path)
-
-
-def test_setup_offers_nothing_when_the_root_sits_under_the_recorded_drive(bench, opened):
-    """A library nested inside the recorded drive is already where the rows say."""
-    bench.set_drives(f"{bench.root.parent}/", f"{bench.root.parent}/")
-    document = dict(bench.cfg.to_toml_dict())
-    asked: list[str] = []
-    prompter = _RealPrompter(
-        read_line=lambda: (asked.append("asked"), "yes\n")[1],
-        read_secret=lambda _q: "",
-        write=lambda _t: None,
-    )
-    wizard = setup_verb._Wizard(document, prompter)
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
-    assert asked == []
-    assert "no prefix rule is needed" in _note(wizard).detail
-    _never_the_live_path(opened, bench.db_path)
-
-
-def test_setup_records_a_current_drive_that_is_not_the_root_literally(bench, opened):
-    """A library that is a folder on the current drive maps drive to drive."""
-    elsewhere = bench.root.parent / "Volumes" / "CURRENT"
-    bench.set_drives(f"{bench.old_drive}/", f"{elsewhere}/")
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is True
-
-    assert document["library"]["location_prefix_map"] == [
-        {"from": str(bench.old_drive), "to": str(elsewhere)}
+        {"from": str(bench.old_drive), "to": to or str(now)}
     ]
     _never_the_live_path(opened, bench.db_path)
 
@@ -826,24 +745,19 @@ def test_the_copy_names_a_file_holding_none_of_the_canary_tables(bench, opened):
     _never_the_live_path(opened, bench.db_path)
 
 
-@pytest.mark.parametrize("present", rb_writer.CANARY_TABLES)
-def test_a_file_holding_one_canary_table_is_drift_and_keeps_the_canarys_refusal(
+@pytest.mark.parametrize(
+    "present", [*rb_writer.CANARY_TABLES, None], ids=[*rb_writer.CANARY_TABLES, "not-sqlite"]
+)
+def test_a_file_holding_one_canary_table_or_no_sqlite_keeps_the_canarys_refusal(
     bench, present
 ):
+    """One canary table is drift, and bytes that are not SQLite at all are damage."""
     bench.db_path.unlink()
-    _foreign(bench.db_path, tables=(present,))
-
-    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
-
-    assert cause.reason == "canary-read-failed"
-
-
-def test_a_file_that_is_not_sqlite_at_all_keeps_the_canarys_refusal(bench):
-    bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
-
-    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
-
-    assert cause.reason == "canary-read-failed"
+    if present is None:
+        bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
+    else:
+        _foreign(bench.db_path, tables=(present,))
+    assert _refusal_from_the_copy(bench.db_path, bench.cfg).cause.reason == "canary-read-failed"
 
 
 @pytest.mark.parametrize("make", [_empty, _foreign], ids=["empty", "foreign"])
@@ -854,16 +768,7 @@ def test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing
     wrong = make(bench.root / "PIONEER" / "rekordbox" / "master.db")
     live_bytes = bench.db_path.read_bytes()
     asked: list[str] = []
-
-    def read_line() -> str:
-        asked.append("asked")
-        return "no\n"
-
-    monkeypatch.setattr(
-        prompt,
-        "Prompter",
-        lambda: _RealPrompter(read_line=read_line, read_secret=lambda _q: "", write=lambda _t: None),
-    )
+    monkeypatch.setattr(prompt, "Prompter", lambda: _counting(asked, "no"))
 
     code, envelope = drive(["setup", "--db-path", str(wrong)])
 
@@ -944,11 +849,7 @@ def test_the_file_whose_tables_are_listed_is_only_ever_a_copy(bench, monkeypatch
 def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opened):
     _empty(bench.db_path)
 
-    finding = next(
-        f
-        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
-        if f.key == "library.paths_resolved"
-    )
+    finding = _finding(bench.cfg, probes=_real_survey())
 
     assert finding.status is doctor.Status.FAIL
     assert finding.cause is not None
@@ -975,23 +876,16 @@ def test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path(bench, monk
     assert cause.reason == "pyrekordbox-pin-drift"
 
 
-def _unconfirmed() -> processes.AbsenceUnconfirmed:
-    """The scan's refusal over a live process it could not read (U211)."""
-    return processes._unconfirmed([(300, "SystemError: proc_cmdline")])
+def _unconfirmed() -> bool:
+    """A process scan that refuses over a live process it could not read (U211)."""
+    raise processes._unconfirmed([(300, "SystemError: proc_cmdline")])
 
 
 def test_setup_skips_the_offer_while_rekordbox_s_absence_is_unconfirmed(bench, opened, monkeypatch):
     """U211. No copy over an absence nobody confirmed, said as unknown, and setup goes on."""
-
-    def unconfirmed():
-        raise _unconfirmed()
-
-    monkeypatch.setattr(rb_writer, "rekordbox_running", unconfirmed)
-    document = dict(bench.cfg.to_toml_dict())
-    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
-
-    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
-
+    monkeypatch.setattr(rb_writer, "rekordbox_running", _unconfirmed)
+    offered, document, wizard = _offer(bench.cfg, _scripted(["yes"]))
+    assert offered is False
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
     detail = _note(wizard).detail
@@ -1003,10 +897,7 @@ def test_setup_skips_the_offer_while_rekordbox_s_absence_is_unconfirmed(bench, o
 def test_setup_takes_no_copy_of_a_wrong_file_while_absence_is_unconfirmed(
     bench, opened, monkeypatch
 ):
-    def unconfirmed():
-        raise _unconfirmed()
-
     _empty(bench.db_path)
-    monkeypatch.setattr(rb_writer, "rekordbox_running", unconfirmed)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", _unconfirmed)
     assert setup_verb._refuse_a_database_that_is_not_one(bench.cfg) is None
     assert opened == []

@@ -1,13 +1,8 @@
 """R1: nothing that ships names a person, a machine, a path, a volume, or an account.
 
-The source system's single grep looked only at package Python, excluded by
-filename substring, and knew two hardcoded strings; a fixture below proves
-each hole closed. The scan is also a SECRET scan over every tracked path,
-vendored trees included, since the vendored artifact sat beside a live
-session cache and credentials.
-
-Every bad literal here is ASSEMBLED FROM FRAGMENTS at runtime, so the guard
-never flags this file and no exemption is needed anywhere.
+A fixture below proves closed each hole of the source system's one grep, and the
+scan is also a SECRET scan over every tracked path, vendored trees included.
+Every bad literal here is ASSEMBLED FROM FRAGMENTS, so the guard never flags this file.
 """
 
 from __future__ import annotations
@@ -106,12 +101,8 @@ def test_runtime_derived_identity_catches_a_bare_name():
     ["SomeSpecificDrive", "SOMESPECIFICDRIVE", "somespecificdrive", "SomeSpecificdrive"],
 )
 def test_identity_token_matches_whatever_case_it_was_written_in(written):
-    """An identity token matches in any case, as the case insensitive filesystem does.
-
-    An upper case drive name once passed for weeks. The fix belongs here, a deny
-    rule where a missed variant is silent, not on ``PLACEHOLDER_SEGMENTS``, which
-    permits.
-    """
+    """An identity token matches in any case, as the case insensitive filesystem does: a
+    deny rule, where a missed variant is silent, not ``PLACEHOLDER_SEGMENTS``, which permits."""
     problems = scan.portability_violations(
         f"the {written} volume must be mounted", identity_tokens={"SomeSpecificDrive"}
     )
@@ -214,12 +205,8 @@ def test_credential_shapes_are_caught(body, label):
     ],
 )
 def test_a_credential_key_is_caught_in_every_casing_and_separator(key):
-    """A credential key is caught in every casing and separator.
-
-    A vendored file held five pairs as ``"clientSecret"``: the keyword list had
-    one casing, and the bare ``secret`` rule wanted whitespace where JSON puts a
-    closing quote. Parametrized because one spelling was covered and the rest not.
-    """
+    """A credential key is caught in every casing and separator, since a vendored file held
+    five ``"clientSecret"`` pairs when the keyword list had one casing."""
     body = f'{{"{key}": "{_A_TOKEN}"}}'
     assert scan.secret_violations(body), f"{key!r} carrying a live value was not caught"
 
@@ -433,29 +420,22 @@ def test_the_repository_itself_is_clean():
 # ── a symlink has no content, so every content rule skips it ─────────────────
 
 
-def test_a_symlink_to_an_absolute_path_is_caught(tmp_path):
-    """A symlink to an absolute path is caught, though it has no content for the other rules.
-
-    A committed ``.venv`` link to a home directory once scanned clean.
-    """
-    link = tmp_path / "dot-venv"
-    link.symlink_to("/Users/someone/elsewhere/.venv")
-
+@pytest.mark.parametrize(
+    "name, target, finding",
+    [
+        ("dot-venv", "/Users/someone/elsewhere/.venv", "absolute path"),
+        ("outward", "../not-in-the-clone", "escaping the repository"),
+    ],
+    ids=["a-symlink-to-an-absolute-path", "a-symlink-escaping-the-repository"],
+)
+def test_a_symlink_to_an_absolute_or_escaping_target_is_caught(tmp_path, name, target, finding):
+    """A link has no content for the other rules: a committed ``.venv`` link to a home once
+    scanned clean, and a target leaving the tree resolves to whatever sits beside it."""
+    link = tmp_path / name
+    link.symlink_to(target)
     findings = scan.scan_tree(tmp_path, [link], check_identity=False)
-
-    assert findings, "an absolute symlink target was not caught"
-    assert "absolute path" in findings[0]
-
-
-def test_a_symlink_escaping_the_repository_is_caught(tmp_path):
-    """A relative target that leaves the tree resolves to whatever sits beside it."""
-    link = tmp_path / "outward"
-    link.symlink_to("../not-in-the-clone")
-
-    findings = scan.scan_tree(tmp_path, [link], check_identity=False)
-
-    assert findings, "a symlink escaping the tree was not caught"
-    assert "escaping the repository" in findings[0]
+    assert findings, f"a symlink to {target} was not caught"
+    assert finding in findings[0]
 
 
 def test_a_relative_symlink_inside_the_repository_is_allowed(tmp_path):
@@ -501,13 +481,8 @@ def test_a_cloud_container_detects_no_machine_identity(monkeypatch, tmp_path):
 
 
 # ── U957: a detected ordinary word names the machine only in a path or host ──
-#
-# A machine named by a plain word failed every file using the word in its plain
-# sense, and the release refused. These drive the real detection with the
-# running system's inputs patched, never a hand built token set, so what they
-# pin is what the battery runs. A host or path form of the word is assembled
-# from fragments, as the module docstring asks, so a machine named by it does
-# not fail this file.
+# These drive the real detection with the running system's inputs patched, never a
+# hand built token set, so what they pin is what the battery runs.
 
 _W = "gar" + "den"
 
@@ -595,11 +570,7 @@ def test_a_detected_ordinary_word_passes_in_prose(detected):
     ids=_opaque_id,
 )
 def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected, written):
-    """In a home or mount path segment, or a host, the plain word is the machine.
-
-    The hostname is capitalised and the paths are not all, so a case exact
-    comparison anywhere misses one.
-    """
+    """In a home or mount path segment, or a host, the plain word is the machine, in any case."""
     tokens = detected(_W.capitalize())
     problems = _identity_problems(f"see {written} for the files", tokens)
     assert problems and f"'{_W.capitalize()}'" in problems[0], problems
@@ -712,14 +683,8 @@ def test_a_plain_token_set_matches_every_token_bare():
 
 
 def test_the_repository_is_clean_on_a_machine_named_by_a_word_it_uses(detected, monkeypatch):
-    """The battery on a machine named by a plain word, driven through the real scan.
-
-    The word is one the tree writes hundreds of times, so the clean result
-    means something: declared, the same word is caught in the same files. Only
-    the files that write the word are scanned, since an identity finding for a
-    token needs the token in the file; the whole tree's other classes are
-    ``test_the_repository_itself_is_clean``'s.
-    """
+    """The battery on a machine named by a word the tree writes hundreds of times, through the
+    real scan of the files that write it; declared, the same word is caught in them."""
     word = "window"
     assert scan.is_ordinary_word(word)
     listed = subprocess.run(
@@ -750,12 +715,8 @@ _ORDINARY_WORDS_SHA256 = "2cf7fa3d404d048fac02b71888359e23b9fda31c23b749bc3da485
 
 
 def test_the_ordinary_word_list_is_well_formed():
-    """Lower case letters only, four or longer, sorted and unique, pinned by digest.
-
-    A digit or a separator can therefore never make a detected token ordinary,
-    so a hostname like ``my-laptop`` stays bare, and ``is_ordinary_word``
-    refuses a capital inside a mixed case token.
-    """
+    """Lower case letters only, four or longer, sorted and unique, pinned by digest, so a
+    hostname like ``my-laptop`` stays bare and a capital inside a token is refused."""
     raw = scan.ORDINARY_WORDS_FILE.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == _ORDINARY_WORDS_SHA256
     assert scan.ORDINARY_WORDS_FILE == REPO_ROOT / scan.ORDINARY_WORDS_PATH
@@ -772,11 +733,8 @@ def test_the_ordinary_word_list_is_well_formed():
 
 
 def test_a_declared_word_is_not_looked_for_in_the_word_list_itself(tmp_path, monkeypatch):
-    """Declaring a listed word is the documented remedy, so the list cannot be its finding.
-
-    Only a declared token that is on the list is skipped there; a name planted
-    in the list is still caught, and the word is still caught everywhere else.
-    """
+    """Declaring a listed word is the documented remedy, so the list cannot be its finding;
+    a name planted in the list is still caught, and the word everywhere else."""
     monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
     monkeypatch.setattr(scan, "MOUNT_ROOTS", ())
     target = tmp_path / scan.ORDINARY_WORDS_PATH
@@ -812,11 +770,7 @@ def test_a_host_form_opening_the_text_is_caught(detected, written):
 
 
 def test_a_host_form_matches_under_the_regex_case_rule(detected):
-    """A dotless i reads as an i under ``re.IGNORECASE``, so a host written so is caught.
-
-    Round one's casefold prefilter skipped it; this keeps the prefilter's
-    replacement on the same case rule as the host forms.
-    """
+    """A dotless i reads as an i under ``re.IGNORECASE``, so a host written so is caught."""
     word = "Win" + "dow"
     tokens = detected(word)
     assert word in tokens.shape_only

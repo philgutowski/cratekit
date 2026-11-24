@@ -1,9 +1,7 @@
 """U1: the package declares an installable, portable, genuinely slim core.
 
-Read from ``pyproject.toml`` as data, so a regression fails its own pull
-request. The import guard (U269) also reads the installed distributions'
-metadata, so it needs the core dependencies installed. A clean install is
-proved by CI's ``cold-install`` job, not here.
+Read from ``pyproject.toml`` as data; the import guard (U269) also reads the installed
+metadata. A clean install is proved by CI's ``cold-install`` job, not here.
 """
 
 from __future__ import annotations
@@ -19,10 +17,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
-# Packages the slim core must never DECLARE: the audio DSP stack, the machine
-# learning stack and the web framework. numpy lands in a slim install through
-# pyrekordbox, which is fine, but the analysis module must keep declaring it
-# itself rather than lean on an unrelated package's dependency.
+# Packages the slim core must never DECLARE: the DSP, machine learning and web stacks.
+# numpy arrives through pyrekordbox, but the analysis module must still declare it.
 HEAVY_PACKAGES = {
     "librosa",
     "numpy",
@@ -63,11 +59,8 @@ def _clauses(specifier: str) -> frozenset[str]:
 
 
 def test_the_installed_metadata_carries_the_bound_pyproject_declares(pyproject):
-    """The installed metadata carries the bound pyproject declares, since doctor reads it (KTD19).
-
-    A stale ``dist-info`` from an earlier editable install once carried an old
-    bound and made doctor call the running 3.12 unsupported.
-    """
+    """The installed metadata carries the bound pyproject declares, since doctor reads it
+    (KTD19) and a stale ``dist-info`` once made it call the running 3.12 unsupported."""
     from importlib import metadata
 
     from cratekit.cli import registry
@@ -78,17 +71,12 @@ def test_the_installed_metadata_carries_the_bound_pyproject_declares(pyproject):
         installed = None
 
     assert installed is not None, (
-        f"{registry.DISTRIBUTION} is not installed in this environment, so "
-        f"doctor's interpreter bound reads as 'not asserted' and this "
-        f"declaration is enforced by nothing. Install the package, editable is "
-        f"enough, before trusting a green run."
+        f"{registry.DISTRIBUTION} is not installed here, so nothing enforces the bound; "
+        f"install the package, editable is enough"
     )
     assert _clauses(installed) == _clauses(pyproject["project"]["requires-python"]), (
         f"the installed metadata says {installed!r} and pyproject declares "
-        f"{pyproject['project']['requires-python']!r}. Doctor reads the first and "
-        f"this repository maintains the second, so a run can refuse an "
-        f"interpreter this project supports, or accept one it does not. "
-        f"Reinstall the distribution."
+        f"{pyproject['project']['requires-python']!r}; reinstall the distribution"
     )
 
 
@@ -99,8 +87,7 @@ def test_the_doctor_reads_the_installed_bound_rather_than_a_constant():
     from cratekit.cli import doctor
 
     assert doctor._declared_python_bound() is not None
-    # Over the syntax tree, so a comment explaining why the ceiling is not
-    # repeated does not fire.
+    # Over the syntax tree, so a comment explaining the ceiling does not fire.
     sources: list[str] = []
     for path in sorted((REPO_ROOT / "src").rglob("*.py")):
         if "_vendor" in path.parts:
@@ -133,20 +120,14 @@ def test_slim_core_carries_no_dsp_web_or_ml_dependency(pyproject):
 
 
 # ── U269: every core dependency earns its place, and the comments name real files. ───
-#
-# lxml sat in the core list for months while nothing imported it.
 
-#: A core dependency declared for a reason other than our own import, such as
-#: bounding a transitive one, named here with that reason. Empty today.
+#: A core dependency declared for another reason than our own import, with it. Empty.
 DECLARED_WITHOUT_AN_IMPORT: dict[str, str] = {}
 
 
 def _imported_top_level_names(root: Path) -> set[str]:
-    """Every top level name an import under ``root`` reaches, lazy ones included.
-
-    Function-level imports and literal ``importlib.import_module("name")`` count;
-    relative imports name the package itself and are skipped.
-    """
+    """Every top level name an import under ``root`` reaches, function level and literal
+    ``importlib.import_module`` ones included; relative imports are the package itself."""
     names: set[str] = set()
     for path in root.rglob("*.py"):
         tree = ast.parse(path.read_bytes(), filename=str(path))
@@ -167,11 +148,8 @@ def _imported_top_level_names(root: Path) -> set[str]:
 
 
 def test_every_core_dependency_is_imported_by_the_package(pyproject):
-    """Every core dependency is imported by the package, the vendored tree included.
-
-    Import names come from the installed metadata (Pillow is ``PIL``), never a
-    hand table that drifts.
-    """
+    """Every core dependency is imported by the package, the vendored tree included, its
+    import names read from the installed metadata (Pillow is ``PIL``)."""
     from importlib.metadata import packages_distributions
 
     from packaging.requirements import Requirement
@@ -190,8 +168,7 @@ def test_every_core_dependency_is_imported_by_the_package(pyproject):
         if name in DECLARED_WITHOUT_AN_IMPORT:
             continue
         if requirement.marker is not None and not requirement.marker.evaluate():
-            # Declared for another platform or interpreter, so not installed
-            # here by design; the battery on that platform judges it.
+            # Declared for another platform, judged by the battery there.
             continue
         if name not in provides:
             not_installed.append(name)
@@ -208,9 +185,8 @@ def test_every_core_dependency_is_imported_by_the_package(pyproject):
     )
 
 
-#: A repository path ``pyproject.toml`` names under a top level directory, with
-#: an optional ``::test_name``. Not the tail of a URL, not the prefix of a glob
-#: such as ``tests/test_*.py``, and not a sentence's full stop.
+#: A repository path ``pyproject.toml`` names, with an optional ``::test_name``; never a
+#: URL's tail, a glob's prefix such as ``tests/test_*.py``, or a sentence's full stop.
 _NAMED_PATH = re.compile(
     r"(?<![\w./:-])((?:tests|scripts|src|docs|vendor)/[\w./-]*[\w/])(?![\w*/-]|\.[\w*])(?:::(\w+))?"
 )
@@ -243,8 +219,7 @@ def test_extras_are_named_for_modules_and_carry_the_weight(pyproject):
     vocals = {_distribution_name(spec) for spec in extras["vocals"]}
     assert "torch" in vocals
 
-    # The aggregate names every feature module's extra; "all" and "dev" (contributor
-    # tooling) are not feature modules.
+    # The aggregate names every feature module's extra; "all" and "dev" are not modules.
     NON_MODULE_EXTRAS = {"all", "dev"}
     aggregate = extras["all"]
     assert len(aggregate) == 1
@@ -270,10 +245,8 @@ def test_no_author_identity_in_shipped_metadata(pyproject):
 
 
 # ── scripts/ci_deps.py ───────────────────────────────────────────────────────
-#
-# CI installs whatever this prints. Its first CI run failed: shell quoting
-# survived command substitution, and pip got a literal ``'lxml>=5.0'``. These
-# pin the output contract: every line parses as a requirement, undecorated.
+# CI installs whatever this prints, so every line parses as a requirement, undecorated:
+# its first run handed pip a shell quoted ``'lxml>=5.0'``.
 
 
 def _run_ci_deps(*args: str) -> list[str]:
@@ -297,8 +270,7 @@ def test_every_emitted_line_parses_as_a_requirement(args):
     lines = _run_ci_deps(*args)
     assert lines, f"ci_deps.py printed nothing for {args!r}"
     for line in lines:
-        # Requirement() raises InvalidRequirement on anything pip would reject,
-        # including the quoted form that broke the first CI run.
+        # Raises on anything pip would reject, the quoted form included.
         Requirement(line)
 
 
@@ -306,8 +278,7 @@ def test_emitted_lines_carry_no_shell_decoration():
     """No line carries a quote: xargs does not strip quotes either."""
     for line in _run_ci_deps():
         assert not (line.startswith(("'", '"')) or line.endswith(("'", '"'))), (
-            f"{line!r} is shell-quoted; emit the raw specifier and let the "
-            f"caller use xargs"
+            f"{line!r} is shell-quoted; emit the raw specifier"
         )
         assert line == line.strip(), f"{line!r} carries surrounding whitespace"
 

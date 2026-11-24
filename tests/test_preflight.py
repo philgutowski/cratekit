@@ -1,8 +1,7 @@
 """The library volume precondition: three broken states, three distinct refusals.
 
-Exempt from the conftest fixture that disarms it. A backup clone passes any
-directory check; a second volume is simulated through injected identity and
-mount seams, and the one real platform call is run separately.
+Exempt from the conftest fixture that disarms it. A second volume is simulated
+through injected identity and mount seams; the one real platform call runs apart.
 """
 
 from __future__ import annotations
@@ -45,6 +44,14 @@ def fake_mounts(*paths: Path):
     return enumerator
 
 
+def _volume(configured, recorded, provider, *mounts, destructive=True):
+    """``assert_library_volume`` over this identity provider and these mounts."""
+    return assert_library_volume(
+        configured, recorded, destructive=destructive,
+        identity_provider=provider, mount_enumerator=fake_mounts(*mounts),
+    )
+
+
 def _state(configured, recorded, mapping, *mounts):
     """``resolve_mount_state`` over a fake provider and enumerator."""
     return resolve_mount_state(
@@ -77,13 +84,7 @@ def test_a_volume_mounted_elsewhere_refuses_and_names_where_it_actually_is(tmp_p
     assert status.found_at == elsewhere
 
     with pytest.raises(LibraryVolumeError) as caught:
-        assert_library_volume(
-            configured,
-            RECORDED,
-            destructive=True,
-            identity_provider=fake_identity(mapping),
-            mount_enumerator=fake_mounts(elsewhere),
-        )
+        _volume(configured, RECORDED, fake_identity(mapping), elsewhere)
     assert caught.value.state is MountState.MOUNTED_ELSEWHERE
     assert str(elsewhere) in caught.value.detail
 
@@ -129,13 +130,7 @@ def test_the_right_volume_with_a_missing_library_subdirectory_is_its_own_cause(t
 def test_the_right_volume_at_the_configured_path_passes(tmp_path):
     """Healthy, asserted so the guard cannot refuse everything."""
     mount = containing_mount(tmp_path)
-    status = assert_library_volume(
-        tmp_path,
-        RECORDED,
-        destructive=True,
-        identity_provider=fake_identity({mount: RECORDED}),
-        mount_enumerator=fake_mounts(mount),
-    )
+    status = _volume(tmp_path, RECORDED, fake_identity({mount: RECORDED}), mount)
     assert status.ok and status.state is MountState.OK
 
 
@@ -168,41 +163,28 @@ def test_the_identity_gate_is_callable_with_no_paths_at_all(tmp_path):
 def test_an_unreadable_identity_refuses_a_destructive_verb(tmp_path):
     """Cannot tell is not fine: a path check or a marker file passes on a clone."""
     with pytest.raises(LibraryVolumeError) as caught:
-        assert_library_volume(
-            tmp_path, RECORDED, destructive=True,
-            identity_provider=null_volume_identity, mount_enumerator=fake_mounts(),
-        )
+        _volume(tmp_path, RECORDED, null_volume_identity)
     assert caught.value.state is MountState.IDENTITY_UNAVAILABLE
 
 
 def test_an_unreadable_identity_lets_a_read_only_verb_proceed(tmp_path):
     """The asymmetry: the worst case of a read is a wrong report."""
-    status = assert_library_volume(
-        tmp_path, RECORDED, destructive=False,
-        identity_provider=null_volume_identity, mount_enumerator=fake_mounts(),
-    )
+    status = _volume(tmp_path, RECORDED, null_volume_identity, destructive=False)
     assert status.state is MountState.IDENTITY_UNAVAILABLE
 
 
 def test_no_recorded_identity_refuses_a_destructive_verb(tmp_path):
     """Adopting whatever is mounted would make the check true by construction."""
     with pytest.raises(LibraryVolumeError) as caught:
-        assert_library_volume(
-            tmp_path, None, destructive=True,
-            identity_provider=fake_identity({containing_mount(tmp_path): RECORDED}),
-            mount_enumerator=fake_mounts(),
-        )
+        _volume(tmp_path, None, fake_identity({containing_mount(tmp_path): RECORDED}))
     assert caught.value.state is MountState.IDENTITY_NOT_RECORDED
 
 
 def test_the_refusal_carries_a_structured_cause_and_no_command_text(tmp_path):
     """KTD25 and D2: a cause the CLI renders and a caller can branch on, not a SystemExit."""
     with pytest.raises(LibraryVolumeError) as caught:
-        assert_library_volume(
-            tmp_path / "library", RECORDED, destructive=True,
-            identity_provider=fake_identity({containing_mount(tmp_path): FOREIGN}),
-            mount_enumerator=fake_mounts(),
-        )
+        foreign = fake_identity({containing_mount(tmp_path): FOREIGN})
+        _volume(tmp_path / "library", RECORDED, foreign)
     error = caught.value
     assert not isinstance(error, SystemExit)
     assert isinstance(error.state, MountState)
@@ -237,10 +219,7 @@ def test_this_machines_own_volume_identity_is_readable_and_stable():
     provider = default_identity_provider()
     identity = provider(Path("/"))
     if identity is None:
-        assert provider is not macos_volume_identity, (
-            "on macOS the volume UUID must be readable; a None here means the "
-            "getattrlist call regressed and every identity check would degrade"
-        )
+        assert provider is not macos_volume_identity, "the macOS getattrlist call regressed"
         return
     assert provider(Path("/")) == identity
     assert provider(containing_mount(Path.cwd())) is not None
