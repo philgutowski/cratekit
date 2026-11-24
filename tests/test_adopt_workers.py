@@ -12,6 +12,7 @@ import sqlite3
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -435,6 +436,66 @@ def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monke
     assert report["favorites"]["cause"] == genre_favorites.CLASS_UNDECLARED
     (note,) = apply_cli.favorites_warnings({"favorites": report["favorites"]})
     assert note["code"] == genre_favorites.CLASS_UNDECLARED
+
+
+def test_an_apply_records_the_node_of_each_destination_it_filed_into(cut_over):
+    """R-1991: a folder renamed after an adoption is still read as its genre's.
+
+    The record is read back from the state file and each node from a fresh
+    handle, so the playlist it names is the one bearing the destination's names.
+    """
+    from cratekit.core import convergence
+
+    plan = apply_cli.current_plan(cut_over, DECLARED)
+    wanted = {(entry.bucket, entry.sub) for entry in plan.applicable()}
+    assert wanted, "the fixture plans nothing, so this assertion is empty"
+    assert convergence.read(cut_over).tree(plan.tree) is None
+
+    _applied()
+
+    record = convergence.read(cut_over).tree(plan.tree)
+    assert record is not None and not record.unconverged
+    assert {(entry.bucket, entry.sub) for entry in record.nodes} == wanted
+    handle = rb_writer.open_db(rb_writer.live_db_path(cut_over), unlock=False, cfg=cut_over)
+    try:
+        for entry in record.nodes:
+            playlist = handle.get_playlist(ID=entry.playlist_id)
+            folder = handle.get_playlist(ID=entry.folder_id)
+            assert str(playlist.ParentID) == entry.folder_id
+            assert (str(folder.Name), str(playlist.Name)) == destination(
+                DECLARED, entry.bucket, entry.sub
+            )
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_planned_destinations_name_each_pair_once_and_skip_what_names_none(monkeypatch):
+    """A pair two destinations share is recorded as neither; a vocal addition by its
+    vocal sub; a destination the taxonomy no longer declares is skipped, as the
+    membership mapping skips it, never raised before the write."""
+    entries = [
+        SimpleNamespace(bucket="one", sub="high"),
+        SimpleNamespace(bucket="two", sub="high"),
+        SimpleNamespace(bucket="two", sub="low"),
+        SimpleNamespace(bucket="gone", sub="high"),
+    ]
+    sung = [SimpleNamespace(bucket="two", sub="low", vocal_sub="with_vox")]
+    plan = SimpleNamespace(applicable=lambda: entries, vocal_additions=lambda: sung)
+    names = {
+        ("one", "high"): ("Shared", "High"),
+        ("two", "high"): ("Shared", "High"),
+        ("two", "low"): ("Two", "Low"),
+        ("two", "with_vox"): ("Two", "with vox"),
+    }
+
+    def named(_declared, bucket, sub):
+        return names[(bucket, sub)]
+
+    monkeypatch.setattr(apply_cli, "destination", named)
+    assert apply_cli.planned_destinations(plan, DECLARED) == {
+        ("Two", "Low"): ("two", "low"),
+        ("Two", "with vox"): ("two", "with_vox"),
+    }
 
 
 def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_over):
